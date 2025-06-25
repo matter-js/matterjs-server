@@ -1,10 +1,10 @@
 {
     "optionalDependencies": {
-        "@matter/nodejs-ble": "0.15.0-alpha.0-20250624-e8c89f458"
+        "@matter/nodejs-ble": "0.15.0-alpha.0-20250625-c7634df96"
     },
     "dependencies": {
-        "@matter/main": "0.15.0-alpha.0-20250624-e8c89f458",
-        "@project-chip/matter.js": "0.15.0-alpha.0-20250624-e8c89f458",
+        "@matter/main": "0.15.0-alpha.0-20250625-c7634df96",
+        "@project-chip/matter.js": "0.15.0-alpha.0-20250625-c7634df96",
         "express": "^5.1.0",
         "ws": "^8.18.2"
     },
