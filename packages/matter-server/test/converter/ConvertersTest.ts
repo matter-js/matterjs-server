@@ -3,6 +3,7 @@ import {
     convertMatterToWebSocketTagBased,
     convertWebSocketTagBasedToMatter,
     parsePythonJson,
+    splitAttributePath,
     toPythonJson,
 } from "@matter-server/controller";
 import { Bytes } from "@matter/general";
@@ -521,6 +522,50 @@ describe("Converters", () => {
             expect(parsed.result.node_id).to.equal(original.result.node_id);
             expect(parsed.result.available).to.equal(true);
             expect(parsed.result.attributes["0/29/0"]).to.deep.equal([{ "0": 22, "1": 1 }]);
+        });
+    });
+
+    describe("splitAttributePath", () => {
+        it("should split fully specified path", () => {
+            const result = splitAttributePath("0/40/1");
+            expect(result.endpointId).to.equal(0);
+            expect(result.clusterId).to.equal(40);
+            expect(result.attributeId).to.equal(1);
+        });
+
+        it("should handle wildcard in attribute position", () => {
+            const result = splitAttributePath("0/40/*");
+            expect(result.endpointId).to.equal(0);
+            expect(result.clusterId).to.equal(40);
+            expect(result.attributeId).to.be.undefined;
+        });
+
+        it("should handle wildcard in cluster position", () => {
+            const result = splitAttributePath("0/*/5");
+            expect(result.endpointId).to.equal(0);
+            expect(result.clusterId).to.be.undefined;
+            expect(result.attributeId).to.equal(5);
+        });
+
+        it("should handle wildcard in endpoint position", () => {
+            const result = splitAttributePath("*/40/1");
+            expect(result.endpointId).to.be.undefined;
+            expect(result.clusterId).to.equal(40);
+            expect(result.attributeId).to.equal(1);
+        });
+
+        it("should handle all wildcards", () => {
+            const result = splitAttributePath("*/*/*");
+            expect(result.endpointId).to.be.undefined;
+            expect(result.clusterId).to.be.undefined;
+            expect(result.attributeId).to.be.undefined;
+        });
+
+        it("should handle multiple wildcards", () => {
+            const result = splitAttributePath("*/40/*");
+            expect(result.endpointId).to.be.undefined;
+            expect(result.clusterId).to.equal(40);
+            expect(result.attributeId).to.be.undefined;
         });
     });
 });

@@ -38,3 +38,16 @@ Test nodes (imported via `import_test_node` command) use different ID ranges:
 The Matter.js implementation uses the high 64-bit range to ensure test node IDs never collide with real Matter node IDs, which can be assigned values up to 64-bit. This is a deliberate design choice for better separation between test and production nodes.
 
 **Note**: If you're importing diagnostics dumps from a Python Matter Server instance, the test node IDs will be preserved as-is from the dump.
+
+### Fabric Label Handling
+
+When setting the fabric label via `set_default_fabric_label`:
+
+| Implementation | Behavior with null/empty |
+|----------------|-------------------------|
+| Python Matter Server | Auto-truncates to 32 chars, accepts null/empty to clear |
+| Matter.js Server | Resets to "Home" when null or empty string is passed |
+
+The matter.js SDK requires fabric labels to be 1-32 characters, so the Matter.js server uses "Home" as the default label instead of clearing it.
+
+For complete compatibility details, see [TODO.md](TODO.md).

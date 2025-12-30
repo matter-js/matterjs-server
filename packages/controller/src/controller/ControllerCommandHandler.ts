@@ -258,10 +258,12 @@ export class ControllerCommandHandler {
     }
 
     /**
-     * Set the fabric label. Pass null or empty string to clear.
+     * Set the fabric label. Pass null or empty string to reset to "Home".
+     * Note: matter.js requires non-empty labels (1-32 chars), so null/empty resets to default.
      */
     setFabricLabel(label: string | null) {
-        return this.#controller.updateFabricLabel(label ?? "");
+        const effectiveLabel = label && label.trim() !== "" ? label : "Home";
+        return this.#controller.updateFabricLabel(effectiveLabel);
     }
 
     disconnectNode(nodeId: NodeId) {
@@ -276,14 +278,10 @@ export class ControllerCommandHandler {
         }
         const client = await node.getInteractionClient();
 
+        // Note: This method is for direct SDK reads with explicit paths.
+        // Wildcard handling is done at the WebSocket layer before calling this method.
         const { attributeData, attributeStatus } = await client.getMultipleAttributesAndStatus({
-            attributes: [
-                {
-                    endpointId,
-                    clusterId,
-                    attributeId,
-                },
-            ],
+            attributes: [{ endpointId, clusterId, attributeId }],
             isFabricFiltered: fabricFiltered,
         });
 

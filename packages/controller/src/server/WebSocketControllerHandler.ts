@@ -434,8 +434,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
         args: ArgsOf<"set_default_fabric_label">,
     ): Promise<ResponseOf<"set_default_fabric_label">> {
         const { label } = args;
-        // Convert null to empty string (clears the label)
-        const effectiveLabel = label ?? "";
+        // Use "Home" as default when null/empty is passed (matter.js requires non-empty labels)
+        const effectiveLabel = label && label.trim() !== "" ? label : "Home";
         await this.#commandHandler.setFabricLabel(effectiveLabel);
         await this.#config.set({ fabricLabel: effectiveLabel });
         return null;
@@ -619,10 +619,47 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
         const result: AttributesData = {};
 
+        // Check if any path contains wildcards - if so, we need to collect all attributes from node
+        const hasWildcards = attributePaths.some(path => path.includes("*"));
+        let allAttributes: AttributesData | undefined;
+
+        if (hasWildcards) {
+            // Collect all attributes from the node for wildcard matching
+            const node = this.#commandHandler.getNode(NodeId(nodeId));
+            if (node === undefined) {
+                throw ServerError.nodeNotExists(nodeId);
+            }
+            if (!node.initialized) {
+                throw ServerError.nodeNotReady(nodeId);
+            }
+            const rootEndpoint = node.getRootEndpoint();
+            if (rootEndpoint === undefined) {
+                throw ServerError.nodeNotReady(nodeId);
+            }
+            allAttributes = {};
+            await this.#collectAttributesFromEndpointStructure(NodeId(nodeId), rootEndpoint, allAttributes);
+        }
+
         // Process each attribute path
         for (const path of attributePaths) {
             const { endpointId, clusterId, attributeId } = splitAttributePath(path);
 
+            // For wildcard paths, filter from collected attributes (same as test nodes)
+            if (path.includes("*") && allAttributes !== undefined) {
+                for (const [attrPath, value] of Object.entries(allAttributes)) {
+                    const parts = attrPath.split("/").map(Number);
+                    if (
+                        (endpointId === undefined || parts[0] === endpointId) &&
+                        (clusterId === undefined || parts[1] === clusterId) &&
+                        (attributeId === undefined || parts[2] === attributeId)
+                    ) {
+                        result[attrPath] = value;
+                    }
+                }
+                continue;
+            }
+
+            // For non-wildcard paths, use the SDK to read the specific attribute
             const { values, status } = await this.#commandHandler.handleReadAttribute({
                 nodeId: NodeId(nodeId),
                 endpointId,
