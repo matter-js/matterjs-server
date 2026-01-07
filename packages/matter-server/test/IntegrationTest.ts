@@ -160,12 +160,14 @@ describe("Integration Test", function () {
         });
 
         it("should set thread dataset and update server info", async function () {
+            // Clear any previous events (e.g. from wifi test) before setting thread dataset
+            client.clearEvents();
+
             // Set a mock thread dataset (hex encoded)
             const mockDataset = "0e080000000000010000000300001035060004001fffe00208fedcba9876543210";
             await client.setThreadDataset(mockDataset);
 
             // Wait for server_info_updated event
-            client.clearEvents();
             const event = await client.waitForEvent("server_info_updated", undefined, 5000);
             expect(event).to.exist;
 
