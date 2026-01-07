@@ -123,34 +123,32 @@ function generateDescriptions(): string {
 
     // Generate TypeScript file content
     return `
-/* 
- * Descriptions for SDK Objects. 
- * This file is auto-generated, DO NOT edit. 
+/*
+ * Descriptions for SDK Objects.
+ * This file is auto-generated, DO NOT edit.
  */
 
-
 export interface DeviceType {
-  id: number;
-  label: string;
+    id: number;
+    label: string;
 }
 
 export interface ClusterAttributeDescription {
-  id: number;
-  cluster_id: number;
-  label: string;
-  type: string;
+    id: number;
+    cluster_id: number;
+    label: string;
+    type: string;
 }
 
 export interface ClusterDescription {
-  id: number;
-  label: string;
-  attributes: { [attribute_id: string]: ClusterAttributeDescription }
+    id: number;
+    label: string;
+    attributes: { [attribute_id: string]: ClusterAttributeDescription };
 }
 
+export const device_types: Record<number, DeviceType> = ${JSON.stringify(deviceTypes, null, 4)};
 
-export const device_types: Record<number, DeviceType> = ${JSON.stringify(deviceTypes, null, 2)};
-
-export const clusters: Record<number, ClusterDescription> = ${JSON.stringify(clusters, null, 2)};
+export const clusters: Record<number, ClusterDescription> = ${JSON.stringify(clusters, null, 4)};
 `.trimStart();
 }
 
