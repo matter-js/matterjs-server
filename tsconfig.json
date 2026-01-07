@@ -5,6 +5,9 @@
             "path": "packages/tools"
         },
         {
+            "path": "packages/custom-clusters"
+        },
+        {
             "path": "packages/controller"
         },
         {

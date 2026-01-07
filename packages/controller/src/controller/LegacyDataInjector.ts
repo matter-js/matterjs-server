@@ -5,6 +5,7 @@ import {
     FabricId,
     FabricIndex,
     isDeepEqual,
+    isObject,
     Logger,
     NodeId,
     StorageContext,
@@ -248,7 +249,7 @@ export namespace LegacyDataInjector {
                 const model = clusterModel?.attributes?.[attributeId];
                 if (clusterModel === undefined || model === undefined) {
                     if (isPrimitiveType(value) || (Array.isArray(value) && value.every(isPrimitiveType))) {
-                        nodeWrites.push(clusterStorage!.set(attributeId, value as SupportedStorageTypes));
+                        nodeWrites.push(clusterStorage!.set(attributeId, { value } as SupportedStorageTypes));
                     } else {
                         logger.info(
                             `Attribute ${attributeKey} not found in and unclear value. Skipping injection.`,
@@ -256,10 +257,15 @@ export namespace LegacyDataInjector {
                         );
                     }
                 } else {
-                    const convertedValue = convertWebSocketTagBasedToMatter(value, model, clusterModel.model);
+                    const convertedValue =
+                        isObject(value) && ("TLVValue" in value || "Reason" in value)
+                            ? undefined
+                            : convertWebSocketTagBasedToMatter(value, model, clusterModel.model);
                     if (convertedValue !== undefined) {
                         logger.debug(`Converted value for attribute ${attributeKey}:`, value, "->", convertedValue);
-                        nodeWrites.push(clusterStorage!.set(attributeId, convertedValue as SupportedStorageTypes));
+                        nodeWrites.push(
+                            clusterStorage!.set(attributeId, { value: convertedValue } as SupportedStorageTypes),
+                        );
                     } else {
                         logger.info(`Attribute ${attributeKey} could not be converted. Skipping injection.`);
                     }

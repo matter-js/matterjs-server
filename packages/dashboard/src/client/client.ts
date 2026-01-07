@@ -13,11 +13,23 @@ import {
 } from "./models/model.js";
 import { MatterNode } from "./models/node.js";
 
+/** Union type for all incoming WebSocket messages */
+type IncomingMessage = EventMessage | ErrorResultMessage | SuccessResultMessage;
+
+/** Converts node_id to number for use as object key (bigint can't be used as index) */
+function toNodeKey(nodeId: number | bigint): number {
+    return typeof nodeId === "bigint" ? Number(nodeId) : nodeId;
+}
+
 export class MatterClient {
     public connection: Connection;
     public nodes: Record<number, MatterNode> = {};
     public serverBaseAddress: string;
-    private _result_futures: Record<string, { resolve: (value: any) => void; reject: (reason?: any) => void }> = {};
+    // Using 'unknown' for resolve since the actual types vary by command
+    private _result_futures: Record<
+        string,
+        { resolve: (value: unknown) => void; reject: (reason?: unknown) => void }
+    > = {};
     private msgId = 0;
     private eventListeners: Record<string, Array<() => void>> = {};
 
@@ -67,11 +79,11 @@ export class MatterClient {
     }
 
     async openCommissioningWindow(
-        nodeId: number,
+        nodeId: number | bigint,
         timeout?: number,
         iteration?: number,
         option?: number,
-        distriminator?: number,
+        discriminator?: number,
     ): Promise<CommissioningParameters> {
         // Open a commissioning window to commission a device present on this controller to another.
         // Returns code to use as discriminator.
@@ -80,7 +92,7 @@ export class MatterClient {
             timeout,
             iteration,
             option,
-            distriminator,
+            discriminator,
         })) as CommissioningParameters;
     }
 
@@ -89,23 +101,23 @@ export class MatterClient {
         return (await this.sendCommand("discover_commissionable_nodes", 0, {})) as CommissionableNodeData[];
     }
 
-    async getMatterFabrics(_nodeId: number): Promise<MatterFabricData[]> {
+    async getMatterFabrics(nodeId: number | bigint): Promise<MatterFabricData[]> {
         // Get Matter fabrics from a device.
         // Returns a list of MatterFabricData objects.
-        return (await this.sendCommand("get_matter_fabrics", 3, {})) as MatterFabricData[];
+        return (await this.sendCommand("get_matter_fabrics", 3, { node_id: nodeId })) as MatterFabricData[];
     }
 
-    async removeMatterFabric(nodeId: number, fabricIndex: number) {
+    async removeMatterFabric(nodeId: number | bigint, fabricIndex: number) {
         // Remove a Matter fabric from a device.
         await this.sendCommand("remove_matter_fabric", 3, { node_id: nodeId, fabric_index: fabricIndex });
     }
 
-    async pingNode(nodeId: number): Promise<NodePingResult> {
+    async pingNode(nodeId: number | bigint): Promise<NodePingResult> {
         // Ping node on the currently known IP-address(es).
         return (await this.sendCommand("ping_node", 0, { node_id: nodeId })) as NodePingResult;
     }
 
-    async getNodeIPAddresses(nodeId: number, preferCache?: boolean, scoped?: boolean): Promise<string[]> {
+    async getNodeIPAddresses(nodeId: number | bigint, preferCache?: boolean, scoped?: boolean): Promise<string[]> {
         // Return the currently known (scoped) IP-address(es).
         return (await this.sendCommand("get_node_ip_addresses", 8, {
             node_id: nodeId,
@@ -114,12 +126,12 @@ export class MatterClient {
         })) as string[];
     }
 
-    async removeNode(nodeId: number) {
+    async removeNode(nodeId: number | bigint) {
         // Remove a Matter node/device from the fabric.
         await this.sendCommand("remove_node", 0, { node_id: nodeId });
     }
 
-    async interviewNode(nodeId: number) {
+    async interviewNode(nodeId: number | bigint) {
         // Interview a node.
         await this.sendCommand("interview_node", 0, { node_id: nodeId });
     }
@@ -129,17 +141,17 @@ export class MatterClient {
         await this.sendCommand("import_test_node", 0, { dump });
     }
 
-    async readAttribute(nodeId: number, attributePath: string | string[]): Promise<Record<string, any>> {
+    async readAttribute(nodeId: number | bigint, attributePath: string | string[]): Promise<Record<string, unknown>> {
         // Read one or more attribute(s) on a node by specifying an attributepath.
         return await this.sendCommand("read_attribute", 0, { node_id: nodeId, attribute_path: attributePath });
     }
 
-    async writeAttribute(nodeId: number, attributePath: string, value: any) {
+    async writeAttribute(nodeId: number | bigint, attributePath: string, value: unknown) {
         // Write an attribute(value) on a target node.
         await this.sendCommand("write_attribute", 0, { node_id: nodeId, attribute_path: attributePath, value: value });
     }
 
-    async checkNodeUpdate(nodeId: number): Promise<MatterSoftwareVersion | null> {
+    async checkNodeUpdate(nodeId: number | bigint): Promise<MatterSoftwareVersion | null> {
         // Check if there is an update for a particular node.
         // Reads the current software version and checks the DCL if there is an update
         // available. If there is an update available, the command returns the version
@@ -147,7 +159,7 @@ export class MatterClient {
         return await this.sendCommand("check_node_update", 10, { node_id: nodeId });
     }
 
-    async updateNode(nodeId: number, softwareVersion: number | string) {
+    async updateNode(nodeId: number | bigint, softwareVersion: number | string) {
         // Update a node to a new software version.
         // This command checks if the requested software version is indeed still available
         // and if so, it will start the update process. The update process will be handled
@@ -156,14 +168,16 @@ export class MatterClient {
         await this.sendCommand("update_node", 10, { node_id: nodeId, software_version: softwareVersion });
     }
 
-    async setACLEntry(nodeId: number, entry: any) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    async setACLEntry(nodeId: number | bigint, entry: any[]) {
         return await this.sendCommand("set_acl_entry", 0, {
             node_id: nodeId,
             entry: entry,
         });
     }
 
-    async setNodeBinding(nodeId: number, endpoint: number, bindings: any) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    async setNodeBinding(nodeId: number | bigint, endpoint: number, bindings: any[]) {
         return await this.sendCommand("set_node_binding", 0, {
             node_id: nodeId,
             endpoint: endpoint,
@@ -191,8 +205,12 @@ export class MatterClient {
             args,
         };
 
-        const messagePromise = new Promise<Promise<APICommands[T]["response"]>>((resolve, reject) => {
-            this._result_futures[messageId] = { resolve, reject };
+        const messagePromise = new Promise<APICommands[T]["response"]>((resolve, reject) => {
+            // Type-erased storage: resolve/reject are stored as unknown handlers
+            this._result_futures[messageId] = {
+                resolve: resolve as (value: unknown) => void,
+                reject,
+            };
             this.connection.sendMessage(message);
         });
 
@@ -208,7 +226,7 @@ export class MatterClient {
             return;
         }
         await this.connection.connect(
-            msg => this._handleIncomingMessage(msg),
+            msg => this._handleIncomingMessage(msg as IncomingMessage),
             () => this.fireEvent("connection_lost"),
         );
     }
@@ -231,33 +249,31 @@ export class MatterClient {
 
         const nodes: Record<number, MatterNode> = {};
         for (const node of nodesArray) {
-            nodes[node.node_id] = new MatterNode(node);
+            nodes[toNodeKey(node.node_id)] = new MatterNode(node);
         }
         this.nodes = nodes;
     }
 
-    private _handleIncomingMessage(msg: any) {
+    private _handleIncomingMessage(msg: IncomingMessage) {
         if ("event" in msg) {
-            this._handleEventMessage(msg as EventMessage);
+            this._handleEventMessage(msg);
             return;
         }
 
         if ("error_code" in msg) {
-            const errorResult = msg as ErrorResultMessage;
-            const promise = this._result_futures[errorResult.message_id];
+            const promise = this._result_futures[msg.message_id];
             if (promise) {
-                promise.reject(new Error(errorResult.details));
-                delete this._result_futures[errorResult.message_id];
+                promise.reject(new Error(msg.details));
+                delete this._result_futures[msg.message_id];
             }
             return;
         }
 
         if ("result" in msg) {
-            const result = msg as SuccessResultMessage;
-            const promise = this._result_futures[result.message_id];
+            const promise = this._result_futures[msg.message_id];
             if (promise) {
-                promise.resolve(result.result);
-                delete this._result_futures[result.message_id];
+                promise.resolve(msg.result);
+                delete this._result_futures[msg.message_id];
             }
             return;
         }
@@ -270,12 +286,12 @@ export class MatterClient {
 
         if (event.event === "node_added") {
             const node = new MatterNode(event.data);
-            this.nodes = { ...this.nodes, [node.node_id]: node };
+            this.nodes = { ...this.nodes, [toNodeKey(node.node_id)]: node };
             this.fireEvent("nodes_changed");
             return;
         }
         if (event.event === "node_removed") {
-            delete this.nodes[event.data];
+            delete this.nodes[toNodeKey(event.data)];
             this.nodes = { ...this.nodes };
             this.fireEvent("nodes_changed");
             return;
@@ -283,17 +299,21 @@ export class MatterClient {
 
         if (event.event === "node_updated") {
             const node = new MatterNode(event.data);
-            this.nodes = { ...this.nodes, [node.node_id]: node };
+            this.nodes = { ...this.nodes, [toNodeKey(node.node_id)]: node };
             this.fireEvent("nodes_changed");
             return;
         }
 
         if (event.event === "attribute_updated") {
             const [nodeId, attributeKey, attributeValue] = event.data;
-            const node = new MatterNode(this.nodes[nodeId]);
-            node.attributes[attributeKey] = attributeValue;
-            this.nodes = { ...this.nodes, [node.node_id]: node };
-            this.fireEvent("nodes_changed");
+            const nodeKey = toNodeKey(nodeId);
+            const existingNode = this.nodes[nodeKey];
+            if (existingNode) {
+                const node = new MatterNode(existingNode.data);
+                node.attributes[attributeKey] = attributeValue;
+                this.nodes = { ...this.nodes, [nodeKey]: node };
+                this.fireEvent("nodes_changed");
+            }
             return;
         }
 
@@ -304,7 +324,7 @@ export class MatterClient {
         }
     }
 
-    private fireEvent(event: string, _data?: any) {
+    private fireEvent(event: string) {
         const listeners = this.eventListeners[event];
         if (listeners) {
             for (const listener of listeners) {

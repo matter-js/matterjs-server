@@ -463,7 +463,7 @@ export class ChipConfigData {
             const rootCertTlvBytes = Bytes.of(rcac.asSignedTlv());
 
             // Build base configuration
-            const config: CertificateAuthority.Configuration = {
+            let config: CertificateAuthority.Configuration = {
                 rootCertId: BigInt(rootCertId),
                 rootKeyPair,
                 rootKeyIdentifier,
@@ -506,10 +506,13 @@ export class ChipConfigData {
                 // Get the ICAC certificate bytes in TLV format
                 const icacCertTlvBytes = Bytes.of(icac.asSignedTlv());
 
-                config.icacCertId = BigInt(icacCertId);
-                config.icacKeyPair = icacKeyPair;
-                config.icacKeyIdentifier = icacKeyIdentifier;
-                config.icacCertBytes = icacCertTlvBytes;
+                config = {
+                    ...config,
+                    icacCertId: BigInt(icacCertId),
+                    icacKeyPair: icacKeyPair,
+                    icacKeyIdentifier: icacKeyIdentifier,
+                    icacCertBytes: icacCertTlvBytes,
+                };
 
                 if (icacCertId >= config.nextCertificateId) {
                     config.nextCertificateId = BigInt(icacCertId) + BigInt(1);

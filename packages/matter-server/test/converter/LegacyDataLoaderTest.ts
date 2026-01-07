@@ -1,6 +1,5 @@
 import { computeCompressedNodeId, Crypto, Environment, LegacyServerFile } from "@matter-server/controller";
 import { NodeJsCrypto } from "@matter/nodejs";
-import { expect } from "chai";
 import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

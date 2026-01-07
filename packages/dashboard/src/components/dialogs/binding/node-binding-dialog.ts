@@ -10,6 +10,7 @@ import "../../../components/ha-svg-icon";
 import { css, html, LitElement, nothing } from "lit";
 import { customElement, property, query } from "lit/decorators.js";
 import { MatterClient } from "../../../client/client.js";
+import { AccessControlEntry, BindingTarget } from "../../../client/models/model.js";
 import { MatterNode } from "../../../client/models/node.js";
 import { preventDefault } from "../../../util/prevent_default.js";
 import { BindingEntryDataTransformer, BindingEntryStruct, InputType } from "./model.js";
@@ -45,12 +46,14 @@ export class NodeBindingDialog extends LitElement {
     private _targetCluster!: MdOutlinedTextField;
 
     private fetchBindingEntry(): BindingEntryStruct[] {
-        const bindings_raw: [] = this.node!.attributes[this.endpoint + "/30/0"];
+        const bindings_raw = this.node!.attributes[this.endpoint + "/30/0"] as InputType[] | undefined;
+        if (!bindings_raw) return [];
         return Object.values(bindings_raw).map(value => BindingEntryDataTransformer.transform(value));
     }
 
     private fetchACLEntry(targetNodeId: number): AccessControlEntryStruct[] {
-        const acl_cluster_raw: [InputType] = this.client.nodes[targetNodeId].attributes["0/31/0"];
+        const acl_cluster_raw = this.client.nodes[targetNodeId]?.attributes["0/31/0"] as InputType[] | undefined;
+        if (!acl_cluster_raw) return [];
         return Object.values(acl_cluster_raw).map((value: InputType) =>
             AccessControlEntryDataTransformer.transform(value),
         );
@@ -61,12 +64,19 @@ export class NodeBindingDialog extends LitElement {
         try {
             const targetNodeId = rawBindings[index].node;
             const endpoint = rawBindings[index].endpoint;
-            await this.removeNodeAtACLEntry(this.node!.node_id, endpoint, targetNodeId);
+            if (targetNodeId === undefined || endpoint === undefined) return;
+            await this.removeNodeAtACLEntry(this.getNodeIdAsNumber(), endpoint, targetNodeId);
             const updatedBindings = this.removeBindingAtIndex(rawBindings, index);
             await this.syncBindingUpdates(updatedBindings, index);
         } catch (error) {
             this.handleBindingDeletionError(error);
         }
+    }
+
+    /** Helper to convert node_id (number | bigint) to number for API calls */
+    private getNodeIdAsNumber(): number {
+        const nodeId = this.node!.node_id;
+        return typeof nodeId === "bigint" ? Number(nodeId) : nodeId;
     }
 
     private async removeNodeAtACLEntry(
@@ -78,9 +88,11 @@ export class NodeBindingDialog extends LitElement {
 
         const updatedACLEntries = aclEntries
             .map(entry => this.removeEntryAtACL(sourceNodeId, sourceEndpoint, entry))
-            .filter((entry): entry is Exclude<typeof entry, null> => entry !== null);
+            .filter((entry): entry is AccessControlEntryStruct => entry !== undefined);
 
-        await this.client.setACLEntry(targetNodeId, updatedACLEntries);
+        // Convert to API format (without fabricIndex - server handles it)
+        const apiEntries = updatedACLEntries.map(e => this.toAccessControlEntry(e));
+        await this.client.setACLEntry(targetNodeId, apiEntries);
     }
 
     private removeEntryAtACL(
@@ -100,12 +112,15 @@ export class NodeBindingDialog extends LitElement {
     }
 
     private async syncBindingUpdates(updatedBindings: BindingEntryStruct[], index: number): Promise<void> {
-        await this.client.setNodeBinding(this.node!.node_id, this.endpoint, updatedBindings);
+        // Convert to API format (without fabricIndex - server handles it)
+        const apiBindings = updatedBindings.map(b => this.toBindingTarget(b));
+        await this.client.setNodeBinding(this.getNodeIdAsNumber(), this.endpoint, apiBindings);
 
         const attributePath = `${this.endpoint}/30/0`;
+        const currentBindings = this.node!.attributes[attributePath] as BindingEntryStruct[] | undefined;
         const updatedAttributes = {
             ...this.node!.attributes,
-            [attributePath]: this.removeBindingAtIndex(this.node!.attributes[attributePath], index),
+            [attributePath]: currentBindings ? this.removeBindingAtIndex(currentBindings, index) : [],
         };
 
         this.node!.attributes = updatedAttributes;
@@ -117,47 +132,66 @@ export class NodeBindingDialog extends LitElement {
         console.error(`Binding deletion failed: ${errorMessage}`);
     }
 
-    private async _updateEntry<T>(
-        targetId: number,
-        path: string,
-        entry: T,
-        transformFn: (value: InputType) => T,
-        updateFn: (targetId: number, entries: T[]) => Promise<any>,
-    ) {
-        try {
-            const rawEntries: [InputType] = this.client.nodes[targetId].attributes[path];
-            const entries = Object.values(rawEntries).map(transformFn);
-            entries.push(entry);
-            return await updateFn(targetId, entries);
-        } catch (err) {
-            console.log(err);
-        }
-    }
-
     private async add_target_acl(targetNodeId: number, entry: AccessControlEntryStruct) {
         try {
-            const result = (await this._updateEntry(
-                targetNodeId,
-                "0/31/0",
-                entry,
-                AccessControlEntryDataTransformer.transform,
-                this.client.setACLEntry.bind(this.client),
-            )) as { [key: string]: { Status: number } };
-            return result["0"].Status === 0;
+            // Fetch existing ACL entries and transform to local struct format
+            const rawEntries = this.client.nodes[targetNodeId]?.attributes["0/31/0"] as InputType[] | undefined;
+            const entries = rawEntries
+                ? Object.values(rawEntries).map(v => AccessControlEntryDataTransformer.transform(v))
+                : [];
+            entries.push(entry);
+
+            // Convert to API format (without fabricIndex - server handles it)
+            const apiEntries = entries.map(e => this.toAccessControlEntry(e));
+            const result = await this.client.setACLEntry(targetNodeId, apiEntries);
+            // Check first result status if available
+            if (result && result.length > 0) {
+                return result[0].status === 0;
+            }
+            return true; // Assume success if no error thrown
         } catch (err) {
             console.error("add acl error:", err);
             return false;
         }
     }
 
+    /** Convert local BindingEntryStruct to API BindingTarget (without fabricIndex) */
+    private toBindingTarget(entry: BindingEntryStruct): BindingTarget {
+        return {
+            node: entry.node ?? null,
+            group: entry.group ?? null,
+            endpoint: entry.endpoint ?? null,
+            cluster: entry.cluster ?? null,
+        };
+    }
+
+    /** Convert local AccessControlEntryStruct to API AccessControlEntry (without fabricIndex) */
+    private toAccessControlEntry(entry: AccessControlEntryStruct): AccessControlEntry {
+        return {
+            privilege: entry.privilege,
+            auth_mode: entry.authMode,
+            subjects: entry.subjects ?? null,
+            targets:
+                entry.targets?.map(t => ({
+                    cluster: t.cluster ?? null,
+                    endpoint: t.endpoint ?? null,
+                    device_type: t.deviceType ?? null,
+                })) ?? null,
+        };
+    }
+
     private async add_bindings(endpoint: number, bindingEntry: BindingEntryStruct) {
         const bindings = this.fetchBindingEntry();
         bindings.push(bindingEntry);
         try {
-            const result = (await this.client.setNodeBinding(this.node!.node_id, endpoint, bindings)) as {
-                [key: string]: { Status: number };
-            };
-            return result["0"].Status === 0;
+            // Convert to API format (without fabricIndex - server handles it)
+            const apiBindings = bindings.map(b => this.toBindingTarget(b));
+            const result = await this.client.setNodeBinding(this.getNodeIdAsNumber(), endpoint, apiBindings);
+            // Check first result status if available
+            if (result && result.length > 0) {
+                return result[0].status === 0;
+            }
+            return true; // Assume success if no error thrown
         } catch (err) {
             console.log("add bindings error:", err);
             return false;
@@ -195,12 +229,13 @@ export class NodeBindingDialog extends LitElement {
             deviceType: undefined,
         };
 
+        // Note: fabricIndex is assigned by the server based on the device's fabric table
         const acl_entry: AccessControlEntryStruct = {
             privilege: 5,
             authMode: 2,
-            subjects: [this.node!.node_id],
+            subjects: [this.getNodeIdAsNumber()],
             targets: [targets],
-            fabricIndex: this.client.connection.serverInfo!.fabric_id,
+            fabricIndex: 0, // Placeholder - server will use correct fabric index
         };
 
         const result_acl = await this.add_target_acl(targetNodeId, acl_entry);
@@ -210,12 +245,13 @@ export class NodeBindingDialog extends LitElement {
         }
 
         const endpoint = this.endpoint;
+        // Note: fabricIndex is assigned by the server based on the device's fabric table
         const bindingEntry: BindingEntryStruct = {
             node: targetNodeId,
             endpoint: targetEndpoint,
             group: undefined,
             cluster: targetCluster,
-            fabricIndex: this.client.connection.serverInfo!.fabric_id,
+            fabricIndex: undefined, // Server will use correct fabric index
         };
 
         const result_binding = await this.add_bindings(endpoint, bindingEntry);
@@ -251,9 +287,10 @@ export class NodeBindingDialog extends LitElement {
     }
 
     protected override render() {
-        const bindings = Object.values(this.node!.attributes[this.endpoint + "/30/0"]).map(entry =>
-            BindingEntryDataTransformer.transform(entry),
-        );
+        const rawBindings = this.node!.attributes[this.endpoint + "/30/0"] as InputType[] | undefined;
+        const bindings = rawBindings
+            ? Object.values(rawBindings).map(entry => BindingEntryDataTransformer.transform(entry))
+            : [];
 
         return html`
             <md-dialog open @cancel=${preventDefault} @closed=${this._handleClosed}>

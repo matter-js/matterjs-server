@@ -5,7 +5,6 @@
  * the full commissioning and control flow via WebSocket.
  */
 
-import { expect } from "chai";
 import { ChildProcess } from "child_process";
 import {
     cleanupTempStorage,
@@ -464,7 +463,7 @@ describe("Integration Test", function () {
 
             // Test node IDs start at a high value (0xFFFF_FFFE_0000_0000)
             const nodeData = event.data as { node_id: bigint | number };
-            expect(BigInt(nodeData.node_id) >= 0xffff_fffe_0000_0000n).to.be.true;
+            expect(BigInt(nodeData.node_id) >= BigInt("0xfffffffe00000000")).to.be.true;
         });
 
         it("should include test node in get_nodes", async function () {
@@ -474,7 +473,7 @@ describe("Integration Test", function () {
             expect(nodes.length).to.be.greaterThanOrEqual(2);
 
             // Find the test node (high node ID)
-            const testNode = nodes.find(n => BigInt(n.node_id) >= 0xffff_fffe_0000_0000n);
+            const testNode = nodes.find(n => BigInt(n.node_id) >= BigInt("0xfffffffe00000000"));
             expect(testNode).to.exist;
             expect(testNode!.attributes["0/40/1"]).to.equal("Imported Vendor");
         });
@@ -510,7 +509,7 @@ describe("Integration Test", function () {
             // Verify the node is still there
             const nodes = await client.startListening();
             // Filter out test nodes (test nodes don't persist across restart anyway)
-            const realNodes = nodes.filter(n => BigInt(n.node_id) < 0xffff_fffe_0000_0000n);
+            const realNodes = nodes.filter(n => BigInt(n.node_id) < BigInt("0xfffffffe00000000"));
             expect(realNodes).to.be.an("array").with.lengthOf(1);
 
             const node = realNodes[0];
@@ -568,7 +567,7 @@ describe("Integration Test", function () {
             let nodeAvailable = false;
             for (let i = 0; i < 20; i++) {
                 const nodes = await client.getNodes();
-                const realNodes = nodes.filter(n => BigInt(n.node_id) < 0xffff_fffe_0000_0000n);
+                const realNodes = nodes.filter(n => BigInt(n.node_id) < BigInt("0xfffffffe00000000"));
                 const node = realNodes.find(n => Number(n.node_id) === commissionedNodeId);
                 if (node?.available) {
                     nodeAvailable = true;
@@ -599,7 +598,7 @@ describe("Integration Test", function () {
 
             // Verify no real nodes remain (test nodes may still exist)
             const nodes = await client.getNodes();
-            const realNodes = nodes.filter(n => BigInt(n.node_id) < 0xffff_fffe_0000_0000n);
+            const realNodes = nodes.filter(n => BigInt(n.node_id) < BigInt("0xfffffffe00000000"));
             expect(realNodes).to.be.an("array").that.is.empty;
         });
     });

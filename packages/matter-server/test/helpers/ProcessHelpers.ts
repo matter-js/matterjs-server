@@ -47,7 +47,11 @@ export async function cleanupTempStorage(serverStoragePath: string, deviceStorag
 export function startServer(storagePath: string): ChildProcess {
     const serverProcess = spawn(
         "node",
-        ["--enable-source-maps", "packages/matter-server/dist/esm/MatterServer.js", `--storage-path=${storagePath}`],
+        [
+            "--enable-source-maps",
+            "../../packages/matter-server/dist/esm/MatterServer.js",
+            `--storage-path=${storagePath}`,
+        ],
         {
             cwd: process.cwd(),
             stdio: ["pipe", "pipe", "pipe"],

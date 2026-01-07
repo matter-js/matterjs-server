@@ -6,6 +6,7 @@
 
 import { Environment, ServerNode } from "@matter/main";
 import { OnOffLightDevice } from "@matter/main/devices/on-off-light";
+import { VendorId } from "@matter/main/types";
 
 // Parse CLI args for storage path
 const args = process.argv.slice(2);
@@ -18,8 +19,6 @@ env.vars.set("storage.path", storagePath);
 
 // Create device with fixed pairing codes for test predictability
 const node = await ServerNode.create({
-    id: "test-light",
-
     network: {
         port: 5540,
     },
@@ -36,7 +35,7 @@ const node = await ServerNode.create({
 
     basicInformation: {
         vendorName: "Test Vendor",
-        vendorId: 0xfff1,
+        vendorId: VendorId(0xfff1),
         productName: "Test Light",
         productId: 0x8000,
         serialNumber: "TEST-001",
@@ -45,7 +44,7 @@ const node = await ServerNode.create({
 });
 
 // Add the OnOffLight endpoint
-const endpoint = await node.add(OnOffLightDevice, {
+await node.add(OnOffLightDevice, {
     id: "light",
 });
 

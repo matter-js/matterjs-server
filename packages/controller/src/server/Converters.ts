@@ -63,10 +63,10 @@ export function convertWebSocketTagBasedToMatter(
 
         for (const member of clusterModel.scope.membersOf(model)) {
             const memberName =
-                member.name !== undefined
+                member.name !== undefined && model.name !== "FeatureMap"
                     ? camelize(member.name)
-                    : member.description !== undefined
-                      ? camelize(member.description)
+                    : member.title !== undefined
+                      ? camelize(member.title)
                       : undefined;
 
             if (memberName === undefined) {
@@ -157,8 +157,8 @@ export function convertMatterToWebSocketTagBased(
                 const memberValue =
                     member.name !== undefined && value[camelize(member.name)]
                         ? value[camelize(member.name)]
-                        : member.description !== undefined && value[camelize(member.description)]
-                          ? value[camelize(member.description)]
+                        : member.title !== undefined && value[camelize(member.title)]
+                          ? value[camelize(member.title)]
                           : undefined;
 
                 if (!memberValue) {

@@ -1,5 +1,3 @@
-import { open, readdir, unlink } from "node:fs/promises";
-import { join } from "node:path";
 import {
     ConfigStorage,
     Environment,
@@ -11,15 +9,20 @@ import {
     MatterController,
     WebSocketControllerHandler,
 } from "@matter-server/controller";
+import { open, readdir, unlink } from "node:fs/promises";
+import { join } from "node:path";
 import { getCliOptions, type LogLevel as CliLogLevel } from "./cli.js";
 import {
     addNodeToLegacyServerFile,
-    type LegacyData,
     loadLegacyData,
     removeNodeFromLegacyServerFile,
+    type LegacyData,
 } from "./converter/LegacyDataLoader.js";
 import { StaticFileHandler } from "./server/StaticFileHandler.js";
 import { WebServer } from "./server/WebServer.js";
+
+// Register the custom clusters
+import "@matter-server/custom-clusters";
 
 /**
  * Creates a file-based logger that appends to the given path.

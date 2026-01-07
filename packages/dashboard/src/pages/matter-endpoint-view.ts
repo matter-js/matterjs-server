@@ -30,7 +30,7 @@ function getUniqueClusters(node: MatterNode, endpoint: Number) {
 }
 
 export function getEndpointDeviceTypes(node: MatterNode, endpoint: Number): DeviceType[] {
-    const rawValues: Record<string, number>[] | undefined = node.attributes[`${endpoint}/29/0`];
+    const rawValues = node.attributes[`${endpoint}/29/0`] as Record<string, number>[] | undefined;
     if (!rawValues) return [];
     return rawValues.map(rawValue => {
         const id = rawValue["0"] ?? rawValue["deviceType"];

@@ -2,13 +2,17 @@
     "extends": "../../tools/tsc/tsconfig.test.json",
     "compilerOptions": {
         "types": [
+            "node",
             "mocha",
-            "node"
+            "@matter/testing"
         ]
     },
     "references": [
         {
             "path": "../../controller/src"
+        },
+        {
+            "path": "../../custom-clusters/src"
         },
         {
             "path": "../../dashboard/src"

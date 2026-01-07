@@ -50,4 +50,17 @@ When setting the fabric label via `set_default_fabric_label`:
 
 The matter.js SDK requires fabric labels to be 1-32 characters, so the Matter.js server uses "Home" as the default label instead of clearing it.
 
+### Eve Energy Custom Cluster Polling
+
+The Python Matter Server includes a polling mechanism for older Eve Energy devices that report power consumption via a custom vendor cluster (0x130AFC01) instead of the standard `ElectricalPowerMeasurement` cluster.
+
+| Implementation | Behavior |
+|----------------|----------|
+| Python Matter Server | Polls Eve energy attributes (Watt, Voltage, Current, etc.) every 30 seconds if the device is from Eve (vendor ID 4874) and lacks the standard power cluster |
+| Matter.js Server | Does not implement this polling mechanism |
+
+**Why this difference exists**: Modern Eve devices with up-to-date firmware use the standard Matter `ElectricalPowerMeasurement` cluster, which supports proper subscriptions and doesn't require polling. The polling in Python was a workaround for older firmware versions.
+
+**Recommendation**: If you have Eve Energy devices that don't report power values correctly, update your device firmware through the Eve app. Updated firmware uses standard Matter clusters that work correctly without polling.
+
 For complete compatibility details, see [TODO.md](TODO.md).

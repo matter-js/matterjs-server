@@ -121,7 +121,7 @@ export async function loadLegacyData(env: Environment, storagePath: string): Pro
             if (caConfig) {
                 result.certificateAuthorityConfig = caConfig;
                 logger.debug(
-                    `Extracted CA config: rootCertId=${caConfig.rootCertId}, hasIcac=${caConfig.icacCertBytes !== undefined}`,
+                    `Extracted CA config: rootCertId=${caConfig.rootCertId}, hasIcac=${"icacCertBytes" in caConfig && caConfig.icacCertBytes !== undefined}`,
                 );
             }
         }

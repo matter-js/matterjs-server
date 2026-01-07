@@ -7,14 +7,17 @@ import {
     toPythonJson,
 } from "@matter-server/controller";
 import { Bytes } from "@matter/general";
-import { expect } from "chai";
 
 describe("Converters", () => {
     describe("convertWebSocketTagBasedToMatter", () => {
         describe("primitives", () => {
             it("should pass through null values", () => {
                 const descriptorCluster = ClusterMap[29]!;
-                const result = convertWebSocketTagBasedToMatter(null, descriptorCluster.attributes[0], descriptorCluster.model);
+                const result = convertWebSocketTagBasedToMatter(
+                    null,
+                    descriptorCluster.attributes[0],
+                    descriptorCluster.model,
+                );
                 expect(result).to.equal(null);
             });
 
@@ -27,7 +30,11 @@ describe("Converters", () => {
             it("should pass through number values", () => {
                 // Cluster 40 (BasicInformation), attribute 0 (DataModelRevision) is a simple number
                 const basicInfoCluster = ClusterMap[40]!;
-                const result = convertWebSocketTagBasedToMatter(16, basicInfoCluster.attributes[0], basicInfoCluster.model);
+                const result = convertWebSocketTagBasedToMatter(
+                    16,
+                    basicInfoCluster.attributes[0],
+                    basicInfoCluster.model,
+                );
                 expect(result).to.equal(16);
             });
 
@@ -41,7 +48,11 @@ describe("Converters", () => {
             it("should pass through string values", () => {
                 // Cluster 40 (BasicInformation), attribute 1 (VendorName) is a string
                 const basicInfoCluster = ClusterMap[40]!;
-                const result = convertWebSocketTagBasedToMatter("Test Vendor", basicInfoCluster.attributes[1], basicInfoCluster.model);
+                const result = convertWebSocketTagBasedToMatter(
+                    "Test Vendor",
+                    basicInfoCluster.attributes[1],
+                    basicInfoCluster.model,
+                );
                 expect(result).to.equal("Test Vendor");
             });
         });
@@ -55,7 +66,11 @@ describe("Converters", () => {
                 const deviceTypeStructModel = deviceTypeListAttr.members[0]; // DeviceTypeStruct
 
                 const tagBasedValue = { "0": 22, "1": 1 };
-                const result = convertWebSocketTagBasedToMatter(tagBasedValue, deviceTypeStructModel, descriptorCluster.model);
+                const result = convertWebSocketTagBasedToMatter(
+                    tagBasedValue,
+                    deviceTypeStructModel,
+                    descriptorCluster.model,
+                );
 
                 expect(result).to.deep.equal({ deviceType: 22, revision: 1 });
             });
@@ -68,7 +83,11 @@ describe("Converters", () => {
                 const labelStructModel = labelListAttr.members[0];
 
                 const tagBasedValue = { "0": "room", "1": "bedroom" };
-                const result = convertWebSocketTagBasedToMatter(tagBasedValue, labelStructModel, userLabelCluster.model);
+                const result = convertWebSocketTagBasedToMatter(
+                    tagBasedValue,
+                    labelStructModel,
+                    userLabelCluster.model,
+                );
 
                 expect(result).to.deep.equal({ label: "room", value: "bedroom" });
             });
@@ -91,7 +110,11 @@ describe("Converters", () => {
                 const deviceTypeStructModel = deviceTypeListAttr.members[0];
 
                 const tagBasedValue = { "0": 22, "1": 1, "254": 1 }; // 254 is fabricIndex, often added
-                const result = convertWebSocketTagBasedToMatter(tagBasedValue, deviceTypeStructModel, descriptorCluster.model) as Record<string, unknown>;
+                const result = convertWebSocketTagBasedToMatter(
+                    tagBasedValue,
+                    deviceTypeStructModel,
+                    descriptorCluster.model,
+                ) as Record<string, unknown>;
 
                 expect(result.deviceType).to.equal(22);
                 expect(result.revision).to.equal(1);
@@ -110,7 +133,11 @@ describe("Converters", () => {
                     { "0": 22, "1": 1 },
                     { "0": 17, "1": 1 },
                 ];
-                const result = convertWebSocketTagBasedToMatter(tagBasedValue, deviceTypeListAttr, descriptorCluster.model);
+                const result = convertWebSocketTagBasedToMatter(
+                    tagBasedValue,
+                    deviceTypeListAttr,
+                    descriptorCluster.model,
+                );
 
                 expect(result).to.deep.equal([
                     { deviceType: 22, revision: 1 },
@@ -146,7 +173,11 @@ describe("Converters", () => {
                 const lastNetworkIdAttr = networkCommCluster.attributes[6];
 
                 const base64Value = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
-                const result = convertWebSocketTagBasedToMatter(base64Value, lastNetworkIdAttr, networkCommCluster.model);
+                const result = convertWebSocketTagBasedToMatter(
+                    base64Value,
+                    lastNetworkIdAttr,
+                    networkCommCluster.model,
+                );
 
                 expect(result).to.be.instanceOf(Uint8Array);
                 expect(result).to.deep.equal(new Uint8Array(32)); // 32 bytes of zeros
@@ -157,8 +188,16 @@ describe("Converters", () => {
                 const lastNetworkIdAttr = networkCommCluster.attributes[6];
 
                 // Base64 for [1, 2, 3, 4] padded to 32 bytes
-                const value = Bytes.toBase64(new Uint8Array([1, 2, 3, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]));
-                const result = convertWebSocketTagBasedToMatter(value, lastNetworkIdAttr, networkCommCluster.model) as Uint8Array;
+                const value = Bytes.toBase64(
+                    new Uint8Array([
+                        1, 2, 3, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    ]),
+                );
+                const result = convertWebSocketTagBasedToMatter(
+                    value,
+                    lastNetworkIdAttr,
+                    networkCommCluster.model,
+                ) as Uint8Array;
 
                 expect(result).to.be.instanceOf(Uint8Array);
                 expect(result[0]).to.equal(1);
@@ -176,12 +215,15 @@ describe("Converters", () => {
                 const featureMapAttr = networkCommCluster.attributes[65532];
 
                 // Value 4 = ET (bit 2)
-                const result = convertWebSocketTagBasedToMatter(4, featureMapAttr, networkCommCluster.model) as Record<string, boolean>;
+                const result = convertWebSocketTagBasedToMatter(4, featureMapAttr, networkCommCluster.model) as Record<
+                    string,
+                    boolean
+                >;
 
                 expect(result).to.be.an("object");
-                expect(result.wi).to.equal(false);  // bit 0
-                expect(result.th).to.equal(false);  // bit 1
-                expect(result.et).to.equal(true);   // bit 2
+                expect(result.wi).to.equal(false); // bit 0
+                expect(result.th).to.equal(false); // bit 1
+                expect(result.et).to.equal(true); // bit 2
             });
 
             it("should handle multiple bits set", () => {
@@ -189,19 +231,25 @@ describe("Converters", () => {
                 const featureMapAttr = networkCommCluster.attributes[65532];
 
                 // Value 5 = WI (bit 0) + ET (bit 2)
-                const result = convertWebSocketTagBasedToMatter(5, featureMapAttr, networkCommCluster.model) as Record<string, boolean>;
+                const result = convertWebSocketTagBasedToMatter(5, featureMapAttr, networkCommCluster.model) as Record<
+                    string,
+                    boolean
+                >;
 
                 expect(result).to.be.an("object");
-                expect(result.wi).to.equal(true);   // bit 0
-                expect(result.th).to.equal(false);  // bit 1
-                expect(result.et).to.equal(true);   // bit 2
+                expect(result.wi).to.equal(true); // bit 0
+                expect(result.th).to.equal(false); // bit 1
+                expect(result.et).to.equal(true); // bit 2
             });
 
             it("should handle zero bitmap value", () => {
                 const networkCommCluster = ClusterMap[49]!;
                 const featureMapAttr = networkCommCluster.attributes[65532];
 
-                const result = convertWebSocketTagBasedToMatter(0, featureMapAttr, networkCommCluster.model) as Record<string, boolean>;
+                const result = convertWebSocketTagBasedToMatter(0, featureMapAttr, networkCommCluster.model) as Record<
+                    string,
+                    boolean
+                >;
 
                 expect(result).to.be.an("object");
                 expect(result.wi).to.equal(false);
@@ -219,7 +267,11 @@ describe("Converters", () => {
 
             const original = { deviceType: 256, revision: 2 };
             const tagBased = convertMatterToWebSocketTagBased(original, deviceTypeStructModel, descriptorCluster.model);
-            const roundTripped = convertWebSocketTagBasedToMatter(tagBased, deviceTypeStructModel, descriptorCluster.model);
+            const roundTripped = convertWebSocketTagBasedToMatter(
+                tagBased,
+                deviceTypeStructModel,
+                descriptorCluster.model,
+            );
 
             expect(roundTripped).to.deep.equal(original);
         });
@@ -234,7 +286,11 @@ describe("Converters", () => {
                 { deviceType: 256, revision: 2 },
             ];
             const tagBased = convertMatterToWebSocketTagBased(original, deviceTypeListAttr, descriptorCluster.model);
-            const roundTripped = convertWebSocketTagBasedToMatter(tagBased, deviceTypeListAttr, descriptorCluster.model);
+            const roundTripped = convertWebSocketTagBasedToMatter(
+                tagBased,
+                deviceTypeListAttr,
+                descriptorCluster.model,
+            );
 
             expect(roundTripped).to.deep.equal(original);
         });
@@ -243,9 +299,16 @@ describe("Converters", () => {
             const networkCommCluster = ClusterMap[49]!;
             const lastNetworkIdAttr = networkCommCluster.attributes[6];
 
-            const original = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]);
+            const original = new Uint8Array([
+                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
+                29, 30, 31, 32,
+            ]);
             const tagBased = convertMatterToWebSocketTagBased(original, lastNetworkIdAttr, networkCommCluster.model);
-            const roundTripped = convertWebSocketTagBasedToMatter(tagBased, lastNetworkIdAttr, networkCommCluster.model);
+            const roundTripped = convertWebSocketTagBasedToMatter(
+                tagBased,
+                lastNetworkIdAttr,
+                networkCommCluster.model,
+            );
 
             expect(roundTripped).to.be.instanceOf(Uint8Array);
             expect(roundTripped).to.deep.equal(original);
@@ -342,7 +405,9 @@ describe("Converters", () => {
             const networkCommCluster = ClusterMap[49]!;
             const lastNetworkIdAttr = networkCommCluster.attributes[6];
 
-            const original = new Uint8Array([1, 2, 3, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+            const original = new Uint8Array([
+                1, 2, 3, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            ]);
             const result = convertMatterToWebSocketTagBased(original, lastNetworkIdAttr, networkCommCluster.model);
 
             expect(result).to.be.a("string");

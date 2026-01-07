@@ -1,5 +1,4 @@
 import { Bytes } from "@matter/general";
-import { expect } from "chai";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -998,30 +997,30 @@ describe("ChipConfigData", () => {
             const config = new ChipConfigData();
             await config.load(chipJsonPath);
 
-            const caConfig = await config.getCertificateAuthorityConfig(1);
+            const caConfig = (await config.getCertificateAuthorityConfig(1)) as any;
             expect(caConfig).to.exist;
 
             // Verify root CA properties
-            expect(caConfig!.rootCertId).to.be.a("bigint");
-            expect(caConfig!.rootKeyPair).to.exist;
-            expect(caConfig!.rootKeyPair.publicKey).to.be.instanceOf(Uint8Array);
-            expect(caConfig!.rootKeyPair.publicKey.byteLength).to.equal(65); // Uncompressed EC P-256
-            expect(caConfig!.rootKeyPair.privateKey).to.be.instanceOf(Uint8Array);
-            expect(caConfig!.rootKeyPair.privateKey.byteLength).to.equal(32); // EC P-256 private key
-            expect(caConfig!.rootKeyIdentifier).to.be.instanceOf(Uint8Array);
-            expect(caConfig!.rootKeyIdentifier.byteLength).to.equal(20); // SHA-1 hash prefix
-            expect(caConfig!.rootCertBytes).to.be.instanceOf(Uint8Array);
-            expect(caConfig!.nextCertificateId).to.be.a("bigint");
+            expect(caConfig.rootCertId).to.be.a("bigint");
+            expect(caConfig.rootKeyPair).to.exist;
+            expect(caConfig.rootKeyPair.publicKey).to.be.instanceOf(Uint8Array);
+            expect(caConfig.rootKeyPair.publicKey.byteLength).to.equal(65); // Uncompressed EC P-256
+            expect(caConfig.rootKeyPair.privateKey).to.be.instanceOf(Uint8Array);
+            expect(caConfig.rootKeyPair.privateKey.byteLength).to.equal(32); // EC P-256 private key
+            expect(caConfig.rootKeyIdentifier).to.be.instanceOf(Uint8Array);
+            expect(caConfig.rootKeyIdentifier.byteLength).to.equal(20); // SHA-1 hash prefix
+            expect(caConfig.rootCertBytes).to.be.instanceOf(Uint8Array);
+            expect(caConfig.nextCertificateId).to.be.a("bigint");
 
             // Verify ICAC properties (if present)
-            if (caConfig!.icacCertBytes !== undefined) {
-                expect(caConfig!.icacCertId).to.be.a("bigint");
-                expect(caConfig!.icacKeyPair).to.exist;
-                expect(caConfig!.icacKeyPair!.publicKey.byteLength).to.equal(65);
-                expect(caConfig!.icacKeyPair!.privateKey.byteLength).to.equal(32);
+            if (caConfig.icacCertBytes !== undefined) {
+                expect(caConfig.icacCertId).to.be.a("bigint");
+                expect(caConfig.icacKeyPair).to.exist;
+                expect(caConfig.icacKeyPair!.publicKey.byteLength).to.equal(65);
+                expect(caConfig.icacKeyPair!.privateKey.byteLength).to.equal(32);
                 expect(caConfig!.icacKeyIdentifier).to.be.instanceOf(Uint8Array);
-                expect(caConfig!.icacKeyIdentifier!.byteLength).to.equal(20);
-                expect(caConfig!.icacCertBytes).to.be.instanceOf(Uint8Array);
+                expect(caConfig.icacKeyIdentifier!.byteLength).to.equal(20);
+                expect(caConfig.icacCertBytes).to.be.instanceOf(Uint8Array);
             }
         });
 

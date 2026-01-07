@@ -1,52 +1,69 @@
+/** Raw node data from server */
+export interface MatterNodeData {
+    node_id: number | bigint;
+    date_commissioned: string;
+    last_interview: string;
+    interview_version: number;
+    available: boolean;
+    is_bridge: boolean;
+    attributes: { [key: string]: unknown };
+    attribute_subscriptions: Array<[number | null, number | null, number | null]>;
+}
+
 export class MatterNode {
-  node_id: number;
-  date_commissioned: string; // Dates will be strings in JSON
-  last_interview: string;
-  interview_version: number;
-  available: boolean;
-  is_bridge: boolean;
-  attributes: { [key: string]: any };
-  attribute_subscriptions: Array<[number | null, number | null, number | null]>;
+    node_id: number | bigint;
+    date_commissioned: string;
+    last_interview: string;
+    interview_version: number;
+    available: boolean;
+    is_bridge: boolean;
+    attributes: { [key: string]: unknown };
+    attribute_subscriptions: Array<[number | null, number | null, number | null]>;
 
-  constructor(public data: Record<string, any>) {
-    this.node_id = data.node_id;
-    this.date_commissioned = data.date_commissioned;
-    this.last_interview = data.last_interview;
-    this.interview_version = data.interview_version;
-    this.available = data.available;
-    this.is_bridge = data.is_bridge;
-    this.attributes = data.attributes;
-    this.attribute_subscriptions = data.attribute_subscriptions;
-  }
+    constructor(public data: MatterNodeData) {
+        this.node_id = data.node_id;
+        this.date_commissioned = data.date_commissioned;
+        this.last_interview = data.last_interview;
+        this.interview_version = data.interview_version;
+        this.available = data.available;
+        this.is_bridge = data.is_bridge;
+        this.attributes = data.attributes;
+        this.attribute_subscriptions = data.attribute_subscriptions;
+    }
 
-  get nodeLabel(): string {
-    const label = this.attributes["0/40/5"];
-    if (typeof label !== "string") return '';
-    if (label.includes("\u0000\u0000")) return '';
-    return label.trim();
-  }
+    get nodeLabel(): string {
+        const label = this.attributes["0/40/5"];
+        if (typeof label !== "string") return "";
+        if (label.includes("\u0000\u0000")) return "";
+        return label.trim();
+    }
 
-  get vendorName(): string {
-    return this.attributes["0/40/1"];
-  }
+    get vendorName(): string {
+        const value = this.attributes["0/40/1"];
+        return typeof value === "string" ? value : "";
+    }
 
-  get productName(): string {
-    return this.attributes["0/40/3"];
-  }
+    get productName(): string {
+        const value = this.attributes["0/40/3"];
+        return typeof value === "string" ? value : "";
+    }
 
-  get serialNumber(): string {
-    return this.attributes["0/40/15"];
-  }
+    get serialNumber(): string {
+        const value = this.attributes["0/40/15"];
+        return typeof value === "string" ? value : "";
+    }
 
-  get updateState(): number | undefined {
-    return this.attributes["0/42/2"];
-  }
+    get updateState(): number | undefined {
+        const value = this.attributes["0/42/2"];
+        return typeof value === "number" ? value : undefined;
+    }
 
-  get updateStateProgress(): number | undefined {
-    return this.attributes["0/42/3"];
-  }
+    get updateStateProgress(): number | undefined {
+        const value = this.attributes["0/42/3"];
+        return typeof value === "number" ? value : undefined;
+    }
 
-  update(data: Record<string, any>): MatterNode {
-    return new MatterNode({ ...this.data, ...data });
-  }
+    update(data: Partial<MatterNodeData>): MatterNode {
+        return new MatterNode({ ...this.data, ...data });
+    }
 }

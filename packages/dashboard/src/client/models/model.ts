@@ -1,129 +1,207 @@
 import { MatterNode } from "./node.js";
 
+/** Attribute data stored as path -> value mapping */
+export type AttributesData = { [key: string]: unknown };
+
 export interface APICommands {
     start_listening: {
-        requestArgs: {};
+        requestArgs: Record<string, never>;
         response: Array<MatterNode>;
     };
     diagnostics: {
-        requestArgs: {};
-        response: {};
+        requestArgs: Record<string, never>;
+        response: {
+            info: ServerInfoMessage;
+            nodes: Array<MatterNode>;
+            events: Array<MatterNodeEvent>;
+        };
     };
     server_info: {
-        requestArgs: {};
-        response: {};
+        requestArgs: Record<string, never>;
+        response: ServerInfoMessage;
     };
     get_nodes: {
-        requestArgs: {};
-        response: {};
+        requestArgs: { only_available?: boolean };
+        response: Array<MatterNode>;
     };
     get_node: {
-        requestArgs: {};
-        response: {};
+        requestArgs: { node_id: number | bigint };
+        response: MatterNode;
     };
     commission_with_code: {
-        requestArgs: {};
-        response: {};
+        requestArgs: { code: string; network_only?: boolean };
+        response: MatterNode;
     };
     commission_on_network: {
-        requestArgs: {};
-        response: {};
+        requestArgs: {
+            setup_pin_code: number;
+            filter_type?: number;
+            filter?: number;
+            ip_addr?: string;
+        };
+        response: MatterNode;
     };
     set_wifi_credentials: {
-        requestArgs: {};
-        response: {};
+        requestArgs: { ssid: string; credentials: string };
+        response: Record<string, never>;
     };
     set_thread_dataset: {
-        requestArgs: {};
-        response: {};
+        requestArgs: { dataset: string };
+        response: Record<string, never>;
     };
     open_commissioning_window: {
-        requestArgs: {};
-        response: {};
+        requestArgs: {
+            node_id: number | bigint;
+            timeout?: number;
+            iteration?: number;
+            option?: number;
+            discriminator?: number | null;
+        };
+        response: CommissioningParameters;
     };
     discover: {
-        requestArgs: {};
-        response: {};
+        requestArgs: Record<string, never>;
+        response: CommissionableNodeData[];
     };
     interview_node: {
-        requestArgs: {};
-        response: {};
+        requestArgs: { node_id: number | bigint };
+        response: null;
     };
     device_command: {
-        requestArgs: {};
-        response: {};
+        requestArgs: {
+            node_id: number | bigint;
+            endpoint_id: number;
+            cluster_id: number;
+            command_name: string;
+            payload: unknown;
+            response_type: unknown;
+            timed_request_timeout_ms?: number | null;
+            interaction_timeout_ms?: number | null;
+        };
+        response: unknown;
     };
     remove_node: {
-        requestArgs: {};
-        response: {};
+        requestArgs: { node_id: number | bigint };
+        response: null;
     };
     get_vendor_names: {
-        requestArgs: {};
-        response: {};
+        requestArgs: { filter_vendors?: Array<number> };
+        response: { [key: string]: string };
     };
     subscribe_attribute: {
-        requestArgs: {};
-        response: {};
+        requestArgs: Record<string, never>;
+        response: Record<string, never>;
     };
     read_attribute: {
-        requestArgs: {};
-        response: {};
+        requestArgs: {
+            node_id: number | bigint;
+            attribute_path: string | string[];
+            fabric_filtered?: boolean;
+        };
+        response: AttributesData;
     };
     write_attribute: {
-        requestArgs: {};
-        response: {};
+        requestArgs: {
+            node_id: number | bigint;
+            attribute_path: string;
+            value: unknown;
+        };
+        response: Array<{
+            Path: { EndpointId: number; ClusterId: number; AttributeId: number };
+            Status: number;
+        }>;
     };
     ping_node: {
-        requestArgs: {};
-        response: {};
+        requestArgs: { node_id: number | bigint; attempts?: number };
+        response: NodePingResult;
     };
     import_test_node: {
-        requestArgs: {};
+        requestArgs: { dump: string };
         response: null;
     };
     get_node_ip_addresses: {
-        requestArgs: {};
-        response: {};
+        requestArgs: { node_id: number | bigint; prefer_cache?: boolean; scoped?: boolean };
+        response: Array<string>;
     };
     check_node_update: {
-        requestArgs: {};
+        requestArgs: { node_id: number | bigint };
         response: MatterSoftwareVersion | null;
     };
     update_node: {
-        requestArgs: {};
+        requestArgs: { node_id: number | bigint; software_version: number | string };
         response: MatterSoftwareVersion | null;
     };
     discover_commissionable_nodes: {
-        requestArgs: {};
-        response: {};
+        requestArgs: Record<string, never>;
+        response: CommissionableNodeData[];
     };
     get_matter_fabrics: {
-        requestArgs: {};
-        response: {};
+        requestArgs: { node_id: number | bigint };
+        response: MatterFabricData[];
     };
     remove_matter_fabric: {
-        requestArgs: {};
-        response: {};
+        requestArgs: { node_id: number | bigint; fabric_index: number };
+        response: Record<string, never>;
     };
     set_acl_entry: {
-        requestArgs: {};
-        response: {};
+        requestArgs: { node_id: number | bigint; entry: AccessControlEntry[] };
+        response: AttributeWriteResult[] | null;
     };
     set_node_binding: {
-        requestArgs: {};
-        response: {};
+        requestArgs: { node_id: number | bigint; endpoint: number; bindings: BindingTarget[] };
+        response: AttributeWriteResult[] | null;
     };
+}
+
+/** Access Control Entry for set_acl_entry command */
+export interface AccessControlEntry {
+    privilege: number;
+    auth_mode: number;
+    subjects: Array<number | bigint> | null;
+    targets: AccessControlTarget[] | null;
+}
+
+export interface AccessControlTarget {
+    cluster: number | null;
+    endpoint: number | null;
+    device_type: number | null;
+}
+
+/** Binding target for set_node_binding command */
+export interface BindingTarget {
+    node: number | bigint | null;
+    group: number | null;
+    endpoint: number | null;
+    cluster: number | null;
+}
+
+export interface AttributeWriteResult {
+    path: { endpoint_id: number; cluster_id: number; attribute_id: number };
+    status: number;
+}
+
+/** Matter node event structure */
+export interface MatterNodeEvent {
+    node_id: number | bigint;
+    endpoint_id: number;
+    cluster_id: number;
+    event_id: number;
+    event_number: number | bigint;
+    priority: number;
+    timestamp: number | bigint;
+    timestamp_type: number;
+    data: unknown | null;
 }
 
 export interface CommandMessage {
     message_id: string;
-    command: string;
-    args?: { [key: string]: any };
+    command: keyof APICommands;
+    args?: APICommands[keyof APICommands]["requestArgs"];
 }
 
 export interface ServerInfoMessage {
-    fabric_id: number;
-    compressed_fabric_id: number;
+    fabric_id: number | bigint;
+    compressed_fabric_id: number | bigint;
     schema_version: number;
     min_supported_schema_version: number;
     sdk_version: string;
@@ -142,29 +220,29 @@ interface ServerEventNodeUpdated {
 }
 interface ServerEventNodeRemoved {
     event: "node_removed";
-    data: number;
+    data: number | bigint;
 }
 interface ServerEventNodeEvent {
     event: "node_event";
-    data: {};
+    data: MatterNodeEvent;
 }
 interface ServerEventAttributeUpdated {
     event: "attribute_updated";
-    data: [number, string, any];
+    data: [number | bigint, string, unknown];
 }
 interface ServerEventServerShutdown {
     event: "server_shutdown";
-    data: {};
+    data: Record<string, never>;
 }
 interface ServerEventEndpointAdded {
     event: "endpoint_added";
-    data: {};
+    data: { node_id: number | bigint; endpoint_id: number };
 }
 interface ServerEventEndpointRemoved {
     event: "endpoint_removed";
-    data: {};
+    data: { node_id: number | bigint; endpoint_id: number };
 }
-interface ServerEvenInfoUpdated {
+interface ServerEventInfoUpdated {
     event: "server_info_updated";
     data: ServerInfoMessage;
 }
@@ -178,7 +256,7 @@ export type EventMessage =
     | ServerEventServerShutdown
     | ServerEventEndpointAdded
     | ServerEventEndpointRemoved
-    | ServerEvenInfoUpdated;
+    | ServerEventInfoUpdated;
 
 export interface ResultMessageBase {
     message_id: string;
@@ -190,7 +268,7 @@ export interface ErrorResultMessage extends ResultMessageBase {
 }
 
 export interface SuccessResultMessage extends ResultMessageBase {
-    result: any; // Adjust according to the expected structure
+    result: unknown;
 }
 
 export interface WebSocketConfig {
@@ -244,7 +322,7 @@ export interface CommissionableNodeData {
 }
 
 export interface MatterFabricData {
-    fabric_id?: number;
+    fabric_id?: number | bigint;
     vendor_id?: number;
     fabric_index?: number;
     fabric_label?: string;

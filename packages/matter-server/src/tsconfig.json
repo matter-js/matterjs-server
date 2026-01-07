@@ -10,6 +10,9 @@
             "path": "../../controller/src"
         },
         {
+            "path": "../../custom-clusters/src"
+        },
+        {
             "path": "../../dashboard/src"
         }
     ]

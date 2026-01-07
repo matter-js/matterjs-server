@@ -15,6 +15,7 @@ import {
     Seconds,
     ServerAddress,
     ServerAddressUdp,
+    SoftwareUpdateManager,
 } from "@matter/main";
 import {
     AccessControl,
@@ -54,7 +55,6 @@ import {
 } from "@matter/main/types";
 import { CommissioningController, NodeCommissioningOptions } from "@project-chip/matter.js";
 import { NodeStates, PairedNode } from "@project-chip/matter.js/device";
-import { inspect } from "node:util";
 import { bytesToIpV4, bytesToIpV6 } from "../server/Converters.js";
 import {
     AttributeResponseStatus,
@@ -138,29 +138,24 @@ export class ControllerCommandHandler {
     }
 
     async start() {
-        if (this.#started) return;
+        if (this.#started) {
+            return;
+        }
         this.#started = true;
 
-        try {
-            await this.#controller.start();
-            logger.info(`Controller started`);
+        await this.#controller.start();
+        logger.info(`Controller started`);
 
-            // Subscribe to OTA provider events to track available updates
-            this.#setupOtaEventHandlers();
+        // Subscribe to OTA provider events to track available updates
+        await this.#setupOtaEventHandlers();
 
-            await this.events.started.emit();
-        } catch (error) {
-            const errorText = inspect(error, { depth: 10 });
-            // Catch and log error, else the test framework hides issues here
-            logger.error(errorText);
-            throw error;
-        }
+        await this.events.started.emit();
     }
 
     /**
      * Set up event handlers for OTA update notifications from the SoftwareUpdateManager.
      */
-    #setupOtaEventHandlers() {
+    async #setupOtaEventHandlers() {
         try {
             const otaProvider = this.#controller.otaProvider;
             if (!otaProvider) {
@@ -170,26 +165,24 @@ export class ControllerCommandHandler {
 
             // Access the SoftwareUpdateManager behavior events dynamically
             // Using 'any' because SoftwareUpdateManager is not directly exported from @matter/node
-            void otaProvider.act((agent: any) => {
-                const softwareUpdateManager = agent.get("softwareupdates");
-                if (!softwareUpdateManager?.events) {
-                    logger.info("SoftwareUpdateManager not available");
-                    return;
-                }
+            const softwareUpdateManagerEvents = await otaProvider.act(agent => agent.get(SoftwareUpdateManager).events);
+            if (softwareUpdateManagerEvents === undefined) {
+                logger.info("SoftwareUpdateManager not available");
+                return;
+            }
 
-                // Handle updateAvailable events - cache the update info
-                softwareUpdateManager.events.updateAvailable.on(
-                    (peerAddress: PeerAddress, updateDetails: SoftwareUpdateInfo) => {
-                        logger.info(`Update available for node ${peerAddress.nodeId}:`, updateDetails);
-                        this.#availableUpdates.set(peerAddress.nodeId, updateDetails);
-                    },
-                );
+            // Handle updateAvailable events - cache the update info
+            softwareUpdateManagerEvents.updateAvailable.on(
+                (peerAddress: PeerAddress, updateDetails: SoftwareUpdateInfo) => {
+                    logger.info(`Update available for node ${peerAddress.nodeId}:`, updateDetails);
+                    this.#availableUpdates.set(peerAddress.nodeId, updateDetails);
+                },
+            );
 
-                // Handle updateDone events - clear the cached update info
-                softwareUpdateManager.events.updateDone.on((peerAddress: PeerAddress) => {
-                    logger.info(`Update done for node ${peerAddress.nodeId}`);
-                    this.#availableUpdates.delete(peerAddress.nodeId);
-                });
+            // Handle updateDone events - clear the cached update info
+            softwareUpdateManagerEvents.updateDone.on((peerAddress: PeerAddress) => {
+                logger.info(`Update done for node ${peerAddress.nodeId}`);
+                this.#availableUpdates.delete(peerAddress.nodeId);
             });
 
             logger.info("OTA event handlers registered");
@@ -571,7 +564,6 @@ export class ControllerCommandHandler {
                     break;
                 default:
                     throw new Error("Unsupported value type for Any encoding");
-                    break;
             }
         }
 

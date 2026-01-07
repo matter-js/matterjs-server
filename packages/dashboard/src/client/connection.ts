@@ -14,14 +14,14 @@ export class Connection {
         return this.socket?.readyState === WebSocket.OPEN;
     }
 
-    async connect(onMessage: (msg: Record<string, any>) => void, onConnectionLost: () => void) {
+    async connect(onMessage: (msg: unknown) => void, onConnectionLost: () => void) {
         if (this.socket) {
             throw new Error("Already connected");
         }
 
         console.debug("Trying to connect");
 
-        return new Promise((resolve, reject) => {
+        return new Promise<void>((resolve, reject) => {
             this.socket = new WebSocket(this.ws_server_url);
 
             this.socket.onopen = () => {
@@ -40,11 +40,11 @@ export class Connection {
             };
 
             this.socket.onmessage = (event: MessageEvent) => {
-                const data = parsePythonJson(event.data) as Record<string, any>;
+                const data = parsePythonJson(event.data);
                 console.log("WebSocket OnMessage", data);
                 if (!this.serverInfo) {
                     this.serverInfo = data as ServerInfoMessage;
-                    resolve(undefined);
+                    resolve();
                     return;
                 }
                 onMessage(data);

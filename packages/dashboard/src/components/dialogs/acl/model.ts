@@ -16,7 +16,7 @@ export type AccessControlEntryRawInput = {
 export type AccessControlEntryStruct = {
   privilege: number;
   authMode: number;
-  subjects: number[];
+  subjects: (number | bigint)[];
   targets: AccessControlTargetStruct[] | undefined;
   fabricIndex: number;
 };

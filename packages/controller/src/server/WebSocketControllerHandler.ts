@@ -877,7 +877,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         const { ssid, credentials } = args;
         await this.#config.set({ wifiSsid: ssid, wifiCredentials: credentials });
         // Broadcast server_info_updated event to notify clients of credential change
-        void this.#broadcastServerInfoUpdated();
+        this.#broadcastServerInfoUpdated().catch(err => logger.warn("Failed to broadcast server info update", err));
         return {};
     }
 
@@ -885,7 +885,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         const { dataset } = args;
         await this.#config.set({ threadDataset: dataset });
         // Broadcast server_info_updated event to notify clients of credential change
-        void this.#broadcastServerInfoUpdated();
+        this.#broadcastServerInfoUpdated().catch(err => logger.warn("Failed to broadcast server info update", err));
         return {};
     }
 

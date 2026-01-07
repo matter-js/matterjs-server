@@ -86,7 +86,7 @@ export class MatterWebSocketClient {
 
         // Event message
         if ("event" in msg) {
-            const event = msg as WsEvent;
+            const event = msg as unknown as WsEvent;
             this.events.push(event);
 
             // Check if any waiters match this event
@@ -102,7 +102,7 @@ export class MatterWebSocketClient {
 
         // Response message
         if ("message_id" in msg) {
-            const response = msg as WsResponse;
+            const response = msg as unknown as WsResponse;
             const pending = this.pendingRequests.get(response.message_id);
             if (pending) {
                 this.pendingRequests.delete(response.message_id);
