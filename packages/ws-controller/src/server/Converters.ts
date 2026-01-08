@@ -238,7 +238,6 @@ export function toBigIntAwareJson(object: object, spaces?: number): string {
     return result;
 }
 
-
 /** Marker prefix for large numbers that need BigInt conversion */
 const BIGINT_MARKER = "__BIGINT__";
 
@@ -266,7 +265,6 @@ export function parseBigIntAwareJson(json: string): unknown {
         return value;
     });
 }
-
 
 /** Chip JSON-like data strings can contain long numbers that are not supported by JSON.parse */
 function parseChipJSON(json: string) {

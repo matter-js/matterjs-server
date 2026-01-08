@@ -9,9 +9,9 @@ import "@material/web/dialog/dialog";
 import type { MdDialog } from "@material/web/dialog/dialog.js";
 import "@material/web/list/list";
 import "@material/web/list/list-item";
+import { MatterClient, MatterNode } from "@matter-server/ws-client";
 import { html, LitElement } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
-import { MatterClient, MatterNode } from "@matter-server/ws-client";
 import { preventDefault } from "../../../util/prevent_default.js";
 
 @customElement("commission-node-dialog")

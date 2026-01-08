@@ -31,7 +31,12 @@ import {
 } from "../types/WebSocketMessageTypes.js";
 import { MATTER_VERSION } from "../util/matterVersion.js";
 import { ConfigStorage } from "./ConfigStorage.js";
-import { convertMatterToWebSocketTagBased, parseBigIntAwareJson, splitAttributePath, toBigIntAwareJson } from "./Converters.js";
+import {
+    convertMatterToWebSocketTagBased,
+    parseBigIntAwareJson,
+    splitAttributePath,
+    toBigIntAwareJson,
+} from "./Converters.js";
 
 const logger = Logger.get("WebSocketControllerHandler");
 
@@ -193,14 +198,19 @@ export class WebSocketControllerHandler implements WebServerHandler {
             observers.on(this.#commandHandler.events.nodeEndpointAdded, (nodeId, endpointId) => {
                 if (this.#closed || !listening) return;
                 logger.info(`Sending endpoint_added event for Node ${nodeId} endpoint ${endpointId}`);
-                ws.send(toBigIntAwareJson({ event: "endpoint_added", data: { node_id: nodeId, endpoint_id: endpointId } }));
+                ws.send(
+                    toBigIntAwareJson({ event: "endpoint_added", data: { node_id: nodeId, endpoint_id: endpointId } }),
+                );
             });
 
             observers.on(this.#commandHandler.events.nodeEndpointRemoved, (nodeId, endpointId) => {
                 if (this.#closed || !listening) return;
                 logger.info(`Sending endpoint_removed event for Node ${nodeId} endpoint ${endpointId}`);
                 ws.send(
-                    toBigIntAwareJson({ event: "endpoint_removed", data: { node_id: nodeId, endpoint_id: endpointId } }),
+                    toBigIntAwareJson({
+                        event: "endpoint_removed",
+                        data: { node_id: nodeId, endpoint_id: endpointId },
+                    }),
                 );
             });
 

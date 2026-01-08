@@ -9,10 +9,10 @@ import "@material/web/divider/divider";
 import "@material/web/iconbutton/icon-button";
 import "@material/web/list/list";
 import "@material/web/list/list-item";
+import { MatterClient } from "@matter-server/ws-client";
 import { mdiArrowLeft, mdiLogout } from "@mdi/js";
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property } from "lit/decorators.js";
-import { MatterClient } from "@matter-server/ws-client";
 import "../../components/ha-svg-icon";
 
 interface HeaderAction {

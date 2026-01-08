@@ -13,9 +13,9 @@ import "@material/web/textfield/outlined-text-field";
 import type { MdOutlinedTextField } from "@material/web/textfield/outlined-text-field.js";
 import "../../../components/ha-svg-icon";
 
+import { AccessControlEntry, BindingTarget, MatterClient, MatterNode } from "@matter-server/ws-client";
 import { css, html, LitElement, nothing } from "lit";
 import { customElement, property, query } from "lit/decorators.js";
-import { AccessControlEntry, BindingTarget, MatterClient, MatterNode } from "@matter-server/ws-client";
 import { preventDefault } from "../../../util/prevent_default.js";
 import { BindingEntryDataTransformer, BindingEntryStruct, InputType } from "./model.js";
 

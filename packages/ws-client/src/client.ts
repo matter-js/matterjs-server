@@ -162,7 +162,11 @@ export class MatterClient {
 
     async writeAttribute(nodeId: number | bigint, attributePath: string, value: unknown): Promise<unknown> {
         // Write an attribute(value) on a target node.
-        return await this.sendCommand("write_attribute", 0, { node_id: nodeId, attribute_path: attributePath, value: value });
+        return await this.sendCommand("write_attribute", 0, {
+            node_id: nodeId,
+            attribute_path: attributePath,
+            value: value,
+        });
     }
 
     async checkNodeUpdate(nodeId: number | bigint): Promise<MatterSoftwareVersion | null> {

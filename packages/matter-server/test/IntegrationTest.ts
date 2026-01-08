@@ -31,11 +31,7 @@ const TEST_TIMEOUT = 120_000; // 2 minutes for Matter commissioning
 /**
  * Helper to wait for OnOff attribute update event.
  */
-async function waitForOnOffUpdate(
-    client: MatterTestClient,
-    nodeId: number,
-    expectedValue: boolean,
-): Promise<void> {
+async function waitForOnOffUpdate(client: MatterTestClient, nodeId: number, expectedValue: boolean): Promise<void> {
     const event = await client.waitForEvent(
         "attribute_updated",
         data => {

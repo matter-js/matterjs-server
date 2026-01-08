@@ -14,9 +14,9 @@ import "@material/web/list/list-item";
 import { mdiChatProcessing, mdiLink, mdiShareVariant, mdiTrashCan, mdiUpdate } from "@mdi/js";
 
 import { consume } from "@lit/context";
+import { MatterClient, MatterNode } from "@matter-server/ws-client";
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
-import { MatterClient, MatterNode } from "@matter-server/ws-client";
 import { DeviceType } from "../../client/models/descriptions.js";
 import { showAlertDialog, showPromptDialog } from "../../components/dialog-box/show-dialog-box.js";
 import { showNodeBindingDialog } from "../../components/dialogs/binding/show-node-binding-dialog.js";

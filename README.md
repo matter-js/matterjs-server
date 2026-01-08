@@ -14,11 +14,11 @@ as a base and provides a server implementation.
 The Open Home Foundation Matter Server software component is a project of the [Open Home Foundation](https://www.openhomefoundation.org/).
 
 This repository consists of multiple packages that are provided in the `packages` directory:
-* `matter-server`: The OHF Matter Server using the below packages to provide functionality on a webserver
-* `ws-controller`: The WebSocket-based Matter Controller implementation using matter.js
-* `ws-client`: A WebSocket client library for connecting to the Matter Server (usable in browser and Node.js)
-* `custom-clusters`: A set of community-provided custom Matter clusters used by the Matter Server
-* `dashboard`: A dashboard to interact with the Matter Server and show node detailed data
+* `matter-server`: The OHF Matter Server using the below packages to provide functionality on a webserver (published to npmjs as `matter-server`)
+* `ws-controller`: The WebSocket-based Matter Controller implementation using matter.js (published to npmjs as `@matter-server/ws-controller`)
+* `ws-client`: A WebSocket client library for connecting to the Matter Server (usable in browser and Node.js) (published to npmjs as `@matter-server/ws-client`)
+* `custom-clusters`: A set of community-provided custom Matter clusters used by the Matter Server (published to npmjs as `@matter-server/custom-clusters`)
+* `dashboard`: A dashboard to interact with the Matter Server and show node detailed data (published to npmjs as `@matter-server/dashboard`)
 
 ## Support
 

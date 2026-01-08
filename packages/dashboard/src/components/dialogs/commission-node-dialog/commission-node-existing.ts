@@ -8,9 +8,9 @@ import { consume } from "@lit/context";
 import "@material/web/progress/circular-progress";
 import "@material/web/textfield/outlined-text-field";
 import type { MdOutlinedTextField } from "@material/web/textfield/outlined-text-field.js";
+import { MatterClient } from "@matter-server/ws-client";
 import { LitElement, html, nothing } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
-import { MatterClient } from "@matter-server/ws-client";
 import { clientContext } from "../../../client/client-context.js";
 import { fireEvent } from "../../../util/fire_event.js";
 

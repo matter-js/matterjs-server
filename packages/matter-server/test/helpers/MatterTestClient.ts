@@ -10,12 +10,12 @@
  */
 
 import {
+    CommissionableNodeData,
+    EventMessage,
     MatterClient,
     MatterNode,
     ServerInfoMessage,
-    CommissionableNodeData,
     WebSocketLike,
-    EventMessage,
 } from "@matter-server/ws-client";
 import type { MatterNodeEvent } from "@matter-server/ws-controller";
 import WebSocket from "ws";
