@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { type HttpServer, Logger, type WebServerHandler } from "@matter-server/controller";
+import { type HttpServer, Logger, type WebServerHandler } from "@matter-server/ws-controller";
 import { createServer } from "node:http";
 
 const logger = Logger.get("WebServer");
@@ -12,31 +12,44 @@ const logger = Logger.get("WebServer");
 export class WebServer {
     #listenAddresses: string[] | null;
     #port: number;
-    #server?: HttpServer;
-    #handler: WebServerHandler[];
+    #servers: HttpServer[] = [];
+    #handlers: WebServerHandler[];
 
-    constructor(config: WebServer.Config, handler: WebServerHandler[]) {
+    constructor(config: WebServer.Config, handlers: WebServerHandler[]) {
         const { listenAddresses, port } = config;
         this.#listenAddresses = listenAddresses;
         this.#port = port;
-        this.#handler = handler;
+        this.#handlers = handlers;
     }
 
     async start() {
-        const server = (this.#server = createServer());
+        // Determine which addresses to bind to
+        // null/empty means bind to all interfaces (single server with no host specified)
+        const addresses = this.#listenAddresses?.length ? this.#listenAddresses : [undefined];
 
-        for (const handler of this.#handler) {
-            await handler.register(this.#server);
+        // Create and start a server for each address
+        for (const host of addresses) {
+            const server = createServer();
+            this.#servers.push(server);
+
+            // Register all handlers with this server
+            for (const handler of this.#handlers) {
+                await handler.register(server);
+            }
+
+            // Start listening to this address
+            await this.#startServer(server, host);
         }
+    }
 
-        // Determine bind host: null/undefined means bind to all interfaces
-        const host = this.#listenAddresses?.[0] ?? undefined;
+    #startServer(server: HttpServer, host: string | undefined): Promise<void> {
         const displayHost = host ?? "0.0.0.0";
 
-        let resolvedOrErrored = false;
-        await new Promise<void>((resolve, reject) => {
+        return new Promise<void>((resolve, reject) => {
+            let resolvedOrErrored = false;
+
             server.listen({ host, port: this.#port }, () => {
-                logger.info(`Webserver Listening on http://${displayHost}:${this.#port}`);
+                logger.info(`Webserver listening on http://${displayHost}:${this.#port}`);
                 if (!resolvedOrErrored) {
                     resolvedOrErrored = true;
                     resolve();
@@ -44,7 +57,7 @@ export class WebServer {
             });
 
             server.on("error", err => {
-                logger.error("Webserver error", err);
+                logger.error(`Webserver error on ${displayHost}:${this.#port}`, err);
                 if (!resolvedOrErrored) {
                     resolvedOrErrored = true;
                     reject(err);
@@ -55,22 +68,27 @@ export class WebServer {
 
     async stop() {
         // Unregister handlers first (closes WebSocket connections)
-        for (const handler of this.#handler) {
+        for (const handler of this.#handlers) {
             await handler.unregister();
         }
 
-        // Then close the HTTP server and wait for it to finish
-        if (this.#server) {
-            await new Promise<void>((resolve, reject) => {
-                this.#server!.close(err => {
-                    if (err) {
-                        reject(err);
-                    } else {
-                        resolve();
-                    }
-                });
-            });
-        }
+        // Then close all HTTP servers and wait for them to finish
+        await Promise.allSettled(
+            this.#servers.map(
+                server =>
+                    new Promise<void>((resolve, reject) => {
+                        server.close(err => {
+                            if (err) {
+                                reject(err);
+                            } else {
+                                resolve();
+                            }
+                        });
+                    }),
+            ),
+        );
+
+        this.#servers = [];
     }
 }
 

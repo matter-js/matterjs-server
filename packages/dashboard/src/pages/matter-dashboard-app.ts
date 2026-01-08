@@ -5,11 +5,10 @@
  */
 
 import { ContextProvider } from "@lit/context";
+import { MatterClient, MatterError } from "@matter-server/ws-client";
 import { LitElement, PropertyValueMap, html } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { clientContext } from "../client/client-context.js";
-import { MatterClient } from "../client/client.js";
-import { MatterError } from "../client/exceptions.js";
 import { clone } from "../util/clone_class.js";
 import type { Route } from "../util/routing.js";
 import "./matter-cluster-view";

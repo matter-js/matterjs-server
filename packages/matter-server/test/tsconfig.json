@@ -9,9 +9,6 @@
     },
     "references": [
         {
-            "path": "../../controller/src"
-        },
-        {
             "path": "../../custom-clusters/src"
         },
         {
@@ -19,6 +16,12 @@
         },
         {
             "path": "../../tools/src"
+        },
+        {
+            "path": "../../ws-client/src"
+        },
+        {
+            "path": "../../ws-controller/src"
         },
         {
             "path": "../src"

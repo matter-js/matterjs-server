@@ -40,7 +40,7 @@ npm run format-verify
 
 This is an npm workspaces monorepo with four packages:
 
-- **packages/controller** (`@matter-server/controller`): Core Matter controller library wrapping `@project-chip/matter.js`. Exports `MatterController`, `ControllerCommandHandler`, `WebSocketControllerHandler`, `ConfigStorage`
+- **packages/ws-controller** (`@matter-server/ws-controller`): Core Matter controller library wrapping `@project-chip/matter.js`. Exports `MatterController`, `ControllerCommandHandler`, `WebSocketControllerHandler`, `ConfigStorage`
 - **packages/dashboard** (`@matter-server/dashboard`): Web UI built with Lit, Rollup, and Material Web Components. Connects to server via WebSocket
 - **packages/matter-server** (`matter-server`): Main entry point. HTTP/WebSocket server using Express, combines controller + dashboard
 - **packages/tools** (`@matter/tools`) (private unpublished package only!): Build infrastructure using esbuild + TSC. Provides `matter-build`, `matter-run`, `matter-version` binaries

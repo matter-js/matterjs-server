@@ -4,20 +4,46 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { parsePythonJson, toPythonJson } from "./json-utils.js";
+import { parseBigIntAwareJson, toBigIntAwareJson } from "./json-utils.js";
 import { CommandMessage, ServerInfoMessage } from "./models/model.js";
+
+/**
+ * WebSocket interface that works with both browser WebSocket and Node.js ws library.
+ */
+export interface WebSocketLike {
+    readyState: number;
+    onopen: ((event: unknown) => void) | null;
+    onclose: ((event: unknown) => void) | null;
+    onerror: ((event: unknown) => void) | null;
+    onmessage: ((event: { data: unknown }) => void) | null;
+    send(data: string): void;
+    close(): void;
+}
+
+export type WebSocketFactory = (url: string) => WebSocketLike;
 
 export class Connection {
     public serverInfo?: ServerInfoMessage = undefined;
 
-    private socket?: WebSocket;
+    private socket?: WebSocketLike;
+    private wsFactory: WebSocketFactory;
 
-    constructor(public ws_server_url: string) {
+    /**
+     * Create a new connection.
+     * @param ws_server_url WebSocket server URL
+     * @param wsFactory Optional factory function to create WebSocket instances.
+     *                  If not provided, uses the global WebSocket constructor.
+     */
+    constructor(
+        public ws_server_url: string,
+        wsFactory?: WebSocketFactory,
+    ) {
         this.ws_server_url = ws_server_url;
+        this.wsFactory = wsFactory ?? (url => new WebSocket(url) as unknown as WebSocketLike);
     }
 
     get connected() {
-        return this.socket?.readyState === WebSocket.OPEN;
+        return this.socket?.readyState === 1; // WebSocket.OPEN = 1
     }
 
     async connect(onMessage: (msg: unknown) => void, onConnectionLost: () => void) {
@@ -28,25 +54,25 @@ export class Connection {
         console.debug("Trying to connect");
 
         return new Promise<void>((resolve, reject) => {
-            this.socket = new WebSocket(this.ws_server_url);
+            this.socket = this.wsFactory(this.ws_server_url);
 
             this.socket.onopen = () => {
                 console.log("WebSocket Connected");
             };
 
-            this.socket.onclose = event => {
-                console.log(`WebSocket Closed: Code=${event.code}, Reason=${event.reason}`);
+            this.socket.onclose = () => {
+                console.log("WebSocket Closed");
                 onConnectionLost();
             };
 
             this.socket.onerror = error => {
                 console.error("WebSocket Error: ", error);
-                console.dir(error);
                 reject(new Error("WebSocket Error"));
             };
 
-            this.socket.onmessage = (event: MessageEvent) => {
-                const data = parsePythonJson(event.data);
+            this.socket.onmessage = (event: { data: unknown }) => {
+                const dataStr = typeof event.data === "string" ? event.data : String(event.data);
+                const data = parseBigIntAwareJson(dataStr);
                 console.log("WebSocket OnMessage", data);
                 if (!this.serverInfo) {
                     this.serverInfo = data as ServerInfoMessage;
@@ -70,7 +96,7 @@ export class Connection {
             throw new Error("Not connected");
         }
         console.log("WebSocket send message", message);
-        this.socket.send(toPythonJson(message));
+        this.socket.send(toBigIntAwareJson(message));
     }
 }
 

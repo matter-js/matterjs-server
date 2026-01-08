@@ -11,8 +11,7 @@ import "@material/web/list/list";
 import "@material/web/list/list-item";
 import { html, LitElement } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
-import { MatterClient } from "../../../client/client.js";
-import { MatterNode } from "../../../client/models/node.js";
+import { MatterClient, MatterNode } from "@matter-server/ws-client";
 import { preventDefault } from "../../../util/prevent_default.js";
 
 @customElement("commission-node-dialog")

@@ -191,7 +191,7 @@ export interface APICommands {
         response: MatterSoftwareVersion | null;
     };
     update_node: {
-        requestArgs: { nodeId: number; softwareVersion: number | string };
+        requestArgs: { node_id: number | bigint; software_version: number | string };
         response: MatterSoftwareVersion | null;
     };
     discover_commissionable_nodes: {
@@ -228,7 +228,7 @@ export interface APICommands {
 
 /**
  * Access Control Entry structure for set_acl_entry command.
- * Matches Python Matter Server's AccessControlEntryStruct.
+ * Uses snake_case field names matching our API convention.
  */
 export interface AccessControlEntry {
     /** 1=View, 3=Operate, 4=Manage, 5=Administer */
@@ -262,6 +262,7 @@ export interface BindingTarget {
     cluster: number | null;
 }
 
+/** Attribute write result for set_acl_entry and set_node_binding responses */
 export interface AttributeWriteResult {
     path: {
         endpoint_id: number;

@@ -16,9 +16,8 @@ import { mdiChatProcessing, mdiLink, mdiShareVariant, mdiTrashCan, mdiUpdate } f
 import { consume } from "@lit/context";
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
-import { MatterClient } from "../../client/client.js";
+import { MatterClient, MatterNode } from "@matter-server/ws-client";
 import { DeviceType } from "../../client/models/descriptions.js";
-import { MatterNode } from "../../client/models/node.js";
 import { showAlertDialog, showPromptDialog } from "../../components/dialog-box/show-dialog-box.js";
 import { showNodeBindingDialog } from "../../components/dialogs/binding/show-node-binding-dialog.js";
 import "../../components/ha-svg-icon";

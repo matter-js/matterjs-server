@@ -7,13 +7,16 @@
     },
     "references": [
         {
-            "path": "../../controller/src"
-        },
-        {
             "path": "../../custom-clusters/src"
         },
         {
             "path": "../../dashboard/src"
+        },
+        {
+            "path": "../../ws-client/src"
+        },
+        {
+            "path": "../../ws-controller/src"
         }
     ]
 }

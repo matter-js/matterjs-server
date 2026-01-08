@@ -1067,7 +1067,7 @@ export class ControllerCommandHandler {
         // Get the fabric index for this controller's fabric on the target node
         const fabricIndex = await this.#getNodeFabricIndex(node);
 
-        // Convert from WebSocket format to Matter.js format
+        // Convert from WebSocket format (snake_case) to Matter.js format (camelCase)
         const aclEntries: AccessControl.AccessControlEntry[] = entries.map(entry => ({
             privilege: entry.privilege as AccessControl.AccessControlEntryPrivilege,
             authMode: entry.auth_mode as AccessControl.AccessControlEntryAuthMode,

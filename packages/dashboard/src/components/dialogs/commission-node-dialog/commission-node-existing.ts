@@ -10,8 +10,8 @@ import "@material/web/textfield/outlined-text-field";
 import type { MdOutlinedTextField } from "@material/web/textfield/outlined-text-field.js";
 import { LitElement, html, nothing } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
+import { MatterClient } from "@matter-server/ws-client";
 import { clientContext } from "../../../client/client-context.js";
-import { MatterClient } from "../../../client/client.js";
 import { fireEvent } from "../../../util/fire_event.js";
 
 @customElement("commission-node-existing")

@@ -4,13 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/**
- * TLV Schema definitions for chip.json data structures.
- *
- * These schemas define the binary TLV format used by Matter.js for storing
- * fabric configuration, session data, and other persistent state.
- */
-
 import {
     TlvArray,
     TlvByteString,
@@ -23,6 +16,13 @@ import {
     TlvUInt8,
     TypeFromSchema,
 } from "@matter/main/types";
+
+/**
+ * TLV Schema definitions for chip.json data structures.
+ *
+ * These schemas define the binary TLV format used by Matter.js for storing
+ * fabric configuration, session data, and another persistent state.
+ */
 
 // =============================================================================
 // Global Keys (g/)

@@ -10,8 +10,15 @@
  */
 
 import { Command, Option } from "commander";
+import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { join } from "node:path";
+
+// Read version from package.json
+// Path is relative to dist/esm/ where compiled code runs
+const require = createRequire(import.meta.url);
+const packageJson = require("../../package.json") as { version: string };
+const VERSION = packageJson.version;
 
 // Default values
 const DEFAULT_VENDOR_ID = 0xfff1;
@@ -37,15 +44,22 @@ export interface CliOptions {
 
     // Logging configuration
     logLevel: LogLevel;
+
+    /** @deprecated Not supported */
     logLevelSdk: SdkLogLevel;
+
     logFile: string | null;
+
+    /** @deprecated Not supported */
     logNodeIds: number[] | null;
 
     // Network configuration
     primaryInterface: string | null;
 
     // Certificate configuration
+    /** @deprecated Not supported */
     paaRootCertDir: string | null;
+
     enableTestNetDcl: boolean;
 
     // Bluetooth configuration
@@ -55,6 +69,7 @@ export interface CliOptions {
     otaProviderDir: string | null;
 
     // Server behavior
+    /** @deprecated Not supported */
     disableServerInteractions: boolean;
 
     // Dashboard configuration
@@ -76,7 +91,7 @@ function collectAddresses(value: string, previous: string[]): string[] {
 export function parseCliArgs(argv?: string[]): CliOptions {
     const program = new Command();
 
-    program.name("matter-server").description("Matter Controller Server using WebSockets.").version("0.0.0-git");
+    program.name("matter-server").description("Matter Controller Server using WebSockets.").version(VERSION);
 
     program
         .option("--vendorid <id>", "Vendor ID for the Fabric", parseIntOption, DEFAULT_VENDOR_ID)
@@ -91,32 +106,32 @@ export function parseCliArgs(argv?: string[]): CliOptions {
         )
         .addOption(new Option("--log-level <level>", "Global logging level").choices(LOG_LEVELS).default("info"))
         .addOption(
-            new Option("--log-level-sdk <level>", "Matter SDK logging level").choices(SDK_LOG_LEVELS).default("error"),
+            new Option("--log-level-sdk <level>", "Matter SDK logging level. This option is no longer supported.")
+                .choices(SDK_LOG_LEVELS)
+                .default("error"),
         )
         .option("--log-file <path>", "Log file path (optional)")
         .option("--primary-interface <interface>", "Primary network interface for link-local addresses")
-        .option("--paa-root-cert-dir <path>", "Directory for PAA root certificates")
+        .option(
+            "--paa-root-cert-dir <path>",
+            "Directory for PAA root certificates. This option is no longer supported.",
+        )
         .option("--enable-test-net-dcl", "Enable test-net DCL certificates", false)
         .option("--bluetooth-adapter <id>", "Bluetooth adapter HCI ID (e.g., 0 for hci0)", parseIntOption)
-        .option("--log-node-ids <ids...>", "Node IDs to filter logs (space-separated)")
+        .option(
+            "--log-node-ids <ids...>",
+            "Node IDs to filter logs (space-separated). This option is no longer supported.",
+        )
         .option("--ota-provider-dir <path>", "Directory for OTA Provider files")
-        .option("--disable-server-interactions", "Disable server cluster interactions", false)
+        .option(
+            "--disable-server-interactions",
+            "Disable server cluster interactions. This option is no longer supported.",
+            false,
+        )
         .option("--disable-dashboard", "Disable the web dashboard", false);
 
     program.parse(argv);
     const opts = program.opts();
-
-    // Parse log-node-ids if provided as string array
-    let logNodeIds: number[] | null = null;
-    if (opts.logNodeIds && opts.logNodeIds.length > 0) {
-        logNodeIds = opts.logNodeIds.map((id: string) => {
-            const parsed = parseInt(id, 10);
-            if (isNaN(parsed)) {
-                throw new Error(`Invalid node ID: ${id}`);
-            }
-            return parsed;
-        });
-    }
 
     return {
         vendorId: opts.vendorid,
@@ -127,7 +142,7 @@ export function parseCliArgs(argv?: string[]): CliOptions {
         logLevel: opts.logLevel,
         logLevelSdk: opts.logLevelSdk,
         logFile: opts.logFile ?? null,
-        logNodeIds,
+        logNodeIds: opts.logNodeIds ?? null,
         primaryInterface: opts.primaryInterface ?? null,
         paaRootCertDir: opts.paaRootCertDir ?? null,
         enableTestNetDcl: opts.enableTestNetDcl,

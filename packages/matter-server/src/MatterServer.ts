@@ -15,21 +15,21 @@ import {
     MatterController,
     WebServerHandler,
     WebSocketControllerHandler,
-} from "@matter-server/controller";
-import { open, readdir, unlink } from "node:fs/promises";
-import { join } from "node:path";
+} from "@matter-server/ws-controller";
+import { open } from "node:fs/promises";
 import { getCliOptions, type LogLevel as CliLogLevel } from "./cli.js";
 import {
     addNodeToLegacyServerFile,
     loadLegacyData,
     removeNodeFromLegacyServerFile,
     type LegacyData,
-} from "./converter/LegacyDataLoader.js";
+} from "./converter/index.js";
 import { StaticFileHandler } from "./server/StaticFileHandler.js";
 import { WebServer } from "./server/WebServer.js";
 
 // Register the custom clusters
 import "@matter-server/custom-clusters";
+import { initializeOta } from "./ota.js";
 
 /**
  * Creates a file-based logger that appends to the given path.
@@ -99,7 +99,7 @@ let config: ConfigStorage;
 let legacyData: LegacyData;
 
 async function start() {
-    // Set up file logging if configured
+    // Set up file logging additionally to the console if configured
     if (cliOptions.logFile) {
         try {
             const fileWriter = await createFileLogger(cliOptions.logFile);
@@ -147,24 +147,10 @@ async function start() {
     config = await ConfigStorage.create(env);
     controller = await MatterController.create(env, config, legacyServerData);
 
-    // Configure OTA settings after controller is created
-    if (cliOptions.enableTestNetDcl) {
-        await controller.enableTestOtaImages();
-    }
-
-    // Load OTA files from provider directory if configured
-    if (cliOptions.otaProviderDir) {
-        if (!cliOptions.enableTestNetDcl) {
-            logger.warn(
-                `OTA provider directory (${cliOptions.otaProviderDir}) is configured but --enable-test-net-dcl is not set. Custom OTA files will be ignored.`,
-            );
-        } else {
-            await loadOtaFiles(cliOptions.otaProviderDir);
-        }
-    }
+    await initializeOta(controller, cliOptions);
 
     // Subscribe to node events for legacy data file updates
-    if (legacyData.fabricConfig) {
+    if (legacyData.serverFile && legacyData.fabricConfig) {
         const fabricConfig = legacyData.fabricConfig;
         const storagePath = cliOptions.storagePath;
 
@@ -195,47 +181,10 @@ async function start() {
     await server.start();
 }
 
-/**
- * Load OTA image files from a directory into the internal storage.
- * Files with .json extension are skipped.
- * Successfully loaded files are deleted from the directory.
- */
-async function loadOtaFiles(directory: string) {
-    try {
-        const files = await readdir(directory);
-        for (const file of files) {
-            // Skip JSON files (metadata files)
-            if (file.toLowerCase().endsWith(".json")) {
-                continue;
-            }
-
-            const filePath = join(directory, file);
-            try {
-                const success = await controller.storeOtaImageFromFile(filePath, false);
-                if (success) {
-                    logger.info(`Loaded OTA file: ${file}`);
-                    // Delete the file after a successful import
-                    await unlink(filePath);
-                    logger.debug(`Deleted OTA file after import: ${file}`);
-                }
-            } catch (error) {
-                logger.error(`Failed to load OTA file ${file}: ${error}`);
-                // Continue with the next file
-            }
-        }
-    } catch (error) {
-        logger.error(`Failed to read OTA provider directory ${directory}: ${error}`);
-    }
-}
-
 async function stop() {
-    console.log("Shutting down...");
     await server?.stop();
-    console.log("Server stopped.");
     await controller?.stop();
-    console.log("Controller stopped.");
     await config?.close();
-    console.log("Config storage closed.");
     process.exit(0);
 }
 

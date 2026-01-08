@@ -15,9 +15,7 @@ import "../../../components/ha-svg-icon";
 
 import { css, html, LitElement, nothing } from "lit";
 import { customElement, property, query } from "lit/decorators.js";
-import { MatterClient } from "../../../client/client.js";
-import { AccessControlEntry, BindingTarget } from "../../../client/models/model.js";
-import { MatterNode } from "../../../client/models/node.js";
+import { AccessControlEntry, BindingTarget, MatterClient, MatterNode } from "@matter-server/ws-client";
 import { preventDefault } from "../../../util/prevent_default.js";
 import { BindingEntryDataTransformer, BindingEntryStruct, InputType } from "./model.js";
 

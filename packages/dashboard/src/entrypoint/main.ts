@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { MatterClient } from "../client/client.js";
+import { MatterClient } from "@matter-server/ws-client";
 
 async function main() {
     import("../pages/matter-dashboard-app.js");
@@ -40,7 +40,8 @@ async function main() {
         console.log(`Connecting to Matter Server API using url: ${url}`);
     }
 
-    const client = new MatterClient(url, isProductionServer);
+    const client = new MatterClient(url);
+    client.isProduction = isProductionServer;
 
     const dashboard = document.createElement("matter-dashboard-app");
     dashboard.client = client;

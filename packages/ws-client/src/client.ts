@@ -4,10 +4,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Connection } from "./connection.js";
+import { Connection, WebSocketFactory } from "./connection.js";
 import { InvalidServerVersion } from "./exceptions.js";
 import {
+    AccessControlEntry,
     APICommands,
+    BindingTarget,
     CommissionableNodeData,
     CommissioningParameters,
     ErrorResultMessage,
@@ -31,19 +33,27 @@ export class MatterClient {
     public connection: Connection;
     public nodes: Record<number, MatterNode> = {};
     public serverBaseAddress: string;
+    /** Whether this client is connected to a production server (optional, for UI purposes) */
+    public isProduction: boolean = false;
     // Using 'unknown' for resolve since the actual types vary by command
     private _result_futures: Record<string, { resolve: (value: unknown) => void; reject: (reason?: unknown) => void }> =
         {};
     private msgId = 0;
     private eventListeners: Record<string, Array<() => void>> = {};
 
+    /**
+     * Create a new MatterClient.
+     * @param url WebSocket URL to connect to
+     * @param wsFactory Optional factory function to create WebSocket instances.
+     *                  For Node.js, pass: (url) => new WebSocket(url) from the 'ws' package.
+     *                  For browser, leave undefined to use native WebSocket.
+     */
     constructor(
         public url: string,
-        public isProduction: boolean,
+        wsFactory?: WebSocketFactory,
     ) {
         this.url = url;
-        this.isProduction = isProduction;
-        this.connection = new Connection(this.url);
+        this.connection = new Connection(this.url, wsFactory);
         this.serverBaseAddress = this.url.split("://")[1].split(":")[0] || "";
     }
 
@@ -61,7 +71,7 @@ export class MatterClient {
         };
     }
 
-    async commissionWithCode(code: string, networkOnly: boolean): Promise<MatterNode> {
+    async commissionWithCode(code: string, networkOnly = true): Promise<MatterNode> {
         // Commission a device using a QR Code or Manual Pairing Code.
         // code: The QR Code or Manual Pairing Code for device commissioning.
         // network_only: If True, restricts device discovery to network only.
@@ -116,9 +126,9 @@ export class MatterClient {
         await this.sendCommand("remove_matter_fabric", 3, { node_id: nodeId, fabric_index: fabricIndex });
     }
 
-    async pingNode(nodeId: number | bigint): Promise<NodePingResult> {
+    async pingNode(nodeId: number | bigint, attempts = 1): Promise<NodePingResult> {
         // Ping node on the currently known IP-address(es).
-        return await this.sendCommand("ping_node", 0, { node_id: nodeId });
+        return await this.sendCommand("ping_node", 0, { node_id: nodeId, attempts });
     }
 
     async getNodeIPAddresses(nodeId: number | bigint, preferCache?: boolean, scoped?: boolean): Promise<string[]> {
@@ -150,9 +160,9 @@ export class MatterClient {
         return await this.sendCommand("read_attribute", 0, { node_id: nodeId, attribute_path: attributePath });
     }
 
-    async writeAttribute(nodeId: number | bigint, attributePath: string, value: unknown) {
+    async writeAttribute(nodeId: number | bigint, attributePath: string, value: unknown): Promise<unknown> {
         // Write an attribute(value) on a target node.
-        await this.sendCommand("write_attribute", 0, { node_id: nodeId, attribute_path: attributePath, value: value });
+        return await this.sendCommand("write_attribute", 0, { node_id: nodeId, attribute_path: attributePath, value: value });
     }
 
     async checkNodeUpdate(nodeId: number | bigint): Promise<MatterSoftwareVersion | null> {
@@ -172,19 +182,56 @@ export class MatterClient {
         await this.sendCommand("update_node", 10, { node_id: nodeId, software_version: softwareVersion });
     }
 
-    async setACLEntry(nodeId: number | bigint, entry: any[]) {
+    async setACLEntry(nodeId: number | bigint, entry: AccessControlEntry[]) {
         return await this.sendCommand("set_acl_entry", 0, {
             node_id: nodeId,
             entry: entry,
         });
     }
 
-    async setNodeBinding(nodeId: number | bigint, endpoint: number, bindings: any[]) {
+    async setNodeBinding(nodeId: number | bigint, endpoint: number, bindings: BindingTarget[]) {
         return await this.sendCommand("set_node_binding", 0, {
             node_id: nodeId,
             endpoint: endpoint,
             bindings: bindings,
         });
+    }
+
+    async deviceCommand(
+        nodeId: number | bigint,
+        endpointId: number,
+        clusterId: number,
+        commandName: string,
+        payload: Record<string, unknown> = {},
+    ): Promise<unknown> {
+        return await this.sendCommand("device_command", 0, {
+            node_id: nodeId,
+            endpoint_id: endpointId,
+            cluster_id: clusterId,
+            command_name: commandName,
+            payload,
+            response_type: null,
+        });
+    }
+
+    async getNodes(onlyAvailable = false): Promise<MatterNode[]> {
+        return await this.sendCommand("get_nodes", 0, { only_available: onlyAvailable });
+    }
+
+    async getNode(nodeId: number | bigint): Promise<MatterNode> {
+        return await this.sendCommand("get_node", 0, { node_id: nodeId });
+    }
+
+    async getVendorNames(filterVendors?: number[]): Promise<Record<string, string>> {
+        return await this.sendCommand("get_vendor_names", 0, { filter_vendors: filterVendors });
+    }
+
+    async fetchServerInfo() {
+        return await this.sendCommand("server_info", 0, {});
+    }
+
+    async setDefaultFabricLabel(label: string | null) {
+        await this.sendCommand("set_default_fabric_label", 0, { label });
     }
 
     sendCommand<T extends keyof APICommands>(
@@ -231,12 +278,12 @@ export class MatterClient {
         );
     }
 
-    disconnect(clearStorage = true) {
-        // disconnect from the server and clear the stored serveraddress
+    disconnect(clearStorage = false) {
+        // disconnect from the server
         if (this.connection && this.connection.connected) {
             this.connection.disconnect();
         }
-        if (clearStorage) {
+        if (clearStorage && typeof localStorage !== "undefined") {
             localStorage.removeItem("matterURL");
             location.reload();
         }
@@ -283,6 +330,9 @@ export class MatterClient {
 
     private _handleEventMessage(event: EventMessage) {
         console.log("Incoming event", event);
+
+        // Allow subclasses to hook into raw events (for testing)
+        this.onRawEvent(event);
 
         if (event.event === "node_added") {
             const node = new MatterNode(event.data);
@@ -331,5 +381,15 @@ export class MatterClient {
                 listener();
             }
         }
+    }
+
+    /**
+     * Hook for subclasses to receive raw events.
+     * Override this method to intercept all incoming events.
+     * @param event The raw event message
+     */
+    protected onRawEvent(_event: EventMessage): void {
+        // Default implementation does nothing
+        // Subclasses can override to collect or process raw events
     }
 }

@@ -157,6 +157,10 @@ export interface APICommands {
         requestArgs: { node_id: number | bigint; endpoint: number; bindings: BindingTarget[] };
         response: AttributeWriteResult[] | null;
     };
+    set_default_fabric_label: {
+        requestArgs: { label: string | null };
+        response: Record<string, never>;
+    };
 }
 
 /** Access Control Entry for set_acl_entry command */
@@ -181,6 +185,7 @@ export interface BindingTarget {
     cluster: number | null;
 }
 
+/** Attribute write result for set_acl_entry and set_node_binding responses */
 export interface AttributeWriteResult {
     path: { endpoint_id: number; cluster_id: number; attribute_id: number };
     status: number;

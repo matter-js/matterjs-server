@@ -1,11 +1,11 @@
 # Custom Clusters
 
 This package contains definitions for vendor-specific (custom) Matter clusters that are not part of the official Matter specification.
-The OHF community provides the content of these clusters. There is no guarantee that the definitions are validated or approved by the respective vendors.
+The OHF community provides the content of these clusters on a best effort basis. There is no guarantee that the definitions are validated or approved by the respective vendors.
 
 ## Overview
 
-Custom clusters are used by device manufacturers to expose proprietary functionality. This package provides TypeScript definitions that allow the Matter.js server to decode and work with these clusters.
+Custom clusters are used by device manufacturers to expose proprietary functionality. This package provides TypeScript definitions that allow the matter.js server to decode and work with these clusters.
 
 ## Supported Clusters
 
@@ -18,7 +18,7 @@ Custom clusters are used by device manufacturers to expose proprietary functiona
 | `ThirdRealityMeteringCluster`       | 0x130dfc02 | ThirdReality (0x130d/4877) | Power metering                             |
 | `DraftElectricalMeasurementCluster` | 0x00000b04 | Various                    | Draft Matter 1.0 electrical measurement    |
 
-## Writing a New Custom Cluster
+## Adding a New Custom Cluster
 
 ### Basic Structure
 
@@ -52,15 +52,15 @@ export * from "./myvendor.js";
 
 Use these type mappings when converting from Python Matter Server definitions:
 
-| Python Type | TypeScript Decorator | TypeScript Property Type       |
-|-------------|----------------------|--------------------------------|
-| `int`       | `int32` or `int64`   | `number` or `number \| bigint` |
-| `uint`      | `uint32` or `uint64` | `number` or `number \| bigint` |
-| `float32`   | `single`             | `number`                       |
-| `float64`   | `double`             | `number`                       |
-| `bool`      | `bool`               | `boolean`                      |
+| Python Type | TypeScript Decorator             | TypeScript Property Type                   |
+|-------------|----------------------------------|--------------------------------------------|
+| `int`       | `int8` ... `int32` or `int64`    | `number` or `number \| bigint` (for 64bit) |
+| `uint`      | `uint8` ... `uint32` or `uint64` | `number` or `number \| bigint` (for 64bit) |
+| `float32`   | `single`                         | `number`                                   |
+| `float64`   | `double`                         | `number`                                   |
+| `bool`      | `bool`                           | `boolean`                                  |
 
-TypeScript also supports other variants of `int*` and `uint*` types. Please choose the one that matches your use case and the maximum contained value. If not known, and the usecase might imply higher values, it is safe to use 64bit precision for both signed and unsigned types.
+TypeScript also supports other variants of `int*` and `uint*` types. Please choose the one that matches your use case and the maximum possible value. If not known, and the usecase might imply higher values, it is safe to use 64bit precision for both signed and unsigned types.
 
 ### Available Type Imports
 

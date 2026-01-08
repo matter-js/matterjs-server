@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { LegacyFabricConfigData } from "@matter-server/controller";
+import { LegacyFabricConfigData } from "@matter-server/ws-controller";
 import { Bytes, Key, StandardCrypto, type BinaryKeyPair } from "@matter/main";
 import { CertificateAuthority, Icac, Noc, Rcac } from "@matter/main/protocol";
 import { readFile, writeFile } from "node:fs/promises";
@@ -424,10 +424,14 @@ export class ChipConfigData {
         nextCertificateId?: bigint,
     ): Promise<CertificateAuthority.Configuration | undefined> {
         const creds = this.operationalCredentials.get(index);
-        if (!creds) return undefined;
+        if (!creds) {
+            return undefined;
+        }
 
         // Need at least root CA key and cert
-        if (!creds.rootCaKey || !creds.rootCaCert) return undefined;
+        if (!creds.rootCaKey || !creds.rootCaCert) {
+            return undefined;
+        }
 
         try {
             // Parse root CA certificate - detect format by first byte
@@ -435,7 +439,9 @@ export class ChipConfigData {
             const certBytes = Bytes.of(creds.rootCaCert.raw);
             const rcac = certBytes[0] === 0x30 ? Rcac.fromAsn1(certBytes) : Rcac.fromTlv(certBytes);
             const rootCertId = rcac.cert.subject.rcacId;
-            if (rootCertId === undefined) return undefined;
+            if (rootCertId === undefined) {
+                return undefined;
+            }
 
             // Parse root CA private key
             // The key can be in different formats:
@@ -483,7 +489,9 @@ export class ChipConfigData {
                 const icacCertBytes = Bytes.of(creds.icaCert.raw);
                 const icac = icacCertBytes[0] === 0x30 ? Icac.fromAsn1(icacCertBytes) : Icac.fromTlv(icacCertBytes);
                 const icacCertId = icac.cert.subject.icacId;
-                if (icacCertId === undefined) return undefined;
+                if (icacCertId === undefined) {
+                    return undefined;
+                }
 
                 // Parse ICAC private key
                 const icaKeyBytes = Bytes.of(creds.icaKey.raw);
@@ -537,7 +545,9 @@ export class ChipConfigData {
      */
     getRcac(fabricIndex: number): Rcac | undefined {
         const fabric = this.fabrics.get(fabricIndex);
-        if (!fabric?.rcac) return undefined;
+        if (!fabric?.rcac) {
+            return undefined;
+        }
         try {
             return Rcac.fromTlv(fabric.rcac.raw);
         } catch {
@@ -552,7 +562,9 @@ export class ChipConfigData {
      */
     getIcac(fabricIndex: number): Icac | undefined {
         const fabric = this.fabrics.get(fabricIndex);
-        if (!fabric?.icac) return undefined;
+        if (!fabric?.icac) {
+            return undefined;
+        }
         try {
             return Icac.fromTlv(fabric.icac.raw);
         } catch {
@@ -566,7 +578,9 @@ export class ChipConfigData {
      */
     getNoc(fabricIndex: number): Noc | undefined {
         const fabric = this.fabrics.get(fabricIndex);
-        if (!fabric?.noc) return undefined;
+        if (!fabric?.noc) {
+            return undefined;
+        }
         try {
             return Noc.fromTlv(fabric.noc.raw);
         } catch {

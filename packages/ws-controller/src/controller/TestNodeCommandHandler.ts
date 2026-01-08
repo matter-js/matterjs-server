@@ -5,7 +5,7 @@
  */
 
 import { Logger, NodeId, Observable } from "@matter/main";
-import { parsePythonJson, splitAttributePath } from "../server/Converters.js";
+import { parseBigIntAwareJson, splitAttributePath } from "../server/Converters.js";
 import {
     AttributeResponseStatus,
     AttributesData,
@@ -124,7 +124,7 @@ export class TestNodeCommandHandler implements NodeCommandHandler {
      */
     importTestNodes(dump: string): NodeId[] {
         // Parse the JSON dump (handles large node IDs as BigInt)
-        const dumpData = parsePythonJson(dump) as any;
+        const dumpData = parseBigIntAwareJson(dump) as any;
 
         // Extract nodes from dump - can be single node or multiple nodes
         // Format from Home Assistant diagnostics:

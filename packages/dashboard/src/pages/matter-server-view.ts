@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { MatterClient, MatterNode } from "@matter-server/ws-client";
 import "@material/web/divider/divider";
 import "@material/web/iconbutton/icon-button";
 import "@material/web/list/list";
@@ -11,8 +12,6 @@ import "@material/web/list/list-item";
 import { mdiChevronRight } from "@mdi/js";
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property } from "lit/decorators.js";
-import { MatterClient } from "../client/client.js";
-import { MatterNode } from "../client/models/node.js";
 import "../components/ha-svg-icon";
 import "./components/footer";
 import "./components/header";

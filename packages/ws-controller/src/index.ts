@@ -5,7 +5,7 @@
  */
 
 /**
- * @matter-server/controller - Matter controller library
+ * @matter-server/ws-controller - Matter controller Websocket library
  */
 
 // Export controller components

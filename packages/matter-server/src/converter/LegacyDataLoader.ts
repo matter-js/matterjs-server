@@ -4,6 +4,20 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import {
+    CertificateAuthorityConfiguration,
+    computeCompressedNodeId,
+    Crypto,
+    Environment,
+    LegacyFabricConfigData,
+    LegacyServerFile,
+    Logger,
+} from "@matter-server/ws-controller";
+import { access, copyFile, readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { ChipConfigData } from "./index.js";
+import type { OperationalCredentials } from "./types.js";
+
 /**
  * Legacy data loader for Python Matter Server storage files.
  *
@@ -13,21 +27,6 @@
  *
  * Only supports single fabric configurations (fabric index 1).
  */
-
-import {
-    CertificateAuthorityConfiguration,
-    computeCompressedNodeId,
-    Crypto,
-    Environment,
-    LegacyFabricConfigData,
-    LegacyNodeData,
-    LegacyServerFile,
-    Logger,
-} from "@matter-server/controller";
-import { access, copyFile, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
-import { ChipConfigData } from "./index.js";
-import type { OperationalCredentials } from "./types.js";
 
 const logger = Logger.get("LegacyDataLoader");
 
@@ -55,17 +54,13 @@ export interface LegacyData {
  * Expects:
  * - chip.json: Main configuration file with exactly one fabric (index 1)
  * - <compressedNodeId>.json: Node data file matching the fabric's compressed node ID
- *
- * @param env Environment for crypto access
- * @param storagePath Path to the storage directory
- * @returns Legacy data if found and valid, or result with error
  */
 export async function loadLegacyData(env: Environment, storagePath: string): Promise<LegacyData> {
     const result: LegacyData = {
         hasData: false,
     };
 
-    // Check if storage directory exists
+    // Check if a storage directory exists
     try {
         await access(storagePath);
     } catch {
@@ -115,7 +110,7 @@ export async function loadLegacyData(env: Environment, storagePath: string): Pro
     // Extract operational credentials (credential set 1)
     const credIndices = chipConfig.getOperationalCredentialsIndices();
     if (credIndices.length > 0) {
-        // Prefer credential set 1, fall back to first available
+        // Prefer credential set 1, fall back to the first available
         const credIndex = credIndices.includes(1) ? 1 : credIndices[0];
         const creds = chipConfig.getOperationalCredentials(credIndex);
         if (creds) {
@@ -200,7 +195,7 @@ export async function saveLegacyServerFile(
     const serverFilePath = join(storagePath, serverFileName);
     const backupFilePath = `${serverFilePath}.bak`;
 
-    // Create backup of existing file if it exists
+    // Create backup of an existing file if it exists
     try {
         await access(serverFilePath);
         await copyFile(serverFilePath, backupFilePath);
@@ -240,13 +235,13 @@ export async function addNodeToLegacyServerFile(
     const serverFileName = `${compressedFabricId}.json`;
     const serverFilePath = join(storagePath, serverFileName);
 
-    // Load existing file or create new structure
+    // Load existing file or create a new structure
     let serverFile: LegacyServerFile;
     try {
         const content = await readFile(serverFilePath, "utf-8");
         serverFile = JSON.parse(content) as LegacyServerFile;
     } catch {
-        // File doesn't exist, create new structure
+        // File doesn't exist, create a new structure
         serverFile = {
             vendor_info: {},
             last_node_id: 0,
@@ -258,7 +253,7 @@ export async function addNodeToLegacyServerFile(
     const nodeIdStr = nodeIdNum.toString();
 
     // Add the node entry (minimal data - just the ID and commissioned date)
-    const nodeData: LegacyNodeData = {
+    serverFile.nodes[nodeIdStr] = {
         node_id: nodeIdNum,
         date_commissioned: dateCommissioned,
         last_interview: dateCommissioned,
@@ -268,8 +263,6 @@ export async function addNodeToLegacyServerFile(
         attributes: {},
         attribute_subscriptions: [],
     };
-
-    serverFile.nodes[nodeIdStr] = nodeData;
 
     // Update last_node_id if this node is higher
     if (nodeIdNum > serverFile.last_node_id) {

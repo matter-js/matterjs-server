@@ -4,16 +4,16 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/**
- * Generates the descriptions.ts file from matter.js model data.
- * Run with: npx tsx scripts/generate-descriptions.ts
- */
-
 import { decamelize } from "@matter/main";
 import { AttributeModel, MatterModel } from "@matter/main/model";
 import { writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+/**
+ * Generates the descriptions.ts file from matter.js model data.
+ * Run with: npx tsx scripts/generate-descriptions.ts
+ */
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 

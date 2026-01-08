@@ -14,7 +14,7 @@ import "@material/web/list/list-item";
 import { mdiFile, mdiPlus } from "@mdi/js";
 import { LitElement, css, html, nothing } from "lit";
 import { customElement } from "lit/decorators.js";
-import { MatterClient } from "../../client/client.js";
+import { MatterClient } from "@matter-server/ws-client";
 import { showAlertDialog, showPromptDialog } from "../../components/dialog-box/show-dialog-box.js";
 import { showCommissionNodeDialog } from "../../components/dialogs/commission-node-dialog/show-commission-node-dialog.js";
 import "../../components/ha-svg-icon";

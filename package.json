@@ -1,55 +1,56 @@
 {
-    "name": "matterjs-server-monorepo",
-    "private": true,
-    "type": "module",
-    "workspaces": [
-        "packages/tools",
-        "packages/custom-clusters",
-        "packages/controller",
-        "packages/dashboard",
-        "packages/matter-server"
-    ],
-    "bugs": {
-        "url": "https://github.com/matter-js/matterjs-server/issues"
-    },
-    "homepage": "https://github.com/matter-js/matterjs-server",
-    "repository": {
-        "type": "git",
-        "url": "git+https://github.com/matter-js/matterjs-server.git"
-    },
-    "scripts": {
-        "prepare": "npm run build-clean",
-        "clean": "node packages/tools/bin/build.js clean",
-        "build": "npm run generate --workspaces --if-present && node packages/tools/bin/build.js && npm run bundle --workspaces --if-present",
-        "version": "node packages/tools/bin/version.js",
-        "build-clean": "npm run clean && npm run build",
-        "lint": "eslint",
-        "lint-fix": "eslint --fix",
-        "format": "prettier --write \"packages/**/*.ts\"",
-        "format-verify": "prettier --check \"packages/**/*.ts\"",
-        "test": "matter-test --force-exit",
-        "relock": "node ./utils/relock.js",
-        "sync-matterjs": "node ./utils/sync-matterjs.js",
-        "server": "node --enable-source-maps packages/matter-server/dist/esm/MatterServer.js"
-    },
-    "devDependencies": {
-        "@eslint/compat": "^2.0.0",
-        "@eslint/eslintrc": "^3.3.3",
-        "@eslint/js": "^9.39.2",
-        "@matter/testing": "0.16.0-alpha.0-20260107-579d5db65",
-        "@typescript-eslint/eslint-plugin": "^8.52.0",
-        "@typescript-eslint/parser": "^8.52.0",
-        "@types/mocha": "^10.0.10",
-        "eslint-import-resolver-typescript": "^4.4.4",
-        "eslint-plugin-import": "^2.32.0",
-        "eslint-plugin-node-import": "^1.0.5",
-        "eslint-plugin-regexp": "^2.10.0",
-        "glob": "^13.0.0",
-        "globals": "^17.0.0",
-        "prettier": "^3.7.4",
-        "prettier-plugin-organize-imports": "^4.3.0",
-        "tsx": "^4.21.0",
-        "typescript": "~5.9.3",
-        "typescript-eslint": "^8.52.0"
-    }
+  "name": "matterjs-server-monorepo",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/tools",
+    "packages/custom-clusters",
+    "packages/ws-controller",
+    "packages/ws-client",
+    "packages/dashboard",
+    "packages/matter-server"
+  ],
+  "bugs": {
+    "url": "https://github.com/matter-js/matterjs-server/issues"
+  },
+  "homepage": "https://github.com/matter-js/matterjs-server",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/matter-js/matterjs-server.git"
+  },
+  "scripts": {
+    "prepare": "npm run build-clean",
+    "clean": "node packages/tools/bin/build.js clean",
+    "build": "npm run generate --workspaces --if-present && node packages/tools/bin/build.js && npm run bundle --workspaces --if-present",
+    "version": "node packages/tools/bin/version.js",
+    "build-clean": "npm run clean && npm run build",
+    "lint": "eslint",
+    "lint-fix": "eslint --fix",
+    "format": "prettier --write \"packages/**/*.ts\"",
+    "format-verify": "prettier --check \"packages/**/*.ts\"",
+    "test": "matter-test --force-exit",
+    "relock": "node ./utils/relock.js",
+    "sync-matterjs": "node ./utils/sync-matterjs.js",
+    "server": "node --enable-source-maps packages/matter-server/dist/esm/MatterServer.js"
+  },
+  "devDependencies": {
+    "@eslint/compat": "^2.0.0",
+    "@eslint/eslintrc": "^3.3.3",
+    "@eslint/js": "^9.39.2",
+    "@matter/testing": "0.16.0-alpha.0-20260108-e85a04851",
+    "@typescript-eslint/eslint-plugin": "^8.52.0",
+    "@typescript-eslint/parser": "^8.52.0",
+    "@types/mocha": "^10.0.10",
+    "eslint-import-resolver-typescript": "^4.4.4",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-node-import": "^1.0.5",
+    "eslint-plugin-regexp": "^2.10.0",
+    "glob": "^13.0.0",
+    "globals": "^17.0.0",
+    "prettier": "^3.7.4",
+    "prettier-plugin-organize-imports": "^4.3.0",
+    "tsx": "^4.21.0",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.52.0"
+  }
 }

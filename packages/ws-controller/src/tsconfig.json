@@ -1,5 +1,7 @@
 {
     "extends": "../../tools/tsc/tsconfig.lib.json",
-    "compilerOptions": {},
+    "compilerOptions": {
+        "types": ["globals"]
+    },
     "references": []
 }

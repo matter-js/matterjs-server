@@ -4,8 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { MatterClient } from "../../../client/client.js";
-import { MatterNode } from "../../../client/models/node.js";
+import { MatterClient, MatterNode } from "@matter-server/ws-client";
 
 export const showNodeBindingDialog = async (client: MatterClient, node: MatterNode, endpoint: number) => {
     await import("./node-binding-dialog.js");

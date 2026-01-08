@@ -8,10 +8,10 @@ import {
     ClusterMap,
     convertMatterToWebSocketTagBased,
     convertWebSocketTagBasedToMatter,
-    parsePythonJson,
+    parseBigIntAwareJson,
     splitAttributePath,
-    toPythonJson,
-} from "@matter-server/controller";
+    toBigIntAwareJson,
+} from "@matter-server/ws-controller";
 import { Bytes } from "@matter/general";
 
 describe("Converters", () => {
@@ -441,23 +441,23 @@ describe("Converters", () => {
         });
     });
 
-    describe("toPythonJson", () => {
+    describe("toBigIntAwareJson", () => {
         it("should stringify objects with small numbers", () => {
             const obj = { node_id: 123, name: "test" };
-            const result = toPythonJson(obj);
+            const result = toBigIntAwareJson(obj);
             expect(result).to.equal('{"node_id":123,"name":"test"}');
         });
 
         it("should handle BigInt values within safe integer range", () => {
             const obj = { node_id: BigInt(123) };
-            const result = toPythonJson(obj);
+            const result = toBigIntAwareJson(obj);
             expect(result).to.equal('{"node_id":123}');
         });
 
         it("should handle BigInt values exceeding safe integer range", () => {
             const largeNumber = BigInt("18446744069414584320"); // 0xFFFF_FFFE_0000_0000
             const obj = { node_id: largeNumber };
-            const result = toPythonJson(obj);
+            const result = toBigIntAwareJson(obj);
             // Should output the raw decimal number (not quoted)
             expect(result).to.equal('{"node_id":18446744069414584320}');
         });
@@ -467,7 +467,7 @@ describe("Converters", () => {
                 node_id: BigInt("18446744069414584321"),
                 fabric_id: BigInt("18446744073709551615"), // max uint64
             };
-            const result = toPythonJson(obj);
+            const result = toBigIntAwareJson(obj);
             expect(result).to.include("18446744069414584321");
             expect(result).to.include("18446744073709551615");
         });
@@ -479,7 +479,7 @@ describe("Converters", () => {
                     name: "test",
                 },
             };
-            const result = toPythonJson(obj);
+            const result = toBigIntAwareJson(obj);
             expect(result).to.include("18446744069414584320");
         });
 
@@ -487,36 +487,36 @@ describe("Converters", () => {
             const obj = {
                 nodes: [BigInt("18446744069414584320"), BigInt("18446744069414584321")],
             };
-            const result = toPythonJson(obj);
+            const result = toBigIntAwareJson(obj);
             expect(result).to.include("18446744069414584320");
             expect(result).to.include("18446744069414584321");
         });
     });
 
-    describe("parsePythonJson", () => {
+    describe("parseBigIntAwareJson", () => {
         it("should parse objects with small numbers", () => {
             const json = '{"node_id":123,"name":"test"}';
-            const result = parsePythonJson(json) as { node_id: number; name: string };
+            const result = parseBigIntAwareJson(json) as { node_id: number; name: string };
             expect(result.node_id).to.equal(123);
             expect(result.name).to.equal("test");
         });
 
         it("should parse objects with numbers within safe integer range", () => {
             const json = '{"node_id":9007199254740991}'; // MAX_SAFE_INTEGER
-            const result = parsePythonJson(json) as { node_id: number };
+            const result = parseBigIntAwareJson(json) as { node_id: number };
             expect(result.node_id).to.equal(9007199254740991);
         });
 
         it("should convert large numbers to BigInt", () => {
             const json = '{"node_id":18446744069414584320}';
-            const result = parsePythonJson(json) as { node_id: bigint };
+            const result = parseBigIntAwareJson(json) as { node_id: bigint };
             expect(typeof result.node_id).to.equal("bigint");
             expect(result.node_id).to.equal(BigInt("18446744069414584320"));
         });
 
         it("should handle multiple large numbers", () => {
             const json = '{"node_id":18446744069414584321,"fabric_id":18446744073709551615}';
-            const result = parsePythonJson(json) as { node_id: bigint; fabric_id: bigint };
+            const result = parseBigIntAwareJson(json) as { node_id: bigint; fabric_id: bigint };
             expect(typeof result.node_id).to.equal("bigint");
             expect(typeof result.fabric_id).to.equal("bigint");
             expect(result.node_id).to.equal(BigInt("18446744069414584321"));
@@ -525,7 +525,7 @@ describe("Converters", () => {
 
         it("should handle nested objects with large numbers", () => {
             const json = '{"data":{"node_id":18446744069414584320,"name":"test"}}';
-            const result = parsePythonJson(json) as { data: { node_id: bigint; name: string } };
+            const result = parseBigIntAwareJson(json) as { data: { node_id: bigint; name: string } };
             expect(typeof result.data.node_id).to.equal("bigint");
             expect(result.data.node_id).to.equal(BigInt("18446744069414584320"));
             expect(result.data.name).to.equal("test");
@@ -533,7 +533,7 @@ describe("Converters", () => {
 
         it("should handle arrays with large numbers", () => {
             const json = '{"nodes":[18446744069414584320,18446744069414584321]}';
-            const result = parsePythonJson(json) as { nodes: bigint[] };
+            const result = parseBigIntAwareJson(json) as { nodes: bigint[] };
             expect(result.nodes).to.have.length(2);
             expect(typeof result.nodes[0]).to.equal("bigint");
             expect(typeof result.nodes[1]).to.equal("bigint");
@@ -543,7 +543,7 @@ describe("Converters", () => {
 
         it("should preserve small numbers as numbers", () => {
             const json = '{"small":123,"large":18446744069414584320}';
-            const result = parsePythonJson(json) as { small: number; large: bigint };
+            const result = parseBigIntAwareJson(json) as { small: number; large: bigint };
             expect(typeof result.small).to.equal("number");
             expect(typeof result.large).to.equal("bigint");
             expect(result.small).to.equal(123);
@@ -552,17 +552,17 @@ describe("Converters", () => {
 
         it("should handle whitespace around large numbers", () => {
             const json = '{ "node_id": 18446744069414584320 }';
-            const result = parsePythonJson(json) as { node_id: bigint };
+            const result = parseBigIntAwareJson(json) as { node_id: bigint };
             expect(typeof result.node_id).to.equal("bigint");
             expect(result.node_id).to.equal(BigInt("18446744069414584320"));
         });
     });
 
-    describe("toPythonJson and parsePythonJson round-trip", () => {
+    describe("toBigIntAwareJson and parseBigIntAwareJson round-trip", () => {
         it("should round-trip object with large BigInt", () => {
             const original = { node_id: BigInt("18446744069414584320") };
-            const json = toPythonJson(original);
-            const parsed = parsePythonJson(json) as { node_id: bigint };
+            const json = toBigIntAwareJson(original);
+            const parsed = parseBigIntAwareJson(json) as { node_id: bigint };
             expect(parsed.node_id).to.equal(original.node_id);
         });
 
@@ -572,8 +572,8 @@ describe("Converters", () => {
                 fabric_id: BigInt("18446744073709551615"),
                 small_id: BigInt(123),
             };
-            const json = toPythonJson(original);
-            const parsed = parsePythonJson(json) as typeof original;
+            const json = toBigIntAwareJson(original);
+            const parsed = parseBigIntAwareJson(json) as typeof original;
             expect(parsed.node_id).to.equal(original.node_id);
             expect(parsed.fabric_id).to.equal(original.fabric_id);
             // Small BigInt is converted to number during stringify, stays as number
@@ -591,8 +591,8 @@ describe("Converters", () => {
                     },
                 },
             };
-            const json = toPythonJson(original);
-            const parsed = parsePythonJson(json) as typeof original;
+            const json = toBigIntAwareJson(original);
+            const parsed = parseBigIntAwareJson(json) as typeof original;
             expect(parsed.message_id).to.equal("test-123");
             expect(parsed.result.node_id).to.equal(original.result.node_id);
             expect(parsed.result.available).to.equal(true);

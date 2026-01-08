@@ -14,8 +14,6 @@ for (const ClusterDefinition of Object.values(Clusters)) {
     const ClusterSchema = Schema.Required(ClusterDefinition);
     Matter.children.push(ClusterSchema);
 
-    console.log("Registering Schema", ClusterSchema);
-
     const ClusterType = ClusterTypeOfModel(ClusterSchema as ClusterModel);
     ClusterRegistry.register(ClusterType);
 }

@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type { HttpServer, WebServerHandler } from "@matter-server/controller";
+import type { HttpServer, WebServerHandler } from "@matter-server/ws-controller";
 import express from "express";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";

@@ -12,7 +12,7 @@ import "@material/web/list/list-item";
 import { mdiArrowLeft, mdiLogout } from "@mdi/js";
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property } from "lit/decorators.js";
-import { MatterClient } from "../../client/client.js";
+import { MatterClient } from "@matter-server/ws-client";
 import "../../components/ha-svg-icon";
 
 interface HeaderAction {

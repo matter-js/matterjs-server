@@ -418,7 +418,9 @@ Optional parameters:
 
 ### ACL and Bindings
 
-**set_acl_entry** - Set an ACL entry on a node
+**set_acl_entry** - Set ACL entries on a node
+
+Replaces the ACL entries for the controller's fabric on the target node. The server automatically determines the fabric index.
 
 ```json
 {
@@ -426,16 +428,23 @@ Optional parameters:
   "command": "set_acl_entry",
   "args": {
     "node_id": 1,
-    "entry": {
-      "privilege": 5,
-      "authMode": 2,
-      "subjects": [112233],
-      "targets": null,
-      "fabricIndex": 1
-    }
+    "entry": [
+      {
+        "privilege": 5,
+        "auth_mode": 2,
+        "subjects": [112233],
+        "targets": null
+      }
+    ]
   }
 }
 ```
+
+Entry fields:
+- `privilege`: 1=View, 3=Operate, 4=Manage, 5=Administer
+- `auth_mode`: 1=PASE, 2=CASE, 3=Group
+- `subjects`: Array of NodeIds or GroupIds (or null)
+- `targets`: Optional target restrictions (or null) - each target has `cluster`, `endpoint`, `device_type` fields
 
 **set_node_binding** - Set bindings on a node endpoint
 
@@ -478,8 +487,8 @@ Optional parameters:
   "message_id": "1",
   "command": "update_node",
   "args": {
-    "nodeId": 1,
-    "softwareVersion": 2
+    "node_id": 1,
+    "software_version": 2
   }
 }
 ```

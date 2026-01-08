@@ -17,7 +17,7 @@ import {
     createTempStoragePaths,
     killProcess,
     MANUAL_PAIRING_CODE,
-    MatterWebSocketClient,
+    MatterTestClient,
     SERVER_PORT,
     SERVER_WS_URL,
     startServer,
@@ -32,7 +32,7 @@ const TEST_TIMEOUT = 120_000; // 2 minutes for Matter commissioning
  * Helper to wait for OnOff attribute update event.
  */
 async function waitForOnOffUpdate(
-    client: MatterWebSocketClient,
+    client: MatterTestClient,
     nodeId: number,
     expectedValue: boolean,
 ): Promise<void> {
@@ -53,7 +53,7 @@ describe("Integration Test", function () {
 
     let serverProcess: ChildProcess;
     let deviceProcess: ChildProcess;
-    let client: MatterWebSocketClient;
+    let client: MatterTestClient;
     let serverStoragePath: string;
     let deviceStoragePath: string;
     let commissionedNodeId: number;
@@ -76,8 +76,8 @@ describe("Integration Test", function () {
         console.log("Server is ready");
 
         // Connect WebSocket client
-        client = new MatterWebSocketClient(SERVER_WS_URL);
-        const serverInfo = await client.connect();
+        client = new MatterTestClient(SERVER_WS_URL);
+        const serverInfo = await client.connectAndGetServerInfo();
         console.log("Connected to server, schema version:", serverInfo.schema_version);
     });
 
@@ -114,7 +114,7 @@ describe("Integration Test", function () {
         });
 
         it("should have no commissioned nodes initially", async function () {
-            const nodes = await client.startListening();
+            const nodes = await client.startListeningAndGetNodes();
             expect(nodes).to.be.an("array").that.is.empty;
         });
 
@@ -815,12 +815,12 @@ describe("Integration Test", function () {
             console.log("Server restarted");
 
             // Reconnect WebSocket client
-            client = new MatterWebSocketClient(SERVER_WS_URL);
-            const serverInfo = await client.connect();
+            client = new MatterTestClient(SERVER_WS_URL);
+            const serverInfo = await client.connectAndGetServerInfo();
             console.log("Reconnected to server, schema version:", serverInfo.schema_version);
 
             // Verify the node is still there
-            const nodes = await client.startListening();
+            const nodes = await client.startListeningAndGetNodes();
             // Filter out test nodes (test nodes don't persist across restart anyway)
             const realNodes = nodes.filter(n => BigInt(n.node_id) < BigInt("0xfffffffe00000000"));
             expect(realNodes).to.be.an("array").with.lengthOf(1);

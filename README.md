@@ -9,9 +9,16 @@
 The Open Home Foundation Matter Server serves as the foundation to provide Matter support to [Home Assistant](https://home-assistant.io) but its universal approach makes it suitable to be used in other projects too.
 
 This project implements a Matter Controller Server over WebSockets using JavaScript Matter SDK [matter.js](https://github.com/matter-js/matter.js)
-as a base and provides both a server and client implementation.
+as a base and provides a server implementation.
 
-The Open Home Foundation Matter Server software component is a project of the [The Open Home Foundation](https://www.openhomefoundation.org/).
+The Open Home Foundation Matter Server software component is a project of the [Open Home Foundation](https://www.openhomefoundation.org/).
+
+This repository consists of multiple packages that are provided in the `packages` directory:
+* `matter-server`: The OHF Matter Server using the below packages to provide functionality on a webserver
+* `ws-controller`: The WebSocket-based Matter Controller implementation using matter.js
+* `ws-client`: A WebSocket client library for connecting to the Matter Server (usable in browser and Node.js)
+* `custom-clusters`: A set of community-provided custom Matter clusters used by the Matter Server
+* `dashboard`: A dashboard to interact with the Matter Server and show node detailed data
 
 ## Support
 

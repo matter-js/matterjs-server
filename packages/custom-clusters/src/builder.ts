@@ -28,7 +28,7 @@ export function ClusterTypeOfModel(model: ClusterModel) {
             continue;
         }
         const name = camelize(attr.name);
-        // TODO resect mandatory flag when needed
+        // TODO respect mandatory flag when needed
         cluster.attributes![name] = OptionalAttribute(id, TlvOfModel(attr));
     }
 

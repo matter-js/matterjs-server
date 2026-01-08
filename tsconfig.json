@@ -8,7 +8,10 @@
             "path": "packages/custom-clusters"
         },
         {
-            "path": "packages/controller"
+            "path": "packages/ws-controller"
+        },
+        {
+            "path": "packages/ws-client"
         },
         {
             "path": "packages/dashboard"

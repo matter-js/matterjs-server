@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { MatterClient } from "../../../client/client.js";
+import { MatterClient } from "@matter-server/ws-client";
 
 export const showCommissionNodeDialog = async (client: MatterClient) => {
     await import("./commission-node-dialog.js");

@@ -5,6 +5,6 @@
  */
 
 import { createContext } from "@lit/context";
-import type { MatterClient } from "./client.js";
+import type { MatterClient } from "@matter-server/ws-client";
 
 export const clientContext = createContext<MatterClient>("client");

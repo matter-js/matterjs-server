@@ -31,7 +31,7 @@ import {
 } from "../types/WebSocketMessageTypes.js";
 import { MATTER_VERSION } from "../util/matterVersion.js";
 import { ConfigStorage } from "./ConfigStorage.js";
-import { convertMatterToWebSocketTagBased, parsePythonJson, splitAttributePath, toPythonJson } from "./Converters.js";
+import { convertMatterToWebSocketTagBased, parseBigIntAwareJson, splitAttributePath, toBigIntAwareJson } from "./Converters.js";
 
 const logger = Logger.get("WebSocketControllerHandler");
 
@@ -101,14 +101,14 @@ export class WebSocketControllerHandler implements WebServerHandler {
                         this.#collectNodeDetails(nodeId).then(
                             nodeDetails => {
                                 logger.info(`Sending ${eventName} event for Node ${nodeId}`, nodeDetails);
-                                ws.send(toPythonJson({ event: eventName, data: nodeDetails }));
+                                ws.send(toBigIntAwareJson({ event: eventName, data: nodeDetails }));
                             },
                             err => logger.error(`Failed to collect node details for Node ${nodeId}`, err),
                         );
                         break;
                     case "node_removed":
                         logger.info(`Sending node_removed event for Node ${nodeId}`);
-                        ws.send(toPythonJson({ event: eventName, data: nodeId }));
+                        ws.send(toBigIntAwareJson({ event: eventName, data: nodeId }));
                         break;
                 }
             };
@@ -126,7 +126,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     clusterData?.model,
                 );
                 logger.info(`Sending attribute_updated event for Node ${nodeId}`, pathStr, value);
-                ws.send(toPythonJson({ event: "attribute_updated", data: [nodeId, pathStr, value] }));
+                ws.send(toBigIntAwareJson({ event: "attribute_updated", data: [nodeId, pathStr, value] }));
             });
 
             observers.on(this.#commandHandler.events.eventChanged, (nodeId, data) => {
@@ -165,7 +165,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     this.#addEventToHistory(nodeEvent);
 
                     logger.info(`Sending node_event for Node ${nodeId}`, nodeEvent);
-                    ws.send(toPythonJson({ event: "node_event", data: nodeEvent }));
+                    ws.send(toBigIntAwareJson({ event: "node_event", data: nodeEvent }));
                 }
             });
 
@@ -193,14 +193,14 @@ export class WebSocketControllerHandler implements WebServerHandler {
             observers.on(this.#commandHandler.events.nodeEndpointAdded, (nodeId, endpointId) => {
                 if (this.#closed || !listening) return;
                 logger.info(`Sending endpoint_added event for Node ${nodeId} endpoint ${endpointId}`);
-                ws.send(toPythonJson({ event: "endpoint_added", data: { node_id: nodeId, endpoint_id: endpointId } }));
+                ws.send(toBigIntAwareJson({ event: "endpoint_added", data: { node_id: nodeId, endpoint_id: endpointId } }));
             });
 
             observers.on(this.#commandHandler.events.nodeEndpointRemoved, (nodeId, endpointId) => {
                 if (this.#closed || !listening) return;
                 logger.info(`Sending endpoint_removed event for Node ${nodeId} endpoint ${endpointId}`);
                 ws.send(
-                    toPythonJson({ event: "endpoint_removed", data: { node_id: nodeId, endpoint_id: endpointId } }),
+                    toBigIntAwareJson({ event: "endpoint_removed", data: { node_id: nodeId, endpoint_id: endpointId } }),
                 );
             });
 
@@ -208,13 +208,13 @@ export class WebSocketControllerHandler implements WebServerHandler {
             observers.on(this.#testNodeHandler.nodeAdded, (_nodeId, testNode) => {
                 if (this.#closed || !listening) return;
                 logger.info(`Sending node_added event for test node ${testNode.node_id}`);
-                ws.send(toPythonJson({ event: "node_added", data: testNode }));
+                ws.send(toBigIntAwareJson({ event: "node_added", data: testNode }));
             });
 
             observers.on(this.#testNodeHandler.nodeRemoved, nodeId => {
                 if (this.#closed || !listening) return;
                 logger.info(`Sending node_removed event for test node ${nodeId}`);
-                ws.send(toPythonJson({ event: "node_removed", data: nodeId }));
+                ws.send(toBigIntAwareJson({ event: "node_removed", data: nodeId }));
             });
 
             const onClose = () => observers.close();
@@ -228,9 +228,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
                             if (enableListeners) {
                                 listening = true;
                             }
-                            const responseStr = toPythonJson(response);
+                            const responseStr = toBigIntAwareJson(response);
                             logger.info("Sending WebSocket response", responseStr);
-                            ws.send(toPythonJson(response));
+                            ws.send(toBigIntAwareJson(response));
                         },
                         err => logger.error("Websocket request error", err),
                     ),
@@ -243,7 +243,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             });
 
             this.#getServerInfo().then(
-                response => ws.send(toPythonJson(response)),
+                response => ws.send(toBigIntAwareJson(response)),
                 err => logger.error("Websocket handshake error", err),
             );
         });
@@ -254,7 +254,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
     async unregister() {
         // Send server_shutdown event to all connected clients before closing
         if (this.#wss) {
-            const shutdownMessage = toPythonJson({ event: "server_shutdown", data: {} });
+            const shutdownMessage = toBigIntAwareJson({ event: "server_shutdown", data: {} });
             this.#wss.clients.forEach(client => {
                 if (client.readyState === 1 /* WebSocket.OPEN */) {
                     try {
@@ -287,7 +287,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         let messageId: string | undefined;
         try {
             logger.info("Received WebSocket request", data);
-            const request = parsePythonJson(data) as { message_id: string; command: string; args: any };
+            const request = parseBigIntAwareJson(data) as { message_id: string; command: string; args: any };
             const { command, args } = request;
             messageId = request.message_id;
             let result: ResponseOf<any>;
@@ -430,7 +430,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
      */
     #broadcastEvent(event: string, data: unknown) {
         if (!this.#wss || this.#closed) return;
-        const message = toPythonJson({ event, data });
+        const message = toBigIntAwareJson({ event, data });
         this.#wss.clients.forEach(client => {
             if (client.readyState === 1 /* WebSocket.OPEN */) {
                 try {
@@ -862,9 +862,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
     }
 
     async #handleUpdateNode(args: ArgsOf<"update_node">): Promise<ResponseOf<"update_node">> {
-        const { nodeId, softwareVersion } = args;
-        const targetVersion = typeof softwareVersion === "string" ? parseInt(softwareVersion, 10) : softwareVersion;
-        return await this.#commandHandler.updateNode(NodeId(nodeId), targetVersion);
+        const { node_id, software_version } = args;
+        const targetVersion = typeof software_version === "string" ? parseInt(software_version, 10) : software_version;
+        return await this.#commandHandler.updateNode(NodeId(node_id), targetVersion);
     }
 
     async #collectNodeDetails(nodeId: NodeId): Promise<MatterNode> {

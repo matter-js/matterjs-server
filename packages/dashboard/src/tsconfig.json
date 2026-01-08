@@ -1,10 +1,16 @@
 {
     "extends": "../../tools/tsc/tsconfig.lib.json",
     "compilerOptions": {
-        "types": ["globals"],
+        "types": [
+            "globals"
+        ],
         "experimentalDecorators": true,
         "useDefineForClassFields": false,
         "allowSyntheticDefaultImports": true
     },
-    "references": []
+    "references": [
+        {
+            "path": "../../ws-client/src"
+        }
+    ]
 }

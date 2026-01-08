@@ -7,17 +7,19 @@
 /**
  * JSON utilities for handling BigInt values in WebSocket communication.
  * These functions ensure proper serialization/deserialization of large numbers
- * that exceed JavaScript's MAX_SAFE_INTEGER.
+ * that exceed JavaScript's MAX_SAFE_INTEGER (e.g., Matter node IDs, fabric IDs).
  */
 
 /** Marker prefix for large numbers that need BigInt conversion */
 const BIGINT_MARKER = "__BIGINT__";
 
 /**
- * JSON stringify with BigInt handling - converts BigInt to numbers, large values stay as raw numbers.
+ * Serialize to JSON with BigInt support.
+ * - BigInt values within safe integer range are converted to numbers
+ * - Large BigInt values are output as raw decimal numbers (not quoted strings)
  * Use this for outgoing WebSocket messages and displaying values.
  */
-export function toPythonJson(value: unknown, spaces?: number): string {
+export function toBigIntAwareJson(value: unknown, spaces?: number): string {
     const replacements = new Array<{ from: string; to: string }>();
     let result = JSON.stringify(
         value,
@@ -35,7 +37,7 @@ export function toPythonJson(value: unknown, spaces?: number): string {
         },
         spaces,
     );
-    // Python JSON has raw large numbers (not strings), so we need to replace the hex strings with the full decimal
+    // Large numbers need to be raw (not quoted) in the output, so replace hex placeholders with decimal
     // This handles both object values and array elements
     if (replacements.length > 0) {
         replacements.forEach(({ from, to }) => {
@@ -47,11 +49,11 @@ export function toPythonJson(value: unknown, spaces?: number): string {
 }
 
 /**
- * JSON parse with BigInt handling for large numbers that exceed JavaScript precision.
+ * Parse JSON with BigInt support for large numbers that exceed JavaScript precision.
  * Numbers with 15+ digits that exceed MAX_SAFE_INTEGER are converted to BigInt.
  * Use this for incoming WebSocket messages.
  */
-export function parsePythonJson(json: string): unknown {
+export function parseBigIntAwareJson(json: string): unknown {
     // Pre-process: Replace large numbers (15+ digits) with marked string placeholders
     // This must happen before JSON.parse to preserve precision
     // Match numbers after colon (object values) or after [ or , (array elements)
@@ -71,3 +73,4 @@ export function parsePythonJson(json: string): unknown {
         return value;
     });
 }
+

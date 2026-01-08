@@ -5,16 +5,14 @@
  */
 
 import { provide } from "@lit/context";
+import { MatterClient, MatterNode, toBigIntAwareJson } from "@matter-server/ws-client";
 import "@material/web/divider/divider";
 import "@material/web/iconbutton/icon-button";
 import "@material/web/list/list";
 import "@material/web/list/list-item";
 import { LitElement, css, html } from "lit";
 import { customElement, property } from "lit/decorators.js";
-import { MatterClient } from "../client/client.js";
-import { toPythonJson } from "../client/json-utils.js";
 import { clusters } from "../client/models/descriptions.js";
-import { MatterNode } from "../client/models/node.js";
 import { showAlertDialog } from "../components/dialog-box/show-dialog-box.js";
 import "../components/ha-svg-icon";
 import "../pages/components/node-details";
@@ -94,7 +92,7 @@ class MatterClusterView extends LitElement {
                                     ${clusters[this.cluster!]?.attributes[attribute.key]?.type || "unknown"}
                                 </div>
                                 <div slot="end">
-                                    ${toPythonJson(attribute.value).length > 20
+                                    ${toBigIntAwareJson(attribute.value).length > 20
                                         ? html`<button
                                               @click=${() => {
                                                   this._showAttributeValue(attribute.value);
@@ -102,7 +100,7 @@ class MatterClusterView extends LitElement {
                                           >
                                               Show value
                                           </button>`
-                                        : toPythonJson(attribute.value)}
+                                        : toBigIntAwareJson(attribute.value)}
                                 </div>
                             </md-list-item>
                             <md-divider />
@@ -116,7 +114,7 @@ class MatterClusterView extends LitElement {
     private async _showAttributeValue(value: any) {
         showAlertDialog({
             title: "Attribute value",
-            text: toPythonJson(value),
+            text: toBigIntAwareJson(value),
         });
     }
 
