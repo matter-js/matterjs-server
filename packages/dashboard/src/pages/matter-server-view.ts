@@ -45,7 +45,7 @@ class MatterServerView extends LitElement {
         const nodes = this.getNodeEntries(this.nodes);
 
         return html`
-            <dashboard-header title="Python Matter Server" .client=${this.client}></dashboard-header>
+            <dashboard-header title="Open Home Foundation Matter Server" .client=${this.client}></dashboard-header>
 
             <!-- server details section -->
             <div class="container">

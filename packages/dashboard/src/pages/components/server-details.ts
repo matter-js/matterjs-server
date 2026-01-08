@@ -30,7 +30,7 @@ export class ServerDetails extends LitElement {
       <md-list>
         <md-list-item>
             <div slot="headline">
-                <b>Python Matter Server ${this.client.isProduction ? "" : `(${this.client.serverBaseAddress})`}</b>
+                <b>Open Home Foundation Matter Server ${this.client.isProduction ? "" : `(${this.client.serverBaseAddress})`}</b>
                 ${this.client.connection.connected ? nothing : html`<span class="status">OFFLINE</span>`}
       </div>
         </md-list-item>

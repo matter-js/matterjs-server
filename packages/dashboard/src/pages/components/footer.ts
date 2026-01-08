@@ -12,8 +12,8 @@ export class DashboardFooter extends LitElement {
     protected override render() {
         return html`
             <div class="footer">
-                Python Matter Server is a project by Nabu Casa.
-                <a href="https://www.nabucasa.com">Fund development</a>
+                The OHF Matter Server is a project by the Open Home Foundation.
+                <a href="https://www.openhomefoundation.org/structure/#support-our-work">Support development</a>
             </div>
         `;
     }

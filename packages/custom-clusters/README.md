@@ -50,17 +50,7 @@ export * from "./myvendor.js";
 
 ### Data Types
 
-Use these type mappings when converting from Python Matter Server definitions:
-
-| Python Type | TypeScript Decorator             | TypeScript Property Type                   |
-|-------------|----------------------------------|--------------------------------------------|
-| `int`       | `int8` ... `int32` or `int64`    | `number` or `number \| bigint` (for 64bit) |
-| `uint`      | `uint8` ... `uint32` or `uint64` | `number` or `number \| bigint` (for 64bit) |
-| `float32`   | `single`                         | `number`                                   |
-| `float64`   | `double`                         | `number`                                   |
-| `bool`      | `bool`                           | `boolean`                                  |
-
-TypeScript also supports other variants of `int*` and `uint*` types. Please choose the one that matches your use case and the maximum possible value. If not known, and the usecase might imply higher values, it is safe to use 64bit precision for both signed and unsigned types.
+TypeScript supports some variants of `int*` and `uint*` types. Please choose the one that matches your use case and the maximum possible value. If not known, and the usecase might imply higher values, it is safe to use 64bit precision for both signed and unsigned types.
 
 ### Available Type Imports
 
