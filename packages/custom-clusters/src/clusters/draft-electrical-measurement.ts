@@ -1,3 +1,9 @@
+/**
+ * @license
+ * Copyright 2025-2026 Open Home Foundation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 import { attribute, cluster, uint32 } from "@matter/main/model";
 
 @cluster(0x00000b04)

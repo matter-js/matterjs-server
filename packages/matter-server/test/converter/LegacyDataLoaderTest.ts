@@ -1,3 +1,9 @@
+/**
+ * @license
+ * Copyright 2025-2026 Open Home Foundation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 import { computeCompressedNodeId, Crypto, Environment, LegacyServerFile } from "@matter-server/controller";
 import { NodeJsCrypto } from "@matter/nodejs";
 import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";

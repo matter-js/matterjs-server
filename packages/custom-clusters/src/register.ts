@@ -1,3 +1,9 @@
+/**
+ * @license
+ * Copyright 2025-2026 Open Home Foundation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 import { ClusterModel, Matter, Schema } from "@matter/main/model";
 import { ClusterRegistry } from "@matter/main/types";
 

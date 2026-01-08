@@ -1,4 +1,10 @@
 /**
+ * @license
+ * Copyright 2025-2026 Open Home Foundation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/**
  * Integration test for the Matter.js server.
  *
  * This test starts the actual server and a test device, then validates

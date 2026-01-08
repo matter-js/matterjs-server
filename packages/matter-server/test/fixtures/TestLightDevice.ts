@@ -1,4 +1,10 @@
 /**
+ * @license
+ * Copyright 2025-2026 Open Home Foundation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/**
  * Test fixture: A minimal Matter OnOffLight device for integration testing.
  *
  * Usage: npx tsx test/fixtures/TestLightDevice.ts --storage-path=<path>

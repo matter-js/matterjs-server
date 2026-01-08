@@ -1,3 +1,9 @@
+/**
+ * @license
+ * Copyright 2025-2026 Open Home Foundation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 export const VendorIds: Record<string, string> = {
     0x0000: "[Matter Standard]",
     0x0001: "Panasonic",

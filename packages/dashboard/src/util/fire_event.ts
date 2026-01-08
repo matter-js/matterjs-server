@@ -1,3 +1,9 @@
+/**
+ * @license
+ * Copyright 2025-2026 Open Home Foundation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // Polymer legacy event helpers used courtesy of the Polymer project.
 //
 // Copyright (c) 2017 The Polymer Authors. All rights reserved.

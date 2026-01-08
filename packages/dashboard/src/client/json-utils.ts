@@ -1,4 +1,10 @@
 /**
+ * @license
+ * Copyright 2025-2026 Open Home Foundation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/**
  * JSON utilities for handling BigInt values in WebSocket communication.
  * These functions ensure proper serialization/deserialization of large numbers
  * that exceed JavaScript's MAX_SAFE_INTEGER.

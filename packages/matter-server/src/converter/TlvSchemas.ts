@@ -1,4 +1,10 @@
 /**
+ * @license
+ * Copyright 2025-2026 Open Home Foundation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/**
  * TLV Schema definitions for chip.json data structures.
  *
  * These schemas define the binary TLV format used by Matter.js for storing

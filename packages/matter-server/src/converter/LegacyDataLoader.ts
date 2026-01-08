@@ -1,4 +1,10 @@
 /**
+ * @license
+ * Copyright 2025-2026 Open Home Foundation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/**
  * Legacy data loader for Python Matter Server storage files.
  *
  * Loads and provides access to data from a Python Matter Server installation:

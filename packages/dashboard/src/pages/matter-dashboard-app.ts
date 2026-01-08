@@ -1,3 +1,9 @@
+/**
+ * @license
+ * Copyright 2025-2026 Open Home Foundation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 import { ContextProvider } from "@lit/context";
 import { LitElement, PropertyValueMap, html } from "lit";
 import { customElement, state } from "lit/decorators.js";

@@ -1,3 +1,9 @@
+/**
+ * @license
+ * Copyright 2025-2026 Open Home Foundation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 import type { HttpServer, WebServerHandler } from "@matter-server/controller";
 import express from "express";
 import { dirname } from "node:path";

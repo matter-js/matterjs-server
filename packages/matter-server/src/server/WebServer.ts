@@ -1,3 +1,9 @@
+/**
+ * @license
+ * Copyright 2025-2026 Open Home Foundation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 import { type HttpServer, Logger, type WebServerHandler } from "@matter-server/controller";
 import { createServer } from "node:http";
 

@@ -1,3 +1,9 @@
+/**
+ * @license
+ * Copyright 2025-2026 Open Home Foundation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 import { LegacyFabricConfigData } from "@matter-server/controller";
 import { Bytes, Key, StandardCrypto, type BinaryKeyPair } from "@matter/main";
 import { CertificateAuthority, Icac, Noc, Rcac } from "@matter/main/protocol";

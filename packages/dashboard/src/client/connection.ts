@@ -1,3 +1,9 @@
+/**
+ * @license
+ * Copyright 2025-2026 Open Home Foundation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 import { parsePythonJson, toPythonJson } from "./json-utils.js";
 import { CommandMessage, ServerInfoMessage } from "./models/model.js";
 

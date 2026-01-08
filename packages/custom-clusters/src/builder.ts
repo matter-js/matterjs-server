@@ -1,3 +1,9 @@
+/**
+ * @license
+ * Copyright 2025-2026 Open Home Foundation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 import { camelize, capitalize } from "@matter/main";
 import { ClusterModel, ElementTag, GLOBAL_IDS } from "@matter/main/model";
 import { ClusterType, MutableCluster, OptionalAttribute, TlvOfModel } from "@matter/main/types";

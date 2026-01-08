@@ -1,4 +1,10 @@
 /**
+ * @license
+ * Copyright 2025-2026 Open Home Foundation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/**
  * This is a manual usage helper to initially sniff WebSocket Messages from a normal chip-tool
  * test run in order to know request-response relations.
  *
