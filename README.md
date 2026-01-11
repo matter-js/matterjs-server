@@ -17,7 +17,7 @@ as a base and provides a server implementation.
 The Open Home Foundation Matter Server software component is a project of the [Open Home Foundation](https://www.openhomefoundation.org/).
 
 The current version of the server supports Matter 1.4.2 and is a drop-in replacement for the Python Matter Server.
-The Home Assistant integration is based on the Python bindings of the Python Matter Server v8.1.2, which uses a Matter-SDK version 1.4.2 (from Jun30th 2025).
+The Home Assistant integration is based on the Python bindings of the Python Matter Server v8.1.2, which uses a Matter-SDK version 1.4.2 (from 30.06.2025).
 
 This repository consists of multiple packages that are provided in the `packages` directory:
 * `matter-server`: The OHF Matter Server using the below packages to provide functionality on a webserver (published to npmjs as `matter-server`)
