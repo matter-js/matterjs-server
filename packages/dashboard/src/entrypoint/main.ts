@@ -39,7 +39,7 @@ async function main() {
         }
         url = storageUrl;
     } else {
-        // assume production server running inside the matter server
+        // assume a production server running inside the matter server
         // Turn httpX url into wsX url and append "/ws"
         let baseUrl = window.location.origin + window.location.pathname;
         if (baseUrl.endsWith("/")) {

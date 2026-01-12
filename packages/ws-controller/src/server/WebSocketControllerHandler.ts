@@ -69,7 +69,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
      * Get the appropriate command handler for a node ID.
      * Returns TestNodeCommandHandler for test nodes, ControllerCommandHandler for real nodes.
      */
-    #handlerFor(nodeId: number | bigint): ControllerCommandHandler | TestNodeCommandHandler {
+    #handlerFor(nodeId: number | bigint): TestNodeCommandHandler | ControllerCommandHandler {
         return TestNodeCommandHandler.isTestNodeId(nodeId) ? this.#testNodeHandler : this.#commandHandler;
     }
 
@@ -714,7 +714,11 @@ export class WebSocketControllerHandler implements WebServerHandler {
         if (TestNodeCommandHandler.isTestNodeId(nodeId) || response_type === null) {
             return null;
         }
-        return this.#convertCommandDataToWebSocketTagBased(ClusterId(clusterId), commandName, result);
+        const cmdResult = this.#convertCommandDataToWebSocketTagBased(ClusterId(clusterId), commandName, result);
+        if (cmdResult === undefined) {
+            return null;
+        }
+        return cmdResult;
     }
 
     async #handleInterviewNode(args: ArgsOf<"interview_node">): Promise<ResponseOf<"interview_node">> {

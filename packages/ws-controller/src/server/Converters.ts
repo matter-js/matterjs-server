@@ -5,7 +5,7 @@
  */
 
 import { AttributeId, Bytes, camelize, ClusterId, isObject, Logger } from "@matter/main";
-import { ClusterModel, FieldValue, ValueModel } from "@matter/main/model";
+import { ClusterModel, CommandModel, FieldValue, ValueModel } from "@matter/main/model";
 import { EndpointNumber, MATTER_EPOCH_OFFSET_S, MATTER_EPOCH_OFFSET_US } from "@matter/main/types";
 
 const logger = new Logger("ChipToolWebSocketHandler");
@@ -116,6 +116,34 @@ export function convertWebSocketTagBasedToMatter(
 
     // Return primitives as-is
     return value;
+}
+
+export function convertCommandArgumentToMatter(
+    value: Record<string, unknown>,
+    model: CommandModel,
+    clusterModel: ClusterModel,
+): unknown {
+    const valueKeys = Object.keys(value);
+    const result: { [key: string]: unknown } = {};
+
+    // Build a map of member ID to member for efficient lookup
+    const memberByName: { [name: string]: ValueModel } = {};
+    for (const member of model.members) {
+        if (member.name !== undefined) {
+            memberByName[camelize(member.name)] = member;
+        }
+    }
+
+    for (const key of valueKeys) {
+        if (memberByName[key]) {
+            const member = memberByName[key];
+            result[key] = convertWebSocketTagBasedToMatter(value[key], member, clusterModel);
+        } else {
+            // Keep unknown keys as-is (fallback for unknown attributes)
+            result[key] = value[key];
+        }
+    }
+    return result;
 }
 
 /**

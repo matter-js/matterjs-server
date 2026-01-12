@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { AsyncObservable } from "@matter/general";
+import { AsyncObservable, isObject } from "@matter/general";
 import {
     Bytes,
     ClusterBehavior,
@@ -64,6 +64,7 @@ import { Endpoint, NodeStates, PairedNode } from "@project-chip/matter.js/device
 import { ClusterMap, ClusterMapEntry } from "../model/ModelMapper.js";
 import {
     buildAttributePath,
+    convertCommandArgumentToMatter,
     convertMatterToWebSocketTagBased,
     getDateAsString,
     splitAttributePath,
@@ -682,7 +683,7 @@ export class ControllerCommandHandler {
             clusterId,
             commandName,
             timedInteractionTimeoutMs: timedRequestTimeoutMs,
-            // interactionTimeoutMs, // TODO
+            interactionTimeoutMs,
         } = data;
         let { data: commandData } = data;
 
@@ -704,8 +705,16 @@ export class ControllerCommandHandler {
         if (commandData && typeof commandData == "object" && Object.keys(commandData).length === 0) {
             commandData = undefined;
         }
+        if (isObject(commandData)) {
+            const cluster = ClusterMap[client.name.toLowerCase()];
+            const model = cluster?.commands[commandName.toLowerCase()];
+            if (cluster && model) {
+                commandData = convertCommandArgumentToMatter(commandData, model, cluster.model);
+            }
+        }
         return (client[commandName] as unknown as SignatureFromCommandSpec<Command<any, any, any>>)(commandData, {
             timedRequestTimeout: Millis(timedRequestTimeoutMs),
+            expectedProcessingTime: interactionTimeoutMs !== undefined ? Millis(interactionTimeoutMs) : undefined,
         });
     }
 

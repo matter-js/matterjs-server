@@ -1,14 +1,14 @@
 # Setting up your development environment
 
 > [!IMPORTANT]
-> This document is not yet updated to the matter.js version of the server and so relevant for the Python one.
+> This document is not yet fully updated to the matter.js version of the server and so relevant for the Python one.
 
 **For enabling Matter support within Home Assistant, please refer to the Home Assistant documentation. These instructions are for development only!**
 
-Development is only possible on a (recent) Linux or MacOS machine. Other operating systems are **not supported**. See [here](docs/os_requirements.md) for a full list of requirements to the OS and network, especially if you plan on communicating with Thread based devices.
+Development is only possible on a (recent) Linux or MacOS machine. Other operating systems are **not supported**. See [here](docs/os_requirements.md) for a full list of requirements to the OS and network, especially if you plan on communicating with Thread-based devices.
 
 - Download/clone the repo to your local machine.
-- Set-up the development environment: `scripts/setup.sh`
+- Set-up the development environment: Run `npm install` in the base directory of the repository.
 - Create the `/data` directory if it does not exist with permissions for the user running the python-matter-server.
 
 ## Start Matter server
@@ -36,6 +36,23 @@ There is also a Python client library hosted in this repository (used by Home As
 The client library has a dependency on the chip/matter clusters package which contains all (Cluster) models and this package is os/platform independent. The server library depends on the Matter Core SDK (still named CHIP) which is architecture and OS specific. We build (and publish) wheels for Linux (amd64 and aarch64) to pypi but for other platforms (like Macos) you will need to build those wheels yourself using the exact same version of the SDK as we use for the clusters package. Take a look at our build script for directions: https://github.com/home-assistant-libs/chip-wheels/blob/main/.github/workflows/build.yaml
 
 To only install the client part: `pip install python-matter-server`
+
+## Send Command Utility
+
+A simple CLI script is available for sending WebSocket commands to the server. Useful for testing and debugging.
+
+```bash
+# Usage
+npm run send-command -- <url> <command> [args-json]
+
+# Examples
+npm run send-command -- ws://localhost:5580/ws server_info
+npm run send-command -- ws://localhost:5580/ws get_node '{"node_id": 1}'
+npm run send-command -- ws://localhost:5580/ws start_listening
+npm run send-command -- ws://localhost:5580/ws device_command '{"node_id": 1, "endpoint_id": 1, "cluster_id": 6, "command_name": "toggle", "payload": {}}'
+```
+
+The script connects to the server, sends the command, and keeps the connection open to log all incoming messages (results and events). Press `Ctrl+C` to disconnect.
 
 ## Websocket commands
 

@@ -31,7 +31,8 @@
     "test": "matter-test --force-exit",
     "relock": "node ./utils/relock.js",
     "sync-matterjs": "node ./utils/sync-matterjs.js",
-    "server": "node --enable-source-maps packages/matter-server/dist/esm/MatterServer.js"
+    "server": "node --enable-source-maps packages/matter-server/dist/esm/MatterServer.js",
+    "send-command": "node --enable-source-maps packages/ws-controller/dist/esm/example/send-command.js"
   },
   "devDependencies": {
     "@eslint/compat": "^2.0.0",
