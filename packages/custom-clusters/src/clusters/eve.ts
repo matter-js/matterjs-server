@@ -38,7 +38,7 @@ export class EveCluster {
     @attribute(0x130a0015, int32)
     weatherTrend?: number;
 
-    @attribute(0x130a0018, int32)
+    @attribute(0x130a0018, uint32)
     valvePosition?: number;
 
     @attribute(0x130a000d, uint32)
