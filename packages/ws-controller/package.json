@@ -1,42 +1,45 @@
 {
-  "name": "@matter-server/ws-controller",
-  "version": "0.0.0-git",
-  "type": "module",
-  "description": "matter.js based Matter controller library",
-  "bugs": {
-    "url": "https://github.com/matter-js/matterjs-server/issues"
-  },
-  "homepage": "https://github.com/matter-js/matterjs-server",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/matter-js/matterjs-server.git"
-  },
-  "author": "Apollon77",
-  "main": "dist/esm/index.js",
-  "scripts": {
-    "clean": "matter-build clean",
-    "build": "matter-build",
-    "build-clean": "matter-build --clean"
-  },
-  "engines": {
-    "node": ">=20.19.0 <22.0.0 || >=22.13.0"
-  },
-  "optionalDependencies": {
-    "@matter/nodejs-ble": "0.16.1"
-  },
-  "dependencies": {
-    "@matter/main": "0.16.1",
-    "@project-chip/matter.js": "0.16.1",
-    "ws": "^8.18.3"
-  },
-  "devDependencies": {
-    "@types/node": "^25.0.3",
-    "@types/ws": "^8.18.1"
-  },
-  "files": [
-    "dist/**/*",
-    "src/**/*",
-    "LICENSE",
-    "README.md"
-  ]
+    "name": "@matter-server/ws-controller",
+    "version": "0.0.0-git",
+    "type": "module",
+    "description": "matter.js based Matter controller library",
+    "bugs": {
+        "url": "https://github.com/matter-js/matterjs-server/issues"
+    },
+    "homepage": "https://github.com/matter-js/matterjs-server",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/matter-js/matterjs-server.git"
+    },
+    "author": "Apollon77",
+    "main": "dist/esm/index.js",
+    "scripts": {
+        "clean": "matter-build clean",
+        "build": "matter-build",
+        "build-clean": "matter-build --clean"
+    },
+    "engines": {
+        "node": ">=20.19.0 <22.0.0 || >=22.13.0"
+    },
+    "optionalDependencies": {
+        "@matter/nodejs-ble": "0.16.1"
+    },
+    "dependencies": {
+        "@matter/main": "0.16.1",
+        "@project-chip/matter.js": "0.16.1",
+        "ws": "^8.18.3"
+    },
+    "devDependencies": {
+        "@types/node": "^25.0.3",
+        "@types/ws": "^8.18.1"
+    },
+    "files": [
+        "dist/**/*",
+        "src/**/*",
+        "LICENSE",
+        "README.md"
+    ],
+    "publishConfig": {
+        "access": "public"
+    }
 }

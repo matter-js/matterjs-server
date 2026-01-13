@@ -1,33 +1,36 @@
 {
-  "name": "@matter-server/custom-clusters",
-  "version": "0.0.0-git",
-  "type": "module",
-  "description": "Custom cluster definitions for matter.js based projects",
-  "bugs": {
-    "url": "https://github.com/matter-js/matterjs-server/issues"
-  },
-  "homepage": "https://github.com/matter-js/matterjs-server",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/matter-js/matterjs-server.git"
-  },
-  "author": "Open Home Foundation",
-  "main": "dist/esm/register.js",
-  "scripts": {
-    "clean": "matter-build clean",
-    "build": "matter-build",
-    "build-clean": "matter-build --clean"
-  },
-  "engines": {
-    "node": ">=20.19.0 <22.0.0 || >=22.13.0"
-  },
-  "dependencies": {
-    "@matter/main": "0.16.1"
-  },
-  "files": [
-    "dist/**/*",
-    "src/**/*",
-    "LICENSE",
-    "README.md"
-  ]
+    "name": "@matter-server/custom-clusters",
+    "version": "0.0.0-git",
+    "type": "module",
+    "description": "Custom cluster definitions for matter.js based projects",
+    "bugs": {
+        "url": "https://github.com/matter-js/matterjs-server/issues"
+    },
+    "homepage": "https://github.com/matter-js/matterjs-server",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/matter-js/matterjs-server.git"
+    },
+    "author": "Open Home Foundation",
+    "main": "dist/esm/register.js",
+    "scripts": {
+        "clean": "matter-build clean",
+        "build": "matter-build",
+        "build-clean": "matter-build --clean"
+    },
+    "engines": {
+        "node": ">=20.19.0 <22.0.0 || >=22.13.0"
+    },
+    "dependencies": {
+        "@matter/main": "0.16.1"
+    },
+    "files": [
+        "dist/**/*",
+        "src/**/*",
+        "LICENSE",
+        "README.md"
+    ],
+    "publishConfig": {
+        "access": "public"
+    }
 }

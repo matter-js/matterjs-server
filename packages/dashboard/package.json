@@ -1,51 +1,54 @@
 {
-  "name": "@matter-server/dashboard",
-  "version": "0.0.0-git",
-  "description": "Dashboard for OHF Matter Server",
-  "bugs": {
-    "url": "https://github.com/matter-js/matterjs-server/issues"
-  },
-  "homepage": "https://github.com/matter-js/matterjs-server",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/matter-js/matterjs-server.git"
-  },
-  "author": "Open Home Foundation",
-  "license": "Apache-2.0",
-  "type": "module",
-  "main": "dist/web/js/main.js",
-  "scripts": {
-    "clean": "matter-build clean",
-    "generate": "tsx scripts/generate-descriptions.ts",
-    "build": "npm run generate && matter-build && npm run bundle",
-    "build-clean": "npm run generate && matter-build --clean && npm run bundle",
-    "bundle": "rollup -c"
-  },
-  "devDependencies": {
-    "@babel/preset-env": "^7.28.5",
-    "@matter/main": "0.16.1",
-    "@rollup/plugin-babel": "^6.1.0",
-    "@rollup/plugin-commonjs": "^29.0.0",
-    "rollup-plugin-copy": "^3.5.0",
-    "@rollup/plugin-json": "^6.1.0",
-    "@rollup/plugin-node-resolve": "^16.0.3",
-    "@rollup/plugin-terser": "^0.4.4",
-    "@rollup/plugin-typescript": "^12.3.0",
-    "rollup": "^4.54.0",
-    "serve": "^14.2.5"
-  },
-  "dependencies": {
-    "@lit/context": "^1.1.6",
-    "@material/web": "^2.4.1",
-    "@matter-server/ws-client": "*",
-    "@mdi/js": "^7.4.47",
-    "lit": "^3.3.1",
-    "tslib": "^2.8.1"
-  },
-  "files": [
-    "dist/**/*",
-    "src/**/*",
-    "LICENSE",
-    "README.md"
-  ]
+    "name": "@matter-server/dashboard",
+    "version": "0.0.0-git",
+    "description": "Dashboard for OHF Matter Server",
+    "bugs": {
+        "url": "https://github.com/matter-js/matterjs-server/issues"
+    },
+    "homepage": "https://github.com/matter-js/matterjs-server",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/matter-js/matterjs-server.git"
+    },
+    "author": "Open Home Foundation",
+    "license": "Apache-2.0",
+    "type": "module",
+    "main": "dist/web/js/main.js",
+    "scripts": {
+        "clean": "matter-build clean",
+        "generate": "tsx scripts/generate-descriptions.ts",
+        "build": "npm run generate && matter-build && npm run bundle",
+        "build-clean": "npm run generate && matter-build --clean && npm run bundle",
+        "bundle": "rollup -c"
+    },
+    "devDependencies": {
+        "@babel/preset-env": "^7.28.5",
+        "@matter/main": "0.16.1",
+        "@rollup/plugin-babel": "^6.1.0",
+        "@rollup/plugin-commonjs": "^29.0.0",
+        "rollup-plugin-copy": "^3.5.0",
+        "@rollup/plugin-json": "^6.1.0",
+        "@rollup/plugin-node-resolve": "^16.0.3",
+        "@rollup/plugin-terser": "^0.4.4",
+        "@rollup/plugin-typescript": "^12.3.0",
+        "rollup": "^4.54.0",
+        "serve": "^14.2.5"
+    },
+    "dependencies": {
+        "@lit/context": "^1.1.6",
+        "@material/web": "^2.4.1",
+        "@matter-server/ws-client": "*",
+        "@mdi/js": "^7.4.47",
+        "lit": "^3.3.1",
+        "tslib": "^2.8.1"
+    },
+    "files": [
+        "dist/**/*",
+        "src/**/*",
+        "LICENSE",
+        "README.md"
+    ],
+    "publishConfig": {
+        "access": "public"
+    }
 }
