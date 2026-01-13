@@ -7,6 +7,6 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
-### __WORK IN PROGRESS__
+### 0.2.0 (2026-01-13)
 
 - Initial release as Drop-In replacement for the [OHF Python-Matter-Server](https://github.com/matter-js/python-matter-server) v8.1.2. Please refer to the README.md for differences.
