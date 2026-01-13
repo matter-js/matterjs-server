@@ -155,7 +155,7 @@ export function convertCommandDataToMatter(
         for (const key of valueKeys) {
             if (memberByName[key]) {
                 const member = memberByName[key];
-                result[key] = convertWebSocketTagBasedToMatter(value[key], member, clusterModel);
+                result[key] = convertCommandDataToMatter(value[key], member, clusterModel);
             } else {
                 // Keep unknown keys as-is (fallback for unknown attributes)
                 result[key] = value[key];

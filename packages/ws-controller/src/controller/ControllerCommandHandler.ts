@@ -702,14 +702,16 @@ export class ControllerCommandHandler {
         if (!client[commandName] || !client.isCommandSupportedByName(commandName)) {
             throw new Error("Command not existing");
         }
-        if (commandData && typeof commandData == "object" && Object.keys(commandData).length === 0) {
-            commandData = undefined;
-        }
+
         if (isObject(commandData)) {
-            const cluster = ClusterMap[client.name.toLowerCase()];
-            const model = cluster?.commands[commandName.toLowerCase()];
-            if (cluster && model) {
-                commandData = convertCommandDataToMatter(commandData, model, cluster.model);
+            if (Object.keys(commandData).length === 0) {
+                commandData = undefined;
+            } else {
+                const cluster = ClusterMap[client.name.toLowerCase()];
+                const model = cluster?.commands[commandName.toLowerCase()];
+                if (cluster && model) {
+                    commandData = convertCommandDataToMatter(commandData, model, cluster.model);
+                }
             }
         }
         return (client[commandName] as unknown as SignatureFromCommandSpec<Command<any, any, any>>)(commandData, {
