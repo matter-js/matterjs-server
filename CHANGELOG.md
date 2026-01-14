@@ -7,7 +7,7 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
-## __WORK IN PROGRESS__
+## 0.2.2 (2026-01-14)
 
 - update matter.js to 0.16.2
 
