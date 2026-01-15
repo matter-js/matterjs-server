@@ -8,7 +8,6 @@ import { AsyncObservable, isObject } from "@matter/general";
 import {
     Bytes,
     ClientNodeInteraction,
-    ClusterBehavior,
     FabricId,
     FabricIndex,
     ipv4BytesToString,
@@ -40,6 +39,7 @@ import {
 } from "@matter/main/protocol";
 import {
     Attribute,
+    AttributeId,
     ClusterId,
     Command,
     DeviceTypeId,
@@ -62,7 +62,7 @@ import {
     VendorId,
 } from "@matter/main/types";
 import { CommissioningController, NodeCommissioningOptions } from "@project-chip/matter.js";
-import { Endpoint, NodeStates } from "@project-chip/matter.js/device";
+import { NodeStates } from "@project-chip/matter.js/device";
 import { ClusterMap, ClusterMapEntry } from "../model/ModelMapper.js";
 import {
     buildAttributePath,
@@ -83,8 +83,6 @@ import {
     MatterNodeData,
     OpenCommissioningWindowRequest,
     OpenCommissioningWindowResponse,
-    ReadAttributeRequest,
-    ReadAttributeResponse,
     ReadEventRequest,
     ReadEventResponse,
     SubscribeAttributeRequest,
@@ -380,114 +378,55 @@ export class ControllerCommandHandler {
 
     /**
      * Read multiple attributes from a node by path strings.
-     * Handles wildcards in paths.
+     * Supports wildcards in paths. Batches up to 9 paths per read call.
      */
     async handleReadAttributes(
         nodeId: NodeId,
         attributePaths: string[],
         fabricFiltered = false,
     ): Promise<AttributesData> {
-        const node = this.#nodes.get(nodeId);
-
         const result: AttributesData = {};
+        const client = await this.#nodes.interactionClientFor(nodeId);
+        const batchSize = 9;
 
-        // Check if any path contains wildcards - if so, we need to collect all attributes from node
-        const hasWildcards = attributePaths.some(path => path.includes("*"));
-        let allAttributes: AttributesData | undefined;
+        // Parse all paths (wildcards become undefined for that component)
+        const parsedPaths = attributePaths.map(path => splitAttributePath(path));
 
-        if (hasWildcards) {
-            if (!node.initialized) {
-                throw new Error(`Node ${nodeId} not ready`);
-            }
-            const rootEndpoint = node.getRootEndpoint();
-            if (rootEndpoint === undefined) {
-                throw new Error(`Node ${nodeId} not ready`);
-            }
-            allAttributes = {};
-            this.#collectAttributesFromEndpoint(rootEndpoint, allAttributes);
-        }
+        // Process in batches of up to 9
+        for (let i = 0; i < parsedPaths.length; i += batchSize) {
+            const batch = parsedPaths.slice(i, i + batchSize);
+            const attributes = batch.map(({ endpointId, clusterId, attributeId }) => ({
+                endpointId: endpointId !== undefined ? EndpointNumber(endpointId) : undefined,
+                clusterId: clusterId !== undefined ? ClusterId(clusterId) : undefined,
+                attributeId: attributeId !== undefined ? AttributeId(attributeId) : undefined,
+            }));
 
-        // Process each attribute path
-        for (const path of attributePaths) {
-            const { endpointId, clusterId, attributeId } = splitAttributePath(path);
-
-            // For wildcard paths, filter from collected attributes
-            if (path.includes("*") && allAttributes !== undefined) {
-                for (const [attrPath, value] of Object.entries(allAttributes)) {
-                    const parts = attrPath.split("/").map(Number);
-                    if (
-                        (endpointId === undefined || parts[0] === endpointId) &&
-                        (clusterId === undefined || parts[1] === clusterId) &&
-                        (attributeId === undefined || parts[2] === attributeId)
-                    ) {
-                        result[attrPath] = value;
-                    }
-                }
-                continue;
-            }
-
-            // For non-wildcard paths, use the SDK to read the specific attribute
-            const { values, status } = await this.handleReadAttribute({
-                nodeId,
-                endpointId,
-                clusterId,
-                attributeId,
-                fabricFiltered,
+            const { attributeData, attributeStatus } = await client.getMultipleAttributesAndStatus({
+                attributes,
+                isFabricFiltered: fabricFiltered,
             });
 
-            if (values.length) {
-                for (const valueData of values) {
-                    const { pathStr, value } = this.#convertAttributeToWebSocket(
-                        {
-                            endpointId: EndpointNumber(valueData.endpointId),
-                            clusterId: ClusterId(valueData.clusterId),
-                            attributeId: valueData.attributeId,
-                        },
-                        valueData.value,
-                    );
-                    result[pathStr] = value;
+            for (const { path: attrPath, value } of attributeData) {
+                const { pathStr, value: wsValue } = this.#convertAttributeToWebSocket(
+                    {
+                        endpointId: EndpointNumber(attrPath.endpointId),
+                        clusterId: ClusterId(attrPath.clusterId),
+                        attributeId: attrPath.attributeId,
+                    },
+                    value,
+                );
+                result[pathStr] = wsValue;
+            }
+
+            if (attributeStatus && attributeStatus.length > 0) {
+                for (const { path: attrPath, status } of attributeStatus) {
+                    const pathStr = buildAttributePath(attrPath.endpointId, attrPath.clusterId, attrPath.attributeId);
+                    logger.warn(`Failed to read attribute ${pathStr}: status=${status}`);
                 }
-            } else if (status && status.length > 0) {
-                logger.warn(`Failed to read attribute ${path}: status=${JSON.stringify(status)}`);
             }
         }
 
         return result;
-    }
-
-    /**
-     * Collect all attributes from an endpoint and its children into WebSocket format.
-     */
-    #collectAttributesFromEndpoint(endpoint: Endpoint, attributesData: AttributesData) {
-        const endpointId = endpoint.number!;
-        for (const behavior of endpoint.endpoint.behaviors.active) {
-            if (!ClusterBehavior.is(behavior)) {
-                continue;
-            }
-            const cluster = behavior.cluster;
-            const clusterId = cluster.id;
-            const clusterData = ClusterMap[cluster.name.toLowerCase()];
-            const clusterState = endpoint.endpoint.stateOf(behavior);
-
-            for (const attributeName in cluster.attributes) {
-                const attribute = cluster.attributes[attributeName];
-                if (attribute === undefined) {
-                    continue;
-                }
-                const attributeValue = (clusterState as Record<string, unknown>)[attributeName];
-                const { pathStr, value } = this.#convertAttributeToWebSocket(
-                    { endpointId, clusterId, attributeId: attribute.id },
-                    attributeValue,
-                    clusterData,
-                );
-                attributesData[pathStr] = value;
-            }
-        }
-
-        // Recursively collect from child endpoints
-        for (const childEndpoint of endpoint.getChildEndpoints()) {
-            this.#collectAttributesFromEndpoint(childEndpoint, attributesData);
-        }
     }
 
     /**
@@ -520,37 +459,6 @@ export class ControllerCommandHandler {
 
     disconnectNode(nodeId: NodeId) {
         return this.#controller.disconnectNode(nodeId, true);
-    }
-
-    async handleReadAttribute(data: ReadAttributeRequest): Promise<ReadAttributeResponse> {
-        const { nodeId, endpointId, clusterId, attributeId, fabricFiltered = true } = data;
-        const client = await this.#nodes.interactionClientFor(nodeId);
-
-        // Note: This method is for direct SDK reads with explicit paths.
-        // Wildcard handling is done at the WebSocket layer before calling this method.
-        const { attributeData, attributeStatus } = await client.getMultipleAttributesAndStatus({
-            attributes: [{ endpointId, clusterId, attributeId }],
-            isFabricFiltered: fabricFiltered,
-        });
-
-        return {
-            values: attributeData.map(
-                ({ path: { endpointId, clusterId, attributeId }, value, version: dataVersion }) => ({
-                    attributeId,
-                    clusterId,
-                    dataVersion,
-                    endpointId,
-                    value,
-                }),
-            ),
-            status: attributeStatus?.map(({ path: { endpointId, clusterId, attributeId }, status, clusterStatus }) => ({
-                attributeId,
-                clusterId,
-                endpointId,
-                status,
-                clusterStatus,
-            })),
-        };
     }
 
     async handleReadEvent(data: ReadEventRequest): Promise<ReadEventResponse> {

@@ -352,6 +352,33 @@ describe("Integration Test", function () {
             expect(Object.keys(attrs).length).to.be.greaterThan(5);
         });
 
+        it("should read batched attributes (>9 paths)", async function () {
+            // Test batching: read more than 9 attributes to verify batch handling
+            // Server batches reads into groups of 9 paths per call
+            const paths = [
+                "0/40/0", // DataModelRevision
+                "0/40/1", // VendorName
+                "0/40/2", // VendorId
+                "0/40/3", // ProductName
+                "0/40/4", // ProductId
+                "0/40/5", // NodeLabel
+                "0/40/6", // Location
+                "0/40/7", // HardwareVersion
+                "0/40/8", // HardwareVersionString
+                "0/40/9", // SoftwareVersion
+                "0/40/10", // SoftwareVersionString
+                "0/40/17", // UniqueId
+            ];
+            const attrs = await client.readAttribute(commissionedNodeId, paths);
+
+            // Should return values for existing attributes
+            expect(attrs).to.be.an("object");
+            expect(attrs["0/40/1"]).to.equal("Test Vendor");
+            expect(attrs["0/40/3"]).to.equal("Test Light");
+            // Verify we got multiple attributes back (at least the ones that exist)
+            expect(Object.keys(attrs).length).to.be.greaterThanOrEqual(8);
+        });
+
         it("should write NodeLabel attribute", async function () {
             // NodeLabel is attribute 5 in BasicInformation (0/40/5)
             const result = await client.writeAttribute(commissionedNodeId, "0/40/5", "Integration Test Node");
@@ -633,6 +660,35 @@ describe("Integration Test", function () {
 
                 // Non-existent path returns undefined value
                 expect(attrs["99/99/99"]).to.be.undefined;
+            });
+
+            it("should read batched attributes from test node (>9 paths)", async function () {
+                // Test batching with more than 9 paths on a test node
+                // This tests both the batching logic and the test node handler
+                const paths = [
+                    "0/40/0", // DataModelRevision
+                    "0/40/1", // VendorName
+                    "0/40/2", // VendorId
+                    "0/40/3", // ProductName
+                    "0/40/4", // ProductId
+                    "0/40/5", // NodeLabel
+                    "0/29/0", // DeviceTypeList
+                    "0/29/1", // ServerList
+                    "1/6/0", // OnOff
+                    "1/6/16384", // StartUpOnOff
+                    "99/99/99", // Non-existent (should be undefined)
+                    "99/99/98", // Non-existent (should be undefined)
+                ];
+                const attrs = await client.readAttribute(testNodeId, paths);
+
+                // Should return values for existing attributes
+                expect(attrs).to.be.an("object");
+                expect(attrs["0/40/1"]).to.equal("Test Vendor From Dump");
+                expect(attrs["0/40/3"]).to.equal("Test Product From Dump");
+                expect(attrs["1/6/0"]).to.equal(true);
+                // Non-existent paths return undefined
+                expect(attrs["99/99/99"]).to.be.undefined;
+                expect(attrs["99/99/98"]).to.be.undefined;
             });
         });
 

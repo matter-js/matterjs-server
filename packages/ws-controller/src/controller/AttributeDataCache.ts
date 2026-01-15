@@ -87,6 +87,9 @@ export class AttributeDataCache {
             clusterData?.attributes[attributeId],
             clusterData?.model,
         );
+        if (convertedValue === undefined) {
+            return;
+        }
         clusterCache.set(attributeId, convertedValue);
     }
 
@@ -174,6 +177,9 @@ export class AttributeDataCache {
                     clusterData?.attributes[attribute.id],
                     clusterData?.model,
                 );
+                if (convertedValue === undefined) {
+                    continue;
+                }
                 clusterCache.set(attribute.id, convertedValue);
             }
 

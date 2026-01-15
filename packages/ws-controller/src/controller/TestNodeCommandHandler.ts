@@ -12,8 +12,6 @@ import {
     InvokeRequest,
     MatterNodeData,
     NodeCommandHandler,
-    ReadAttributeRequest,
-    ReadAttributeResponse,
     WriteAttributeRequest,
 } from "../types/CommandHandler.js";
 import { MatterNode, TEST_NODE_START } from "../types/WebSocketMessageTypes.js";
@@ -181,60 +179,6 @@ export class TestNodeCommandHandler implements NodeCommandHandler {
         }
 
         return importedNodeIds;
-    }
-
-    /**
-     * Read attributes from a test node.
-     * Returns values from the stored attributes map.
-     */
-    async handleReadAttribute(data: ReadAttributeRequest): Promise<ReadAttributeResponse> {
-        const { nodeId, endpointId, clusterId, attributeId } = data;
-        const testNode = this.#testNodes.get(BigInt(nodeId));
-
-        if (testNode === undefined) {
-            throw new Error(`Test node ${nodeId} not found`);
-        }
-
-        const values: ReadAttributeResponse["values"] = [];
-
-        // Build the path pattern for matching
-        const hasWildcards = endpointId === undefined || clusterId === undefined || attributeId === undefined;
-
-        if (hasWildcards) {
-            // Match against all stored attributes
-            for (const [attrPath, value] of Object.entries(testNode.attributes)) {
-                const parts = attrPath.split("/").map(Number);
-                if (
-                    (endpointId === undefined || parts[0] === endpointId) &&
-                    (clusterId === undefined || parts[1] === clusterId) &&
-                    (attributeId === undefined || parts[2] === attributeId)
-                ) {
-                    values.push({
-                        endpointId: parts[0],
-                        clusterId: parts[1],
-                        attributeId: parts[2],
-                        dataVersion: 0,
-                        value,
-                    });
-                }
-            }
-        } else {
-            // Direct path lookup
-            const path = `${endpointId}/${clusterId}/${attributeId}`;
-            const value = testNode.attributes[path];
-            if (value !== undefined) {
-                values.push({
-                    endpointId,
-                    clusterId,
-                    attributeId,
-                    dataVersion: 0,
-                    value,
-                });
-            }
-        }
-
-        logger.debug(`read_attribute for test node ${nodeId}: ${values.length} values`);
-        return { values };
     }
 
     /**

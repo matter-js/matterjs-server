@@ -239,11 +239,6 @@ export interface NodeCommandHandler {
     handleReadAttributes(nodeId: NodeId, attributePaths: string[], fabricFiltered?: boolean): Promise<AttributesData>;
 
     /**
-     * Read attributes from a node.
-     */
-    handleReadAttribute(data: ReadAttributeRequest): Promise<ReadAttributeResponse>;
-
-    /**
      * Write an attribute to a node.
      */
     handleWriteAttribute(data: WriteAttributeRequest): Promise<AttributeResponseStatus>;
