@@ -1,0 +1,69 @@
+# This workflow validates that new matter.js nightly releases work with this project.
+# It runs on a schedule (6am CET) or can be triggered manually.
+name: Matter.js Nightly Validation
+
+on:
+  schedule:
+    # Run at 6am CET (5am UTC) daily
+    - cron: '0 5 * * *'
+  workflow_dispatch:
+    # Allow manual triggering
+
+jobs:
+  validate-nightly:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Prepare testing environment
+        uses: ./.github/actions/prepare-env
+        with:
+          node-version: '22.x'
+
+      - name: Sync matter.js to latest nightly
+        id: sync
+        run: |
+          # Capture the version being synced to
+          MATTERJS_VERSION=$(npm view @matter/main@dev version)
+          echo "matterjs_version=$MATTERJS_VERSION" >> $GITHUB_OUTPUT
+          echo "Syncing to matter.js version: $MATTERJS_VERSION"
+          npm run sync-matterjs
+
+      - name: Check for changes
+        id: check-changes
+        run: |
+          if git diff --quiet; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "No changes detected - matter.js versions are already up to date"
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "Changes detected - new matter.js versions available:"
+            git diff --stat
+          fi
+
+      - name: Install updated dependencies
+        if: steps.check-changes.outputs.has_changes == 'true'
+        run: npm install
+
+      - name: Run tests with updated matter.js
+        if: steps.check-changes.outputs.has_changes == 'true'
+        run: npm run test
+
+      - name: Report success
+        if: steps.check-changes.outputs.has_changes == 'true'
+        run: |
+          echo "## Matter.js Nightly Validation Passed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Successfully validated **matter.js ${{ steps.sync.outputs.matterjs_version }}**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "All tests passed with the latest nightly release." >> $GITHUB_STEP_SUMMARY
+
+      - name: Report no changes
+        if: steps.check-changes.outputs.has_changes == 'false'
+        run: |
+          echo "## Matter.js Nightly Validation - No Changes" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "matter.js version **${{ steps.sync.outputs.matterjs_version }}** is already in use." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "No new nightly version to validate." >> $GITHUB_STEP_SUMMARY
