@@ -1,4 +1,4 @@
-# Changelog for the OHF matterjs-server
+# Changelog for the OHF Matter(.js) Server
 
 This page shows a detailed overview of the changes between versions without the need to look into code, especially to see relevant changes while interfaces and features are still in flux.
 
@@ -6,6 +6,10 @@ This page shows a detailed overview of the changes between versions without the 
 	Placeholder for the next version (at the beginning of the line):
 	## __WORK IN PROGRESS__
 -->
+
+## __WORK IN PROGRESS__
+
+- Enhancement: Re-Adds the energy-polling for eve devices for eve devices that dud not have an update to the Matter attributes
 
 ## 0.2.3 (2026-01-15)
 

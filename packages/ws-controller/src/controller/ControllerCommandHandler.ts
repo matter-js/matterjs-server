@@ -104,6 +104,7 @@ import {
     UpdateSource,
 } from "../types/WebSocketMessageTypes.js";
 import { pingIp } from "../util/network.js";
+import { CustomClusterPoller } from "./CustomClusterPoller.js";
 import { Nodes } from "./Nodes.js";
 
 const logger = Logger.get("ControllerCommandHandler");
@@ -118,6 +119,8 @@ export class ControllerCommandHandler {
     #nodes = new Nodes();
     /** Cache of available updates keyed by nodeId */
     #availableUpdates = new Map<NodeId, SoftwareUpdateInfo>();
+    /** Poller for custom cluster attributes (Eve energy, etc.) */
+    #customClusterPoller: CustomClusterPoller;
     events = {
         started: new AsyncObservable(),
         attributeChanged: new Observable<[nodeId: NodeId, data: DecodedAttributeReportValue<any>]>(),
@@ -135,6 +138,13 @@ export class ControllerCommandHandler {
 
         this.#bleEnabled = bleEnabled;
         this.#otaEnabled = otaEnabled;
+
+        // Initialize custom cluster poller for Eve energy attributes etc.
+        // Reads automatically trigger change events through the normal attribute flow
+        this.#customClusterPoller = new CustomClusterPoller({
+            handleReadAttributes: (nodeId, paths, fabricFiltered) =>
+                this.handleReadAttributes(nodeId, paths, fabricFiltered),
+        });
     }
 
     get started() {
@@ -206,6 +216,7 @@ export class ControllerCommandHandler {
 
     close() {
         if (!this.#started) return;
+        this.#customClusterPoller.stop();
         return this.#controller.close();
     }
 
@@ -225,6 +236,11 @@ export class ControllerCommandHandler {
             // Only refresh cache on Connected state (not Reconnecting, WaitingForDiscovery, etc.)
             if (state === NodeStates.Connected) {
                 attributeCache.update(node);
+                // Register for custom cluster polling (e.g., Eve energy) after cache is updated
+                const attributes = attributeCache.get(nodeId);
+                if (attributes) {
+                    this.#customClusterPoller.registerNode(nodeId, attributes);
+                }
             }
             this.events.nodeStateChanged.emit(nodeId, state);
         });
@@ -245,6 +261,11 @@ export class ControllerCommandHandler {
         // Initialize attribute cache if node is already initialized
         if (node.initialized) {
             attributeCache.add(node);
+            // Register for custom cluster polling (e.g., Eve energy)
+            const attributes = attributeCache.get(nodeId);
+            if (attributes) {
+                this.#customClusterPoller.registerNode(nodeId, attributes);
+            }
         }
 
         return node;
@@ -999,6 +1020,8 @@ export class ControllerCommandHandler {
         await this.#controller.removeNode(nodeId, !!node?.isConnected);
         // Remove node from storage (also clears attribute cache)
         this.#nodes.delete(nodeId);
+        // Unregister from custom cluster polling
+        this.#customClusterPoller.unregisterNode(nodeId);
         // Emit nodeDecommissioned event after successful removal
         this.events.nodeDecommissioned.emit(nodeId);
     }
