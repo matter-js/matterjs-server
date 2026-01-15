@@ -9,7 +9,7 @@
  * Compatible with Python Matter Server CLI interface.
  */
 
-import { Command, Option } from "commander";
+import { Command, InvalidArgumentError, Option } from "commander";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
@@ -76,6 +76,13 @@ function collectAddresses(value: string, previous: string[]): string[] {
     return previous.concat(value);
 }
 
+function parseBooleanEnv(value: string): boolean {
+    const lower = value.toLowerCase();
+    if (["true", "1", "yes"].includes(lower)) return true;
+    if (["false", "0", "no"].includes(lower)) return false;
+    throw new InvalidArgumentError(`Invalid boolean value: ${value}`);
+}
+
 /** Deprecated options that are still accepted but no longer used */
 const DEPRECATED_OPTIONS: Record<string, string> = {
     logLevelSdk: "--log-level-sdk",
@@ -90,29 +97,71 @@ export function parseCliArgs(argv?: string[]): CliOptions {
     program.name("matter-server").description("Matter Controller Server using WebSockets.").version(VERSION);
 
     program
-        .option("--vendorid <id>", "Vendor ID for the Fabric", parseIntOption, DEFAULT_VENDOR_ID)
-        .option(
-            "--fabricid <id>",
-            "Fabric ID for the Fabric (random if not specified)",
-            parseIntOption,
-            DEFAULT_FABRIC_ID,
+        .addOption(
+            new Option("--vendorid <id>", "Vendor ID for the Fabric")
+                .argParser(parseIntOption)
+                .default(DEFAULT_VENDOR_ID)
+                .env("VENDOR_ID"),
         )
-        .option("--storage-path <path>", "Storage path to keep persistent data", DEFAULT_STORAGE_PATH)
-        .option("--port <port>", "TCP Port for WebSocket server", parseIntOption, DEFAULT_PORT)
+        .addOption(
+            new Option("--fabricid <id>", "Fabric ID for the Fabric (random if not specified)")
+                .argParser(parseIntOption)
+                .default(DEFAULT_FABRIC_ID)
+                .env("FABRIC_ID"),
+        )
+        .addOption(
+            new Option("--storage-path <path>", "Storage path to keep persistent data")
+                .default(DEFAULT_STORAGE_PATH)
+                .env("STORAGE_PATH"),
+        )
+        .addOption(
+            new Option("--port <port>", "TCP Port for WebSocket server")
+                .argParser(parseIntOption)
+                .default(DEFAULT_PORT)
+                .env("PORT"),
+        )
         .option(
             "--listen-address <address>",
-            "IP address to bind WebSocket server (repeatable, default: bind all)",
+            "IP address to bind WebSocket server (repeatable via CLI, single value via env: LISTEN_ADDRESS)",
             collectAddresses,
             [],
         )
-        .addOption(new Option("--log-level <level>", "Global logging level").choices(LOG_LEVELS).default("info"))
-        .option("--log-file <path>", "Log file path (optional)")
-        .option("--primary-interface <interface>", "Primary network interface for link-local addresses")
-        .option("--enable-test-net-dcl", "Enable test-net DCL certificates", false)
-        .option("--bluetooth-adapter <id>", "Bluetooth adapter HCI ID (e.g., 0 for hci0)", parseIntOption)
-        .option("--disable-ota", "Disable OTA update functionality", false)
-        .option("--ota-provider-dir <path>", "Directory for OTA Provider files")
-        .option("--disable-dashboard", "Disable the web dashboard", false)
+        .addOption(
+            new Option("--log-level <level>", "Global logging level")
+                .choices(LOG_LEVELS)
+                .default("info")
+                .env("LOG_LEVEL"),
+        )
+        .addOption(new Option("--log-file <path>", "Log file path (optional)").env("LOG_FILE"))
+        .addOption(
+            new Option("--primary-interface <interface>", "Primary network interface for link-local addresses").env(
+                "PRIMARY_INTERFACE",
+            ),
+        )
+        .addOption(
+            new Option("--enable-test-net-dcl", "Enable test-net DCL certificates")
+                .argParser(parseBooleanEnv)
+                .default(false)
+                .env("ENABLE_TEST_NET_DCL"),
+        )
+        .addOption(
+            new Option("--bluetooth-adapter <id>", "Bluetooth adapter HCI ID (e.g., 0 for hci0)")
+                .argParser(parseIntOption)
+                .env("BLUETOOTH_ADAPTER"),
+        )
+        .addOption(
+            new Option("--disable-ota", "Disable OTA update functionality")
+                .argParser(parseBooleanEnv)
+                .default(false)
+                .env("DISABLE_OTA"),
+        )
+        .addOption(new Option("--ota-provider-dir <path>", "Directory for OTA Provider files").env("OTA_PROVIDER_DIR"))
+        .addOption(
+            new Option("--disable-dashboard", "Disable the web dashboard")
+                .argParser(parseBooleanEnv)
+                .default(false)
+                .env("DISABLE_DASHBOARD"),
+        )
         // Deprecated options - still accepted for backwards compatibility
         .addOption(
             new Option("--log-level-sdk <level>", "Matter SDK logging level (deprecated, no longer used)")
@@ -133,12 +182,20 @@ export function parseCliArgs(argv?: string[]): CliOptions {
         }
     }
 
+    // Handle listenAddress: CLI provides an array, env var (LISTEN_ADDRESS) provides a single string
+    let listenAddress: string[] | null = null;
+    if (Array.isArray(opts.listenAddress) && opts.listenAddress.length > 0) {
+        listenAddress = opts.listenAddress;
+    } else if (process.env.LISTEN_ADDRESS) {
+        listenAddress = [process.env.LISTEN_ADDRESS];
+    }
+
     return {
         vendorId: opts.vendorid,
         fabricId: opts.fabricid ?? undefined,
         storagePath: opts.storagePath,
         port: opts.port,
-        listenAddress: opts.listenAddress.length > 0 ? opts.listenAddress : null,
+        listenAddress,
         logLevel: opts.logLevel,
         logFile: opts.logFile ?? null,
         primaryInterface: opts.primaryInterface ?? null,

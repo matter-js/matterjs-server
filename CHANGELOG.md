@@ -7,6 +7,10 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
+## __WORK IN PROGRESS__
+
+- Enhancement: Allows using Environment Variables to configure the Matter Server instead of using CLI parameters
+
 ## 0.2.3 (2026-01-15)
 
 - Enhancement: Allows a LOG_LEVEL environment variable to control the log level of the Matter server when started via docker container

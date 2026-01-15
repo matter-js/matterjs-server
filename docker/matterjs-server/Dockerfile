@@ -45,12 +45,10 @@ RUN \
     # Clean temp directories
     && rm -rf /tmp/* /var/tmp/* /root/.npm /root/.cache
 
-# Copy entrypoint script
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
-
-# Log level (debug, info, notice, warn, error, fatal)
+# Environment variables with defaults (all CLI options can be set via env vars)
+# See docs/docker.md for full list of available environment variables
 ENV LOG_LEVEL=info
+ENV STORAGE_PATH=/data
 
 # Data volume for persistent storage
 VOLUME ["/data"]
@@ -62,6 +60,6 @@ EXPOSE 5580
 HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
     CMD curl -f http://localhost:5580/ || exit 1
 
-# Run the matter server with data stored in /data
-ENTRYPOINT ["/entrypoint.sh"]
-CMD ["--storage-path", "/data"]
+# Run the matter server directly (all config via environment variables)
+ENTRYPOINT ["node", "--enable-source-maps", "/app/node_modules/matter-server/dist/esm/MatterServer.js"]
+CMD []

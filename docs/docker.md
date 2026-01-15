@@ -57,11 +57,11 @@ docker run -d \
 ```
 
 > [!NOTE]
-> The container has a default command line set (see Dockerfile). If you intend to pass additional arguments, you have to pass the default storage path as well.
+> The container uses environment variables for configuration by default (`STORAGE_PATH=/data`). You can override any setting using environment variables or CLI arguments.
 
 ### Command Line Options
 
-If you need to pass additional arguments:
+You can also pass CLI arguments directly (these override environment variables):
 
 ```bash
 docker run -d \
@@ -83,11 +83,28 @@ For all available options, see the [CLI documentation](cli.md).
 
 ### Environment Variables
 
-| Variable    | Description                | Default | Values                                           |
-|-------------|----------------------------|---------|--------------------------------------------------|
-| `LOG_LEVEL` | Server logging verbosity   | `info`  | `debug`, `info`, `notice`, `warn`, `error`, `fatal` |
+All CLI options can be configured via environment variables, making it easy to configure the server without passing command-line arguments.
 
-Example with environment variable:
+| Variable              | Description                                          | Default              | Values / Notes                                           |
+|-----------------------|------------------------------------------------------|----------------------|----------------------------------------------------------|
+| `STORAGE_PATH`        | Path to store Matter fabric data                     | `/data`              | Any valid path                                           |
+| `PORT`                | WebSocket server port                                | `5580`               | Any valid port number                                    |
+| `LISTEN_ADDRESS`      | IP address to bind WebSocket server                  | (all interfaces)     | Single IP address (use CLI for multiple)                 |
+| `LOG_LEVEL`           | Server logging verbosity                             | `info`               | `critical`, `error`, `warning`, `info`, `debug`, `verbose` |
+| `LOG_FILE`            | Log file path                                        | (none)               | Any valid file path                                      |
+| `PRIMARY_INTERFACE`   | Primary network interface for mDNS                   | (auto-detect)        | e.g., `eth0`, `en0`                                      |
+| `ENABLE_TEST_NET_DCL` | Enable test-net DCL certificates                     | `false`              | `true`, `false`                                          |
+| `BLUETOOTH_ADAPTER`   | Bluetooth adapter HCI ID                             | (none)               | e.g., `0` for `hci0`                                     |
+| `DISABLE_OTA`         | Disable OTA update functionality                     | `false`              | `true`, `false`                                          |
+| `OTA_PROVIDER_DIR`    | Directory for OTA Provider files                     | (none)               | Any valid directory path                                 |
+| `DISABLE_DASHBOARD`   | Disable the web dashboard                            | `false`              | `true`, `false`                                          |
+| `VENDOR_ID`           | Vendor ID for the Fabric                             | `0xfff1`             | Any valid vendor ID                                      |
+| `FABRIC_ID`           | Fabric ID for the Fabric                             | `1`                  | Any valid fabric ID                                      |
+
+> [!NOTE]
+> The `LISTEN_ADDRESS` environment variable only supports a single address. Use the CLI `--listen-address` option (repeatable) to bind to multiple addresses.
+
+Example with environment variables:
 
 ```bash
 docker run -d \
@@ -96,6 +113,7 @@ docker run -d \
   -v $(pwd)/data:/data \
   --network=host \
   -e LOG_LEVEL=debug \
+  -e PRIMARY_INTERFACE=eth0 \
   ghcr.io/matter-js/matterjs-server:stable
 ```
 
