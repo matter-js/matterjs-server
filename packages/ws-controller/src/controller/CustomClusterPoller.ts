@@ -210,7 +210,10 @@ export class CustomClusterPoller {
             return;
         }
 
-        this.#pollerTimer.interval = Millis(POLLING_INTERVAL_MS);
+        const targetInterval = Millis(POLLING_INTERVAL_MS);
+        if (this.#pollerTimer.interval !== targetInterval) {
+            this.#pollerTimer.interval = targetInterval;
+        }
 
         this.#isPolling = true;
 
