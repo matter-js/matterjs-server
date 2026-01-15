@@ -7,7 +7,7 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
-## __WORK IN PROGRESS__
+## 0.2.3 (2026-01-15)
 
 - Enhancement: Allows a LOG_LEVEL environment variable to control the log level of the Matter server when started via docker container
 - Enhancement: Added some basic cluster commands (OnOff and LevelControl) to the dashboard for more simple testing.
