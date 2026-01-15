@@ -32,13 +32,7 @@ export abstract class BaseClusterCommands extends LitElement {
      */
     protected async sendCommand(command: string, payload?: Record<string, unknown>): Promise<void> {
         try {
-            await this.client.deviceCommand(
-                this.node.node_id,
-                this.endpoint,
-                this.cluster,
-                command,
-                payload ?? {},
-            );
+            await this.client.deviceCommand(this.node.node_id, this.endpoint, this.cluster, command, payload ?? {});
         } catch (error) {
             console.error(`Failed to send command ${command}:`, error);
             // Could dispatch an event here for error handling in parent
