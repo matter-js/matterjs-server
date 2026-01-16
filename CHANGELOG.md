@@ -11,6 +11,8 @@ This page shows a detailed overview of the changes between versions without the 
 
 - Enhancement: Re-adds the energy-polling for Eve devices that did not have an update to the Matter attributes
 - Enhancement: Allows using Environment Variables to configure the Matter Server instead of using CLI parameters
+- Enhancement: Displays the global cluster attributes always last in the cluster view of the dashboard
+- Enhancement: Include custom cluster definitions in the generated dashboard data to show attributes and clusters with names
 
 ## 0.2.3 (2026-01-15)
 

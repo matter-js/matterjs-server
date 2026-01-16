@@ -10944,5 +10944,491 @@ export const clusters: Record<number, ClusterDescription> = {
                 "type": "ClusterRevision"
             }
         }
+    },
+    "2820": {
+        "id": 2820,
+        "label": "Draft Electrical Measurement Cluster",
+        "attributes": {
+            "1285": {
+                "id": 1285,
+                "cluster_id": 2820,
+                "label": "Rms Voltage",
+                "type": "Optional[unknown]"
+            },
+            "1288": {
+                "id": 1288,
+                "cluster_id": 2820,
+                "label": "Rms Current",
+                "type": "Optional[unknown]"
+            },
+            "1291": {
+                "id": 1291,
+                "cluster_id": 2820,
+                "label": "Active Power",
+                "type": "Optional[unknown]"
+            },
+            "1536": {
+                "id": 1536,
+                "cluster_id": 2820,
+                "label": "Ac Voltage Multiplier",
+                "type": "Optional[unknown]"
+            },
+            "1537": {
+                "id": 1537,
+                "cluster_id": 2820,
+                "label": "Ac Voltage Divisor",
+                "type": "Optional[unknown]"
+            },
+            "1538": {
+                "id": 1538,
+                "cluster_id": 2820,
+                "label": "Ac Current Multiplier",
+                "type": "Optional[unknown]"
+            },
+            "1539": {
+                "id": 1539,
+                "cluster_id": 2820,
+                "label": "Ac Current Divisor",
+                "type": "Optional[unknown]"
+            },
+            "1540": {
+                "id": 1540,
+                "cluster_id": 2820,
+                "label": "Ac Power Multiplier",
+                "type": "Optional[unknown]"
+            },
+            "1541": {
+                "id": 1541,
+                "cluster_id": 2820,
+                "label": "Ac Power Divisor",
+                "type": "Optional[unknown]"
+            },
+            "65528": {
+                "id": 65528,
+                "cluster_id": 2820,
+                "label": "Generated Command List",
+                "type": "List[command-id]"
+            },
+            "65529": {
+                "id": 65529,
+                "cluster_id": 2820,
+                "label": "Accepted Command List",
+                "type": "List[command-id]"
+            },
+            "65530": {
+                "id": 65530,
+                "cluster_id": 2820,
+                "label": "Event List",
+                "type": "Optional[unknown]"
+            },
+            "65531": {
+                "id": 65531,
+                "cluster_id": 2820,
+                "label": "Attribute List",
+                "type": "List[attrib-id]"
+            },
+            "65532": {
+                "id": 65532,
+                "cluster_id": 2820,
+                "label": "Feature Map",
+                "type": "map32"
+            },
+            "65533": {
+                "id": 65533,
+                "cluster_id": 2820,
+                "label": "Cluster Revision",
+                "type": "uint16"
+            }
+        }
+    },
+    "302775297": {
+        "id": 302775297,
+        "label": "Heiman Cluster",
+        "attributes": {
+            "65528": {
+                "id": 65528,
+                "cluster_id": 302775297,
+                "label": "Generated Command List",
+                "type": "List[command-id]"
+            },
+            "65529": {
+                "id": 65529,
+                "cluster_id": 302775297,
+                "label": "Accepted Command List",
+                "type": "List[command-id]"
+            },
+            "65530": {
+                "id": 65530,
+                "cluster_id": 302775297,
+                "label": "Event List",
+                "type": "Optional[unknown]"
+            },
+            "65531": {
+                "id": 65531,
+                "cluster_id": 302775297,
+                "label": "Attribute List",
+                "type": "List[attrib-id]"
+            },
+            "65532": {
+                "id": 65532,
+                "cluster_id": 302775297,
+                "label": "Feature Map",
+                "type": "map32"
+            },
+            "65533": {
+                "id": 65533,
+                "cluster_id": 302775297,
+                "label": "Cluster Revision",
+                "type": "uint16"
+            },
+            "302710800": {
+                "id": 302710800,
+                "cluster_id": 302775297,
+                "label": "Tamper Alarm",
+                "type": "Optional[unknown]"
+            },
+            "302710801": {
+                "id": 302710801,
+                "cluster_id": 302775297,
+                "label": "Preheating State",
+                "type": "Optional[unknown]"
+            },
+            "302710802": {
+                "id": 302710802,
+                "cluster_id": 302775297,
+                "label": "No Disturbing State",
+                "type": "Optional[unknown]"
+            },
+            "302710803": {
+                "id": 302710803,
+                "cluster_id": 302775297,
+                "label": "Sensor Type",
+                "type": "Optional[unknown]"
+            },
+            "302710804": {
+                "id": 302710804,
+                "cluster_id": 302775297,
+                "label": "Siren Active",
+                "type": "Optional[unknown]"
+            },
+            "302710805": {
+                "id": 302710805,
+                "cluster_id": 302775297,
+                "label": "Alarm Mute",
+                "type": "Optional[unknown]"
+            },
+            "302710806": {
+                "id": 302710806,
+                "cluster_id": 302775297,
+                "label": "Low Power Mode",
+                "type": "Optional[unknown]"
+            }
+        }
+    },
+    "305134641": {
+        "id": 305134641,
+        "label": "Inovelli Cluster",
+        "attributes": {
+            "65528": {
+                "id": 65528,
+                "cluster_id": 305134641,
+                "label": "Generated Command List",
+                "type": "List[command-id]"
+            },
+            "65529": {
+                "id": 65529,
+                "cluster_id": 305134641,
+                "label": "Accepted Command List",
+                "type": "List[command-id]"
+            },
+            "65530": {
+                "id": 65530,
+                "cluster_id": 305134641,
+                "label": "Event List",
+                "type": "Optional[unknown]"
+            },
+            "65531": {
+                "id": 65531,
+                "cluster_id": 305134641,
+                "label": "Attribute List",
+                "type": "List[attrib-id]"
+            },
+            "65532": {
+                "id": 65532,
+                "cluster_id": 305134641,
+                "label": "Feature Map",
+                "type": "map32"
+            },
+            "65533": {
+                "id": 65533,
+                "cluster_id": 305134641,
+                "label": "Cluster Revision",
+                "type": "uint16"
+            },
+            "305070177": {
+                "id": 305070177,
+                "cluster_id": 305134641,
+                "label": "Led Indicator Intensity On",
+                "type": "Optional[unknown]"
+            },
+            "305070178": {
+                "id": 305070178,
+                "cluster_id": 305134641,
+                "label": "Led Indicator Intensity Off",
+                "type": "Optional[unknown]"
+            },
+            "305070342": {
+                "id": 305070342,
+                "cluster_id": 305134641,
+                "label": "Clear Notification With Config Double Tap",
+                "type": "Optional[bool]"
+            }
+        }
+    },
+    "308149265": {
+        "id": 308149265,
+        "label": "Neo Cluster",
+        "attributes": {
+            "65528": {
+                "id": 65528,
+                "cluster_id": 308149265,
+                "label": "Generated Command List",
+                "type": "List[command-id]"
+            },
+            "65529": {
+                "id": 65529,
+                "cluster_id": 308149265,
+                "label": "Accepted Command List",
+                "type": "List[command-id]"
+            },
+            "65530": {
+                "id": 65530,
+                "cluster_id": 308149265,
+                "label": "Event List",
+                "type": "Optional[unknown]"
+            },
+            "65531": {
+                "id": 65531,
+                "cluster_id": 308149265,
+                "label": "Attribute List",
+                "type": "List[attrib-id]"
+            },
+            "65532": {
+                "id": 65532,
+                "cluster_id": 308149265,
+                "label": "Feature Map",
+                "type": "map32"
+            },
+            "65533": {
+                "id": 65533,
+                "cluster_id": 308149265,
+                "label": "Cluster Revision",
+                "type": "uint16"
+            },
+            "308084769": {
+                "id": 308084769,
+                "cluster_id": 308149265,
+                "label": "Watt Accumulated",
+                "type": "Optional[unknown]"
+            },
+            "308084770": {
+                "id": 308084770,
+                "cluster_id": 308149265,
+                "label": "Current",
+                "type": "Optional[unknown]"
+            },
+            "308084771": {
+                "id": 308084771,
+                "cluster_id": 308149265,
+                "label": "Watt",
+                "type": "Optional[unknown]"
+            },
+            "308084772": {
+                "id": 308084772,
+                "cluster_id": 308149265,
+                "label": "Voltage",
+                "type": "Optional[unknown]"
+            }
+        }
+    },
+    "319486977": {
+        "id": 319486977,
+        "label": "Eve Cluster",
+        "attributes": {
+            "65528": {
+                "id": 65528,
+                "cluster_id": 319486977,
+                "label": "Generated Command List",
+                "type": "List[command-id]"
+            },
+            "65529": {
+                "id": 65529,
+                "cluster_id": 319486977,
+                "label": "Accepted Command List",
+                "type": "List[command-id]"
+            },
+            "65530": {
+                "id": 65530,
+                "cluster_id": 319486977,
+                "label": "Event List",
+                "type": "Optional[unknown]"
+            },
+            "65531": {
+                "id": 65531,
+                "cluster_id": 319486977,
+                "label": "Attribute List",
+                "type": "List[attrib-id]"
+            },
+            "65532": {
+                "id": 65532,
+                "cluster_id": 319486977,
+                "label": "Feature Map",
+                "type": "map32"
+            },
+            "65533": {
+                "id": 65533,
+                "cluster_id": 319486977,
+                "label": "Cluster Revision",
+                "type": "uint16"
+            },
+            "319422470": {
+                "id": 319422470,
+                "cluster_id": 319486977,
+                "label": "Times Opened",
+                "type": "Optional[unknown]"
+            },
+            "319422472": {
+                "id": 319422472,
+                "cluster_id": 319486977,
+                "label": "Voltage",
+                "type": "Optional[unknown]"
+            },
+            "319422473": {
+                "id": 319422473,
+                "cluster_id": 319486977,
+                "label": "Current",
+                "type": "Optional[unknown]"
+            },
+            "319422474": {
+                "id": 319422474,
+                "cluster_id": 319486977,
+                "label": "Watt",
+                "type": "Optional[unknown]"
+            },
+            "319422475": {
+                "id": 319422475,
+                "cluster_id": 319486977,
+                "label": "Watt Accumulated",
+                "type": "Optional[unknown]"
+            },
+            "319422477": {
+                "id": 319422477,
+                "cluster_id": 319486977,
+                "label": "Motion Sensitivity",
+                "type": "Optional[unknown]"
+            },
+            "319422478": {
+                "id": 319422478,
+                "cluster_id": 319486977,
+                "label": "Watt Accumulated Control Point",
+                "type": "Optional[unknown]"
+            },
+            "319422480": {
+                "id": 319422480,
+                "cluster_id": 319486977,
+                "label": "Obstruction Detected",
+                "type": "Optional[bool]"
+            },
+            "319422483": {
+                "id": 319422483,
+                "cluster_id": 319486977,
+                "label": "Altitude",
+                "type": "Optional[unknown]"
+            },
+            "319422484": {
+                "id": 319422484,
+                "cluster_id": 319486977,
+                "label": "Pressure",
+                "type": "Optional[unknown]"
+            },
+            "319422485": {
+                "id": 319422485,
+                "cluster_id": 319486977,
+                "label": "Weather Trend",
+                "type": "Optional[unknown]"
+            },
+            "319422488": {
+                "id": 319422488,
+                "cluster_id": 319486977,
+                "label": "Valve Position",
+                "type": "Optional[unknown]"
+            }
+        }
+    },
+    "319683586": {
+        "id": 319683586,
+        "label": "Third Reality Metering Cluster",
+        "attributes": {
+            "0": {
+                "id": 0,
+                "cluster_id": 319683586,
+                "label": "Current Summation Delivered",
+                "type": "Optional[unknown]"
+            },
+            "769": {
+                "id": 769,
+                "cluster_id": 319683586,
+                "label": "Multiplier",
+                "type": "Optional[unknown]"
+            },
+            "770": {
+                "id": 770,
+                "cluster_id": 319683586,
+                "label": "Divisor",
+                "type": "Optional[unknown]"
+            },
+            "1024": {
+                "id": 1024,
+                "cluster_id": 319683586,
+                "label": "Instantaneous Demand",
+                "type": "Optional[unknown]"
+            },
+            "65528": {
+                "id": 65528,
+                "cluster_id": 319683586,
+                "label": "Generated Command List",
+                "type": "List[command-id]"
+            },
+            "65529": {
+                "id": 65529,
+                "cluster_id": 319683586,
+                "label": "Accepted Command List",
+                "type": "List[command-id]"
+            },
+            "65530": {
+                "id": 65530,
+                "cluster_id": 319683586,
+                "label": "Event List",
+                "type": "Optional[unknown]"
+            },
+            "65531": {
+                "id": 65531,
+                "cluster_id": 319683586,
+                "label": "Attribute List",
+                "type": "List[attrib-id]"
+            },
+            "65532": {
+                "id": 65532,
+                "cluster_id": 319683586,
+                "label": "Feature Map",
+                "type": "map32"
+            },
+            "65533": {
+                "id": 65533,
+                "cluster_id": 319683586,
+                "label": "Cluster Revision",
+                "type": "uint16"
+            }
+        }
     }
 };

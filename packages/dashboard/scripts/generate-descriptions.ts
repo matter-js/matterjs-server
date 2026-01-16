@@ -5,10 +5,13 @@
  */
 
 import { decamelize } from "@matter/main";
-import { AttributeModel, MatterModel } from "@matter/main/model";
+import { AttributeModel, Matter } from "@matter/main/model";
 import { writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+
+// Add custom cluster definitions
+import "@matter-server/custom-clusters";
 
 /**
  * Generates the descriptions.ts file from matter.js model data.
@@ -95,7 +98,7 @@ function generateDescriptions(): string {
     const clusters: Record<number, ClusterDescription> = {};
 
     // Generate device types
-    for (const deviceType of MatterModel.standard.deviceTypes) {
+    for (const deviceType of Matter.deviceTypes) {
         if (deviceType.id === undefined) continue;
         deviceTypes[deviceType.id] = {
             id: deviceType.id,
@@ -104,7 +107,7 @@ function generateDescriptions(): string {
     }
 
     // Generate clusters
-    for (const cluster of MatterModel.standard.clusters) {
+    for (const cluster of Matter.clusters) {
         if (cluster.id === undefined) continue;
 
         const attributes: { [id: string]: ClusterAttributeDescription } = {};
