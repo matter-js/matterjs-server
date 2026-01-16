@@ -19,8 +19,8 @@ import "../components/ha-svg-icon";
 import "../pages/components/node-details";
 import { bindingContext } from "./components/context.js";
 // Cluster command components (auto-register on import)
-import { getClusterCommandsTag } from "./cluster-commands/index.js";
 import { formatHex } from "../util/format_hex.js";
+import { getClusterCommandsTag } from "./cluster-commands/index.js";
 
 declare global {
     interface HTMLElementTagNameMap {
