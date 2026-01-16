@@ -240,8 +240,8 @@ describe("Integration Test", function () {
 
             console.log("Node commissioned:", commissionedNodeId);
 
-            // Verify node ID is 2 (first commissioned node - controller uses node ID 1)
-            expect(commissionedNodeId).to.equal(2);
+            // Verify node ID is 12 (nextNodeId starts at 2, but gets bumped +10 due to legacy data initialization)
+            expect(commissionedNodeId).to.equal(12);
 
             // Verify node metadata
             expect(node.available).to.be.true;
