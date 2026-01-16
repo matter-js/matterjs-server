@@ -4,7 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { decamelize } from "@matter/main";
 import { AttributeModel, Matter } from "@matter/main/model";
 import { writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -21,13 +20,11 @@ import "@matter-server/custom-clusters";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 /**
- * Convert camelCase name to human-readable label with a title case.
- * e.g., "OnOffLight" -> "On Off Light"
+ * Preserve the canonical Matter SDK name as-is (no spacing changes).
+ * Example: "LocalTemperature" stays "LocalTemperature".
  */
 function toLabel(name: string): string {
-    const words = decamelize(name, " ");
-    // Title case: capitalize the first letter of each word
-    return words.replace(/\b\w/g, char => char.toUpperCase());
+    return name;
 }
 
 interface DeviceType {
