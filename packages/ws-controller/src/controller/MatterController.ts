@@ -83,8 +83,8 @@ export class MatterController {
             }
 
             // Check if nextNodeId needs to be updated based on legacy data
-            if (legacyData.nodeData?.last_node_id !== undefined) {
-                const lastNodeId = legacyData.nodeData.last_node_id;
+            const lastNodeId = legacyData.nodeData?.last_node_id;
+            if (typeof lastNodeId === "number") {
                 if (config.nextNodeId <= lastNodeId) {
                     const newNextNodeId = lastNodeId + 10;
                     logger.info(
