@@ -149,7 +149,11 @@ async function start() {
 
     // If we found a most common fabric label in legacy data, use it as the default
     // (only applies on first migration when no fabricLabel is stored yet)
-    if (legacyData.mostCommonFabricLabel !== "HomeAssistant" && config.fabricLabel === "HomeAssistant") {
+    if (
+        legacyData.mostCommonFabricLabel?.length &&
+        legacyData.mostCommonFabricLabel !== "HomeAssistant" &&
+        config.fabricLabel === "HomeAssistant"
+    ) {
         logger.info(`Setting fabric label from legacy data: "${legacyData.mostCommonFabricLabel}"`);
         await config.set({ fabricLabel: legacyData.mostCommonFabricLabel });
     }
