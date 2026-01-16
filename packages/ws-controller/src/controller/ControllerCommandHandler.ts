@@ -140,6 +140,7 @@ export class ControllerCommandHandler {
         // Initialize custom cluster poller for Eve energy attributes etc.
         // Reads automatically trigger change events through the normal attribute flow
         this.#customClusterPoller = new CustomClusterPoller({
+            nodeConnected: nodeId => !!(this.#nodes.has(nodeId) && this.#nodes.get(nodeId).isConnected),
             handleReadAttributes: (nodeId, paths, fabricFiltered) =>
                 this.handleReadAttributes(nodeId, paths, fabricFiltered),
         });
