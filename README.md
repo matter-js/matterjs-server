@@ -100,7 +100,7 @@ To use custom OTA files, you must:
 
 Both options are required. If `--ota-provider-dir` is set but `--enable-test-net-dcl` is not enabled, custom OTA files will be ignored and a warning will be logged.
 
-Without a own directory enabling the `--enable-test-net-dcl` flag would still check the CSA Test-DCL for updates available there.
+Without your own directory, enabling the `--enable-test-net-dcl` flag would still check the CSA Test-DCL for updates available there.
 
 ### How It Works
 
