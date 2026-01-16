@@ -10,6 +10,9 @@
     },
     "references": [
         {
+            "path": "../../custom-clusters/src"
+        },
+        {
             "path": "../../ws-client/src"
         }
     ]

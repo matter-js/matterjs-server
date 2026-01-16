@@ -38,6 +38,7 @@
         "@lit/context": "^1.1.6",
         "@material/web": "^2.4.1",
         "@matter-server/ws-client": "*",
+        "@matter-server/custom-clusters": "*",
         "@mdi/js": "^7.4.47",
         "lit": "^3.3.1",
         "tslib": "^2.8.1"

@@ -27,14 +27,33 @@ declare global {
     }
 }
 
+// Global attribute IDs range (0xFFF0-0xFFFF)
+const GLOBAL_ATTRIBUTE_MIN = 0xfff0;
+const GLOBAL_ATTRIBUTE_MAX = 0xffff;
+
+function isGlobalAttribute(id: number): boolean {
+    return id >= GLOBAL_ATTRIBUTE_MIN && id <= GLOBAL_ATTRIBUTE_MAX;
+}
+
 function clusterAttributes(attributes: { [key: string]: any }, endpoint: number, cluster: number) {
-    // extract unique clusters from the node attributes, as (sorted) array
+    // Extract attributes and sort by ID, with global attributes (0xFFF0-0xFFFF) always last
     return Object.keys(attributes)
         .filter(key => key.startsWith(`${endpoint}/${cluster}/`))
         .map(key => {
             const attributeKey = Number(key.split("/")[2]);
             return { key: attributeKey, value: attributes[key] };
-        }, []);
+        })
+        .sort((a, b) => {
+            const aIsGlobal = isGlobalAttribute(a.key);
+            const bIsGlobal = isGlobalAttribute(b.key);
+
+            // If one is global and the other isn't, non-global comes first
+            if (aIsGlobal !== bIsGlobal) {
+                return aIsGlobal ? 1 : -1;
+            }
+            // Otherwise sort by ID
+            return a.key - b.key;
+        });
 }
 
 @customElement("matter-cluster-view")
@@ -86,9 +105,10 @@ class MatterClusterView extends LitElement {
                         </div>
                         <div slot="supporting-text">ClusterId ${this.cluster} (0x00${this.cluster.toString(16)})</div>
                     </md-list-item>
-                    ${clusterAttributes(this.node.attributes, this.endpoint, this.cluster).map(attribute => {
-                        return html`
-                            <md-list-item>
+                    <md-divider></md-divider>
+                    ${clusterAttributes(this.node.attributes, this.endpoint, this.cluster).map(
+                        (attribute, index) => html`
+                            <md-list-item class=${index % 2 === 1 ? "alternate-row" : ""}>
                                 <div slot="headline">
                                     ${clusters[this.cluster!]?.attributes[attribute.key]?.label ||
                                     "Custom/Unknown Attribute"}
@@ -109,9 +129,8 @@ class MatterClusterView extends LitElement {
                                         : toBigIntAwareJson(attribute.value)}
                                 </div>
                             </md-list-item>
-                            <md-divider />
-                        `;
-                    })}
+                        `,
+                    )}
                 </md-list>
             </div>
         `;
@@ -197,6 +216,10 @@ class MatterClusterView extends LitElement {
             color: var(--danger-color);
             font-weight: bold;
             font-size: 0.8em;
+        }
+
+        md-list-item.alternate-row {
+            background-color: rgba(128, 128, 128, 0.1);
         }
     `;
 }
