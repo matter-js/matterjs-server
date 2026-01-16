@@ -9,6 +9,7 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## __WORK IN PROGRESS__
 
+- Fix: Initialize "next node id" correctly when starting the server
 - Fix: Streamlines Hex-Number displaying in the Dashboard (Cluster-/Attribute-IDs)
 
 ## 0.2.5 (2026-01-16)
