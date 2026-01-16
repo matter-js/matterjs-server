@@ -87,16 +87,66 @@ It was in general tested with a simply slight bulb on network.
 
 Ble and Wifi should work when server gets startes with `--ble` flag, but Wifi only will work. For Thread Mater.js currently requires a network Name which is not provided.
 
+## Importing Custom OTA Firmware Files
+
+The Matter Server supports importing custom OTA (Over-The-Air) firmware update files for your Matter devices. This is useful when you have manufacturer-provided firmware files that aren't available through the official DCL (Distributed Compliance Ledger).
+
+### Requirements
+
+To use custom OTA files, you must:
+
+1. **Enable test-net DCL mode** using `--enable-test-net-dcl` (or env var `ENABLE_TEST_NET_DCL=true`)
+2. **Specify an OTA provider directory** using `--ota-provider-dir <path>` (or env var `OTA_PROVIDER_DIR=<path>`)
+
+Both options are required. If `--ota-provider-dir` is set but `--enable-test-net-dcl` is not enabled, custom OTA files will be ignored and a warning will be logged.
+
+Without a own directory enabling the `--enable-test-net-dcl` flag would still check the CSA Test-DCL for updates available there.
+
+### How It Works
+
+1. Place your Matter OTA image files (`.ota` format) in the configured OTA provider directory
+2. When the server starts, it automatically scans the directory and imports all valid OTA files
+3. The server extracts metadata (vendor ID, product ID, software version) from each OTA image
+4. **Important**: Successfully imported files are automatically deleted from the directory after import
+5. JSON files (`.json`) in the directory are skipped and can be used for your own metadata or notes
+
+### Example Usage
+
+```bash
+# Create a directory for OTA files
+mkdir -p /path/to/ota-files
+
+# Place your .ota files in that directory
+cp device-firmware-v2.0.ota /path/to/ota-files/
+
+# Start the server with OTA support
+npx matter-server --enable-test-net-dcl --ota-provider-dir /path/to/ota-files
+```
+
+Or using environment variables (useful for Docker):
+```bash
+export ENABLE_TEST_NET_DCL=true
+export OTA_PROVIDER_DIR=/path/to/ota-files
+npx matter-server
+```
+
+### Notes
+
+- OTA files must be in the standard Matter OTA image format
+- The server stores imported OTA images internally for serving to devices
+- To disable OTA functionality entirely, use `--disable-ota` (or env var `DISABLE_OTA=true`)
+- Check the server logs for information about successfully imported OTA files
+
 ## Differences from Python Matter Server
 
 This implementation aims to be API-compatible with the [Python Matter Server](https://github.com/home-assistant-libs/python-matter-server), but there are some intentional differences:
 
-| Feature                 | Python Matter Server                          | Matter.js Server                                                                                           |
-|-------------------------|-----------------------------------------------|------------------------------------------------------------------------------------------------------------|
-| Test Node IDs           | `>= 900000`                                   | `>= 0xFFFF_FFFE_0000_0000` (NodeId range for temporary local NodeIds outside official operational NodeIds) |
-| Fabric Label            | Accepts null/empty to clear                   | Resets to "Home" when null/empty                                                                           |
-| Storage Format          | Single `chip.json` and `{fabricId}.json` file | matter.js native storage (migration supported)                                                             |
-| Attribute Subscriptions | Tracks per-node in `attribute_subscriptions`  | Always empty (handled internally)                                                                          |
-| Eve Energy Polling      | Polls custom eve cluster every 30s            | Not implemented (use updated firmware)                                                                     |
+| Feature                 | Python Matter Server                                       | Matter.js Server                                                                                           |
+|-------------------------|------------------------------------------------------------|------------------------------------------------------------------------------------------------------------|
+| Test Node IDs           | `>= 900000`                                                | `>= 0xFFFF_FFFE_0000_0000` (NodeId range for temporary local NodeIds outside official operational NodeIds) |
+| Fabric Label            | Accepts null/empty to clear                                | Resets to "Home" when null/empty                                                                           |
+| Storage Format          | Single `chip.json` and `{fabricId}.json` file              | matter.js native storage (migration supported)                                                             |
+| Attribute Subscriptions | Tracks per-node in `attribute_subscriptions`               | Always empty (handled internally)                                                                          |
+| Custom OTA Files        | Allows to import them independently from the test-dcl flag | Only imports then when also test-dcl is enabled                                                            |
 
 
