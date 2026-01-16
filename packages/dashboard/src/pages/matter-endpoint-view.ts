@@ -15,6 +15,7 @@ import { customElement, property } from "lit/decorators.js";
 import { guard } from "lit/directives/guard.js";
 import { DeviceType, clusters, device_types } from "../client/models/descriptions.js";
 import "../components/ha-svg-icon";
+import { formatHex } from "../util/format_hex.js";
 
 declare global {
     interface HTMLElementTagNameMap {
@@ -97,7 +98,7 @@ class MatterEndpointView extends LitElement {
                                     href=${`#node/${this.node!.node_id}/${this.endpoint}/${cluster}`}
                                 >
                                     <div slot="headline">${clusters[cluster]?.label || "Custom/Unknown Cluster"}</div>
-                                    <div slot="supporting-text">ClusterId ${cluster} (0x00${cluster.toString(16)})</div>
+                                    <div slot="supporting-text">ClusterId ${cluster} (${formatHex(cluster)})</div>
                                     <ha-svg-icon slot="end" .path=${mdiChevronRight}></ha-svg-icon>
                                 </md-list-item>
                             `;
