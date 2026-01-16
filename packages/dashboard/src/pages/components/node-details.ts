@@ -18,6 +18,7 @@ import { MatterClient, MatterNode } from "@matter-server/ws-client";
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { DeviceType } from "../../client/models/descriptions.js";
+import { noSpaces } from "../../util/format_label.js";
 import { showAlertDialog, showPromptDialog } from "../../components/dialog-box/show-dialog-box.js";
 import { showNodeBindingDialog } from "../../components/dialogs/binding/show-node-binding-dialog.js";
 import "../../components/ha-svg-icon";
@@ -97,9 +98,7 @@ export class NodeDetails extends LitElement {
                         ? ""
                         : html` <div slot="supporting-text">
                               <span class="left">All device types: </span>${getNodeDeviceTypes(this.node)
-                                  .map(deviceType => {
-                                      return deviceType.label;
-                                  })
+                                  .map(deviceType => noSpaces(deviceType.label) || "Unknown")
                                   .join(" / ")}
                           </div>`}
                 </md-list-item>

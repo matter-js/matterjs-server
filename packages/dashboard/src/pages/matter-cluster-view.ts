@@ -20,6 +20,7 @@ import "../pages/components/node-details";
 import { bindingContext } from "./components/context.js";
 // Cluster command components (auto-register on import)
 import { formatHex } from "../util/format_hex.js";
+import { noSpaces } from "../util/format_label.js";
 import { getClusterCommandsTag } from "./cluster-commands/index.js";
 
 declare global {
@@ -56,6 +57,8 @@ function clusterAttributes(attributes: { [key: string]: any }, endpoint: number,
             return a.key - b.key;
         });
 }
+
+// use shared noSpaces formatter from util
 
 @customElement("matter-cluster-view")
 class MatterClusterView extends LitElement {
@@ -100,8 +103,8 @@ class MatterClusterView extends LitElement {
                     <md-list-item>
                         <div slot="headline">
                             <b
-                                >Attributes of ${clusters[this.cluster]?.label || "Custom/Unknown Cluster"} Cluster on
-                                Endpoint ${this.endpoint}</b
+                                >Attributes of ${noSpaces(clusters[this.cluster]?.label) || "Custom/Unknown Cluster"}
+                                Cluster on Endpoint ${this.endpoint}</b
                             >
                         </div>
                         <div slot="supporting-text">ClusterId ${this.cluster} (${formatHex(this.cluster)})</div>
@@ -111,7 +114,7 @@ class MatterClusterView extends LitElement {
                         (attribute, index) => html`
                             <md-list-item class=${index % 2 === 1 ? "alternate-row" : ""}>
                                 <div slot="headline">
-                                    ${clusters[this.cluster!]?.attributes[attribute.key]?.label ||
+                                    ${noSpaces(clusters[this.cluster!]?.attributes[attribute.key]?.label) ||
                                     "Custom/Unknown Attribute"}
                                 </div>
                                 <div slot="supporting-text">

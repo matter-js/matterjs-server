@@ -83,11 +83,9 @@ class MatterEndpointView extends LitElement {
                         </div>
                         <div slot="supporting-text">
                             Device Type(s):
-                            ${getEndpointDeviceTypes(this.node, this.endpoint)
-                                .map(deviceType => {
-                                    return deviceType.label;
-                                })
-                                .join(" / ")}
+                                ${getEndpointDeviceTypes(this.node, this.endpoint)
+                                    .map(deviceType => noSpaces(deviceType.label) || "Unknown")
+                                    .join(" / ")}
                         </div>
                     </md-list-item>
                     ${guard([this.node?.attributes.length], () =>
@@ -109,7 +107,7 @@ class MatterEndpointView extends LitElement {
         `;
     }
 
-    private _goBack() {
+                    ${noSpaces(clusters[cluster]?.label) || "Custom/Unknown Cluster"}
         history.back();
     }
 
