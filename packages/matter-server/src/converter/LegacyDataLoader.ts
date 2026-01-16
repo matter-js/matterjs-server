@@ -30,6 +30,80 @@ import type { OperationalCredentials } from "./types.js";
 
 const logger = Logger.get("LegacyDataLoader");
 
+// Attribute paths for OperationalCredentials cluster (62/0x3E)
+const FABRICS_ATTRIBUTE_PATH = "0/62/1"; // Fabrics list
+const CURRENT_FABRIC_INDEX_PATH = "0/62/5"; // CurrentFabricIndex
+
+// Keys in the tag-based FabricDescriptor structure
+const FABRIC_LABEL_KEY = "5"; // Label field
+const FABRIC_INDEX_KEY = "254"; // FabricIndex field
+
+/**
+ * Extract the most common fabric label from node attributes.
+ *
+ * For each node:
+ * 1. Gets "0/62/5" (CurrentFabricIndex) - the index of our controller's fabric on that node
+ * 2. Finds the matching entry in "0/62/1" (Fabrics) where key "254" equals CurrentFabricIndex
+ * 3. Extracts the label (key "5") from that entry
+ *
+ * Returns the label that appears most frequently across all nodes.
+ *
+ * @param serverFile The legacy server file with node data
+ * @returns The most common fabric label, or undefined if none found
+ */
+export function extractMostCommonFabricLabel(serverFile: LegacyServerFile): string | undefined {
+    const labelCounts = new Map<string, number>();
+
+    for (const nodeData of Object.values(serverFile.nodes)) {
+        // Get the current fabric index for this node
+        const currentFabricIndex = nodeData.attributes[CURRENT_FABRIC_INDEX_PATH];
+        if (typeof currentFabricIndex !== "number") {
+            continue;
+        }
+
+        // Get the fabrics list
+        const fabricsAttr = nodeData.attributes[FABRICS_ATTRIBUTE_PATH];
+        if (!Array.isArray(fabricsAttr)) {
+            continue;
+        }
+
+        // Find the fabric entry matching our fabric index
+        for (const fabricDescriptor of fabricsAttr) {
+            if (
+                fabricDescriptor &&
+                typeof fabricDescriptor === "object" &&
+                fabricDescriptor[FABRIC_INDEX_KEY] === currentFabricIndex
+            ) {
+                const label = fabricDescriptor[FABRIC_LABEL_KEY];
+                if (typeof label === "string" && label.length > 0) {
+                    labelCounts.set(label, (labelCounts.get(label) ?? 0) + 1);
+                }
+                break; // Found our fabric, no need to check others
+            }
+        }
+    }
+
+    if (labelCounts.size === 0) {
+        return undefined;
+    }
+
+    // Find the label with the highest count
+    let mostCommonLabel: string | undefined;
+    let maxCount = 0;
+    for (const [label, count] of labelCounts) {
+        if (count > maxCount) {
+            maxCount = count;
+            mostCommonLabel = label;
+        }
+    }
+
+    if (mostCommonLabel) {
+        logger.info(`Found most common fabric label "${mostCommonLabel}" (appeared in ${maxCount} node(s))`);
+    }
+
+    return mostCommonLabel;
+}
+
 /** Result of loading legacy data */
 export interface LegacyData {
     /** Chip config data (fabric certs, sessions, etc.) */
@@ -42,6 +116,8 @@ export interface LegacyData {
     operationalCredentials?: OperationalCredentials;
     /** Certificate Authority configuration (parsed from operational credentials) */
     certificateAuthorityConfig?: CertificateAuthorityConfiguration;
+    /** Most common fabric label found across all nodes (from attribute 0/62/1) */
+    mostCommonFabricLabel?: string;
     /** Whether any legacy data was found */
     hasData: boolean;
     /** Error message if loading failed */
@@ -147,6 +223,9 @@ export async function loadLegacyData(env: Environment, storagePath: string): Pro
         logger.info(
             `Loaded legacy server data from ${serverFileName}: ${nodeCount} node(s), last_node_id=${serverFile.last_node_id}`,
         );
+
+        // Extract the most common fabric label from node attributes
+        result.mostCommonFabricLabel = extractMostCommonFabricLabel(serverFile);
     } catch (err) {
         if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
             logger.warn(`Error loading server file ${serverFileName}: ${err}`);

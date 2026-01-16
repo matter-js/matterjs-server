@@ -477,9 +477,10 @@ export class WebSocketControllerHandler implements WebServerHandler {
     ): Promise<ResponseOf<"set_default_fabric_label">> {
         const { label } = args;
         // Use "Home" as default when null/empty is passed (matter.js requires non-empty labels)
-        const effectiveLabel = label && label.trim() !== "" ? label.trim() : "Home";
-        await this.#commandHandler.setFabricLabel(effectiveLabel);
+        let effectiveLabel = label && label.trim() !== "" ? label.trim() : "HomeAssistant";
+        effectiveLabel = effectiveLabel.substring(0, 32);
         await this.#config.set({ fabricLabel: effectiveLabel });
+        await this.#commandHandler.setFabricLabel(effectiveLabel);
         return null;
     }
 
