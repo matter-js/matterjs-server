@@ -87,6 +87,43 @@ By default, the data directory is mapped to `${HOME}/.matterjs-server`.
 
 Please get the Python Matter Server data files **before** the first start as [described above](#step-2-adding-python-matter-server-data-files).
 
+## Replacing the Matter Addon Docker Image (Home Assistant OS)
+
+If you're running Home Assistant OS, you can replace the official Matter Server addon with the Matter.js-based variant by swapping the Docker image directly.
+
+> [!NOTE]
+> This manual process is only needed if you want to test now.
+> Soon, the Matter Server addon will include a setting to switch between the Python-based and Matter.js-based server directly.
+>
+> After replacing the image, there won't be any visual indication that you're using the new addon. The settings UI will still reference the Python variant and the version will still show as 8.1.2.
+
+### Steps
+
+1. Access the Home Assistant OS CLI (via SSH or console)
+2. Enter `login` to get a root shell
+3. Pull and tag the replacement image:
+
+   **For AMD64 systems:**
+   ```bash
+   docker pull thejulianjes/amd64-addon-matter-server:8.2.0
+   docker tag thejulianjes/amd64-addon-matter-server:8.2.0 homeassistant/amd64-addon-matter-server:8.1.2
+   ```
+
+   **For ARM64 systems (e.g., Raspberry Pi 4/5):**
+   ```bash
+   docker pull thejulianjes/aarch64-addon-matter-server:8.2.0
+   docker tag thejulianjes/aarch64-addon-matter-server:8.2.0 homeassistant/aarch64-addon-matter-server:8.1.2
+   ```
+
+4. In Home Assistant, go to Settings → Add-ons → Matter Server
+5. Enable the "Beta" flag in the addon configuration
+6. Restart the addon
+7. (Optional) Monitor the Matter Server addon logs to observe the Node.js installation, Matter Server installation, and migration process, which can take a few minutes
+
+### Reverting to the Original Addon
+
+To revert to the official Python-based Matter Server addon, simply wait until the next Matter Server addon update, which will pull the original image again (and will include Matter.js for the beta anyway).
+
 ## Migrating an Existing Home Assistant Instance
 
 If you want to test the new Matter Server with your existing Home Assistant instance instead of setting up a parallel test environment, you can migrate your Home Assistant Matter integration to use an external new Matter Server instance.
