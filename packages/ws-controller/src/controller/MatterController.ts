@@ -83,13 +83,15 @@ export class MatterController {
             }
 
             // Check if nextNodeId needs to be updated based on legacy data
-            const lastNodeId = legacyData.nodeData?.last_node_id ?? config.nextNodeId;
-            if (config.nextNodeId <= lastNodeId) {
-                const newNextNodeId = lastNodeId + 10;
-                logger.info(
-                    `Updating nextNodeId from ${config.nextNodeId} to ${newNextNodeId} (legacy last_node_id: ${lastNodeId})`,
-                );
-                await config.set({ nextNodeId: newNextNodeId });
+            if (legacyData.nodeData?.last_node_id !== undefined) {
+                const lastNodeId = legacyData.nodeData.last_node_id;
+                if (config.nextNodeId <= lastNodeId) {
+                    const newNextNodeId = lastNodeId + 10;
+                    logger.info(
+                        `Updating nextNodeId from ${config.nextNodeId} to ${newNextNodeId} (legacy last_node_id: ${lastNodeId})`,
+                    );
+                    await config.set({ nextNodeId: newNextNodeId });
+                }
             }
 
             await baseStorage.close();
