@@ -89,13 +89,13 @@ Please get the Python Matter Server data files **before** the first start as [de
 
 ## Replacing the Matter Addon Docker Image (Home Assistant OS)
 
-If you're running Home Assistant OS, you can replace the official Matter Server addon with the Matter.js-based variant by swapping the Docker image directly.
+If you're running Home Assistant OS, you can replace the official Matter Server add-on with the Matter.js-based variant by swapping the Docker image directly.
 
 > [!NOTE]
 > This manual process is only needed if you want to test now.
-> Soon, the Matter Server addon will include a setting to switch between the Python-based and Matter.js-based server directly.
+> Soon, the Matter Server add-on will include a setting to switch between the Python-based and Matter.js-based server directly.
 >
-> After replacing the image, there won't be any visual indication that you're using the new addon. The settings UI will still reference the Python variant and the version will still show as 8.1.2.
+> After replacing the image, there won't be any visual indication that you're using the new add-on. The settings UI will still reference the Python variant and the version will still show as 8.1.2.
 
 ### Steps
 
@@ -116,13 +116,13 @@ If you're running Home Assistant OS, you can replace the official Matter Server 
    ```
 
 4. In Home Assistant, go to Settings → Add-ons → Matter Server
-5. Enable the "Beta" flag in the addon configuration
-6. Restart the addon
-7. (Optional) Monitor the Matter Server addon logs to observe the Node.js installation, Matter Server installation, and migration process, which can take a few minutes
+5. Enable the "Beta" flag in the add-on configuration
+6. Restart the add-on
+7. (Optional) Monitor the Matter Server add-on logs to observe the Node.js installation, Matter Server installation, and migration process, which can take a few minutes
 
 ### Reverting to the Original Addon
 
-To revert to the official Matter Server addon, simply wait until the next Matter Server addon update, which will pull the original image again (and will include Matter.js for the beta anyway).
+To revert to the official Matter Server add-on, simply wait until the next Matter Server add-on update, which will pull the original image again (and will include Matter.js for the beta anyway).
 
 ## FAQ
 
