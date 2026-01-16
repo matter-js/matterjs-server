@@ -43,6 +43,7 @@ type AttributePath = string;
 
 export interface NodeAttributeReader {
     handleReadAttributes(nodeId: NodeId, attributePaths: string[], fabricFiltered?: boolean): Promise<AttributesData>;
+    nodeConnected(nodeId: NodeId): boolean;
 }
 
 /**
@@ -236,6 +237,9 @@ export class CustomClusterPoller {
      * The read will automatically trigger change events through the normal attribute flow.
      */
     async #pollNode(nodeId: NodeId, attributePaths: Set<AttributePath>): Promise<void> {
+        if (!this.#attributeReader.nodeConnected(nodeId)) {
+            logger.debug(`Node ${nodeId} not connected, skipping custom attribute polling`);
+        }
         const paths = Array.from(attributePaths);
         logger.debug(`Polling ${paths.length} custom attributes for node ${nodeId}`);
 

@@ -7,10 +7,14 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
+## __WORK IN PROGRESS__
+
+- Fix: Only execute custom attribute polling when the node is connected
+
 ## 0.2.5 (2026-01-16)
 
 - Enhancement: Uses a best effort approach to detect the used Fabric label from the Python server 
-- Fix: Ensures correct handling and storing of the desired FabricLabel  
+- Fix: Ensures correct handling and storing of the desired FabricLabel
 
 ## 0.2.4 (2026-01-16)
 
