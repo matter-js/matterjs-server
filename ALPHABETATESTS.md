@@ -122,53 +122,7 @@ If you're running Home Assistant OS, you can replace the official Matter Server 
 
 ### Reverting to the Original Addon
 
-To revert to the official Python-based Matter Server addon, simply wait until the next Matter Server addon update, which will pull the original image again (and will include Matter.js for the beta anyway).
-
-## Migrating an Existing Home Assistant Instance
-
-If you want to test the new Matter Server with your existing Home Assistant instance instead of setting up a parallel test environment, you can migrate your Home Assistant Matter integration to use an external new Matter Server instance.
-
-> [!WARNING]
-> This procedure is experimental and should only be performed on test instances or with proper backups in place.
-> 
-> This manual migration process is only needed if you want to test now.
-> Soon, the Matter Server addon will include a setting to switch between the Python-based and Matter.js-based server directly.
-
-
-### Prerequisites
-
-1. The Matter.js Server must already be running with the Python Matter Server data files (see [Manual Installation](#manual-installation-no-docker) above)
-2. Back up your Home Assistant instance
-
-### Migration Steps
-
-1. Disable the Matter integration in Home Assistant (Settings → Devices & Services → Matter → three dots → Disable)
-2. Edit the Home Assistant configuration storage:
-   * Navigate to the `/config` directory in your Home Assistant installation
-   * Go into the hidden `.storage` directory
-   * Edit the `core.config_entries` file
-3. Modify the Matter integration entry:
-   * Search for `"domain":"matter"` in the file
-   * Change `"use_addon":true` to `"use_addon":false`
-   * Change `"integration_created_addon":true` to `"integration_created_addon":false`
-   * Change the `"url"` value from the addon URL to your external new Matter Server URL (e.g., `ws://192.168.20.11:5580/ws`)
-
-   Example - Original entry:
-   ```json
-   {"created_at":"1970-01-01T00:00:00+00:00","data":{"integration_created_addon":true,"url":"ws://core-matter-server:5580/ws","use_addon":true},"disabled_by":"user","discovery_keys":{},"domain":"matter","entry_id":"c0d8dd88f94f8cdc9186c1b47655c5a0","minor_version":1,"modified_at":"1970-01-01T00:00:00+00:00","options":{},"pref_disable_new_entities":false,"pref_disable_polling":false,"source":"user","subentries":[],"title":"Matter","unique_id":null,"version":1},
-   ```
-
-   Example - Modified entry:
-   ```json
-   {"created_at":"1970-01-01T00:00:00+00:00","data":{"integration_created_addon":false,"url":"ws://192.168.20.11:5580/ws","use_addon":false},"disabled_by":"user","discovery_keys":{},"domain":"matter","entry_id":"c0d8dd88f94f8cdc9186c1b47655c5a0","minor_version":1,"modified_at":"1970-01-01T00:00:00+00:00","options":{},"pref_disable_new_entities":false,"pref_disable_polling":false,"source":"user","subentries":[],"title":"Matter","unique_id":null,"version":1},
-   ```
-
-4. Restart Home Assistant
-5. Re-enable the Matter integration (Settings → Devices & Services → Matter → three dots → Enable)
-
-### Switching Back to the Matter Addon
-
-To switch back to using the Python-based Matter addon, revert the changes made to the `core.config_entries` file (restore `"use_addon":true`, `"integration_created_addon":true`, and the original addon URL), then restart Home Assistant.
+To revert to the official Matter Server addon, simply wait until the next Matter Server addon update, which will pull the original image again (and will include Matter.js for the beta anyway).
 
 ## FAQ
 
