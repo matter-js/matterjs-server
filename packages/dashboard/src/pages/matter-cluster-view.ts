@@ -20,6 +20,7 @@ import "../pages/components/node-details";
 import { bindingContext } from "./components/context.js";
 // Cluster command components (auto-register on import)
 import { getClusterCommandsTag } from "./cluster-commands/index.js";
+import { formatHex } from "../util/format_hex.js";
 
 declare global {
     interface HTMLElementTagNameMap {
@@ -103,7 +104,7 @@ class MatterClusterView extends LitElement {
                                 Endpoint ${this.endpoint}</b
                             >
                         </div>
-                        <div slot="supporting-text">ClusterId ${this.cluster} (0x00${this.cluster.toString(16)})</div>
+                        <div slot="supporting-text">ClusterId ${this.cluster} (${formatHex(this.cluster)})</div>
                     </md-list-item>
                     <md-divider></md-divider>
                     ${clusterAttributes(this.node.attributes, this.endpoint, this.cluster).map(
@@ -114,7 +115,7 @@ class MatterClusterView extends LitElement {
                                     "Custom/Unknown Attribute"}
                                 </div>
                                 <div slot="supporting-text">
-                                    AttributeId: ${attribute.key} (0x00${attribute.key.toString(16)}) - Value type:
+                                    AttributeId: ${attribute.key} (${formatHex(attribute.key)}) - Value type:
                                     ${clusters[this.cluster!]?.attributes[attribute.key]?.type || "unknown"}
                                 </div>
                                 <div slot="end">

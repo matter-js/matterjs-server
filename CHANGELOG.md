@@ -10,7 +10,8 @@ This page shows a detailed overview of the changes between versions without the 
 ## 0.2.5 (2026-01-16)
 
 - Enhancement: Uses a best effort approach to detect the used Fabric label from the Python server 
-- Fix: Ensures correct handling and storing of the desired FabricLabel  
+- Fix: Ensures correct handling and storing of the desired FabricLabel
+- Fix: Streamlines Hex-Number displaying in the Dashboard (Cluster-/Attribute-IDs)
 
 ## 0.2.4 (2026-01-16)
 
