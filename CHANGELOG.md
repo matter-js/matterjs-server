@@ -7,7 +7,7 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
-## __WORK IN PROGRESS__
+## 0.2.4 (2026-01-16)
 
 - Enhancement: Re-adds the energy-polling for Eve devices that did not have an update to the Matter attributes
 - Enhancement: Allows using Environment Variables to configure the Matter Server instead of using CLI parameters
