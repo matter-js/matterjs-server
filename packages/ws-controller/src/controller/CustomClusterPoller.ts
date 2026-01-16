@@ -239,6 +239,7 @@ export class CustomClusterPoller {
     async #pollNode(nodeId: NodeId, attributePaths: Set<AttributePath>): Promise<void> {
         if (!this.#attributeReader.nodeConnected(nodeId)) {
             logger.debug(`Node ${nodeId} not connected, skipping custom attribute polling`);
+            return;
         }
         const paths = Array.from(attributePaths);
         logger.debug(`Polling ${paths.length} custom attributes for node ${nodeId}`);
