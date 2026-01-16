@@ -24,6 +24,27 @@ import "../../components/ha-svg-icon";
 import { getEndpointDeviceTypes } from "../matter-endpoint-view.js";
 import { bindingContext } from "./context.js";
 
+/** Map updateState values to user-friendly labels */
+const UPDATE_STATE_LABELS: Record<number, string> = {
+    1: "Idle",
+    2: "Querying",
+    3: "Waiting (Querying)",
+    4: "Downloading",
+    5: "Applying",
+    6: "Waiting (Applying)",
+    7: "Rolling back",
+    8: "Waiting for consent",
+};
+
+function getUpdateStateLabel(state: number, progress?: number): string {
+    const label = UPDATE_STATE_LABELS[state] || `Unknown (${state})`;
+    // Show progress only for downloading state
+    if (state === 4 && progress !== undefined) {
+        return `${label} (${progress}%)`;
+    }
+    return label;
+}
+
 function getNodeDeviceTypes(node: MatterNode): DeviceType[] {
     const uniqueEndpoints = new Set(Object.keys(node.attributes).map(key => Number(key.split("/")[0])));
     const allDeviceTypes: Set<DeviceType> = new Set();
@@ -86,16 +107,20 @@ export class NodeDetails extends LitElement {
                     <md-outlined-button @click=${this._reinterview}
                         >Interview<ha-svg-icon slot="icon" .path=${mdiChatProcessing}></ha-svg-icon
                     ></md-outlined-button>
-                    ${this._updateInitiated || (this.node.updateState || 0) > 1
+                    ${this._updateInitiated
                         ? html` <md-outlined-button disabled
-                              >Update in progress (${this.node.updateStateProgress || 0}%)<ha-svg-icon
-                                  slot="icon"
-                                  .path=${mdiUpdate}
-                              ></ha-svg-icon
+                              >Checking for updates<ha-svg-icon slot="icon" .path=${mdiUpdate}></ha-svg-icon
                           ></md-outlined-button>`
-                        : html`<md-outlined-button @click=${this._searchUpdate}
-                              >Update<ha-svg-icon slot="icon" .path=${mdiUpdate}></ha-svg-icon
-                          ></md-outlined-button>`}
+                        : (this.node.updateState || 0) > 1
+                          ? html` <md-outlined-button disabled
+                                >${getUpdateStateLabel(
+                                    this.node.updateState!,
+                                    this.node.updateStateProgress,
+                                )}<ha-svg-icon slot="icon" .path=${mdiUpdate}></ha-svg-icon
+                            ></md-outlined-button>`
+                          : html`<md-outlined-button @click=${this._searchUpdate}
+                                >Update<ha-svg-icon slot="icon" .path=${mdiUpdate}></ha-svg-icon
+                            ></md-outlined-button>`}
                     ${bindings
                         ? html`
                               <md-outlined-button @click=${this._binding}>
