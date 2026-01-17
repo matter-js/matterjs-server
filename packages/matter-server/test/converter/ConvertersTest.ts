@@ -621,6 +621,43 @@ describe("Converters", () => {
             expect(typeof result.dump).to.equal("string");
             expect(result.dump).to.equal("value: -18258567453835851999");
         });
+
+        it("should handle floating point numbers", () => {
+            const json = '{"value":3.14159}';
+            const result = parseBigIntAwareJson(json) as { value: number };
+            expect(typeof result.value).to.equal("number");
+            expect(result.value).to.equal(3.14159);
+        });
+
+        it("should handle negative floating point numbers", () => {
+            const json = '{"value":-123.456}';
+            const result = parseBigIntAwareJson(json) as { value: number };
+            expect(typeof result.value).to.equal("number");
+            expect(result.value).to.equal(-123.456);
+        });
+
+        it("should handle numbers with exponents", () => {
+            const json = '{"value":1.5e10}';
+            const result = parseBigIntAwareJson(json) as { value: number };
+            expect(typeof result.value).to.equal("number");
+            expect(result.value).to.equal(1.5e10);
+        });
+
+        it("should handle numbers with negative exponents", () => {
+            const json = '{"value":1E-5}';
+            const result = parseBigIntAwareJson(json) as { value: number };
+            expect(typeof result.value).to.equal("number");
+            expect(result.value).to.equal(1e-5);
+        });
+
+        it("should handle mixed integers and floats", () => {
+            const json = '{"int":18446744069414584320,"float":3.14}';
+            const result = parseBigIntAwareJson(json) as { int: bigint; float: number };
+            expect(typeof result.int).to.equal("bigint");
+            expect(result.int).to.equal(BigInt("18446744069414584320"));
+            expect(typeof result.float).to.equal("number");
+            expect(result.float).to.equal(3.14);
+        });
     });
 
     describe("toBigIntAwareJson and parseBigIntAwareJson round-trip", () => {

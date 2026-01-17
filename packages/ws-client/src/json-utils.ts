@@ -100,15 +100,38 @@ export function parseBigIntAwareJson(json: string): unknown {
                     result.pop(); // Remove the minus sign, we'll include it in the number
                 }
 
+                // Extract the integer part
                 const start = i;
                 while (i < json.length && json[i] >= "0" && json[i] <= "9") {
                     i++;
                 }
-                const digitsStr = json.slice(start, i);
-                const numberStr = hasMinus ? `-${digitsStr}` : digitsStr;
 
-                // Only convert if it's 15+ digits and exceeds safe integer range
-                if (digitsStr.length >= 15) {
+                // Check for decimal point (fractional number) or exponent
+                let isFloat = false;
+                if (i < json.length && json[i] === ".") {
+                    isFloat = true;
+                    i++; // consume the decimal point
+                    while (i < json.length && json[i] >= "0" && json[i] <= "9") {
+                        i++;
+                    }
+                }
+
+                // Check for exponent (e.g., 1e10, 1E-5)
+                if (i < json.length && (json[i] === "e" || json[i] === "E")) {
+                    isFloat = true;
+                    i++; // consume 'e' or 'E'
+                    if (i < json.length && (json[i] === "+" || json[i] === "-")) {
+                        i++; // consume sign
+                    }
+                    while (i < json.length && json[i] >= "0" && json[i] <= "9") {
+                        i++;
+                    }
+                }
+
+                const numberStr = (hasMinus ? "-" : "") + json.slice(start, i);
+
+                // Only convert integers (not floats) with 15+ digits that exceed safe integer range
+                if (!isFloat && numberStr.length - (hasMinus ? 1 : 0) >= 15) {
                     const num = BigInt(numberStr);
                     if (num > Number.MAX_SAFE_INTEGER || num < Number.MIN_SAFE_INTEGER) {
                         result.push(`"${BIGINT_MARKER}${numberStr}"`);
