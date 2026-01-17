@@ -22,10 +22,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 /**
  * Convert camelCase name to human-readable label with a title case.
- * e.g., "OnOffLight" -> "On Off Light"
+ * e.g., "OnOffLight" -> "On Off Light" when "addSpeces" is set to true, else camelize with first letter uppercase
  */
-function toLabel(name: string): string {
-    const words = decamelize(name, " ");
+function toLabel(name: string, addSpaces = false): string {
+    const words = addSpaces ? decamelize(name, " ") : name;
     // Title case: capitalize the first letter of each word
     return words.replace(/\b\w/g, char => char.toUpperCase());
 }
@@ -102,7 +102,7 @@ function generateDescriptions(): string {
         if (deviceType.id === undefined) continue;
         deviceTypes[deviceType.id] = {
             id: deviceType.id,
-            label: toLabel(deviceType.name),
+            label: toLabel(deviceType.name, true),
         };
     }
 

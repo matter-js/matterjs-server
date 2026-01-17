@@ -7,6 +7,10 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
+## __WORK IN PROGRESS__
+
+- Fix: Show names in the dashboard in the same format as the Python server
+
 ## 0.2.6 (2026-01-16)
 
 - Enhancement: Show more details in the dashboard for software update states beside "Downloading"
