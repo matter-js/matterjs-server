@@ -556,6 +556,49 @@ describe("Converters", () => {
             expect(typeof result.node_id).to.equal("bigint");
             expect(result.node_id).to.equal(BigInt("18446744069414584320"));
         });
+
+        it("should NOT convert large numbers inside string values", () => {
+            // This is the critical bug: numbers inside strings should remain as part of the string
+            const json = '{"dump":"compressed_fabric_id: 18258567453835851999"}';
+            const result = parseBigIntAwareJson(json) as { dump: string };
+            expect(typeof result.dump).to.equal("string");
+            expect(result.dump).to.equal("compressed_fabric_id: 18258567453835851999");
+        });
+
+        it("should handle nested JSON strings with large numbers", () => {
+            // Real-world case: JSON inside a string field (like diagnostic dumps)
+            const innerJson = JSON.stringify({ fabric_id: 18258567453835851999 });
+            const outerJson = JSON.stringify({ dump: innerJson });
+            const result = parseBigIntAwareJson(outerJson) as { dump: string };
+            expect(typeof result.dump).to.equal("string");
+            // The inner JSON string should be preserved exactly
+            expect(result.dump).to.equal(innerJson);
+        });
+
+        it("should handle mixed: large numbers in strings AND as actual values", () => {
+            const json = '{"dump":"id: 18258567453835851999","actual_id":18446744069414584320}';
+            const result = parseBigIntAwareJson(json) as { dump: string; actual_id: bigint };
+            // String should be unchanged
+            expect(typeof result.dump).to.equal("string");
+            expect(result.dump).to.equal("id: 18258567453835851999");
+            // Actual number should be BigInt
+            expect(typeof result.actual_id).to.equal("bigint");
+            expect(result.actual_id).to.equal(BigInt("18446744069414584320"));
+        });
+
+        it("should handle large numbers in arrays inside strings", () => {
+            const json = '{"dump":"[18258567453835851999, 12345678901234567890]"}';
+            const result = parseBigIntAwareJson(json) as { dump: string };
+            expect(typeof result.dump).to.equal("string");
+            expect(result.dump).to.equal("[18258567453835851999, 12345678901234567890]");
+        });
+
+        it("should handle escaped quotes in strings", () => {
+            const json = '{"msg":"value with \\"quote\\" and number: 18258567453835851999"}';
+            const result = parseBigIntAwareJson(json) as { msg: string };
+            expect(typeof result.msg).to.equal("string");
+            expect(result.msg).to.equal('value with "quote" and number: 18258567453835851999');
+        });
     });
 
     describe("toBigIntAwareJson and parseBigIntAwareJson round-trip", () => {
