@@ -6,11 +6,14 @@
 
 import { ContextProvider } from "@lit/context";
 import { MatterClient, MatterError } from "@matter-server/ws-client";
-import { LitElement, PropertyValueMap, html } from "lit";
+import { mdiRefresh } from "@mdi/js";
+import { LitElement, PropertyValueMap, css, html } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { clientContext } from "../client/client-context.js";
+import "../components/ha-svg-icon";
 import { clone } from "../util/clone_class.js";
 import type { Route } from "../util/routing.js";
+import "./components/header";
 import "./matter-cluster-view";
 import "./matter-endpoint-view";
 import "./matter-node-view";
@@ -34,8 +37,6 @@ class MatterDashboardApp extends LitElement {
     @state()
     private _state: "connecting" | "connected" | "error" | "disconnected" = "connecting";
 
-    private _error: string | undefined;
-
     private provider = new ContextProvider(this, { context: clientContext, initialValue: this.client });
 
     protected override firstUpdated(_changedProperties: PropertyValueMap<any> | Map<PropertyKey, unknown>): void {
@@ -54,9 +55,8 @@ class MatterDashboardApp extends LitElement {
                     this._state = "disconnected";
                 });
             },
-            (err: MatterError) => {
+            (_err: MatterError) => {
                 this._state = "error";
-                this._error = err.message;
             },
         );
 
@@ -72,17 +72,55 @@ class MatterDashboardApp extends LitElement {
         updateRoute();
     }
 
+    private _reconnect = () => {
+        this._state = "connecting";
+        this.client.startListening().then(
+            () => {
+                this._state = "connected";
+            },
+            (_err: MatterError) => {
+                this._state = "error";
+            },
+        );
+    };
+
     override render() {
         if (this._state === "connecting") {
-            return html`<p>Connecting...</p>`;
+            return html`
+                <dashboard-header title="Matter Server"></dashboard-header>
+                <div class="status-page">
+                    <p class="status-message">Connecting...</p>
+                </div>
+            `;
         }
         if (this._state === "disconnected") {
-            return html`<p>Connection lost</p>`;
+            return html`
+                <dashboard-header title="Matter Server"></dashboard-header>
+                <div class="status-page">
+                    <p class="status-message error">Connection lost</p>
+                    <p class="status-hint">
+                        The connection to the Matter Server was lost. Please check if the server is running.
+                    </p>
+                    <button class="retry-button" @click=${this._reconnect}>
+                        <ha-svg-icon .path=${mdiRefresh}></ha-svg-icon>
+                        Reconnect
+                    </button>
+                </div>
+            `;
         }
         if (this._state === "error") {
             return html`
-                <p>Error: ${this._error}</p>
-                <button @click=${this.client.disconnect}>Clear stored URL</button>
+                <dashboard-header title="Matter Server"></dashboard-header>
+                <div class="status-page">
+                    <p class="status-message error">No connection</p>
+                    <p class="status-hint">
+                        Unable to connect to the Matter Server. Please check if the server is running.
+                    </p>
+                    <button class="retry-button" @click=${this._reconnect}>
+                        <ha-svg-icon .path=${mdiRefresh}></ha-svg-icon>
+                        Reconnect
+                    </button>
+                </div>
             `;
         }
         if (this._route.prefix === "node" && this._route.path.length == 3) {
@@ -122,4 +160,62 @@ class MatterDashboardApp extends LitElement {
             .route=${this._route}
         ></matter-server-view>`;
     }
+
+    static override styles = css`
+        :host {
+            display: block;
+            min-height: 100vh;
+            background-color: var(--md-sys-color-background);
+        }
+
+        .status-page {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 48px 24px;
+            text-align: center;
+        }
+
+        .status-message {
+            font-size: 1.5rem;
+            color: var(--md-sys-color-on-background);
+            margin: 0 0 16px 0;
+        }
+
+        .status-message.error {
+            color: var(--danger-color);
+        }
+
+        .status-hint {
+            font-size: 1rem;
+            color: var(--md-sys-color-on-surface-variant);
+            margin: 0;
+            max-width: 400px;
+        }
+
+        .retry-button {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 24px;
+            padding: 12px 24px;
+            font-size: 1rem;
+            background-color: var(--md-sys-color-primary);
+            color: var(--md-sys-color-on-primary);
+            --icon-primary-color: var(--md-sys-color-on-primary);
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .retry-button:hover {
+            opacity: 0.9;
+        }
+
+        .retry-button ha-svg-icon {
+            width: 20px;
+            height: 20px;
+        }
+    `;
 }

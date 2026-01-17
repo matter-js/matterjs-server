@@ -306,7 +306,7 @@ export class NodeBindingDialog extends LitElement {
                         <md-list style="padding-bottom:18px;">
                             ${Object.values(bindings).map(
                                 (entry, index) => html`
-                  <md-list-item style="background:cornsilk;">
+                  <md-list-item class="binding-item">
                     <div style="display:flex;gap:10px;">
                         <div>node:${entry["node"]}</div>
                         <div>endpoint:${entry["endpoint"]}</div>
@@ -376,9 +376,13 @@ export class NodeBindingDialog extends LitElement {
     }
 
     static override styles = css`
+        .binding-item {
+            background: var(--md-sys-color-surface-container-high);
+        }
+
         .inline-group {
             display: flex;
-            border: 2px solid #673ab7;
+            border: 2px solid var(--md-sys-color-primary);
             padding: 1px;
             border-radius: 8px;
             position: relative;
@@ -404,8 +408,8 @@ export class NodeBindingDialog extends LitElement {
             position: absolute;
             left: 15px;
             top: -12px;
-            background: #673ab7;
-            color: white;
+            background: var(--md-sys-color-primary);
+            color: var(--md-sys-color-on-primary);
             padding: 3px 15px;
             border-radius: 4px;
         }

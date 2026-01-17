@@ -5,6 +5,7 @@
  */
 
 import { MatterClient } from "@matter-server/ws-client";
+import "../util/theme-service.js"; // Initialize theme service early
 
 async function main() {
     import("../pages/matter-dashboard-app.js");

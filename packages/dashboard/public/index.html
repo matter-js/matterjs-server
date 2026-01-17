@@ -17,11 +17,18 @@
     --md-ref-typeface-plain: var(--roboto-font);
 
     --md-sys-color-background: #f5f5f5;
+    --md-sys-color-on-background: #1c1b1f;
     --md-sys-color-surface: #fff;
+    --md-sys-color-on-surface: #1c1b1f;
+    --md-sys-color-on-surface-variant: #49454f;
+    --md-sys-color-surface-variant: #e7e0ec;
     --md-sys-color-surface-container: #fff;
+    --md-sys-color-surface-container-low: #f7f2fa;
     --md-sys-color-surface-container-high: #fff;
     --md-sys-color-surface-container-highest: #f5f5f5;
     --md-sys-color-secondary-container: #e0e0e0;
+    --md-sys-color-outline: #79747e;
+    --md-sys-color-outline-variant: #cac4d0;
 
     --md-sys-typescale-headline-font: var(--roboto-font);
     --md-sys-typescale-title-font: var(--roboto-font);
@@ -31,8 +38,36 @@
     font-family: var(--roboto-font);
   }
 
+  body {
+    --primary-color: var(--md-sys-color-primary);
+  }
+
   a {
     color: var(--primary-color);
+  }
+
+  /* Dark theme overrides */
+  html.dark-theme body {
+    --md-sys-color-primary: #4fc3f7;
+    --md-sys-color-on-primary: #003544;
+    --md-sys-color-background: #121212;
+    --md-sys-color-on-background: #e6e1e5;
+    --md-sys-color-surface: #1e1e1e;
+    --md-sys-color-on-surface: #e6e1e5;
+    --md-sys-color-on-surface-variant: #cac4d0;
+    --md-sys-color-surface-variant: #49454f;
+    --md-sys-color-surface-container: #1e1e1e;
+    --md-sys-color-surface-container-low: #1a1a1a;
+    --md-sys-color-surface-container-high: #2b2b2b;
+    --md-sys-color-surface-container-highest: #363636;
+    --md-sys-color-secondary-container: #4a4458;
+    --md-sys-color-on-secondary-container: #e8def8;
+    --md-sys-color-outline: #938f99;
+    --md-sys-color-outline-variant: #49454f;
+    --text-color: rgba(255, 255, 255, 0.6);
+    --danger-color: #ff7961;
+    --primary-color: #4fc3f7;
+    color-scheme: dark;
   }
   </style>
 </head>

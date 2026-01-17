@@ -9,6 +9,8 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## __WORK IN PROGRESS__
 
+- Enhancement: Added Dark mode including selection of the theme via button and query parameter
+- Enhancement: Streamlined the "No Websocket connection" page and allow reloading of the page
 - Fix: Refactor BigInt aware JSON parsing to avoid issues when importing nodes
 - Fix: Show names in the dashboard in the same format as the Python server
 - Fix: Fix some datatypes for custom eve cluster attributes
