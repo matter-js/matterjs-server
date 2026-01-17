@@ -11,6 +11,7 @@ This page shows a detailed overview of the changes between versions without the 
 
 - Fix: Refactor BigInt aware JSON parsing to avoid issues when importing nodes
 - Fix: Show names in the dashboard in the same format as the Python server
+- Fix: Fix some datatypes for custom eve cluster attributes
 
 ## 0.2.6 (2026-01-16)
 

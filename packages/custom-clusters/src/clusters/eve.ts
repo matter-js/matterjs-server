@@ -4,11 +4,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { attribute, bool, cluster, int32, single, uint32 } from "@matter/main/model";
+import { attribute, bool, cluster, single, uint32 } from "@matter/main/model";
 
 @cluster(0x130afc01)
 export class EveCluster {
-    @attribute(0x130a0006, int32)
+    @attribute(0x130a0006, uint32)
     timesOpened?: number;
 
     @attribute(0x130a000a, single)
@@ -32,10 +32,10 @@ export class EveCluster {
     @attribute(0x130a0013, single)
     altitude?: number;
 
-    @attribute(0x130a0014, single)
+    @attribute(0x130a0014, uint32)
     pressure?: number;
 
-    @attribute(0x130a0015, int32)
+    @attribute(0x130a0015, uint32)
     weatherTrend?: number;
 
     @attribute(0x130a0018, uint32)
