@@ -567,7 +567,7 @@ describe("Converters", () => {
 
         it("should handle nested JSON strings with large numbers", () => {
             // Real-world case: JSON inside a string field (like diagnostic dumps)
-            const innerJson = JSON.stringify({ fabric_id: 18258567453835851999 });
+            const innerJson = '{ "fabric_id": 18258567453835851999 }';
             const outerJson = JSON.stringify({ dump: innerJson });
             const result = parseBigIntAwareJson(outerJson) as { dump: string };
             expect(typeof result.dump).to.equal("string");

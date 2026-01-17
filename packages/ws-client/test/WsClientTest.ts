@@ -81,17 +81,16 @@ describe("ws-client", () => {
 
             it("should handle real-world import_test_node message", () => {
                 // This simulates the actual problematic message structure
-                const innerData = {
-                    server_info: {
-                        fabric_id: 2,
-                        compressed_fabric_id: 18258567453835851999,
+                const dumpString = `{
+                    "server_info": {
+                        "fabric_id": 2,
+                        "compressed_fabric_id": 18258567453835851999,
                     },
-                    node: {
-                        node_id: 115,
-                        attributes: { "0/40/1": "Test Vendor" },
+                    "node": {
+                        "node_id": 115,
+                        "attributes": { "0/40/1": "Test Vendor" },
                     },
-                };
-                const dumpString = JSON.stringify(innerData);
+                }`;
                 const outerMessage = {
                     message_id: "2",
                     command: "import_test_node",

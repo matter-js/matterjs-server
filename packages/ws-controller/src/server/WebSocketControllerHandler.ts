@@ -405,7 +405,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             if (result === undefined) {
                 throw new Error("No response");
             }
-            logger.info("WebSocket request handled", messageId, result);
+            logger.info(`WebSocket request (${command}) handled`, messageId, result);
             return {
                 response: {
                     message_id: messageId ?? "",

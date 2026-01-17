@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { WebSocketServer, WebSocket } from "ws";
+import { WebSocket, WebSocketServer } from "ws";
 import { parseBigIntAwareJson, toBigIntAwareJson } from "../src/json-utils.js";
 import { CommandMessage, ServerInfoMessage } from "../src/models/model.js";
 
