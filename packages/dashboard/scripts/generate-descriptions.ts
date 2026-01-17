@@ -22,7 +22,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 /**
  * Convert camelCase name to human-readable label with a title case.
- * e.g., "OnOffLight" -> "On Off Light" when "addSpeces" is set to true, else camelize with first letter uppercase
+ * e.g., "OnOffLight" -> "On Off Light" when "addSpaces" is set to true, else camelize with first letter uppercase
  */
 function toLabel(name: string, addSpaces = false): string {
     const words = addSpaces ? decamelize(name, " ") : name;
