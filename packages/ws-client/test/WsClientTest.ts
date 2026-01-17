@@ -106,6 +106,28 @@ describe("ws-client", () => {
                 // The dump string should be preserved exactly
                 expect(result.args.dump).to.equal(dumpString);
             });
+
+            it("should handle negative large numbers", () => {
+                const json = '{"value":-18446744069414584320}';
+                const result = parseBigIntAwareJson(json) as { value: bigint };
+                expect(typeof result.value).to.equal("bigint");
+                expect(result.value).to.equal(BigInt("-18446744069414584320"));
+            });
+
+            it("should handle negative large numbers in arrays", () => {
+                const json = '{"values":[-18446744069414584320, 18446744069414584321]}';
+                const result = parseBigIntAwareJson(json) as { values: bigint[] };
+                expect(result.values).to.have.length(2);
+                expect(result.values[0]).to.equal(BigInt("-18446744069414584320"));
+                expect(result.values[1]).to.equal(BigInt("18446744069414584321"));
+            });
+
+            it("should NOT convert negative large numbers inside strings", () => {
+                const json = '{"dump":"value: -18258567453835851999"}';
+                const result = parseBigIntAwareJson(json) as { dump: string };
+                expect(typeof result.dump).to.equal("string");
+                expect(result.dump).to.equal("value: -18258567453835851999");
+            });
         });
 
         describe("toBigIntAwareJson", () => {

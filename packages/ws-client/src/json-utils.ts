@@ -94,16 +94,23 @@ export function parseBigIntAwareJson(json: string): unknown {
                 i++;
             } else if (char >= "0" && char <= "9") {
                 // Potential number - extract and check
+                // Check if previous character was a minus sign (for negative numbers)
+                const hasMinus = result.length > 0 && result[result.length - 1] === "-";
+                if (hasMinus) {
+                    result.pop(); // Remove the minus sign, we'll include it in the number
+                }
+
                 const start = i;
                 while (i < json.length && json[i] >= "0" && json[i] <= "9") {
                     i++;
                 }
-                const numberStr = json.slice(start, i);
+                const digitsStr = json.slice(start, i);
+                const numberStr = hasMinus ? `-${digitsStr}` : digitsStr;
 
-                // Only convert if it's 15+ digits and exceeds MAX_SAFE_INTEGER
-                if (numberStr.length >= 15) {
+                // Only convert if it's 15+ digits and exceeds safe integer range
+                if (digitsStr.length >= 15) {
                     const num = BigInt(numberStr);
-                    if (num > Number.MAX_SAFE_INTEGER) {
+                    if (num > Number.MAX_SAFE_INTEGER || num < Number.MIN_SAFE_INTEGER) {
                         result.push(`"${BIGINT_MARKER}${numberStr}"`);
                     } else {
                         result.push(numberStr);
