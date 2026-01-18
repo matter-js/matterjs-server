@@ -76,6 +76,26 @@ Dashboard has additional `npm run generate` step for cluster descriptions.
 
 Engine requirement: `>=20.19.0 <22.0.0 || >=22.13.0`
 
+## Code Quality Checklist
+
+**Always run these checks before considering work complete:**
+
+```bash
+# 1. Format code (required)
+npm run format
+
+# 2. Lint (required)
+npm run lint
+
+# 3. Build (required)
+npm run build
+
+# 4. Run tests (required)
+npm test
+```
+
+All four checks must pass. Fix any issues before committing.
+
 ## Dashboard Development
 
 ### Technology Stack
