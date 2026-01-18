@@ -123,7 +123,7 @@ The `serverInfo` property contains information about the connected Matter server
 interface ServerInfoMessage {
     fabric_id: bigint;              // The fabric ID
     compressed_fabric_id: bigint;   // Compressed fabric ID (global ID)
-    fabric_index: number;           // The fabric index (OHF Matter Server only)
+    fabric_index?: number;          // The fabric index (OHF Matter Server only)
     schema_version: number;         // API schema version
     min_supported_schema_version: number;
     sdk_version: string;            // Server SDK version string
