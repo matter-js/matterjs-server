@@ -38,7 +38,7 @@
         "@eslint/compat": "^2.0.0",
         "@eslint/eslintrc": "^3.3.3",
         "@eslint/js": "^9.39.2",
-        "@matter/testing": "0.16.5",
+        "@matter/testing": "0.16.6-alpha.0-20260118-ceec17415",
         "@typescript-eslint/eslint-plugin": "^8.52.0",
         "@typescript-eslint/parser": "^8.52.0",
         "@types/mocha": "^10.0.10",
