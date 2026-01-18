@@ -7,3 +7,16 @@
 export class MatterError extends Error {}
 
 export class InvalidServerVersion extends MatterError {}
+
+/**
+ * Error thrown when a WebSocket command times out waiting for a response.
+ */
+export class CommandTimeoutError extends MatterError {
+    constructor(
+        public readonly command: string,
+        public readonly timeoutMs: number,
+    ) {
+        super(`Command '${command}' timed out after ${timeoutMs}ms`);
+        this.name = "CommandTimeoutError";
+    }
+}
