@@ -61,7 +61,9 @@ class LevelControlClusterCommands extends BaseClusterCommands {
                             />
                             Execute if Off
                         </label>
-                        <md-outlined-button @click=${handleAsync(() => this._handleMoveToLevel())}>MoveToLevel</md-outlined-button>
+                        <md-outlined-button @click=${handleAsync(() => this._handleMoveToLevel())}
+                            >MoveToLevel</md-outlined-button
+                        >
                         <md-outlined-button @click=${handleAsync(() => this._handleMoveToLevelWithOnOff())}
                             >MoveToLevelWithOnOff</md-outlined-button
                         >

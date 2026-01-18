@@ -28,7 +28,9 @@ class OnOffClusterCommands extends BaseClusterCommands {
                     <div class="command-row">
                         <md-outlined-button @click=${handleAsync(() => this._handleOn())}>On</md-outlined-button>
                         <md-outlined-button @click=${handleAsync(() => this._handleOff())}>Off</md-outlined-button>
-                        <md-outlined-button @click=${handleAsync(() => this._handleToggle())}>Toggle</md-outlined-button>
+                        <md-outlined-button @click=${handleAsync(() => this._handleToggle())}
+                            >Toggle</md-outlined-button
+                        >
                     </div>
                 </div>
             </details>

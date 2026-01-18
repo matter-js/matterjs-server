@@ -134,7 +134,10 @@ export class LogLevelDialog extends LitElement {
                 </div>
                 <div slot="actions">
                     <md-text-button @click=${this._close}>Cancel</md-text-button>
-                    <md-text-button @click=${handleAsync(() => this._apply())} ?disabled=${this._loading || this._applying}>
+                    <md-text-button
+                        @click=${handleAsync(() => this._apply())}
+                        ?disabled=${this._loading || this._applying}
+                    >
                         ${this._applying ? "Applying..." : "Apply"}
                     </md-text-button>
                 </div>
