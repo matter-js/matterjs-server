@@ -51,7 +51,8 @@ export class MatterClient {
             timeoutId?: ReturnType<typeof setTimeout>;
         }
     > = {};
-    private msgId = 0;
+    // Start with random offset for defense-in-depth and easier debugging across sessions
+    private msgId = Math.floor(Math.random() * 0x7fffffff);
     private eventListeners: Record<string, Array<() => void>> = {};
 
     /**
@@ -360,15 +361,19 @@ export class MatterClient {
             );
         }
 
-        const messageId = ++this.msgId;
+        // Reset counter before overflow to maintain precision
+        if (this.msgId >= Number.MAX_SAFE_INTEGER) {
+            this.msgId = 0;
+        }
+        const messageId = String(++this.msgId);
 
         const message = {
-            message_id: messageId.toString(),
+            message_id: messageId,
             command,
             args,
         };
 
-        const messagePromise = new Promise<APICommands[T]["response"]>((resolve, reject) => {
+        return new Promise<APICommands[T]["response"]>((resolve, reject) => {
             // Set up timeout if enabled
             let timeoutId: ReturnType<typeof setTimeout> | undefined;
             if (timeout > 0) {
@@ -394,8 +399,6 @@ export class MatterClient {
             };
             this.connection.sendMessage(message);
         });
-
-        return messagePromise;
     }
 
     /**

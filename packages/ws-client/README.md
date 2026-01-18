@@ -151,6 +151,34 @@ try {
 
 All client methods accept an optional `timeout` parameter as their last argument to override the default timeout for that specific call.
 
+### Connection Handling
+
+When the WebSocket connection is closed (either by calling `disconnect()` or due to connection loss), all pending commands are automatically rejected with a `ConnectionClosedError`:
+
+```typescript
+import { MatterClient, ConnectionClosedError } from "@matter-server/ws-client";
+
+const client = new MatterClient("ws://localhost:5580/ws");
+await client.connect();
+
+// Start a long-running command
+const commandPromise = client.commissionWithCode("MT:Y3.5UNQO100KA0648G00", false);
+
+// If the connection is lost or disconnected while the command is pending:
+try {
+    await commandPromise;
+} catch (err) {
+    if (err instanceof ConnectionClosedError) {
+        console.log("Connection was closed while command was pending");
+    }
+}
+
+// Listen for connection loss events
+client.addEventListener("connection_lost", () => {
+    console.log("Connection to server was lost");
+});
+```
+
 ### Other Exports
 
 ```typescript
@@ -164,6 +192,7 @@ import {
     MatterError,
     InvalidServerVersion,
     CommandTimeoutError,
+    ConnectionClosedError,
 
     // Constants
     DEFAULT_COMMAND_TIMEOUT,
