@@ -21,6 +21,7 @@ import { DeviceType } from "../../client/models/descriptions.js";
 import { showAlertDialog, showPromptDialog } from "../../components/dialog-box/show-dialog-box.js";
 import { showNodeBindingDialog } from "../../components/dialogs/binding/show-node-binding-dialog.js";
 import "../../components/ha-svg-icon";
+import { handleAsync } from "../../util/async-handler.js";
 import { getEndpointDeviceTypes } from "../matter-endpoint-view.js";
 import { bindingContext } from "./context.js";
 
@@ -104,7 +105,7 @@ export class NodeDetails extends LitElement {
                           </div>`}
                 </md-list-item>
                 <md-list-item class="btn">
-                    <md-outlined-button @click=${this._reinterview}
+                    <md-outlined-button @click=${handleAsync(() => this._reinterview())}
                         >Interview<ha-svg-icon slot="icon" .path=${mdiChatProcessing}></ha-svg-icon
                     ></md-outlined-button>
                     ${this._updateInitiated
@@ -118,22 +119,22 @@ export class NodeDetails extends LitElement {
                                     this.node.updateStateProgress,
                                 )}<ha-svg-icon slot="icon" .path=${mdiUpdate}></ha-svg-icon
                             ></md-outlined-button>`
-                          : html`<md-outlined-button @click=${this._searchUpdate}
+                          : html`<md-outlined-button @click=${handleAsync(() => this._searchUpdate())}
                                 >Update<ha-svg-icon slot="icon" .path=${mdiUpdate}></ha-svg-icon
                             ></md-outlined-button>`}
                     ${bindings
                         ? html`
-                              <md-outlined-button @click=${this._binding}>
+                              <md-outlined-button @click=${handleAsync(() => this._binding())}>
                                   Binding
                                   <ha-svg-icon slot="icon" .path=${mdiLink}></ha-svg-icon>
                               </md-outlined-button>
                           `
                         : nothing}
 
-                    <md-outlined-button @click=${this._openCommissioningWindow}
+                    <md-outlined-button @click=${handleAsync(() => this._openCommissioningWindow())}
                         >Share<ha-svg-icon slot="icon" .path=${mdiShareVariant}></ha-svg-icon
                     ></md-outlined-button>
-                    <md-outlined-button @click=${this._remove}
+                    <md-outlined-button @click=${handleAsync(() => this._remove())}
                         >Remove<ha-svg-icon slot="icon" .path=${mdiTrashCan}></ha-svg-icon
                     ></md-outlined-button>
                 </md-list-item>

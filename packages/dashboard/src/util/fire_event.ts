@@ -70,14 +70,12 @@ export const fireEvent = <HassEvent extends ValidHassDomEvent>(
     },
 ) => {
     options = options || {};
-    // @ts-expect-error why?
-    detail = detail === null || detail === undefined ? {} : detail;
     const event = new Event(type, {
         bubbles: options.bubbles === undefined ? true : options.bubbles,
         cancelable: Boolean(options.cancelable),
         composed: options.composed === undefined ? true : options.composed,
     });
-    (event as any).detail = detail;
+    (event as any).detail = detail ?? {};
     node.dispatchEvent(event);
     return event;
 };

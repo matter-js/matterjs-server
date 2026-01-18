@@ -18,6 +18,7 @@ import { customElement } from "lit/decorators.js";
 import { showAlertDialog, showPromptDialog } from "../../components/dialog-box/show-dialog-box.js";
 import { showCommissionNodeDialog } from "../../components/dialogs/commission-node-dialog/show-commission-node-dialog.js";
 import "../../components/ha-svg-icon";
+import { handleAsync } from "../../util/async-handler.js";
 
 @customElement("server-details")
 export class ServerDetails extends LitElement {
@@ -54,7 +55,7 @@ export class ServerDetails extends LitElement {
         <md-list-item class="btn">
           <span>
           <md-outlined-button @click=${this._commissionNode}>Commission node<ha-svg-icon slot="icon" .path=${mdiPlus}></ha-svg-icon></md-outlined-button>
-          <md-outlined-button @click=${this._uploadDiagnosticsDumpFile}>Import node<ha-svg-icon slot="icon" .path=${mdiFile}></ha-svg-icon></md-outlined-button>
+          <md-outlined-button @click=${handleAsync(() => this._uploadDiagnosticsDumpFile())}>Import node<ha-svg-icon slot="icon" .path=${mdiFile}></ha-svg-icon></md-outlined-button>
           </md-list-item>
       </md-list>
       <!-- hidden file element for the upload diagnostics -->
@@ -83,8 +84,7 @@ export class ServerDetails extends LitElement {
         ) {
             return;
         }
-        // @ts-expect-error why?
-        const fileElem = this.renderRoot.getElementById("fileElem") as HTMLInputElement;
+        const fileElem = this.shadowRoot!.getElementById("fileElem") as HTMLInputElement;
         fileElem.click();
     }
 

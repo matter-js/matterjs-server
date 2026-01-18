@@ -7,6 +7,7 @@
 import "@material/web/button/filled-button";
 import { html } from "lit";
 import { customElement, state } from "lit/decorators.js";
+import { handleAsync } from "../../../util/async-handler.js";
 import { BaseClusterCommands } from "../base-cluster-commands.js";
 import { registerClusterCommands } from "../registry.js";
 
@@ -60,8 +61,8 @@ class LevelControlClusterCommands extends BaseClusterCommands {
                             />
                             Execute if Off
                         </label>
-                        <md-outlined-button @click=${this._handleMoveToLevel}>MoveToLevel</md-outlined-button>
-                        <md-outlined-button @click=${this._handleMoveToLevelWithOnOff}
+                        <md-outlined-button @click=${handleAsync(() => this._handleMoveToLevel())}>MoveToLevel</md-outlined-button>
+                        <md-outlined-button @click=${handleAsync(() => this._handleMoveToLevelWithOnOff())}
                             >MoveToLevelWithOnOff</md-outlined-button
                         >
                     </div>

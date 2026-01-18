@@ -12,6 +12,7 @@ import { MatterClient } from "@matter-server/ws-client";
 import { LitElement, html, nothing } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
 import { clientContext } from "../../../client/client-context.js";
+import { handleAsync } from "../../../util/async-handler.js";
 import { fireEvent } from "../../../util/fire_event.js";
 
 @customElement("commission-node-wifi")
@@ -37,7 +38,7 @@ export class CommissionNodeWifi extends LitElement {
                 </md-outlined-text-field>
                 <br />
                 <br />
-                <md-outlined-button @click=${this._setWifiCredentials} .disabled="${this._loading}"
+                <md-outlined-button @click=${handleAsync(() => this._setWifiCredentials())} .disabled="${this._loading}"
                     >Set WiFi Credentials</md-outlined-button
                 >${this._loading
                     ? html`<md-circular-progress indeterminate .visible="${this._loading}"></md-circular-progress>`
@@ -46,12 +47,12 @@ export class CommissionNodeWifi extends LitElement {
         return html`<md-outlined-text-field label="Pairing code" .disabled="${this._loading}"> </md-outlined-text-field>
             <br />
             <br />
-            <md-outlined-button @click=${this._commissionNode} .disabled="${this._loading}"
+            <md-outlined-button @click=${handleAsync(() => this._commissionNode())} .disabled="${this._loading}"
                 >Commission</md-outlined-button
             >${this._loading ? html`<md-circular-progress indeterminate></md-circular-progress>` : nothing}`;
     }
 
-    private _setWifiCredentials() {
+    private async _setWifiCredentials() {
         const ssid = this._ssidField.value;
         if (!ssid) {
             alert("SSID is required");
@@ -64,7 +65,7 @@ export class CommissionNodeWifi extends LitElement {
         }
         this._loading = true;
         try {
-            this.client.setWifiCredentials(ssid, password);
+            await this.client.setWifiCredentials(ssid, password);
         } catch (err) {
             alert(`Error setting WiFi credentials: \n${(err as Error).message}`);
         } finally {

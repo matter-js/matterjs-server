@@ -12,6 +12,7 @@ import { MatterClient } from "@matter-server/ws-client";
 import { LitElement, html, nothing } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
 import { clientContext } from "../../../client/client-context.js";
+import { handleAsync } from "../../../util/async-handler.js";
 import { fireEvent } from "../../../util/fire_event.js";
 
 @customElement("commission-node-existing")
@@ -30,7 +31,7 @@ export class CommissionNodeExisting extends LitElement {
         return html`<md-outlined-text-field label="Share code" .disabled="${this._loading}"> </md-outlined-text-field>
             <br />
             <br />
-            <md-outlined-button @click=${this._commissionNode} .disabled="${this._loading}"
+            <md-outlined-button @click=${handleAsync(() => this._commissionNode())} .disabled="${this._loading}"
                 >Commission</md-outlined-button
             >${this._loading ? html`<md-circular-progress indeterminate></md-circular-progress>` : nothing}`;
     }

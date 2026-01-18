@@ -13,6 +13,7 @@ import "@material/web/select/select-option";
 import { LogLevelString, MatterClient } from "@matter-server/ws-client";
 import { css, html, LitElement, nothing } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
+import { fireAndForget, handleAsync } from "../../../util/async-handler.js";
 import { preventDefault } from "../../../util/prevent_default.js";
 
 const LOG_LEVELS: { value: LogLevelString; label: string }[] = [
@@ -41,7 +42,7 @@ export class LogLevelDialog extends LitElement {
 
     override connectedCallback() {
         super.connectedCallback();
-        void this._loadLogLevels();
+        fireAndForget(this._loadLogLevels());
     }
 
     private async _loadLogLevels() {
@@ -133,7 +134,7 @@ export class LogLevelDialog extends LitElement {
                 </div>
                 <div slot="actions">
                     <md-text-button @click=${this._close}>Cancel</md-text-button>
-                    <md-text-button @click=${this._apply} ?disabled=${this._loading || this._applying}>
+                    <md-text-button @click=${handleAsync(() => this._apply())} ?disabled=${this._loading || this._applying}>
                         ${this._applying ? "Applying..." : "Apply"}
                     </md-text-button>
                 </div>

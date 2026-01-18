@@ -16,6 +16,7 @@ import "../../../components/ha-svg-icon";
 import { AccessControlEntry, BindingTarget, MatterClient, MatterNode } from "@matter-server/ws-client";
 import { css, html, LitElement, nothing } from "lit";
 import { customElement, property, query } from "lit/decorators.js";
+import { handleAsync } from "../../../util/async-handler.js";
 import { preventDefault } from "../../../util/prevent_default.js";
 import { BindingEntryDataTransformer, BindingEntryStruct, InputType } from "./model.js";
 
@@ -314,7 +315,7 @@ export class NodeBindingDialog extends LitElement {
                     </div>
                     <div slot="end">
                       <md-text-button
-                        @click=${() => this.deleteBindingHandler(index)}
+                        @click=${handleAsync(() => this.deleteBindingHandler(index))}
                       >delete</md-text-button
                     </div>
                   </md-list-item>
@@ -368,7 +369,7 @@ export class NodeBindingDialog extends LitElement {
                     </div>
                 </div>
                 <div slot="actions">
-                    <md-text-button @click=${this.addBindingHandler}>Add</md-text-button>
+                    <md-text-button @click=${handleAsync(() => this.addBindingHandler())}>Add</md-text-button>
                     <md-text-button @click=${this._close}>Cancel</md-text-button>
                 </div>
             </md-dialog>

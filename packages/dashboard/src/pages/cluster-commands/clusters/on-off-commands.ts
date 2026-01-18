@@ -8,6 +8,7 @@ import "@material/web/button/filled-button";
 import "@material/web/button/outlined-button";
 import { html } from "lit";
 import { customElement } from "lit/decorators.js";
+import { handleAsync } from "../../../util/async-handler.js";
 import { BaseClusterCommands } from "../base-cluster-commands.js";
 import { registerClusterCommands } from "../registry.js";
 
@@ -25,9 +26,9 @@ class OnOffClusterCommands extends BaseClusterCommands {
                 <summary>OnOff Commands</summary>
                 <div class="command-content">
                     <div class="command-row">
-                        <md-outlined-button @click=${this._handleOn}>On</md-outlined-button>
-                        <md-outlined-button @click=${this._handleOff}>Off</md-outlined-button>
-                        <md-outlined-button @click=${this._handleToggle}>Toggle</md-outlined-button>
+                        <md-outlined-button @click=${handleAsync(() => this._handleOn())}>On</md-outlined-button>
+                        <md-outlined-button @click=${handleAsync(() => this._handleOff())}>Off</md-outlined-button>
+                        <md-outlined-button @click=${handleAsync(() => this._handleToggle())}>Toggle</md-outlined-button>
                     </div>
                 </div>
             </details>
