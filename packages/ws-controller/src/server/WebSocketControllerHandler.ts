@@ -435,11 +435,15 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
     async #getServerInfo(): Promise<ServerInfoMessage> {
         await this.#commandHandler.start();
-        const { fabricId: fabric_id, compressedFabricId: compressed_fabric_id } =
-            await this.#commandHandler.getCommissionerFabricData();
+        const {
+            fabricId: fabric_id,
+            compressedFabricId: compressed_fabric_id,
+            fabricIndex: fabric_index,
+        } = await this.#commandHandler.getCommissionerFabricData();
         return {
             fabric_id,
             compressed_fabric_id,
+            fabric_index,
             schema_version: SCHEMA_VERSION,
             min_supported_schema_version: SCHEMA_VERSION,
             sdk_version: `matter-server/${this.#serverVersion} (matter.js/${MATTER_VERSION})`,

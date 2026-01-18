@@ -110,6 +110,28 @@ All four checks must pass. Fix any issues before committing.
 - Key variables: `--md-sys-color-primary`, `--md-sys-color-surface`, `--md-sys-color-on-surface`, `--md-sys-color-on-surface-variant`
 - Dark mode: Variables overridden in `html.dark-theme body` selector
 
+### Theme-Aware Colors
+When defining colors in dashboard components, **always use CSS variables** that are defined for both light and dark themes:
+
+```css
+/* CORRECT - uses theme variable with fallback */
+color: var(--text-color, rgba(0, 0, 0, 0.6));
+background: var(--md-sys-color-surface);
+
+/* WRONG - hardcoded color won't adapt to dark mode */
+color: rgba(0, 0, 0, 0.6);
+color: #333333;
+color: grey;
+```
+
+Available theme variables defined in `public/index.html`:
+- `--text-color`: Secondary text (grey) - adapts for light/dark
+- `--danger-color`: Error/warning red
+- `--primary-color`: Primary accent color
+- `--md-sys-color-*`: Material Design system colors
+
+Always verify new colors look correct in both light AND dark themes before committing.
+
 ### Theme System
 - `src/util/theme-service.ts`: Singleton managing theme state
 - Supports: `light`, `dark`, `system` (OS auto-detect)

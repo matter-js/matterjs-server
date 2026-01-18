@@ -115,6 +115,26 @@ new MatterClient(url: string, wsFactory?: WebSocketFactory)
 - `server_info_updated`: Fired when server info changes
 - `connection_lost`: Fired when connection is lost
 
+### Server Info
+
+The `serverInfo` property contains information about the connected Matter server:
+
+```typescript
+interface ServerInfoMessage {
+    fabric_id: bigint;              // The fabric ID
+    compressed_fabric_id: bigint;   // Compressed fabric ID (global ID)
+    fabric_index?: number;          // The fabric index (OHF Matter Server only)
+    schema_version: number;         // API schema version
+    min_supported_schema_version: number;
+    sdk_version: string;            // Server SDK version string
+    wifi_credentials_set: boolean;  // Whether WiFi credentials are configured
+    thread_credentials_set: boolean; // Whether Thread dataset is configured
+    bluetooth_enabled: boolean;     // Whether BLE commissioning is available
+}
+```
+
+**Note:** The `fabric_index` field is specific to OHF Matter Server and is not available in Python Matter Server. When connecting to Python Matter Server, this field will be undefined.
+
 ### Command Timeouts
 
 All commands have a default timeout of 5 minutes (300,000ms) to prevent promises from hanging indefinitely if the server doesn't respond. You can configure this behavior globally or per-call:

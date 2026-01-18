@@ -301,6 +301,7 @@ export interface AttributeWriteResult {
 export interface ServerInfoMessage {
     fabric_id: bigint; // not number
     compressed_fabric_id: bigint; // not number
+    fabric_index: number;
     schema_version: number;
     min_supported_schema_version: number;
     sdk_version: string;

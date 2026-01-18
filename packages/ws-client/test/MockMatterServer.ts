@@ -35,6 +35,7 @@ export class MockMatterServer {
         this.serverInfo = {
             fabric_id: options.serverInfo?.fabric_id ?? BigInt("1234567890123456789"),
             compressed_fabric_id: options.serverInfo?.compressed_fabric_id ?? BigInt("18258567453835851999"),
+            fabric_index: options.serverInfo?.fabric_index ?? 1,
             schema_version: options.serverInfo?.schema_version ?? 11,
             min_supported_schema_version: options.serverInfo?.min_supported_schema_version ?? 9,
             sdk_version: options.serverInfo?.sdk_version ?? "2025.1.0",
