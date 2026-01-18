@@ -230,6 +230,8 @@ export interface CommandMessage {
 export interface ServerInfoMessage {
     fabric_id: number | bigint;
     compressed_fabric_id: number | bigint;
+    /** The fabric index. Note: Only available with OHF Matter Server, not Python Matter Server. */
+    fabric_index?: number;
     schema_version: number;
     min_supported_schema_version: number;
     sdk_version: string;
@@ -359,3 +361,18 @@ export interface MatterFabricData {
 
 export type NotificationType = "success" | "info" | "warning" | "error";
 export type NodePingResult = Record<string, boolean>;
+
+/**
+ * Minimum test node ID. Node IDs >= this value are reserved for test nodes.
+ * Uses high 64-bit range (0xFFFF_FFFE_0000_0000) to avoid collision with real node IDs.
+ */
+export const TEST_NODE_START = 0xffff_fffe_0000_0000n;
+
+/**
+ * Check if a node ID is in the test node range (>= TEST_NODE_START).
+ * Test nodes are imported diagnostic dumps, not real commissioned devices.
+ */
+export function isTestNodeId(nodeId: number | bigint): boolean {
+    const bigId = typeof nodeId === "bigint" ? nodeId : BigInt(nodeId);
+    return bigId >= TEST_NODE_START;
+}

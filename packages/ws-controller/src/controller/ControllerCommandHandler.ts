@@ -797,11 +797,16 @@ export class ControllerCommandHandler {
         return this.#controller.nodeId;
     }
 
-    async getCommissionerFabricData(): Promise<{ fabricId: FabricId; compressedFabricId: bigint }> {
-        const { fabricId, globalId } = this.#controller.fabric;
+    async getCommissionerFabricData(): Promise<{
+        fabricId: FabricId;
+        compressedFabricId: bigint;
+        fabricIndex: number;
+    }> {
+        const { fabricId, globalId, fabricIndex } = this.#controller.fabric;
         return {
             fabricId,
             compressedFabricId: globalId,
+            fabricIndex,
         };
     }
 

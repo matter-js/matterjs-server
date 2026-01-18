@@ -8,11 +8,12 @@ import "@material/web/divider/divider";
 import "@material/web/iconbutton/icon-button";
 import "@material/web/list/list";
 import "@material/web/list/list-item";
-import { MatterClient, MatterNode } from "@matter-server/ws-client";
+import { isTestNodeId, MatterClient, MatterNode } from "@matter-server/ws-client";
 import { mdiChevronRight } from "@mdi/js";
-import { LitElement, css, html, nothing } from "lit";
+import { css, html, LitElement, nothing } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import "../components/ha-svg-icon";
+import { formatNodeAddress } from "../util/format_hex.js";
 import "./components/footer";
 import "./components/header";
 import "./components/server-details";
@@ -65,6 +66,14 @@ class MatterServerView extends LitElement {
                             <md-list-item type="link" href=${`#node/${node.node_id}`}>
                                 <div slot="headline">
                                     Node ${node.node_id}
+                                    <span class="hex-id"
+                                        >(${formatNodeAddress(
+                                            isTestNodeId(node.node_id)
+                                                ? undefined
+                                                : this.client.serverInfo.fabric_index,
+                                            node.node_id,
+                                        )})</span
+                                    >
                                     ${node.available ? "" : html`<span class="status">OFFLINE</span>`}
                                 </div>
                                 <div slot="supporting-text">
@@ -112,6 +121,11 @@ class MatterServerView extends LitElement {
             color: var(--danger-color);
             font-weight: bold;
             font-size: 0.8em;
+        }
+
+        .hex-id {
+            color: var(--text-color, rgba(0, 0, 0, 0.6));
+            font-size: 0.85em;
         }
     `;
 }

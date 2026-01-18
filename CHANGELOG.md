@@ -13,6 +13,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Enhancement: Added Dark mode including selection of the theme via button and query parameter
 - Enhancement: Streamlined the "No Websocket connection" page and allow reloading of the page
 - Enhancement: Allow specifying timeouts for responses in the Websocket client and track them. Throws an error if the response times out
+- Enhancement: Add the peer address in the dashboard after the node-id to allow mapping to logs more easily
 - Fix: Refactor BigInt aware JSON parsing to avoid issues when importing nodes
 - Fix: Show names in the dashboard in the same format as the Python server
 - Fix: Fix some datatypes for custom eve cluster attributes
