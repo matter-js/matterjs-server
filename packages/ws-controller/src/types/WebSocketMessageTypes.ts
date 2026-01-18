@@ -224,7 +224,33 @@ export interface APICommands {
         };
         response: AttributeWriteResult[] | null;
     };
+    get_loglevel: {
+        requestArgs: {};
+        response: {
+            /** Console log level */
+            console_loglevel: LogLevelString;
+            /** File log level (null if file logging not enabled) */
+            file_loglevel: LogLevelString | null;
+        };
+    };
+    set_loglevel: {
+        requestArgs: {
+            /** Console log level to set */
+            console_loglevel?: LogLevelString;
+            /** File log level to set (only applied if file logging is enabled) */
+            file_loglevel?: LogLevelString;
+        };
+        response: {
+            /** Console log level after change */
+            console_loglevel: LogLevelString;
+            /** File log level after change (null if file logging not enabled) */
+            file_loglevel: LogLevelString | null;
+        };
+    };
 }
+
+/** Log level string values matching CLI options */
+export type LogLevelString = "critical" | "error" | "warning" | "info" | "debug";
 
 /**
  * Access Control Entry structure for set_acl_entry command.

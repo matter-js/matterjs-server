@@ -14,6 +14,8 @@ import {
     CommissioningParameters,
     ErrorResultMessage,
     EventMessage,
+    LogLevelResponse,
+    LogLevelString,
     MatterFabricData,
     MatterSoftwareVersion,
     NodePingResult,
@@ -236,6 +238,28 @@ export class MatterClient {
 
     async setDefaultFabricLabel(label: string | null) {
         await this.sendCommand("set_default_fabric_label", 0, { label });
+    }
+
+    /**
+     * Get the current log levels for console and file logging.
+     * @returns The current log level configuration
+     */
+    async getLogLevel(): Promise<LogLevelResponse> {
+        return await this.sendCommand("get_loglevel", 0, {});
+    }
+
+    /**
+     * Set the log level for console and/or file logging.
+     * Changes are temporary and will be reset when the server restarts.
+     * @param consoleLoglevel Console log level to set (optional)
+     * @param fileLoglevel File log level to set, only applied if file logging is enabled (optional)
+     * @returns The log level configuration after the change
+     */
+    async setLogLevel(consoleLoglevel?: LogLevelString, fileLoglevel?: LogLevelString): Promise<LogLevelResponse> {
+        return await this.sendCommand("set_loglevel", 0, {
+            console_loglevel: consoleLoglevel,
+            file_loglevel: fileLoglevel,
+        });
     }
 
     sendCommand<T extends keyof APICommands>(

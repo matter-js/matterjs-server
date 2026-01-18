@@ -62,6 +62,9 @@ export class Connection {
 
             this.socket.onclose = () => {
                 console.log("WebSocket Closed");
+                // Clean up so reconnect can work
+                this.socket = undefined;
+                this.serverInfo = undefined;
                 onConnectionLost();
             };
 
@@ -89,6 +92,8 @@ export class Connection {
             this.socket.close();
             this.socket = undefined;
         }
+        // Reset serverInfo so reconnect will properly handle the initial server info message
+        this.serverInfo = undefined;
     }
 
     sendMessage(message: CommandMessage): void {

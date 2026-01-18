@@ -161,6 +161,23 @@ export interface APICommands {
         requestArgs: { label: string | null };
         response: Record<string, never>;
     };
+    get_loglevel: {
+        requestArgs: Record<string, never>;
+        response: LogLevelResponse;
+    };
+    set_loglevel: {
+        requestArgs: { console_loglevel?: LogLevelString; file_loglevel?: LogLevelString };
+        response: LogLevelResponse;
+    };
+}
+
+/** Log level string values matching CLI options */
+export type LogLevelString = "critical" | "error" | "warning" | "info" | "debug";
+
+/** Response for get_loglevel and set_loglevel commands */
+export interface LogLevelResponse {
+    console_loglevel: LogLevelString;
+    file_loglevel: LogLevelString | null;
 }
 
 /** Access Control Entry for set_acl_entry command */

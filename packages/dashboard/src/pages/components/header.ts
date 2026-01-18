@@ -10,9 +10,10 @@ import "@material/web/iconbutton/icon-button";
 import "@material/web/list/list";
 import "@material/web/list/list-item";
 import { MatterClient } from "@matter-server/ws-client";
-import { mdiArrowLeft, mdiBrightnessAuto, mdiLogout, mdiWeatherNight, mdiWeatherSunny } from "@mdi/js";
+import { mdiArrowLeft, mdiBrightnessAuto, mdiCog, mdiLogout, mdiWeatherNight, mdiWeatherSunny } from "@mdi/js";
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import { showLogLevelDialog } from "../../components/dialogs/settings/show-log-level-dialog.js";
 import "../../components/ha-svg-icon";
 import { EffectiveTheme, ThemePreference, ThemeService } from "../../util/theme-service.js";
 
@@ -49,6 +50,12 @@ export class DashboardHeader extends LitElement {
 
     private _cycleTheme() {
         ThemeService.cycleTheme();
+    }
+
+    private _openSettings() {
+        if (this.client) {
+            showLogLevelDialog(this.client);
+        }
     }
 
     private _getThemeIcon(): string {
@@ -95,6 +102,14 @@ export class DashboardHeader extends LitElement {
                             </md-icon-button>
                         `;
                     })}
+                    <!-- settings button (only when connected) -->
+                    ${this.client
+                        ? html`
+                              <md-icon-button @click=${this._openSettings} title="Server Settings">
+                                  <ha-svg-icon .path=${mdiCog}></ha-svg-icon>
+                              </md-icon-button>
+                          `
+                        : nothing}
                     <!-- theme toggle button -->
                     <md-icon-button @click=${this._cycleTheme} .title=${this._getThemeTooltip()}>
                         <ha-svg-icon .path=${this._getThemeIcon()}></ha-svg-icon>

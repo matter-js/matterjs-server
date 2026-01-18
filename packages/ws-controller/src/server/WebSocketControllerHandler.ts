@@ -5,7 +5,7 @@
  */
 
 import { ObserverGroup } from "@matter/general";
-import { camelize, ClusterId, FabricIndex, Logger, Millis, NodeId } from "@matter/main";
+import { camelize, ClusterId, FabricIndex, Logger, LogLevel, Millis, NodeId } from "@matter/main";
 import { ControllerCommissioningFlowOptions } from "@matter/main/protocol";
 import { EndpointNumber, getClusterById, QrPairingCodeCodec } from "@matter/main/types";
 import { NodeStates } from "@project-chip/matter.js/device";
@@ -21,6 +21,7 @@ import {
     ArgsOf,
     ErrorResultMessage,
     EventTypes,
+    LogLevelString,
     MatterNode,
     MatterNodeEvent,
     ResponseOf,
@@ -398,6 +399,12 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     break;
                 case "discover":
                     result = await this.#handleDiscoverCommissionableNodes({});
+                    break;
+                case "get_loglevel":
+                    result = this.#handleGetLogLevel();
+                    break;
+                case "set_loglevel":
+                    result = this.#handleSetLogLevel(args);
                     break;
                 default:
                     throw ServerError.invalidCommand(command);
@@ -916,5 +923,94 @@ export class WebSocketControllerHandler implements WebServerHandler {
             clusterData.commands[commandName.toLowerCase()]!.responseModel,
             clusterData.model,
         );
+    }
+
+    /**
+     * Map internal LogLevel enum to API string format.
+     */
+    #logLevelToString(level: LogLevel): LogLevelString {
+        switch (level) {
+            case LogLevel.FATAL:
+                return "critical";
+            case LogLevel.ERROR:
+                return "error";
+            case LogLevel.WARN:
+                return "warning";
+            case LogLevel.INFO:
+                return "info";
+            case LogLevel.DEBUG:
+                return "debug";
+            default:
+                return "info";
+        }
+    }
+
+    /**
+     * Map API string format to internal LogLevel enum.
+     */
+    #stringToLogLevel(level: LogLevelString): LogLevel {
+        switch (level) {
+            case "critical":
+                return LogLevel.FATAL;
+            case "error":
+                return LogLevel.ERROR;
+            case "warning":
+                return LogLevel.WARN;
+            case "info":
+                return LogLevel.INFO;
+            case "debug":
+                return LogLevel.DEBUG;
+            default:
+                return LogLevel.INFO;
+        }
+    }
+
+    #handleGetLogLevel(): ResponseOf<"get_loglevel"> {
+        // Logger.level can be LogLevel enum or string, convert string to enum first
+        const currentLevel =
+            typeof Logger.level === "string" ? this.#stringToLogLevel(Logger.level as LogLevelString) : Logger.level;
+        const consoleLevel = this.#logLevelToString(currentLevel);
+
+        // Logger.destinations.file throws if file logging is not configured
+        let fileLevel: LogLevelString | null = null;
+        try {
+            const fileDestination = Logger.destinations.file;
+            const fileLevelValue =
+                typeof fileDestination.level === "string"
+                    ? this.#stringToLogLevel(fileDestination.level as LogLevelString)
+                    : fileDestination.level;
+            fileLevel = this.#logLevelToString(fileLevelValue);
+        } catch {
+            // File logging not configured, fileLevel stays null
+        }
+
+        return {
+            console_loglevel: consoleLevel,
+            file_loglevel: fileLevel,
+        };
+    }
+
+    #handleSetLogLevel(args: ArgsOf<"set_loglevel">): ResponseOf<"set_loglevel"> {
+        const { console_loglevel, file_loglevel } = args;
+
+        // Set console log level if provided
+        if (console_loglevel !== undefined) {
+            Logger.level = this.#stringToLogLevel(console_loglevel);
+            logger.info(`Console log level set to: ${console_loglevel}`);
+        }
+
+        // Set file log level if provided and file logging is enabled
+        if (file_loglevel !== undefined) {
+            try {
+                const fileDestination = Logger.destinations.file;
+                fileDestination.level = this.#stringToLogLevel(file_loglevel);
+                logger.info(`File log level set to: ${file_loglevel}`);
+            } catch {
+                // File logging not configured, ignore
+            }
+        }
+
+        // Return current levels
+        return this.#handleGetLogLevel();
     }
 }

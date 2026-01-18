@@ -70,6 +70,65 @@ Error responses:
 }
 ```
 
+**get_loglevel** - Get current log levels *(Matter.js only)*
+
+Returns the current log level for console output and optionally for file logging (if configured). This command is not available in the Python Matter Server.
+
+```json
+{
+  "message_id": "1",
+  "command": "get_loglevel"
+}
+```
+
+Response:
+```json
+{
+  "message_id": "1",
+  "result": {
+    "console_loglevel": "info",
+    "file_loglevel": "debug"
+  }
+}
+```
+
+Note: `file_loglevel` is `null` if file logging is not configured.
+
+**set_loglevel** - Set log levels temporarily *(Matter.js only)*
+
+Change the log level for console and/or file logging. Changes are temporary and will be reset on the next server restart. This command is not available in the Python Matter Server.
+
+```json
+{
+  "message_id": "1",
+  "command": "set_loglevel",
+  "args": {
+    "console_loglevel": "debug",
+    "file_loglevel": "info"
+  }
+}
+```
+
+Both arguments are optional - only provide the ones you want to change.
+
+Log levels (from least to most verbose):
+- `critical` - Only fatal errors
+- `error` - Errors
+- `warning` - Warnings and errors
+- `info` - Informational messages (default)
+- `debug` - Debug output (verbose)
+
+Response returns the current levels after the change:
+```json
+{
+  "message_id": "1",
+  "result": {
+    "console_loglevel": "debug",
+    "file_loglevel": "info"
+  }
+}
+```
+
 ### Listening and Node Discovery
 
 **start_listening** - Start receiving events and get all nodes
@@ -704,6 +763,15 @@ This API is designed to be compatible with the [Python Matter Server](https://gi
 | Command | Status | Notes |
 |---------|--------|-------|
 | `subscribe_attribute` | Stub | Not implemented (Matter.js handles subscriptions internally) |
+
+### Matter.js-Only Commands
+
+These commands are available only in the Matter.js server and not in the Python Matter Server:
+
+| Command | Description |
+|---------|-------------|
+| `get_loglevel` | Get current console and file log levels |
+| `set_loglevel` | Temporarily change log levels (resets on restart) |
 
 ### Data Differences
 
