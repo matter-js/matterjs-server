@@ -69,7 +69,7 @@ class MatterServerView extends LitElement {
                                     <span class="hex-id"
                                         >(${formatNodeAddress(
                                             isTestNodeId(node.node_id) ||
-                                            this.client.serverInfo.fabric_index === undefined
+                                                this.client.serverInfo.fabric_index === undefined
                                                 ? undefined
                                                 : this.client.serverInfo.fabric_index,
                                             node.node_id,
