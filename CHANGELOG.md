@@ -14,6 +14,12 @@ This page shows a detailed overview of the changes between versions without the 
 - Fix: Refactor BigInt aware JSON parsing to avoid issues when importing nodes
 - Fix: Show names in the dashboard in the same format as the Python server
 - Fix: Fix some datatypes for custom eve cluster attributes
+- Fix: Update matter.js to 0.16.6-nightly
+    - Fixes around mDNS discovery when starting the server the first time with many devices
+    - Fixes some issues in high-traffic situations
+    - Do not announce our node as update-provider to prevent issues if users switch back to the Python server
+    - Correctly handle node decommissioning by other controllers and optimize decommissioning via ourselves
+    - Extend error handling when persisting legacy node details
 
 ## 0.2.6 (2026-01-16)
 
