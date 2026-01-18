@@ -26,7 +26,7 @@ export class MockMatterServer {
     private server: WebSocketServer | null = null;
     private clients: Set<WebSocket> = new Set();
     private receivedCommands: ReceivedCommand[] = [];
-    private commandHandlers: Map<string, (args: unknown) => unknown> = new Map();
+    private commandHandlers: Map<string, (args: unknown) => unknown | Promise<unknown>> = new Map();
     private port: number;
     private serverInfo: ServerInfoMessage;
 
@@ -134,8 +134,9 @@ export class MockMatterServer {
 
     /**
      * Register a handler for a specific command.
+     * Handler can be sync or async. If async, the response is sent after the promise resolves.
      */
-    onCommand(command: string, handler: (args: unknown) => unknown): void {
+    onCommand(command: string, handler: (args: unknown) => unknown | Promise<unknown>): void {
         this.commandHandlers.set(command, handler);
     }
 
@@ -182,12 +183,34 @@ export class MockMatterServer {
         if (handler) {
             try {
                 const result = handler(message.args);
-                socket.send(
-                    toBigIntAwareJson({
-                        message_id: message.message_id,
-                        result,
-                    }),
-                );
+                if (result instanceof Promise) {
+                    // Handle async handlers
+                    result
+                        .then(asyncResult => {
+                            socket.send(
+                                toBigIntAwareJson({
+                                    message_id: message.message_id,
+                                    result: asyncResult,
+                                }),
+                            );
+                        })
+                        .catch(error => {
+                            socket.send(
+                                toBigIntAwareJson({
+                                    message_id: message.message_id,
+                                    error_code: 1,
+                                    details: error instanceof Error ? error.message : String(error),
+                                }),
+                            );
+                        });
+                } else {
+                    socket.send(
+                        toBigIntAwareJson({
+                            message_id: message.message_id,
+                            result,
+                        }),
+                    );
+                }
             } catch (error) {
                 socket.send(
                     toBigIntAwareJson({

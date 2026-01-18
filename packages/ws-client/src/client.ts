@@ -5,7 +5,7 @@
  */
 
 import { Connection, WebSocketFactory } from "./connection.js";
-import { CommandTimeoutError, InvalidServerVersion } from "./exceptions.js";
+import { CommandTimeoutError, ConnectionClosedError, InvalidServerVersion } from "./exceptions.js";
 import {
     AccessControlEntry,
     APICommands,
@@ -430,17 +430,34 @@ export class MatterClient {
         }
     }
 
+    /**
+     * Reject all pending commands with a ConnectionClosedError.
+     * Called when the connection is closed or lost.
+     */
+    private _rejectAllPendingCommands(): void {
+        const error = new ConnectionClosedError();
+        const pendingIds = Object.keys(this.result_futures);
+        for (const messageId of pendingIds) {
+            this._rejectPendingCommand(messageId, error);
+        }
+    }
+
     async connect() {
         if (this.connection.connected) {
             return;
         }
         await this.connection.connect(
             msg => this._handleIncomingMessage(msg as IncomingMessage),
-            () => this.fireEvent("connection_lost"),
+            () => {
+                this._rejectAllPendingCommands();
+                this.fireEvent("connection_lost");
+            },
         );
     }
 
     disconnect(clearStorage = false) {
+        // Reject all pending commands before disconnecting
+        this._rejectAllPendingCommands();
         // disconnect from the server
         if (this.connection && this.connection.connected) {
             this.connection.disconnect();

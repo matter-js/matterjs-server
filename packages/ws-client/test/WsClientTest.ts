@@ -5,7 +5,13 @@
  */
 
 import WebSocket from "ws";
-import { MatterClient, WebSocketLike } from "../src/index.js";
+import {
+    CommandTimeoutError,
+    ConnectionClosedError,
+    DEFAULT_COMMAND_TIMEOUT,
+    MatterClient,
+    WebSocketLike,
+} from "../src/index.js";
 import { parseBigIntAwareJson, toBigIntAwareJson } from "../src/json-utils.js";
 import { MockMatterServer } from "./MockMatterServer.js";
 
@@ -433,6 +439,223 @@ describe("ws-client", () => {
 
             client.disconnect();
             expect(client.connection.connected).to.be.false;
+        });
+    });
+
+    describe("command timeouts", () => {
+        let server: MockMatterServer;
+        let client: MatterClient;
+
+        beforeEach(async () => {
+            server = new MockMatterServer();
+            await server.start();
+            client = new MatterClient(server.url, createNodeWebSocket);
+        });
+
+        afterEach(async () => {
+            if (client?.connection?.connected) {
+                client.disconnect();
+            }
+            await server?.stop();
+        });
+
+        it("should have default timeout of 5 minutes", () => {
+            expect(DEFAULT_COMMAND_TIMEOUT).to.equal(5 * 60 * 1000);
+            expect(client.commandTimeout).to.equal(DEFAULT_COMMAND_TIMEOUT);
+        });
+
+        it("should timeout command and throw CommandTimeoutError", async () => {
+            // Handler that never responds (returns promise that never resolves)
+            server.onCommand("ping_node", () => new Promise(() => {}));
+            await client.connect();
+
+            // Set a short timeout for testing
+            client.commandTimeout = 50;
+
+            try {
+                await client.pingNode(BigInt(1));
+                expect.fail("Should have thrown CommandTimeoutError");
+            } catch (error) {
+                expect(error).to.be.instanceOf(CommandTimeoutError);
+                const timeoutError = error as CommandTimeoutError;
+                expect(timeoutError.command).to.equal("ping_node");
+                expect(timeoutError.timeoutMs).to.equal(50);
+                expect(timeoutError.message).to.include("timed out after 50ms");
+            }
+        });
+
+        it("should clear timeout on successful response", async () => {
+            let handlerCalled = false;
+            server.onCommand("get_nodes", () => {
+                handlerCalled = true;
+                return [];
+            });
+            await client.connect();
+
+            // Set a short timeout
+            client.commandTimeout = 100;
+
+            const result = await client.getNodes();
+            expect(handlerCalled).to.be.true;
+            expect(result).to.deep.equal([]);
+            // If timeout wasn't cleared, the test would fail with unhandled rejection
+        });
+
+        it("should clear timeout on error response", async () => {
+            server.onCommand("remove_node", () => {
+                throw new Error("Node not found");
+            });
+            await client.connect();
+
+            // Set a short timeout
+            client.commandTimeout = 100;
+
+            try {
+                await client.removeNode(BigInt(999));
+                expect.fail("Should have thrown an error");
+            } catch (error) {
+                // Should be the server error, not a timeout error
+                expect(error).to.not.be.instanceOf(CommandTimeoutError);
+                expect((error as Error).message).to.equal("Node not found");
+            }
+        });
+
+        it("should allow per-command timeout override", async () => {
+            server.onCommand("ping_node", () => new Promise(() => {}));
+            await client.connect();
+
+            // Default timeout is long
+            client.commandTimeout = 10000;
+
+            // But we override with a short timeout
+            try {
+                await client.pingNode(BigInt(1), 1, 30);
+                expect.fail("Should have thrown CommandTimeoutError");
+            } catch (error) {
+                expect(error).to.be.instanceOf(CommandTimeoutError);
+                expect((error as CommandTimeoutError).timeoutMs).to.equal(30);
+            }
+        });
+
+        it("should disable timeout when set to 0", async function () {
+            this.timeout(500); // Mocha test timeout
+
+            server.onCommand("get_nodes", async () => {
+                // Delay for 100ms
+                await new Promise(resolve => setTimeout(resolve, 100));
+                return [];
+            });
+            await client.connect();
+
+            // Disable timeout
+            client.commandTimeout = 0;
+
+            // This should complete even though there's no timeout watching it
+            const result = await client.getNodes();
+            expect(result).to.deep.equal([]);
+        });
+
+        it("should use default timeout when no per-command timeout provided", async () => {
+            server.onCommand("ping_node", () => new Promise(() => {}));
+            await client.connect();
+
+            // Set default timeout
+            client.commandTimeout = 25;
+
+            try {
+                await client.pingNode(BigInt(1)); // No per-command timeout
+                expect.fail("Should have thrown CommandTimeoutError");
+            } catch (error) {
+                expect(error).to.be.instanceOf(CommandTimeoutError);
+                expect((error as CommandTimeoutError).timeoutMs).to.equal(25);
+            }
+        });
+    });
+
+    describe("connection closed handling", () => {
+        let server: MockMatterServer;
+        let client: MatterClient;
+
+        beforeEach(async () => {
+            server = new MockMatterServer();
+            await server.start();
+            client = new MatterClient(server.url, createNodeWebSocket);
+        });
+
+        afterEach(async () => {
+            await server?.stop();
+        });
+
+        it("should reject pending commands with ConnectionClosedError on disconnect", async () => {
+            // Handler that never responds
+            server.onCommand("ping_node", () => new Promise(() => {}));
+            await client.connect();
+
+            // Disable timeout to ensure we're testing disconnect behavior
+            client.commandTimeout = 0;
+
+            // Start a command but don't await it yet
+            const commandPromise = client.pingNode(BigInt(1));
+
+            // Wait a bit then disconnect
+            await new Promise(resolve => setTimeout(resolve, 20));
+            client.disconnect();
+
+            try {
+                await commandPromise;
+                expect.fail("Should have thrown ConnectionClosedError");
+            } catch (error) {
+                expect(error).to.be.instanceOf(ConnectionClosedError);
+                expect((error as ConnectionClosedError).message).to.include("Connection closed");
+            }
+        });
+
+        it("should reject multiple pending commands on disconnect", async () => {
+            // Handler that never responds
+            server.onCommand("ping_node", () => new Promise(() => {}));
+            server.onCommand("get_nodes", () => new Promise(() => {}));
+            await client.connect();
+
+            // Disable timeout
+            client.commandTimeout = 0;
+
+            // Start multiple commands
+            const promise1 = client.pingNode(BigInt(1));
+            const promise2 = client.getNodes();
+
+            // Wait a bit then disconnect
+            await new Promise(resolve => setTimeout(resolve, 20));
+            client.disconnect();
+
+            // Both should reject
+            const results = await Promise.allSettled([promise1, promise2]);
+            expect(results[0].status).to.equal("rejected");
+            expect(results[1].status).to.equal("rejected");
+            expect((results[0] as PromiseRejectedResult).reason).to.be.instanceOf(ConnectionClosedError);
+            expect((results[1] as PromiseRejectedResult).reason).to.be.instanceOf(ConnectionClosedError);
+        });
+
+        it("should reject pending commands when server closes connection", async () => {
+            // Handler that never responds
+            server.onCommand("ping_node", () => new Promise(() => {}));
+            await client.connect();
+
+            // Disable timeout
+            client.commandTimeout = 0;
+
+            // Start a command
+            const commandPromise = client.pingNode(BigInt(1));
+
+            // Wait a bit then stop the server (simulates connection loss)
+            await new Promise(resolve => setTimeout(resolve, 20));
+            await server.stop();
+
+            try {
+                await commandPromise;
+                expect.fail("Should have thrown ConnectionClosedError");
+            } catch (error) {
+                expect(error).to.be.instanceOf(ConnectionClosedError);
+            }
         });
     });
 });

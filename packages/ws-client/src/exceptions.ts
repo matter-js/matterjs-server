@@ -20,3 +20,13 @@ export class CommandTimeoutError extends MatterError {
         this.name = "CommandTimeoutError";
     }
 }
+
+/**
+ * Error thrown when the WebSocket connection is closed while commands are pending.
+ */
+export class ConnectionClosedError extends MatterError {
+    constructor(message = "Connection closed while command was pending") {
+        super(message);
+        this.name = "ConnectionClosedError";
+    }
+}
