@@ -46,7 +46,7 @@ const EVENT_HISTORY_SIZE = 25;
 
 const SCHEMA_VERSION = 11;
 
-const skipMessageContentInLogFor = ["start_listening", "node_updated"];
+const skipMessageContentInLogFor = ["start_listening"];
 
 /** WebSocket Server compatible with Schema version 11 */
 export class WebSocketControllerHandler implements WebServerHandler {
