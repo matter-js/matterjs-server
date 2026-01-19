@@ -414,7 +414,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 throw new Error("No response");
             }
             if (skipMessageContentInLogFor.includes(command)) {
-                logger.debug(`WebSocket request (${command}) handled`, messageId, `${result.length} bytes`);
+                logger.debug(`WebSocket request (${command}) handled`, messageId);
             } else {
                 logger.debug(`WebSocket request (${command}) handled`, messageId, result);
             }
