@@ -73,7 +73,11 @@ export class MatterController {
                 );
             }
             if (
-                (await LegacyDataInjector.injectNodeData(baseStorage, legacyData.nodeData)) &&
+                (await LegacyDataInjector.injectNodeData(
+                    baseStorage,
+                    legacyData.nodeData,
+                    legacyData.fabric?.fabricIndex,
+                )) &&
                 legacyData.nodeData !== undefined
             ) {
                 for (const [nodeIdStr, data] of Object.entries(legacyData.nodeData.nodes)) {
@@ -82,7 +86,7 @@ export class MatterController {
                 }
             }
 
-            // Check if nextNodeId needs to be updated based on legacy data
+            // Check if the nextNodeId needs to be updated based on legacy data
             const lastNodeId = legacyData.nodeData?.last_node_id;
             if (typeof lastNodeId === "number") {
                 if (config.nextNodeId <= lastNodeId) {
@@ -218,7 +222,6 @@ export class MatterController {
                 const commissioningState = node.maybeStateOf(CommissioningClient);
                 if (commissioningState !== undefined && commissioningState.commissionedAt === undefined) {
                     await node.setStateOf(CommissioningClient, { commissionedAt });
-                    logger.info(`Injected commissioned date for node ${nodeIdStr}`);
                 }
             } catch (error) {
                 logger.warn(`Error injecting commissioned date for node ${nodeIdStr}`, error);

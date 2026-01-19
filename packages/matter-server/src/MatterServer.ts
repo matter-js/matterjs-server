@@ -130,7 +130,7 @@ async function start() {
         if (legacyData.fabricConfig) {
             parts.push("1 fabric");
             legacyServerData.fabric = legacyData.fabricConfig;
-            logger.info("Fabric", legacyServerData.fabric);
+            logger.debug("Fabric", legacyServerData.fabric);
         }
         if (legacyData.serverFile) {
             const nodeCount = Object.keys(legacyData.serverFile.nodes).length;
@@ -140,7 +140,7 @@ async function start() {
         if (legacyData.certificateAuthorityConfig) {
             parts.push("CA credentials");
             legacyServerData.credentials = legacyData.certificateAuthorityConfig;
-            logger.info("Credentials", legacyServerData.credentials);
+            logger.debug("Credentials", legacyServerData.credentials);
         }
         logger.info(`Found legacy data: ${parts.join(", ")}`);
     }
@@ -185,8 +185,6 @@ async function start() {
                 logger.warn(`Failed to update legacy data for removed node ${nodeId}:`, err);
             });
         });
-
-        logger.info("Legacy data event handlers configured for node commissioning/decommissioning");
     }
 
     const handlers: WebServerHandler[] = [new WebSocketControllerHandler(controller, config, MATTER_SERVER_VERSION)];

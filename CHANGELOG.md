@@ -9,6 +9,7 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## __WORK IN PROGRESS__
 
+- Enhancement: Optimizes initial migration with empty matter.js storage and inject peers directly
 - Enhancement: Added an option to temporarily change the loglevel while the server runs
 - Enhancement: Added Dark mode including selection of the theme via button and query parameter
 - Enhancement: Streamlined the "No Websocket connection" page and allow reloading of the page

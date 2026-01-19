@@ -163,7 +163,7 @@ export class ControllerCommandHandler {
         await this.#controller.start();
         logger.info(`Controller started`);
 
-        if (!this.#bleEnabled) {
+        if (this.#otaEnabled) {
             // Subscribe to OTA provider events to track available updates
             await this.#setupOtaEventHandlers();
         }

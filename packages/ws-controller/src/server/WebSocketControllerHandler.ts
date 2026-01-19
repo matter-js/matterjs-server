@@ -46,6 +46,8 @@ const EVENT_HISTORY_SIZE = 25;
 
 const SCHEMA_VERSION = 11;
 
+const skipMessageContentInLogFor = ["start_listening", "node_updated"];
+
 /** WebSocket Server compatible with Schema version 11 */
 export class WebSocketControllerHandler implements WebServerHandler {
     #controller: MatterController;
@@ -94,6 +96,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
     }
 
     async register(server: HttpServer) {
+        logger.info(`Starting server: matter-server/${this.#serverVersion} (matter.js/${MATTER_VERSION})`);
         const wss = (this.#wss = new WebSocketServer({ server: server, path: "/ws" }));
         wss.on("connection", ws => {
             if (this.#closed) return;
@@ -109,7 +112,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     case "node_updated":
                         this.#collectNodeDetails(nodeId).then(
                             nodeDetails => {
-                                logger.debug(`Sending ${eventName} event for Node ${nodeId}`, nodeDetails);
+                                logger.debug(`Sending ${eventName} event for Node ${nodeId}`);
                                 ws.send(toBigIntAwareJson({ event: eventName, data: nodeDetails }));
                             },
                             err => logger.error(`Failed to collect node details for Node ${nodeId}`, err),
@@ -242,8 +245,6 @@ export class WebSocketControllerHandler implements WebServerHandler {
                             if (enableListeners) {
                                 listening = true;
                             }
-                            const responseStr = toBigIntAwareJson(response);
-                            logger.debug("Sending WebSocket response", responseStr);
                             ws.send(toBigIntAwareJson(response));
                         },
                         err => logger.error("Websocket request error", err),
@@ -304,7 +305,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
     ): Promise<{ response: ErrorResultMessage | SuccessResultMessage<any>; enableListeners?: boolean }> {
         let messageId: string | undefined;
         try {
-            logger.debug("Received WebSocket request", data);
+            logger.debug("Received WebSocket request", () => data);
             const request = parseBigIntAwareJson(data) as { message_id: string; command: string; args: any };
             const { command, args } = request;
             messageId = request.message_id;
@@ -412,7 +413,11 @@ export class WebSocketControllerHandler implements WebServerHandler {
             if (result === undefined) {
                 throw new Error("No response");
             }
-            logger.info(`WebSocket request (${command}) handled`, messageId, result);
+            if (skipMessageContentInLogFor.includes(command)) {
+                logger.debug(`WebSocket request (${command}) handled`, messageId, `${result.length} bytes`);
+            } else {
+                logger.debug(`WebSocket request (${command}) handled`, messageId, result);
+            }
             return {
                 response: {
                     message_id: messageId ?? "",
