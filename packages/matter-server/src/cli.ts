@@ -76,7 +76,10 @@ function collectAddresses(value: string, previous: string[]): string[] {
     return previous.concat(value);
 }
 
-function parseBooleanEnv(value: string | undefined): boolean {
+function parseBooleanEnv(value: string | boolean | undefined): boolean {
+    // Handle boolean values directly (from preset or programmatic use)
+    if (typeof value === "boolean") return value;
+
     const lower = (value ?? "").toLowerCase().trim();
     if (lower === "" || ["false", "0", "no", "off"].includes(lower)) return false;
     if (["true", "1", "yes", "on"].includes(lower)) return true;
@@ -139,8 +142,9 @@ export function parseCliArgs(argv?: string[]): CliOptions {
             ),
         )
         .addOption(
-            new Option("--enable-test-net-dcl", "Enable test-net DCL certificates")
+            new Option("--enable-test-net-dcl [value]", "Enable test-net DCL certificates")
                 .argParser(parseBooleanEnv)
+                .preset(true)
                 .default(false)
                 .env("ENABLE_TEST_NET_DCL"),
         )
@@ -150,15 +154,17 @@ export function parseCliArgs(argv?: string[]): CliOptions {
                 .env("BLUETOOTH_ADAPTER"),
         )
         .addOption(
-            new Option("--disable-ota", "Disable OTA update functionality")
+            new Option("--disable-ota [value]", "Disable OTA update functionality")
                 .argParser(parseBooleanEnv)
+                .preset(true)
                 .default(false)
                 .env("DISABLE_OTA"),
         )
         .addOption(new Option("--ota-provider-dir <path>", "Directory for OTA Provider files").env("OTA_PROVIDER_DIR"))
         .addOption(
-            new Option("--disable-dashboard", "Disable the web dashboard")
+            new Option("--disable-dashboard [value]", "Disable the web dashboard")
                 .argParser(parseBooleanEnv)
+                .preset(true)
                 .default(false)
                 .env("DISABLE_DASHBOARD"),
         )
