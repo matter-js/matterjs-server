@@ -322,6 +322,8 @@ export class LegacyDataWriter {
     /** Promise for the currently running file operation */
     #activeOperation?: Promise<void>;
 
+    #ended = false;
+
     constructor(
         env: Environment,
         storagePath: string,
@@ -338,6 +340,9 @@ export class LegacyDataWriter {
      * Queue a node addition. Starts or continues the debounce timer.
      */
     queueAddition(nodeId: bigint | number, dateCommissioned: string): void {
+        if (this.#ended) {
+            throw new Error("Cannot queue addition after writer has ended");
+        }
         this.#pendingTasks.push({ type: "add", nodeId, dateCommissioned });
         logger.debug(`Queued addition of node ${nodeId}`);
         this.#scheduleFlush();
@@ -347,6 +352,9 @@ export class LegacyDataWriter {
      * Queue a node removal. Starts or continues the debounce timer.
      */
     queueRemoval(nodeId: bigint | number): void {
+        if (this.#ended) {
+            throw new Error("Cannot queue removal after writer has ended");
+        }
         this.#pendingTasks.push({ type: "remove", nodeId });
         logger.debug(`Queued removal of node ${nodeId}`);
         this.#scheduleFlush();
@@ -365,6 +373,8 @@ export class LegacyDataWriter {
      * Call this during server shutdown to ensure all changes are persisted.
      */
     async flush(): Promise<void> {
+        this.#ended = true;
+
         // Stop the debounce timer if running
         this.#debounceTimer.stop();
 
@@ -375,7 +385,12 @@ export class LegacyDataWriter {
 
         // Process any remaining tasks
         if (this.#pendingTasks.length > 0) {
-            await this.#executeTasks();
+            this.#executeTasks();
+
+            // Wait for any active operation to complete
+            if (this.#activeOperation !== undefined) {
+                await this.#activeOperation;
+            }
         }
     }
 
@@ -393,7 +408,7 @@ export class LegacyDataWriter {
     }
 
     /**
-     * Called when the debounce timer fires.
+     * Called when the debounced timer fires.
      */
     #onTimerFired(): void {
         // If a previous operation is still running, reschedule
@@ -405,14 +420,14 @@ export class LegacyDataWriter {
 
         // Execute the pending tasks
         if (this.#pendingTasks.length > 0) {
-            void this.#executeTasks();
+            this.#executeTasks();
         }
     }
 
     /**
      * Execute all pending tasks in a single file operation.
      */
-    async #executeTasks(): Promise<void> {
+    #executeTasks() {
         // Take all current tasks and clear the queue
         const tasks = this.#pendingTasks;
         this.#pendingTasks = [];
@@ -426,11 +441,12 @@ export class LegacyDataWriter {
         // Create the operation promise and store it
         this.#activeOperation = this.#applyTasks(tasks);
 
-        try {
-            await this.#activeOperation;
-        } finally {
-            this.#activeOperation = undefined;
-        }
+        this.#activeOperation
+            .catch()
+            .catch(error => logger.error("Error executing pending tasks", error))
+            .finally(() => {
+                this.#activeOperation = undefined;
+            });
     }
 
     /**
