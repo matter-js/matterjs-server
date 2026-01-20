@@ -13,6 +13,7 @@ import {
     LegacyServerFile,
     Logger,
 } from "@matter-server/ws-controller";
+import { Millis, Time, Timer } from "@matter/main";
 import { access, copyFile, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ChipConfigData } from "./index.js";
@@ -292,108 +293,224 @@ export async function saveLegacyServerFile(
     );
 }
 
-/**
- * Add a node to the legacy server file.
- * Loads the file, adds the node entry, and saves it back with a backup.
- *
- * @param env Environment for crypto access
- * @param storagePath Path to the storage directory
- * @param fabricConfig Fabric configuration (needed to compute the file name)
- * @param nodeId The node ID to add
- * @param dateCommissioned The date the node was commissioned (ISO string)
- */
-export async function addNodeToLegacyServerFile(
-    env: Environment,
-    storagePath: string,
-    fabricConfig: LegacyFabricConfigData,
-    nodeId: bigint | number,
-    dateCommissioned: string,
-): Promise<void> {
-    const crypto = env.get(Crypto);
-    const compressedFabricId = await computeCompressedNodeId(crypto, fabricConfig.fabricId, fabricConfig.rootPublicKey);
-    const serverFileName = `${compressedFabricId}.json`;
-    const serverFilePath = join(storagePath, serverFileName);
+/** Task type for queued operations */
+type LegacyWriteTask =
+    | { type: "add"; nodeId: bigint | number; dateCommissioned: string }
+    | { type: "remove"; nodeId: bigint | number };
 
-    // Load existing file or create a new structure
-    let serverFile: LegacyServerFile;
-    try {
-        const content = await readFile(serverFilePath, "utf-8");
-        serverFile = JSON.parse(content) as LegacyServerFile;
-    } catch {
-        // File doesn't exist, create a new structure
-        serverFile = {
-            vendor_info: {},
-            last_node_id: 0,
-            nodes: {},
-        };
-    }
-
-    const nodeIdNum = typeof nodeId === "bigint" ? Number(nodeId) : nodeId;
-    const nodeIdStr = nodeIdNum.toString();
-
-    // Add the node entry (minimal data - just the ID and commissioned date)
-    serverFile.nodes[nodeIdStr] = {
-        node_id: nodeIdNum,
-        date_commissioned: dateCommissioned,
-        last_interview: dateCommissioned,
-        interview_version: 6,
-        available: false,
-        is_bridge: false,
-        attributes: {},
-        attribute_subscriptions: [],
-    };
-
-    // Update last_node_id if this node is higher
-    if (nodeIdNum > serverFile.last_node_id) {
-        serverFile.last_node_id = nodeIdNum;
-    }
-
-    await saveLegacyServerFile(env, storagePath, fabricConfig, serverFile);
-    logger.info(`Added node ${nodeIdStr} to legacy server file`);
-}
+/** Default debounce delay in milliseconds (30 seconds) */
+const DEFAULT_DEBOUNCE_DELAY_MS = 30_000;
 
 /**
- * Remove a node from the legacy server file.
- * Loads the file, removes the node entry, and saves it back with a backup.
+ * Race-condition safe writer for the legacy server file.
  *
- * @param env Environment for crypto access
- * @param storagePath Path to the storage directory
- * @param fabricConfig Fabric configuration (needed to compute the file name)
- * @param nodeId The node ID to remove
+ * Batches additions and removals, applies them with a debounce timer,
+ * and ensures only one file operation runs at a time. Provides a flush()
+ * method to await pending operations during server shutdown.
  */
-export async function removeNodeFromLegacyServerFile(
-    env: Environment,
-    storagePath: string,
-    fabricConfig: LegacyFabricConfigData,
-    nodeId: bigint | number,
-): Promise<void> {
-    const crypto = env.get(Crypto);
-    const compressedFabricId = await computeCompressedNodeId(crypto, fabricConfig.fabricId, fabricConfig.rootPublicKey);
-    const serverFileName = `${compressedFabricId}.json`;
-    const serverFilePath = join(storagePath, serverFileName);
+export class LegacyDataWriter {
+    readonly #env: Environment;
+    readonly #storagePath: string;
+    readonly #fabricConfig: LegacyFabricConfigData;
 
-    // Load existing file
-    let serverFile: LegacyServerFile;
-    try {
-        const content = await readFile(serverFilePath, "utf-8");
-        serverFile = JSON.parse(content) as LegacyServerFile;
-    } catch {
-        // File doesn't exist, nothing to remove
-        logger.debug(`No legacy server file found, nothing to remove for node ${nodeId}`);
-        return;
+    /** Queued tasks to apply on next flush */
+    #pendingTasks: LegacyWriteTask[] = [];
+
+    /** Timer for debounced writes */
+    #debounceTimer: Timer;
+
+    /** Promise for the currently running file operation */
+    #activeOperation?: Promise<void>;
+
+    constructor(
+        env: Environment,
+        storagePath: string,
+        fabricConfig: LegacyFabricConfigData,
+        debounceDelayMs: number = DEFAULT_DEBOUNCE_DELAY_MS,
+    ) {
+        this.#env = env;
+        this.#storagePath = storagePath;
+        this.#fabricConfig = fabricConfig;
+        this.#debounceTimer = Time.getTimer("legacy-data-writer", Millis(debounceDelayMs), () => this.#onTimerFired());
     }
 
-    const nodeIdStr = (typeof nodeId === "bigint" ? Number(nodeId) : nodeId).toString();
-
-    // Check if node exists
-    if (!(nodeIdStr in serverFile.nodes)) {
-        logger.debug(`Node ${nodeIdStr} not found in legacy server file`);
-        return;
+    /**
+     * Queue a node addition. Starts or continues the debounce timer.
+     */
+    queueAddition(nodeId: bigint | number, dateCommissioned: string): void {
+        this.#pendingTasks.push({ type: "add", nodeId, dateCommissioned });
+        logger.debug(`Queued addition of node ${nodeId}`);
+        this.#scheduleFlush();
     }
 
-    // Remove the node entry
-    delete serverFile.nodes[nodeIdStr];
+    /**
+     * Queue a node removal. Starts or continues the debounce timer.
+     */
+    queueRemoval(nodeId: bigint | number): void {
+        this.#pendingTasks.push({ type: "remove", nodeId });
+        logger.debug(`Queued removal of node ${nodeId}`);
+        this.#scheduleFlush();
+    }
 
-    await saveLegacyServerFile(env, storagePath, fabricConfig, serverFile);
-    logger.info(`Removed node ${nodeIdStr} from legacy server file`);
+    /**
+     * Check if there are pending tasks or an active operation.
+     */
+    hasPendingWork(): boolean {
+        return this.#pendingTasks.length > 0 || this.#activeOperation !== undefined;
+    }
+
+    /**
+     * Flush all pending tasks immediately, bypassing the debounce timer.
+     * Awaits any currently running operation first.
+     * Call this during server shutdown to ensure all changes are persisted.
+     */
+    async flush(): Promise<void> {
+        // Stop the debounce timer if running
+        this.#debounceTimer.stop();
+
+        // Wait for any active operation to complete
+        if (this.#activeOperation !== undefined) {
+            await this.#activeOperation;
+        }
+
+        // Process any remaining tasks
+        if (this.#pendingTasks.length > 0) {
+            await this.#executeTasks();
+        }
+    }
+
+    /**
+     * Schedule a flush after the debounce delay.
+     * Does not restart the timer if already running.
+     */
+    #scheduleFlush(): void {
+        // Don't start a new timer if one is already running
+        if (this.#debounceTimer.isRunning) {
+            return;
+        }
+
+        this.#debounceTimer.start();
+    }
+
+    /**
+     * Called when the debounce timer fires.
+     */
+    #onTimerFired(): void {
+        // If a previous operation is still running, reschedule
+        if (this.#activeOperation !== undefined) {
+            logger.debug("Previous file operation still running, rescheduling flush");
+            this.#scheduleFlush();
+            return;
+        }
+
+        // Execute the pending tasks
+        if (this.#pendingTasks.length > 0) {
+            void this.#executeTasks();
+        }
+    }
+
+    /**
+     * Execute all pending tasks in a single file operation.
+     */
+    async #executeTasks(): Promise<void> {
+        // Take all current tasks and clear the queue
+        const tasks = this.#pendingTasks;
+        this.#pendingTasks = [];
+
+        if (tasks.length === 0) {
+            return;
+        }
+
+        logger.debug(`Executing ${tasks.length} queued task(s)`);
+
+        // Create the operation promise and store it
+        this.#activeOperation = this.#applyTasks(tasks);
+
+        try {
+            await this.#activeOperation;
+        } finally {
+            this.#activeOperation = undefined;
+        }
+    }
+
+    /**
+     * Apply a batch of tasks to the server file.
+     */
+    async #applyTasks(tasks: LegacyWriteTask[]): Promise<void> {
+        const crypto = this.#env.get(Crypto);
+        const compressedFabricId = await computeCompressedNodeId(
+            crypto,
+            this.#fabricConfig.fabricId,
+            this.#fabricConfig.rootPublicKey,
+        );
+        const serverFileName = `${compressedFabricId}.json`;
+        const serverFilePath = join(this.#storagePath, serverFileName);
+
+        // Load existing file or create a new structure
+        let serverFile: LegacyServerFile;
+        try {
+            const content = await readFile(serverFilePath, "utf-8");
+            serverFile = JSON.parse(content) as LegacyServerFile;
+        } catch {
+            // File doesn't exist, create a new structure
+            serverFile = {
+                vendor_info: {},
+                last_node_id: 0,
+                nodes: {},
+            };
+        }
+
+        // Track changes for logging
+        const added: string[] = [];
+        const removed: string[] = [];
+
+        // Apply all tasks in order
+        for (const task of tasks) {
+            const nodeIdNum = typeof task.nodeId === "bigint" ? Number(task.nodeId) : task.nodeId;
+            const nodeIdStr = nodeIdNum.toString();
+
+            if (task.type === "add") {
+                // Add the node entry
+                serverFile.nodes[nodeIdStr] = {
+                    node_id: nodeIdNum,
+                    date_commissioned: task.dateCommissioned,
+                    last_interview: task.dateCommissioned,
+                    interview_version: 6,
+                    available: false,
+                    is_bridge: false,
+                    attributes: {},
+                    attribute_subscriptions: [],
+                };
+
+                // Update last_node_id if this node is higher
+                if (nodeIdNum > serverFile.last_node_id) {
+                    serverFile.last_node_id = nodeIdNum;
+                }
+
+                added.push(nodeIdStr);
+            } else {
+                // Remove the node entry
+                if (nodeIdStr in serverFile.nodes) {
+                    delete serverFile.nodes[nodeIdStr];
+                    removed.push(nodeIdStr);
+                } else {
+                    logger.debug(`Node ${nodeIdStr} not found in legacy server file, skipping removal`);
+                }
+            }
+        }
+
+        // Only save if there were actual changes
+        if (added.length > 0 || removed.length > 0) {
+            await saveLegacyServerFile(this.#env, this.#storagePath, this.#fabricConfig, serverFile);
+
+            const changes: string[] = [];
+            if (added.length > 0) {
+                changes.push(`added: ${added.join(", ")}`);
+            }
+            if (removed.length > 0) {
+                changes.push(`removed: ${removed.join(", ")}`);
+            }
+            logger.info(`Batch update to legacy server file: ${changes.join("; ")}`);
+        }
+    }
 }

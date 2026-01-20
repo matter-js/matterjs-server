@@ -18,12 +18,7 @@ import {
 } from "@matter-server/ws-controller";
 import { open } from "node:fs/promises";
 import { getCliOptions, type LogLevel as CliLogLevel } from "./cli.js";
-import {
-    addNodeToLegacyServerFile,
-    loadLegacyData,
-    removeNodeFromLegacyServerFile,
-    type LegacyData,
-} from "./converter/index.js";
+import { LegacyDataWriter, loadLegacyData, type LegacyData } from "./converter/index.js";
 import { StaticFileHandler } from "./server/StaticFileHandler.js";
 import { WebServer } from "./server/WebServer.js";
 
@@ -98,6 +93,7 @@ let controller: MatterController;
 let server: WebServer;
 let config: ConfigStorage;
 let legacyData: LegacyData;
+let legacyDataWriter: LegacyDataWriter | undefined;
 
 async function start() {
     // Set up file logging additionally to the console if configured
@@ -170,20 +166,15 @@ async function start() {
 
     // Subscribe to node events for legacy data file updates
     if (legacyData.serverFile && legacyData.fabricConfig) {
-        const fabricConfig = legacyData.fabricConfig;
-        const storagePath = cliOptions.storagePath;
+        legacyDataWriter = new LegacyDataWriter(env, cliOptions.storagePath, legacyData.fabricConfig);
 
         controller.commandHandler.events.nodeAdded.on(nodeId => {
             const dateCommissioned = new Date().toISOString();
-            addNodeToLegacyServerFile(env, storagePath, fabricConfig, nodeId, dateCommissioned).catch(err => {
-                logger.warn(`Failed to update legacy data for commissioned node ${nodeId}:`, err);
-            });
+            legacyDataWriter!.queueAddition(nodeId, dateCommissioned);
         });
 
         controller.commandHandler.events.nodeDecommissioned.on(nodeId => {
-            removeNodeFromLegacyServerFile(env, storagePath, fabricConfig, nodeId).catch(err => {
-                logger.warn(`Failed to update legacy data for removed node ${nodeId}:`, err);
-            });
+            legacyDataWriter!.queueRemoval(nodeId);
         });
     }
 
@@ -201,6 +192,11 @@ async function start() {
 async function stop() {
     await server?.stop();
     await controller?.stop();
+    // Flush any pending legacy data writes before closing
+    if (legacyDataWriter?.hasPendingWork()) {
+        logger.info("Flushing pending legacy data writes...");
+        await legacyDataWriter.flush();
+    }
     await config?.close();
     process.exit(0);
 }

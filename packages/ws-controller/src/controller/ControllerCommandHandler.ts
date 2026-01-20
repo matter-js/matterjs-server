@@ -935,8 +935,6 @@ export class ControllerCommandHandler {
         this.#nodes.delete(nodeId);
         // Unregister from custom cluster polling
         this.#customClusterPoller.unregisterNode(nodeId);
-        // Emit nodeDecommissioned event after successful removal
-        this.events.nodeDecommissioned.emit(nodeId);
     }
 
     async openCommissioningWindow(data: OpenCommissioningWindowRequest): Promise<OpenCommissioningWindowResponse> {
