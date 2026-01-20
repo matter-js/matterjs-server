@@ -77,7 +77,7 @@ function collectAddresses(value: string, previous: string[]): string[] {
 }
 
 function parseBooleanEnv(value: string | boolean | undefined): boolean {
-    // Handle boolean values directly (from preset or programmatic use)
+    // Handle boolean values directly (e.g. when a flag is used without a value and Commander passes the preset boolean to the argParser, or when called programmatically)
     if (typeof value === "boolean") return value;
 
     const lower = (value ?? "").toLowerCase().trim();
