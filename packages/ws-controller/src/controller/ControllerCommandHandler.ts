@@ -911,6 +911,7 @@ export class ControllerCommandHandler {
             let networkInterfaces = node.stateOf(GeneralDiagnosticsClient).networkInterfaces;
 
             if (!preferCache) {
+                logger.info(`Fetching network interfaces for node ${nodeId} from controller`);
                 const read = {
                     ...Read(
                         Read.Attribute({
@@ -936,6 +937,7 @@ export class ControllerCommandHandler {
                             if (attr.kind === "attr-value" && Array.isArray(attr.value)) {
                                 received = true;
                                 if (attr.value.length > 0) {
+                                    logger.info("Received network interfaces from device", attr.value);
                                     networkInterfaces = attr.value;
                                 }
                             }
@@ -950,10 +952,24 @@ export class ControllerCommandHandler {
             if (interfaces.length) {
                 logger.info(`Node ${nodeId}: Found ${interfaces.length} operational network interfaces`, interfaces);
                 interfaces.forEach(({ iPv4Addresses, iPv6Addresses }) => {
-                    iPv6Addresses.forEach(ip => addresses.add(ipv6BytesToString(Bytes.of(ip))));
-                    iPv4Addresses.forEach(ip => addresses.add(ipv4BytesToString(Bytes.of(ip))));
+                    iPv6Addresses.forEach(ip => {
+                        try {
+                            addresses.add(ipv6BytesToString(Bytes.of(ip)));
+                        } catch (error) {
+                            logger.info(`Failed to convert IPv6 address ${ip} to string`, error);
+                        }
+                    });
+                    iPv4Addresses.forEach(ip => {
+                        try {
+                            addresses.add(ipv4BytesToString(Bytes.of(ip)));
+                        } catch (error) {
+                            logger.info(`Failed to convert IPv4 address ${ip} to string`, error);
+                        }
+                    });
                 });
             }
+        } else {
+            logger.warn(`Node ${nodeId}: No GeneralDiagnostics cluster, cannot get network interfaces`);
         }
         return Array.from(addresses.values());
     }
