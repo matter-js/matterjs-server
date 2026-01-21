@@ -25,7 +25,7 @@
         "@matter/nodejs-ble": "0.16.6-alpha.0-20260121-bc6d62766"
     },
     "dependencies": {
-        "@matter/main": "0.16.6-alpha.0-20260121-bc6d62766",
+        "@matter/main": "0.16.6-alpha.0-20260121-18bf42846",
         "@project-chip/matter.js": "0.16.6-alpha.0-20260121-bc6d62766",
         "ws": "^8.18.3"
     },

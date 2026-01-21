@@ -23,7 +23,7 @@
     },
     "devDependencies": {
         "@babel/preset-env": "^7.28.6",
-        "@matter/main": "0.16.6-alpha.0-20260121-bc6d62766",
+        "@matter/main": "0.16.6-alpha.0-20260121-18bf42846",
         "@rollup/plugin-babel": "^6.1.0",
         "@rollup/plugin-commonjs": "^29.0.0",
         "rollup-plugin-copy": "^3.5.0",
