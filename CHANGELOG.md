@@ -15,15 +15,17 @@ This page shows a detailed overview of the changes between versions without the 
 - Enhancement: Streamlined the "No Websocket connection" page and allow reloading of the page
 - Enhancement: Allow specifying timeouts for responses in the Websocket client and track them. Throws an error if the response times out
 - Enhancement: Add the peer address in the dashboard after the node-id to allow mapping to logs more easily
+- Adjustment: Optimize performance by migrating reading and invoking to use the new internal Node-API
 - Fix: Refactor BigInt aware JSON parsing to avoid issues when importing nodes
 - Fix: Show names in the dashboard in the same format as the Python server
 - Fix: Fix some datatypes for custom eve cluster attributes
 - Fix: Update matter.js to 0.16.6-nightly
-    - Fixes around mDNS discovery when starting the server the first time with many devices
+    - Fixes and optimizations around mDNS discovery when starting the server the first time with many devices
     - Fixes some issues in high-traffic situations
     - Do not announce our node as update-provider to prevent issues if users switch back to the Python server
     - Correctly handle node decommissioning by other controllers and optimize decommissioning via ourselves
     - Extend error handling when persisting legacy node details
+    - Optimize startup performance by initializing some internal structures lazy when needed
 
 ## 0.2.6 (2026-01-16)
 

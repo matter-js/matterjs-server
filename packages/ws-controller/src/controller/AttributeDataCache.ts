@@ -4,10 +4,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { ClusterBehavior, Logger, NodeId } from "@matter/main";
+import { ClientNode, ClusterBehavior, Logger, NodeId } from "@matter/main";
 import { DecodedAttributeReportValue } from "@matter/main/protocol";
 import { AttributeId, ClusterId, EndpointNumber, getClusterById } from "@matter/main/types";
-import { Endpoint, PairedNode } from "@project-chip/matter.js/device";
+import { PairedNode } from "@project-chip/matter.js/device";
 import { ClusterMap } from "../model/ModelMapper.js";
 import { buildAttributePath, convertMatterToWebSocketTagBased } from "../server/Converters.js";
 import { AttributesData } from "../types/CommandHandler.js";
@@ -133,14 +133,8 @@ export class AttributeDataCache {
             return;
         }
 
-        const rootEndpoint = node.getRootEndpoint();
-        if (rootEndpoint === undefined) {
-            logger.debug(`Node ${nodeId} has no root endpoint, skipping cache population`);
-            return;
-        }
-
         const nodeCache: EndpointAttributeCache = new Map();
-        this.#collectEndpointAttributes(rootEndpoint, nodeCache);
+        this.#collectAttributes(node.node, nodeCache);
         this.#cache.set(nodeId, nodeCache);
         logger.debug(`Populated attribute cache for node ${nodeId}`);
     }
@@ -149,52 +143,49 @@ export class AttributeDataCache {
      * Recursively collect attributes from an endpoint into the cache structure.
      * Always creates fresh maps for each endpoint and cluster to ensure no stale data.
      */
-    #collectEndpointAttributes(endpoint: Endpoint, nodeCache: EndpointAttributeCache): void {
-        const endpointId = endpoint.number!;
-        // Always create fresh maps for this endpoint
-        const endpointCache: Map<ClusterId, Map<AttributeId, unknown>> = new Map();
+    #collectAttributes(node: ClientNode, nodeCache: EndpointAttributeCache): void {
+        for (const endpoint of node.endpoints) {
+            const endpointId = endpoint.number;
+            // Always create fresh maps for this endpoint
+            const endpointCache: Map<ClusterId, Map<AttributeId, unknown>> = new Map();
 
-        for (const behavior of endpoint.endpoint.behaviors.active) {
-            if (!ClusterBehavior.is(behavior)) {
-                continue;
-            }
-            const cluster = behavior.cluster;
-            const clusterId = cluster.id;
-            const clusterData = ClusterMap[cluster.name.toLowerCase()];
-            const clusterState = endpoint.endpoint.stateOf(behavior) as Record<string, unknown>;
-
-            // Always create a fresh map for this cluster
-            const clusterCache: Map<AttributeId, unknown> = new Map();
-
-            for (const attributeName in cluster.attributes) {
-                const attribute = cluster.attributes[attributeName];
-                if (attribute === undefined) {
+            for (const behavior of endpoint.behaviors.active) {
+                if (!ClusterBehavior.is(behavior)) {
                     continue;
                 }
-                const attributeValue = clusterState[attributeName];
-                const convertedValue = convertMatterToWebSocketTagBased(
-                    attributeValue,
-                    clusterData?.attributes[attribute.id],
-                    clusterData?.model,
-                );
-                if (convertedValue === undefined) {
-                    continue;
+                const cluster = behavior.cluster;
+                const clusterId = cluster.id;
+                const clusterData = ClusterMap[cluster.name.toLowerCase()];
+                const clusterState = endpoint.stateOf(behavior) as Record<string, unknown>;
+
+                // Always create a fresh map for this cluster
+                const clusterCache: Map<AttributeId, unknown> = new Map();
+
+                for (const attributeName in cluster.attributes) {
+                    const attribute = cluster.attributes[attributeName];
+                    if (attribute === undefined) {
+                        continue;
+                    }
+                    const attributeValue = clusterState[attributeName];
+                    const convertedValue = convertMatterToWebSocketTagBased(
+                        attributeValue,
+                        clusterData?.attributes[attribute.id],
+                        clusterData?.model,
+                    );
+                    if (convertedValue === undefined) {
+                        continue;
+                    }
+                    clusterCache.set(attribute.id, convertedValue);
                 }
-                clusterCache.set(attribute.id, convertedValue);
+
+                if (clusterCache.size) {
+                    endpointCache.set(clusterId, clusterCache);
+                }
             }
 
-            if (clusterCache.size) {
-                endpointCache.set(clusterId, clusterCache);
+            if (endpointCache.size) {
+                nodeCache.set(endpointId, endpointCache);
             }
-        }
-
-        if (endpointCache.size) {
-            nodeCache.set(endpointId, endpointCache);
-        }
-
-        // Recursively collect from child endpoints
-        for (const childEndpoint of endpoint.getChildEndpoints()) {
-            this.#collectEndpointAttributes(childEndpoint, nodeCache);
         }
     }
 }

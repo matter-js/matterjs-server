@@ -7,6 +7,8 @@
 import { AsyncObservable, isObject } from "@matter/general";
 import {
     Bytes,
+    camelize,
+    ClientNode,
     ClientNodeInteraction,
     FabricId,
     FabricIndex,
@@ -22,25 +24,27 @@ import {
     SoftwareUpdateInfo,
     SoftwareUpdateManager,
 } from "@matter/main";
+import { GeneralDiagnosticsClient, OperationalCredentialsClient } from "@matter/main/behaviors";
 import {
     AccessControl,
     Binding,
     GeneralCommissioning,
-    GeneralDiagnosticsCluster,
+    GeneralDiagnostics,
     OperationalCredentials,
 } from "@matter/main/clusters";
 import {
     DecodedAttributeReportValue,
     DecodedEventReportValue,
+    Invoke,
     PeerAddress,
     Read,
-    SignatureFromCommandSpec,
     SupportedTransportsSchema,
 } from "@matter/main/protocol";
 import {
     Attribute,
     AttributeId,
     ClusterId,
+    ClusterType,
     Command,
     DeviceTypeId,
     EndpointNumber,
@@ -48,6 +52,7 @@ import {
     GroupId,
     ManualPairingCodeCodec,
     QrPairingCodeCodec,
+    Status,
     StatusResponseError,
     TlvAny,
     TlvBoolean,
@@ -615,20 +620,50 @@ export class ControllerCommandHandler {
         }
     }
 
+    // TODO improve response typing
+    async #invokeCommand<const C extends ClusterType>(
+        node: ClientNode,
+        request: Invoke.ConcreteCommandRequest<C>,
+        options: Omit<Invoke.Definition, "commands"> = {},
+    ) {
+        for await (const data of node.interaction.invoke(
+            Invoke({
+                commands: [request],
+                ...options,
+            }),
+        )) {
+            for (const entry of data) {
+                // We send only one command, so we only get one response back
+                switch (entry.kind) {
+                    case "cmd-status":
+                        if (entry.status !== Status.Success) {
+                            throw StatusResponseError.create(entry.status, undefined, entry.clusterStatus);
+                        }
+                        return;
+
+                    case "cmd-response":
+                        return entry.data;
+                }
+            }
+        }
+    }
+
     async handleInvoke(data: InvokeRequest): Promise<any> {
         const {
             nodeId,
             endpointId,
             clusterId,
-            commandName,
             timedInteractionTimeoutMs: timedRequestTimeoutMs,
             interactionTimeoutMs,
         } = data;
         let { data: commandData } = data;
 
-        const client = this.#nodes.clusterClientByIdFor(nodeId, endpointId, clusterId);
-
-        if (!client[commandName] || !client.isCommandSupportedByName(commandName)) {
+        const cluster = getClusterById(clusterId);
+        const commandName = camelize(data.commandName);
+        const commands = (
+            this.#nodes.get(nodeId).node.endpoints.for(endpointId).commands as Record<string, Record<string, unknown>>
+        )[camelize(cluster.name)];
+        if (!commands[commandName]) {
             throw new Error("Command not existing");
         }
 
@@ -636,17 +671,27 @@ export class ControllerCommandHandler {
             if (Object.keys(commandData).length === 0) {
                 commandData = undefined;
             } else {
-                const cluster = ClusterMap[client.name.toLowerCase()];
-                const model = cluster?.commands[commandName.toLowerCase()];
+                const clusterEntry = ClusterMap[cluster.name.toLowerCase()];
+                const model = clusterEntry?.commands[commandName.toLowerCase()];
                 if (cluster && model) {
-                    commandData = convertCommandDataToMatter(commandData, model, cluster.model);
+                    commandData = convertCommandDataToMatter(commandData, model, clusterEntry.model);
                 }
             }
         }
-        return (client[commandName] as unknown as SignatureFromCommandSpec<Command<any, any, any>>)(commandData, {
-            timedRequestTimeout: Millis(timedRequestTimeoutMs),
-            expectedProcessingTime: interactionTimeoutMs !== undefined ? Millis(interactionTimeoutMs) : undefined,
-        });
+
+        return await this.#invokeCommand(
+            this.#nodes.get(nodeId).node,
+            {
+                endpoint: endpointId,
+                cluster,
+                command: commandName,
+                fields: commandData,
+            },
+            {
+                timeout: timedRequestTimeoutMs !== undefined ? Millis(timedRequestTimeoutMs) : undefined,
+                expectedProcessingTime: interactionTimeoutMs !== undefined ? Millis(interactionTimeoutMs) : undefined,
+            },
+        );
     }
 
     /** InvokeById minimalistic handler because only used for error testing */
@@ -861,22 +906,46 @@ export class ControllerCommandHandler {
     async getNodeIpAddresses(nodeId: NodeId, preferCache = true) {
         const node = this.#nodes.get(nodeId);
         const addresses = new Set<string>();
-        const generalDiag = node.getRootClusterClient(GeneralDiagnosticsCluster);
-        if (generalDiag) {
-            try {
-                const networkInterfaces = await generalDiag.getNetworkInterfacesAttribute(preferCache ? true : true);
-                if (networkInterfaces) {
-                    const interfaces = networkInterfaces.filter(({ isOperational }) => isOperational);
-                    if (interfaces.length) {
-                        logger.info(`Found ${interfaces.length} operational network interfaces`, interfaces);
-                        interfaces.forEach(({ iPv4Addresses, iPv6Addresses }) => {
-                            iPv4Addresses.forEach(ip => addresses.add(ipv4BytesToString(Bytes.of(ip))));
-                            iPv6Addresses.forEach(ip => addresses.add(ipv6BytesToString(Bytes.of(ip))));
-                        });
+
+        if (node.node.behaviors.has(GeneralDiagnosticsClient)) {
+            let networkInterfaces = node.stateOf(GeneralDiagnosticsClient).networkInterfaces;
+
+            if (!preferCache) {
+                const read = {
+                    ...Read(
+                        Read.Attribute({
+                            endpoint: EndpointNumber(0),
+                            cluster: GeneralDiagnostics.Complete,
+                            attributes: "networkInterfaces",
+                        }),
+                    ),
+                    includeKnownVersions: true, // we want to read from device
+                };
+
+                try {
+                    for await (const chunk of (node.node.interaction as ClientNodeInteraction).read(read)) {
+                        for (const attr of chunk) {
+                            if (attr.kind === "attr-value" && Array.isArray(attr.value)) {
+                                networkInterfaces = attr.value;
+                            }
+                            logger.warn(
+                                "Unexpected response from networkInterfaces read, returning cached version",
+                                attr,
+                            );
+                        }
                     }
+                } catch (error) {
+                    logger.info(`Failed to get network interfaces, returning cached version`, error);
                 }
-            } catch (e) {
-                logger.info(`Failed to get network interfaces: ${e}`);
+            }
+
+            const interfaces = networkInterfaces.filter(({ isOperational }) => isOperational);
+            if (interfaces.length) {
+                logger.info(`Node ${nodeId}: Found ${interfaces.length} operational network interfaces`, interfaces);
+                interfaces.forEach(({ iPv4Addresses, iPv6Addresses }) => {
+                    iPv6Addresses.forEach(ip => addresses.add(ipv6BytesToString(Bytes.of(ip))));
+                    iPv4Addresses.forEach(ip => addresses.add(ipv4BytesToString(Bytes.of(ip))));
+                });
             }
         }
         return Array.from(addresses.values());
@@ -945,25 +1014,48 @@ export class ControllerCommandHandler {
     }
 
     async getFabrics(nodeId: NodeId) {
-        const client = this.#nodes.clusterClientFor(nodeId, EndpointNumber(0), OperationalCredentials.Cluster);
+        const node = this.#nodes.get(nodeId);
 
-        return (await client.getFabricsAttribute(true, false)).map(({ fabricId, fabricIndex, vendorId, label }) => ({
-            fabricId,
-            vendorId,
-            fabricIndex,
-            label,
-        }));
+        const read = {
+            ...Read(
+                {
+                    fabricFilter: false,
+                },
+                Read.Attribute({
+                    endpoint: EndpointNumber(0),
+                    cluster: OperationalCredentials.Complete,
+                    attributes: "fabrics",
+                }),
+            ),
+            includeKnownVersions: true, // we want to read from device
+        };
+
+        for await (const chunk of (node.node.interaction as ClientNodeInteraction).read(read)) {
+            for (const attr of chunk) {
+                if (attr.kind === "attr-value" && Array.isArray(attr.value)) {
+                    // We only expect one array response
+                    return attr.value.map(({ fabricId, fabricIndex, vendorId, label }) => ({
+                        fabricId,
+                        vendorId,
+                        fabricIndex,
+                        label,
+                    }));
+                }
+                logger.warn("Unexpected response from fabrics read", attr);
+            }
+        }
+
+        throw new Error("No or invalid response received while querying fabrics");
     }
 
     removeFabric(nodeId: NodeId, fabricIndex: FabricIndex) {
-        const client = this.#nodes.clusterClientFor(nodeId, EndpointNumber(0), OperationalCredentials.Cluster);
-
-        return client.removeFabric({ fabricIndex });
+        return this.#nodes.get(nodeId).node.commandsOf(OperationalCredentialsClient).removeFabric({ fabricIndex });
     }
 
     /**
      * Set Access Control List entries on a node.
      * Writes to the ACL attribute on the AccessControl cluster (endpoint 0).
+     * TODO Migrate to new Node API
      */
     async setAclEntry(nodeId: NodeId, entries: AccessControlEntry[]): Promise<AttributeWriteResult[] | null> {
         const client = this.#nodes.clusterClientFor(nodeId, EndpointNumber(0), AccessControl.Cluster);
@@ -1014,6 +1106,7 @@ export class ControllerCommandHandler {
     /**
      * Set bindings on a specific endpoint of a node.
      * Writes to the Binding attribute on the Binding cluster.
+     * TODO Migrate to new Node API
      */
     async setNodeBinding(
         nodeId: NodeId,

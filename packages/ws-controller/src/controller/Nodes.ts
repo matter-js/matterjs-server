@@ -83,6 +83,7 @@ export class Nodes {
     /**
      * Get a cluster client by cluster ID for a specific endpoint on a node.
      * @throws Error if endpoint or cluster not found
+     * TODO: Migrate to new node API
      */
     clusterClientByIdFor(nodeId: NodeId, endpointId: EndpointNumber, clusterId: ClusterId): ClusterClientObj<any> {
         const node = this.get(nodeId);
