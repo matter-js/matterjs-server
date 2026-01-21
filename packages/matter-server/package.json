@@ -32,7 +32,7 @@
     },
     "devDependencies": {
         "@types/express": "^5.0.6",
-        "@types/node": "^25.0.8",
+        "@types/node": "^25.0.9",
         "@matter/testing": "0.16.6-alpha.0-20260121-bc6d62766",
         "@matter-server/ws-client": "*"
     },

@@ -22,7 +22,7 @@
         "bundle": "rollup -c"
     },
     "devDependencies": {
-        "@babel/preset-env": "^7.28.5",
+        "@babel/preset-env": "^7.28.6",
         "@matter/main": "0.16.6-alpha.0-20260121-bc6d62766",
         "@rollup/plugin-babel": "^6.1.0",
         "@rollup/plugin-commonjs": "^29.0.0",
@@ -31,7 +31,7 @@
         "@rollup/plugin-node-resolve": "^16.0.3",
         "@rollup/plugin-terser": "^0.4.4",
         "@rollup/plugin-typescript": "^12.3.0",
-        "rollup": "^4.54.0",
+        "rollup": "^4.55.3",
         "serve": "^14.2.5"
     },
     "dependencies": {
@@ -40,7 +40,7 @@
         "@matter-server/ws-client": "*",
         "@matter-server/custom-clusters": "*",
         "@mdi/js": "^7.4.47",
-        "lit": "^3.3.1",
+        "lit": "^3.3.2",
         "tslib": "^2.8.1"
     },
     "files": [

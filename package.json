@@ -35,12 +35,12 @@
         "send-command": "node --enable-source-maps packages/ws-controller/dist/esm/example/send-command.js"
     },
     "devDependencies": {
-        "@eslint/compat": "^2.0.0",
+        "@eslint/compat": "^2.0.1",
         "@eslint/eslintrc": "^3.3.3",
         "@eslint/js": "^9.39.2",
         "@matter/testing": "0.16.6-alpha.0-20260121-bc6d62766",
-        "@typescript-eslint/eslint-plugin": "^8.52.0",
-        "@typescript-eslint/parser": "^8.52.0",
+        "@typescript-eslint/eslint-plugin": "^8.53.1",
+        "@typescript-eslint/parser": "^8.53.1",
         "@types/mocha": "^10.0.10",
         "eslint-import-resolver-typescript": "^4.4.4",
         "eslint-plugin-import": "^2.32.0",
@@ -48,10 +48,10 @@
         "eslint-plugin-regexp": "^2.10.0",
         "glob": "^13.0.0",
         "globals": "^17.0.0",
-        "prettier": "^3.7.4",
+        "prettier": "^3.8.0",
         "prettier-plugin-organize-imports": "^4.3.0",
         "tsx": "^4.21.0",
         "typescript": "~5.9.3",
-        "typescript-eslint": "^8.52.0"
+        "typescript-eslint": "^8.53.1"
     }
 }

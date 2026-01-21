@@ -30,7 +30,7 @@
         "ws": "^8.18.3"
     },
     "devDependencies": {
-        "@types/node": "^25.0.8",
+        "@types/node": "^25.0.9",
         "@types/ws": "^8.18.1"
     },
     "files": [
