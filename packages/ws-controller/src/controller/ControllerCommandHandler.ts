@@ -923,15 +923,22 @@ export class ControllerCommandHandler {
                 };
 
                 try {
+                    let received = false;
                     for await (const chunk of (node.node.interaction as ClientNodeInteraction).read(read)) {
                         for (const attr of chunk) {
-                            if (attr.kind === "attr-value" && Array.isArray(attr.value)) {
-                                networkInterfaces = attr.value;
+                            if (received) {
+                                logger.warn(
+                                    "Unexpected response from networkInterfaces read, returning cached version",
+                                    attr,
+                                );
+                                continue;
                             }
-                            logger.warn(
-                                "Unexpected response from networkInterfaces read, returning cached version",
-                                attr,
-                            );
+                            if (attr.kind === "attr-value" && Array.isArray(attr.value)) {
+                                received = true;
+                                if (attr.value.length > 0) {
+                                    networkInterfaces = attr.value;
+                                }
+                            }
                         }
                     }
                 } catch (error) {
