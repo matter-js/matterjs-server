@@ -556,9 +556,19 @@ export function splitAttributePath(path: string): {
     const [endpointStr, clusterStr, attributeStr] = path.split("/");
 
     // Non-numeric values (like "*") are treated as wildcards (undefined)
-    const endpointNum = /^\d+$/.test(endpointStr) ? parseInt(endpointStr, 10) : undefined;
-    const clusterNum = /^\d+$/.test(clusterStr) ? parseInt(clusterStr, 10) : undefined;
-    const attributeNum = /^\d+$/.test(attributeStr) ? parseInt(attributeStr, 10) : undefined;
+    let endpointNum = /^\d+$/.test(endpointStr) ? parseInt(endpointStr, 10) : undefined;
+    let clusterNum = /^\d+$/.test(clusterStr) ? parseInt(clusterStr, 10) : undefined;
+    let attributeNum = /^\d+$/.test(attributeStr) ? parseInt(attributeStr, 10) : undefined;
+
+    if (endpointNum !== undefined && endpointNum === 0xffff) {
+        endpointNum = undefined;
+    }
+    if (clusterNum !== undefined && clusterNum === 0xffffffff) {
+        clusterNum = undefined;
+    }
+    if (attributeNum !== undefined && attributeNum === 0xffffffff) {
+        attributeNum = undefined;
+    }
 
     return {
         endpointId: endpointNum !== undefined ? EndpointNumber(endpointNum) : undefined,
