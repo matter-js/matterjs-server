@@ -291,11 +291,11 @@ describe("Integration Test", function () {
             expect(ips[0]).to.be.a("string");
         });
 
-        it("should get scoped IP addresses (without zone ID)", async function () {
-            const ips = await client.getNodeIpAddresses(commissionedNodeId, false, true);
+        it("should get IP addresses without zone ID when scoped=false", async function () {
+            const ips = await client.getNodeIpAddresses(commissionedNodeId, false, false);
 
             expect(ips).to.be.an("array").that.is.not.empty;
-            // Scoped IPs should not contain % (zone ID)
+            // With scoped=false (default), zone IDs should be stripped (no %)
             for (const ip of ips) {
                 expect(ip).to.not.include("%");
             }
