@@ -140,6 +140,7 @@ export class ControllerCommandHandler {
         this.#controller = controllerInstance;
 
         this.#bleEnabled = bleEnabled;
+        logger.info(`BLE is ${bleEnabled ? "enabled" : "disabled"}`);
         this.#otaEnabled = otaEnabled;
 
         // Initialize custom cluster poller for Eve energy attributes etc.

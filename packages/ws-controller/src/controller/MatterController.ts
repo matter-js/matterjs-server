@@ -24,6 +24,9 @@ import { ConfigStorage } from "../server/ConfigStorage.js";
 import { ControllerCommandHandler } from "./ControllerCommandHandler.js";
 import { LegacyDataInjector, LegacyServerData } from "./LegacyDataInjector.js";
 
+// Register BLE
+import "@matter/nodejs-ble";
+
 const logger = Logger.get("MatterController");
 
 export async function computeCompressedNodeId(

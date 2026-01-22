@@ -7,6 +7,10 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
+## __WORK IN PROGRESS__
+
+- Fix: Fixes the BLE registration of the Matter server
+
 ## 0.2.7 (2026-01-22)
 
 - Enhancement: Optimizes initial migration with empty matter.js storage and inject peers directly

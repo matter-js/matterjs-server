@@ -19,13 +19,13 @@ import {
 import { open } from "node:fs/promises";
 import { getCliOptions, type LogLevel as CliLogLevel } from "./cli.js";
 import { LegacyDataWriter, loadLegacyData, type LegacyData } from "./converter/index.js";
+import { initializeOta } from "./ota.js";
 import { StaticFileHandler } from "./server/StaticFileHandler.js";
 import { WebServer } from "./server/WebServer.js";
+import { MATTER_SERVER_VERSION } from "./version.js";
 
 // Register the custom clusters
 import "@matter-server/custom-clusters";
-import { initializeOta } from "./ota.js";
-import { MATTER_SERVER_VERSION } from "./version.js";
 
 /**
  * Creates a file-based logger that appends to the given path.
