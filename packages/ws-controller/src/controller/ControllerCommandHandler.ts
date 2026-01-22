@@ -784,7 +784,7 @@ export class ControllerCommandHandler {
                 vendorId = VendorId(data.vendorId);
                 productId = data.productId;
             }
-            // If none of the above, will discover any commissionable device
+            // If none of the above, discovers any commissionable device
         } else {
             throw new Error("No pairing code provided");
         }
@@ -802,12 +802,14 @@ export class ControllerCommandHandler {
             throw new Error("No passcode provided");
         }
 
-        const { onNetworkOnly } = data;
+        const { onNetworkOnly, wifiCredentials: wifiNetwork, threadCredentials: threadNetwork } = data;
         return {
             commissioning: {
                 nodeId: data.nodeId,
                 regulatoryLocation: GeneralCommissioning.RegulatoryLocationType.IndoorOutdoor,
                 regulatoryCountryCode: "XX",
+                wifiNetwork,
+                threadNetwork,
             },
             discovery: {
                 knownAddress,

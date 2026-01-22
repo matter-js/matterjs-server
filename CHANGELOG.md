@@ -9,7 +9,7 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## __WORK IN PROGRESS__
 
-- Fix: Fixes the BLE registration of the Matter server
+- Fix: Fixes the BLE commissioning capabilities
 
 ## 0.2.7 (2026-01-22)
 
