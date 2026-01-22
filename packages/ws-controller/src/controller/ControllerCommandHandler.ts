@@ -909,7 +909,7 @@ export class ControllerCommandHandler {
         // Fall back to commissioning addresses from the node state if mDNS fails
         const node = this.#nodes.get(nodeId);
         const commissioningAddresses = node.node.maybeStateOf(CommissioningClient)?.addresses;
-        if (commissioningAddresses !== undefined && commissioningAddresses?.length > 0) {
+        if (commissioningAddresses !== undefined && commissioningAddresses.length > 0) {
             logger.info(
                 `Node ${nodeId}: mDNS discovery returned no addresses, using commissioning addresses`,
                 commissioningAddresses,
