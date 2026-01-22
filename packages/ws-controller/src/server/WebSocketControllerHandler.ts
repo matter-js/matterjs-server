@@ -624,7 +624,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
     ): Promise<ResponseOf<"get_node_ip_addresses">> {
         const { node_id, prefer_cache, scoped } = args;
         const result = await this.#handlerFor(node_id).getNodeIpAddresses(NodeId(node_id), prefer_cache);
-        if (!scoped) {
+        // scoped=true means keep the interface suffix (e.g., %en0), scoped=false (default) strips it
+        if (scoped) {
             return result;
         }
         return result.map(ip => (ip.includes("%") ? ip.split("%")[0] : ip));
