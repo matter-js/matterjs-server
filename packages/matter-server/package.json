@@ -23,7 +23,7 @@
         "node": ">=20.19.0 <22.0.0 || >=22.13.0"
     },
     "dependencies": {
-        "@matter/main": "0.16.6",
+        "@matter/main": "0.16.7",
         "@matter-server/ws-controller": "*",
         "@matter-server/dashboard": "*",
         "@matter-server/custom-clusters": "*",
@@ -33,7 +33,7 @@
     "devDependencies": {
         "@types/express": "^5.0.6",
         "@types/node": "^25.0.9",
-        "@matter/testing": "0.16.6",
+        "@matter/testing": "0.16.7",
         "@matter-server/ws-client": "*"
     },
     "files": [

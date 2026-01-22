@@ -10,6 +10,9 @@ This page shows a detailed overview of the changes between versions without the 
 ## __WORK IN PROGRESS__
 
 - Fix: Fixes the datatype for the Eve pressure attribute
+- Fix: Return mDNS-discovered IPs for a node when requesting them and also ping these
+- Fix: Update matter.js to 0.16.7
+    - Fix OTA update availability checks
 
 ## 0.2.8 (2026-01-22)
 

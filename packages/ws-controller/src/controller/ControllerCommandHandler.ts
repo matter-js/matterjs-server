@@ -4,16 +4,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { AsyncObservable, isObject } from "@matter/general";
+import { AsyncObservable, ChannelType, isObject } from "@matter/general";
 import {
-    Bytes,
     camelize,
     ClientNode,
     ClientNodeInteraction,
+    CommissioningClient,
     FabricId,
     FabricIndex,
-    ipv4BytesToString,
-    ipv6BytesToString,
     Logger,
     Millis,
     NodeId,
@@ -24,20 +22,15 @@ import {
     SoftwareUpdateInfo,
     SoftwareUpdateManager,
 } from "@matter/main";
-import { GeneralDiagnosticsClient, OperationalCredentialsClient } from "@matter/main/behaviors";
-import {
-    AccessControl,
-    Binding,
-    GeneralCommissioning,
-    GeneralDiagnostics,
-    OperationalCredentials,
-} from "@matter/main/clusters";
+import { OperationalCredentialsClient } from "@matter/main/behaviors";
+import { AccessControl, Binding, GeneralCommissioning, OperationalCredentials } from "@matter/main/clusters";
 import {
     DecodedAttributeReportValue,
     DecodedEventReportValue,
     Invoke,
     PeerAddress,
     Read,
+    ScannerSet,
     SupportedTransportsSchema,
 } from "@matter/main/protocol";
 import {
@@ -906,75 +899,62 @@ export class ControllerCommandHandler {
         });
     }
 
-    async getNodeIpAddresses(nodeId: NodeId, preferCache = true) {
-        const node = this.#nodes.get(nodeId);
-        const addresses = new Set<string>();
-
-        if (node.node.behaviors.has(GeneralDiagnosticsClient)) {
-            let networkInterfaces = node.stateOf(GeneralDiagnosticsClient).networkInterfaces;
-
-            if (!preferCache) {
-                logger.info(`Fetching network interfaces for node ${nodeId} from controller`);
-                const read = {
-                    ...Read(
-                        Read.Attribute({
-                            endpoint: EndpointNumber(0),
-                            cluster: GeneralDiagnostics.Complete,
-                            attributes: "networkInterfaces",
-                        }),
-                    ),
-                    includeKnownVersions: true, // we want to read from device
-                };
-
-                try {
-                    let received = false;
-                    for await (const chunk of (node.node.interaction as ClientNodeInteraction).read(read)) {
-                        for (const attr of chunk) {
-                            if (received) {
-                                logger.warn(
-                                    "Unexpected response from networkInterfaces read, returning cached version",
-                                    attr,
-                                );
-                                continue;
-                            }
-                            if (attr.kind === "attr-value" && Array.isArray(attr.value)) {
-                                received = true;
-                                if (attr.value.length > 0) {
-                                    logger.info("Received network interfaces from device", attr.value);
-                                    networkInterfaces = attr.value;
-                                }
-                            }
-                        }
-                    }
-                } catch (error) {
-                    logger.info(`Failed to get network interfaces, returning cached version`, error);
-                }
-            }
-
-            const interfaces = networkInterfaces.filter(({ isOperational }) => isOperational);
-            if (interfaces.length) {
-                logger.info(`Node ${nodeId}: Found ${interfaces.length} operational network interfaces`, interfaces);
-                interfaces.forEach(({ iPv4Addresses, iPv6Addresses }) => {
-                    iPv6Addresses.forEach(ip => {
-                        try {
-                            addresses.add(ipv6BytesToString(Bytes.of(ip)));
-                        } catch (error) {
-                            logger.info(`Failed to convert IPv6 address ${ip} to string`, error);
-                        }
-                    });
-                    iPv4Addresses.forEach(ip => {
-                        try {
-                            addresses.add(ipv4BytesToString(Bytes.of(ip)));
-                        } catch (error) {
-                            logger.info(`Failed to convert IPv4 address ${ip} to string`, error);
-                        }
-                    });
-                });
-            }
-        } else {
-            logger.warn(`Node ${nodeId}: No GeneralDiagnostics cluster, cannot get network interfaces`);
+    async getNodeIpAddresses(nodeId: NodeId, _preferCache = true) {
+        // Try mDNS discovery first (like Python matter server does)
+        const addresses = await this.#discoverNodeAddressesViaMdns(nodeId);
+        if (addresses.length > 0) {
+            return addresses;
         }
-        return Array.from(addresses.values());
+
+        // Fall back to commissioning addresses from the node state if mDNS fails
+        const node = this.#nodes.get(nodeId);
+        const commissioningAddresses = node.node.maybeStateOf(CommissioningClient)?.addresses;
+        if (commissioningAddresses !== undefined && commissioningAddresses?.length > 0) {
+            logger.info(
+                `Node ${nodeId}: mDNS discovery returned no addresses, using commissioning addresses`,
+                commissioningAddresses,
+            );
+            const fallbackAddresses = commissioningAddresses
+                .filter((addr): addr is ServerAddressUdp => addr.type === "udp")
+                .map(addr => addr.ip);
+            if (fallbackAddresses.length > 0) {
+                return fallbackAddresses;
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * Discover node IP addresses via mDNS (like Python matter server).
+     * Uses 3-second timeout matching Python implementation.
+     */
+    async #discoverNodeAddressesViaMdns(nodeId: NodeId): Promise<string[]> {
+        try {
+            const scanners = this.#controller.node.env.get(ScannerSet);
+            const mdnsScanner = scanners.scannerFor(ChannelType.UDP);
+            if (!mdnsScanner) {
+                logger.debug(`Node ${nodeId}: No mDNS scanner available`);
+                return [];
+            }
+
+            const fabric = this.#controller.fabric;
+            logger.info(`Node ${nodeId}: Discovering addresses via mDNS (3s timeout)`);
+
+            const device = await mdnsScanner.findOperationalDevice(fabric, nodeId, Seconds(3), false);
+            if (!device || device.addresses.length === 0) {
+                logger.info(`Node ${nodeId}: mDNS discovery found no addresses`);
+                return [];
+            }
+
+            // Extract IP addresses from a discovered device (includes scoped addresses with %interface)
+            const addresses = device.addresses.map(addr => addr.ip);
+            logger.info(`Node ${nodeId}: mDNS discovered ${addresses.length} addresses:`, addresses);
+            return addresses;
+        } catch (error) {
+            logger.info(`Node ${nodeId}: mDNS discovery failed`, error);
+            return [];
+        }
     }
 
     /**
