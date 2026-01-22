@@ -7,7 +7,7 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
-## __WORK IN PROGRESS__
+## 0.2.7 (2026-01-22)
 
 - Enhancement: Optimizes initial migration with empty matter.js storage and inject peers directly
 - Enhancement: Added an option to temporarily change the loglevel while the server runs
