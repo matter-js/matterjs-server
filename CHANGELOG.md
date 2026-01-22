@@ -19,7 +19,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Fix: Refactor BigInt aware JSON parsing to avoid issues when importing nodes
 - Fix: Show names in the dashboard in the same format as the Python server
 - Fix: Fix some datatypes for custom eve cluster attributes
-- Fix: Also respect  the chip magic values when reading wildcard attributes
+- Fix: Also respect the chip magic values when reading wildcard attributes
 - Fix: Update matter.js to 0.16.6
     - Fixes and optimizations around mDNS discovery when starting the server the first time with many devices
     - Fixes some issues in high-traffic situations
