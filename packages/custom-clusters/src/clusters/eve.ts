@@ -32,7 +32,7 @@ export class EveCluster {
     @attribute(0x130a0013, single)
     altitude?: number;
 
-    @attribute(0x130a0014, uint32)
+    @attribute(0x130a0014, single)
     pressure?: number;
 
     @attribute(0x130a0015, uint32)
