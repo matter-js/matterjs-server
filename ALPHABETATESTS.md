@@ -5,7 +5,7 @@
 ### Phase 1: Alpha Test of the New Matter Server (starts Mon 12.01.2026)
 
 This test phase involves a separate installation of the new Matter Server and does not provide an updated Home Assistant add-on or integration. This means it requires some advanced knowledge on how to install and run the server and how to get the relevant files.
-Please see detailed instructions [below](#alpha-test-instructions).
+Please see detailed instructions [below](#manual-test-instructions).
 
 The main goals of this phase are to:
 * Validate the basic functionality of the new Matter Server based on matter.js
@@ -24,6 +24,22 @@ Once we have verified the basic functionality of the new Matter Server, we will 
 ### Phase 3: Official Release for all "Stable" HA Addon Users
 
 After an official re-certification of the OHF Matter Server we are done :-)
+
+## Using the Matter.js Beta in the Home Assistant Add-on
+
+Starting with version 8.2.0, the Home Assistant Matter Server add-on includes a built-in beta switch to use the Matter.js-based server.
+
+### Steps
+
+1. In Home Assistant, go to Settings → Add-ons → Matter Server
+2. Update the add-on to version 8.2.0 or later (if not already updated)
+3. Enable the "Beta" flag in the add-on configuration
+4. Restart the add-on
+5. (Optional) Monitor the Matter Server add-on logs to observe the Node.js installation, Matter Server installation, and migration process, which can take a few minutes
+
+### Reverting to the Python-based Server
+
+To revert to the Python-based Matter Server, simply disable the "Beta" flag in the add-on configuration and restart the add-on.
 
 ## Alpha Test Instructions
 
@@ -86,22 +102,6 @@ Use the [docker-compose](./docker/matterjs-server/docker-compose.yml) file to st
 By default, the data directory is mapped to `${HOME}/.matterjs-server`.
 
 Please get the Python Matter Server data files **before** the first start as [described above](#step-2-adding-python-matter-server-data-files).
-
-## Using the Matter.js Beta in the Home Assistant Add-on
-
-Starting with version 8.2.0, the Home Assistant Matter Server add-on includes a built-in beta switch to use the Matter.js-based server.
-
-### Steps
-
-1. In Home Assistant, go to Settings → Add-ons → Matter Server
-2. Update the add-on to version 8.2.0 or later (if not already updated)
-3. Enable the "Beta" flag in the add-on configuration
-4. Restart the add-on
-5. (Optional) Monitor the Matter Server add-on logs to observe the Node.js installation, Matter Server installation, and migration process, which can take a few minutes
-
-### Reverting to the Python-based Server
-
-To revert to the Python-based Matter Server, simply disable the "Beta" flag in the add-on configuration and restart the add-on.
 
 ## FAQ
 
