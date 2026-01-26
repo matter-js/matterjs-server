@@ -4,18 +4,20 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { ImplementationError, MaybePromise, SupportedStorageTypes } from "@matter/general";
 import {
     Bytes,
     Crypto,
     FabricId,
     FabricIndex,
+    ImplementationError,
     isDeepEqual,
     isObject,
     Logger,
+    MaybePromise,
     NodeId,
     StorageContext,
     StorageManager,
+    SupportedStorageTypes,
     Time,
 } from "@matter/main";
 import { DescriptorCluster } from "@matter/main/clusters";

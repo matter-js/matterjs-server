@@ -4,8 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { ObserverGroup } from "@matter/general";
-import { camelize, ClusterId, FabricIndex, Logger, LogLevel, Millis, NodeId } from "@matter/main";
+import { camelize, ClusterId, FabricIndex, Logger, LogLevel, Millis, NodeId, ObserverGroup } from "@matter/main";
 import { ControllerCommissioningFlowOptions } from "@matter/main/protocol";
 import { EndpointNumber, getClusterById, QrPairingCodeCodec } from "@matter/main/types";
 import { NodeStates } from "@project-chip/matter.js/device";

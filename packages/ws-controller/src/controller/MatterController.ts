@@ -4,7 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { SharedEnvironmentServices, Timestamp } from "@matter/general";
 import {
     Bytes,
     CommissioningClient,
@@ -14,7 +13,9 @@ import {
     GlobalFabricId,
     Logger,
     NodeId,
+    SharedEnvironmentServices,
     SoftwareUpdateManager,
+    Timestamp,
 } from "@matter/main";
 import { DclCertificateService, DclOtaUpdateService, DclVendorInfoService, VendorInfo } from "@matter/main/protocol";
 import { VendorId } from "@matter/main/types";
