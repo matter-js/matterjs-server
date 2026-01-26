@@ -41,7 +41,7 @@ Starting with version 8.2.0, the Home Assistant Matter Server add-on includes a 
 
 To revert to the Python-based Matter Server, simply disable the "Beta" flag in the add-on configuration and restart the add-on.
 
-## Alpha Test Instructions
+## Manual Test Instructions
 
 ### General Information
 
