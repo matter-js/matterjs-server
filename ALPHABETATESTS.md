@@ -16,9 +16,9 @@ The main goals of this phase are to:
 * (If possible) Add the temporary server location as a Home Assistant Matter integration to a (test?) HA instance and validate functionality there too (all entities are discovered correctly, data updates, etc.)
 * (If possible) After deleting/adding nodes in the Matter Server, copy back the `<long-number>.json` to the Python server, and new nodes should connect there too and show up in HA; deleted nodes should disappear from HA
 
-### Phase 2: Official Release for all "Beta" HA Addon Users
+### Phase 2: Official Release for all "Beta" HA Addon Users (released 22.01.2026)
 
-Once we have verified the basic functionality of the new Matter Server, we will officially release the HA add-on as a beta version. All users of the HA add-on who chose "Beta" will use this as their main Matter Server. If issues occur, it can be switched back to the python-matter-server by disabling the beta version in the HA add-on.
+The Matter Server add-on version 8.2.0 was released with a beta toggle for the Matter.js-based server. All users of the HA add-on who enable "Beta" will use this as their main Matter Server. If issues occur, it can be switched back to the python-matter-server by disabling the beta version in the HA add-on.
 
 
 ### Phase 3: Official Release for all "Stable" HA Addon Users
