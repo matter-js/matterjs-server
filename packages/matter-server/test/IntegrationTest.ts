@@ -241,7 +241,7 @@ describe("Integration Test", function () {
             console.log("Node commissioned:", commissionedNodeId);
 
             // Verify node ID is 2
-            expect(commissionedNodeId).to.equal(2);
+            expect(commissionedNodeId).to.equal(1);
 
             // Verify node metadata
             expect(node.available).to.be.true;

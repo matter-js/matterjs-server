@@ -12,7 +12,7 @@ import {
     splitAttributePath,
     toBigIntAwareJson,
 } from "@matter-server/ws-controller";
-import { Bytes } from "@matter/general";
+import { Bytes } from "@matter/main";
 
 describe("Converters", () => {
     describe("convertWebSocketTagBasedToMatter", () => {

@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type { Bytes } from "@matter/general";
+import type { Bytes } from "@matter/main";
 import type {
     FabricIndexList,
     FabricMetadata,

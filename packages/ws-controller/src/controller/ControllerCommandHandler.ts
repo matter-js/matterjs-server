@@ -4,14 +4,16 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { AsyncObservable, ChannelType, isObject } from "@matter/general";
 import {
+    AsyncObservable,
     camelize,
+    ChannelType,
     ClientNode,
     ClientNodeInteraction,
     CommissioningClient,
     FabricId,
     FabricIndex,
+    isObject,
     Logger,
     Millis,
     NodeId,

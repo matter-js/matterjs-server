@@ -29,8 +29,8 @@
         "format": "prettier --write \"packages/**/*.ts\"",
         "format-verify": "prettier --check \"packages/**/*.ts\"",
         "test": "matter-test --force-exit",
-        "relock": "node ./utils/relock.js",
-        "sync-matterjs": "node ./utils/sync-matterjs.js",
+        "relock": "node ./utils/relock.js && npm install",
+        "sync-matterjs": "node ./utils/sync-matterjs.js && npm install",
         "server": "node --enable-source-maps packages/matter-server/dist/esm/MatterServer.js",
         "send-command": "node --enable-source-maps packages/ws-controller/dist/esm/example/send-command.js"
     },

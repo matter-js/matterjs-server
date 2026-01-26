@@ -16,7 +16,7 @@ import {
     FeatureMap,
     GeneratedCommandList,
     MatterModel,
-} from "@matter/model";
+} from "@matter/main/model";
 
 type AttributeDetails = { readonly [key: string]: AttributeModel | undefined };
 

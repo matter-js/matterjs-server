@@ -84,6 +84,7 @@ env.vars.set("storage.path", cliOptions.storagePath);
 if (cliOptions.bluetoothAdapter !== null) {
     env.vars.set("ble.enable", true);
     env.vars.set("ble.hci.id", cliOptions.bluetoothAdapter);
+    logger.info(`Bluetooth enabled (hci-id=${cliOptions.bluetoothAdapter})`);
 }
 if (cliOptions.primaryInterface) {
     env.vars.set("mdns.networkInterface", cliOptions.primaryInterface);
