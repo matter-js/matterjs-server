@@ -137,7 +137,7 @@ export class DashboardHeader extends LitElement {
             align-items: center;
             padding-left: 18px;
             padding-right: 8px;
-            height: 48px;
+            min-height: 48px;
         }
 
         md-icon-button {
@@ -146,6 +146,13 @@ export class DashboardHeader extends LitElement {
 
         .flex {
             flex: 1;
+            min-width: 0;
+        }
+
+        .actions {
+            display: flex;
+            flex-shrink: 0;
+            align-items: center;
         }
     `;
 }

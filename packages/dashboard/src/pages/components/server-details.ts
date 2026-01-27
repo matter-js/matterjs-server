@@ -53,10 +53,9 @@ export class ServerDetails extends LitElement {
           </div>
         </md-list-item>
         <md-list-item class="btn">
-          <span>
           <md-outlined-button @click=${this._commissionNode}>Commission node<ha-svg-icon slot="icon" .path=${mdiPlus}></ha-svg-icon></md-outlined-button>
           <md-outlined-button @click=${handleAsync(() => this._uploadDiagnosticsDumpFile())}>Import node<ha-svg-icon slot="icon" .path=${mdiFile}></ha-svg-icon></md-outlined-button>
-          </md-list-item>
+        </md-list-item>
       </md-list>
       <!-- hidden file element for the upload diagnostics -->
       <input
@@ -111,14 +110,34 @@ export class ServerDetails extends LitElement {
     static override styles = css`
         .btn {
             --md-outlined-button-container-shape: 0px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .btn md-outlined-button {
+            flex-shrink: 0;
         }
 
         .left {
-            width: 30%;
-            display: inline-table;
+            min-width: 120px;
+            display: inline-block;
         }
+
+        @media (min-width: 600px) {
+            .left {
+                min-width: 160px;
+            }
+        }
+
         .whitespace {
             height: 15px;
+        }
+
+        .status {
+            color: var(--danger-color);
+            font-weight: bold;
+            font-size: 0.8em;
         }
     `;
 }
