@@ -14,7 +14,7 @@ import {
     NodeCommandHandler,
     WriteAttributeRequest,
 } from "../types/CommandHandler.js";
-import { MatterNode, TEST_NODE_START } from "../types/WebSocketMessageTypes.js";
+import { MatterNode, ServerError, TEST_NODE_START } from "../types/WebSocketMessageTypes.js";
 
 const logger = Logger.get("TestNodeCommandHandler");
 
@@ -73,7 +73,7 @@ export class TestNodeCommandHandler implements NodeCommandHandler {
     async getNodeDetails(nodeId: NodeId): Promise<MatterNodeData> {
         const testNode = this.#testNodes.get(BigInt(nodeId));
         if (testNode === undefined) {
-            throw new Error(`Test node ${nodeId} not found`);
+            throw ServerError.nodeNotExists(nodeId);
         }
         return testNode;
     }
@@ -89,7 +89,7 @@ export class TestNodeCommandHandler implements NodeCommandHandler {
     ): Promise<AttributesData> {
         const testNode = this.#testNodes.get(BigInt(nodeId));
         if (testNode === undefined) {
-            throw new Error(`Test node ${nodeId} not found`);
+            throw ServerError.nodeNotExists(nodeId);
         }
 
         const result: AttributesData = {};
@@ -138,7 +138,7 @@ export class TestNodeCommandHandler implements NodeCommandHandler {
             // Alternative format: direct nodes array
             dumpNodes = Object.values(dumpData.data.nodes);
         } else {
-            throw new Error("Invalid dump format: cannot find node data");
+            throw ServerError.invalidArguments("Invalid dump format: cannot find node data");
         }
 
         // Find the next available test node ID
@@ -237,7 +237,7 @@ export class TestNodeCommandHandler implements NodeCommandHandler {
     async removeNode(nodeId: NodeId): Promise<void> {
         const bigId = BigInt(nodeId);
         if (!this.#testNodes.has(bigId)) {
-            throw new Error(`Test node ${nodeId} not found`);
+            throw ServerError.nodeNotExists(nodeId);
         }
 
         logger.info(`Removing test node ${nodeId}`);

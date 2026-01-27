@@ -12,6 +12,16 @@ This page shows a detailed overview of the changes between versions without the 
 - Enhancement: Introduce /health endpoint to use for (docker) health checks. It returns the server version and number of nodes
 - Adjustment: Adhere to the default nodeId 112233 for the controller itself as the Python Matter server did
 - Adjustment: For fresh starts the next node id to be commissioned will be 1 as it was for the Python Matter Server
+- Fix: Start up the server also when no nodes exist in the migrated json file. Logs a warning
+- Fix: Tries to read the backup json-file when the normal json-file is not parseable or does not exist
+- Fix: Optimize responsive layout of Dashboard
+- Fix: Return errors more consistently to how the Python server was returning them
+- Fix: Fixes datatypes for Neo Custom clusters to be decoded correctly
+- Fix: Update matter.js to 0.16.8-nightly
+  - Fixes many issues with reconnections to devices, especially when IPs change, e.g., in thread networks or such
+  - Do not show updates that are available locally for unapplicable version ranges or already updated devices
+  - Optimizes mDNS handling in general
+  - Optimize re-using sessions pushed by devices instead of creating new ones
 
 ## 0.2.9 (2026-01-22)
 
