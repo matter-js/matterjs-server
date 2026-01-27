@@ -12,6 +12,11 @@ This page shows a detailed overview of the changes between versions without the 
 - Adjustment: Adhere to the default nodeId 112233 for the controller itself as the Python Matter server did
 - Adjustment: For fresh starts the next node id to be commissioned will be 1 as it was for the Python Matter Server
 - Fix: Fixes datatypes for Neo Custom clusters to be decoded correctly
+- Fix: Update matter.js to 0.16.8-nightly
+  - Fixes many issues with reconnections to devices, especially when IPs change, e.g., in thread networks or such
+  - Do not show updates that are available locally for unapplicable version ranges or already updated devices
+  - Optimizes mDNS handling in general
+  - Optimize re-using sessions pushed by devices instead of creating new ones
 
 ## 0.2.9 (2026-01-22)
 
