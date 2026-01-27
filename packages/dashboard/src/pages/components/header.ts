@@ -153,7 +153,7 @@ export class DashboardHeader extends LitElement {
 
         .actions {
             display: flex;
-            flex-shrink: 0;
+            max-width: 100%;
             align-items: center;
         }
     `;

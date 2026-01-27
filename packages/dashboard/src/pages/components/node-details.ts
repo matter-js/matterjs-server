@@ -267,7 +267,7 @@ export class NodeDetails extends LitElement {
         }
 
         .btn-row md-outlined-button {
-            flex-shrink: 0;
+            max-width: 100%;
         }
 
         .left {
