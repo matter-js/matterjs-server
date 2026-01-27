@@ -97,6 +97,21 @@ describe("Integration Test", function () {
     // =========================================================================
 
     describe("Server Commands (no device needed)", function () {
+        it("should return health status via /health endpoint", async function () {
+            const response = await fetch(`http://localhost:${SERVER_PORT}/health`);
+
+            expect(response.status).to.equal(200);
+            expect(response.headers.get("content-type")).to.equal("application/json");
+
+            const health = (await response.json()) as { version: string; node_count: number };
+            expect(health).to.have.property("version");
+            expect(health).to.have.property("node_count");
+            expect(health.version).to.be.a("string").that.is.not.empty;
+            expect(health.node_count).to.be.a("number");
+            // Initially no nodes commissioned
+            expect(health.node_count).to.equal(0);
+        });
+
         it("should return server info via server_info command", async function () {
             const info = await client.fetchServerInfo();
 
@@ -322,6 +337,15 @@ describe("Integration Test", function () {
     // =========================================================================
 
     describe("Node Queries", function () {
+        it("should return correct node_count in /health after commissioning", async function () {
+            const response = await fetch(`http://localhost:${SERVER_PORT}/health`);
+
+            expect(response.status).to.equal(200);
+
+            const health = (await response.json()) as { version: string; node_count: number };
+            expect(health.node_count).to.equal(1);
+        });
+
         it("should get nodes via get_nodes", async function () {
             const nodes = await client.getNodes();
 

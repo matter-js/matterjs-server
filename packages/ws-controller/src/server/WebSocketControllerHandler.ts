@@ -70,6 +70,19 @@ export class WebSocketControllerHandler implements WebServerHandler {
     }
 
     /**
+     * Health check information for the server.
+     * Returns the server version and number of registered nodes.
+     */
+    health() {
+        const realNodeCount = this.#commandHandler.getNodeIds().length;
+        const testNodeCount = this.#testNodeHandler.getNodes().length;
+        return {
+            version: this.#serverVersion,
+            node_count: realNodeCount + testNodeCount,
+        };
+    }
+
+    /**
      * Get the appropriate command handler for a node ID.
      * Returns TestNodeCommandHandler for test nodes, ControllerCommandHandler for real nodes.
      */

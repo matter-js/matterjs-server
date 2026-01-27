@@ -20,6 +20,7 @@ import { open } from "node:fs/promises";
 import { getCliOptions, type LogLevel as CliLogLevel } from "./cli.js";
 import { LegacyDataWriter, loadLegacyData, type LegacyData } from "./converter/index.js";
 import { initializeOta } from "./ota.js";
+import { HealthHandler } from "./server/HealthHandler.js";
 import { StaticFileHandler } from "./server/StaticFileHandler.js";
 import { WebServer } from "./server/WebServer.js";
 import { MATTER_SERVER_VERSION } from "./version.js";
@@ -179,7 +180,8 @@ async function start() {
         });
     }
 
-    const handlers: WebServerHandler[] = [new WebSocketControllerHandler(controller, config, MATTER_SERVER_VERSION)];
+    const wsHandler = new WebSocketControllerHandler(controller, config, MATTER_SERVER_VERSION);
+    const handlers: WebServerHandler[] = [new HealthHandler(wsHandler), wsHandler];
     if (!cliOptions.disableDashboard) {
         handlers.push(new StaticFileHandler());
     } else {

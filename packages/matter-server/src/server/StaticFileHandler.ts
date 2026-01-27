@@ -29,8 +29,8 @@ export class StaticFileHandler implements WebServerHandler {
 
         // Attach to the existing server
         server.on("request", (req, res) => {
-            // Only handle non-WebSocket requests that aren't already handled
-            if (!req.url?.startsWith("/ws")) {
+            // Only handle requests that aren't already handled by other handlers
+            if (!req.url?.startsWith("/ws") && req.url !== "/health") {
                 app(req, res);
             }
         });
