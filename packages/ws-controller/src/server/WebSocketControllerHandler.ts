@@ -410,7 +410,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     throw ServerError.invalidCommand(command);
             }
             if (result === undefined) {
-                throw new Error("No response");
+                throw ServerError.sdkStackError("Command handler returned no response");
             }
             if (skipMessageContentInLogFor.includes(command)) {
                 logger.debug(`WebSocket request (${command}) handled`, messageId);
@@ -643,7 +643,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         );
 
         if (Object.keys(result).length === 0) {
-            throw new Error("Failed to read attribute: no values returned");
+            throw ServerError.sdkStackError("Failed to read attribute: no values returned");
         }
 
         return result;

@@ -17,8 +17,14 @@ import {
     ServerInfoMessage,
     WebSocketLike,
 } from "@matter-server/ws-client";
-import type { MatterNodeEvent } from "@matter-server/ws-controller";
+import type { MatterNodeEvent, ServerErrorCode } from "@matter-server/ws-controller";
 import WebSocket from "ws";
+
+/** Error with error code from server */
+export interface ServerErrorResponse {
+    error_code: ServerErrorCode;
+    details: string;
+}
 
 /** WebSocket event for testing */
 export interface WsEvent {
@@ -182,6 +188,74 @@ export class MatterTestClient extends MatterClient {
     async startListeningAndGetNodes(): Promise<MatterNode[]> {
         await super.startListening();
         return Object.values(this.nodes);
+    }
+
+    /**
+     * Send a command and expect it to fail with a specific error code.
+     * Uses a separate raw WebSocket connection to capture the full error response.
+     */
+    async sendCommandExpectError(command: string, args: Record<string, unknown>): Promise<ServerErrorResponse> {
+        // Create a temporary raw WebSocket connection for this test
+        const url = this.connection.ws_server_url;
+
+        return new Promise((resolve, reject) => {
+            const ws = new WebSocket(url);
+            const messageId = `error_test_${Math.random().toString(36).substring(7)}`;
+            let serverInfoReceived = false;
+
+            const timeout = setTimeout(() => {
+                ws.close();
+                reject(new Error(`Timeout waiting for error response to ${command}`));
+            }, 10_000);
+
+            ws.onopen = () => {
+                // Wait for server info first, then send command
+            };
+
+            ws.onmessage = event => {
+                const data = JSON.parse(event.data as string, (_key, value) => {
+                    // Handle BigInt serialization
+                    if (typeof value === "string" && /^\d{16,}$/.test(value)) {
+                        return BigInt(value);
+                    }
+                    return value;
+                });
+
+                if (!serverInfoReceived) {
+                    // First message is server info
+                    serverInfoReceived = true;
+                    // Now send our test command
+                    ws.send(
+                        JSON.stringify({
+                            message_id: messageId,
+                            command,
+                            args,
+                        }),
+                    );
+                    return;
+                }
+
+                // Check if this is our response
+                if (data.message_id === messageId) {
+                    clearTimeout(timeout);
+                    ws.close();
+
+                    if ("error_code" in data) {
+                        resolve({
+                            error_code: data.error_code,
+                            details: data.details || "",
+                        });
+                    } else {
+                        reject(new Error(`Expected error response but got success for ${command}`));
+                    }
+                }
+            };
+
+            ws.onerror = () => {
+                clearTimeout(timeout);
+                reject(new Error("WebSocket error"));
+            };
+        });
     }
 
     /**

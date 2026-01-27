@@ -11,6 +11,7 @@
  * the full commissioning and control flow via WebSocket.
  */
 
+import { ServerErrorCode } from "@matter-server/ws-controller";
 import { ChildProcess } from "child_process";
 import {
     cleanupTempStorage,
@@ -190,6 +191,65 @@ describe("Integration Test", function () {
             // So null/empty resets to "Home" instead of clearing
             await client.setDefaultFabricLabel("");
             // No direct way to verify the result via API, but it should not throw
+        });
+
+        // Error code tests
+        describe("Error Codes", function () {
+            it("should return NodeNotExists error for non-existent node", async function () {
+                const error = await client.sendCommandExpectError("get_node", { node_id: 999999 });
+
+                expect(error.error_code).to.equal(ServerErrorCode.NodeNotExists);
+                expect(error.details).to.include("999999");
+            });
+
+            it("should return InvalidCommand error for unknown command", async function () {
+                const error = await client.sendCommandExpectError("unknown_command_xyz", {});
+
+                expect(error.error_code).to.equal(ServerErrorCode.InvalidCommand);
+                expect(error.details).to.include("unknown_command_xyz");
+            });
+
+            it("should return InvalidArguments error for commission_on_network without required filter", async function () {
+                // filter_type 1 (short discriminator) requires filter parameter
+                const error = await client.sendCommandExpectError("commission_on_network", {
+                    setup_pin_code: 12345678,
+                    filter_type: 1,
+                    // filter is missing
+                });
+
+                expect(error.error_code).to.equal(ServerErrorCode.InvalidArguments);
+                expect(error.details).to.include("filter");
+            });
+
+            it("should return InvalidArguments error for write_attribute with wildcard path", async function () {
+                // Write operations don't support wildcards
+                const error = await client.sendCommandExpectError("write_attribute", {
+                    node_id: 1,
+                    attribute_path: "0/40/*",
+                    value: "test",
+                });
+
+                expect(error.error_code).to.equal(ServerErrorCode.InvalidArguments);
+                expect(error.details).to.include("wildcard");
+            });
+
+            it("should return InvalidArguments error for import_test_node with invalid dump", async function () {
+                const error = await client.sendCommandExpectError("import_test_node", {
+                    dump: JSON.stringify({ data: {} }), // Missing node data
+                });
+
+                expect(error.error_code).to.equal(ServerErrorCode.InvalidArguments);
+                expect(error.details).to.include("Invalid dump format");
+            });
+
+            it("should return NodeNotExists error when removing non-existent node", async function () {
+                const error = await client.sendCommandExpectError("remove_node", {
+                    node_id: 999999,
+                });
+
+                expect(error.error_code).to.equal(ServerErrorCode.NodeNotExists);
+                expect(error.details).to.include("999999");
+            });
         });
     });
 
