@@ -58,7 +58,7 @@ EXPOSE 5580
 
 # Health check - verify the server is responding
 HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
-    CMD curl -f http://localhost:5580/ || exit 1
+    CMD curl -f http://localhost:5580/health || exit 1
 
 # Run the matter server directly (all config via environment variables)
 ENTRYPOINT ["node", "--enable-source-maps", "/app/node_modules/matter-server/dist/esm/MatterServer.js"]
