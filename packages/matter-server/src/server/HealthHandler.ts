@@ -19,9 +19,14 @@ export class HealthHandler implements WebServerHandler {
 
     async register(server: HttpServer): Promise<void> {
         server.on("request", (req, res) => {
-            if (req.url === "/health" && req.method === "GET") {
-                res.writeHead(200, { "Content-Type": "application/json" });
-                res.end(JSON.stringify(this.#wsHandler.health()));
+            if (req.url === "/health") {
+                if (req.method === "GET") {
+                    res.writeHead(200, { "Content-Type": "application/json" });
+                    res.end(JSON.stringify(this.#wsHandler.health()));
+                } else {
+                    res.writeHead(405, { "Allow": "GET" });
+                    res.end();
+                }
             }
         });
     }
