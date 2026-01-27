@@ -1237,6 +1237,17 @@ export class ControllerCommandHandler {
             throw ServerError.nodeNotExists(nodeId);
         }
 
+        // Check if node is already updating by checking the OTA Requestor UpdateState attribute
+        // Attribute path: 0/42/2 (endpoint 0, OtaSoftwareUpdateRequestor cluster, UpdateState attribute)
+        // UpdateState 1 = Idle, anything else means update in progress
+        const cachedAttributes = this.#nodes.attributeCache.get(nodeId);
+        const updateState = cachedAttributes?.["0/42/2"];
+        if (updateState !== undefined && updateState !== 1) {
+            throw ServerError.updateError(
+                `Node ${nodeId} is already in the process of updating (state: ${updateState})`,
+            );
+        }
+
         try {
             const otaProvider = this.#controller.otaProvider;
             if (!otaProvider) {
