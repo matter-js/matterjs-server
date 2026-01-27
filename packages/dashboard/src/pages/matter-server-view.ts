@@ -122,11 +122,20 @@ class MatterServerView extends LitElement {
             color: var(--danger-color);
             font-weight: bold;
             font-size: 0.8em;
+            margin-left: 8px;
         }
 
         .hex-id {
             color: var(--text-color, rgba(0, 0, 0, 0.6));
             font-size: 0.85em;
+            word-break: break-all;
+        }
+
+        @media (max-width: 400px) {
+            .hex-id {
+                display: block;
+                margin-top: 2px;
+            }
         }
     `;
 }
