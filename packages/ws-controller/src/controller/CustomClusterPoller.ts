@@ -188,7 +188,6 @@ export class CustomClusterPoller {
 
         // Set the new interval
         this.#pollerTimer.start();
-        logger.info(`Scheduling custom attribute poll in ${Duration.format(this.#pollerTimer.interval)}`);
     }
 
     /**
@@ -207,6 +206,7 @@ export class CustomClusterPoller {
 
         this.#isPolling = true;
 
+        let polledNodes = 0;
         try {
             const entries = Array.from(this.#polledAttributes.entries());
             for (let i = 0; i < entries.length; i++) {
@@ -215,6 +215,7 @@ export class CustomClusterPoller {
                     // Node was removed, so skip it
                     continue;
                 }
+                polledNodes++;
                 await this.#pollNode(nodeId, attributePaths);
                 // Small delay between nodes to avoid overwhelming the network
                 // Only add this delay if there are more nodes remaining to be polled
@@ -229,6 +230,11 @@ export class CustomClusterPoller {
             this.#isPolling = false;
             // Schedule next polling cycle
             this.#schedulePoller();
+        }
+        if (polledNodes > 0) {
+            logger.info(
+                `Polled ${polledNodes} nodes for energy data. Scheduling next poll in ${Duration.format(this.#pollerTimer.interval)}`,
+            );
         }
     }
 
