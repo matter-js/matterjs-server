@@ -91,13 +91,15 @@ export class Nodes {
         const endpoint = endpointId === 0 ? node.getRootEndpoint() : node.getDeviceById(endpointId);
 
         if (endpoint === undefined) {
-            throw new Error(`Endpoint ${endpointId} on node ${nodeId} not found`);
+            throw ServerError.invalidArguments(`Endpoint ${endpointId} on node ${nodeId} not found`);
         }
 
         const client = endpoint.getClusterClientById(clusterId);
 
         if (client === undefined) {
-            throw new Error(`Cluster ${clusterId} on endpoint ${endpointId} on node ${nodeId} not found`);
+            throw ServerError.invalidArguments(
+                `Cluster ${clusterId} on endpoint ${endpointId} on node ${nodeId} not found`,
+            );
         }
 
         return client;

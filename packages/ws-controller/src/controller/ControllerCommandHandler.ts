@@ -99,6 +99,7 @@ import {
     BindingTarget,
     MatterSoftwareVersion,
     NodePingResult,
+    ServerError,
     UpdateSource,
 } from "../types/WebSocketMessageTypes.js";
 import { pingIp } from "../util/network.js";
@@ -660,7 +661,7 @@ export class ControllerCommandHandler {
             this.#nodes.get(nodeId).node.endpoints.for(endpointId).commands as Record<string, Record<string, unknown>>
         )[camelize(cluster.name)];
         if (!commands[commandName]) {
-            throw new Error("Command not existing");
+            throw ServerError.invalidArguments(`Command "${commandName}" does not exist on cluster "${cluster.name}"`);
         }
 
         if (isObject(commandData)) {
@@ -735,7 +736,7 @@ export class ControllerCommandHandler {
                     tlvValue = TlvString.encodeTlv(value);
                     break;
                 default:
-                    throw new Error("Unsupported value type for Any encoding");
+                    throw ServerError.invalidArguments(`Unsupported value type "${typeof value}" for Any encoding`);
             }
         }
 
@@ -781,7 +782,7 @@ export class ControllerCommandHandler {
             }
             // If none of the above, discovers any commissionable device
         } else {
-            throw new Error("No pairing code provided");
+            throw ServerError.invalidArguments("No pairing code provided");
         }
 
         if (data.knownAddress !== undefined) {
@@ -794,7 +795,7 @@ export class ControllerCommandHandler {
         }
 
         if (passcode == undefined) {
-            throw new Error("No passcode provided");
+            throw ServerError.invalidArguments("No passcode provided");
         }
 
         const { onNetworkOnly, wifiCredentials: wifiNetwork, threadCredentials: threadNetwork } = data;
@@ -826,9 +827,17 @@ export class ControllerCommandHandler {
     }
 
     async commissionNode(data: CommissioningRequest): Promise<CommissioningResponse> {
-        const nodeId = await this.#controller.commissionNode(this.#determineCommissionOptions(data), {
-            connectNodeAfterCommissioning: true,
-        });
+        let nodeId: NodeId;
+        try {
+            nodeId = await this.#controller.commissionNode(this.#determineCommissionOptions(data), {
+                connectNodeAfterCommissioning: true,
+            });
+        } catch (error) {
+            throw ServerError.nodeCommissionFailed(
+                error instanceof Error ? error.message : "Commission failed",
+                error instanceof Error ? error : undefined,
+            );
+        }
 
         await this.#registerNode(nodeId);
 
@@ -1007,6 +1016,9 @@ export class ControllerCommandHandler {
 
     async decommissionNode(nodeId: NodeId) {
         const node = this.#nodes.has(nodeId) ? this.#nodes.get(nodeId) : undefined;
+        if (node === undefined) {
+            throw ServerError.nodeNotExists(nodeId);
+        }
         await this.#controller.removeNode(nodeId, !!node?.isConnected);
         // Remove node from storage (also clears attribute cache)
         this.#nodes.delete(nodeId);
@@ -1053,7 +1065,7 @@ export class ControllerCommandHandler {
             }
         }
 
-        throw new Error("No or invalid response received while querying fabrics");
+        throw ServerError.sdkStackError("No or invalid response received while querying fabrics");
     }
 
     removeFabric(nodeId: NodeId, fabricIndex: FabricIndex) {
@@ -1167,7 +1179,7 @@ export class ControllerCommandHandler {
      */
     async checkNodeUpdate(nodeId: NodeId): Promise<MatterSoftwareVersion | null> {
         if (!this.#otaEnabled) {
-            throw new Error("OTA is disabled.");
+            throw ServerError.updateCheckError("OTA is disabled");
         }
         // First check if we have a cached update from the updateAvailable event
         const cachedUpdate = this.#availableUpdates.get(nodeId);
@@ -1219,16 +1231,16 @@ export class ControllerCommandHandler {
      */
     async updateNode(nodeId: NodeId, softwareVersion: number): Promise<MatterSoftwareVersion | null> {
         if (!this.#otaEnabled) {
-            throw new Error("OTA is disabled.");
+            throw ServerError.updateError("OTA is disabled");
         }
         if (!this.#nodes.has(nodeId)) {
-            throw new Error(`Node ${nodeId} not found`);
+            throw ServerError.nodeNotExists(nodeId);
         }
 
         try {
             const otaProvider = this.#controller.otaProvider;
             if (!otaProvider) {
-                throw new Error("OTA provider not available");
+                throw ServerError.updateError("OTA provider not available");
             }
 
             // Get the cached update info or query for it
@@ -1237,11 +1249,11 @@ export class ControllerCommandHandler {
                 // Try to get update info by querying
                 const result = await this.checkNodeUpdate(nodeId);
                 if (!result) {
-                    throw new Error("No update available for this node");
+                    throw ServerError.updateError("No update available for this node");
                 }
                 updateInfo = this.#availableUpdates.get(nodeId);
                 if (!updateInfo) {
-                    throw new Error("Failed to get update info");
+                    throw ServerError.updateError("Failed to get update info");
                 }
             }
 
