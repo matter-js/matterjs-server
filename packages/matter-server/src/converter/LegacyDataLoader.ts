@@ -318,8 +318,17 @@ export async function saveLegacyServerFile(
             try {
                 await unlink(backupFilePath);
                 logger.debug(`Deleted old backup: ${serverFileName}.backup`);
-            } catch {
-                // No existing backup, that's fine
+            } catch (error) {
+                const err = error as NodeJS.ErrnoException;
+                if (err.code === "ENOENT") {
+                    // No existing backup, that's fine
+                    logger.debug(`No existing backup to delete for ${serverFileName}.backup`);
+                } else {
+                    logger.warn(
+                        `Failed to delete existing backup ${serverFileName}.backup (code=${err.code}): ${err.message}`,
+                    );
+                    throw error;
+                }
             }
             // Rename the current main file to backup
             await rename(serverFilePath, backupFilePath);
