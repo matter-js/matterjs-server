@@ -92,8 +92,7 @@ export class DashboardHeader extends LitElement {
                       </a>`
                     : ""}
 
-                <div>${this.title || ""}</div>
-                <div class="flex"></div>
+                <div class="title">${this.title || ""}</div>
                 <div class="actions">
                     ${this.actions?.map(action => {
                         return html`
@@ -137,15 +136,25 @@ export class DashboardHeader extends LitElement {
             align-items: center;
             padding-left: 18px;
             padding-right: 8px;
-            height: 48px;
+            min-height: 48px;
         }
 
         md-icon-button {
             margin-right: 8px;
         }
 
-        .flex {
+        .title {
             flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .actions {
+            display: flex;
+            max-width: 100%;
+            align-items: center;
         }
     `;
 }
