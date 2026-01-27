@@ -12,7 +12,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Adjustment: Adhere to the default nodeId 112233 for the controller itself as the Python Matter server did
 - Adjustment: For fresh starts the next node id to be commissioned will be 1 as it was for the Python Matter Server
 - Fix: Start up the server also when no nodes exist in the migrated json file. Logs a warning
-- Fix: Tries to read the backup json-file when the normal json-file is not parseable or does not exist 
+- Fix: Tries to read the backup json-file when the normal json-file is not parseable or does not exist
 
 ## 0.2.9 (2026-01-22)
 
