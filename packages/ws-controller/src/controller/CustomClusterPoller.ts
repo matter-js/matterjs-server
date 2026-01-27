@@ -219,7 +219,7 @@ export class CustomClusterPoller {
                 // Small delay between nodes to avoid overwhelming the network
                 // Only add this delay if there are more nodes remaining to be polled
                 if (i < entries.length - 1) {
-                    this.#currentDelayPromise = Time.sleep("sleep", Millis(1_000)).finally(() => {
+                    this.#currentDelayPromise = Time.sleep("sleep", Millis(2_000)).finally(() => {
                         this.#currentDelayPromise = undefined;
                     });
                     await this.#currentDelayPromise;

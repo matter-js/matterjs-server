@@ -14,7 +14,7 @@ import {
     Logger,
 } from "@matter-server/ws-controller";
 import { Millis, Time, Timer } from "@matter/main";
-import { access, copyFile, readFile, writeFile } from "node:fs/promises";
+import { access, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ChipConfigData } from "./index.js";
 import type { OperationalCredentials } from "./types.js";
@@ -213,28 +213,58 @@ export async function loadLegacyData(env: Environment, storagePath: string): Pro
 
     logger.debug(`Looking for server data file: ${serverFileName}`);
 
-    // Try to load the server data file
-    try {
-        await access(serverFilePath);
-        const content = await readFile(serverFilePath, "utf-8");
-        const serverFile = JSON.parse(content) as LegacyServerFile;
-        result.serverFile = serverFile;
+    // Try to load the server data file (with backup fallback like Python)
+    const backupFilePath = `${serverFilePath}.backup`;
+    const filesToTry = [serverFilePath, backupFilePath];
 
-        const nodeCount = Object.keys(serverFile.nodes).length;
-        logger.info(
-            `Loaded legacy server data from ${serverFileName}: ${nodeCount} node(s), last_node_id=${serverFile.last_node_id}`,
-        );
+    for (const filePath of filesToTry) {
+        const isBackup = filePath === backupFilePath;
+        const fileLabel = isBackup ? `${serverFileName}.backup` : serverFileName;
 
-        // Extract the most common fabric label from node attributes
-        result.mostCommonFabricLabel = extractMostCommonFabricLabel(serverFile);
-    } catch (err) {
-        if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-            logger.warn(`Error loading server file ${serverFileName}: ${err}`);
-        } else {
-            logger.debug(`No server data file found at ${serverFilePath}`);
+        try {
+            await access(filePath);
+            const content = await readFile(filePath, "utf-8");
+            const serverFile = JSON.parse(content) as LegacyServerFile;
+
+            // Warn if the nodes key is missing
+            if (!serverFile.nodes) {
+                logger.warn(`Server file ${fileLabel} is missing "nodes" key. Loading anyway ...`);
+                serverFile.nodes = {};
+            }
+
+            result.serverFile = serverFile;
+
+            const nodeCount = Object.keys(serverFile.nodes).length;
+            if (isBackup) {
+                logger.warn(
+                    `Loaded legacy server data from BACKUP ${fileLabel}: ${nodeCount} node(s), last_node_id=${serverFile.last_node_id}`,
+                );
+            } else {
+                logger.info(
+                    `Loaded legacy server data from ${fileLabel}: ${nodeCount} node(s), last_node_id=${serverFile.last_node_id}`,
+                );
+            }
+
+            // Extract the most common fabric label from node attributes
+            result.mostCommonFabricLabel = extractMostCommonFabricLabel(serverFile);
+            break; // Successfully loaded, don't try backup
+        } catch (err) {
+            if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+                if (!isBackup) {
+                    logger.debug(`No server data file found at ${filePath}`);
+                }
+                // Continue to try backup
+            } else if (err instanceof SyntaxError) {
+                // JSON parse error - log and try backup
+                logger.error(`Error parsing server file ${fileLabel}: ${err.message}`);
+                // Continue to try backup
+            } else {
+                logger.warn(`Error loading server file ${fileLabel}: ${err}`);
+                // Continue to try backup
+            }
         }
-        // Server data file is optional, don't fail
     }
+    // Server data file is optional, don't fail if neither exists
 
     return result;
 }
@@ -256,32 +286,50 @@ export async function hasLegacyData(storagePath: string): Promise<boolean> {
 
 /**
  * Save the legacy server file back to disk.
- * Creates a .bak backup of the existing file before overwriting.
+ *
+ * Backup strategy depends on whether the main file was successfully loaded:
+ * - If loadedFromMainFile=true: delete old backup → rename main to backup → write new main
+ * - If loadedFromMainFile=false: just write new main (backup is preserved since main was broken)
  *
  * @param env Environment for crypto access
  * @param storagePath Path to the storage directory
  * @param fabricConfig Fabric configuration (needed to compute the file name)
  * @param serverFile The server file data to save
+ * @param loadedFromMainFile Whether the data was loaded from the main file (vs backup)
  */
 export async function saveLegacyServerFile(
     env: Environment,
     storagePath: string,
     fabricConfig: LegacyFabricConfigData,
     serverFile: LegacyServerFile,
+    loadedFromMainFile = true,
 ): Promise<void> {
     const crypto = env.get(Crypto);
     const compressedFabricId = await computeCompressedNodeId(crypto, fabricConfig.fabricId, fabricConfig.rootPublicKey);
     const serverFileName = `${compressedFabricId}.json`;
     const serverFilePath = join(storagePath, serverFileName);
-    const backupFilePath = `${serverFilePath}.bak`;
+    const backupFilePath = `${serverFilePath}.backup`;
 
-    // Create backup of an existing file if it exists
-    try {
-        await access(serverFilePath);
-        await copyFile(serverFilePath, backupFilePath);
-        logger.debug(`Created backup: ${serverFileName}.bak`);
-    } catch {
-        // File doesn't exist yet, no backup needed
+    if (loadedFromMainFile) {
+        // The main file was valid - rotate: delete old backup → rename main to backup → write new main
+        try {
+            await access(serverFilePath);
+            // Delete existing backup if present
+            try {
+                await unlink(backupFilePath);
+                logger.debug(`Deleted old backup: ${serverFileName}.backup`);
+            } catch {
+                // No existing backup, that's fine
+            }
+            // Rename the current main file to backup
+            await rename(serverFilePath, backupFilePath);
+            logger.debug(`Renamed ${serverFileName} to ${serverFileName}.backup`);
+        } catch {
+            // Main file doesn't exist yet (new installation), no backup needed
+        }
+    } else {
+        // The main file was broken, we loaded from backup - just write new main, keep backup intact
+        logger.debug(`Keeping existing backup intact (main file was corrupted)`);
     }
 
     const content = JSON.stringify(serverFile, null, 2);
@@ -462,18 +510,56 @@ export class LegacyDataWriter {
         const serverFileName = `${compressedFabricId}.json`;
         const serverFilePath = join(this.#storagePath, serverFileName);
 
-        // Load existing file or create a new structure
-        let serverFile: LegacyServerFile;
+        // Load an existing file or create a new structure (with backup fallback)
+        const backupFilePath = `${serverFilePath}.backup`;
+        let serverFile: LegacyServerFile | undefined;
+        let loadedFromMainFile = true;
+
+        // First, try to load the main file
         try {
             const content = await readFile(serverFilePath, "utf-8");
             serverFile = JSON.parse(content) as LegacyServerFile;
-        } catch {
-            // File doesn't exist, create a new structure
+
+            // Warn if the nodes key is missing
+            if (!serverFile.nodes) {
+                logger.warn(`Server file ${serverFileName} is missing "nodes" key`);
+                serverFile.nodes = {};
+            }
+            loadedFromMainFile = true;
+        } catch (err) {
+            if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+                logger.error(`Error loading server file ${serverFileName}: ${err}`);
+            }
+
+            // Main file failed, try the backup
+            try {
+                const content = await readFile(backupFilePath, "utf-8");
+                serverFile = JSON.parse(content) as LegacyServerFile;
+
+                // Warn if the nodes key is missing
+                if (!serverFile.nodes) {
+                    logger.warn(`Backup file ${serverFileName}.backup is missing "nodes" key`);
+                    serverFile.nodes = {};
+                }
+
+                logger.warn(`Loaded server file from backup: ${serverFileName}.backup`);
+                loadedFromMainFile = false;
+            } catch (backupErr) {
+                if ((backupErr as NodeJS.ErrnoException).code !== "ENOENT") {
+                    logger.error(`Error loading backup file ${serverFileName}.backup: ${backupErr}`);
+                }
+                // Neither file could be loaded, will create new
+            }
+        }
+
+        // If no file could be loaded, create a new structure
+        if (!serverFile) {
             serverFile = {
                 vendor_info: {},
                 last_node_id: 0,
                 nodes: {},
             };
+            loadedFromMainFile = true; // Treat the new file as "main file" for backup logic
         }
 
         // Track changes for logging
@@ -517,7 +603,13 @@ export class LegacyDataWriter {
 
         // Only save if there were actual changes
         if (added.length > 0 || removed.length > 0) {
-            await saveLegacyServerFile(this.#env, this.#storagePath, this.#fabricConfig, serverFile);
+            await saveLegacyServerFile(
+                this.#env,
+                this.#storagePath,
+                this.#fabricConfig,
+                serverFile,
+                loadedFromMainFile,
+            );
 
             const changes: string[] = [];
             if (added.length > 0) {
