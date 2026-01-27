@@ -21,10 +21,16 @@ export class HealthHandler implements WebServerHandler {
         server.on("request", (req, res) => {
             if (req.url === "/health") {
                 if (req.method === "GET") {
-                    res.writeHead(200, { "Content-Type": "application/json" });
-                    res.end(JSON.stringify(this.#wsHandler.health()));
+                    try {
+                        const healthData = this.#wsHandler.health();
+                        res.writeHead(200, { "Content-Type": "application/json" });
+                        res.end(JSON.stringify(healthData));
+                    } catch (error) {
+                        res.writeHead(500, { "Content-Type": "application/json" });
+                        res.end(JSON.stringify({ error: "Health check failed" }));
+                    }
                 } else {
-                    res.writeHead(405, { "Allow": "GET" });
+                    res.writeHead(405, { Allow: "GET" });
                     res.end();
                 }
             }
