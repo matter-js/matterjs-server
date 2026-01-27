@@ -833,8 +833,10 @@ export class ControllerCommandHandler {
                 connectNodeAfterCommissioning: true,
             });
         } catch (error) {
+            // Preserve the original error message with context
+            const originalMessage = error instanceof Error ? error.message : String(error);
             throw ServerError.nodeCommissionFailed(
-                error instanceof Error ? error.message : "Commission failed",
+                `Commission failed: ${originalMessage}`,
                 error instanceof Error ? error : undefined,
             );
         }

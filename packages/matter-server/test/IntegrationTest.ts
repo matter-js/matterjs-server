@@ -241,6 +241,15 @@ describe("Integration Test", function () {
                 expect(error.error_code).to.equal(ServerErrorCode.InvalidArguments);
                 expect(error.details).to.include("Invalid dump format");
             });
+
+            it("should return NodeNotExists error when removing non-existent node", async function () {
+                const error = await client.sendCommandExpectError("remove_node", {
+                    node_id: 999999,
+                });
+
+                expect(error.error_code).to.equal(ServerErrorCode.NodeNotExists);
+                expect(error.details).to.include("999999");
+            });
         });
     });
 
