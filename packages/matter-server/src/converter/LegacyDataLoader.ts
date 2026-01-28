@@ -513,7 +513,7 @@ export class LegacyDataWriter {
     }
 
     /**
-     * Schedule a flush after the debounce-delay.
+     * Schedule a flush after the debounce delay.
      * Does not restart the timer if already running.
      */
     #scheduleFlush(): void {
