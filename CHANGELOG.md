@@ -7,7 +7,7 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
-## __WORK IN PROGRESS__
+## 0.3.1 (2026-01-28)
 
 - Adjustment: Adjust some logging messages
 
