@@ -45,7 +45,7 @@
         "eslint-import-resolver-typescript": "^4.4.4",
         "eslint-plugin-import": "^2.32.0",
         "eslint-plugin-node-import": "^1.0.5",
-        "eslint-plugin-regexp": "^2.10.0",
+        "eslint-plugin-regexp": "^3.0.0",
         "glob": "^13.0.0",
         "globals": "^17.0.0",
         "prettier": "^3.8.0",
