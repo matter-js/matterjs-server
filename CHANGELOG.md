@@ -7,7 +7,7 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
-## __WORK IN PROGRESS__
+## 0.3.0 (2026-01-28)
 
 - BREAKING: (Only relevant for users that do not use the HomeAssistant Add-On)
     - Now respects the provided FabricID and VendorID when starting the server and migrating data from a former storage!
