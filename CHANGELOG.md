@@ -10,7 +10,7 @@ This page shows a detailed overview of the changes between versions without the 
 ## __WORK IN PROGRESS__
 
 - BREAKING: (Only relevant for users that do not use the HomeAssistant Add-On)
-    - Respects now the provided FabricID and VendorID when starting the server and migrating data from a former storage!
+    - Now respects the provided FabricID and VendorID when starting the server and migrating data from a former storage!
       Before this version we always used the "first chip.json entry" and took FabricId/VendorId from there. Now the 
       provided parameters are used, and if not matching to any chip.json entry, we startup with an empty storage.
     - Renames the storage directory from "server" to "server-<fabricId>-<vendorId>" to ensure proper separation of 
