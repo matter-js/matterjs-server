@@ -7,6 +7,10 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
+## __WORK IN PROGRESS__
+
+- Adjustment: Adjust some logging messages
+
 ## 0.3.0 (2026-01-28)
 
 - BREAKING: (Only relevant for users that do not use the HomeAssistant Add-On)

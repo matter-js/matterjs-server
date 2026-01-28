@@ -142,7 +142,7 @@ export namespace LegacyDataInjector {
 
         for (const [key, value] of Object.entries(credentialData)) {
             if (await credentialsStorage.has(key)) {
-                if (!isDeepEqual(await credentialsStorage.get(key), value)) {
+                if (isDeepEqual(await credentialsStorage.get(key), value)) {
                     continue;
                 }
                 logger.warn(`Overriding credential ${key} with new value!`);

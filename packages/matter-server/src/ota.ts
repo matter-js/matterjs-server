@@ -53,6 +53,8 @@ async function loadOtaFiles(controller: MatterController, directory: string) {
             }
         }
     } catch (error) {
-        logger.info(`Failed to read OTA provider directory ${directory}:`, error);
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+            logger.info(`Failed to read OTA provider directory ${directory}:`, error);
+        }
     }
 }
