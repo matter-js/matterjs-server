@@ -7,7 +7,9 @@
 import {
     CertificateAuthorityConfiguration,
     computeCompressedNodeId,
+    computeServerId,
     Crypto,
+    DEFAULT_SERVER_ID,
     Environment,
     LegacyFabricConfigData,
     LegacyServerFile,
@@ -39,9 +41,6 @@ const CURRENT_FABRIC_INDEX_PATH = "0/62/5"; // CurrentFabricIndex
 // Keys in the tag-based FabricDescriptor structure
 const FABRIC_LABEL_KEY = "5"; // Label field
 const FABRIC_INDEX_KEY = "254"; // FabricIndex field
-
-// Default server id we use as base
-const DEFAULT_SERVER_ID = "server";
 
 /**
  * Extract the most common fabric label from node attributes.
@@ -110,15 +109,15 @@ export function extractMostCommonFabricLabel(serverFile: LegacyServerFile): stri
 }
 
 /**
- * Compute the server ID for a given fabric.
+ * Determine the server ID for legacy data migration.
  * The first fabric index gets "server" (aka DEFAULT_SERVER_ID) for backward compatibility.
  * Other fabrics get "server-<hex(fabricId)>-<hex(vendorId)>".
  */
-export function computeServerId(fabricId: number | bigint, vendorId: number, isFirstFabric: boolean): string {
+function determineLegacyServerId(fabricId: number | bigint, vendorId: number, isFirstFabric: boolean): string {
     if (isFirstFabric) {
         return DEFAULT_SERVER_ID;
     }
-    return `${DEFAULT_SERVER_ID}-${Number(fabricId).toString(16)}-${vendorId.toString(16)}`;
+    return computeServerId(fabricId, vendorId);
 }
 
 /** Result of loading legacy data */
@@ -239,7 +238,7 @@ export async function loadLegacyData(
     }
 
     result.fabricConfig = fabricConfig;
-    result.serverId = computeServerId(fabricConfig.fabricId, fabricConfig.rootVendorId, isFirstFabric);
+    result.serverId = determineLegacyServerId(fabricConfig.fabricId, fabricConfig.rootVendorId, isFirstFabric);
     result.hasData = true;
     logger.info(
         `Extracted fabric config: fabricId=${fabricConfig.fabricId}, vendorId=0x${targetVendorId.toString(16)}, nodeId=${fabricConfig.nodeId}, serverId=${result.serverId}`,
