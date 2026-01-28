@@ -114,7 +114,7 @@ export async function resolveServerId(
                 const storedFabricId = fabricData.fabricId;
                 const storedVendorId = fabricData.rootVendorId;
                 if (storedFabricId === FabricId(fabricId) && storedVendorId === vendorId) {
-                    // Matching fabric - rename to new format to avoid future checks
+                    // Matching fabric - rename it to the new format to avoid future checks
                     await baseStorage.close();
                     if (storagePath !== undefined) {
                         const oldPath = join(storagePath, DEFAULT_SERVER_ID);
@@ -133,6 +133,8 @@ export async function resolveServerId(
                     }
                     return DEFAULT_SERVER_ID;
                 }
+            } else {
+                logger.error(`Multiple fabrics found, using new storage`, fabrics);
             }
             await baseStorage.close();
             logger.info(`Existing "server" storage does not match fabric config, using new ID: ${candidateId}`);
