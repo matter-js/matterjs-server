@@ -189,7 +189,7 @@ describe("LegacyDataLoader", () => {
             const legacyDir = join(testDir, "wrong-fabric");
             await mkdir(legacyDir, { recursive: true });
 
-            // Create chip.json with fabric index 2 only (won't match default search)
+            // Create chip.json without a fabric matching the default vendorId/fabricId
             await writeFile(
                 join(legacyDir, "chip.json"),
                 JSON.stringify({
