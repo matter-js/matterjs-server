@@ -16,7 +16,7 @@ This page shows a detailed overview of the changes between versions without the 
     - Renames the storage directory from "server" to "server-<fabricId>-<vendorId>" to ensure proper separation of 
       multiple servers in one storage
 - Enhancement: Introduce /health endpoint to use for (docker) health checks. It returns the server version and number of nodes
-- Enhancement: Correctly handles the startup up of the server with multiple fabric-ids and vendor-ids in the same storage
+- Enhancement: Correctly handles the start up of the server with multiple fabric-ids and vendor-ids in the same storage
 - Adjustment: The server-id and storage directory inside the data directory will be renamed on next start to match the multi-fabric structure
 - Adjustment: Adhere to the default nodeId 112233 for the controller itself as the Python Matter server did
 - Adjustment: For fresh starts the next node id to be commissioned will be 1 as it was for the Python Matter Server
