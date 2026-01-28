@@ -1,6 +1,4 @@
 node_modules/
-/.ha1
-/.idea
 build/
 dist/
-/.claude
+/.*

@@ -9,7 +9,15 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## __WORK IN PROGRESS__
 
+- BREAKING: (Only relevant for users that do not use the HomeAssistant Add-On)
+    - Respects now the provided FabricID and VendorID when starting the server and migrating data from a former storage!
+      Before this version we always used the "first chip.json entry" and took FabricId/VendorId from there. Now the 
+      provided parameters are used, and if not matching to any chip.json entry, we startup with an empty storage.
+    - Renames the storage directory from "server" to "server-<fabricId>-<vendorId>" to ensure proper separation of 
+      multiple servers in one storage
 - Enhancement: Introduce /health endpoint to use for (docker) health checks. It returns the server version and number of nodes
+- Enhancement: Correctly handles the startup up of the server with multiple fabric-ids and vendor-ids in the same storage
+- Adjustment: The server-id and storage directory inside the data directory will be renamed on next start to match the multi-fabric structure
 - Adjustment: Adhere to the default nodeId 112233 for the controller itself as the Python Matter server did
 - Adjustment: For fresh starts the next node id to be commissioned will be 1 as it was for the Python Matter Server
 - Fix: Start up the server also when no nodes exist in the migrated json file. Logs a warning
@@ -18,10 +26,10 @@ This page shows a detailed overview of the changes between versions without the 
 - Fix: Return errors more consistently to how the Python server was returning them
 - Fix: Fixes datatypes for Neo Custom clusters to be decoded correctly
 - Fix: Update matter.js to 0.16.8-nightly
-  - Fixes many issues with reconnections to devices, especially when IPs change, e.g., in thread networks or such
-  - Do not show updates that are available locally for unapplicable version ranges or already updated devices
-  - Optimizes mDNS handling in general
-  - Optimize re-using sessions pushed by devices instead of creating new ones
+    - Fixes many issues with reconnections to devices, especially when IPs change, e.g., in thread networks or such
+    - Do not show updates that are available locally for unapplicable version ranges or already updated devices
+    - Optimizes mDNS handling in general
+    - Optimize re-using sessions pushed by devices instead of creating new ones
 
 ## 0.2.9 (2026-01-22)
 

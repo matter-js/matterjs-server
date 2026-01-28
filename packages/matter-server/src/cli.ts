@@ -15,17 +15,17 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// Read version from package.json using an ESM-native approach
+// Read the version from package.json using an ESM-native approach
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const packageJsonPath = join(__dirname, "../../package.json");
 const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8")) as { version: string };
 const VERSION = packageJson.version;
 
-// Default values
-const DEFAULT_VENDOR_ID = 0xfff1;
+// Default values (exported for use in LegacyDataLoader)
+export const DEFAULT_VENDOR_ID = 0xfff1;
+export const DEFAULT_FABRIC_ID = 1;
 const DEFAULT_PORT = 5580;
 const DEFAULT_STORAGE_PATH = join(homedir(), ".matter_server");
-const DEFAULT_FABRIC_ID = 1;
 
 // Log level enums
 const LOG_LEVELS = ["critical", "error", "warning", "info", "debug", "verbose"] as const;

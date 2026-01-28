@@ -119,7 +119,10 @@ async function start() {
     };
 
     // Check for and load legacy Python Matter Server data
-    legacyData = await loadLegacyData(env, cliOptions.storagePath);
+    legacyData = await loadLegacyData(env, cliOptions.storagePath, {
+        vendorId: cliOptions.vendorId,
+        fabricId: cliOptions.fabricId,
+    });
     if (legacyData.error) {
         logger.warn(`Legacy data error: ${legacyData.error}`);
     }
@@ -158,7 +161,11 @@ async function start() {
     controller = await MatterController.create(
         env,
         config,
-        { enableTestNetDcl: cliOptions.enableTestNetDcl, disableOtaProvider: cliOptions.disableOta },
+        {
+            enableTestNetDcl: cliOptions.enableTestNetDcl,
+            disableOtaProvider: cliOptions.disableOta,
+            serverId: legacyData.serverId,
+        },
         legacyServerData,
     );
 

@@ -24,6 +24,7 @@ import { Readable } from "node:stream";
 import { ConfigStorage } from "../server/ConfigStorage.js";
 import { ControllerCommandHandler } from "./ControllerCommandHandler.js";
 import { LegacyDataInjector, LegacyServerData } from "./LegacyDataInjector.js";
+import { resolveServerId } from "./ServerIdResolver.js";
 
 // Register BLE
 import "@matter/nodejs-ble";
@@ -41,10 +42,9 @@ export async function computeCompressedNodeId(
 export interface MatterControllerOptions {
     enableTestNetDcl?: boolean;
     disableOtaProvider?: boolean;
+    /** Server ID for storage. Default is "server", but may be "server-<hex(fabricId)>-<hex(vendorId)>" for multi-fabric support */
+    serverId?: string;
 }
-
-// Storage ID used for the Matter server
-const MATTER_SERVER_ID = "server";
 
 export class MatterController {
     #env: Environment;
@@ -52,6 +52,7 @@ export class MatterController {
     #controllerInstance?: CommissioningController;
     #commandHandler?: ControllerCommandHandler;
     #config: ConfigStorage;
+    #serverId: string;
     #legacyCommissionedDates?: Map<string, Timestamp>;
     #enableTestNetDcl = false;
     #disableOtaProvider = true;
@@ -62,12 +63,21 @@ export class MatterController {
         options: MatterControllerOptions,
         legacyData?: LegacyServerData,
     ) {
-        const instance = new MatterController(environment, config, options);
+        // Resolve the server ID to use
+        const serverId = await resolveServerId(
+            environment,
+            config,
+            options,
+            legacyData?.vendorId,
+            legacyData?.fabricId,
+        );
+
+        const instance = new MatterController(environment, config, options, serverId);
 
         const commissionedDates = new Map<string, Timestamp>();
         if (legacyData !== undefined) {
             const crypto = environment.get(Crypto);
-            const baseStorage = await config.service.open(MATTER_SERVER_ID);
+            const baseStorage = await config.service.open(serverId);
             if (legacyData.credentials && legacyData.fabricId) {
                 await LegacyDataInjector.injectCredentials(
                     baseStorage.createContext("credentials"),
@@ -109,9 +119,10 @@ export class MatterController {
         return instance;
     }
 
-    constructor(environment: Environment, config: ConfigStorage, options: MatterControllerOptions) {
+    constructor(environment: Environment, config: ConfigStorage, options: MatterControllerOptions, serverId: string) {
         this.#env = environment;
         this.#config = config;
+        this.#serverId = serverId;
         this.#enableTestNetDcl = options.enableTestNetDcl ?? this.#enableTestNetDcl;
         this.#disableOtaProvider = options.disableOtaProvider ?? this.#disableOtaProvider;
     }
@@ -125,7 +136,7 @@ export class MatterController {
         this.#controllerInstance = new CommissioningController({
             environment: {
                 environment: this.#env,
-                id: MATTER_SERVER_ID,
+                id: this.#serverId,
             },
             autoConnect: false, // Do not auto-connect to the commissioned nodes
             adminFabricLabel: this.#config.fabricLabel,

@@ -16,6 +16,10 @@ const FIXTURE_DIR = join(process.cwd(), "test/converter/fixtures");
 const FIXTURE_CHIP_JSON = join(FIXTURE_DIR, "chip.json");
 const FIXTURE_SERVER_JSON = join(FIXTURE_DIR, "server.json");
 
+// The test fixture chip.json has vendorId=0x134b (4939) and fabricId=2
+const FIXTURE_VENDOR_ID = 0x134b;
+const FIXTURE_FABRIC_ID = 2;
+
 describe("LegacyDataLoader", () => {
     let testDir: string;
     let env: Environment;
@@ -79,7 +83,10 @@ describe("LegacyDataLoader", () => {
             await mkdir(legacyDir, { recursive: true });
             await copyFile(FIXTURE_CHIP_JSON, join(legacyDir, "chip.json"));
 
-            const result = await loadLegacyData(env, legacyDir);
+            const result = await loadLegacyData(env, legacyDir, {
+                vendorId: FIXTURE_VENDOR_ID,
+                fabricId: FIXTURE_FABRIC_ID,
+            });
 
             expect(result.hasData).to.be.true;
             expect(result.chipConfig).to.exist;
@@ -93,7 +100,10 @@ describe("LegacyDataLoader", () => {
             await mkdir(legacyDir, { recursive: true });
             await copyFile(FIXTURE_CHIP_JSON, join(legacyDir, "chip.json"));
 
-            const result = await loadLegacyData(env, legacyDir);
+            const result = await loadLegacyData(env, legacyDir, {
+                vendorId: FIXTURE_VENDOR_ID,
+                fabricId: FIXTURE_FABRIC_ID,
+            });
 
             expect(result.operationalCredentials).to.exist;
             expect(result.operationalCredentials!.rootCaKey).to.exist;
@@ -124,7 +134,10 @@ describe("LegacyDataLoader", () => {
             // Copy server fixture to the computed name
             await copyFile(FIXTURE_SERVER_JSON, join(legacyDir, serverFileName));
 
-            const result = await loadLegacyData(env, legacyDir);
+            const result = await loadLegacyData(env, legacyDir, {
+                vendorId: FIXTURE_VENDOR_ID,
+                fabricId: FIXTURE_FABRIC_ID,
+            });
 
             expect(result.hasData).to.be.true;
             expect(result.serverFile).to.exist;
@@ -140,7 +153,10 @@ describe("LegacyDataLoader", () => {
             await mkdir(legacyDir, { recursive: true });
             await copyFile(FIXTURE_CHIP_JSON, join(legacyDir, "chip.json"));
 
-            const result = await loadLegacyData(env, legacyDir);
+            const result = await loadLegacyData(env, legacyDir, {
+                vendorId: FIXTURE_VENDOR_ID,
+                fabricId: FIXTURE_FABRIC_ID,
+            });
 
             expect(result.hasData).to.be.true;
             expect(result.fabricConfig).to.exist;
@@ -148,11 +164,11 @@ describe("LegacyDataLoader", () => {
             expect(result.error).to.be.undefined;
         });
 
-        it("should return error for multiple fabrics", async () => {
-            const legacyDir = join(testDir, "multi-fabric");
+        it("should return error when no matching fabric found", async () => {
+            const legacyDir = join(testDir, "no-matching-fabric");
             await mkdir(legacyDir, { recursive: true });
 
-            // Create chip.json with multiple fabrics
+            // Create chip.json with fabrics that don't match the default vendorId/fabricId
             await writeFile(
                 join(legacyDir, "chip.json"),
                 JSON.stringify({
@@ -166,14 +182,14 @@ describe("LegacyDataLoader", () => {
             const result = await loadLegacyData(env, legacyDir);
 
             expect(result.hasData).to.be.false;
-            expect(result.error).to.include("Expected exactly one fabric with index 1");
+            expect(result.error).to.include("No fabric found matching");
         });
 
-        it("should return error for wrong fabric index", async () => {
+        it("should return error when fabric has wrong vendorId/fabricId", async () => {
             const legacyDir = join(testDir, "wrong-fabric");
             await mkdir(legacyDir, { recursive: true });
 
-            // Create chip.json with fabric index 2 only
+            // Create chip.json with fabric index 2 only (won't match default search)
             await writeFile(
                 join(legacyDir, "chip.json"),
                 JSON.stringify({
@@ -186,7 +202,7 @@ describe("LegacyDataLoader", () => {
             const result = await loadLegacyData(env, legacyDir);
 
             expect(result.hasData).to.be.false;
-            expect(result.error).to.include("Expected exactly one fabric with index 1");
+            expect(result.error).to.include("No fabric found matching");
         });
     });
 
@@ -265,7 +281,10 @@ describe("LegacyDataLoader", () => {
             await saveLegacyServerFile(env, legacyDir, fabricConfig!, originalServerFile);
 
             // Load it back
-            const result = await loadLegacyData(env, legacyDir);
+            const result = await loadLegacyData(env, legacyDir, {
+                vendorId: FIXTURE_VENDOR_ID,
+                fabricId: FIXTURE_FABRIC_ID,
+            });
 
             expect(result.serverFile).to.exist;
             expect(result.serverFile!.last_node_id).to.equal(originalServerFile.last_node_id);
@@ -301,7 +320,10 @@ describe("LegacyDataLoader", () => {
             // Copy server fixture
             await copyFile(FIXTURE_SERVER_JSON, join(legacyDir, `${compressedFabricId}.json`));
 
-            const result = await loadLegacyData(env, legacyDir);
+            const result = await loadLegacyData(env, legacyDir, {
+                vendorId: FIXTURE_VENDOR_ID,
+                fabricId: FIXTURE_FABRIC_ID,
+            });
 
             expect(result.serverFile).to.exist;
             expect(result.serverFile!.vendor_info).to.exist;
