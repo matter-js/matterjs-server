@@ -1,7 +1,7 @@
 # @matter/tools - Matter.js Tooling
 
 > [!IMPORTANT] 
-> This is a copy of the matter,js tools package because we cannot use it as a dependency currently.
+> This is a copy of the matter.js tools package because we cannot use it as a dependency currently.
 
 This package supports build and execution infrastructure for other matter.js packages.
 
