@@ -363,13 +363,9 @@ export class ControllerCommandHandler {
             isBridge = endpoint1DeviceTypes.some(entry => entry["0"] === 14);
         }
 
-        // Get commissioned date from node state if available
-        const commissionedAt = node.state.commissioning.commissionedAt;
-        const dateCommissioned = commissionedAt !== undefined ? new Date(commissionedAt) : new Date();
-
         return {
             node_id: node.nodeId,
-            date_commissioned: getDateAsString(dateCommissioned),
+            date_commissioned: getDateAsString(new Date(node.state.commissioning.commissionedAt ?? Date.now())),
             last_interview: getDateAsString(lastInterviewDate ?? new Date()),
             interview_version: 6,
             available: node.isConnected,
