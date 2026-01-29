@@ -68,7 +68,7 @@ export class MatterClient {
     ) {
         this.url = url;
         this.connection = new Connection(this.url, wsFactory);
-        this.serverBaseAddress = this.url.split("://")[1].split(":")[0] || "";
+        this.serverBaseAddress = this.url.split("://")[1].split(":")[0] ?? "";
     }
 
     get serverInfo() {

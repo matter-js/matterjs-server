@@ -28,10 +28,10 @@ export class DialogBox extends LitElement {
                 <div slot="actions">
                     ${this.type === "prompt"
                         ? html`
-                              <md-text-button @click=${this._cancel}> ${params.cancelText || "Cancel"} </md-text-button>
+                              <md-text-button @click=${this._cancel}> ${params.cancelText ?? "Cancel"} </md-text-button>
                           `
                         : ""}
-                    <md-text-button @click=${this._confirm}> ${params.confirmText || "OK"} </md-text-button>
+                    <md-text-button @click=${this._confirm}> ${params.confirmText ?? "OK"} </md-text-button>
                 </div>
             </md-dialog>
         `;

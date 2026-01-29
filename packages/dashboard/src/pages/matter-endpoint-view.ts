@@ -40,7 +40,7 @@ export function getEndpointDeviceTypes(node: MatterNode, endpoint: number): Devi
     if (!rawValues) return [];
     return rawValues.map(rawValue => {
         const id = rawValue["0"] ?? rawValue["deviceType"];
-        return device_types[id] || { id: id ?? -1, label: `Unknown Device Type (${id})`, clusters: [] };
+        return device_types[id] ?? { id: id ?? -1, label: `Unknown Device Type (${id})`, clusters: [] };
     });
 }
 
@@ -97,7 +97,7 @@ class MatterEndpointView extends LitElement {
                                     type="link"
                                     href=${`#node/${this.node!.node_id}/${this.endpoint}/${cluster}`}
                                 >
-                                    <div slot="headline">${clusters[cluster]?.label || "Custom/Unknown Cluster"}</div>
+                                    <div slot="headline">${clusters[cluster]?.label ?? "Custom/Unknown Cluster"}</div>
                                     <div slot="supporting-text">ClusterId ${cluster} (${formatHex(cluster)})</div>
                                     <ha-svg-icon slot="end" .path=${mdiChevronRight}></ha-svg-icon>
                                 </md-list-item>

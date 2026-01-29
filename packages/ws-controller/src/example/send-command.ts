@@ -71,7 +71,7 @@ ws.on("error", (error: Error) => {
 });
 
 ws.on("close", (code: number, reason: Buffer) => {
-    console.log(`\nDisconnected (code: ${code}, reason: ${reason.toString() || "none"})`);
+    console.log(`\nDisconnected (code: ${code}, reason: ${reason.toString() ?? "none"})`);
     process.exit(0);
 });
 

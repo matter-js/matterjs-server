@@ -243,7 +243,7 @@ export class MatterTestClient extends MatterClient {
                     if ("error_code" in data) {
                         resolve({
                             error_code: data.error_code,
-                            details: data.details || "",
+                            details: data.details ?? "",
                         });
                     } else {
                         reject(new Error(`Expected error response but got success for ${command}`));

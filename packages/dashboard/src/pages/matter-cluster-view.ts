@@ -100,7 +100,7 @@ class MatterClusterView extends LitElement {
                     <md-list-item>
                         <div slot="headline">
                             <b
-                                >Attributes of ${clusters[this.cluster]?.label || "Custom/Unknown Cluster"} Cluster on
+                                >Attributes of ${clusters[this.cluster]?.label ?? "Custom/Unknown Cluster"} Cluster on
                                 Endpoint ${this.endpoint}</b
                             >
                         </div>
@@ -111,12 +111,12 @@ class MatterClusterView extends LitElement {
                         (attribute, index) => html`
                             <md-list-item class=${index % 2 === 1 ? "alternate-row" : ""}>
                                 <div slot="headline">
-                                    ${clusters[this.cluster!]?.attributes[attribute.key]?.label ||
+                                    ${clusters[this.cluster!]?.attributes[attribute.key]?.label ??
                                     "Custom/Unknown Attribute"}
                                 </div>
                                 <div slot="supporting-text">
                                     AttributeId: ${attribute.key} (${formatHex(attribute.key)}) - Value type:
-                                    ${clusters[this.cluster!]?.attributes[attribute.key]?.type || "unknown"}
+                                    ${clusters[this.cluster!]?.attributes[attribute.key]?.type ?? "unknown"}
                                 </div>
                                 <div slot="end">
                                     ${toBigIntAwareJson(attribute.value).length > 20

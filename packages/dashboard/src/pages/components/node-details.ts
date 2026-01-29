@@ -38,7 +38,7 @@ const UPDATE_STATE_LABELS: Record<number, string> = {
 };
 
 function getUpdateStateLabel(state: number, progress?: number): string {
-    const label = UPDATE_STATE_LABELS[state] || `Unknown (${state})`;
+    const label = UPDATE_STATE_LABELS[state] ?? `Unknown (${state})`;
     // Show progress only for downloading state
     if (state === 4 && progress !== undefined) {
         return `${label} (${progress}%)`;
@@ -113,7 +113,7 @@ export class NodeDetails extends LitElement {
                             ? html` <md-outlined-button disabled
                                   >Checking for updates<ha-svg-icon slot="icon" .path=${mdiUpdate}></ha-svg-icon
                               ></md-outlined-button>`
-                            : (this.node.updateState || 0) > 1
+                            : (this.node.updateState ?? 0) > 1
                               ? html` <md-outlined-button disabled
                                     >${getUpdateStateLabel(
                                         this.node.updateState!,
