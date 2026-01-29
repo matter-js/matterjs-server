@@ -214,7 +214,7 @@ export class NodeDetails extends LitElement {
                 text: `Found a firmware update for this node on ${nodeUpdate.update_source}.
           Do you want to update this node to version ${nodeUpdate.software_version_string}?
           Note that updating firmware is at your own risk and may cause the device to
-          malfunction or needs additional handling such as power cycling it and/or recommisisoning it.
+          malfunction or needs additional handling such as power cycling it and/or recommissioning it.
           Use with care.\n${nodeUpdate.firmware_information}`,
                 confirmText: "Start Update",
             }))
