@@ -26,7 +26,9 @@ export class DialogBox extends LitElement {
                 ${params.title ? html`<div slot="headline">${params.title}</div>` : ""}
                 ${params.text
                     ? html`<div slot="content">
-                          ${params.asCodeBlock ? html`<code>${params.text}</code>` : params.text}
+                          ${params.asCodeBlock && typeof params.text === "string"
+                              ? html`<code>${params.text}</code>`
+                              : params.text}
                       </div>`
                     : ""}
                 <div slot="actions">
