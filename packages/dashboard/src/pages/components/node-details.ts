@@ -87,10 +87,12 @@ export class NodeDetails extends LitElement {
                     <div slot="supporting-text"><span class="left">VendorName: </span>${this.node.vendorName}</div>
                     <div slot="supporting-text"><span class="left">productName: </span>${this.node.productName}</div>
                     <div slot="supporting-text">
-                        <span class="left">Commissioned: </span>${this.node.date_commissioned}
+                        <span class="left">Commissioned: </span
+                        ><time datetime=${this.node.date_commissioned}>${this.node.date_commissioned}</time>
                     </div>
                     <div slot="supporting-text">
-                        <span class="left">Last interviewed: </span>${this.node.last_interview}
+                        <span class="left">Last interviewed: </span
+                        ><time datetime=${this.node.last_interview}>${this.node.last_interview}</time>
                     </div>
                     <div slot="supporting-text"><span class="left">Is bridge: </span>${this.node.is_bridge}</div>
                     <div slot="supporting-text"><span class="left">Serialnumber: </span>${this.node.serialNumber}</div>
