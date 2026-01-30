@@ -45,8 +45,37 @@ export abstract class BaseNetworkGraph extends LitElement {
     override updated(changedProperties: Map<string, unknown>): void {
         super.updated(changedProperties);
 
+        // If container wasn't found in firstUpdated (empty state was rendered),
+        // try to find and observe it now that it might have appeared
+        if (!this._container && !this._resizeObserver) {
+            this._tryAttachContainer();
+        }
+
         if (changedProperties.has("nodes")) {
             this._debouncedUpdateGraph();
+        }
+    }
+
+    /**
+     * Try to find and attach the graph container if it wasn't available before.
+     * This handles the case where empty state was rendered initially.
+     */
+    private _tryAttachContainer(): void {
+        const container = this.shadowRoot?.querySelector(".graph-container") as HTMLDivElement;
+        if (container) {
+            this._container = container;
+            this._resizeObserver = new ResizeObserver(entries => {
+                const entry = entries[0];
+                if (entry && entry.contentRect.width > 0 && entry.contentRect.height > 0) {
+                    if (!this._network) {
+                        this._initializeNetwork();
+                    } else {
+                        this._network.setSize(`${entry.contentRect.width}px`, `${entry.contentRect.height}px`);
+                        this._network.redraw();
+                    }
+                }
+            });
+            this._resizeObserver.observe(this._container);
         }
     }
 

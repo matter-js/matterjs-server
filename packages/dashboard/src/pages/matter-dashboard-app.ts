@@ -44,14 +44,20 @@ class MatterDashboardApp extends LitElement {
     @state()
     private _state: "connecting" | "connected" | "error" | "disconnected" = "connecting";
 
+    /** Track whether nodes have been loaded at least once (to avoid redirecting before data arrives) */
+    private _nodesLoaded = false;
+
     private provider = new ContextProvider(this, { context: clientContext, initialValue: this.client });
+
+    /** Reference to updateRoute function so it can be called from event listeners */
+    private _updateRoute?: () => void;
 
     protected override firstUpdated(_changedProperties: PropertyValueMap<any> | Map<PropertyKey, unknown>): void {
         super.firstUpdated(_changedProperties);
         this._connect();
 
         // Handle history changes
-        const updateRoute = () => {
+        this._updateRoute = () => {
             const hash = location.hash.substring(1);
             const pathParts = hash.split("/");
 
@@ -63,8 +69,8 @@ class MatterDashboardApp extends LitElement {
 
             // Determine active view from hash
             if (pathParts[0] === "thread") {
-                // Redirect to #nodes if no Thread devices
-                if (!hasThreadDevices) {
+                // Only redirect if nodes have been loaded (avoid redirecting on initial load before data arrives)
+                if (this._nodesLoaded && !hasThreadDevices) {
                     location.hash = "#nodes";
                     return;
                 }
@@ -77,8 +83,8 @@ class MatterDashboardApp extends LitElement {
                     }
                 }
             } else if (pathParts[0] === "wifi") {
-                // Redirect to #nodes if no WiFi devices
-                if (!hasWifiDevices) {
+                // Only redirect if nodes have been loaded (avoid redirecting on initial load before data arrives)
+                if (this._nodesLoaded && !hasWifiDevices) {
                     location.hash = "#nodes";
                     return;
                 }
@@ -99,8 +105,8 @@ class MatterDashboardApp extends LitElement {
                 path: pathParts.length == 1 ? pathParts : pathParts.slice(1),
             };
         };
-        window.addEventListener("hashchange", updateRoute);
-        updateRoute();
+        window.addEventListener("hashchange", this._updateRoute);
+        this._updateRoute();
     }
 
     private _connect() {
@@ -117,6 +123,13 @@ class MatterDashboardApp extends LitElement {
 
     private _setupEventListeners() {
         this.client.addEventListener("nodes_changed", () => {
+            // Mark nodes as loaded and re-evaluate route (for redirect logic)
+            const wasFirstLoad = !this._nodesLoaded;
+            this._nodesLoaded = true;
+            if (wasFirstLoad && this._updateRoute) {
+                // Re-run route check now that nodes are available
+                this._updateRoute();
+            }
             this.requestUpdate();
             this.provider.setValue(clone(this.client));
         });

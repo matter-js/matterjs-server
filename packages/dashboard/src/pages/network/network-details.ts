@@ -11,10 +11,12 @@ import { LitElement, TemplateResult, css, html, nothing } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import "../../components/ha-svg-icon";
 import type { ThreadNeighbor } from "./network-types.js";
+import type { NodeConnection } from "./network-utils.js";
 import {
     buildExtAddrMap,
     getDeviceName,
     getNetworkType,
+    getNodeConnections,
     getSignalColor,
     getSignalColorFromRssi,
     getThreadChannel,
@@ -84,6 +86,12 @@ export class NetworkDetails extends LitElement {
         return mdiSignalCellular1; // Weak
     }
 
+    private _getSignalIconFromColor(color: string): string {
+        if (color === "#4caf50") return mdiSignal; // Strong
+        if (color === "#ff9800") return mdiSignalCellular2; // Medium
+        return mdiSignalCellular1; // Weak
+    }
+
     private _renderWiFiInfo(node: MatterNode): TemplateResult | typeof nothing {
         const wifiDiag = getWiFiDiagnostics(node);
 
@@ -144,8 +152,11 @@ export class NetworkDetails extends LitElement {
         const threadRole = getThreadRole(node);
         const channel = getThreadChannel(node);
         const extAddressHex = getThreadExtendedAddressHex(node);
-        const neighbors = parseNeighborTable(node);
         const extAddrMap = buildExtAddrMap(this.nodes);
+
+        // Get all connections (bidirectional) - this matches what the graph shows
+        const nodeId = typeof node.node_id === "bigint" ? Number(node.node_id) : node.node_id;
+        const connections = getNodeConnections(nodeId, this.nodes, extAddrMap);
 
         return html`
             <div class="section">
@@ -172,45 +183,35 @@ export class NetworkDetails extends LitElement {
                     : nothing}
             </div>
 
-            ${neighbors.length > 0
+            ${connections.length > 0
                 ? html`
                       <md-divider></md-divider>
                       <div class="section">
-                          <h4>Neighbors (${neighbors.length})</h4>
+                          <h4>Connections (${connections.length})</h4>
                           <div class="neighbors-list">
-                              ${neighbors.map(neighbor => {
-                                  const neighborNodeId = extAddrMap.get(neighbor.extAddress);
-                                  const neighborNode = neighborNodeId
-                                      ? this.nodes[neighborNodeId.toString()]
-                                      : undefined;
-                                  const signalColor = getSignalColor(neighbor);
-                                  const rssi = neighbor.avgRssi ?? neighbor.lastRssi;
-
-                                  // Determine clickable ID - known nodes by ID, unknown by ext address
-                                  const clickableId =
-                                      neighborNodeId ?? `unknown_${this._formatExtAddress(neighbor.extAddress)}`;
-
+                              ${connections.map((conn: NodeConnection) => {
                                   return html`
                                       <div
                                           class="neighbor-item clickable"
-                                          @click=${() => this._handleSelectNode(clickableId)}
+                                          @click=${() => this._handleSelectNode(conn.connectedNodeId)}
                                       >
                                           <ha-svg-icon
-                                              .path=${this._getSignalIcon(neighbor)}
-                                              style="--icon-primary-color: ${signalColor}"
+                                              .path=${this._getSignalIconFromColor(conn.signalColor)}
+                                              style="--icon-primary-color: ${conn.signalColor}"
                                           ></ha-svg-icon>
                                           <div class="neighbor-info">
                                               <div class="neighbor-name">
-                                                  ${neighborNode
-                                                      ? html`Node ${neighborNodeId}: ${getDeviceName(neighborNode)}`
-                                                      : html`External:
-                                                            <span class="mono"
-                                                                >${this._formatExtAddress(neighbor.extAddress)}</span
-                                                            >`}
+                                                  ${conn.connectedNode
+                                                      ? html`Node ${conn.connectedNodeId}:
+                                                        ${getDeviceName(conn.connectedNode)}`
+                                                      : html`External: <span class="mono">${conn.extAddressHex}</span>`}
                                               </div>
                                               <div class="neighbor-signal">
-                                                  ${rssi !== null ? html`RSSI: ${rssi} dBm, ` : nothing} LQI:
-                                                  ${neighbor.lqi}
+                                                  ${conn.rssi !== null ? html`RSSI: ${conn.rssi} dBm, ` : nothing}
+                                                  ${conn.lqi !== null ? html`LQI: ${conn.lqi}` : nothing}
+                                                  ${!conn.isOutgoing
+                                                      ? html`<span class="direction-hint">(reverse)</span>`
+                                                      : nothing}
                                               </div>
                                           </div>
                                       </div>
@@ -656,6 +657,11 @@ export class NetworkDetails extends LitElement {
             font-size: 0.75rem;
             color: var(--md-sys-color-on-surface-variant, #666);
             margin-top: 2px;
+        }
+
+        .direction-hint {
+            font-style: italic;
+            opacity: 0.8;
         }
 
         .footer {

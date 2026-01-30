@@ -643,3 +643,105 @@ export function buildThreadConnections(
 
     return connections;
 }
+
+/**
+ * Represents a connection from the perspective of a specific node.
+ * Includes both neighbors this node reports AND nodes that report this node as their neighbor.
+ */
+export interface NodeConnection {
+    /** The connected node ID (number for known nodes, string for unknown devices) */
+    connectedNodeId: number | string;
+    /** The connected MatterNode if it's a known device */
+    connectedNode?: MatterNode;
+    /** Extended address hex string for display */
+    extAddressHex: string;
+    /** Signal strength info (if available) */
+    signalColor: string;
+    lqi: number | null;
+    rssi: number | null;
+    /** Whether this connection is from THIS node's neighbor table (true) or from the OTHER node's table (false) */
+    isOutgoing: boolean;
+    /** Whether this is an unknown/external device */
+    isUnknown: boolean;
+}
+
+/**
+ * Get all connections for a specific node (bidirectional).
+ * This includes:
+ * 1. Neighbors this node reports in its neighbor table (outgoing)
+ * 2. Nodes that report this node as their neighbor (incoming)
+ *
+ * Returns a deduplicated list - if both directions exist, only the outgoing one is included
+ * (since that has signal data from THIS node's perspective).
+ */
+export function getNodeConnections(
+    nodeId: number,
+    nodes: Record<string, MatterNode>,
+    extAddrMap: Map<bigint, number>,
+): NodeConnection[] {
+    const connections: NodeConnection[] = [];
+    const seenConnectedIds = new Set<number | string>();
+
+    const node = nodes[nodeId.toString()];
+    if (!node) return connections;
+
+    // Get this node's extended address for reverse lookups
+    const thisExtAddr = node.attributes["0/53/18"] as bigint | undefined;
+
+    // 1. Add neighbors this node reports (outgoing connections)
+    const neighbors = parseNeighborTable(node);
+    for (const neighbor of neighbors) {
+        const connectedNodeId = extAddrMap.get(neighbor.extAddress);
+        const connectedNode = connectedNodeId ? nodes[connectedNodeId.toString()] : undefined;
+        const isUnknown = connectedNodeId === undefined;
+        const displayId = isUnknown
+            ? `unknown_${neighbor.extAddress.toString(16).toUpperCase().padStart(16, "0")}`
+            : connectedNodeId;
+
+        seenConnectedIds.add(displayId);
+
+        connections.push({
+            connectedNodeId: displayId,
+            connectedNode,
+            extAddressHex: neighbor.extAddress.toString(16).toUpperCase().padStart(16, "0"),
+            signalColor: getSignalColor(neighbor),
+            lqi: neighbor.lqi,
+            rssi: neighbor.avgRssi ?? neighbor.lastRssi,
+            isOutgoing: true,
+            isUnknown,
+        });
+    }
+
+    // 2. Find nodes that report THIS node as their neighbor (incoming connections)
+    if (thisExtAddr !== undefined) {
+        for (const otherNode of Object.values(nodes)) {
+            const otherNodeId = typeof otherNode.node_id === "bigint" ? Number(otherNode.node_id) : otherNode.node_id;
+            if (otherNodeId === nodeId) continue; // Skip self
+
+            // Check if already connected via outgoing
+            if (seenConnectedIds.has(otherNodeId)) continue;
+
+            // Check if other node reports this node as neighbor
+            const otherNeighbors = parseNeighborTable(otherNode);
+            const reverseEntry = otherNeighbors.find(n => n.extAddress === thisExtAddr);
+
+            if (reverseEntry) {
+                const otherExtAddr = otherNode.attributes["0/53/18"] as bigint | undefined;
+                const extAddrHex = otherExtAddr ? otherExtAddr.toString(16).toUpperCase().padStart(16, "0") : "Unknown";
+
+                connections.push({
+                    connectedNodeId: otherNodeId,
+                    connectedNode: otherNode,
+                    extAddressHex: extAddrHex,
+                    signalColor: getSignalColor(reverseEntry),
+                    lqi: reverseEntry.lqi,
+                    rssi: reverseEntry.avgRssi ?? reverseEntry.lastRssi,
+                    isOutgoing: false,
+                    isUnknown: false,
+                });
+            }
+        }
+    }
+
+    return connections;
+}

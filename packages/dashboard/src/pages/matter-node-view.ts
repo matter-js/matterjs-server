@@ -48,8 +48,11 @@ class MatterNodeView extends LitElement {
         }
 
         const networkType = getNetworkType(this.node);
-        const showGraphButton = networkType === "thread" || networkType === "wifi";
-        const graphUrl = showGraphButton ? `#${networkType}/${this.node.node_id}` : null;
+        // Show graph button for Thread, WiFi, and Ethernet (Ethernet devices are shown in WiFi graph)
+        const showGraphButton = networkType === "thread" || networkType === "wifi" || networkType === "ethernet";
+        // Ethernet devices go to WiFi graph since they're displayed there
+        const graphViewType = networkType === "ethernet" ? "wifi" : networkType;
+        const graphUrl = showGraphButton ? `#${graphViewType}/${this.node.node_id}` : null;
 
         return html`
             <dashboard-header
@@ -64,7 +67,7 @@ class MatterNodeView extends LitElement {
                     <h2>Node ${this.node.node_id}</h2>
                     ${showGraphButton
                         ? html`
-                              <a href=${graphUrl} class="show-in-graph-button" title="Show in ${networkType} graph">
+                              <a href=${graphUrl} class="show-in-graph-button" title="Show in ${graphViewType} graph">
                                   <ha-svg-icon .path=${mdiGraphOutline}></ha-svg-icon>
                                   <span class="button-text">Show in graph</span>
                               </a>
