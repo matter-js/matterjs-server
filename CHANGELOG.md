@@ -7,7 +7,7 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
-## __WORK IN PROGRESS__
+## 0.3.3 (2026-01-30)
 
 - Feature: Allows setting the Node Label via BasicInformation cluster command in the dashboard
 - Feature: Adds Thread and Wi-Fi visualizations with the diagnostic cluster data (if provided by the device) in the dashboard
