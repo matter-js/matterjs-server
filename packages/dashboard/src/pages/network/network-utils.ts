@@ -685,8 +685,8 @@ export function getNodeConnections(
     const node = nodes[nodeId.toString()];
     if (!node) return connections;
 
-    // Get this node's extended address for reverse lookups
-    const thisExtAddr = node.attributes["0/53/18"] as bigint | undefined;
+    // Get this node's extended address for reverse lookups (from General Diagnostics, not Thread Diagnostics)
+    const thisExtAddr = getThreadExtendedAddress(node);
 
     // 1. Add neighbors this node reports (outgoing connections)
     const neighbors = parseNeighborTable(node);
@@ -726,7 +726,7 @@ export function getNodeConnections(
             const reverseEntry = otherNeighbors.find(n => n.extAddress === thisExtAddr);
 
             if (reverseEntry) {
-                const otherExtAddr = otherNode.attributes["0/53/18"] as bigint | undefined;
+                const otherExtAddr = getThreadExtendedAddress(otherNode);
                 const extAddrHex = otherExtAddr ? otherExtAddr.toString(16).toUpperCase().padStart(16, "0") : "Unknown";
 
                 connections.push({
