@@ -92,7 +92,7 @@ export class DashboardHeader extends LitElement {
                       </a>`
                     : ""}
 
-                <div class="title">${this.title || ""}</div>
+                <div class="title">${this.title ?? ""}</div>
                 <div class="actions">
                     ${this.actions?.map(action => {
                         return html`
