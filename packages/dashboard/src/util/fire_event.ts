@@ -69,7 +69,7 @@ export const fireEvent = <HassEvent extends ValidHassDomEvent>(
         composed?: boolean;
     },
 ) => {
-    options = options || {};
+    options = options ?? {};
     const event = new Event(type, {
         bubbles: options.bubbles === undefined ? true : options.bubbles,
         cancelable: Boolean(options.cancelable),

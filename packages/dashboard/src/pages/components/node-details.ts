@@ -38,7 +38,7 @@ const UPDATE_STATE_LABELS: Record<number, string> = {
 };
 
 function getUpdateStateLabel(state: number, progress?: number): string {
-    const label = UPDATE_STATE_LABELS[state] || `Unknown (${state})`;
+    const label = UPDATE_STATE_LABELS[state] ?? `Unknown (${state})`;
     // Show progress only for downloading state
     if (state === 4 && progress !== undefined) {
         return `${label} (${progress}%)`;
@@ -85,7 +85,7 @@ export class NodeDetails extends LitElement {
                 </md-list-item>
                 <md-list-item>
                     <div slot="supporting-text"><span class="left">VendorName: </span>${this.node.vendorName}</div>
-                    <div slot="supporting-text"><span class="left">productName: </span>${this.node.productName}</div>
+                    <div slot="supporting-text"><span class="left">ProductName: </span>${this.node.productName}</div>
                     <div slot="supporting-text">
                         <span class="left">Commissioned: </span>${this.node.date_commissioned}
                     </div>
@@ -118,7 +118,7 @@ export class NodeDetails extends LitElement {
                             ? html` <md-outlined-button disabled
                                   >Checking for updates<ha-svg-icon slot="icon" .path=${mdiUpdate}></ha-svg-icon
                               ></md-outlined-button>`
-                            : (this.node.updateState || 0) > 1
+                            : (this.node.updateState ?? 0) > 1
                               ? html` <md-outlined-button disabled
                                     >${getUpdateStateLabel(
                                         this.node.updateState!,
@@ -219,7 +219,7 @@ export class NodeDetails extends LitElement {
                 text: `Found a firmware update for this node on ${nodeUpdate.update_source}.
           Do you want to update this node to version ${nodeUpdate.software_version_string}?
           Note that updating firmware is at your own risk and may cause the device to
-          malfunction or needs additional handling such as power cycling it and/or recommisisoning it.
+          malfunction or needs additional handling such as power cycling it and/or recommissioning it.
           Use with care.\n${nodeUpdate.firmware_information}`,
                 confirmText: "Start Update",
             }))

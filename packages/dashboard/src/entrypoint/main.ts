@@ -26,7 +26,7 @@ async function main() {
             const suggestedUrl = urlParams.get("url");
             storageUrl = prompt(
                 "Enter Websocket URL to a running Matter Server",
-                suggestedUrl || "ws://localhost:5580/ws",
+                suggestedUrl ?? "ws://localhost:5580/ws",
             );
             if (!storageUrl) {
                 alert("Unable to connect without URL");
