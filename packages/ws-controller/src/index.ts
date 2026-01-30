@@ -12,7 +12,6 @@
 export * from "./controller/ControllerCommandHandler.js";
 export * from "./controller/LegacyDataInjector.js";
 export * from "./controller/MatterController.js";
-export { isNodeAvailable } from "./controller/Nodes.js";
 export * from "./controller/ServerIdResolver.js";
 
 // Export model
