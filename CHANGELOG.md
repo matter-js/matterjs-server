@@ -10,7 +10,8 @@ This page shows a detailed overview of the changes between versions without the 
 ## __WORK IN PROGRESS__
 
 - Feature: Expose the Matter version of the device in Node details and the Dashboard (not integrated in HA yet because not returned by the Python server)
-- Enhancement: Delay Unavailability information to websocket a bit when "just" re-establishing the subscription 
+- Enhancement: Delay Unavailability information to websocket a bit when "just" re-establishing the subscription
+- Enhancement: (ximex) Optimizations for Dashboard code
 - Fix: Correctly set the basic Information cluster information for the Controller node
 - Fix: Update matter.js to 0.16.8-nightly
      - Fixes cases where devices were not properly reconnecting as soon as a list of IPs (aka mdns discovery) was requested

@@ -13,29 +13,6 @@ import { ServerError } from "../types/WebSocketMessageTypes.js";
 import { AttributeDataCache } from "./AttributeDataCache.js";
 
 /**
- * Determine if a node should be considered available based on its connection state.
- * Uses debouncing logic similar to Python Matter Server:
- * - Connected: available
- * - Reconnecting when previously Connected: still available (debouncing)
- * - WaitingForDeviceDiscovery or Disconnected: unavailable
- *
- * @param currentState Current connection state
- * @param previousState Previous connection state (undefined if first state change)
- * @returns true if node should be considered available
- */
-export function isNodeAvailable(currentState: NodeStates, previousState?: NodeStates): boolean {
-    if (currentState === NodeStates.Connected) {
-        return true;
-    }
-    // Debounce: if transitioning from Connected to Reconnecting, still consider available
-    if (currentState === NodeStates.Reconnecting && previousState === NodeStates.Connected) {
-        return true;
-    }
-    // WaitingForDeviceDiscovery, Disconnected, or Reconnecting from non-connected state
-    return false;
-}
-
-/**
  * Manages node storage and provides access to nodes and their clients.
  *
  * This class handles:
@@ -116,6 +93,29 @@ export class Nodes {
     }
 
     /**
+     * Determine if a node should be considered available based on its connection state.
+     * Uses debouncing logic similar to Python Matter Server:
+     * - Connected: available
+     * - Reconnecting when previously Connected: still available (debouncing)
+     * - WaitingForDeviceDiscovery or Disconnected: unavailable
+     *
+     * @param currentState Current connection state
+     * @param previousState Previous connection state (undefined if first state change)
+     * @returns true if node should be considered available
+     */
+    isNodeAvailable(currentState: NodeStates, previousState?: NodeStates): boolean {
+        if (currentState === NodeStates.Connected) {
+            return true;
+        }
+        // Debounce: if transitioning from Connected to Reconnecting, still consider available
+        if (currentState === NodeStates.Reconnecting && previousState === NodeStates.Connected) {
+            return true;
+        }
+        // WaitingForDeviceDiscovery, Disconnected, or Reconnecting from non-connected state
+        return false;
+    }
+
+    /**
      * Check if a node is available based on its current and previous connection state.
      * Uses debouncing: Reconnecting from Connected is still considered available.
      */
@@ -126,7 +126,7 @@ export class Nodes {
         }
         const currentState = node.connectionState;
         const previousState = this.#previousStates.get(nodeId);
-        return isNodeAvailable(currentState, previousState);
+        return this.isNodeAvailable(currentState, previousState);
     }
 
     /**
