@@ -44,6 +44,25 @@ export interface MatterControllerOptions {
     disableOtaProvider?: boolean;
     /** Server ID for storage. Default is "server", but may be "server-<hex(fabricId)>-<hex(vendorId)>" for multi-fabric support */
     serverId?: string;
+    /** Server version string (e.g., "0.2.10" or "0.2.10-alpha.0"). Used for BasicInformation cluster. */
+    serverVersion?: string;
+}
+
+/**
+ * Parse a version string into a numeric version in MMmmpp format.
+ * For alpha/beta versions, only the base version (major.minor.patch) is used.
+ * @param version Version string like "0.2.10" or "0.2.10-alpha.0"
+ * @returns Numeric version like 210 for "0.2.10"
+ */
+function parseVersionToNumber(version: string): number {
+    // Extract base version (before any -alpha, -beta, etc.)
+    const baseVersion = version.split("-")[0];
+    const parts = baseVersion.split(".");
+    const major = parseInt(parts[0] ?? "0", 10);
+    const minor = parseInt(parts[1] ?? "0", 10);
+    const patch = parseInt(parts[2] ?? "0", 10);
+    // Format: MMmmpp (2 digits each)
+    return major * 10000 + minor * 100 + patch;
 }
 
 export class MatterController {
@@ -53,6 +72,7 @@ export class MatterController {
     #commandHandler?: ControllerCommandHandler;
     #config: ConfigStorage;
     #serverId: string;
+    #serverVersion: string;
     #legacyCommissionedDates?: Map<string, Timestamp>;
     #enableTestNetDcl = false;
     #disableOtaProvider = true;
@@ -123,6 +143,7 @@ export class MatterController {
         this.#env = environment;
         this.#config = config;
         this.#serverId = serverId;
+        this.#serverVersion = options.serverVersion ?? "0.0.0";
         this.#enableTestNetDcl = options.enableTestNetDcl ?? this.#enableTestNetDcl;
         this.#disableOtaProvider = options.disableOtaProvider ?? this.#disableOtaProvider;
     }
@@ -144,6 +165,14 @@ export class MatterController {
             adminFabricId: fabricId !== undefined ? FabricId(fabricId) : undefined,
             rootNodeId: NodeId(112233), // TODO Remove when we switch to random IDs
             enableOtaProvider: !this.#disableOtaProvider,
+            basicInformation: {
+                vendorName: "Open Home Foundation",
+                productId: 1,
+                hardwareVersion: 1,
+                hardwareVersionString: "1.0",
+                softwareVersion: parseVersionToNumber(this.#serverVersion),
+                softwareVersionString: this.#serverVersion.split("-")[0], // Base version without alpha/beta suffix
+            },
         });
 
         // Start loading and initialization of meta data

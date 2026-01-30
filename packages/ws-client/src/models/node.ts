@@ -14,6 +14,13 @@ export interface MatterNodeData {
     is_bridge: boolean;
     attributes: { [key: string]: unknown };
     attribute_subscriptions: Array<[number | null, number | null, number | null]>;
+    /**
+     * Matter specification version of the node (e.g., "1.2.0", "1.3.0", "1.4.0").
+     * Determined from the SpecificationVersion attribute (0x15) if available,
+     * otherwise estimated from DataModelRevision (0x0) on BasicInformation cluster.
+     * Optional - not available in Python Matter Server.
+     */
+    matter_version?: string;
 }
 
 export class MatterNode {
@@ -25,6 +32,11 @@ export class MatterNode {
     is_bridge: boolean;
     attributes: { [key: string]: unknown };
     attribute_subscriptions: Array<[number | null, number | null, number | null]>;
+    /**
+     * Matter specification version of the node (e.g., "1.2.0", "1.3.0", "1.4.0").
+     * Optional - not available in Python Matter Server.
+     */
+    matter_version?: string;
 
     constructor(public data: MatterNodeData) {
         this.node_id = data.node_id;
@@ -35,6 +47,7 @@ export class MatterNode {
         this.is_bridge = data.is_bridge;
         this.attributes = data.attributes;
         this.attribute_subscriptions = data.attribute_subscriptions;
+        this.matter_version = data.matter_version;
     }
 
     get nodeLabel(): string {

@@ -78,6 +78,9 @@ Logger.level = mapLogLevel(cliOptions.logLevel);
 
 const logger = Logger.get("MatterServer");
 
+// Log command line arguments at startup for debugging
+logger.info(`Command line: ${process.argv.slice(2).join(" ") || "(no arguments)"}`);
+
 const env = Environment.default;
 
 // Apply CLI options to environment variables
@@ -165,6 +168,7 @@ async function start() {
             enableTestNetDcl: cliOptions.enableTestNetDcl,
             disableOtaProvider: cliOptions.disableOta,
             serverId: legacyData.serverId,
+            serverVersion: MATTER_SERVER_VERSION,
         },
         legacyServerData,
     );

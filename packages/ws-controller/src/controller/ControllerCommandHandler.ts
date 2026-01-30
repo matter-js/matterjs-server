@@ -47,6 +47,7 @@ import {
     GroupId,
     ManualPairingCodeCodec,
     QrPairingCodeCodec,
+    SpecificationVersion,
     Status,
     StatusResponseError,
     TlvAny,
@@ -108,6 +109,38 @@ import { Nodes } from "./Nodes.js";
 
 const logger = Logger.get("ControllerCommandHandler");
 
+/**
+ * Determine the Matter specification version from cached attributes.
+ * Uses SpecificationVersion attribute (0/40/21) if available, otherwise
+ * estimates from DataModelRevision attribute (0/40/0).
+ *
+ * @param attributes Cached attributes for the node
+ * @returns Matter version string (e.g., "1.2.0", "1.3.0") or undefined if unknown
+ */
+function determineMatterVersion(attributes: AttributesData): string | undefined {
+    // BasicInformation cluster is 0x28 (40 decimal)
+    // SpecificationVersion is attribute 0x15 (21 decimal) = path "0/40/21"
+    // DataModelRevision is attribute 0x0 (0 decimal) = path "0/40/0"
+    const specificationVersion = attributes["0/40/21"];
+    const dataModelRevision = attributes["0/40/0"];
+
+    if (typeof specificationVersion === "number" && specificationVersion > 0) {
+        const { major, minor, patch } = SpecificationVersion.decode(specificationVersion);
+        return `${major}.${minor}.${patch}`;
+    }
+
+    // Fall back to estimating from DataModelRevision
+    if (typeof dataModelRevision === "number") {
+        if (dataModelRevision <= 16) {
+            return "<1.2.0";
+        } else if (dataModelRevision === 17) {
+            return "1.2.0";
+        }
+    }
+
+    return undefined;
+}
+
 export class ControllerCommandHandler {
     #controller: CommissioningController;
     #started = false;
@@ -120,12 +153,16 @@ export class ControllerCommandHandler {
     #availableUpdates = new Map<NodeId, SoftwareUpdateInfo>();
     /** Poller for custom cluster attributes (Eve energy, etc.) */
     #customClusterPoller: CustomClusterPoller;
+    /** Track the last known availability for each node to detect changes */
+    #lastAvailability = new Map<NodeId, boolean>();
     events = {
         started: new AsyncObservable(),
         attributeChanged: new Observable<[nodeId: NodeId, data: DecodedAttributeReportValue<any>]>(),
         eventChanged: new Observable<[nodeId: NodeId, data: DecodedEventReportValue<any>]>(),
         nodeAdded: new Observable<[nodeId: NodeId]>(),
         nodeStateChanged: new Observable<[nodeId: NodeId, state: NodeStates]>(),
+        /** Emitted when node availability changes (for sending node_updated events) */
+        nodeAvailabilityChanged: new Observable<[nodeId: NodeId, available: boolean]>(),
         nodeStructureChanged: new Observable<[nodeId: NodeId]>(),
         nodeDecommissioned: new Observable<[nodeId: NodeId]>(),
         nodeEndpointAdded: new Observable<[nodeId: NodeId, endpointId: EndpointNumber]>(),
@@ -234,6 +271,15 @@ export class ControllerCommandHandler {
         });
         node.events.eventTriggered.on(data => this.events.eventChanged.emit(nodeId, data));
         node.events.stateChanged.on(state => {
+            if (state === NodeStates.Disconnected) {
+                return;
+            }
+
+            // Calculate availability before and after state change
+            const previousState = this.#nodes.getPreviousState(nodeId);
+            const wasAvailable = this.#lastAvailability.get(nodeId) ?? false;
+            const isAvailable = this.#nodes.isNodeAvailable(state, previousState);
+
             // Only refresh cache on Connected state (not Reconnecting, WaitingForDiscovery, etc.)
             if (state === NodeStates.Connected) {
                 attributeCache.update(node);
@@ -243,7 +289,21 @@ export class ControllerCommandHandler {
                     this.#customClusterPoller.registerNode(nodeId, attributes);
                 }
             }
+
+            // Update state tracking for the next transition
+            this.#nodes.setPreviousState(nodeId, state);
+            this.#lastAvailability.set(nodeId, isAvailable);
+
+            // Emit state changed event
             this.events.nodeStateChanged.emit(nodeId, state);
+
+            // Emit availability changed if it actually changed
+            if (wasAvailable !== isAvailable) {
+                logger.info(
+                    `Node ${nodeId} availability changed: ${wasAvailable} -> ${isAvailable} (state: ${NodeStates[previousState ?? -1]} -> ${NodeStates[state]})`,
+                );
+                this.events.nodeAvailabilityChanged.emit(nodeId, isAvailable);
+            }
         });
         node.events.structureChanged.on(() => {
             // Structure changed means endpoints may have been added/removed, refresh cache
@@ -368,10 +428,11 @@ export class ControllerCommandHandler {
             date_commissioned: getDateAsString(new Date(node.state.commissioning.commissionedAt ?? Date.now())),
             last_interview: getDateAsString(lastInterviewDate ?? new Date()),
             interview_version: 6,
-            available: node.isConnected,
+            available: this.#nodes.isAvailable(nodeId),
             is_bridge: isBridge,
             attributes,
             attribute_subscriptions: [],
+            matter_version: determineMatterVersion(attributes),
         };
     }
 
