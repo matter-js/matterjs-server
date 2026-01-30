@@ -85,7 +85,7 @@ export class NodeDetails extends LitElement {
                 </md-list-item>
                 <md-list-item>
                     <div slot="supporting-text"><span class="left">VendorName: </span>${this.node.vendorName}</div>
-                    <div slot="supporting-text"><span class="left">productName: </span>${this.node.productName}</div>
+                    <div slot="supporting-text"><span class="left">ProductName: </span>${this.node.productName}</div>
                     <div slot="supporting-text">
                         <span class="left">Commissioned: </span>${this.node.date_commissioned}
                     </div>
