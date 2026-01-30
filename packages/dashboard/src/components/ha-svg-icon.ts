@@ -18,7 +18,7 @@ export class HaSvgIcon extends LitElement {
     protected override render(): SVGTemplateResult {
         return svg`
     <svg
-      viewBox=${this.viewBox || "0 0 24 24"}
+      viewBox=${this.viewBox ?? "0 0 24 24"}
       preserveAspectRatio="xMidYMid meet"
       focusable="false"
       role="img"

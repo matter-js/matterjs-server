@@ -19,7 +19,7 @@ export interface PromptDialogBoxParams extends BaseDialogBoxParams {
 const showDialogBox = async (type: "alert" | "prompt", dialogParams: PromptDialogBoxParams) => {
     await import("./dialog-box.js");
     return new Promise<boolean>(resolve => {
-        const dialog = document.createElement("dialox-box");
+        const dialog = document.createElement("dialog-box");
         dialog.params = dialogParams;
         dialog.dialogResult = resolve;
         dialog.type = type;

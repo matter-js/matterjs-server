@@ -60,7 +60,7 @@ async function updatePackageJson(filePath, version) {
 }
 
 async function main() {
-    const tag = process.argv[2] || "dev";
+    const tag = process.argv[2] ?? "dev";
 
     if (!["latest", "dev"].includes(tag)) {
         console.error(`Invalid tag "${tag}". Use "latest" or "dev".`);

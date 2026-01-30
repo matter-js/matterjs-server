@@ -97,7 +97,7 @@ export class ServerDetails extends LitElement {
             reader.readAsText(selectedFile, "UTF-8");
             reader.onload = async () => {
                 try {
-                    await this.client!.importTestNode(reader.result?.toString() || "");
+                    await this.client!.importTestNode(reader.result?.toString() ?? "");
                 } catch (err: any) {
                     showAlertDialog({
                         title: "Failed to import test node",
