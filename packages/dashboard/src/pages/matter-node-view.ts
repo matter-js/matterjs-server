@@ -9,7 +9,7 @@ import "@material/web/iconbutton/icon-button";
 import "@material/web/list/list";
 import "@material/web/list/list-item";
 import { MatterClient, MatterNode } from "@matter-server/ws-client";
-import { mdiChevronRight } from "@mdi/js";
+import { mdiChevronRight, mdiGraphOutline } from "@mdi/js";
 import { LitElement, css, html } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { guard } from "lit/directives/guard.js";
@@ -17,6 +17,7 @@ import "../components/ha-svg-icon";
 import "./components/header";
 import "./components/node-details";
 import { getEndpointDeviceTypes } from "./matter-endpoint-view.js";
+import { getNetworkType } from "./network/network-utils.js";
 
 declare global {
     interface HTMLElementTagNameMap {
@@ -46,6 +47,10 @@ class MatterNodeView extends LitElement {
             `;
         }
 
+        const networkType = getNetworkType(this.node);
+        const showGraphButton = networkType === "thread" || networkType === "wifi";
+        const graphUrl = showGraphButton ? `#${networkType}/${this.node.node_id}` : null;
+
         return html`
             <dashboard-header
                 .title=${"Node " + this.node.node_id}
@@ -55,6 +60,17 @@ class MatterNodeView extends LitElement {
 
             <!-- node details section -->
             <div class="container">
+                <div class="node-title-bar">
+                    <h2>Node ${this.node.node_id}</h2>
+                    ${showGraphButton
+                        ? html`
+                              <a href=${graphUrl} class="show-in-graph-button" title="Show in ${networkType} graph">
+                                  <ha-svg-icon .path=${mdiGraphOutline}></ha-svg-icon>
+                                  <span class="button-text">Show in graph</span>
+                              </a>
+                          `
+                        : ""}
+                </div>
                 <node-details .node=${this.node} .client=${this.client}></node-details>
             </div>
 
@@ -121,6 +137,61 @@ class MatterNodeView extends LitElement {
             color: var(--danger-color);
             font-weight: bold;
             font-size: 0.8em;
+        }
+
+        .node-title-bar {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+
+        .node-title-bar h2 {
+            margin: 0;
+            font-size: 1.25rem;
+            font-weight: 500;
+            color: var(--md-sys-color-on-background, #333);
+        }
+
+        .show-in-graph-button {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            background-color: var(--md-sys-color-primary);
+            color: var(--md-sys-color-on-primary);
+            text-decoration: none;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            transition: opacity 0.2s;
+            white-space: nowrap;
+        }
+
+        .show-in-graph-button:hover {
+            opacity: 0.9;
+        }
+
+        .show-in-graph-button ha-svg-icon {
+            --icon-primary-color: var(--md-sys-color-on-primary);
+            width: 16px;
+            height: 16px;
+        }
+
+        @media (max-width: 768px) {
+            .show-in-graph-button {
+                display: none;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .show-in-graph-button .button-text {
+                display: none;
+            }
+
+            .show-in-graph-button {
+                padding: 6px;
+            }
         }
     `;
 }

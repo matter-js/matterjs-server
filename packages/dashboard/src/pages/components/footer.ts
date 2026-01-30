@@ -22,14 +22,11 @@ export class DashboardFooter extends LitElement {
 
     static override styles = css`
         .footer {
-            padding: 16px;
+            padding: 4px 16px;
             text-align: center;
-            font-size: 0.8em;
-            color: var(--md-sys-color-on-surface);
-            display: flex;
-            flex-direction: column;
-            position: relative;
-            clear: both;
+            font-size: 0.75em;
+            color: var(--md-sys-color-on-surface-variant);
+            flex-shrink: 0;
         }
 
         .footer a {

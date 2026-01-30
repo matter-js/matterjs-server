@@ -7,6 +7,11 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
+## __WORK IN PROGRESS__
+
+- Feature: Allows setting the Node Label via BasicInformation cluster command in the dashboard
+- Feature: Adds Thread and Wi-Fi visualizations with the diagnostic cluster data (if provided by the device) in the dashboard
+
 ## 0.3.2 (2026-01-30)
 
 - Feature: Expose the Matter version of the device in Node details and the Dashboard (not integrated in HA yet because not returned by the Python server)
