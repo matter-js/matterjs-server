@@ -5,7 +5,7 @@
  */
 
 import { MatterClient, MatterNode } from "@matter-server/ws-client";
-import { LitElement, css } from "lit";
+import { LitElement, css, type CSSResultGroup } from "lit";
 import { property } from "lit/decorators.js";
 
 /**
@@ -39,7 +39,7 @@ export abstract class BaseClusterCommands extends LitElement {
         }
     }
 
-    static override styles = css`
+    static override styles: CSSResultGroup = css`
         :host {
             display: block;
         }

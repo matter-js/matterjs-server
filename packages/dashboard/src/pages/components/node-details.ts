@@ -199,8 +199,8 @@ export class NodeDetails extends LitElement {
     private async _binding() {
         try {
             showNodeBindingDialog(this.client, this.node!, this.endpoint);
-        } catch (err: any) {
-            console.log(err);
+        } catch (err: unknown) {
+            console.error("Binding error:", err);
         }
     }
 

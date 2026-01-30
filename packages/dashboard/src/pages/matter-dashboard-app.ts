@@ -14,10 +14,13 @@ import "../components/ha-svg-icon";
 import { clone } from "../util/clone_class.js";
 import type { Route } from "../util/routing.js";
 import "./components/header";
+import type { ActiveView } from "./components/header.js";
 import "./matter-cluster-view";
 import "./matter-endpoint-view";
+import "./matter-network-view";
 import "./matter-node-view";
 import "./matter-server-view";
+import { categorizeDevices } from "./network/network-utils.js";
 
 declare global {
     interface HTMLElementTagNameMap {
@@ -32,27 +35,78 @@ class MatterDashboardApp extends LitElement {
         path: [],
     };
 
+    @state() private _activeView: ActiveView = "nodes";
+
+    @state() private _initialSelectedNodeId: number | null = null;
+
     public client!: MatterClient;
 
     @state()
     private _state: "connecting" | "connected" | "error" | "disconnected" = "connecting";
 
+    /** Track whether nodes have been loaded at least once (to avoid redirecting before data arrives) */
+    private _nodesLoaded = false;
+
     private provider = new ContextProvider(this, { context: clientContext, initialValue: this.client });
+
+    /** Reference to updateRoute function so it can be called from event listeners */
+    private _updateRoute?: () => void;
 
     protected override firstUpdated(_changedProperties: PropertyValueMap<any> | Map<PropertyKey, unknown>): void {
         super.firstUpdated(_changedProperties);
         this._connect();
 
         // Handle history changes
-        const updateRoute = () => {
-            const pathParts = location.hash.substring(1).split("/");
+        this._updateRoute = () => {
+            const hash = location.hash.substring(1);
+            const pathParts = hash.split("/");
+
+            // Reset initial selected node
+            this._initialSelectedNodeId = null;
+
+            // Get device counts for conditional navigation
+            const { hasThreadDevices, hasWifiDevices } = this._getDeviceCounts();
+
+            // Determine active view from hash
+            if (pathParts[0] === "thread") {
+                // Only redirect if nodes have been loaded (avoid redirecting on initial load before data arrives)
+                if (this._nodesLoaded && !hasThreadDevices) {
+                    location.hash = "#nodes";
+                    return;
+                }
+                this._activeView = "thread";
+                // Check for node ID: #thread/123
+                if (pathParts.length > 1 && pathParts[1]) {
+                    const nodeId = parseInt(pathParts[1], 10);
+                    if (!isNaN(nodeId)) {
+                        this._initialSelectedNodeId = nodeId;
+                    }
+                }
+            } else if (pathParts[0] === "wifi") {
+                // Only redirect if nodes have been loaded (avoid redirecting on initial load before data arrives)
+                if (this._nodesLoaded && !hasWifiDevices) {
+                    location.hash = "#nodes";
+                    return;
+                }
+                this._activeView = "wifi";
+                // Check for node ID: #wifi/123
+                if (pathParts.length > 1 && pathParts[1]) {
+                    const nodeId = parseInt(pathParts[1], 10);
+                    if (!isNaN(nodeId)) {
+                        this._initialSelectedNodeId = nodeId;
+                    }
+                }
+            } else if (hash === "nodes" || hash === "" || pathParts[0] === "node") {
+                this._activeView = "nodes";
+            }
+
             this._route = {
                 prefix: pathParts.length == 1 ? "" : pathParts[0],
                 path: pathParts.length == 1 ? pathParts : pathParts.slice(1),
             };
         };
-        window.addEventListener("hashchange", updateRoute);
-        updateRoute();
+        window.addEventListener("hashchange", this._updateRoute);
+        this._updateRoute();
     }
 
     private _connect() {
@@ -69,6 +123,13 @@ class MatterDashboardApp extends LitElement {
 
     private _setupEventListeners() {
         this.client.addEventListener("nodes_changed", () => {
+            // Mark nodes as loaded and re-evaluate route (for redirect logic)
+            const wasFirstLoad = !this._nodesLoaded;
+            this._nodesLoaded = true;
+            if (wasFirstLoad && this._updateRoute) {
+                // Re-run route check now that nodes are available
+                this._updateRoute();
+            }
             this.requestUpdate();
             this.provider.setValue(clone(this.client));
         });
@@ -84,6 +145,20 @@ class MatterDashboardApp extends LitElement {
         this._state = "connecting";
         this._connect();
     };
+
+    /**
+     * Get device counts for Thread and WiFi networks.
+     */
+    private _getDeviceCounts(): { hasThreadDevices: boolean; hasWifiDevices: boolean } {
+        if (!this.client?.nodes) {
+            return { hasThreadDevices: false, hasWifiDevices: false };
+        }
+        const categorized = categorizeDevices(this.client.nodes);
+        return {
+            hasThreadDevices: categorized.thread.length > 0,
+            hasWifiDevices: categorized.wifi.length > 0 || categorized.ethernet.length > 0,
+        };
+    }
 
     override render() {
         if (this._state === "connecting") {
@@ -154,11 +229,41 @@ class MatterDashboardApp extends LitElement {
                 ></matter-node-view>
             `;
         }
-        // root level: server overview
+        // Get device counts for conditional navigation
+        const { hasThreadDevices, hasWifiDevices } = this._getDeviceCounts();
+
+        // Check for Thread view (#thread or #thread/123)
+        if (this._route.prefix === "thread" || this._route.path[0] === "thread") {
+            return html`<matter-network-view
+                .client=${this.client}
+                .nodes=${this.client.nodes}
+                .activeView=${this._activeView}
+                .initialSelectedNodeId=${this._initialSelectedNodeId}
+                .hasThreadDevices=${hasThreadDevices}
+                .hasWifiDevices=${hasWifiDevices}
+                networkType="thread"
+            ></matter-network-view>`;
+        }
+        // Check for WiFi view (#wifi or #wifi/123)
+        if (this._route.prefix === "wifi" || this._route.path[0] === "wifi") {
+            return html`<matter-network-view
+                .client=${this.client}
+                .nodes=${this.client.nodes}
+                .activeView=${this._activeView}
+                .initialSelectedNodeId=${this._initialSelectedNodeId}
+                .hasThreadDevices=${hasThreadDevices}
+                .hasWifiDevices=${hasWifiDevices}
+                networkType="wifi"
+            ></matter-network-view>`;
+        }
+        // root level: server overview (nodes view)
         return html`<matter-server-view
             .client=${this.client}
             .nodes=${this.client.nodes}
             .route=${this._route}
+            .activeView=${this._activeView}
+            .hasThreadDevices=${hasThreadDevices}
+            .hasWifiDevices=${hasWifiDevices}
         ></matter-server-view>`;
     }
 

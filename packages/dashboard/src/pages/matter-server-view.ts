@@ -16,6 +16,7 @@ import "../components/ha-svg-icon";
 import { formatNodeAddress } from "../util/format_hex.js";
 import "./components/footer";
 import "./components/header";
+import type { ActiveView } from "./components/header.js";
 import "./components/server-details";
 
 declare global {
@@ -30,6 +31,15 @@ class MatterServerView extends LitElement {
 
     @property()
     public nodes!: MatterClient["nodes"];
+
+    @property()
+    public activeView?: ActiveView;
+
+    @property({ type: Boolean })
+    public hasThreadDevices?: boolean;
+
+    @property({ type: Boolean })
+    public hasWifiDevices?: boolean;
 
     private _cachedNodes?: MatterClient["nodes"];
     private _cachedNodeEntries?: [string, MatterNode][];
@@ -46,7 +56,13 @@ class MatterServerView extends LitElement {
         const nodes = this.getNodeEntries(this.nodes);
 
         return html`
-            <dashboard-header title="Open Home Foundation Matter Server" .client=${this.client}></dashboard-header>
+            <dashboard-header
+                title="Open Home Foundation Matter Server"
+                .client=${this.client}
+                .activeView=${this.activeView}
+                .hasThreadDevices=${this.hasThreadDevices}
+                .hasWifiDevices=${this.hasWifiDevices}
+            ></dashboard-header>
 
             <!-- server details section -->
             <div class="container">

@@ -71,7 +71,6 @@ export class ServerDetails extends LitElement {
     }
 
     private _commissionNode() {
-        console.log(this.client);
         showCommissionNodeDialog(this.client!);
     }
 
