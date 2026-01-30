@@ -100,20 +100,18 @@ export class DashboardHeader extends LitElement {
         }
 
         return html`
-            <nav class="nav-tabs" role="tablist" aria-label="View navigation">
+            <nav class="nav-tabs" aria-label="View navigation">
                 <a
                     href="#nodes"
                     class="nav-tab ${this.activeView === "nodes" ? "active" : ""}"
-                    role="tab"
-                    aria-selected=${this.activeView === "nodes"}
+                    aria-current=${this.activeView === "nodes" ? "page" : "false"}
                     >Nodes</a
                 >
                 ${showThreadTab
                     ? html`<a
                           href="#thread"
                           class="nav-tab ${this.activeView === "thread" ? "active" : ""}"
-                          role="tab"
-                          aria-selected=${this.activeView === "thread"}
+                          aria-current=${this.activeView === "thread" ? "page" : "false"}
                           >Thread</a
                       >`
                     : nothing}
@@ -121,8 +119,7 @@ export class DashboardHeader extends LitElement {
                     ? html`<a
                           href="#wifi"
                           class="nav-tab ${this.activeView === "wifi" ? "active" : ""}"
-                          role="tab"
-                          aria-selected=${this.activeView === "wifi"}
+                          aria-current=${this.activeView === "wifi" ? "page" : "false"}
                           >WiFi</a
                       >`
                     : nothing}

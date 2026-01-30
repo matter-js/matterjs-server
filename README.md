@@ -87,6 +87,45 @@ It was in general tested with a simply slight bulb on network.
 
 Ble and Wifi should work when server gets startes with `--ble` flag, but Wifi only will work. For Thread Mater.js currently requires a network Name which is not provided.
 
+## Dashboard Network Visualization
+
+The dashboard includes interactive network topology graphs for Thread and WiFi networks, accessible via the navigation tabs. These graphs are only available on screens wider than 768px and are hidden on mobile devices.
+
+### Thread Network Graph
+
+Displays the Thread mesh network topology showing how your Thread devices connect to each other. The graph visualizes:
+
+- **Device nodes** with icons based on device type (lights, sensors, plugs, etc.)
+- **Mesh connections** between Thread devices with signal strength indicated by color:
+  - Green: Strong signal (> -70 dBm)
+  - Orange: Medium signal (-85 to -70 dBm)
+  - Red: Weak signal (< -85 dBm)
+- **Thread roles**: Leader, Router, End Device, Sleepy End Device
+- **Unknown/External devices**: Shown with dashed connections
+
+### WiFi Network Graph
+
+Displays WiFi devices grouped by their access point (router). Each access point forms a star topology with connected devices.
+
+### Important: Data Source Limitations
+
+The network topology data is obtained **directly from the commissioned Matter devices** via their diagnostic clusters (Thread Network Diagnostics, WiFi Network Diagnostics). This means:
+
+1. **Unknown nodes may appear**: Devices in the Thread mesh that are not commissioned to this Matter fabric (e.g., Thread Border Routers from other ecosystems, devices commissioned to different controllers) will appear as "Unknown" nodes with partial information.
+
+2. **Connection data is device-reported**: The neighbor tables and signal strength values come from what each device reports about its neighbors. This may not represent a complete picture of the network.
+
+3. **Not all network participants are Matter devices**: Thread networks often include infrastructure devices (Border Routers, range extenders) that are not Matter devices and cannot be commissioned, so they will always appear as unknown.
+
+4. **Bidirectional visibility**: A connection appears when at least one device reports the other as a neighbor. The details panel shows both "outgoing" connections (what this device reports) and "reverse" connections (what other devices report about this device).
+
+### Using the Graphs
+
+- **Click a node** to select it and view details in the sidebar
+- **"Show in graph" button** on node detail pages navigates to the network view with that node selected
+- **Fit to screen button** adjusts the zoom to show all nodes
+- **Drag nodes** to rearrange the layout (physics will re-stabilize)
+
 ## Importing Custom OTA Firmware Files
 
 The Matter Server supports importing custom OTA (Over-The-Air) firmware update files for your Matter devices. This is useful when you have manufacturer-provided firmware files that aren't available through the official DCL (Distributed Compliance Ledger).
@@ -148,5 +187,3 @@ This implementation aims to be API-compatible with the [Python Matter Server](ht
 | Storage Format          | Single `chip.json` and `{fabricId}.json` file              | matter.js native storage (migration supported)                                                             |
 | Attribute Subscriptions | Tracks per-node in `attribute_subscriptions`               | Always empty (handled internally)                                                                          |
 | Custom OTA Files        | Allows to import them independently from the test-dcl flag | Only imports them when also test-dcl is enabled                                                            |
-
-

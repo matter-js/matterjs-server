@@ -45,7 +45,6 @@ export abstract class BaseNetworkGraph extends LitElement {
     /**
      * Returns physics options for the network. Override in subclasses for different behavior.
      */
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     protected _getPhysicsOptions(): any {
         return {
             enabled: true,
@@ -75,7 +74,7 @@ export abstract class BaseNetworkGraph extends LitElement {
             this._tryAttachContainer();
         }
 
-        if (changedProperties.has("nodes")) {
+        if (changedProperties.has("nodes") || changedProperties.has("_selectedNodeId")) {
             this._debouncedUpdateGraph();
         }
     }

@@ -29,21 +29,18 @@ export class ThreadGraph extends BaseNetworkGraph {
     /** Cache of unknown devices for the current render */
     private _unknownDevices: UnknownThreadDevice[] = [];
 
+    /** Cached map of unknown devices (rebuilt in _updateGraph) */
+    private _unknownDevicesMapCache: Map<
+        string,
+        { extAddressHex: string; isRouter: boolean; seenBy: number[]; bestRssi: number | null }
+    > = new Map();
+
     /** Get unknown devices as a map for use by details panel */
     public get unknownDevicesMap(): Map<
         string,
         { extAddressHex: string; isRouter: boolean; seenBy: number[]; bestRssi: number | null }
     > {
-        const map = new Map();
-        for (const device of this._unknownDevices) {
-            map.set(device.id, {
-                extAddressHex: device.extAddressHex,
-                isRouter: device.isRouter,
-                seenBy: device.seenBy,
-                bestRssi: device.bestRssi,
-            });
-        }
-        return map;
+        return this._unknownDevicesMapCache;
     }
 
     protected override _updateGraph(): void {
@@ -59,6 +56,7 @@ export class ThreadGraph extends BaseNetworkGraph {
             this._nodesDataSet.clear();
             this._edgesDataSet.clear();
             this._unknownDevices = [];
+            this._unknownDevicesMapCache.clear();
             return;
         }
 
@@ -68,14 +66,26 @@ export class ThreadGraph extends BaseNetworkGraph {
         // Find unknown devices (seen in neighbor tables but not commissioned)
         this._unknownDevices = findUnknownDevices(this.nodes, extAddrMap);
 
+        // Rebuild the cached map
+        this._unknownDevicesMapCache.clear();
+        for (const device of this._unknownDevices) {
+            this._unknownDevicesMapCache.set(device.id, {
+                extAddressHex: device.extAddressHex,
+                isRouter: device.isRouter,
+                seenBy: device.seenBy,
+                bestRssi: device.bestRssi,
+            });
+        }
+
         // Build Thread connections (including to unknown devices)
         const connections = buildThreadConnections(this.nodes, extAddrMap, this._unknownDevices);
 
         // Create node data for vis.js - known Thread devices
         const graphNodes: NetworkGraphNode[] = threadNodes.map(node => {
+            // Use number for small IDs, but compare as string for safety with large IDs
             const nodeId = typeof node.node_id === "bigint" ? Number(node.node_id) : node.node_id;
             const threadRole = getThreadRole(node);
-            const isSelected = nodeId === this._selectedNodeId;
+            const isSelected = String(nodeId) === String(this._selectedNodeId);
             const isOffline = node.available === false;
 
             return {

@@ -42,7 +42,6 @@ export class WiFiGraph extends BaseNetworkGraph {
     /**
      * Override physics for WiFi star topology - needs stronger cluster separation.
      */
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     protected override _getPhysicsOptions(): any {
         return {
             enabled: true,
@@ -107,7 +106,7 @@ export class WiFiGraph extends BaseNetworkGraph {
         // Add access point nodes
         for (const [apId, ap] of this._accessPoints) {
             const bssid = ap.bssid;
-            const isSelected = apId === this._selectedNodeId;
+            const isSelected = String(apId) === String(this._selectedNodeId);
 
             graphNodes.push({
                 id: apId,
@@ -125,7 +124,7 @@ export class WiFiGraph extends BaseNetworkGraph {
             const node = this.nodes[nodeId.toString()];
             if (!node) continue;
 
-            const isSelected = nodeId === this._selectedNodeId;
+            const isSelected = String(nodeId) === String(this._selectedNodeId);
             const isOffline = node.available === false;
             const networkType = getNetworkType(node);
             const wifiDiag = getWiFiDiagnostics(node);
