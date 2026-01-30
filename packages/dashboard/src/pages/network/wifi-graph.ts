@@ -39,6 +39,30 @@ export class WiFiGraph extends BaseNetworkGraph {
         return this._accessPoints;
     }
 
+    /**
+     * Override physics for WiFi star topology - needs stronger cluster separation.
+     */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    protected override _getPhysicsOptions(): any {
+        return {
+            enabled: true,
+            solver: "forceAtlas2Based",
+            forceAtlas2Based: {
+                gravitationalConstant: -120, // Stronger repulsion for star topology
+                centralGravity: 0.003, // Weaker central pull
+                springLength: 100, // Shorter springs keep devices close to their AP
+                springConstant: 0.12, // Stronger springs
+                damping: 0.4,
+                avoidOverlap: 0.8,
+            },
+            stabilization: {
+                enabled: true,
+                iterations: 300,
+                updateInterval: 25,
+            },
+        };
+    }
+
     protected override _updateGraph(): void {
         if (!this._nodesDataSet || !this._edgesDataSet) return;
 

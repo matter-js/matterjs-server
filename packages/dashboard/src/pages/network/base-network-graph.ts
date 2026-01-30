@@ -42,6 +42,30 @@ export abstract class BaseNetworkGraph extends LitElement {
         return ThemeService.effectiveTheme === "dark" ? "#555555" : "#cccccc";
     }
 
+    /**
+     * Returns physics options for the network. Override in subclasses for different behavior.
+     */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    protected _getPhysicsOptions(): any {
+        return {
+            enabled: true,
+            solver: "forceAtlas2Based",
+            forceAtlas2Based: {
+                gravitationalConstant: -70,
+                centralGravity: 0.005,
+                springLength: 130,
+                springConstant: 0.08,
+                damping: 0.4,
+                avoidOverlap: 0.6,
+            },
+            stabilization: {
+                enabled: true,
+                iterations: 250,
+                updateInterval: 25,
+            },
+        };
+    }
+
     override updated(changedProperties: Map<string, unknown>): void {
         super.updated(changedProperties);
 
@@ -174,23 +198,7 @@ export abstract class BaseNetworkGraph extends LitElement {
                     roundness: 0.5,
                 },
             },
-            physics: {
-                enabled: true,
-                solver: "forceAtlas2Based",
-                forceAtlas2Based: {
-                    gravitationalConstant: -50,
-                    centralGravity: 0.01,
-                    springLength: 150,
-                    springConstant: 0.08,
-                    damping: 0.4,
-                    avoidOverlap: 0.5,
-                },
-                stabilization: {
-                    enabled: true,
-                    iterations: 200,
-                    updateInterval: 25,
-                },
-            },
+            physics: this._getPhysicsOptions(),
             interaction: {
                 hover: true,
                 tooltipDelay: 200,
@@ -222,11 +230,22 @@ export abstract class BaseNetworkGraph extends LitElement {
             this._dispatchNodeSelected(null);
         });
 
-        // Auto-fit after stabilization
+        // Auto-fit after stabilization completes
         this._network.on("stabilizationIterationsDone", () => {
+            // Fit with padding to keep nodes away from edges
             this._network?.fit({
                 animation: {
                     duration: 500,
+                    easingFunction: "easeInOutQuad",
+                },
+            });
+        });
+
+        // Also fit when physics fully stops (catches any drift after initial stabilization)
+        this._network.on("stabilized", () => {
+            this._network?.fit({
+                animation: {
+                    duration: 300,
                     easingFunction: "easeInOutQuad",
                 },
             });

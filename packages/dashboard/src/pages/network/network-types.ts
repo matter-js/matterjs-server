@@ -138,6 +138,8 @@ export interface NetworkGraphNode {
     offline?: boolean;
     /** Whether this is an unknown/external device */
     isUnknown?: boolean;
+    /** Physics group: "connected" or "disconnected" */
+    group?: "connected" | "disconnected";
 }
 
 /**
