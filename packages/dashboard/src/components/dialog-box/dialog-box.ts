@@ -24,7 +24,13 @@ export class DialogBox extends LitElement {
         return html`
             <md-dialog open @cancel=${preventDefault} @closed=${this._handleClosed}>
                 ${params.title ? html`<div slot="headline">${params.title}</div>` : ""}
-                ${params.text ? html`<div slot="content">${params.text}</div>` : ""}
+                ${params.text
+                    ? html`<div slot="content">
+                          ${params.asCodeBlock && typeof params.text === "string"
+                              ? html`<code>${params.text}</code>`
+                              : params.text}
+                      </div>`
+                    : ""}
                 <div slot="actions">
                     ${this.type === "prompt"
                         ? html`

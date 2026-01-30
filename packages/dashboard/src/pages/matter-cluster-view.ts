@@ -127,7 +127,7 @@ class MatterClusterView extends LitElement {
                                           >
                                               Show value
                                           </button>`
-                                        : toBigIntAwareJson(attribute.value)}
+                                        : html`<code>${toBigIntAwareJson(attribute.value)}</code>`}
                                 </div>
                             </md-list-item>
                         `,
@@ -141,6 +141,7 @@ class MatterClusterView extends LitElement {
         showAlertDialog({
             title: "Attribute value",
             text: toBigIntAwareJson(value),
+            asCodeBlock: true,
         });
     }
 

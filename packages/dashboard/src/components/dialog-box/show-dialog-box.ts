@@ -10,6 +10,7 @@ interface BaseDialogBoxParams {
     confirmText?: string;
     text: string | TemplateResult;
     title: string;
+    asCodeBlock?: boolean;
 }
 
 export interface PromptDialogBoxParams extends BaseDialogBoxParams {
