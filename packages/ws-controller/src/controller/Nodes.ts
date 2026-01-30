@@ -8,9 +8,32 @@ import { NodeId } from "@matter/main";
 import { ClusterClientObj } from "@matter/main/protocol";
 import { ClusterId, ClusterType, EndpointNumber } from "@matter/main/types";
 import { InteractionClient } from "@project-chip/matter.js/cluster";
-import { PairedNode } from "@project-chip/matter.js/device";
+import { NodeStates, PairedNode } from "@project-chip/matter.js/device";
 import { ServerError } from "../types/WebSocketMessageTypes.js";
 import { AttributeDataCache } from "./AttributeDataCache.js";
+
+/**
+ * Determine if a node should be considered available based on its connection state.
+ * Uses debouncing logic similar to Python Matter Server:
+ * - Connected: available
+ * - Reconnecting when previously Connected: still available (debouncing)
+ * - WaitingForDeviceDiscovery or Disconnected: unavailable
+ *
+ * @param currentState Current connection state
+ * @param previousState Previous connection state (undefined if first state change)
+ * @returns true if node should be considered available
+ */
+export function isNodeAvailable(currentState: NodeStates, previousState?: NodeStates): boolean {
+    if (currentState === NodeStates.Connected) {
+        return true;
+    }
+    // Debounce: if transitioning from Connected to Reconnecting, still consider available
+    if (currentState === NodeStates.Reconnecting && previousState === NodeStates.Connected) {
+        return true;
+    }
+    // WaitingForDeviceDiscovery, Disconnected, or Reconnecting from non-connected state
+    return false;
+}
 
 /**
  * Manages node storage and provides access to nodes and their clients.
@@ -20,10 +43,13 @@ import { AttributeDataCache } from "./AttributeDataCache.js";
  * - Node retrieval and existence checking
  * - Access to interaction clients and cluster clients
  * - Attribute data caching
+ * - Connection state tracking for availability debouncing
  */
 export class Nodes {
     #nodes = new Map<NodeId, PairedNode>();
     #attributeCache = new AttributeDataCache();
+    /** Track previous connection state for availability debouncing */
+    #previousStates = new Map<NodeId, NodeStates>();
 
     /**
      * Get the attribute cache instance.
@@ -66,11 +92,41 @@ export class Nodes {
     }
 
     /**
-     * Remove a node from storage and clear its attribute cache.
+     * Remove a node from storage and clear its attribute cache and state tracking.
      */
     delete(nodeId: NodeId): void {
         this.#nodes.delete(nodeId);
         this.#attributeCache.delete(nodeId);
+        this.#previousStates.delete(nodeId);
+    }
+
+    /**
+     * Get the previous connection state for a node.
+     */
+    getPreviousState(nodeId: NodeId): NodeStates | undefined {
+        return this.#previousStates.get(nodeId);
+    }
+
+    /**
+     * Update the previous connection state for a node.
+     * Call this after processing a state change to track state transitions.
+     */
+    setPreviousState(nodeId: NodeId, state: NodeStates): void {
+        this.#previousStates.set(nodeId, state);
+    }
+
+    /**
+     * Check if a node is available based on its current and previous connection state.
+     * Uses debouncing: Reconnecting from Connected is still considered available.
+     */
+    isAvailable(nodeId: NodeId): boolean {
+        const node = this.#nodes.get(nodeId);
+        if (node === undefined) {
+            return false;
+        }
+        const currentState = node.connectionState;
+        const previousState = this.#previousStates.get(nodeId);
+        return isNodeAvailable(currentState, previousState);
     }
 
     /**

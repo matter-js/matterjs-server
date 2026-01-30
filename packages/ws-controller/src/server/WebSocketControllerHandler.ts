@@ -198,11 +198,17 @@ export class WebSocketControllerHandler implements WebServerHandler {
             });
 
             observers.on(this.#commandHandler.events.nodeStateChanged, (nodeId, state) => {
-                if (state === NodeStates.Disconnected) return;
                 // Track last interview time when node becomes connected
                 if (state === NodeStates.Connected) {
                     this.#lastInterviewDates.set(nodeId, new Date());
                 }
+                // Availability changes (and node_updated events) are handled by nodeAvailabilityChanged
+                // Individual attribute updates are already sent via attributeChanged events
+            });
+
+            // Send node_updated when availability changes (debounced)
+            observers.on(this.#commandHandler.events.nodeAvailabilityChanged, (nodeId, available) => {
+                logger.info(`Node ${nodeId} availability changed to ${available}`);
                 sendNodeDetailsEvent("node_updated", nodeId);
             });
 
@@ -764,11 +770,16 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 throw ServerError.nodeNotExists(nodeId);
             }
             logger.debug(`interview_node called for test node ${nodeId}`);
+            // Update last interview date for test node
+            testNode.last_interview = new Date().toISOString().replace("Z", "000");
             this.#broadcastEvent("node_updated", testNode);
             return null;
         }
 
         await this.#commandHandler.interviewNode(nodeId);
+
+        // Update last interview date
+        this.#lastInterviewDates.set(nodeId, new Date());
 
         return null;
     }

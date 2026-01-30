@@ -94,6 +94,11 @@ export class NodeDetails extends LitElement {
                     </div>
                     <div slot="supporting-text"><span class="left">Is bridge: </span>${this.node.is_bridge}</div>
                     <div slot="supporting-text"><span class="left">Serialnumber: </span>${this.node.serialNumber}</div>
+                    ${this.node.matter_version
+                        ? html`<div slot="supporting-text">
+                              <span class="left">Matter version: </span>${this.node.matter_version}
+                          </div>`
+                        : nothing}
                     ${this.node.is_bridge
                         ? ""
                         : html` <div slot="supporting-text">
