@@ -9,8 +9,8 @@ import "@material/web/divider/divider";
 import "@material/web/iconbutton/icon-button";
 import "@material/web/list/list";
 import "@material/web/list/list-item";
-import { MatterClient, MatterNode, toBigIntAwareJson } from "@matter-server/ws-client";
-import { LitElement, css, html } from "lit";
+import { isTestNodeId, MatterClient, MatterNode, toBigIntAwareJson } from "@matter-server/ws-client";
+import { css, html, LitElement } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { clusters } from "../client/models/descriptions.js";
@@ -19,7 +19,7 @@ import "../components/ha-svg-icon";
 import "../pages/components/node-details";
 import { bindingContext } from "./components/context.js";
 // Cluster command components (auto-register on import)
-import { formatHex } from "../util/format_hex.js";
+import { formatHex, formatNodeAddress, getEffectiveFabricIndex } from "../util/format_hex.js";
 import { getClusterCommandsTag } from "./cluster-commands/index.js";
 
 declare global {
@@ -79,9 +79,16 @@ class MatterClusterView extends LitElement {
             `;
         }
 
+        // Format node address for hex display
+        const fabricIndex = getEffectiveFabricIndex(
+            this.client.serverInfo.fabric_index,
+            isTestNodeId(this.node.node_id),
+        );
+        const nodeHex = formatNodeAddress(fabricIndex, this.node.node_id);
+
         return html`
             <dashboard-header
-                .title=${`Node ${this.node.node_id}  |  Endpoint ${this.endpoint}  |  Cluster ${this.cluster}`}
+                .title=${`Node ${this.node.node_id} ${nodeHex}  |  Endpoint ${this.endpoint}  |  Cluster ${this.cluster}`}
                 .backButton=${`#node/${this.node.node_id}/${this.endpoint}`}
                 .client=${this.client}
             ></dashboard-header>

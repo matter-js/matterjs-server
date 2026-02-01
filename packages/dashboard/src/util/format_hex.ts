@@ -43,3 +43,42 @@ export function formatNodeAddress(fabricIndex: number | undefined, nodeId: numbe
     const fabricPart = fabricIndex !== undefined ? fabricIndex : "?";
     return `@${fabricPart}:${nodeId.toString(16)}`;
 }
+
+/**
+ * Get the effective fabric index for formatting a node address.
+ * Returns undefined for test nodes or when fabric index is not available,
+ * which will result in "?" being displayed.
+ *
+ * @param serverFabricIndex - The fabric_index from client.serverInfo
+ * @param isTestNode - Whether this is a test node (from isTestNodeId())
+ */
+export function getEffectiveFabricIndex(
+    serverFabricIndex: number | undefined,
+    isTestNode: boolean,
+): number | undefined {
+    return isTestNode || serverFabricIndex === undefined ? undefined : serverFabricIndex;
+}
+
+/**
+ * Format a node address, handling string node IDs.
+ * Useful when node IDs come from various sources (string keys, numbers, bigints).
+ *
+ * @param fabricIndex - The fabric index (or undefined for "?")
+ * @param nodeId - The node ID as string, number, or bigint
+ * @returns Formatted address like "@1:7b" or empty string if nodeId is invalid
+ */
+export function formatNodeAddressFromAny(fabricIndex: number | undefined, nodeId: number | bigint | string): string {
+    let numericId: bigint;
+    if (typeof nodeId === "bigint") {
+        numericId = nodeId;
+    } else if (typeof nodeId === "number") {
+        numericId = BigInt(nodeId);
+    } else {
+        try {
+            numericId = BigInt(nodeId);
+        } catch {
+            return "";
+        }
+    }
+    return formatNodeAddress(fabricIndex, numericId);
+}

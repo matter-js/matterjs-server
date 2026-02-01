@@ -298,6 +298,38 @@ export function parseRouteTable(node: MatterNode): ThreadRoute[] {
 }
 
 /**
+ * Find a route table entry for a specific destination by extended address.
+ * Returns the route entry if found, undefined otherwise.
+ */
+export function findRouteByExtAddress(node: MatterNode, targetExtAddr: bigint): ThreadRoute | undefined {
+    const routes = parseRouteTable(node);
+    return routes.find(route => route.extAddress === targetExtAddr && route.linkEstablished);
+}
+
+/**
+ * Count the number of routable destinations for a node (from route table).
+ * Only counts entries where allocated=true and linkEstablished=true.
+ * This is typically only meaningful for router nodes.
+ */
+export function getRoutableDestinationsCount(node: MatterNode): number {
+    const routes = parseRouteTable(node);
+    return routes.filter(route => route.allocated && route.linkEstablished).length;
+}
+
+/**
+ * Calculate combined bidirectional LQI from route table entry.
+ * Returns average of lqiIn and lqiOut if both are non-zero.
+ */
+export function getRouteBidirectionalLqi(route: ThreadRoute): number | undefined {
+    if (route.lqiIn > 0 && route.lqiOut > 0) {
+        return Math.round((route.lqiIn + route.lqiOut) / 2);
+    }
+    if (route.lqiIn > 0) return route.lqiIn;
+    if (route.lqiOut > 0) return route.lqiOut;
+    return undefined;
+}
+
+/**
  * Gets the RLOC16 (short address) for a Thread node.
  * Uses attribute 0/53/64 (Rloc16, 0x0040).
  */
@@ -432,6 +464,21 @@ export function getSignalColor(neighbor: ThreadNeighbor): string {
         return SIGNAL_COLOR_STRONG;
     }
     if (neighbor.lqi > LQI_MEDIUM_THRESHOLD) {
+        return SIGNAL_COLOR_MEDIUM;
+    }
+    return SIGNAL_COLOR_WEAK;
+}
+
+/**
+ * Get signal color based on LQI value alone.
+ * Used for route table entries where only LQI is available.
+ * @param lqi Link Quality Indicator (0-255, higher is better)
+ */
+export function getSignalColorFromLqi(lqi: number): string {
+    if (lqi > LQI_STRONG_THRESHOLD) {
+        return SIGNAL_COLOR_STRONG;
+    }
+    if (lqi > LQI_MEDIUM_THRESHOLD) {
         return SIGNAL_COLOR_MEDIUM;
     }
     return SIGNAL_COLOR_WEAK;
@@ -634,12 +681,58 @@ export function buildThreadConnections(
             }
             seenConnections.add(connectionKey);
 
+            // Look up route table entry for supplementary data (pathCost, bidirectional LQI)
+            const routeEntry = findRouteByExtAddress(node, neighbor.extAddress);
+            const bidirectionalLqi = routeEntry ? getRouteBidirectionalLqi(routeEntry) : undefined;
+
+            // Always use neighbor table RSSI/LQI for signal color (most accurate link quality)
             connections.push({
                 fromNodeId,
                 toNodeId,
                 signalColor: getSignalColor(neighbor),
                 lqi: neighbor.lqi,
                 rssi: neighbor.avgRssi ?? neighbor.lastRssi,
+                pathCost: routeEntry?.pathCost,
+                bidirectionalLqi,
+            });
+        }
+
+        // Check route table for connections not in neighbor table (supplementary data)
+        // This helps when neighbor table is stale or incomplete
+        const routes = parseRouteTable(node);
+        for (const route of routes) {
+            if (!route.linkEstablished || !route.allocated) continue;
+
+            let toNodeId: string | undefined = extAddrMap.get(route.extAddress);
+            if (toNodeId === undefined) {
+                toNodeId = unknownExtAddrMap.get(route.extAddress);
+            }
+            if (toNodeId === undefined || toNodeId === fromNodeId) continue;
+
+            const connectionKey = `${fromNodeId}-${toNodeId}`;
+            const reverseKey = `${toNodeId}-${fromNodeId}`;
+
+            // Only add if we don't already have this connection from neighbor table
+            if (seenConnections.has(connectionKey) || seenConnections.has(reverseKey)) {
+                continue;
+            }
+            seenConnections.add(connectionKey);
+
+            const bidirectionalLqi = getRouteBidirectionalLqi(route);
+            const signalColor =
+                bidirectionalLqi !== undefined
+                    ? getSignalColorFromLqi(bidirectionalLqi)
+                    : "var(--md-sys-color-outline, grey)"; // Unknown signal
+
+            connections.push({
+                fromNodeId,
+                toNodeId,
+                signalColor,
+                lqi: bidirectionalLqi ?? 0,
+                rssi: null,
+                pathCost: route.pathCost,
+                bidirectionalLqi,
+                fromRouteTable: true,
             });
         }
     }
@@ -666,6 +759,10 @@ export interface NodeConnection {
     isOutgoing: boolean;
     /** Whether this is an unknown/external device */
     isUnknown: boolean;
+    /** Path cost from route table (1 = direct, higher = multi-hop). Only available for routers. */
+    pathCost?: number;
+    /** Bidirectional LQI from route table (average of lqiIn and lqiOut) */
+    bidirectionalLqi?: number;
 }
 
 /**
@@ -705,6 +802,10 @@ export function getNodeConnections(
 
         seenConnectedIds.add(displayId);
 
+        // Look up route table entry for enhanced data
+        const routeEntry = findRouteByExtAddress(node, neighbor.extAddress);
+        const bidirectionalLqi = routeEntry ? getRouteBidirectionalLqi(routeEntry) : undefined;
+
         connections.push({
             connectedNodeId: displayId,
             connectedNode,
@@ -714,6 +815,8 @@ export function getNodeConnections(
             rssi: neighbor.avgRssi ?? neighbor.lastRssi,
             isOutgoing: true,
             isUnknown,
+            pathCost: routeEntry?.pathCost,
+            bidirectionalLqi,
         });
     }
 
@@ -734,6 +837,10 @@ export function getNodeConnections(
                 const otherExtAddr = getThreadExtendedAddress(otherNode);
                 const extAddrHex = otherExtAddr ? otherExtAddr.toString(16).toUpperCase().padStart(16, "0") : "Unknown";
 
+                // Look up route table entry from the other node's perspective
+                const routeEntry = findRouteByExtAddress(otherNode, thisExtAddr);
+                const bidirectionalLqi = routeEntry ? getRouteBidirectionalLqi(routeEntry) : undefined;
+
                 connections.push({
                     connectedNodeId: otherNodeId,
                     connectedNode: otherNode,
@@ -743,6 +850,8 @@ export function getNodeConnections(
                     rssi: reverseEntry.avgRssi ?? reverseEntry.lastRssi,
                     isOutgoing: false,
                     isUnknown: false,
+                    pathCost: routeEntry?.pathCost,
+                    bidirectionalLqi,
                 });
             }
         }

@@ -8,12 +8,13 @@ import "@material/web/divider/divider";
 import "@material/web/iconbutton/icon-button";
 import "@material/web/list/list";
 import "@material/web/list/list-item";
-import { MatterClient, MatterNode } from "@matter-server/ws-client";
+import { isTestNodeId, MatterClient, MatterNode } from "@matter-server/ws-client";
 import { mdiChevronRight, mdiGraphOutline } from "@mdi/js";
-import { LitElement, css, html } from "lit";
+import { css, html, LitElement } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { guard } from "lit/directives/guard.js";
 import "../components/ha-svg-icon";
+import { formatNodeAddress, getEffectiveFabricIndex } from "../util/format_hex.js";
 import "./components/header";
 import "./components/node-details";
 import { getEndpointDeviceTypes } from "./matter-endpoint-view.js";
@@ -54,9 +55,16 @@ class MatterNodeView extends LitElement {
         const graphViewType = networkType === "ethernet" ? "wifi" : networkType;
         const graphUrl = showGraphButton ? `#${graphViewType}/${this.node.node_id}` : null;
 
+        // Format node address for hex display
+        const fabricIndex = getEffectiveFabricIndex(
+            this.client.serverInfo.fabric_index,
+            isTestNodeId(this.node.node_id),
+        );
+        const nodeHex = formatNodeAddress(fabricIndex, this.node.node_id);
+
         return html`
             <dashboard-header
-                .title=${"Node " + this.node.node_id}
+                .title=${`Node ${this.node.node_id} ${nodeHex}`}
                 .client=${this.client}
                 backButton="#"
             ></dashboard-header>
@@ -64,7 +72,7 @@ class MatterNodeView extends LitElement {
             <!-- node details section -->
             <div class="container">
                 <div class="node-title-bar">
-                    <h2>Node ${this.node.node_id}</h2>
+                    <h2>Node ${this.node.node_id} <span class="node-id-hex">${nodeHex}</span></h2>
                     ${showGraphButton
                         ? html`
                               <a href=${graphUrl} class="show-in-graph-button" title="Show in ${graphViewType} graph">
@@ -154,6 +162,13 @@ class MatterNodeView extends LitElement {
             font-size: 1.25rem;
             font-weight: 500;
             color: var(--md-sys-color-on-background, #333);
+        }
+
+        .node-id-hex {
+            font-size: 0.75em;
+            font-weight: 400;
+            color: var(--md-sys-color-on-surface-variant, #666);
+            font-family: monospace;
         }
 
         .show-in-graph-button {

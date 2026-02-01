@@ -22,7 +22,7 @@
         "node": ">=20.19.0 <22.0.0 || >=22.13.0"
     },
     "dependencies": {
-        "@matter/main": "0.16.8-alpha.0-20260130-2554cb6e2"
+        "@matter/main": "0.16.9-alpha.0-20260201-8748390b1"
     },
     "files": [
         "dist/**/*",

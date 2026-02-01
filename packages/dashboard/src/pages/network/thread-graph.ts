@@ -115,6 +115,12 @@ export class ThreadGraph extends BaseNetworkGraph {
         // Create edge data for vis.js
         const graphEdges: NetworkGraphEdge[] = connections.map((conn, index) => {
             const isToUnknown = typeof conn.toNodeId === "string" && conn.toNodeId.startsWith("unknown_");
+
+            // Check if either endpoint is offline - connection data may be stale
+            const fromNode = this.nodes[String(conn.fromNodeId)];
+            const toNode = this.nodes[String(conn.toNodeId)];
+            const hasOfflineEndpoint = fromNode?.available === false || toNode?.available === false;
+
             return {
                 id: `edge_${index}`,
                 from: conn.fromNodeId,
@@ -125,7 +131,7 @@ export class ThreadGraph extends BaseNetworkGraph {
                 },
                 width: 2,
                 title: conn.rssi !== null ? `RSSI: ${conn.rssi} dBm, LQI: ${conn.lqi}` : `LQI: ${conn.lqi}`,
-                dashes: isToUnknown, // Dashed lines to unknown devices
+                dashes: isToUnknown || hasOfflineEndpoint, // Dashed lines to unknown or offline devices
             };
         });
 
