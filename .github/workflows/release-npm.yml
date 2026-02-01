@@ -167,6 +167,7 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/matterjs-server:${{ steps.docker_tags.outputs.major }}
             ghcr.io/${{ github.repository_owner }}/matterjs-server:stable
             ghcr.io/${{ github.repository_owner }}/matterjs-server:latest
+            ghcr.io/${{ github.repository_owner }}/matterjs-server:dev
           push: true
           build-args: |
             MATTERJS_SERVER_VERSION=${{ steps.version.outputs.result }}
