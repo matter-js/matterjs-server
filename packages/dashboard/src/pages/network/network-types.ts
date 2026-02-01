@@ -105,6 +105,12 @@ export interface ThreadConnection {
     signalColor: string;
     lqi: number;
     rssi: number | null;
+    /** Path cost from route table (1 = direct, higher = multi-hop). Only available for routers. */
+    pathCost?: number;
+    /** Bidirectional LQI from route table (average of lqiIn and lqiOut) */
+    bidirectionalLqi?: number;
+    /** Whether this connection was supplemented by route table data (vs neighbor table only) */
+    fromRouteTable?: boolean;
 }
 
 /**

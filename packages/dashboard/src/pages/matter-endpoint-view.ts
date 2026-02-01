@@ -8,14 +8,14 @@ import "@material/web/divider/divider";
 import "@material/web/iconbutton/icon-button";
 import "@material/web/list/list";
 import "@material/web/list/list-item";
-import { MatterClient, MatterNode } from "@matter-server/ws-client";
+import { MatterClient, MatterNode, isTestNodeId } from "@matter-server/ws-client";
 import { mdiChevronRight } from "@mdi/js";
 import { LitElement, css, html } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { guard } from "lit/directives/guard.js";
 import { DeviceType, clusters, device_types } from "../client/models/descriptions.js";
 import "../components/ha-svg-icon";
-import { formatHex } from "../util/format_hex.js";
+import { formatHex, formatNodeAddress, getEffectiveFabricIndex } from "../util/format_hex.js";
 
 declare global {
     interface HTMLElementTagNameMap {
@@ -62,9 +62,16 @@ class MatterEndpointView extends LitElement {
             `;
         }
 
+        // Format node address for hex display
+        const fabricIndex = getEffectiveFabricIndex(
+            this.client.serverInfo.fabric_index,
+            isTestNodeId(this.node.node_id),
+        );
+        const nodeHex = formatNodeAddress(fabricIndex, this.node.node_id);
+
         return html`
             <dashboard-header
-                .title=${`Node ${this.node.node_id}  |  Endpoint ${this.endpoint}`}
+                .title=${`Node ${this.node.node_id} ${nodeHex}  |  Endpoint ${this.endpoint}`}
                 .backButton=${`#node/${this.node.node_id}`}
                 .client=${this.client}
             ></dashboard-header>

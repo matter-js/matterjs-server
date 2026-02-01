@@ -4,12 +4,15 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { consume } from "@lit/context";
 import "@material/web/divider/divider";
-import type { MatterNode } from "@matter-server/ws-client";
-import { mdiClose, mdiSignal, mdiSignalCellular1, mdiSignalCellular2 } from "@mdi/js";
+import { isTestNodeId, type MatterClient, type MatterNode } from "@matter-server/ws-client";
+import { mdiClose, mdiRefresh, mdiSignal, mdiSignalCellular1, mdiSignalCellular2 } from "@mdi/js";
 import { LitElement, TemplateResult, css, html, nothing } from "lit";
-import { customElement, property } from "lit/decorators.js";
+import { customElement, property, state } from "lit/decorators.js";
+import { clientContext } from "../../client/client-context.js";
 import "../../components/ha-svg-icon";
+import { formatNodeAddressFromAny, getEffectiveFabricIndex } from "../../util/format_hex.js";
 import type { ThreadNeighbor } from "./network-types.js";
 import type { NodeConnection } from "./network-utils.js";
 import {
@@ -17,6 +20,7 @@ import {
     getDeviceName,
     getNetworkType,
     getNodeConnections,
+    getRoutableDestinationsCount,
     getSignalColor,
     getSignalColorFromRssi,
     getThreadChannel,
@@ -28,6 +32,7 @@ import {
     getWiFiVersionName,
     parseNeighborTable,
 } from "./network-utils.js";
+import "./update-connections-dialog.js";
 
 declare global {
     interface HTMLElementTagNameMap {
@@ -51,6 +56,12 @@ export class NetworkDetails extends LitElement {
 
     @property({ type: Object })
     public wifiAccessPoints: Map<string, { bssid: string; connectedNodes: string[] }> = new Map();
+
+    @consume({ context: clientContext })
+    private client!: MatterClient;
+
+    @state()
+    private _showUpdateDialog: boolean = false;
 
     private _handleClose(): void {
         this.dispatchEvent(
@@ -98,6 +109,19 @@ export class NetworkDetails extends LitElement {
         if (color === "#4caf50") return mdiSignal; // Strong
         if (color === "#ff9800") return mdiSignalCellular2; // Medium
         return mdiSignalCellular1; // Weak
+    }
+
+    /**
+     * Format a node ID as hex for Matter log format display.
+     * Returns format like "@1:7b" for node ID 123.
+     */
+    private _formatNodeIdHex(nodeId: number | bigint | string): string {
+        // For unknown devices (not in nodes), we can't determine if it's a test node,
+        // so we use the fabric index if available
+        const node = this.nodes[String(nodeId)];
+        const isTestNode = node ? isTestNodeId(node.node_id) : false;
+        const fabricIndex = getEffectiveFabricIndex(this.client?.serverInfo?.fabric_index, isTestNode);
+        return formatNodeAddressFromAny(fabricIndex, nodeId);
     }
 
     private _renderWiFiInfo(node: MatterNode): TemplateResult | typeof nothing {
@@ -190,6 +214,21 @@ export class NetworkDetails extends LitElement {
                           </div>
                       `
                     : nothing}
+                <div class="info-row">
+                    <span class="label">Direct neighbors:</span>
+                    <span class="value">${connections.length}</span>
+                </div>
+                ${(() => {
+                    const routableCount = getRoutableDestinationsCount(node);
+                    return routableCount > 0
+                        ? html`
+                              <div class="info-row">
+                                  <span class="label">Routable destinations:</span>
+                                  <span class="value">${routableCount}</span>
+                              </div>
+                          `
+                        : nothing;
+                })()}
             </div>
 
             ${connections.length > 0
@@ -214,13 +253,26 @@ export class NetworkDetails extends LitElement {
                                           <div class="neighbor-info">
                                               <div class="neighbor-name">
                                                   ${conn.connectedNode
-                                                      ? html`Node ${conn.connectedNodeId}:
-                                                        ${getDeviceName(conn.connectedNode)}`
+                                                      ? html`Node ${conn.connectedNodeId}
+                                                            <span class="node-id-hex"
+                                                                >${this._formatNodeIdHex(conn.connectedNodeId)}</span
+                                                            >: ${getDeviceName(conn.connectedNode)}`
                                                       : html`External: <span class="mono">${conn.extAddressHex}</span>`}
                                               </div>
                                               <div class="neighbor-signal">
-                                                  ${conn.rssi !== null ? html`RSSI: ${conn.rssi} dBm, ` : nothing}
-                                                  ${conn.lqi !== null ? html`LQI: ${conn.lqi}` : nothing}
+                                                  ${conn.rssi !== null
+                                                      ? html`RSSI: ${conn.rssi} dBm`
+                                                      : nothing}${conn.rssi !== null && conn.lqi !== null
+                                                      ? ", "
+                                                      : nothing}${conn.lqi !== null
+                                                      ? html`LQI: ${conn.lqi}`
+                                                      : nothing}${conn.bidirectionalLqi !== undefined
+                                                      ? html`<span class="route-info"
+                                                            >, Bidir: ${conn.bidirectionalLqi}</span
+                                                        >`
+                                                      : nothing}${conn.pathCost !== undefined
+                                                      ? html`<span class="route-info">, Cost: ${conn.pathCost}</span>`
+                                                      : nothing}
                                                   ${!conn.isOutgoing
                                                       ? html`<span class="direction-hint">(reverse)</span>`
                                                       : nothing}
@@ -363,7 +415,11 @@ export class NetworkDetails extends LitElement {
                                                 `
                                               : nothing}
                                           <div class="neighbor-info">
-                                              <div class="neighbor-name">Node ${nodeId}: ${getDeviceName(node)}</div>
+                                              <div class="neighbor-name">
+                                                  Node ${nodeId}
+                                                  <span class="node-id-hex">${this._formatNodeIdHex(nodeId)}</span>:
+                                                  ${getDeviceName(node)}
+                                              </div>
                                               ${neighborEntry
                                                   ? html`
                                                         <div class="neighbor-signal">
@@ -389,6 +445,112 @@ export class NetworkDetails extends LitElement {
                 </p>
             </div>
         `;
+    }
+
+    /**
+     * Determine if update connections button should be shown.
+     */
+    private _canUpdateConnections(): boolean {
+        if (this.selectedNodeId === null) return false;
+
+        // WiFi APs: no update possible (not a Matter device)
+        const isAccessPoint = typeof this.selectedNodeId === "string" && this.selectedNodeId.startsWith("ap_");
+        if (isAccessPoint) return false;
+
+        // Unknown devices: only if they have online seenBy nodes
+        const isUnknown = typeof this.selectedNodeId === "string" && this.selectedNodeId.startsWith("unknown_");
+        if (isUnknown) {
+            return this._getOnlineSeenByNodes().length > 0;
+        }
+
+        // Regular nodes: check network type (no update for ethernet)
+        const node = this.nodes[this.selectedNodeId.toString()];
+        if (!node) return false;
+
+        const networkType = getNetworkType(node);
+        if (networkType === "ethernet" || networkType === "unknown") return false;
+
+        return true;
+    }
+
+    /**
+     * Get the type of the currently selected node for dialog variant.
+     */
+    private _getSelectedNodeType(): "online" | "offline" | "unknown" {
+        if (typeof this.selectedNodeId === "string" && this.selectedNodeId.startsWith("unknown_")) {
+            return "unknown";
+        }
+
+        const node = this.nodes[this.selectedNodeId!.toString()];
+        if (!node || node.available === false) {
+            return "offline";
+        }
+        return "online";
+    }
+
+    /**
+     * Get online neighbors for a Thread node.
+     */
+    private _getOnlineNeighbors(nodeId: string): string[] {
+        const node = this.nodes[nodeId];
+        if (!node) return [];
+
+        const networkType = getNetworkType(node);
+        if (networkType === "thread") {
+            const extAddrMap = buildExtAddrMap(this.nodes);
+            const connections = getNodeConnections(nodeId, this.nodes, extAddrMap);
+            return connections
+                .filter(conn => {
+                    // Only include commissioned nodes (not unknown devices)
+                    if (typeof conn.connectedNodeId === "string" && conn.connectedNodeId.startsWith("unknown_")) {
+                        return false;
+                    }
+                    const connectedNode = this.nodes[String(conn.connectedNodeId)];
+                    return connectedNode?.available === true;
+                })
+                .map(conn => String(conn.connectedNodeId));
+        }
+
+        // WiFi nodes don't have peer connections (just AP)
+        return [];
+    }
+
+    /**
+     * Get online nodes that see an unknown device.
+     */
+    private _getOnlineSeenByNodes(): string[] {
+        if (typeof this.selectedNodeId !== "string" || !this.selectedNodeId.startsWith("unknown_")) {
+            return [];
+        }
+
+        const unknown = this.unknownDevices.get(this.selectedNodeId);
+        if (!unknown) return [];
+
+        return unknown.seenBy.filter(nodeId => {
+            const node = this.nodes[nodeId.toString()];
+            return node?.available === true;
+        });
+    }
+
+    /**
+     * Get the name of the selected node for display in dialog.
+     */
+    private _getSelectedNodeName(): string {
+        if (typeof this.selectedNodeId === "string" && this.selectedNodeId.startsWith("unknown_")) {
+            const unknown = this.unknownDevices.get(this.selectedNodeId);
+            return unknown ? `Unknown (${unknown.extAddressHex.slice(-8)})` : "Unknown Device";
+        }
+
+        const node = this.nodes[this.selectedNodeId!.toString()];
+        return node ? getDeviceName(node) : "Unknown";
+    }
+
+    private _handleUpdateConnections(): void {
+        this._showUpdateDialog = true;
+    }
+
+    private _handleDialogClose(): void {
+        this._showUpdateDialog = false;
     }
 
     private _renderWiFiAccessPointInfo(apId: string): TemplateResult | typeof nothing {
@@ -429,7 +591,11 @@ export class NetworkDetails extends LitElement {
                                           @click=${() => this._handleSelectNode(nodeId)}
                                           @keydown=${(e: KeyboardEvent) => this._handleKeyDown(e, nodeId)}
                                       >
-                                          <div class="node-name">Node ${nodeId}: ${getDeviceName(node)}</div>
+                                          <div class="node-name">
+                                              Node ${nodeId}
+                                              <span class="node-id-hex">${this._formatNodeIdHex(nodeId)}</span>:
+                                              ${getDeviceName(node)}
+                                          </div>
                                           ${wifiDiag.rssi !== null
                                               ? html`<div class="node-signal" style="color: ${signalColor}">
                                                     ${wifiDiag.rssi} dBm
@@ -464,16 +630,44 @@ export class NetworkDetails extends LitElement {
         const isUnknown = typeof this.selectedNodeId === "string" && this.selectedNodeId.startsWith("unknown_");
 
         if (isUnknown) {
+            const onlineSeenByNodes = this._getOnlineSeenByNodes();
             return html`
                 <div class="details-panel">
                     <div class="header">
                         <h3>External Device</h3>
-                        <button class="close-button" @click=${this._handleClose} aria-label="Close details panel">
-                            <ha-svg-icon .path=${mdiClose}></ha-svg-icon>
-                        </button>
+                        <div class="header-actions">
+                            ${onlineSeenByNodes.length > 0
+                                ? html`
+                                      <button
+                                          class="action-button"
+                                          @click=${this._handleUpdateConnections}
+                                          aria-label="Update connection data"
+                                          title="Update connection data"
+                                      >
+                                          <ha-svg-icon .path=${mdiRefresh}></ha-svg-icon>
+                                      </button>
+                                  `
+                                : nothing}
+                            <button class="close-button" @click=${this._handleClose} aria-label="Close details panel">
+                                <ha-svg-icon .path=${mdiClose}></ha-svg-icon>
+                            </button>
+                        </div>
                     </div>
                     <div class="content">${this._renderUnknownDeviceInfo(this.selectedNodeId as string)}</div>
                 </div>
+                ${this._showUpdateDialog
+                    ? html`
+                          <update-connections-dialog
+                              .client=${this.client}
+                              .nodes=${this.nodes}
+                              selectedNodeType="unknown"
+                              .selectedNodeName=${this._getSelectedNodeName()}
+                              .selectedNodeId=${this.selectedNodeId}
+                              .onlineNeighborIds=${onlineSeenByNodes}
+                              @dialog-closed=${this._handleDialogClose}
+                          ></update-connections-dialog>
+                      `
+                    : nothing}
             `;
         }
 
@@ -503,19 +697,53 @@ export class NetworkDetails extends LitElement {
             `;
         }
 
+        const canUpdate = this._canUpdateConnections();
+        const nodeType = this._getSelectedNodeType();
+        const onlineNeighbors = this._getOnlineNeighbors(String(this.selectedNodeId));
+
         return html`
             <div class="details-panel">
                 <div class="header">
-                    <h3>Node ${this.selectedNodeId}</h3>
-                    <button class="close-button" @click=${this._handleClose} aria-label="Close details panel">
-                        <ha-svg-icon .path=${mdiClose}></ha-svg-icon>
-                    </button>
+                    <h3>
+                        Node ${this.selectedNodeId}
+                        <span class="node-id-hex">${this._formatNodeIdHex(this.selectedNodeId)}</span>
+                    </h3>
+                    <div class="header-actions">
+                        ${canUpdate
+                            ? html`
+                                  <button
+                                      class="action-button"
+                                      @click=${this._handleUpdateConnections}
+                                      aria-label="Update connection data"
+                                      title="Update connection data"
+                                  >
+                                      <ha-svg-icon .path=${mdiRefresh}></ha-svg-icon>
+                                  </button>
+                              `
+                            : nothing}
+                        <button class="close-button" @click=${this._handleClose} aria-label="Close details panel">
+                            <ha-svg-icon .path=${mdiClose}></ha-svg-icon>
+                        </button>
+                    </div>
                 </div>
                 <div class="content">${this._renderNodeInfo(node)}</div>
                 <div class="footer">
                     <a href="#node/${this.selectedNodeId}" class="view-link">View node details</a>
                 </div>
             </div>
+            ${this._showUpdateDialog
+                ? html`
+                      <update-connections-dialog
+                          .client=${this.client}
+                          .nodes=${this.nodes}
+                          .selectedNodeType=${nodeType}
+                          .selectedNodeName=${this._getSelectedNodeName()}
+                          .selectedNodeId=${this.selectedNodeId}
+                          .onlineNeighborIds=${onlineNeighbors}
+                          @dialog-closed=${this._handleDialogClose}
+                      ></update-connections-dialog>
+                  `
+                : nothing}
         `;
     }
 
@@ -559,6 +787,38 @@ export class NetworkDetails extends LitElement {
             font-size: 1rem;
             font-weight: 500;
             color: var(--md-sys-color-on-surface, #333);
+        }
+
+        .node-id-hex {
+            font-size: 0.75em;
+            font-weight: 400;
+            color: var(--md-sys-color-on-surface-variant, #666);
+            font-family: monospace;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .action-button {
+            background: none;
+            border: none;
+            padding: 4px;
+            cursor: pointer;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .action-button:hover {
+            background-color: var(--md-sys-color-surface-container-high, #e8e8e8);
+        }
+
+        .action-button ha-svg-icon {
+            --icon-primary-color: var(--md-sys-color-on-surface-variant, #666);
         }
 
         .close-button {
@@ -680,6 +940,11 @@ export class NetworkDetails extends LitElement {
         .direction-hint {
             font-style: italic;
             opacity: 0.8;
+        }
+
+        .route-info {
+            color: var(--md-sys-color-tertiary, #7d5260);
+            font-size: 0.85em;
         }
 
         .footer {

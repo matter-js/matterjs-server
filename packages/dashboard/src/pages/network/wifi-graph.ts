@@ -69,9 +69,9 @@ export class WiFiGraph extends BaseNetworkGraph {
         // Clear stored edge colors since we're rebuilding edges
         this._clearOriginalEdgeColors();
 
-        // Get WiFi and Ethernet devices
+        // Get WiFi devices only (Ethernet has no dynamic network data)
         const categorized = categorizeDevices(this.nodes);
-        const wifiNodeIds = [...categorized.wifi, ...categorized.ethernet];
+        const wifiNodeIds = categorized.wifi;
 
         if (wifiNodeIds.length === 0) {
             this._nodesDataSet.clear();
@@ -156,6 +156,7 @@ export class WiFiGraph extends BaseNetworkGraph {
                     },
                     width: 2,
                     title: wifiDiag.rssi !== null ? `RSSI: ${wifiDiag.rssi} dBm` : "RSSI: Unknown",
+                    dashes: isOffline, // Dashed lines for offline devices
                 });
             }
         }
@@ -176,7 +177,7 @@ export class WiFiGraph extends BaseNetworkGraph {
 
     override render() {
         const categorized = categorizeDevices(this.nodes);
-        const wifiCount = categorized.wifi.length + categorized.ethernet.length;
+        const wifiCount = categorized.wifi.length;
 
         if (wifiCount === 0) {
             return html`

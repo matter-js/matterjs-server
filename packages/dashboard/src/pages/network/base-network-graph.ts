@@ -133,17 +133,31 @@ export abstract class BaseNetworkGraph extends LitElement {
 
         // Subscribe to theme changes - refresh entire graph to update colors
         this._themeUnsubscribe = ThemeService.subscribe(() => {
-            if (this._network) {
-                // Update font colors
+            if (this._network && this._nodesDataSet) {
+                const fontColor = this._getFontColor();
+
+                // Update default font colors for new nodes
                 this._network.setOptions({
                     nodes: {
                         font: {
-                            color: this._getFontColor(),
+                            color: fontColor,
                         },
                     },
                 });
+
                 // Regenerate node icons and edges with new theme colors
                 this._updateGraph();
+
+                // Update font color on all existing nodes in the dataset
+                const allNodes = this._nodesDataSet.get();
+                const nodeUpdates = allNodes.map((node: NetworkGraphNode) => ({
+                    id: node.id,
+                    font: { color: fontColor },
+                }));
+                this._nodesDataSet.update(nodeUpdates);
+
+                // Force redraw
+                this._network.redraw();
             }
         });
     }

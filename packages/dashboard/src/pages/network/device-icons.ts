@@ -278,6 +278,6 @@ export function createUnknownDeviceIconDataUrl(isRouter: boolean = false, isSele
  * @returns A data URL containing the SVG
  */
 export function createWiFiRouterIconDataUrl(isSelected: boolean = false): string {
-    const color = isSelected ? "#1976d2" : "#2196f3"; // Blue for WiFi AP
+    const color = isSelected ? "#1976d2" : "#ff9800"; // Orange for external infrastructure (same as Thread unknown)
     return createIconDataUrl(mdiWifi, color);
 }
