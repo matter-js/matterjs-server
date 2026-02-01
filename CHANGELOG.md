@@ -7,7 +7,7 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
-## __WORK IN PROGRESS__
+## 0.3.4 (2026-02-01)
 
 - Enhancement: Consistently show the hex variant of the node id in all dashboard views to allow easier log mapping 
 - Enhancement: Add Reload capabilities to Thread and Wi-Fi visualizations in the dashboard to update node data immediately
