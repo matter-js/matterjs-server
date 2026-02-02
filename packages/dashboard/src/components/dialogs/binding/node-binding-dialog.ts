@@ -151,7 +151,7 @@ export class NodeBindingDialog extends LitElement {
             const apiEntries = entries.map(e => this.toAccessControlEntry(e));
             const results = await this.client.setACLEntry(targetNodeId, apiEntries);
 
-            const batchResult = analyzeBatchResults(results ?? []);
+            const batchResult = analyzeBatchResults(results);
             if (batchResult.outcome !== "all_success") {
                 console.error(`Set ACL entry: ${batchResult.message}`);
             }
@@ -201,7 +201,7 @@ export class NodeBindingDialog extends LitElement {
             const apiBindings = bindings.map(b => this.toBindingTarget(b));
             const results = await this.client.setNodeBinding(this.getNodeIdAsNumber(), endpoint, apiBindings);
 
-            const batchResult = analyzeBatchResults(results ?? []);
+            const batchResult = analyzeBatchResults(results);
             if (batchResult.outcome !== "all_success") {
                 console.error(`Set binding: ${batchResult.message}`);
             }

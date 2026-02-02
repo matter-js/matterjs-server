@@ -93,17 +93,18 @@ export function resultFromStatus(status: number): MatterOperationResult {
 
 /**
  * Analyze multiple operation results and produce a batch result summary.
- * @param results Array of objects with a `status` property (0 = success)
+ * @param results Array of objects with a `status` property (0 = success).
+ *                If null, undefined, or empty, this is treated as a failed/unknown batch.
  * @returns MatterBatchResult with outcome, counts, and human-readable message
  */
-export function analyzeBatchResults(results: Array<{ status: number }>): MatterBatchResult {
-    if (results.length === 0) {
+export function analyzeBatchResults(results: Array<{ status: number }> | null | undefined): MatterBatchResult {
+    if (!results || results.length === 0) {
         return {
-            outcome: "all_success",
+            outcome: "all_failed",
             successCount: 0,
             failureCount: 0,
             errorCounts: {},
-            message: "No results",
+            message: "No response/results returned",
         };
     }
 
@@ -141,7 +142,7 @@ function formatBatchMessage(
     failureCount: number,
     errorCounts: Record<number, number>,
 ): string {
-    const chunkWord = (count: number) => (count === 1 ? "chunk" : "chunks");
+    const entryWord = (count: number) => (count === 1 ? "entry" : "entries");
 
     if (outcome === "all_success") {
         return "Write successful";
@@ -156,9 +157,9 @@ function formatBatchMessage(
         .join(", ");
 
     if (outcome === "all_failed") {
-        return `All ${failureCount} write list ${chunkWord(failureCount)} failed: ${errorParts}`;
+        return `All ${failureCount} ${entryWord(failureCount)} failed: ${errorParts}`;
     }
 
     // partial
-    return `Partial failure: ${successCount} ${chunkWord(successCount)} succeeded, ${failureCount} failed (${errorParts}). Please verify the entries.`;
+    return `Partial failure: ${successCount} ${entryWord(successCount)} succeeded, ${failureCount} failed (${errorParts}). Please verify.`;
 }
