@@ -14,6 +14,12 @@ RUN \
     && apt-get install -y --no-install-recommends \
         iputils-ping \
         curl \
+        make \
+        gcc \
+        g++ \
+        bluez \
+        libbluetooth-dev \
+        libudev-dev \
     && apt-get purge -y --auto-remove \
     && rm -rf \
         /var/lib/apt/lists/* \
