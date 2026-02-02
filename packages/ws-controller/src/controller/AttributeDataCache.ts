@@ -7,10 +7,11 @@
 import { ClientNode, ClusterBehavior, Logger, NodeId } from "@matter/main";
 import { DecodedAttributeReportValue } from "@matter/main/protocol";
 import { AttributeId, ClusterId, EndpointNumber, getClusterById } from "@matter/main/types";
-import { PairedNode } from "@project-chip/matter.js/device";
+import { NodeStates, PairedNode } from "@project-chip/matter.js/device";
 import { ClusterMap } from "../model/ModelMapper.js";
 import { buildAttributePath, convertMatterToWebSocketTagBased } from "../server/Converters.js";
 import { AttributesData } from "../types/CommandHandler.js";
+import { formatNodeId } from "../util/formatNodeId.js";
 
 const logger = Logger.get("AttributeDataCache");
 
@@ -128,15 +129,15 @@ export class AttributeDataCache {
      */
     #populateFromNode(node: PairedNode): void {
         const nodeId = node.nodeId;
-        if (!node.initialized) {
-            logger.debug(`Node ${nodeId} not initialized, skipping cache population`);
+        if (!node.initialized || node.connectionState === NodeStates.Disconnected || !node.node.lifecycle.isReady) {
+            logger.debug(`Node ${formatNodeId(nodeId)} not initialized, skipping cache population`);
             return;
         }
 
         const nodeCache: EndpointAttributeCache = new Map();
         this.#collectAttributes(node.node, nodeCache);
         this.#cache.set(nodeId, nodeCache);
-        logger.debug(`Populated attribute cache for node ${nodeId}`);
+        logger.debug(`Populated attribute cache for node ${formatNodeId(nodeId)}`);
     }
 
     /**

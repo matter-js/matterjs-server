@@ -23,6 +23,9 @@ export abstract class BaseNetworkGraph extends LitElement {
     @state()
     protected _selectedNodeId: number | string | null = null;
 
+    @state()
+    protected _physicsEnabled = true;
+
     protected _network?: Network;
     protected _nodesDataSet?: DataSet<NetworkGraphNode>;
     protected _edgesDataSet?: DataSet<NetworkGraphEdge>;
@@ -30,6 +33,11 @@ export abstract class BaseNetworkGraph extends LitElement {
     protected _resizeObserver?: ResizeObserver;
     protected _themeUnsubscribe?: () => void;
     protected _updateDebounceTimer?: ReturnType<typeof setTimeout>;
+    protected _autoFreezeTimer?: ReturnType<typeof setTimeout>;
+    /** Whether auto-freeze has already been applied (to avoid re-freezing after user unfreezes) */
+    private _autoFreezeApplied = false;
+    /** Whether initial fit has been done (to preserve user's zoom/pan after first load) */
+    private _initialFitDone = false;
 
     /** Store original edge colors for restoration after highlighting */
     private _originalEdgeColors: Map<string, { color: string; highlight: string }> = new Map();
@@ -166,6 +174,7 @@ export abstract class BaseNetworkGraph extends LitElement {
         super.disconnectedCallback();
         this._resizeObserver?.disconnect();
         this._themeUnsubscribe?.();
+        this._cancelAutoFreezeTimer();
         if (this._updateDebounceTimer) {
             clearTimeout(this._updateDebounceTimer);
         }
@@ -243,25 +252,21 @@ export abstract class BaseNetworkGraph extends LitElement {
             this._dispatchNodeSelected(null);
         });
 
-        // Auto-fit after stabilization completes
+        // Auto-fit after initial stabilization completes (only once)
         this._network.on("stabilizationIterationsDone", () => {
-            // Fit with padding to keep nodes away from edges
-            this._network?.fit({
-                animation: {
-                    duration: 500,
-                    easingFunction: "easeInOutQuad",
-                },
-            });
-        });
+            if (!this._initialFitDone) {
+                // Fit with padding to keep nodes away from edges
+                this._network?.fit({
+                    animation: {
+                        duration: 500,
+                        easingFunction: "easeInOutQuad",
+                    },
+                });
+                this._initialFitDone = true;
 
-        // Also fit when physics fully stops (catches any drift after initial stabilization)
-        this._network.on("stabilized", () => {
-            this._network?.fit({
-                animation: {
-                    duration: 300,
-                    easingFunction: "easeInOutQuad",
-                },
-            });
+                // Start auto-freeze timer (5 seconds after initial stabilization)
+                this._startAutoFreezeTimer();
+            }
         });
 
         this._updateGraph();
@@ -284,6 +289,99 @@ export abstract class BaseNetworkGraph extends LitElement {
                 easingFunction: "easeInOutQuad",
             },
         });
+    }
+
+    /**
+     * Zooms in by 20%.
+     */
+    public zoomIn(): void {
+        if (!this._network) return;
+        const scale = this._network.getScale();
+        this._network.moveTo({
+            scale: scale * 1.2,
+            animation: {
+                duration: 200,
+                easingFunction: "easeInOutQuad",
+            },
+        });
+    }
+
+    /**
+     * Zooms out by 20%.
+     */
+    public zoomOut(): void {
+        if (!this._network) return;
+        const scale = this._network.getScale();
+        this._network.moveTo({
+            scale: scale / 1.2,
+            animation: {
+                duration: 200,
+                easingFunction: "easeInOutQuad",
+            },
+        });
+    }
+
+    /**
+     * Returns whether physics simulation is currently enabled.
+     */
+    public get physicsEnabled(): boolean {
+        return this._physicsEnabled;
+    }
+
+    /**
+     * Enables or disables physics simulation (node movement/settling).
+     * When disabled, nodes freeze in place; when enabled, they resume settling.
+     * @param enabled Whether to enable physics
+     * @param isManual If true, cancels any pending auto-freeze (user manually toggled)
+     */
+    public setPhysicsEnabled(enabled: boolean, isManual = true): void {
+        // If user manually toggles, cancel auto-freeze to respect their choice
+        if (isManual) {
+            this._cancelAutoFreezeTimer();
+            this._autoFreezeApplied = true; // Prevent future auto-freeze
+        }
+
+        this._physicsEnabled = enabled;
+        this._network?.setOptions({
+            physics: { enabled },
+        });
+    }
+
+    /**
+     * Starts the auto-freeze timer. Physics will be disabled after 5 seconds
+     * unless the user manually toggles physics or the timer is cancelled.
+     */
+    private _startAutoFreezeTimer(): void {
+        // Don't auto-freeze if already applied or user has manually controlled physics
+        if (this._autoFreezeApplied) {
+            return;
+        }
+
+        this._cancelAutoFreezeTimer();
+        this._autoFreezeTimer = setTimeout(() => {
+            if (!this._autoFreezeApplied && this._physicsEnabled) {
+                this.setPhysicsEnabled(false, false); // false = not manual, don't mark as applied
+                this._autoFreezeApplied = true;
+                // Dispatch event so parent can update UI state
+                this.dispatchEvent(
+                    new CustomEvent("physics-changed", {
+                        detail: { enabled: false },
+                        bubbles: true,
+                        composed: true,
+                    }),
+                );
+            }
+        }, 5000);
+    }
+
+    /**
+     * Cancels any pending auto-freeze timer.
+     */
+    private _cancelAutoFreezeTimer(): void {
+        if (this._autoFreezeTimer) {
+            clearTimeout(this._autoFreezeTimer);
+            this._autoFreezeTimer = undefined;
+        }
     }
 
     /**
