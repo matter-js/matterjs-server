@@ -421,16 +421,20 @@ export abstract class BaseNetworkGraph extends LitElement {
     protected _highlightConnections(nodeId: number | string): void {
         if (!this._edgesDataSet || !this._nodesDataSet) return;
 
-        // Store original colors before highlighting
         const allEdges = this._edgesDataSet.get();
+
+        // First pass: Store original colors ONLY if not already stored.
+        // We must do this BEFORE any highlighting modifies edge colors.
+        // If edges were already highlighted (switching between nodes), the colors
+        // in the DataSet might be dimmed, so we rely on previously stored values.
         for (const edge of allEdges) {
             const edgeId = String(edge.id);
             if (!this._originalEdgeColors.has(edgeId)) {
-                const colorObj = edge.color as { color: string; highlight: string };
-                this._originalEdgeColors.set(edgeId, {
-                    color: colorObj?.color ?? "#999999",
-                    highlight: colorObj?.highlight ?? "#999999",
-                });
+                const colorObj = edge.color as { color: string; highlight: string } | undefined;
+                // Extract colors, with fallbacks
+                const color = colorObj?.color ?? "#999999";
+                const highlight = colorObj?.highlight ?? color;
+                this._originalEdgeColors.set(edgeId, { color, highlight });
             }
         }
 
@@ -449,21 +453,19 @@ export abstract class BaseNetworkGraph extends LitElement {
             }
         }
 
-        // Update edges - make connected ones thicker
+        // Update edges - make connected ones thicker, dim non-connected ones
         const dimmedColor = this._getDimmedEdgeColor();
         const edgeUpdates = allEdges.map((edge: NetworkGraphEdge) => {
             const isConnected = edge.from === nodeId || edge.to === nodeId;
             const originalColor = this._originalEdgeColors.get(String(edge.id));
+            // Use stored original color for connected edges, fallback to a default if somehow missing
+            const connectedColor = originalColor ?? { color: "#999999", highlight: "#999999" };
             return {
                 id: edge.id,
                 width: isConnected ? 3 : 1,
-                // Dim non-connected edges
                 color: isConnected
-                    ? { color: originalColor?.color, highlight: originalColor?.highlight }
-                    : {
-                          color: dimmedColor,
-                          highlight: dimmedColor,
-                      },
+                    ? { color: connectedColor.color, highlight: connectedColor.highlight }
+                    : { color: dimmedColor, highlight: dimmedColor },
             };
         });
         this._edgesDataSet.update(edgeUpdates);
