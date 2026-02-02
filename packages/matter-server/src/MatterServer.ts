@@ -194,7 +194,7 @@ async function start() {
     const wsHandler = new WebSocketControllerHandler(controller, config, MATTER_SERVER_VERSION);
     const handlers: WebServerHandler[] = [new HealthHandler(wsHandler), wsHandler];
     if (!cliOptions.disableDashboard) {
-        handlers.push(new StaticFileHandler());
+        handlers.push(new StaticFileHandler(cliOptions.productionMode));
     } else {
         logger.info("Dashboard disabled via CLI flag");
     }
