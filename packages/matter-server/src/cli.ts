@@ -62,6 +62,7 @@ export interface CliOptions {
 
     // Dashboard configuration
     disableDashboard: boolean;
+    productionMode: boolean;
 }
 
 function parseIntOption(value: string): number {
@@ -168,6 +169,16 @@ export function parseCliArgs(argv?: string[]): CliOptions {
                 .default(false)
                 .env("DISABLE_DASHBOARD"),
         )
+        .addOption(
+            new Option(
+                "--production-mode [value]",
+                "Force dashboard production mode (auto-connect to server). Use when running behind a reverse proxy.",
+            )
+                .argParser(parseBooleanEnv)
+                .preset(true)
+                .default(false)
+                .env("PRODUCTION_MODE"),
+        )
         // Deprecated options - still accepted for backwards compatibility
         .addOption(
             new Option("--log-level-sdk <level>", "Matter SDK logging level (deprecated, no longer used)")
@@ -210,6 +221,7 @@ export function parseCliArgs(argv?: string[]): CliOptions {
         disableOta: opts.disableOta,
         otaProviderDir: opts.otaProviderDir ?? null,
         disableDashboard: opts.disableDashboard,
+        productionMode: opts.productionMode,
     };
 }
 

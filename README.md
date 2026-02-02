@@ -83,6 +83,30 @@ Configure the HA instance against this server and have fun :-)
 
 So as example to do both use `npm run server -- --storage-path data --primary-interface en0` (note the extra "--" to pass parameters to the script).
 
+### Debugging / Log Level
+
+**Temporary log level changes via Dashboard**: You can change the log level at runtime without restarting the server. Open the Dashboard at `http://localhost:5580`, go to **Settings**, and adjust the log level (e.g., switch to `debug` for troubleshooting, then back to `info`). Changes are temporary and reset on server restart.
+
+**Startup log level**: Use `--log-level debug` when starting the server for debug output from the beginning. Available levels: `critical`, `error`, `warning`, `info`, `debug`, `verbose`.
+
+**Docker**: Set the `LOG_LEVEL` environment variable (e.g., `-e LOG_LEVEL=debug`).
+
+### Running Behind a Reverse Proxy
+
+When running the Matter Server behind a reverse proxy (e.g., nginx, traefik), the dashboard may not automatically detect that it should connect to the server. This happens because the dashboard normally detects production mode by checking for port `:5580` or Home Assistant ingress paths in the URL.
+
+To fix this, use the `--production-mode` flag or `PRODUCTION_MODE=true` environment variable:
+
+```bash
+# CLI
+npm run server -- --production-mode
+
+# Docker
+docker run ... -e PRODUCTION_MODE=true ghcr.io/matter-js/matterjs-server:stable
+```
+
+This tells the dashboard to automatically connect to the WebSocket server at the current URL instead of prompting for a server address.
+
 It was in general tested with a simply slight bulb on network.
 
 Ble and Wifi should work when server gets startes with `--ble` flag, but Wifi only will work. For Thread Mater.js currently requires a network Name which is not provided.

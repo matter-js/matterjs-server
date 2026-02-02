@@ -37,6 +37,7 @@ npm run server -- --bluetooth-adapter 0
 | --disable-ota         | boolean flag | false                  | No       | Disable OTA update functionality                     |
 | --ota-provider-dir    | string       | null                   | No       | Directory for OTA Provider files                     |
 | --disable-dashboard   | boolean flag | false                  | No       | Disable the web dashboard                            |
+| --production-mode     | boolean flag | false                  | No       | Force dashboard production mode (for reverse proxy)  |
 
 ### Behavioral Differences from Python Matter Server
 
