@@ -43,7 +43,7 @@ const logger = Logger.get("WebSocketControllerHandler");
 /** Maximum number of events to keep in the history buffer */
 const EVENT_HISTORY_SIZE = 25;
 
-/** Counter for generating unique connection IDs (rolls over at 0xFFFF) */
+/** Counter for generating unique connection IDs */
 let connectionIdCounter = 0;
 
 /**
@@ -53,7 +53,7 @@ let connectionIdCounter = 0;
 function generateConnectionId(): string {
     const id = connectionIdCounter;
     connectionIdCounter = (connectionIdCounter + 1) & 0xffff; // Rollover at 0xFFFF
-    return id.toString(16).padStart(4, "0");
+    return id.toString(16);
 }
 
 const SCHEMA_VERSION = 11;
@@ -268,7 +268,12 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 ws.send(toBigIntAwareJson({ event: "node_removed", data: nodeId }));
             });
 
+            let connectionClosed = false;
             const onClose = () => {
+                if (connectionClosed) {
+                    return;
+                }
+                connectionClosed = true;
                 logger.info(`[${connId}] WebSocket connection closed`);
                 observers.close();
             };
