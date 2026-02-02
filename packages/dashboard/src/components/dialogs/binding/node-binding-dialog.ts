@@ -28,6 +28,7 @@ import {
 
 import { consume } from "@lit/context";
 import { clientContext } from "../../../client/client-context.js";
+import { analyzeBatchResults, type MatterBatchResult } from "../../../util/matter-status.js";
 
 @customElement("node-binding-dialog")
 export class NodeBindingDialog extends LitElement {
@@ -137,7 +138,7 @@ export class NodeBindingDialog extends LitElement {
         console.error(`Binding deletion failed: ${errorMessage}`);
     }
 
-    private async add_target_acl(targetNodeId: number, entry: AccessControlEntryStruct) {
+    private async add_target_acl(targetNodeId: number, entry: AccessControlEntryStruct): Promise<MatterBatchResult> {
         try {
             // Fetch existing ACL entries and transform to local struct format
             const rawEntries = this.client.nodes[targetNodeId]?.attributes["0/31/0"] as InputType[] | undefined;
@@ -148,15 +149,22 @@ export class NodeBindingDialog extends LitElement {
 
             // Convert to API format (without fabricIndex - server handles it)
             const apiEntries = entries.map(e => this.toAccessControlEntry(e));
-            const result = await this.client.setACLEntry(targetNodeId, apiEntries);
-            // Check first result status if available
-            if (result && result.length > 0) {
-                return result[0].status === 0;
+            const results = await this.client.setACLEntry(targetNodeId, apiEntries);
+
+            const batchResult = analyzeBatchResults(results ?? []);
+            if (batchResult.outcome !== "all_success") {
+                console.error(`Set ACL entry: ${batchResult.message}`);
             }
-            return true; // Assume success if no error thrown
+            return batchResult;
         } catch (err) {
-            console.error("add acl error:", err);
-            return false;
+            console.error("Add ACL error:", err);
+            return {
+                outcome: "all_failed",
+                successCount: 0,
+                failureCount: 1,
+                errorCounts: { 1: 1 },
+                message: `Exception: ${err instanceof Error ? err.message : String(err)}`,
+            };
         }
     }
 
@@ -185,21 +193,28 @@ export class NodeBindingDialog extends LitElement {
         };
     }
 
-    private async add_bindings(endpoint: number, bindingEntry: BindingEntryStruct) {
+    private async add_bindings(endpoint: number, bindingEntry: BindingEntryStruct): Promise<MatterBatchResult> {
         const bindings = this.fetchBindingEntry();
         bindings.push(bindingEntry);
         try {
             // Convert to API format (without fabricIndex - server handles it)
             const apiBindings = bindings.map(b => this.toBindingTarget(b));
-            const result = await this.client.setNodeBinding(this.getNodeIdAsNumber(), endpoint, apiBindings);
-            // Check first result status if available
-            if (result && result.length > 0) {
-                return result[0].status === 0;
+            const results = await this.client.setNodeBinding(this.getNodeIdAsNumber(), endpoint, apiBindings);
+
+            const batchResult = analyzeBatchResults(results ?? []);
+            if (batchResult.outcome !== "all_success") {
+                console.error(`Set binding: ${batchResult.message}`);
             }
-            return true; // Assume success if no error thrown
+            return batchResult;
         } catch (err) {
-            console.log("add bindings error:", err);
-            return false;
+            console.error("Add bindings error:", err);
+            return {
+                outcome: "all_failed",
+                successCount: 0,
+                failureCount: 1,
+                errorCounts: { 1: 1 },
+                message: `Exception: ${err instanceof Error ? err.message : String(err)}`,
+            };
         }
     }
 
@@ -243,10 +258,14 @@ export class NodeBindingDialog extends LitElement {
             fabricIndex: 0, // Placeholder - server will use correct fabric index
         };
 
-        const result_acl = await this.add_target_acl(targetNodeId, acl_entry);
-        if (!result_acl) {
-            alert("add target acl error!");
+        const aclResult = await this.add_target_acl(targetNodeId, acl_entry);
+        if (aclResult.outcome === "all_failed") {
+            alert(`Failed to add ACL entry:\n${aclResult.message}`);
             return;
+        }
+        if (aclResult.outcome === "partial") {
+            alert(`ACL entry partially failed:\n${aclResult.message}`);
+            // Continue with binding attempt since some ACL entries succeeded
         }
 
         const endpoint = this.endpoint;
@@ -259,13 +278,18 @@ export class NodeBindingDialog extends LitElement {
             fabricIndex: undefined, // Server will use correct fabric index
         };
 
-        const result_binding = await this.add_bindings(endpoint, bindingEntry);
+        const bindingResult = await this.add_bindings(endpoint, bindingEntry);
 
-        if (result_binding) {
+        if (bindingResult.outcome === "all_success") {
             this._targetNodeId.value = "";
             this._targetEndpoint.value = "";
             this._targetCluster.value = "";
             this.requestUpdate();
+        } else if (bindingResult.outcome === "partial") {
+            alert(`Binding partially failed:\n${bindingResult.message}`);
+            this.requestUpdate(); // Update UI to show what succeeded
+        } else {
+            alert(`Failed to add binding:\n${bindingResult.message}`);
         }
     }
 
