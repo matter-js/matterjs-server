@@ -11,6 +11,7 @@ import { PairedNode } from "@project-chip/matter.js/device";
 import { ClusterMap } from "../model/ModelMapper.js";
 import { buildAttributePath, convertMatterToWebSocketTagBased } from "../server/Converters.js";
 import { AttributesData } from "../types/CommandHandler.js";
+import { formatNodeId } from "./Nodes.js";
 
 const logger = Logger.get("AttributeDataCache");
 
@@ -129,14 +130,14 @@ export class AttributeDataCache {
     #populateFromNode(node: PairedNode): void {
         const nodeId = node.nodeId;
         if (!node.initialized) {
-            logger.debug(`Node ${nodeId} not initialized, skipping cache population`);
+            logger.debug(`Node ${formatNodeId(nodeId)} not initialized, skipping cache population`);
             return;
         }
 
         const nodeCache: EndpointAttributeCache = new Map();
         this.#collectAttributes(node.node, nodeCache);
         this.#cache.set(nodeId, nodeCache);
-        logger.debug(`Populated attribute cache for node ${nodeId}`);
+        logger.debug(`Populated attribute cache for node ${formatNodeId(nodeId)}`);
     }
 
     /**

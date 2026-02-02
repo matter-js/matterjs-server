@@ -4,13 +4,25 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { NodeId } from "@matter/main";
+import { FabricIndex, NodeId } from "@matter/main";
 import { ClusterClientObj } from "@matter/main/protocol";
 import { ClusterId, ClusterType, EndpointNumber } from "@matter/main/types";
 import { InteractionClient } from "@project-chip/matter.js/cluster";
 import { NodeStates, PairedNode } from "@project-chip/matter.js/device";
 import { ServerError } from "../types/WebSocketMessageTypes.js";
 import { AttributeDataCache } from "./AttributeDataCache.js";
+
+/**
+ * Format a NodeId as a PeerAddress string for logging.
+ * Uses the matter.js format: @fabricIndex:nodeIdHex (e.g., "@1:a")
+ *
+ * @param nodeId The node ID to format
+ * @param fabricIndex The fabric index (defaults to 1)
+ * @returns Formatted PeerAddress string like "@1:a" or "@1:1f"
+ */
+export function formatNodeId(nodeId: NodeId, fabricIndex: FabricIndex = FabricIndex(1)): string {
+    return `@${fabricIndex.toString(16)}:${nodeId.toString(16)}`;
+}
 
 /**
  * Manages node storage and provides access to nodes and their clients.

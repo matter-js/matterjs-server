@@ -105,7 +105,7 @@ import {
 } from "../types/WebSocketMessageTypes.js";
 import { pingIp } from "../util/network.js";
 import { CustomClusterPoller } from "./CustomClusterPoller.js";
-import { Nodes } from "./Nodes.js";
+import { formatNodeId, Nodes } from "./Nodes.js";
 
 const logger = Logger.get("ControllerCommandHandler");
 
@@ -183,6 +183,15 @@ export class ControllerCommandHandler {
             handleReadAttributes: (nodeId, paths, fabricFiltered) =>
                 this.handleReadAttributes(nodeId, paths, fabricFiltered),
         });
+    }
+
+    /**
+     * Format a NodeId as a PeerAddress string for logging.
+     * Uses the controller's fabric index when available, otherwise defaults to 1.
+     */
+    #formatNode(nodeId: NodeId): string {
+        const fabricIndex = this.#controller.fabric?.fabricIndex;
+        return formatNodeId(nodeId, fabricIndex);
     }
 
     get started() {
@@ -300,7 +309,7 @@ export class ControllerCommandHandler {
             // Emit availability changed if it actually changed
             if (wasAvailable !== isAvailable) {
                 logger.info(
-                    `Node ${nodeId} availability changed: ${wasAvailable} -> ${isAvailable} (state: ${NodeStates[previousState ?? -1]} -> ${NodeStates[state]})`,
+                    `Node ${this.#formatNode(nodeId)} availability changed: ${wasAvailable} -> ${isAvailable} (state: ${NodeStates[previousState ?? -1]} -> ${NodeStates[state]})`,
                 );
                 this.events.nodeAvailabilityChanged.emit(nodeId, isAvailable);
             }
@@ -341,11 +350,11 @@ export class ControllerCommandHandler {
         await this.start();
 
         const nodes = this.#controller.getCommissionedNodes();
-        logger.info(`Found ${nodes.length} nodes: ${nodes.map(nodeId => nodeId.toString()).join(", ")}`);
+        logger.info(`Found ${nodes.length} nodes: ${nodes.map(nodeId => this.#formatNode(nodeId)).join(", ")}`);
 
         for (const nodeId of nodes) {
             try {
-                logger.info(`Initializing node "${nodeId}" ...`);
+                logger.info(`Initializing node "${this.#formatNode(nodeId)}" ...`);
                 // Initialize Node
                 const node = await this.#registerNode(nodeId);
 
@@ -355,7 +364,7 @@ export class ControllerCommandHandler {
                     subscribeMaxIntervalCeilingSeconds: undefined,
                 });
             } catch (error) {
-                logger.warn(`Failed to connect to node "${nodeId}":`, error);
+                logger.warn(`Failed to connect to node "${this.#formatNode(nodeId)}":`, error);
             }
         }
     }
@@ -381,7 +390,7 @@ export class ControllerCommandHandler {
         // Our nodes are kept up-to-date via attribute subscriptions, so we don't need
         // to re-read all attributes like the Python server does.
         // Just emit a node_updated event with the current (already fresh) data.
-        logger.info(`Interview requested for node ${nodeId} - do a complete read`);
+        logger.info(`Interview requested for node ${this.#formatNode(nodeId)} - do a complete read`);
 
         // Do a full Read of the node
         const read = {
@@ -981,7 +990,7 @@ export class ControllerCommandHandler {
         const commissioningAddresses = node.node.maybeStateOf(CommissioningClient)?.addresses;
         if (commissioningAddresses !== undefined && commissioningAddresses.length > 0) {
             logger.info(
-                `Node ${nodeId}: mDNS discovery returned no addresses, using commissioning addresses`,
+                `Node ${this.#formatNode(nodeId)}: mDNS discovery returned no addresses, using commissioning addresses`,
                 commissioningAddresses,
             );
             const fallbackAddresses = commissioningAddresses
@@ -1004,25 +1013,25 @@ export class ControllerCommandHandler {
             const scanners = this.#controller.node.env.get(ScannerSet);
             const mdnsScanner = scanners.scannerFor(ChannelType.UDP);
             if (!mdnsScanner) {
-                logger.debug(`Node ${nodeId}: No mDNS scanner available`);
+                logger.debug(`Node ${this.#formatNode(nodeId)}: No mDNS scanner available`);
                 return [];
             }
 
             const fabric = this.#controller.fabric;
-            logger.info(`Node ${nodeId}: Discovering addresses via mDNS (3s timeout)`);
+            logger.info(`Node ${this.#formatNode(nodeId)}: Discovering addresses via mDNS (3s timeout)`);
 
             const device = await mdnsScanner.findOperationalDevice(fabric, nodeId, Seconds(3), false);
             if (!device || device.addresses.length === 0) {
-                logger.info(`Node ${nodeId}: mDNS discovery found no addresses`);
+                logger.info(`Node ${this.#formatNode(nodeId)}: mDNS discovery found no addresses`);
                 return [];
             }
 
             // Extract IP addresses from a discovered device (includes scoped addresses with %interface)
             const addresses = device.addresses.map(addr => addr.ip);
-            logger.info(`Node ${nodeId}: mDNS discovered ${addresses.length} addresses:`, addresses);
+            logger.info(`Node ${this.#formatNode(nodeId)}: mDNS discovered ${addresses.length} addresses:`, addresses);
             return addresses;
         } catch (error) {
-            logger.info(`Node ${nodeId}: mDNS discovery failed`, error);
+            logger.info(`Node ${this.#formatNode(nodeId)}: mDNS discovery failed`, error);
             return [];
         }
     }
@@ -1042,11 +1051,11 @@ export class ControllerCommandHandler {
         const ipAddresses = await this.getNodeIpAddresses(nodeId, false);
 
         if (ipAddresses.length === 0) {
-            logger.info(`No IP addresses found for node ${nodeId}`);
+            logger.info(`No IP addresses found for node ${this.#formatNode(nodeId)}`);
             return result;
         }
 
-        logger.info(`Pinging node ${nodeId} on ${ipAddresses.length} addresses:`, ipAddresses);
+        logger.info(`Pinging node ${this.#formatNode(nodeId)} on ${ipAddresses.length} addresses:`, ipAddresses);
 
         // Ping all addresses in parallel
         const pingPromises = ipAddresses.map(async ip => {
@@ -1066,7 +1075,7 @@ export class ControllerCommandHandler {
             if (!anySuccess && ipAddresses.length > 0) {
                 // Node is connected, but no pings succeeded - this can happen
                 // with Thread devices or certain network configurations
-                logger.info(`Node ${nodeId} is connected but no pings succeeded`);
+                logger.info(`Node ${this.#formatNode(nodeId)} is connected but no pings succeeded`);
             }
         }
 
@@ -1278,7 +1287,7 @@ export class ControllerCommandHandler {
 
             return null;
         } catch (error) {
-            logger.warn(`Failed to check for updates for node ${nodeId}:`, error);
+            logger.warn(`Failed to check for updates for node ${this.#formatNode(nodeId)}:`, error);
             return null;
         }
     }
@@ -1303,7 +1312,7 @@ export class ControllerCommandHandler {
         const updateState = cachedAttributes?.["0/42/2"];
         if (updateState !== undefined && updateState !== 1) {
             throw ServerError.updateError(
-                `Node ${nodeId} is already in the process of updating (state: ${updateState})`,
+                `Node ${this.#formatNode(nodeId)} is already in the process of updating (state: ${updateState})`,
             );
         }
 
@@ -1327,7 +1336,7 @@ export class ControllerCommandHandler {
                 }
             }
 
-            logger.info(`Starting update for node ${nodeId} to version ${softwareVersion}`);
+            logger.info(`Starting update for node ${this.#formatNode(nodeId)} to version ${softwareVersion}`);
 
             // Trigger the update using forceUpdate via dynamic behavior access
             await otaProvider.act(agent =>
@@ -1344,7 +1353,7 @@ export class ControllerCommandHandler {
             // Return the update info
             return this.#convertToMatterSoftwareVersion(updateInfo);
         } catch (error) {
-            logger.error(`Failed to update node ${nodeId}:`, error);
+            logger.error(`Failed to update node ${this.#formatNode(nodeId)}:`, error);
             throw error;
         }
     }
