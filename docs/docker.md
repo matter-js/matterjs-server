@@ -98,6 +98,7 @@ All CLI options can be configured via environment variables, making it easy to c
 | `DISABLE_OTA`         | Disable OTA update functionality                     | `false`              | `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`          |
 | `OTA_PROVIDER_DIR`    | Directory for OTA Provider files                     | (none)               | Any valid directory path                                 |
 | `DISABLE_DASHBOARD`   | Disable the web dashboard                            | `false`              | `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`          |
+| `PRODUCTION_MODE`     | Force dashboard production mode (reverse proxy)      | `false`              | `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`          |
 | `VENDOR_ID`           | Vendor ID for the Fabric                             | `0xfff1`             | Any valid vendor ID                                      |
 | `FABRIC_ID`           | Fabric ID for the Fabric                             | `1`                  | Any valid fabric ID                                      |
 

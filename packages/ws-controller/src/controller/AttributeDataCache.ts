@@ -7,7 +7,7 @@
 import { ClientNode, ClusterBehavior, Logger, NodeId } from "@matter/main";
 import { DecodedAttributeReportValue } from "@matter/main/protocol";
 import { AttributeId, ClusterId, EndpointNumber, getClusterById } from "@matter/main/types";
-import { PairedNode } from "@project-chip/matter.js/device";
+import { NodeStates, PairedNode } from "@project-chip/matter.js/device";
 import { ClusterMap } from "../model/ModelMapper.js";
 import { buildAttributePath, convertMatterToWebSocketTagBased } from "../server/Converters.js";
 import { AttributesData } from "../types/CommandHandler.js";
@@ -129,7 +129,7 @@ export class AttributeDataCache {
      */
     #populateFromNode(node: PairedNode): void {
         const nodeId = node.nodeId;
-        if (!node.initialized) {
+        if (!node.initialized || node.connectionState === NodeStates.Disconnected || !node.node.lifecycle.isReady) {
             logger.debug(`Node ${formatNodeId(nodeId)} not initialized, skipping cache population`);
             return;
         }
