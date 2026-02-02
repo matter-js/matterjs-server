@@ -5,7 +5,7 @@
  */
 
 import type { MatterClient, MatterNode } from "@matter-server/ws-client";
-import { mdiFitToScreen } from "@mdi/js";
+import { mdiFitToScreen, mdiMagnifyMinus, mdiMagnifyPlus, mdiPause, mdiPlay } from "@mdi/js";
 import { css, html, LitElement } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
 import "../components/ha-svg-icon";
@@ -50,6 +50,9 @@ class MatterNetworkView extends LitElement {
 
     @state()
     private _selectedNodeId: number | string | null = null;
+
+    @state()
+    private _physicsEnabled = true;
 
     private _initialSelectionApplied = false;
     private _selectRetryTimer?: ReturnType<typeof setTimeout>;
@@ -127,16 +130,66 @@ class MatterNetworkView extends LitElement {
         }
     }
 
+    private _handleZoomIn(): void {
+        if (this.networkType === "thread") {
+            this._threadGraph?.zoomIn();
+        } else {
+            this._wifiGraph?.zoomIn();
+        }
+    }
+
+    private _handleZoomOut(): void {
+        if (this.networkType === "thread") {
+            this._threadGraph?.zoomOut();
+        } else {
+            this._wifiGraph?.zoomOut();
+        }
+    }
+
+    private _handleTogglePhysics(): void {
+        const newState = !this._physicsEnabled;
+        this._physicsEnabled = newState;
+        if (this.networkType === "thread") {
+            this._threadGraph?.setPhysicsEnabled(newState);
+        } else {
+            this._wifiGraph?.setPhysicsEnabled(newState);
+        }
+    }
+
+    private _handlePhysicsChanged(event: CustomEvent<{ enabled: boolean }>): void {
+        // Update UI state when graph auto-freezes
+        this._physicsEnabled = event.detail.enabled;
+    }
+
     private _renderThreadView() {
         return html`
             <div class="graph-section">
                 <div class="graph-header">
                     <h2>Thread Network Mesh</h2>
-                    <button class="fit-button" @click=${this._handleFitToScreen} title="Fit to screen">
-                        <ha-svg-icon .path=${mdiFitToScreen}></ha-svg-icon>
-                    </button>
+                    <div class="graph-controls">
+                        <button class="control-button" @click=${this._handleZoomIn} title="Zoom in">
+                            <ha-svg-icon .path=${mdiMagnifyPlus}></ha-svg-icon>
+                        </button>
+                        <button class="control-button" @click=${this._handleZoomOut} title="Zoom out">
+                            <ha-svg-icon .path=${mdiMagnifyMinus}></ha-svg-icon>
+                        </button>
+                        <button class="control-button" @click=${this._handleFitToScreen} title="Fit to screen">
+                            <ha-svg-icon .path=${mdiFitToScreen}></ha-svg-icon>
+                        </button>
+                        <button
+                            class="control-button ${this._physicsEnabled ? "" : "active"}"
+                            @click=${this._handleTogglePhysics}
+                            title="${this._physicsEnabled ? "Freeze layout" : "Unfreeze layout"}"
+                        >
+                            <ha-svg-icon .path=${this._physicsEnabled ? mdiPause : mdiPlay}></ha-svg-icon>
+                        </button>
+                    </div>
                 </div>
-                <thread-graph .nodes=${this.nodes} @node-selected=${this._handleNodeSelected}></thread-graph>
+                <thread-graph
+                    .nodes=${this.nodes}
+                    @node-selected=${this._handleNodeSelected}
+                    @physics-changed=${this._handlePhysicsChanged}
+                ></thread-graph>
             </div>
         `;
     }
@@ -146,11 +199,30 @@ class MatterNetworkView extends LitElement {
             <div class="graph-section">
                 <div class="graph-header">
                     <h2>WiFi Network</h2>
-                    <button class="fit-button" @click=${this._handleFitToScreen} title="Fit to screen">
-                        <ha-svg-icon .path=${mdiFitToScreen}></ha-svg-icon>
-                    </button>
+                    <div class="graph-controls">
+                        <button class="control-button" @click=${this._handleZoomIn} title="Zoom in">
+                            <ha-svg-icon .path=${mdiMagnifyPlus}></ha-svg-icon>
+                        </button>
+                        <button class="control-button" @click=${this._handleZoomOut} title="Zoom out">
+                            <ha-svg-icon .path=${mdiMagnifyMinus}></ha-svg-icon>
+                        </button>
+                        <button class="control-button" @click=${this._handleFitToScreen} title="Fit to screen">
+                            <ha-svg-icon .path=${mdiFitToScreen}></ha-svg-icon>
+                        </button>
+                        <button
+                            class="control-button ${this._physicsEnabled ? "" : "active"}"
+                            @click=${this._handleTogglePhysics}
+                            title="${this._physicsEnabled ? "Freeze layout" : "Unfreeze layout"}"
+                        >
+                            <ha-svg-icon .path=${this._physicsEnabled ? mdiPause : mdiPlay}></ha-svg-icon>
+                        </button>
+                    </div>
                 </div>
-                <wifi-graph .nodes=${this.nodes} @node-selected=${this._handleNodeSelected}></wifi-graph>
+                <wifi-graph
+                    .nodes=${this.nodes}
+                    @node-selected=${this._handleNodeSelected}
+                    @physics-changed=${this._handlePhysicsChanged}
+                ></wifi-graph>
             </div>
         `;
     }
@@ -245,7 +317,12 @@ class MatterNetworkView extends LitElement {
             color: var(--md-sys-color-on-background, #333);
         }
 
-        .fit-button {
+        .graph-controls {
+            display: flex;
+            gap: 4px;
+        }
+
+        .control-button {
             background: none;
             border: 1px solid var(--md-sys-color-outline-variant, #ccc);
             border-radius: 4px;
@@ -254,15 +331,26 @@ class MatterNetworkView extends LitElement {
             display: flex;
             align-items: center;
             justify-content: center;
-            transition: background-color 0.2s;
+            transition:
+                background-color 0.2s,
+                border-color 0.2s;
         }
 
-        .fit-button:hover {
+        .control-button:hover {
             background-color: var(--md-sys-color-surface-container-high, #e8e8e8);
         }
 
-        .fit-button ha-svg-icon {
+        .control-button.active {
+            background-color: var(--md-sys-color-primary-container, #e8def8);
+            border-color: var(--md-sys-color-primary, #6750a4);
+        }
+
+        .control-button ha-svg-icon {
             --icon-primary-color: var(--md-sys-color-on-surface-variant, #666);
+        }
+
+        .control-button.active ha-svg-icon {
+            --icon-primary-color: var(--md-sys-color-on-primary-container, #21005d);
         }
 
         .graph-section thread-graph,

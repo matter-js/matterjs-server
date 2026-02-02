@@ -7,6 +7,10 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
+## __WORK IN PROGRESS__
+
+- Enhancement: Optimizes Thread/Wifi graph
+
 ## 0.3.4 (2026-02-01)
 
 - Enhancement: Consistently show the hex variant of the node id in all dashboard views to allow easier log mapping 
