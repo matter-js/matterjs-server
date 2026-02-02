@@ -149,16 +149,17 @@ class MatterNetworkView extends LitElement {
     private _handleTogglePhysics(): void {
         const newState = !this._physicsEnabled;
         this._physicsEnabled = newState;
-        if (this.networkType === "thread") {
-            this._threadGraph?.setPhysicsEnabled(newState);
-        } else {
-            this._wifiGraph?.setPhysicsEnabled(newState);
-        }
+        // Keep both graphs in sync so switching between Thread and WiFi
+        // does not cause a mismatch between the UI button and graph state
+        this._threadGraph?.setPhysicsEnabled(newState);
+        this._wifiGraph?.setPhysicsEnabled(newState);
     }
 
     private _handlePhysicsChanged(event: CustomEvent<{ enabled: boolean }>): void {
-        // Update UI state when graph auto-freezes
+        // Update UI state when graph auto-freezes and keep both graphs in sync
         this._physicsEnabled = event.detail.enabled;
+        this._threadGraph?.setPhysicsEnabled(event.detail.enabled);
+        this._wifiGraph?.setPhysicsEnabled(event.detail.enabled);
     }
 
     private _renderThreadView() {
