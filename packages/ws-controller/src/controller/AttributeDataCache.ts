@@ -11,7 +11,7 @@ import { PairedNode } from "@project-chip/matter.js/device";
 import { ClusterMap } from "../model/ModelMapper.js";
 import { buildAttributePath, convertMatterToWebSocketTagBased } from "../server/Converters.js";
 import { AttributesData } from "../types/CommandHandler.js";
-import { formatNodeId } from "./Nodes.js";
+import { formatNodeId } from "../util/formatNodeId.js";
 
 const logger = Logger.get("AttributeDataCache");
 

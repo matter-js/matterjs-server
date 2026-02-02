@@ -103,9 +103,10 @@ import {
     ServerError,
     UpdateSource,
 } from "../types/WebSocketMessageTypes.js";
+import { formatNodeId } from "../util/formatNodeId.js";
 import { pingIp } from "../util/network.js";
 import { CustomClusterPoller } from "./CustomClusterPoller.js";
-import { formatNodeId, Nodes } from "./Nodes.js";
+import { Nodes } from "./Nodes.js";
 
 const logger = Logger.get("ControllerCommandHandler");
 
