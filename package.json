@@ -35,7 +35,7 @@
         "send-command": "node --enable-source-maps packages/ws-controller/dist/esm/example/send-command.js"
     },
     "devDependencies": {
-        "@eslint/compat": "^2.0.1",
+        "@eslint/compat": "^2.0.2",
         "@eslint/eslintrc": "^3.3.3",
         "@eslint/js": "^9.39.2",
         "@matter/testing": "0.16.9-alpha.0-20260204-fd5b6ed86",
@@ -46,8 +46,8 @@
         "eslint-plugin-import": "^2.32.0",
         "eslint-plugin-node-import": "^1.0.5",
         "eslint-plugin-regexp": "^3.0.0",
-        "glob": "^13.0.0",
-        "globals": "^17.2.0",
+        "glob": "^13.0.1",
+        "globals": "^17.3.0",
         "prettier": "^3.8.1",
         "prettier-plugin-organize-imports": "^4.3.0",
         "tsx": "^4.21.0",
