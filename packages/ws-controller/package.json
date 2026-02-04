@@ -22,7 +22,7 @@
         "node": ">=20.19.0 <22.0.0 || >=22.13.0"
     },
     "optionalDependencies": {
-        "@matter/nodejs-ble": "0.16.9-alpha.0-20260201-8748390b1"
+        "@matter/nodejs-ble": "0.16.9-alpha.0-20260204-fd5b6ed86"
     },
     "dependencies": {
         "@matter/main": "0.16.9-alpha.0-20260201-8748390b1",
