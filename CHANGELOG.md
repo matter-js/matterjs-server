@@ -7,7 +7,7 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
-## __WORK IN PROGRESS__
+## 0.3.5 (2026-02-04)
 
 - Enhancement: Optimizes Thread/Wifi graph
 - Enhancement: When configuring ACLs or bindings via the dashboard, show more detailed errors when relevant
