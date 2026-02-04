@@ -28,6 +28,7 @@ export * from "./types/CommandHandler.js";
 export * from "./types/WebSocketMessageTypes.js";
 
 // Export utilities
+export { formatNodeId } from "./util/formatNodeId.js";
 export * from "./util/matterVersion.js";
 
 // Re-Export classes from matter.js

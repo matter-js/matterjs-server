@@ -13,7 +13,9 @@ async function main() {
     let url = "";
 
     // Detect if we're running in the (production) webserver included in the matter server or not.
+    // Priority: 1) Server-injected flag (for reverse proxy setups), 2) URL-based detection
     const isProductionServer =
+        (window as unknown as { __MATTERJS_PRODUCTION_MODE__?: boolean }).__MATTERJS_PRODUCTION_MODE__ === true ||
         location.origin.includes(":5580") ||
         location.href.includes("hassio_ingress") ||
         location.href.includes("/api/ingress/");

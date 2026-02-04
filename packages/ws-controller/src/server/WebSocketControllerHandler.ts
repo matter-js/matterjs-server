@@ -43,6 +43,19 @@ const logger = Logger.get("WebSocketControllerHandler");
 /** Maximum number of events to keep in the history buffer */
 const EVENT_HISTORY_SIZE = 25;
 
+/** Counter for generating unique connection IDs */
+let connectionIdCounter = 0;
+
+/**
+ * Generate a unique connection ID as a 4-digit hex string.
+ * Rolls over at 0xFFFF (65535) to keep IDs short and readable.
+ */
+function generateConnectionId(): string {
+    const id = connectionIdCounter;
+    connectionIdCounter = (connectionIdCounter + 1) & 0xffff; // Rollover at 0xFFFF
+    return id.toString(16);
+}
+
 const SCHEMA_VERSION = 11;
 
 const skipMessageContentInLogFor = ["start_listening"];
@@ -113,6 +126,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
         wss.on("connection", ws => {
             if (this.#closed) return;
 
+            const connId = generateConnectionId();
+            logger.info(`[${connId}] WebSocket connection established`);
+
             let listening = false;
             const observers = new ObserverGroup();
 
@@ -124,14 +140,14 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     case "node_updated":
                         this.#collectNodeDetails(nodeId).then(
                             nodeDetails => {
-                                logger.debug(`Sending ${eventName} event for Node ${nodeId}`);
+                                logger.debug(`[${connId}] Sending ${eventName} event for Node ${nodeId}`);
                                 ws.send(toBigIntAwareJson({ event: eventName, data: nodeDetails }));
                             },
-                            err => logger.error(`Failed to collect node details for Node ${nodeId}`, err),
+                            err => logger.error(`[${connId}] Failed to collect node details for Node ${nodeId}`, err),
                         );
                         break;
                     case "node_removed":
-                        logger.debug(`Sending node_removed event for Node ${nodeId}`);
+                        logger.debug(`[${connId}] Sending node_removed event for Node ${nodeId}`);
                         ws.send(toBigIntAwareJson({ event: eventName, data: nodeId }));
                         break;
                 }
@@ -149,7 +165,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     clusterData?.attributes[attributeId],
                     clusterData?.model,
                 );
-                logger.debug(`Sending attribute_updated event for Node ${nodeId}`, pathStr, value);
+                logger.debug(`[${connId}] Sending attribute_updated event for Node ${nodeId}`, pathStr, value);
                 ws.send(toBigIntAwareJson({ event: "attribute_updated", data: [nodeId, pathStr, value] }));
             });
 
@@ -188,7 +204,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     // Store event in the history buffer
                     this.#addEventToHistory(nodeEvent);
 
-                    logger.debug(`Sending node_event for Node ${nodeId}`, nodeEvent);
+                    logger.debug(`[${connId}] Sending node_event for Node ${nodeId}`, nodeEvent);
                     ws.send(toBigIntAwareJson({ event: "node_event", data: nodeEvent }));
                 }
             });
@@ -208,7 +224,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
             // Send node_updated when availability changes (debounced)
             observers.on(this.#commandHandler.events.nodeAvailabilityChanged, (nodeId, available) => {
-                logger.info(`Node ${nodeId} availability changed to ${available}`);
+                logger.info(`[${connId}] Node ${nodeId} availability changed to ${available}`);
                 sendNodeDetailsEvent("node_updated", nodeId);
             });
 
@@ -222,7 +238,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
             observers.on(this.#commandHandler.events.nodeEndpointAdded, (nodeId, endpointId) => {
                 if (this.#closed || !listening) return;
-                logger.info(`Sending endpoint_added event for Node ${nodeId} endpoint ${endpointId}`);
+                logger.info(`[${connId}] Sending endpoint_added event for Node ${nodeId} endpoint ${endpointId}`);
                 ws.send(
                     toBigIntAwareJson({ event: "endpoint_added", data: { node_id: nodeId, endpoint_id: endpointId } }),
                 );
@@ -230,7 +246,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
             observers.on(this.#commandHandler.events.nodeEndpointRemoved, (nodeId, endpointId) => {
                 if (this.#closed || !listening) return;
-                logger.info(`Sending endpoint_removed event for Node ${nodeId} endpoint ${endpointId}`);
+                logger.info(`[${connId}] Sending endpoint_removed event for Node ${nodeId} endpoint ${endpointId}`);
                 ws.send(
                     toBigIntAwareJson({
                         event: "endpoint_removed",
@@ -242,22 +258,30 @@ export class WebSocketControllerHandler implements WebServerHandler {
             // Register test node event listeners
             observers.on(this.#testNodeHandler.nodeAdded, (_nodeId, testNode) => {
                 if (this.#closed || !listening) return;
-                logger.info(`Sending node_added event for test node ${testNode.node_id}`);
+                logger.info(`[${connId}] Sending node_added event for test node ${testNode.node_id}`);
                 ws.send(toBigIntAwareJson({ event: "node_added", data: testNode }));
             });
 
             observers.on(this.#testNodeHandler.nodeRemoved, nodeId => {
                 if (this.#closed || !listening) return;
-                logger.info(`Sending node_removed event for test node ${nodeId}`);
+                logger.info(`[${connId}] Sending node_removed event for test node ${nodeId}`);
                 ws.send(toBigIntAwareJson({ event: "node_removed", data: nodeId }));
             });
 
-            const onClose = () => observers.close();
+            let connectionClosed = false;
+            const onClose = () => {
+                if (connectionClosed) {
+                    return;
+                }
+                connectionClosed = true;
+                logger.info(`[${connId}] WebSocket connection closed`);
+                observers.close();
+            };
 
             ws.on(
                 "message",
                 data =>
-                    void this.#handleWebSocketRequest(data.toString()).then(
+                    void this.#handleWebSocketRequest(connId, data.toString()).then(
                         ({ response, enableListeners }) => {
                             if (this.#closed) return;
                             if (enableListeners) {
@@ -265,19 +289,22 @@ export class WebSocketControllerHandler implements WebServerHandler {
                             }
                             ws.send(toBigIntAwareJson(response));
                         },
-                        err => logger.error("Websocket request error", err),
+                        err => logger.error(`[${connId}] WebSocket request error`, err),
                     ),
             );
 
             ws.on("close", onClose);
             ws.on("error", err => {
-                logger.error("Websocket error", err);
+                logger.error(`[${connId}] WebSocket error`, err);
                 onClose();
             });
 
             this.#getServerInfo().then(
-                response => ws.send(toBigIntAwareJson(response)),
-                err => logger.error("Websocket handshake error", err),
+                response => {
+                    logger.debug(`[${connId}] Sending server info`);
+                    ws.send(toBigIntAwareJson(response));
+                },
+                err => logger.error(`[${connId}] WebSocket handshake error`, err),
             );
         });
 
@@ -319,11 +346,12 @@ export class WebSocketControllerHandler implements WebServerHandler {
     }
 
     async #handleWebSocketRequest(
+        connId: string,
         data: string,
     ): Promise<{ response: ErrorResultMessage | SuccessResultMessage<any>; enableListeners?: boolean }> {
         let messageId: string | undefined;
         try {
-            logger.debug("Received WebSocket request", () => data);
+            logger.debug(`[${connId}] Received WebSocket request`, () => data);
             const request = parseBigIntAwareJson(data) as { message_id: string; command: string; args: any };
             const { command, args } = request;
             messageId = request.message_id;
@@ -432,9 +460,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 throw ServerError.sdkStackError("Command handler returned no response");
             }
             if (skipMessageContentInLogFor.includes(command)) {
-                logger.debug(`WebSocket request (${command}) handled`, messageId);
+                logger.debug(`[${connId}] WebSocket request (${command}) handled`, messageId);
             } else {
-                logger.debug(`WebSocket request (${command}) handled`, messageId, result);
+                logger.debug(`[${connId}] WebSocket request (${command}) handled`, messageId, result);
             }
             return {
                 response: {
@@ -444,7 +472,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 enableListeners,
             };
         } catch (err) {
-            logger.error("Failed to handle websocket request", err);
+            logger.error(`[${connId}] Failed to handle websocket request`, err);
             const errorCode = err instanceof ServerError ? err.code : ServerErrorCode.UnknownError;
             return {
                 response: {

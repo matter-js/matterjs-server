@@ -7,9 +7,19 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
+## 0.3.5 (2026-02-04)
+
+- Enhancement: Optimizes Thread/Wifi graph
+- Enhancement: When configuring ACLs or bindings via the dashboard, show more detailed errors when relevant
+- Enhancement: Add `--production-mode` CLI option and `PRODUCTION_MODE` env var to force dashboard production mode when running behind a reverse proxy
+- Fix: Added missing BLE packages to the docker container to enable BLE
+- Fix: Update matter.js to 0.16.9-nightly
+    - Optimizes some edge cases around IP changes for devices
+    - Fixes errors when a node is decommissioned by the admin of another fabric
+
 ## 0.3.4 (2026-02-01)
 
-- Enhancement: Consistently show the hex variant of the node id in all dashboard views to allow easier log mapping 
+- Enhancement: Consistently show the hex variant of the node id in all dashboard views to allow easier log mapping
 - Enhancement: Add Reload capabilities to Thread and Wi-Fi visualizations in the dashboard to update node data immediately
 - Enhancement: Display node address in hex format (`@fabricindex:nodeId`) in node/endpoint/cluster views
 - Enhancement: Incorporate Thread route table data for richer network visualization (bidirectional LQI, path cost, routable destinations count). See [Dashboard README](packages/dashboard/README.md) for details.
