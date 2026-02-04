@@ -35,7 +35,7 @@
         "send-command": "node --enable-source-maps packages/ws-controller/dist/esm/example/send-command.js"
     },
     "devDependencies": {
-        "@eslint/compat": "^2.0.1",
+        "@eslint/compat": "^2.0.2",
         "@eslint/eslintrc": "^3.3.3",
         "@eslint/js": "^9.39.2",
         "@matter/testing": "0.16.9-alpha.0-20260201-8748390b1",
