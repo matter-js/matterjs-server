@@ -32,7 +32,7 @@ RUN \
         libudev-dev \
     # Install matter-server from npm and optimize image size
     && set -x \
-    && npm install "matter-server@${MATTERJS_SERVER_VERSION}" \
+    && npm install --foreground-scripts "matter-server@${MATTERJS_SERVER_VERSION}" \
     # Remove build dependencies (no longer needed after native modules are compiled)
     && apt-get purge -y --auto-remove \
         python3 \
