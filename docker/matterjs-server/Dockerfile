@@ -6,21 +6,27 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 WORKDIR /app
 
 # Install required system dependencies
+# Runtime dependencies:
 # - iputils-ping: Required for node ping functionality
 # - curl: For health checks and general utility
+# - bluez: Bluetooth stack for BLE commissioning
+# Build dependencies (removed after npm install):
+# - python3: Required by node-gyp for native module compilation
+# - make, gcc, g++: C/C++ toolchain for native module compilation
+# - libbluetooth-dev, libudev-dev: Headers for native BLE/udev bindings
 RUN \
     set -x \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
         iputils-ping \
         curl \
+        python3 \
         make \
         gcc \
         g++ \
         bluez \
         libbluetooth-dev \
         libudev-dev \
-    && apt-get purge -y --auto-remove \
     && rm -rf \
         /var/lib/apt/lists/* \
         /usr/src/*
@@ -32,6 +38,15 @@ ARG MATTERJS_SERVER_VERSION
 RUN \
     set -x \
     && npm install "matter-server@${MATTERJS_SERVER_VERSION}" \
+    # Remove build dependencies (no longer needed after native modules are compiled)
+    && apt-get purge -y --auto-remove \
+        python3 \
+        make \
+        gcc \
+        g++ \
+        libbluetooth-dev \
+        libudev-dev \
+    && rm -rf /var/lib/apt/lists/* \
     # Remove corepack (not needed at runtime)
     && npm uninstall -g corepack \
     # Clean npm cache
