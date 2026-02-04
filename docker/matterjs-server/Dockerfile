@@ -5,6 +5,9 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 WORKDIR /app
 
+# Version of matter-server to install from npm
+ARG MATTERJS_SERVER_VERSION
+
 # Install required system dependencies
 # Runtime dependencies:
 # - iputils-ping: Required for node ping functionality
@@ -27,16 +30,8 @@ RUN \
         bluez \
         libbluetooth-dev \
         libudev-dev \
-    && rm -rf \
-        /var/lib/apt/lists/* \
-        /usr/src/*
-
-# Version of matter-server to install from npm
-ARG MATTERJS_SERVER_VERSION
-
-# Install matter-server from npm and optimize image size
-RUN \
-    set -x \
+    # Install matter-server from npm and optimize image size
+    && set -x \
     && npm install "matter-server@${MATTERJS_SERVER_VERSION}" \
     # Remove build dependencies (no longer needed after native modules are compiled)
     && apt-get purge -y --auto-remove \
@@ -46,7 +41,9 @@ RUN \
         g++ \
         libbluetooth-dev \
         libudev-dev \
-    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf \
+        /var/lib/apt/lists/* \
+        /usr/src/* \
     # Remove corepack (not needed at runtime)
     && npm uninstall -g corepack \
     # Clean npm cache
