@@ -7,6 +7,9 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
+## __WORK IN PROGRESS__
+- Fix: Add missing package dependencies to the docker container to enable BLE support
+
 ## 0.3.5 (2026-02-04)
 
 - Enhancement: Optimizes Thread/Wifi graph
@@ -23,7 +26,6 @@ This page shows a detailed overview of the changes between versions without the 
 - Enhancement: Add Reload capabilities to Thread and Wi-Fi visualizations in the dashboard to update node data immediately
 - Enhancement: Display node address in hex format (`@fabricindex:nodeId`) in node/endpoint/cluster views
 - Enhancement: Incorporate Thread route table data for richer network visualization (bidirectional LQI, path cost, routable destinations count). See [Dashboard README](packages/dashboard/README.md) for details.
-- Fix: Add missing package dependencies to the docker container to enable BLE support
 - Fix: Update matter.js to 0.16.9-nightly
     - Exposes message diagnostics for interactions to especially show retransmissions also on info loglevel
 
