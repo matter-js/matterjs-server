@@ -7,6 +7,9 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
+## __WORK IN PROGRESS__
+- Fix: Add missing package dependencies to the docker container to enable BLE support
+
 ## 0.3.5 (2026-02-04)
 
 - Enhancement: Optimizes Thread/Wifi graph
