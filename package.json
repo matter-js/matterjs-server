@@ -47,7 +47,7 @@
         "eslint-plugin-node-import": "^1.0.5",
         "eslint-plugin-regexp": "^3.0.0",
         "glob": "^13.0.0",
-        "globals": "^17.2.0",
+        "globals": "^17.3.0",
         "prettier": "^3.8.1",
         "prettier-plugin-organize-imports": "^4.3.0",
         "tsx": "^4.21.0",
