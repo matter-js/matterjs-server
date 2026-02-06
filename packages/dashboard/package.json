@@ -42,7 +42,7 @@
         "@mdi/js": "^7.4.47",
         "lit": "^3.3.2",
         "tslib": "^2.8.1",
-        "vis-network": "^9.1.9"
+        "vis-network": "^10.0.2"
     },
     "files": [
         "dist/**/*",
