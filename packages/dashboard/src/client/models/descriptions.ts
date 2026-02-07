@@ -11339,6 +11339,12 @@ export const clusters: Record<number, ClusterDescription> = {
                 "label": "ObstructionDetected",
                 "type": "Optional[bool]"
             },
+            "319422481": {
+                "id": 319422481,
+                "cluster_id": 319486977,
+                "label": "ChildLock",
+                "type": "Optional[bool]"
+            },
             "319422483": {
                 "id": 319422483,
                 "cluster_id": 319486977,
