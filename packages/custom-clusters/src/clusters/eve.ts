@@ -29,6 +29,9 @@ export class EveCluster {
     @attribute(0x130a0010, bool)
     obstructionDetected?: boolean;
 
+    @attribute(0x130a0011, bool)
+    childLock?: boolean;
+
     @attribute(0x130a0013, single)
     altitude?: number;
 
