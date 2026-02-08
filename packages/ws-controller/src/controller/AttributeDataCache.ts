@@ -125,7 +125,9 @@ export class AttributeDataCache {
 
     /**
      * Populate the cache for a node from its current state.
-     * Creates a completely fresh cache structure.
+     * Merges freshly-collected endpoint data into the existing cache so that
+     * previously-known endpoints are preserved when they are temporarily
+     * unavailable (e.g., during reconnection when not all endpoints are ready).
      */
     #populateFromNode(node: PairedNode): void {
         const nodeId = node.nodeId;
@@ -134,9 +136,19 @@ export class AttributeDataCache {
             return;
         }
 
-        const nodeCache: EndpointAttributeCache = new Map();
-        this.#collectAttributes(node.node, nodeCache);
-        this.#cache.set(nodeId, nodeCache);
+        const freshCache: EndpointAttributeCache = new Map();
+        this.#collectAttributes(node.node, freshCache);
+
+        const existingCache = this.#cache.get(nodeId);
+        if (existingCache) {
+            // Merge: update existing endpoints with fresh data, preserve missing ones
+            for (const [endpointId, endpointCache] of freshCache) {
+                existingCache.set(endpointId, endpointCache);
+            }
+        } else {
+            this.#cache.set(nodeId, freshCache);
+        }
+
         logger.debug(`Populated attribute cache for node ${formatNodeId(nodeId)}`);
     }
 
