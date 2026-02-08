@@ -35,6 +35,8 @@ export interface MdnsDeviceScannerDeps {
     getNode(nodeId: NodeId): PairedNode;
     /** Discover a node's operational addresses via mDNS with a short timeout. */
     findDevice(nodeId: NodeId): Promise<DiscoveredDevice | undefined>;
+    /** Delay in ms between scanning individual nodes. Defaults to 1000. */
+    interNodeDelayMs?: number;
 }
 
 /**
@@ -115,8 +117,9 @@ export class MdnsDeviceScanner {
                 await this.#scanNode(waitingNodes[i]);
 
                 // Small delay between nodes to avoid overwhelming the network
-                if (i < waitingNodes.length - 1) {
-                    this.#currentDelayPromise = Time.sleep("mdns-scan-delay", Millis(1_000)).finally(() => {
+                const delayMs = this.#deps.interNodeDelayMs ?? 1_000;
+                if (delayMs > 0 && i < waitingNodes.length - 1) {
+                    this.#currentDelayPromise = Time.sleep("mdns-scan-delay", Millis(delayMs)).finally(() => {
                         this.#currentDelayPromise = undefined;
                     });
                     await this.#currentDelayPromise;

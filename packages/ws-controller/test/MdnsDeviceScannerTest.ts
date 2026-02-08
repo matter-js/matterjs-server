@@ -226,6 +226,174 @@ describe("MdnsDeviceScanner", () => {
             expect(findDeviceCalled).to.be.false;
         });
 
+        it("should scan all waiting nodes and trigger reconnect for each found device", async () => {
+            const waitingNode1 = mockNode(NodeStates.WaitingForDeviceDiscovery);
+            const waitingNode2 = mockNode(NodeStates.WaitingForDeviceDiscovery);
+            const waitingNode3 = mockNode(NodeStates.WaitingForDeviceDiscovery);
+
+            const nodeMap = new Map<bigint, PairedNode & { triggerReconnectCalls: number }>([
+                [1n, waitingNode1],
+                [2n, waitingNode2],
+                [3n, waitingNode3],
+            ]);
+            const discoveredNodeIds: bigint[] = [];
+
+            const deps: MdnsDeviceScannerDeps = {
+                getNodeIds: () => [...nodeMap.keys()].map(id => NodeId(id)),
+                getNode: (nodeId: NodeId) => {
+                    const node = nodeMap.get(BigInt(nodeId));
+                    if (!node) throw new Error(`Node ${nodeId} not found`);
+                    return node;
+                },
+                findDevice: async (nodeId: NodeId) => {
+                    discoveredNodeIds.push(BigInt(nodeId));
+                    return FOUND_DEVICE;
+                },
+                interNodeDelayMs: 0,
+            };
+
+            const scanner = new MdnsDeviceScanner(deps);
+            await scanner.scanNow();
+            scanner.stop();
+
+            expect(discoveredNodeIds).to.have.members([1n, 2n, 3n]);
+            expect(waitingNode1.triggerReconnectCalls).to.equal(1);
+            expect(waitingNode2.triggerReconnectCalls).to.equal(1);
+            expect(waitingNode3.triggerReconnectCalls).to.equal(1);
+        });
+
+        it("should continue scanning other nodes when one findDevice throws", async () => {
+            const waitingNode1 = mockNode(NodeStates.WaitingForDeviceDiscovery);
+            const waitingNode2 = mockNode(NodeStates.WaitingForDeviceDiscovery);
+            const waitingNode3 = mockNode(NodeStates.WaitingForDeviceDiscovery);
+
+            const nodeMap = new Map<bigint, PairedNode & { triggerReconnectCalls: number }>([
+                [1n, waitingNode1],
+                [2n, waitingNode2],
+                [3n, waitingNode3],
+            ]);
+
+            const deps: MdnsDeviceScannerDeps = {
+                getNodeIds: () => [...nodeMap.keys()].map(id => NodeId(id)),
+                getNode: (nodeId: NodeId) => {
+                    const node = nodeMap.get(BigInt(nodeId));
+                    if (!node) throw new Error(`Node ${nodeId} not found`);
+                    return node;
+                },
+                findDevice: async (nodeId: NodeId) => {
+                    if (BigInt(nodeId) === 2n) throw new Error("network failure");
+                    return FOUND_DEVICE;
+                },
+                interNodeDelayMs: 0,
+            };
+
+            const scanner = new MdnsDeviceScanner(deps);
+            await scanner.scanNow();
+            scanner.stop();
+
+            expect(waitingNode1.triggerReconnectCalls).to.equal(1);
+            expect(waitingNode2.triggerReconnectCalls).to.equal(0);
+            expect(waitingNode3.triggerReconnectCalls).to.equal(1);
+        });
+
+        it("should only trigger reconnect for nodes with discovered addresses", async () => {
+            const node1 = mockNode(NodeStates.WaitingForDeviceDiscovery);
+            const node2 = mockNode(NodeStates.WaitingForDeviceDiscovery);
+            const node3 = mockNode(NodeStates.WaitingForDeviceDiscovery);
+            const node4 = mockNode(NodeStates.WaitingForDeviceDiscovery);
+
+            const nodeMap = new Map<bigint, PairedNode & { triggerReconnectCalls: number }>([
+                [1n, node1],
+                [2n, node2],
+                [3n, node3],
+                [4n, node4],
+            ]);
+
+            const deps: MdnsDeviceScannerDeps = {
+                getNodeIds: () => [...nodeMap.keys()].map(id => NodeId(id)),
+                getNode: (nodeId: NodeId) => {
+                    const node = nodeMap.get(BigInt(nodeId));
+                    if (!node) throw new Error(`Node ${nodeId} not found`);
+                    return node;
+                },
+                findDevice: async (nodeId: NodeId) => {
+                    const id = BigInt(nodeId);
+                    if (id === 1n) return FOUND_DEVICE;
+                    if (id === 2n) return undefined;
+                    if (id === 3n) return { addresses: [] };
+                    throw new Error("timeout");
+                },
+                interNodeDelayMs: 0,
+            };
+
+            const scanner = new MdnsDeviceScanner(deps);
+            await scanner.scanNow();
+            scanner.stop();
+
+            expect(node1.triggerReconnectCalls).to.equal(1);
+            expect(node2.triggerReconnectCalls).to.equal(0);
+            expect(node3.triggerReconnectCalls).to.equal(0);
+            expect(node4.triggerReconnectCalls).to.equal(0);
+        });
+
+        it("should not allow concurrent scanNow calls", async () => {
+            let findDeviceCallCount = 0;
+            const waitingNode = mockNode(NodeStates.WaitingForDeviceDiscovery);
+
+            let resolveFind: (value: DiscoveredDevice) => void;
+            const deps: MdnsDeviceScannerDeps = {
+                getNodeIds: () => [NodeId(1n)],
+                getNode: () => waitingNode,
+                findDevice: async () => {
+                    findDeviceCallCount++;
+                    return new Promise<DiscoveredDevice>(resolve => {
+                        resolveFind = resolve;
+                    });
+                },
+            };
+
+            const scanner = new MdnsDeviceScanner(deps);
+
+            const scan1 = scanner.scanNow();
+            // Start a second scan while the first is still in progress
+            const scan2 = scanner.scanNow();
+
+            // scan2 should return immediately (no-op due to #isScanning guard)
+            await scan2;
+
+            // Unblock the first scan
+            resolveFind!(FOUND_DEVICE);
+            await scan1;
+            scanner.stop();
+
+            // findDevice should only have been called once (from scan1)
+            expect(findDeviceCallCount).to.equal(1);
+        });
+
+        it("should respect stop() called during an active scan", async () => {
+            const waitingNode = mockNode(NodeStates.WaitingForDeviceDiscovery);
+            const ref: { scanner?: MdnsDeviceScanner } = {};
+
+            const deps: MdnsDeviceScannerDeps = {
+                getNodeIds: () => [NodeId(1n)],
+                getNode: () => waitingNode,
+                findDevice: async () => {
+                    // Stop the scanner while findDevice is in progress
+                    ref.scanner!.stop();
+                    return FOUND_DEVICE;
+                },
+            };
+
+            ref.scanner = new MdnsDeviceScanner(deps);
+            await ref.scanner.scanNow();
+
+            // The node was found but scanner was stopped during findDevice.
+            // #scanNode does not check #closed after findDevice returns — it only
+            // re-checks connectionState. Since the node is still in
+            // WaitingForDeviceDiscovery, triggerReconnect fires.
+            expect(waitingNode.triggerReconnectCalls).to.equal(1);
+        });
+
         it("should not scan after stop", async () => {
             let findDeviceCalled = false;
             const waitingNode = mockNode(NodeStates.WaitingForDeviceDiscovery);
