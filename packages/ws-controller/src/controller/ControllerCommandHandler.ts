@@ -106,6 +106,7 @@ import {
 import { formatNodeId } from "../util/formatNodeId.js";
 import { pingIp } from "../util/network.js";
 import { CustomClusterPoller } from "./CustomClusterPoller.js";
+import { MdnsDeviceScanner } from "./MdnsDeviceScanner.js";
 import { Nodes } from "./Nodes.js";
 
 const logger = Logger.get("ControllerCommandHandler");
@@ -154,6 +155,8 @@ export class ControllerCommandHandler {
     #availableUpdates = new Map<NodeId, SoftwareUpdateInfo>();
     /** Poller for custom cluster attributes (Eve energy, etc.) */
     #customClusterPoller: CustomClusterPoller;
+    /** Proactive mDNS scanner for nodes in WaitingForDeviceDiscovery state */
+    #mdnsDeviceScanner: MdnsDeviceScanner;
     /** Track the last known availability for each node to detect changes */
     #lastAvailability = new Map<NodeId, boolean>();
     events = {
@@ -183,6 +186,18 @@ export class ControllerCommandHandler {
             nodeConnected: nodeId => !!(this.#nodes.has(nodeId) && this.#nodes.get(nodeId).isConnected),
             handleReadAttributes: (nodeId, paths, fabricFiltered) =>
                 this.handleReadAttributes(nodeId, paths, fabricFiltered),
+        });
+
+        // Initialize mDNS device scanner for fast recovery of offline nodes
+        this.#mdnsDeviceScanner = new MdnsDeviceScanner({
+            getNodeIds: () => this.#nodes.getIds(),
+            getNode: (nodeId: NodeId) => this.#nodes.get(nodeId),
+            findDevice: async (nodeId: NodeId) => {
+                const scanners = this.#controller.node.env.get(ScannerSet);
+                const mdnsScanner = scanners.scannerFor(ChannelType.UDP);
+                if (!mdnsScanner) return undefined;
+                return await mdnsScanner.findOperationalDevice(this.#controller.fabric, nodeId, Seconds(5), false);
+            },
         });
     }
 
@@ -265,6 +280,7 @@ export class ControllerCommandHandler {
     close() {
         if (!this.#started) return;
         this.#customClusterPoller.stop();
+        this.#mdnsDeviceScanner.stop();
         return this.#controller.close();
     }
 
@@ -368,6 +384,9 @@ export class ControllerCommandHandler {
                 logger.warn(`Failed to connect to node "${this.#formatNode(nodeId)}":`, error);
             }
         }
+
+        // Start mDNS scanner for fast recovery of nodes that change IP while offline
+        this.#mdnsDeviceScanner.start();
     }
 
     getNodeIds() {
