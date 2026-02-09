@@ -52,7 +52,7 @@ Want to help out with development, testing, and/or documentation? Great! As both
 
 [Development documentation](DEVELOPMENT.md)
 
-A preconfigured [dev container](.devcontainer/) is available with Claude Code, security firewall, and all required tools. See the [development docs](DEVELOPMENT.md#dev-container) for details.
+A preconfigured [dev container](.devcontainer/) is available with all required tools. See the [development docs](DEVELOPMENT.md#dev-container) for details.
 
 ## Installation / Running the Matter Server
 
