@@ -5,27 +5,45 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 WORKDIR /app
 
+# Version of matter-server to install from npm
+ARG MATTERJS_SERVER_VERSION
+
 # Install required system dependencies
+# Runtime dependencies:
 # - iputils-ping: Required for node ping functionality
 # - curl: For health checks and general utility
+# - bluez: Bluetooth stack for BLE commissioning
+# Build dependencies (removed after npm install):
+# - python3: Required by node-gyp for native module compilation
+# - make, gcc, g++: C/C++ toolchain for native module compilation
+# - libbluetooth-dev, libudev-dev: Headers for native BLE/udev bindings
 RUN \
     set -x \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
         iputils-ping \
         curl \
+        python3 \
+        make \
+        gcc \
+        g++ \
+        bluez \
+        libbluetooth-dev \
+        libudev-dev \
+    # Install matter-server from npm and optimize image size
+    && set -x \
+    && npm install --foreground-scripts "matter-server@${MATTERJS_SERVER_VERSION}" \
+    # Remove build dependencies (no longer needed after native modules are compiled)
     && apt-get purge -y --auto-remove \
+        python3 \
+        make \
+        gcc \
+        g++ \
+        libbluetooth-dev \
+        libudev-dev \
     && rm -rf \
         /var/lib/apt/lists/* \
-        /usr/src/*
-
-# Version of matter-server to install from npm
-ARG MATTERJS_SERVER_VERSION
-
-# Install matter-server from npm and optimize image size
-RUN \
-    set -x \
-    && npm install "matter-server@${MATTERJS_SERVER_VERSION}" \
+        /usr/src/* \
     # Remove corepack (not needed at runtime)
     && npm uninstall -g corepack \
     # Clean npm cache

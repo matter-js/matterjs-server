@@ -11045,6 +11045,48 @@ export const clusters: Record<number, ClusterDescription> = {
         "id": 302775297,
         "label": "HeimanCluster",
         "attributes": {
+            "16": {
+                "id": 16,
+                "cluster_id": 302775297,
+                "label": "TamperAlarm",
+                "type": "Optional[unknown]"
+            },
+            "17": {
+                "id": 17,
+                "cluster_id": 302775297,
+                "label": "PreheatingState",
+                "type": "Optional[unknown]"
+            },
+            "18": {
+                "id": 18,
+                "cluster_id": 302775297,
+                "label": "NoDisturbingState",
+                "type": "Optional[unknown]"
+            },
+            "19": {
+                "id": 19,
+                "cluster_id": 302775297,
+                "label": "SensorType",
+                "type": "Optional[unknown]"
+            },
+            "20": {
+                "id": 20,
+                "cluster_id": 302775297,
+                "label": "SirenActive",
+                "type": "Optional[unknown]"
+            },
+            "21": {
+                "id": 21,
+                "cluster_id": 302775297,
+                "label": "AlarmMute",
+                "type": "Optional[unknown]"
+            },
+            "22": {
+                "id": 22,
+                "cluster_id": 302775297,
+                "label": "LowPowerMode",
+                "type": "Optional[unknown]"
+            },
             "65528": {
                 "id": 65528,
                 "cluster_id": 302775297,
@@ -11080,48 +11122,6 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 302775297,
                 "label": "ClusterRevision",
                 "type": "uint16"
-            },
-            "302710800": {
-                "id": 302710800,
-                "cluster_id": 302775297,
-                "label": "TamperAlarm",
-                "type": "Optional[unknown]"
-            },
-            "302710801": {
-                "id": 302710801,
-                "cluster_id": 302775297,
-                "label": "PreheatingState",
-                "type": "Optional[unknown]"
-            },
-            "302710802": {
-                "id": 302710802,
-                "cluster_id": 302775297,
-                "label": "NoDisturbingState",
-                "type": "Optional[unknown]"
-            },
-            "302710803": {
-                "id": 302710803,
-                "cluster_id": 302775297,
-                "label": "SensorType",
-                "type": "Optional[unknown]"
-            },
-            "302710804": {
-                "id": 302710804,
-                "cluster_id": 302775297,
-                "label": "SirenActive",
-                "type": "Optional[unknown]"
-            },
-            "302710805": {
-                "id": 302710805,
-                "cluster_id": 302775297,
-                "label": "AlarmMute",
-                "type": "Optional[unknown]"
-            },
-            "302710806": {
-                "id": 302710806,
-                "cluster_id": 302775297,
-                "label": "LowPowerMode",
-                "type": "Optional[unknown]"
             }
         }
     },
