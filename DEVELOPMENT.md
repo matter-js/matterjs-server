@@ -7,9 +7,48 @@
 
 Development is only possible on a (recent) Linux or MacOS machine. Other operating systems are **not supported**. See [here](docs/os_requirements.md) for a full list of requirements to the OS and network, especially if you plan on communicating with Thread-based devices.
 
+## Native Development
+
 - Download/clone the repo to your local machine.
 - Set-up the development environment: Run `npm install` in the base directory of the repository.
 - Create the `/data` directory if it does not exist with permissions for the user running the python-matter-server.
+
+## Dev Container
+
+A preconfigured [dev container](https://code.visualstudio.com/docs/devcontainers/containers) is provided in `.devcontainer/` for a consistent development environment. The dev container includes [Claude Code](https://claude.ai/code) with a security firewall for safe AI-assisted development.
+
+> [!NOTE]
+> You do not need to use a dev container. Native development works fine. However, the dev container is useful for local testing because it allows the server to connect to other components running in Docker.
+
+### Prerequisites
+
+- [Docker Desktop](https://www.docker.com/products/docker-desktop) installed and running
+- VS Code with the [Dev Containers](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) extension
+- Docker Desktop settings (macOS): Enable "Use kernel networking for UDP" and "Enable host networking". Set default containers to dual IPv4/IPv6.
+
+### Getting Started
+
+1. Open the repository in VS Code
+2. When prompted, click **"Reopen in Container"** (or use Command Palette: `Cmd+Shift+P` / `Ctrl+Shift+P` → "Remote-Containers: Reopen in Container")
+3. Wait for the container to build and initialize. The post-create step runs `npm ci` and `npm run build` automatically.
+4. The server port `5580` is forwarded to your host automatically.
+
+### What's Included
+
+- **Node.js 22** with all project dependencies installed and built
+- **Claude Code**: AI-assisted development with `@anthropic-ai/claude-code` pre-installed
+- **Security firewall**: Network access restricted to only necessary services (npm, GitHub, Claude API, VS Code marketplace). Run `claude --dangerously-skip-permissions` for unattended AI-assisted operation.
+- **Developer tools**: ZSH with fzf, git-delta for better diffs, GitHub CLI (`gh`)
+- **VS Code extensions**: Claude Code, ESLint, Prettier, GitLens, Rewrap
+- **Docker-in-Docker**: Build and run Docker images inside the dev container
+- **Session persistence**: Command history and Claude Code configuration persist across container restarts
+
+### Networking Limitations
+
+Due to Docker networking on macOS and Windows, Matter devices running in the dev container may not be discoverable outside the container. The dev container is connected to a Docker network with IPv6 enabled, which is suitable for testing with other containerized services but not for direct device communication on the host network.
+
+> [!WARNING]
+> The dev container requires IPv6 networking support. GitHub Codespaces does not support IPv6, so the dev container will likely not work in Codespaces.
 
 ## Start Matter server
 
