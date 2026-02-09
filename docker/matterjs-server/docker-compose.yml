@@ -2,6 +2,7 @@ services:
   matterjs-server:
     container_name: matterjs-server
     image: ghcr.io/matter-js/matterjs-server:latest
+    read_only: true
     network_mode: host
     restart: unless-stopped
     volumes:
