@@ -147,8 +147,14 @@ The network topology data is obtained **directly from the commissioned Matter de
 
 - **Click a node** to select it and view details in the sidebar
 - **"Show in graph" button** on node detail pages navigates to the network view with that node selected
-- **Fit to screen button** adjusts the zoom to show all nodes
+- **Fit-to-screen button** adjusts the zoom to show all nodes
 - **Drag nodes** to rearrange the layout (physics will re-stabilize)
+
+### Device Icons
+
+Each node in the graph is shown with an icon based on its Matter device type. The icon mapping is defined in [`packages/dashboard/src/pages/network/device-icons.ts`](packages/dashboard/src/pages/network/device-icons.ts). Icons come from [Material Design Icons (MDI)](https://pictogrammers.com/library/mdi/), which provides over 7400 icons.
+
+If you notice a missing or misleading icon for your device type, we welcome PRs to improve the mapping. To find a suitable icon, browse the [MDI icon library](https://pictogrammers.com/library/mdi/) or use [MDI Search](https://mdisearch.com/) for quick lookup. Devices without a specific mapping show a generic chip icon as the default.
 
 ## Importing Custom OTA Firmware Files
 

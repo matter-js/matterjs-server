@@ -7,22 +7,44 @@
 import type { MatterNode } from "@matter-server/ws-client";
 import {
     mdiAccessPoint,
+    mdiAirConditioner,
+    mdiAirFilter,
+    mdiAirPurifier,
+    mdiBlindsHorizontal,
+    mdiBrightnessPercent,
     mdiCeilingLight,
+    mdiChip,
+    mdiDishwasher,
     mdiDoorOpen,
+    mdiEvStation,
     mdiFan,
+    mdiFridge,
     mdiGauge,
     mdiHelp,
     mdiHome,
+    mdiHvac,
     mdiLightbulb,
     mdiLock,
+    mdiMeterElectric,
+    mdiMicrowave,
     mdiMotionSensor,
     mdiPowerPlug,
+    mdiPump,
+    mdiRobotVacuum,
     mdiRouter,
+    mdiSmokeDetector,
+    mdiSnowflakeAlert,
+    mdiSolarPower,
     mdiSpeaker,
+    mdiStove,
     mdiTelevision,
     mdiThermometer,
     mdiToggleSwitch,
+    mdiTumbleDryer,
+    mdiWashingMachine,
     mdiWater,
+    mdiWaterPercent,
+    mdiWeatherRainy,
     mdiWifi,
 } from "@mdi/js";
 import { ThemeService } from "../../util/theme-service.js";
@@ -62,10 +84,18 @@ const DeviceTypes = {
     LIGHT_SENSOR: 0x0106,
     PRESSURE_SENSOR: 0x0305,
     FLOW_SENSOR: 0x0306,
+    AIR_QUALITY_SENSOR: 0x002c,
+
+    // Safety
+    SMOKE_CO_ALARM: 0x0076,
 
     // HVAC
     THERMOSTAT: 0x0301,
     FAN: 0x002b,
+    AIR_PURIFIER: 0x002d,
+    HEATING_COOLING_UNIT: 0x0300,
+    ROOM_AIR_CONDITIONER: 0x0072,
+    PUMP: 0x0303,
 
     // Closures
     DOOR_LOCK: 0x000a,
@@ -84,6 +114,27 @@ const DeviceTypes = {
     // Water
     WATER_LEAK_DETECTOR: 0x0043,
     WATER_VALVE: 0x0042,
+    WATER_FREEZE_DETECTOR: 0x0041,
+    RAIN_SENSOR: 0x0044,
+
+    // Major Appliances (Matter 1.2+)
+    REFRIGERATOR: 0x0070,
+    TEMPERATURE_CONTROLLED_CABINET: 0x0071,
+    LAUNDRY_WASHER: 0x0073,
+    ROBOTIC_VACUUM_CLEANER: 0x0074,
+    DISHWASHER: 0x0075,
+    COOKTOP: 0x0078,
+    MICROWAVE_OVEN: 0x0079,
+    EXTRACTOR_HOOD: 0x007a,
+    OVEN: 0x007b,
+    LAUNDRY_DRYER: 0x007c,
+
+    // Energy (Matter 1.3+)
+    EVSE: 0x050c,
+    DEVICE_ENERGY_MANAGEMENT: 0x050d,
+    ELECTRICAL_SENSOR: 0x0510,
+    SOLAR_POWER: 0x0017,
+    BATTERY_STORAGE: 0x0018,
 };
 
 /**
@@ -110,18 +161,26 @@ const deviceTypeToIcon: Record<number, string> = {
     [DeviceTypes.CONTACT_SENSOR]: mdiDoorOpen,
     [DeviceTypes.OCCUPANCY_SENSOR]: mdiMotionSensor,
     [DeviceTypes.TEMPERATURE_SENSOR]: mdiThermometer,
-    [DeviceTypes.HUMIDITY_SENSOR]: mdiGauge,
-    [DeviceTypes.LIGHT_SENSOR]: mdiGauge,
+    [DeviceTypes.HUMIDITY_SENSOR]: mdiWaterPercent,
+    [DeviceTypes.LIGHT_SENSOR]: mdiBrightnessPercent,
     [DeviceTypes.PRESSURE_SENSOR]: mdiGauge,
-    [DeviceTypes.FLOW_SENSOR]: mdiGauge,
+    [DeviceTypes.FLOW_SENSOR]: mdiWater,
+    [DeviceTypes.AIR_QUALITY_SENSOR]: mdiAirFilter,
+
+    // Safety
+    [DeviceTypes.SMOKE_CO_ALARM]: mdiSmokeDetector,
 
     // HVAC
     [DeviceTypes.THERMOSTAT]: mdiThermometer,
     [DeviceTypes.FAN]: mdiFan,
+    [DeviceTypes.AIR_PURIFIER]: mdiAirPurifier,
+    [DeviceTypes.HEATING_COOLING_UNIT]: mdiHvac,
+    [DeviceTypes.ROOM_AIR_CONDITIONER]: mdiAirConditioner,
+    [DeviceTypes.PUMP]: mdiPump,
 
     // Closures
     [DeviceTypes.DOOR_LOCK]: mdiLock,
-    [DeviceTypes.WINDOW_COVERING]: mdiHome,
+    [DeviceTypes.WINDOW_COVERING]: mdiBlindsHorizontal,
 
     // Media
     [DeviceTypes.SPEAKER]: mdiSpeaker,
@@ -136,6 +195,27 @@ const deviceTypeToIcon: Record<number, string> = {
     // Water
     [DeviceTypes.WATER_LEAK_DETECTOR]: mdiWater,
     [DeviceTypes.WATER_VALVE]: mdiWater,
+    [DeviceTypes.WATER_FREEZE_DETECTOR]: mdiSnowflakeAlert,
+    [DeviceTypes.RAIN_SENSOR]: mdiWeatherRainy,
+
+    // Major Appliances
+    [DeviceTypes.REFRIGERATOR]: mdiFridge,
+    [DeviceTypes.TEMPERATURE_CONTROLLED_CABINET]: mdiFridge,
+    [DeviceTypes.LAUNDRY_WASHER]: mdiWashingMachine,
+    [DeviceTypes.ROBOTIC_VACUUM_CLEANER]: mdiRobotVacuum,
+    [DeviceTypes.DISHWASHER]: mdiDishwasher,
+    [DeviceTypes.COOKTOP]: mdiStove,
+    [DeviceTypes.MICROWAVE_OVEN]: mdiMicrowave,
+    [DeviceTypes.EXTRACTOR_HOOD]: mdiFan,
+    [DeviceTypes.OVEN]: mdiStove,
+    [DeviceTypes.LAUNDRY_DRYER]: mdiTumbleDryer,
+
+    // Energy
+    [DeviceTypes.EVSE]: mdiEvStation,
+    [DeviceTypes.DEVICE_ENERGY_MANAGEMENT]: mdiMeterElectric,
+    [DeviceTypes.ELECTRICAL_SENSOR]: mdiMeterElectric,
+    [DeviceTypes.SOLAR_POWER]: mdiSolarPower,
+    [DeviceTypes.BATTERY_STORAGE]: mdiMeterElectric,
 };
 
 /**
@@ -195,8 +275,8 @@ export function getDeviceIcon(node: MatterNode, threadRole?: number): string {
         return deviceTypeToIcon[deviceType];
     }
 
-    // Default icon
-    return mdiHome;
+    // Default icon for unmapped device types
+    return mdiChip;
 }
 
 /**
@@ -211,7 +291,7 @@ export function getNetworkTypeIcon(networkType: string): string {
         case "ethernet":
             return mdiRouter;
         default:
-            return mdiHome;
+            return mdiChip;
     }
 }
 
