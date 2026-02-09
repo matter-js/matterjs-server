@@ -109,7 +109,7 @@ This tells the dashboard to automatically connect to the WebSocket server at the
 
 It was in general tested with a simply slight bulb on network.
 
-Ble and Wifi should work when server gets startes with `--ble` flag, but Wifi only will work. For Thread Mater.js currently requires a network Name which is not provided.
+Ble and Wifi should work when server gets startes with `--ble` flag, but Wifi only will work. For Thread Matter.js currently requires a network Name which is not provided.
 
 ## Dashboard Network Visualization
 
