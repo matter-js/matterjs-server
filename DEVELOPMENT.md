@@ -15,7 +15,7 @@ Development is only possible on a (recent) Linux or MacOS machine. Other operati
 
 ## Dev Container
 
-A preconfigured [dev container](https://code.visualstudio.com/docs/devcontainers/containers) is provided in `.devcontainer/` for a consistent development environment. The dev container includes [Claude Code](https://claude.ai/code) with a security firewall for safe AI-assisted development.
+A preconfigured [dev container](https://code.visualstudio.com/docs/devcontainers/containers) is provided in `.devcontainer/` for a consistent development environment. The dev container includes [Claude Code](https://claude.ai/code) with a network firewall for AI-assisted development.
 
 > [!NOTE]
 > You do not need to use a dev container. Native development works fine. However, the dev container is useful for local testing because it allows the server to connect to other components running in Docker.
@@ -35,9 +35,9 @@ A preconfigured [dev container](https://code.visualstudio.com/docs/devcontainers
 
 ### What's Included
 
-- **Node.js 22** with all project dependencies installed and built
-- **Claude Code**: AI-assisted development with `@anthropic-ai/claude-code` pre-installed
-- **Security firewall**: Network access restricted to only necessary services (npm, GitHub, Claude API, VS Code marketplace). Run `claude --dangerously-skip-permissions` for unattended AI-assisted operation.
+- **Node.js 24** with all project dependencies installed and built
+- **Claude Code**: AI-assisted development with [Claude Code](https://code.claude.com) pre-installed
+- **Security firewall**: Network access restricted to only necessary services (npm, GitHub, Claude API, VS Code marketplace, Docker registries). The firewall allows running `claude --dangerously-skip-permissions` for unattended operation. See the [Claude Code devcontainer documentation](https://code.claude.com/docs/en/devcontainer) for details on the security model.
 - **Developer tools**: ZSH with fzf, git-delta for better diffs, GitHub CLI (`gh`)
 - **VS Code extensions**: Claude Code, ESLint, Prettier, GitLens, Rewrap
 - **Docker-in-Docker**: Build and run Docker images inside the dev container
@@ -45,10 +45,10 @@ A preconfigured [dev container](https://code.visualstudio.com/docs/devcontainers
 
 ### Networking Limitations
 
-Due to Docker networking on macOS and Windows, Matter devices running in the dev container may not be discoverable outside the container. The dev container is connected to a Docker network with IPv6 enabled, which is suitable for testing with other containerized services but not for direct device communication on the host network.
+Due to Docker networking on macOS, Matter devices running in the dev container may not be discoverable outside the container. The dev container is connected to a Docker network with IPv6 enabled, which is suitable for testing with other containerized services but not for direct device communication on the host network.
 
 > [!WARNING]
-> The dev container requires IPv6 networking support. GitHub Codespaces does not support IPv6, so the dev container will likely not work in Codespaces.
+> The dev container requires IPv6 networking support. GitHub Codespaces does not support IPv6, so the dev container will not work in Codespaces.
 
 ## Start Matter server
 

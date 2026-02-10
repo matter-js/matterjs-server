@@ -15,9 +15,10 @@
 // networking for UDP" and "Enable host networking" must be enabled.
 //
 // Claude Code support:
-// This dev container includes Claude Code with a security firewall for safe unattended operation.
-// The firewall restricts network access to only necessary services (npm, GitHub, Claude API, etc.).
-// To run Claude Code without permission prompts: claude --dangerously-skip-permissions
+//
+// This devcontainer includes Claude Code with a network firewall that restricts outbound connections to whitelisted
+// domains only.  This allows running "claude --dangerously-skip-permissions" safely for unattended operation.
+// See https://code.claude.com/docs/en/devcontainer for details.
 
 {
 	"name": "matterjs-server",
