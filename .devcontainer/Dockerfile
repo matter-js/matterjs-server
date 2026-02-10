@@ -30,12 +30,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   vim \
   && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Persist bash history across container restarts
+# Persist shell history across container restarts
 ARG USERNAME=node
-RUN SNIPPET="export PROMPT_COMMAND='history -a' && export HISTFILE=/commandhistory/.bash_history" \
-  && mkdir /commandhistory \
+RUN mkdir /commandhistory \
   && touch /commandhistory/.bash_history \
-  && chown -R $USERNAME /commandhistory
+  && touch /commandhistory/.zsh_history \
+  && chown -R $USERNAME /commandhistory \
+  && printf '\nexport PROMPT_COMMAND="history -a" && export HISTFILE=/commandhistory/.bash_history\n' >> /etc/bash.bashrc
 
 ENV DEVCONTAINER=true
 
@@ -64,7 +65,9 @@ RUN sh -c "$(wget -O- https://github.com/deluan/zsh-in-docker/releases/download/
   -p fzf \
   -a "source /usr/share/doc/fzf/examples/key-bindings.zsh" \
   -a "source /usr/share/doc/fzf/examples/completion.zsh" \
-  -a "export PROMPT_COMMAND='history -a' && export HISTFILE=/commandhistory/.bash_history" \
+  -a "export HISTFILE=/commandhistory/.zsh_history" \
+  -a "setopt INC_APPEND_HISTORY" \
+  -a "setopt SHARE_HISTORY" \
   -x
 
 # Install Claude Code globally

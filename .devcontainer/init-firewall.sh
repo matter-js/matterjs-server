@@ -12,10 +12,11 @@
 #
 # Differences from reference:
 #   - IPv6 rules (ip6tables) mirror IPv4 since this devcontainer enables IPv6
+#   - IPv6 ipset (allowed-domains-v6) for AAAA records of allowed domains
 #   - Docker container registries whitelisted for Docker-in-Docker support
 #   - DNS allowed over both UDP and TCP
 #   - Inbound DNS restricted to ESTABLISHED/RELATED
-#   - Docker-in-Docker iptables rules preserved during flush
+#   - Docker-in-Docker iptables rules preserved and restored during flush
 #   - Matter DCL (Distributed Compliance Ledger) hosts whitelisted
 #   - mDNS (UDP 5353) and Matter protocol (UDP 5540+) allowed for device communication
 
@@ -27,14 +28,16 @@ IFS=$'\n\t'
 # ---------------------------------------------------------------------------
 DOCKER_DNS_RULES=$(iptables-save -t nat | grep "127\.0\.0\.11" || true)
 
-# Preserve Docker-in-Docker rules (DOCKER, DOCKER-ISOLATION, etc.)
-DOCKER_FILTER_RULES=""
-DOCKER_NAT_RULES=""
+# Preserve Docker-in-Docker filter rules (DOCKER, DOCKER-ISOLATION, etc.)
+DOCKER_FILTER_DUMP=""
 if iptables-save -t filter | grep -q "DOCKER"; then
-    DOCKER_FILTER_RULES=$(iptables-save -t filter | grep -E "DOCKER" || true)
+    DOCKER_FILTER_DUMP=$(iptables-save -t filter || true)
 fi
-if iptables-save -t nat | grep -qE "DOCKER(?!_OUTPUT|_POSTROUTING)" 2>/dev/null; then
-    DOCKER_NAT_RULES=$(iptables-save -t nat | grep -vE "127\.0\.0\.11" | grep -E "DOCKER" || true)
+
+# Preserve Docker-in-Docker nat rules (excluding the internal DNS rules we handle separately)
+DOCKER_NAT_DUMP=""
+if iptables-save -t nat | grep -E "DOCKER" | grep -vqE "DOCKER_(OUTPUT|POSTROUTING)" 2>/dev/null; then
+    DOCKER_NAT_DUMP=$(iptables-save -t nat | grep -vE "127\.0\.0\.11" | grep -E "DOCKER" || true)
 fi
 
 # ---------------------------------------------------------------------------
@@ -55,10 +58,13 @@ ip6tables -t mangle -F
 ip6tables -t mangle -X 2>/dev/null || true
 
 ipset destroy allowed-domains 2>/dev/null || true
+ipset destroy allowed-domains-v6 2>/dev/null || true
 
 # ---------------------------------------------------------------------------
-# 3. Restore Docker DNS resolution rules
+# 3. Restore Docker-managed rules
 # ---------------------------------------------------------------------------
+
+# Restore Docker DNS resolution rules
 if [ -n "$DOCKER_DNS_RULES" ]; then
     echo "Restoring Docker DNS rules..."
     iptables -t nat -N DOCKER_OUTPUT 2>/dev/null || true
@@ -66,6 +72,30 @@ if [ -n "$DOCKER_DNS_RULES" ]; then
     echo "$DOCKER_DNS_RULES" | xargs -L 1 iptables -t nat
 else
     echo "No Docker DNS rules to restore"
+fi
+
+# Restore Docker-in-Docker filter chains if they existed
+if [ -n "$DOCKER_FILTER_DUMP" ]; then
+    echo "Restoring Docker filter rules..."
+    # Recreate DOCKER chains
+    for chain in DOCKER DOCKER-ISOLATION-STAGE-1 DOCKER-ISOLATION-STAGE-2 DOCKER-USER; do
+        if echo "$DOCKER_FILTER_DUMP" | grep -q ":${chain} "; then
+            iptables -N "$chain" 2>/dev/null || true
+        fi
+    done
+    # Restore the rules referencing DOCKER chains
+    echo "$DOCKER_FILTER_DUMP" | grep -E "\-j DOCKER|\-A DOCKER" | while read -r rule; do
+        # Strip the leading -A and reconstruct
+        iptables $rule 2>/dev/null || true
+    done
+fi
+
+# Restore Docker-in-Docker nat rules if they existed
+if [ -n "$DOCKER_NAT_DUMP" ]; then
+    echo "Restoring Docker NAT rules..."
+    echo "$DOCKER_NAT_DUMP" | while read -r rule; do
+        iptables -t nat $rule 2>/dev/null || true
+    done
 fi
 
 # ---------------------------------------------------------------------------
@@ -114,9 +144,10 @@ ip6tables -A OUTPUT -p udp --dport 5540:5560 -j ACCEPT
 ip6tables -A INPUT -p udp --dport 5540:5560 -j ACCEPT
 
 # ---------------------------------------------------------------------------
-# 5. Build allowed-domains ipset (IPv4)
+# 5. Build allowed-domains ipsets (IPv4 + IPv6)
 # ---------------------------------------------------------------------------
-ipset create allowed-domains hash:net
+ipset create allowed-domains hash:net family inet
+ipset create allowed-domains-v6 hash:net family inet6
 
 # Fetch GitHub meta information and aggregate + add their IP ranges
 echo "Fetching GitHub IP ranges..."
@@ -131,15 +162,21 @@ if ! echo "$gh_ranges" | jq -e '.web and .api and .git' >/dev/null; then
     exit 1
 fi
 
-echo "Processing GitHub IPs..."
+echo "Processing GitHub IPv4 ranges..."
 while read -r cidr; do
     if [[ ! "$cidr" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}/[0-9]{1,2}$ ]]; then
         echo "ERROR: Invalid CIDR range from GitHub meta: $cidr"
         exit 1
     fi
     echo "Adding GitHub range $cidr"
-    ipset add allowed-domains "$cidr"
-done < <(echo "$gh_ranges" | jq -r '(.web + .api + .git)[]' | aggregate -q)
+    ipset add allowed-domains "$cidr" 2>/dev/null || true
+done < <(echo "$gh_ranges" | jq -r '(.web + .api + .git)[]' | grep -v ":" | aggregate -q)
+
+echo "Processing GitHub IPv6 ranges..."
+while read -r cidr; do
+    echo "Adding GitHub IPv6 range $cidr"
+    ipset add allowed-domains-v6 "$cidr" 2>/dev/null || true
+done < <(echo "$gh_ranges" | jq -r '(.web + .api + .git)[]' | grep ":")
 
 # Resolve and add other allowed domains (including Docker registries for Docker-in-Docker)
 for domain in \
@@ -158,19 +195,26 @@ for domain in \
     "on.dcl.csa-iot.org" \
     "on.test-net.dcl.csa-iot.org"; do
     echo "Resolving $domain..."
+
+    # IPv4 (A records)
     ips=$(dig +noall +answer A "$domain" | awk '$4 == "A" {print $5}')
     if [ -z "$ips" ]; then
-        echo "WARNING: Failed to resolve $domain (skipping)"
-        continue
+        echo "WARNING: No A records for $domain"
+    else
+        while read -r ip; do
+            if [[ "$ip" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+                ipset add allowed-domains "$ip" 2>/dev/null || true
+            fi
+        done < <(echo "$ips")
     fi
 
-    while read -r ip; do
-        if [[ ! "$ip" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
-            echo "ERROR: Invalid IP from DNS for $domain: $ip"
-            exit 1
-        fi
-        ipset add allowed-domains "$ip" 2>/dev/null || true
-    done < <(echo "$ips")
+    # IPv6 (AAAA records)
+    ips6=$(dig +noall +answer AAAA "$domain" | awk '$4 == "AAAA" {print $5}')
+    if [ -n "$ips6" ]; then
+        while read -r ip6; do
+            ipset add allowed-domains-v6 "$ip6" 2>/dev/null || true
+        done < <(echo "$ips6")
+    fi
 done
 
 # ---------------------------------------------------------------------------
@@ -211,8 +255,9 @@ iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 ip6tables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 ip6tables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 
-# Allow only specific outbound traffic to allowed domains (IPv4)
+# Allow only specific outbound traffic to allowed domains
 iptables -A OUTPUT -m set --match-set allowed-domains dst -j ACCEPT
+ip6tables -A OUTPUT -m set --match-set allowed-domains-v6 dst -j ACCEPT
 
 # Explicitly REJECT all other outbound traffic for immediate feedback
 iptables -A OUTPUT -j REJECT --reject-with icmp-admin-prohibited
@@ -238,4 +283,4 @@ else
 fi
 
 # Remove sudo access now that firewall is configured
-rm /etc/sudoers.d/node
+rm -f /etc/sudoers.d/node-firewall
