@@ -281,6 +281,3 @@ if ! curl --connect-timeout 5 https://api.github.com/zen >/dev/null 2>&1; then
 else
     echo "Firewall verification passed - able to reach https://api.github.com as expected"
 fi
-
-# Remove sudo access now that firewall is configured
-rm -f /etc/sudoers.d/node-firewall
