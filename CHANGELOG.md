@@ -8,6 +8,7 @@ This page shows a detailed overview of the changes between versions without the 
 -->
 
 ## __WORK IN PROGRESS__
+- Enhancement: Update Icons in Dashboard graphs and introduce in UI
 - Adjustment: (Leo2442926161) Update the Heiman custom attributes
 - Fix: Add missing package dependencies to the docker container to enable BLE support
 

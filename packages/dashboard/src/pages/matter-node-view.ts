@@ -14,6 +14,7 @@ import { css, html, LitElement } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { guard } from "lit/directives/guard.js";
 import "../components/ha-svg-icon";
+import { getDeviceIcon } from "../util/device-icons.js";
 import { formatNodeAddress, getEffectiveFabricIndex } from "../util/format_hex.js";
 import "./components/header";
 import "./components/node-details";
@@ -72,6 +73,7 @@ class MatterNodeView extends LitElement {
             <!-- node details section -->
             <div class="container">
                 <div class="node-title-bar">
+                    <ha-svg-icon class="node-icon" .path=${getDeviceIcon(this.node)}></ha-svg-icon>
                     <h2>Node ${this.node.node_id} <span class="node-id-hex">${nodeHex}</span></h2>
                     ${showGraphButton
                         ? html`
@@ -155,6 +157,11 @@ class MatterNodeView extends LitElement {
             align-items: center;
             gap: 16px;
             margin-bottom: 16px;
+        }
+
+        .node-icon {
+            --icon-primary-color: var(--md-sys-color-on-surface-variant, #666);
+            --mdc-icon-size: 28px;
         }
 
         .node-title-bar h2 {
