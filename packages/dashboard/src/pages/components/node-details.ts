@@ -12,6 +12,7 @@ import "@material/web/iconbutton/icon-button";
 import "@material/web/list/list";
 import "@material/web/list/list-item";
 import { mdiChatProcessing, mdiLink, mdiShareVariant, mdiTrashCan, mdiUpdate } from "@mdi/js";
+import { getDeviceIcon } from "../../util/device-icons.js";
 
 import { consume } from "@lit/context";
 import { MatterClient, MatterNode } from "@matter-server/ws-client";
@@ -78,6 +79,7 @@ export class NodeDetails extends LitElement {
         return html`
             <md-list>
                 <md-list-item>
+                    <ha-svg-icon slot="start" class="device-icon" .path=${getDeviceIcon(this.node)}></ha-svg-icon>
                     <div slot="headline">
                         <b>${this.node.nodeLabel || "Node Info"}</b>
                         ${this.node.available ? nothing : html`<span class="status">OFFLINE</span>`}
@@ -264,6 +266,10 @@ export class NodeDetails extends LitElement {
     }
 
     static override styles = css`
+        .device-icon {
+            --icon-primary-color: var(--md-sys-color-on-surface-variant, #666);
+        }
+
         .btn-row {
             --md-outlined-button-container-shape: 0px;
             display: flex;

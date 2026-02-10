@@ -29,6 +29,7 @@ import {
     ServerInfoMessage,
     SuccessResultMessage,
 } from "../types/WebSocketMessageTypes.js";
+import { formatNodeId } from "../util/formatNodeId.js";
 import { MATTER_VERSION } from "../util/matterVersion.js";
 import { ConfigStorage } from "./ConfigStorage.js";
 import {
@@ -140,14 +141,18 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     case "node_updated":
                         this.#collectNodeDetails(nodeId).then(
                             nodeDetails => {
-                                logger.debug(`[${connId}] Sending ${eventName} event for Node ${nodeId}`);
+                                logger.debug(`[${connId}] Sending ${eventName} event for Node ${formatNodeId(nodeId)}`);
                                 ws.send(toBigIntAwareJson({ event: eventName, data: nodeDetails }));
                             },
-                            err => logger.error(`[${connId}] Failed to collect node details for Node ${nodeId}`, err),
+                            err =>
+                                logger.error(
+                                    `[${connId}] Failed to collect node details for Node ${formatNodeId(nodeId)}`,
+                                    err,
+                                ),
                         );
                         break;
                     case "node_removed":
-                        logger.debug(`[${connId}] Sending node_removed event for Node ${nodeId}`);
+                        logger.debug(`[${connId}] Sending node_removed event for Node ${formatNodeId(nodeId)}`);
                         ws.send(toBigIntAwareJson({ event: eventName, data: nodeId }));
                         break;
                 }
@@ -165,7 +170,11 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     clusterData?.attributes[attributeId],
                     clusterData?.model,
                 );
-                logger.debug(`[${connId}] Sending attribute_updated event for Node ${nodeId}`, pathStr, value);
+                logger.debug(
+                    `[${connId}] Sending attribute_updated event for Node ${formatNodeId(nodeId)}`,
+                    pathStr,
+                    value,
+                );
                 ws.send(toBigIntAwareJson({ event: "attribute_updated", data: [nodeId, pathStr, value] }));
             });
 
@@ -204,7 +213,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     // Store event in the history buffer
                     this.#addEventToHistory(nodeEvent);
 
-                    logger.debug(`[${connId}] Sending node_event for Node ${nodeId}`, nodeEvent);
+                    logger.debug(`[${connId}] Sending node_event for Node ${formatNodeId(nodeId)}`, nodeEvent);
                     ws.send(toBigIntAwareJson({ event: "node_event", data: nodeEvent }));
                 }
             });
@@ -224,7 +233,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
             // Send node_updated when availability changes (debounced)
             observers.on(this.#commandHandler.events.nodeAvailabilityChanged, (nodeId, available) => {
-                logger.info(`[${connId}] Node ${nodeId} availability changed to ${available}`);
+                logger.info(`[${connId}] Node ${formatNodeId(nodeId)} availability changed to ${available}`);
                 sendNodeDetailsEvent("node_updated", nodeId);
             });
 
@@ -238,7 +247,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
             observers.on(this.#commandHandler.events.nodeEndpointAdded, (nodeId, endpointId) => {
                 if (this.#closed || !listening) return;
-                logger.info(`[${connId}] Sending endpoint_added event for Node ${nodeId} endpoint ${endpointId}`);
+                logger.info(
+                    `[${connId}] Sending endpoint_added event for Node ${formatNodeId(nodeId)} endpoint ${endpointId}`,
+                );
                 ws.send(
                     toBigIntAwareJson({ event: "endpoint_added", data: { node_id: nodeId, endpoint_id: endpointId } }),
                 );
@@ -246,7 +257,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
             observers.on(this.#commandHandler.events.nodeEndpointRemoved, (nodeId, endpointId) => {
                 if (this.#closed || !listening) return;
-                logger.info(`[${connId}] Sending endpoint_removed event for Node ${nodeId} endpoint ${endpointId}`);
+                logger.info(
+                    `[${connId}] Sending endpoint_removed event for Node ${formatNodeId(nodeId)} endpoint ${endpointId}`,
+                );
                 ws.send(
                     toBigIntAwareJson({
                         event: "endpoint_removed",
@@ -264,7 +277,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
             observers.on(this.#testNodeHandler.nodeRemoved, nodeId => {
                 if (this.#closed || !listening) return;
-                logger.info(`[${connId}] Sending node_removed event for test node ${nodeId}`);
+                logger.info(`[${connId}] Sending node_removed event for test node ${formatNodeId(nodeId)}`);
                 ws.send(toBigIntAwareJson({ event: "node_removed", data: nodeId }));
             });
 
@@ -797,8 +810,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
             if (testNode === undefined) {
                 throw ServerError.nodeNotExists(nodeId);
             }
-            logger.debug(`interview_node called for test node ${nodeId}`);
-            // Update last interview date for test node
+            logger.debug(`interview_node called for test node ${formatNodeId(nodeId)}`);
+            // Update the last interview date for the test node
             testNode.last_interview = new Date().toISOString().replace("Z", "000");
             this.#broadcastEvent("node_updated", testNode);
             return null;
