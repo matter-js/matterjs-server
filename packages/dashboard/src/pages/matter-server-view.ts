@@ -13,6 +13,7 @@ import { mdiChevronRight } from "@mdi/js";
 import { css, html, LitElement, nothing } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import "../components/ha-svg-icon";
+import { getDeviceIcon } from "../util/device-icons.js";
 import { formatNodeAddress } from "../util/format_hex.js";
 import "./components/footer";
 import "./components/header";
@@ -80,6 +81,11 @@ class MatterServerView extends LitElement {
                     ${nodes.map(([_id, node]) => {
                         return html`
                             <md-list-item type="link" href=${`#node/${node.node_id}`}>
+                                <ha-svg-icon
+                                    slot="start"
+                                    class="device-icon"
+                                    .path=${getDeviceIcon(node)}
+                                ></ha-svg-icon>
                                 <div slot="headline">
                                     Node ${node.node_id}
                                     <span class="hex-id"
@@ -127,6 +133,10 @@ class MatterServerView extends LitElement {
             .container {
                 padding: 16px 0;
             }
+        }
+
+        .device-icon {
+            --icon-primary-color: var(--md-sys-color-on-surface-variant, #666);
         }
 
         span[slot="start"] {

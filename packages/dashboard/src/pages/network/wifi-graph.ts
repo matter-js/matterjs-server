@@ -6,8 +6,8 @@
 
 import { html } from "lit";
 import { customElement } from "lit/decorators.js";
+import { createNodeIconDataUrl, createWiFiRouterIconDataUrl } from "../../util/device-icons.js";
 import { BaseNetworkGraph } from "./base-network-graph.js";
-import { createNodeIconDataUrl, createWiFiRouterIconDataUrl } from "./device-icons.js";
 import type { NetworkGraphEdge, NetworkGraphNode } from "./network-types.js";
 import {
     categorizeDevices,
