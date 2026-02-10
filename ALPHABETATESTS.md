@@ -39,7 +39,7 @@ Starting with version 8.2.0, the Home Assistant Matter Server add-on includes a 
 
 ## How to get logs
 
-YOu can use the Addpn UI pages in HomeAssistant to grab uop to 10.000 lines of logs. If you need more  use the HA CLI:
+You can use the add-on UI pages in Home Assistant to grab up to 10,000 lines of logs. If you need more, use the HA CLI:
 
 ```bash
 ha apps logs core_matter_server -n 1000000 > /config/matter.log
