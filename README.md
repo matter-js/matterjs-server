@@ -52,6 +52,8 @@ Want to help out with development, testing, and/or documentation? Great! As both
 
 [Development documentation](DEVELOPMENT.md)
 
+A preconfigured [dev container](.devcontainer/) is available with all required tools. See the [development docs](DEVELOPMENT.md#dev-container) for details.
+
 ## Installation / Running the Matter Server
 
 - Endusers of Home Assistant, refer to the [Home Assistant documentation](https://www.home-assistant.io/integrations/matter/) how to run Matter in Home Assistant using the official Matter Server add-on, which is based on this project. Choose the "Beta" version if you want to test the matter.js based server (soon)
