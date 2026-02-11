@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { attribute, cluster, uint8 } from "@matter/main/model";
+import { attribute, cluster, uint8, writable } from "@matter/main/model";
 
 @cluster(0x120bfc01)
 export class HeimanCluster {
@@ -20,12 +20,12 @@ export class HeimanCluster {
     @attribute(0x0013, uint8)
     sensorType?: number;
 
-    @attribute(0x0014, uint8)
+    @attribute(0x0014, uint8, writable)
     sirenActive?: number;
 
-    @attribute(0x0015, uint8)
+    @attribute(0x0015, uint8, writable)
     alarmMute?: number;
 
-    @attribute(0x0016, uint8)
+    @attribute(0x0016, uint8, writable)
     lowPowerMode?: number;
 }
