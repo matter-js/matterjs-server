@@ -38,20 +38,20 @@
         "@eslint/compat": "^2.0.2",
         "@eslint/eslintrc": "^3.3.3",
         "@eslint/js": "^9.39.2",
-        "@matter/testing": "0.16.9-alpha.0-20260204-fd5b6ed86",
-        "@typescript-eslint/eslint-plugin": "^8.54.0",
-        "@typescript-eslint/parser": "^8.54.0",
+        "@matter/testing": "0.16.9-alpha.0-20260211-5dcebea26",
+        "@typescript-eslint/eslint-plugin": "^8.55.0",
+        "@typescript-eslint/parser": "^8.55.0",
         "@types/mocha": "^10.0.10",
         "eslint-import-resolver-typescript": "^4.4.4",
         "eslint-plugin-import": "^2.32.0",
-        "eslint-plugin-node-import": "^1.0.5",
+        "eslint-plugin-node-import": "^1.1.1",
         "eslint-plugin-regexp": "^3.0.0",
-        "glob": "^13.0.1",
+        "glob": "^13.0.2",
         "globals": "^17.3.0",
         "prettier": "^3.8.1",
         "prettier-plugin-organize-imports": "^4.3.0",
         "tsx": "^4.21.0",
         "typescript": "~5.9.3",
-        "typescript-eslint": "^8.54.0"
+        "typescript-eslint": "^8.55.0"
     }
 }

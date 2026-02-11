@@ -22,15 +22,15 @@
         "node": ">=20.19.0 <22.0.0 || >=22.13.0"
     },
     "optionalDependencies": {
-        "@matter/nodejs-ble": "0.16.9-alpha.0-20260204-fd5b6ed86"
+        "@matter/nodejs-ble": "0.16.9-alpha.0-20260211-5dcebea26"
     },
     "dependencies": {
-        "@matter/main": "0.16.9-alpha.0-20260204-fd5b6ed86",
-        "@project-chip/matter.js": "0.16.9-alpha.0-20260204-fd5b6ed86",
+        "@matter/main": "0.16.9-alpha.0-20260211-5dcebea26",
+        "@project-chip/matter.js": "0.16.9-alpha.0-20260211-5dcebea26",
         "ws": "^8.19.0"
     },
     "devDependencies": {
-        "@types/node": "^25.0.10",
+        "@types/node": "^25.2.3",
         "@types/ws": "^8.18.1"
     },
     "files": [
