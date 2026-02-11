@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { attribute, bool, cluster, single, uint32 } from "@matter/main/model";
+import { attribute, bool, cluster, single, uint32, writable } from "@matter/main/model";
 
 @cluster(0x130afc01)
 export class EveCluster {
@@ -28,6 +28,9 @@ export class EveCluster {
 
     @attribute(0x130a0010, bool)
     obstructionDetected?: boolean;
+
+    @attribute(0x130a0011, bool, writable)
+    childLock?: boolean;
 
     @attribute(0x130a0013, single)
     altitude?: number;
