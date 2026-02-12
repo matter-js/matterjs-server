@@ -8,7 +8,7 @@ This page shows a detailed overview of the changes between versions without the 
 -->
 
 ## __WORK IN PROGRESS__
-- Fix: Improve performance of startup and start_listening Websocket command
+- Fix: Improve performance of startup and start_listening WebSocket command
 
 ## 0.3.6 (2026-02-11)
 - Enhancement: Update Icons in Dashboard graphs and introduce in UI
