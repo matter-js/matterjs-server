@@ -1,0 +1,23 @@
+{
+    "$schema": "./node_modules/oxfmt/configuration_schema.json",
+    "printWidth": 120,
+    "semi": true,
+    "tabWidth": 4,
+    "useTabs": false,
+    "trailingComma": "all",
+    "singleQuote": false,
+    "endOfLine": "lf",
+    "bracketSpacing": true,
+    "arrowParens": "avoid",
+    "quoteProps": "as-needed",
+    "ignorePatterns": [
+        "packages/dashboard/src/client/models/descriptions.ts"
+    ],
+    "experimentalSortImports": {
+        "groups": [
+            [":builtin", ":external"],
+            [":internal", ":parent", ":sibling", ":index"]
+        ],
+        "newlinesBetween": false
+    }
+}
