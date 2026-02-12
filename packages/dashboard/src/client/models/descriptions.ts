@@ -11291,11 +11291,35 @@ export const clusters: Record<number, ClusterDescription> = {
                 "label": "ClusterRevision",
                 "type": "uint16"
             },
+            "319422464": {
+                "id": 319422464,
+                "cluster_id": 319486977,
+                "label": "GetConfig",
+                "type": "bytes"
+            },
+            "319422466": {
+                "id": 319422466,
+                "cluster_id": 319486977,
+                "label": "LoggingMetadata",
+                "type": "bytes"
+            },
+            "319422467": {
+                "id": 319422467,
+                "cluster_id": 319486977,
+                "label": "LoggingData",
+                "type": "bytes"
+            },
             "319422470": {
                 "id": 319422470,
                 "cluster_id": 319486977,
                 "label": "TimesOpened",
                 "type": "Optional[unknown]"
+            },
+            "319422471": {
+                "id": 319422471,
+                "cluster_id": 319486977,
+                "label": "LastEventTime",
+                "type": "uint32"
             },
             "319422472": {
                 "id": 319422472,
@@ -11321,6 +11345,12 @@ export const clusters: Record<number, ClusterDescription> = {
                 "label": "WattAccumulated",
                 "type": "Optional[unknown]"
             },
+            "319422476": {
+                "id": 319422476,
+                "cluster_id": 319486977,
+                "label": "StatusFault",
+                "type": "uint8"
+            },
             "319422477": {
                 "id": 319422477,
                 "cluster_id": 319486977,
@@ -11344,6 +11374,12 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 319486977,
                 "label": "ChildLock",
                 "type": "Optional[bool]"
+            },
+            "319422482": {
+                "id": 319422482,
+                "cluster_id": 319486977,
+                "label": "Rloc16",
+                "type": "uint16"
             },
             "319422483": {
                 "id": 319422483,
