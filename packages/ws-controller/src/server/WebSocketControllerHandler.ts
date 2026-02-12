@@ -899,24 +899,25 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 addresses,
                 mrpSessionActiveInterval,
                 mrpSessionIdleInterval,
-            }) => ({
-                instance_name: instanceName,
-                host_name: hostName, // TODO
-                port,
-                long_discriminator: longDiscriminator,
-                vendor_id: vendorId,
-                product_id: productId,
-                commissioning_mode: commissioningMode,
-                device_type: deviceType,
-                device_name: deviceName,
-                pairing_instruction: pairingInstruction,
-                pairing_hint: pairingHint,
-                mrp_retry_interval_idle: mrpSessionIdleInterval,
-                mrp_retry_interval_active: mrpSessionActiveInterval,
-                supports_tcp: supportsTcpServer,
-                addresses,
-                rotating_id: rotatingId,
-            }),
+            }) =>
+                ({
+                    instance_name: instanceName,
+                    host_name: hostName, // TODO
+                    port,
+                    long_discriminator: longDiscriminator,
+                    vendor_id: vendorId,
+                    product_id: productId,
+                    commissioning_mode: commissioningMode,
+                    device_type: deviceType,
+                    device_name: deviceName,
+                    pairing_instruction: pairingInstruction,
+                    pairing_hint: pairingHint,
+                    mrp_retry_interval_idle: mrpSessionIdleInterval,
+                    mrp_retry_interval_active: mrpSessionActiveInterval,
+                    supports_tcp: supportsTcpServer,
+                    addresses,
+                    rotating_id: rotatingId,
+                }),
         );
     }
 

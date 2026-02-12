@@ -24,7 +24,6 @@ import { HealthHandler } from "./server/HealthHandler.js";
 import { StaticFileHandler } from "./server/StaticFileHandler.js";
 import { WebServer } from "./server/WebServer.js";
 import { MATTER_SERVER_VERSION } from "./version.js";
-
 // Register the custom clusters
 import "@matter-server/custom-clusters";
 

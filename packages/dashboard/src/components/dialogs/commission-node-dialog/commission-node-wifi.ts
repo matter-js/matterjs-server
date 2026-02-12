@@ -40,16 +40,24 @@ export class CommissionNodeWifi extends LitElement {
                 <br />
                 <md-outlined-button @click=${handleAsync(() => this._setWifiCredentials())} .disabled="${this._loading}"
                     >Set WiFi Credentials</md-outlined-button
-                >${this._loading
-                    ? html`<md-circular-progress indeterminate .visible="${this._loading}"></md-circular-progress>`
-                    : nothing}`;
+                >${
+                    this._loading
+                        ? html`<md-circular-progress indeterminate .visible="${this._loading}"></md-circular-progress>`
+                        : nothing
+                }`;
         }
         return html`<md-outlined-text-field label="Pairing code" .disabled="${this._loading}"> </md-outlined-text-field>
             <br />
             <br />
             <md-outlined-button @click=${handleAsync(() => this._commissionNode())} .disabled="${this._loading}"
                 >Commission</md-outlined-button
-            >${this._loading ? html`<md-circular-progress indeterminate></md-circular-progress>` : nothing}`;
+            >${
+                this._loading
+                    ? html`
+                          <md-circular-progress indeterminate></md-circular-progress>
+                      `
+                    : nothing
+            }`;
     }
 
     private async _setWifiCredentials() {

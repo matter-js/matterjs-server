@@ -17,10 +17,10 @@ import { clusters } from "../client/models/descriptions.js";
 import { showAlertDialog } from "../components/dialog-box/show-dialog-box.js";
 import "../components/ha-svg-icon";
 import "../pages/components/node-details";
-import { bindingContext } from "./components/context.js";
 // Cluster command components (auto-register on import)
 import { formatHex, formatNodeAddress, getEffectiveFabricIndex } from "../util/format_hex.js";
 import { getClusterCommandsTag } from "./cluster-commands/index.js";
+import { bindingContext } from "./components/context.js";
 
 declare global {
     interface HTMLElementTagNameMap {
@@ -118,23 +118,27 @@ class MatterClusterView extends LitElement {
                         (attribute, index) => html`
                             <md-list-item class=${index % 2 === 1 ? "alternate-row" : ""}>
                                 <div slot="headline">
-                                    ${clusters[this.cluster!]?.attributes[attribute.key]?.label ??
-                                    "Custom/Unknown Attribute"}
+                                    ${
+                                        clusters[this.cluster!]?.attributes[attribute.key]?.label ??
+                                        "Custom/Unknown Attribute"
+                                    }
                                 </div>
                                 <div slot="supporting-text">
                                     AttributeId: ${attribute.key} (${formatHex(attribute.key)}) - Value type:
                                     ${clusters[this.cluster!]?.attributes[attribute.key]?.type ?? "unknown"}
                                 </div>
                                 <div slot="end">
-                                    ${toBigIntAwareJson(attribute.value).length > 20
-                                        ? html`<button
+                                    ${
+                                        toBigIntAwareJson(attribute.value).length > 20
+                                            ? html`<button
                                               @click=${() => {
                                                   this._showAttributeValue(attribute.value);
                                               }}
                                           >
                                               Show value
                                           </button>`
-                                        : html`<code>${toBigIntAwareJson(attribute.value)}</code>`}
+                                            : html`<code>${toBigIntAwareJson(attribute.value)}</code>`
+                                    }
                                 </div>
                             </md-list-item>
                         `,

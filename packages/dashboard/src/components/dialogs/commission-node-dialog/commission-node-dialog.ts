@@ -25,8 +25,9 @@ export class ComissionNodeDialog extends LitElement {
             <md-dialog open @cancel=${preventDefault} @closed=${this._handleClosed}>
                 <div slot="headline">Commission node</div>
                 <div slot="content" @node-commissioned=${this._nodeCommissioned}>
-                    ${!this._mode
-                        ? html`<md-list>
+                    ${
+                        !this._mode
+                            ? html`<md-list>
                               <md-list-item
                                   type="button"
                                   .disabled=${!this.client.serverInfo.bluetooth_enabled}
@@ -43,11 +44,18 @@ export class ComissionNodeDialog extends LitElement {
                                   >Commission existing device</md-list-item
                               >
                           </md-list>`
-                        : this._mode === "wifi"
-                          ? html`<commission-node-wifi></commission-node-wifi>`
-                          : this._mode === "thread"
-                            ? html`<commission-node-thread></commission-node-thread>`
-                            : html`<commission-node-existing></commission-node-existing>`}
+                            : this._mode === "wifi"
+                              ? html`
+                                    <commission-node-wifi></commission-node-wifi>
+                                `
+                              : this._mode === "thread"
+                                ? html`
+                                      <commission-node-thread></commission-node-thread>
+                                  `
+                                : html`
+                                      <commission-node-existing></commission-node-existing>
+                                  `
+                    }
                 </div>
                 <div slot="actions">
                     <md-text-button @click=${this._close}>Cancel</md-text-button>

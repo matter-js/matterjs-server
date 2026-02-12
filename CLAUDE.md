@@ -27,11 +27,11 @@ npm run server -- --storage-path data --primary-interface en0
 # Run tests (uses @matter/testing with mocha)
 npm test
 
-# Lint
+# Lint (oxlint with type-aware checking)
 npm run lint
 npm run lint-fix
 
-# Format
+# Format (oxfmt)
 npm run format
 npm run format-verify
 ```
@@ -76,7 +76,14 @@ Dashboard has additional `npm run generate` step for cluster descriptions.
 
 Engine requirement: `>=20.19.0 <22.0.0 || >=22.13.0`
 
-## Code Quality Checklist
+## Code Quality
+
+### Tooling
+- **Linter**: [oxlint](https://oxc.rs) with type-aware checking (config: `.oxlintrc.json`)
+- **Formatter**: [oxfmt](https://oxc.rs) (config: `.oxfmtrc.json`)
+- Both are Rust-based and run in <1s across the entire monorepo
+
+### Checklist
 
 **Always run these checks before considering work complete:**
 

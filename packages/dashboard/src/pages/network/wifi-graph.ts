@@ -188,6 +188,8 @@ export class WiFiGraph extends BaseNetworkGraph {
             `;
         }
 
-        return html`<div class="graph-container"></div>`;
+        return html`
+            <div class="graph-container"></div>
+        `;
     }
 }
