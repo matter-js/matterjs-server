@@ -278,7 +278,7 @@ export function convertMatterToWebSocketTagBased(
             if (!isObject(value)) return value;
             const result: { [key: string]: any } = {};
             for (const { name, id, model: memberModel } of getStructMembers(model)) {
-                if (name in value) {
+                if (Object.hasOwn(value, name)) {
                     result[id] = convertMatterToWebSocketTagBased(value[name], memberModel, clusterModel);
                 }
             }
