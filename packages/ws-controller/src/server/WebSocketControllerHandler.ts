@@ -320,12 +320,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
             );
         });
 
-        // Register all nodes and populate attribute caches before the server starts listening.
-        // This ensures that the first start_listening response contains all nodes.
+        // Initialize all nodes (populates attribute caches) and start connecting them.
+        // Guarded internally so it runs exactly once even with multiple listen addresses.
         await this.#commandHandler.initializeNodes();
-
-        // Start connecting nodes to the network (fire-and-forget, actual I/O is async).
-        this.#commandHandler.connectNodes();
     }
 
     unregister(): Promise<void> {

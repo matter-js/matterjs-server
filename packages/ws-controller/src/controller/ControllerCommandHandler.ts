@@ -343,9 +343,11 @@ export class ControllerCommandHandler {
     }
 
     /**
-     * Initialize the controller and register all commissioned nodes (populates attribute caches).
-     * Call this before opening the WebSocket server so that clients get a complete node list
-     * on their first `start_listening` request.
+     * Initialize the controller, register all commissioned nodes (populates attribute caches),
+     * and start connecting them to the network.
+     *
+     * Guarded by #connected so it runs exactly once, even if called multiple times
+     * (e.g. when WebServer.start() registers handlers for multiple listen addresses).
      */
     async initializeNodes() {
         if (this.#connected) {
@@ -367,14 +369,9 @@ export class ControllerCommandHandler {
             }
         }
 
-        logger.info(`All ${nodes.length} nodes initialized`);
-    }
+        logger.info(`All ${nodes.length} nodes initialized, starting connections`);
 
-    /**
-     * Start connecting all registered nodes to the network.
-     * This triggers subscription setup and can be called after the WebSocket server is open.
-     */
-    connectNodes() {
+        // Start connecting nodes to the network (fire-and-forget, actual I/O is async).
         for (const nodeId of this.#nodes.getIds()) {
             try {
                 this.#nodes.get(nodeId).connect({
