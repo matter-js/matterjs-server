@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { attribute, bool, cluster, octstr, single, uint8, uint16, uint32, writable } from "@matter/main/model";
 import { Bytes } from "@matter/main";
+import { attribute, bool, cluster, octstr, single, uint8, uint16, uint32, writable } from "@matter/main/model";
 
 @cluster(0x130afc01)
 export class EveCluster {
