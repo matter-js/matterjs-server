@@ -30,12 +30,11 @@ export class EveCluster {
     @attribute(0x130a000b, single)
     wattAccumulated?: number;
 
-    @attribute(0x130a000e, uint32)
-    wattAccumulatedControlPoint?: number;
-
     @attribute(0x130a000c, uint8)
     statusFault?: number;
 
+    @attribute(0x130a000e, uint32)
+    wattAccumulatedControlPoint?: number;
     @attribute(0x130a0008, single)
     voltage?: number;
 
