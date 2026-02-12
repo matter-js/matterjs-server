@@ -146,7 +146,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                         } catch (err) {
                             logger.error(
                                 `[${connId}] Failed to collect node details for Node ${formatNodeId(nodeId)}`,
-                                    err,
+                                err,
                             );
                         }
                         break;
@@ -970,7 +970,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         return await this.#commandHandler.updateNode(NodeId(node_id), targetVersion);
     }
 
-     #collectNodeDetails(nodeId: NodeId): MatterNode {
+    #collectNodeDetails(nodeId: NodeId): MatterNode {
         const lastInterviewDate = this.#lastInterviewDates.get(nodeId);
         return this.#commandHandler.getNodeDetails(nodeId, lastInterviewDate);
     }
