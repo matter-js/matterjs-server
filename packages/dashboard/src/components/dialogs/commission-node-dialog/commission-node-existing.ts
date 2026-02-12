@@ -33,7 +33,13 @@ export class CommissionNodeExisting extends LitElement {
             <br />
             <md-outlined-button @click=${handleAsync(() => this._commissionNode())} .disabled="${this._loading}"
                 >Commission</md-outlined-button
-            >${this._loading ? html`<md-circular-progress indeterminate></md-circular-progress>` : nothing}`;
+            >${
+                this._loading
+                    ? html`
+                          <md-circular-progress indeterminate></md-circular-progress>
+                      `
+                    : nothing
+            }`;
     }
 
     private async _commissionNode() {

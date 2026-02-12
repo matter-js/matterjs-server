@@ -136,46 +136,56 @@ export class NetworkDetails extends LitElement {
         return html`
             <div class="section">
                 <h4>WiFi Network</h4>
-                ${wifiDiag.bssid
-                    ? html`
+                ${
+                    wifiDiag.bssid
+                        ? html`
                           <div class="info-row">
                               <span class="label">BSSID:</span>
                               <span class="value mono">${wifiDiag.bssid}</span>
                           </div>
                       `
-                    : nothing}
-                ${wifiDiag.rssi !== null
-                    ? html`
+                        : nothing
+                }
+                ${
+                    wifiDiag.rssi !== null
+                        ? html`
                           <div class="info-row">
                               <span class="label">Signal:</span>
                               <span class="value" style="color: ${signalColor}">${wifiDiag.rssi} dBm</span>
                           </div>
                       `
-                    : nothing}
-                ${wifiDiag.channel !== null
-                    ? html`
+                        : nothing
+                }
+                ${
+                    wifiDiag.channel !== null
+                        ? html`
                           <div class="info-row">
                               <span class="label">Channel:</span>
                               <span class="value">${wifiDiag.channel}</span>
                           </div>
                       `
-                    : nothing}
-                ${wifiDiag.securityType !== null
-                    ? html`
+                        : nothing
+                }
+                ${
+                    wifiDiag.securityType !== null
+                        ? html`
                           <div class="info-row">
                               <span class="label">Security:</span>
                               <span class="value">${getWiFiSecurityTypeName(wifiDiag.securityType)}</span>
                           </div>
                       `
-                    : nothing}
-                ${wifiDiag.wifiVersion !== null
-                    ? html`
+                        : nothing
+                }
+                ${
+                    wifiDiag.wifiVersion !== null
+                        ? html`
                           <div class="info-row">
                               <span class="label">WiFi Version:</span>
                               <span class="value">${getWiFiVersionName(wifiDiag.wifiVersion)}</span>
                           </div>
                       `
-                    : nothing}
+                        : nothing
+                }
             </div>
         `;
     }
@@ -198,22 +208,26 @@ export class NetworkDetails extends LitElement {
                     <span class="label">Role:</span>
                     <span class="value">${getThreadRoleName(threadRole)}</span>
                 </div>
-                ${channel !== undefined
-                    ? html`
+                ${
+                    channel !== undefined
+                        ? html`
                           <div class="info-row">
                               <span class="label">Channel:</span>
                               <span class="value">${channel}</span>
                           </div>
                       `
-                    : nothing}
-                ${extAddressHex
-                    ? html`
+                        : nothing
+                }
+                ${
+                    extAddressHex
+                        ? html`
                           <div class="info-row">
                               <span class="label">Extended Address:</span>
                               <span class="value mono">${extAddressHex}</span>
                           </div>
                       `
-                    : nothing}
+                        : nothing
+                }
                 <div class="info-row">
                     <span class="label">Direct neighbors:</span>
                     <span class="value">${connections.length}</span>
@@ -231,8 +245,9 @@ export class NetworkDetails extends LitElement {
                 })()}
             </div>
 
-            ${connections.length > 0
-                ? html`
+            ${
+                connections.length > 0
+                    ? html`
                       <md-divider></md-divider>
                       <div class="section">
                           <h4>Connections (${connections.length})</h4>
@@ -252,30 +267,36 @@ export class NetworkDetails extends LitElement {
                                           ></ha-svg-icon>
                                           <div class="neighbor-info">
                                               <div class="neighbor-name">
-                                                  ${conn.connectedNode
-                                                      ? html`Node ${conn.connectedNodeId}
+                                                  ${
+                                                      conn.connectedNode
+                                                          ? html`Node ${conn.connectedNodeId}
                                                             <span class="node-id-hex"
                                                                 >${this._formatNodeIdHex(conn.connectedNodeId)}</span
                                                             >: ${getDeviceName(conn.connectedNode)}`
-                                                      : html`External: <span class="mono">${conn.extAddressHex}</span>`}
+                                                          : html`External: <span class="mono">${conn.extAddressHex}</span>`
+                                                  }
                                               </div>
                                               <div class="neighbor-signal">
-                                                  ${conn.rssi !== null
-                                                      ? html`RSSI: ${conn.rssi} dBm`
-                                                      : nothing}${conn.rssi !== null && conn.lqi !== null
-                                                      ? ", "
-                                                      : nothing}${conn.lqi !== null
-                                                      ? html`LQI: ${conn.lqi}`
-                                                      : nothing}${conn.bidirectionalLqi !== undefined
-                                                      ? html`<span class="route-info"
+                                                  ${conn.rssi !== null ? html`RSSI: ${conn.rssi} dBm` : nothing}${
+                                                      conn.rssi !== null && conn.lqi !== null ? ", " : nothing
+                                                  }${conn.lqi !== null ? html`LQI: ${conn.lqi}` : nothing}${
+                                                      conn.bidirectionalLqi !== undefined
+                                                          ? html`<span class="route-info"
                                                             >, Bidir: ${conn.bidirectionalLqi}</span
                                                         >`
-                                                      : nothing}${conn.pathCost !== undefined
-                                                      ? html`<span class="route-info">, Cost: ${conn.pathCost}</span>`
-                                                      : nothing}
-                                                  ${!conn.isOutgoing
-                                                      ? html`<span class="direction-hint">(reverse)</span>`
-                                                      : nothing}
+                                                          : nothing
+                                                  }${
+                                                      conn.pathCost !== undefined
+                                                          ? html`<span class="route-info">, Cost: ${conn.pathCost}</span>`
+                                                          : nothing
+                                                  }
+                                                  ${
+                                                      !conn.isOutgoing
+                                                          ? html`
+                                                                <span class="direction-hint">(reverse)</span>
+                                                            `
+                                                          : nothing
+                                                  }
                                               </div>
                                           </div>
                                       </div>
@@ -284,7 +305,8 @@ export class NetworkDetails extends LitElement {
                           </div>
                       </div>
                   `
-                : nothing}
+                    : nothing
+            }
         `;
     }
 
@@ -306,14 +328,16 @@ export class NetworkDetails extends LitElement {
                     <span class="label">Product:</span>
                     <span class="value">${node.productName ?? "Unknown"}</span>
                 </div>
-                ${node.serialNumber
-                    ? html`
+                ${
+                    node.serialNumber
+                        ? html`
                           <div class="info-row">
                               <span class="label">Serial:</span>
                               <span class="value mono">${node.serialNumber}</span>
                           </div>
                       `
-                    : nothing}
+                        : nothing
+                }
                 <div class="info-row">
                     <span class="label">Network:</span>
                     <span class="value">${networkType.charAt(0).toUpperCase() + networkType.slice(1)}</span>
@@ -326,18 +350,22 @@ export class NetworkDetails extends LitElement {
                 </div>
             </div>
 
-            ${networkType === "thread"
-                ? html`
+            ${
+                networkType === "thread"
+                    ? html`
                       <md-divider></md-divider>
                       ${this._renderThreadInfo(node)}
                   `
-                : nothing}
-            ${networkType === "wifi"
-                ? html`
+                    : nothing
+            }
+            ${
+                networkType === "wifi"
+                    ? html`
                       <md-divider></md-divider>
                       ${this._renderWiFiInfo(node)}
                   `
-                : nothing}
+                    : nothing
+            }
         `;
     }
 
@@ -358,7 +386,9 @@ export class NetworkDetails extends LitElement {
     private _renderUnknownDeviceInfo(deviceId: string): TemplateResult | typeof nothing {
         const unknown = this.unknownDevices.get(deviceId);
         if (!unknown) {
-            return html`<p>Unknown device data not available</p>`;
+            return html`
+                <p>Unknown device data not available</p>
+            `;
         }
 
         return html`
@@ -372,18 +402,21 @@ export class NetworkDetails extends LitElement {
                     <span class="label">Extended Address:</span>
                     <span class="value mono">${unknown.extAddressHex}</span>
                 </div>
-                ${unknown.bestRssi !== null
-                    ? html`
+                ${
+                    unknown.bestRssi !== null
+                        ? html`
                           <div class="info-row">
                               <span class="label">Best RSSI:</span>
                               <span class="value">${unknown.bestRssi} dBm</span>
                           </div>
                       `
-                    : nothing}
+                        : nothing
+                }
             </div>
 
-            ${unknown.seenBy.length > 0
-                ? html`
+            ${
+                unknown.seenBy.length > 0
+                    ? html`
                       <md-divider></md-divider>
                       <div class="section">
                           <h4>Neighbors (${unknown.seenBy.length})</h4>
@@ -406,28 +439,32 @@ export class NetworkDetails extends LitElement {
                                           @click=${() => this._handleSelectNode(nodeId)}
                                           @keydown=${(e: KeyboardEvent) => this._handleKeyDown(e, nodeId)}
                                       >
-                                          ${neighborEntry
-                                              ? html`
+                                          ${
+                                              neighborEntry
+                                                  ? html`
                                                     <ha-svg-icon
                                                         .path=${this._getSignalIcon(neighborEntry)}
                                                         style="--icon-primary-color: ${signalColor}"
                                                     ></ha-svg-icon>
                                                 `
-                                              : nothing}
+                                                  : nothing
+                                          }
                                           <div class="neighbor-info">
                                               <div class="neighbor-name">
                                                   Node ${nodeId}
                                                   <span class="node-id-hex">${this._formatNodeIdHex(nodeId)}</span>:
                                                   ${getDeviceName(node)}
                                               </div>
-                                              ${neighborEntry
-                                                  ? html`
+                                              ${
+                                                  neighborEntry
+                                                      ? html`
                                                         <div class="neighbor-signal">
                                                             ${rssi !== null ? html`RSSI: ${rssi} dBm, ` : nothing}
                                                             ${lqi !== undefined ? html`LQI: ${lqi}` : nothing}
                                                         </div>
                                                     `
-                                                  : nothing}
+                                                      : nothing
+                                              }
                                           </div>
                                       </div>
                                   `;
@@ -435,7 +472,8 @@ export class NetworkDetails extends LitElement {
                           </div>
                       </div>
                   `
-                : nothing}
+                    : nothing
+            }
 
             <md-divider></md-divider>
             <div class="section">
@@ -556,7 +594,9 @@ export class NetworkDetails extends LitElement {
     private _renderWiFiAccessPointInfo(apId: string): TemplateResult | typeof nothing {
         const ap = this.wifiAccessPoints.get(apId);
         if (!ap) {
-            return html`<p>Access point data not available</p>`;
+            return html`
+                <p>Access point data not available</p>
+            `;
         }
 
         return html`
@@ -571,8 +611,9 @@ export class NetworkDetails extends LitElement {
                     <span class="value">${ap.connectedNodes.length}</span>
                 </div>
             </div>
-            ${ap.connectedNodes.length > 0
-                ? html`
+            ${
+                ap.connectedNodes.length > 0
+                    ? html`
                       <md-divider></md-divider>
                       <div class="section">
                           <h4>Connected Nodes</h4>
@@ -596,18 +637,21 @@ export class NetworkDetails extends LitElement {
                                               <span class="node-id-hex">${this._formatNodeIdHex(nodeId)}</span>:
                                               ${getDeviceName(node)}
                                           </div>
-                                          ${wifiDiag.rssi !== null
-                                              ? html`<div class="node-signal" style="color: ${signalColor}">
+                                          ${
+                                              wifiDiag.rssi !== null
+                                                  ? html`<div class="node-signal" style="color: ${signalColor}">
                                                     ${wifiDiag.rssi} dBm
                                                 </div>`
-                                              : nothing}
+                                                  : nothing
+                                          }
                                       </div>
                                   `;
                               })}
                           </div>
                       </div>
                   `
-                : nothing}
+                    : nothing
+            }
             <md-divider></md-divider>
             <div class="section">
                 <p class="hint-text">
@@ -636,8 +680,9 @@ export class NetworkDetails extends LitElement {
                     <div class="header">
                         <h3>External Device</h3>
                         <div class="header-actions">
-                            ${onlineSeenByNodes.length > 0
-                                ? html`
+                            ${
+                                onlineSeenByNodes.length > 0
+                                    ? html`
                                       <button
                                           class="action-button"
                                           @click=${this._handleUpdateConnections}
@@ -647,7 +692,8 @@ export class NetworkDetails extends LitElement {
                                           <ha-svg-icon .path=${mdiRefresh}></ha-svg-icon>
                                       </button>
                                   `
-                                : nothing}
+                                    : nothing
+                            }
                             <button class="close-button" @click=${this._handleClose} aria-label="Close details panel">
                                 <ha-svg-icon .path=${mdiClose}></ha-svg-icon>
                             </button>
@@ -655,8 +701,9 @@ export class NetworkDetails extends LitElement {
                     </div>
                     <div class="content">${this._renderUnknownDeviceInfo(this.selectedNodeId as string)}</div>
                 </div>
-                ${this._showUpdateDialog
-                    ? html`
+                ${
+                    this._showUpdateDialog
+                        ? html`
                           <update-connections-dialog
                               .client=${this.client}
                               .nodes=${this.nodes}
@@ -667,7 +714,8 @@ export class NetworkDetails extends LitElement {
                               @dialog-closed=${this._handleDialogClose}
                           ></update-connections-dialog>
                       `
-                    : nothing}
+                        : nothing
+                }
             `;
         }
 
@@ -709,8 +757,9 @@ export class NetworkDetails extends LitElement {
                         <span class="node-id-hex">${this._formatNodeIdHex(this.selectedNodeId)}</span>
                     </h3>
                     <div class="header-actions">
-                        ${canUpdate
-                            ? html`
+                        ${
+                            canUpdate
+                                ? html`
                                   <button
                                       class="action-button"
                                       @click=${this._handleUpdateConnections}
@@ -720,7 +769,8 @@ export class NetworkDetails extends LitElement {
                                       <ha-svg-icon .path=${mdiRefresh}></ha-svg-icon>
                                   </button>
                               `
-                            : nothing}
+                                : nothing
+                        }
                         <button class="close-button" @click=${this._handleClose} aria-label="Close details panel">
                             <ha-svg-icon .path=${mdiClose}></ha-svg-icon>
                         </button>
@@ -731,8 +781,9 @@ export class NetworkDetails extends LitElement {
                     <a href="#node/${this.selectedNodeId}" class="view-link">View node details</a>
                 </div>
             </div>
-            ${this._showUpdateDialog
-                ? html`
+            ${
+                this._showUpdateDialog
+                    ? html`
                       <update-connections-dialog
                           .client=${this.client}
                           .nodes=${this.nodes}
@@ -743,7 +794,8 @@ export class NetworkDetails extends LitElement {
                           @dialog-closed=${this._handleDialogClose}
                       ></update-connections-dialog>
                   `
-                : nothing}
+                    : nothing
+            }
         `;
     }
 

@@ -6,7 +6,6 @@
 
 import { ClusterModel, Matter, Schema } from "@matter/main/model";
 import { ClusterRegistry } from "@matter/main/types";
-
 import { ClusterTypeOfModel } from "./builder.js";
 import * as Clusters from "./clusters/index.js";
 

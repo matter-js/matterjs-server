@@ -9,7 +9,6 @@ import { AttributeModel, Matter } from "@matter/main/model";
 import { writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-
 // Add custom cluster definitions
 import "@matter-server/custom-clusters";
 

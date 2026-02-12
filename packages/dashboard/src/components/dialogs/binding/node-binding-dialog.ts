@@ -6,29 +6,26 @@
 
 import "@material/web/button/text-button";
 import "@material/web/dialog/dialog";
-import type { MdDialog } from "@material/web/dialog/dialog.js";
+import { consume } from "@lit/context";
 import "@material/web/list/list";
 import "@material/web/list/list-item";
 import "@material/web/textfield/outlined-text-field";
-import type { MdOutlinedTextField } from "@material/web/textfield/outlined-text-field.js";
+import type { MdDialog } from "@material/web/dialog/dialog.js";
 import "../../../components/ha-svg-icon";
-
+import type { MdOutlinedTextField } from "@material/web/textfield/outlined-text-field.js";
 import { AccessControlEntry, BindingTarget, MatterClient, MatterNode } from "@matter-server/ws-client";
 import { css, html, LitElement, nothing } from "lit";
 import { customElement, property, query } from "lit/decorators.js";
+import { clientContext } from "../../../client/client-context.js";
 import { handleAsync } from "../../../util/async-handler.js";
+import { analyzeBatchResults, type MatterBatchResult } from "../../../util/matter-status.js";
 import { preventDefault } from "../../../util/prevent_default.js";
-import { BindingEntryDataTransformer, BindingEntryStruct, InputType } from "./model.js";
-
 import {
     AccessControlEntryDataTransformer,
     AccessControlEntryStruct,
     AccessControlTargetStruct,
 } from "../acl/model.js";
-
-import { consume } from "@lit/context";
-import { clientContext } from "../../../client/client-context.js";
-import { analyzeBatchResults, type MatterBatchResult } from "../../../util/matter-status.js";
+import { BindingEntryDataTransformer, BindingEntryStruct, InputType } from "./model.js";
 
 @customElement("node-binding-dialog")
 export class NodeBindingDialog extends LitElement {

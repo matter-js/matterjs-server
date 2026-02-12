@@ -74,9 +74,13 @@ export class BasicInformationClusterCommands extends BaseClusterCommands {
             <details class="command-panel">
                 <summary>Node Label</summary>
                 <div class="command-content">
-                    ${!this._isNodeAvailable
-                        ? html`<div class="offline-warning">Node is offline - cannot edit label</div>`
-                        : nothing}
+                    ${
+                        !this._isNodeAvailable
+                            ? html`
+                                  <div class="offline-warning">Node is offline - cannot edit label</div>
+                              `
+                            : nothing
+                    }
                     <div class="command-row">
                         <md-outlined-text-field
                             label="Node Label"

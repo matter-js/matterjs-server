@@ -92,9 +92,12 @@ export class LogLevelDialog extends LitElement {
             <md-dialog open @cancel=${preventDefault} @closed=${this._handleClosed}>
                 <div slot="headline">Server Log Settings</div>
                 <div slot="content">
-                    ${this._loading
-                        ? html`<p class="loading">Loading...</p>`
-                        : html`
+                    ${
+                        this._loading
+                            ? html`
+                                  <p class="loading">Loading...</p>
+                              `
+                            : html`
                               <p class="hint">Changes are temporary and will be reset on the next server restart.</p>
                               <div class="form-field">
                                   <label>Console Log Level</label>
@@ -111,8 +114,9 @@ export class LogLevelDialog extends LitElement {
                                       )}
                                   </md-outlined-select>
                               </div>
-                              ${this._fileLevel !== null
-                                  ? html`
+                              ${
+                                  this._fileLevel !== null
+                                      ? html`
                                         <div class="form-field">
                                             <label>File Log Level</label>
                                             <md-outlined-select name="file" .value=${this._fileLevel}>
@@ -129,8 +133,10 @@ export class LogLevelDialog extends LitElement {
                                             </md-outlined-select>
                                         </div>
                                     `
-                                  : nothing}
-                          `}
+                                      : nothing
+                              }
+                          `
+                    }
                 </div>
                 <div slot="actions">
                     <md-text-button @click=${this._close}>Cancel</md-text-button>

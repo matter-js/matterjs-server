@@ -97,7 +97,13 @@ class MatterServerView extends LitElement {
                                             node.node_id,
                                         )})</span
                                     >
-                                    ${node.available ? "" : html`<span class="status">OFFLINE</span>`}
+                                    ${
+                                        node.available
+                                            ? ""
+                                            : html`
+                                                  <span class="status">OFFLINE</span>
+                                              `
+                                    }
                                 </div>
                                 <div slot="supporting-text">
                                     ${node.nodeLabel ? `${node.nodeLabel} | ` : nothing} ${node.vendorName} |

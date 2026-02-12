@@ -24,10 +24,10 @@
         "build": "node packages/tools/bin/build.js && npm run bundle --workspaces --if-present",
         "version": "node packages/tools/bin/version.js",
         "build-clean": "npm run clean && npm run build",
-        "lint": "eslint",
-        "lint-fix": "eslint --fix",
-        "format": "prettier --write \"packages/**/*.ts\"",
-        "format-verify": "prettier --check \"packages/**/*.ts\"",
+        "lint": "oxlint --type-aware",
+        "lint-fix": "oxlint --fix --type-aware",
+        "format": "oxfmt \"packages/**/*.ts\"",
+        "format-verify": "oxfmt --check \"packages/**/*.ts\"",
         "test": "matter-test --force-exit",
         "relock": "node ./utils/relock.js && npm install",
         "sync-matterjs": "node ./utils/sync-matterjs.js && npm install",
@@ -35,23 +35,14 @@
         "send-command": "node --enable-source-maps packages/ws-controller/dist/esm/example/send-command.js"
     },
     "devDependencies": {
-        "@eslint/compat": "^2.0.2",
-        "@eslint/eslintrc": "^3.3.3",
-        "@eslint/js": "^9.39.2",
         "@matter/testing": "0.16.9-alpha.0-20260211-5dcebea26",
-        "@typescript-eslint/eslint-plugin": "^8.55.0",
-        "@typescript-eslint/parser": "^8.55.0",
         "@types/mocha": "^10.0.10",
-        "eslint-import-resolver-typescript": "^4.4.4",
-        "eslint-plugin-import": "^2.32.0",
-        "eslint-plugin-node-import": "^1.1.1",
-        "eslint-plugin-regexp": "^3.0.0",
         "glob": "^13.0.2",
         "globals": "^17.3.0",
-        "prettier": "^3.8.1",
-        "prettier-plugin-organize-imports": "^4.3.0",
+        "oxfmt": "^0.31.0",
+        "oxlint": "^1.46.0",
+        "oxlint-tsgolint": "^0.12.0",
         "tsx": "^4.21.0",
-        "typescript": "~5.9.3",
-        "typescript-eslint": "^8.55.0"
+        "typescript": "~5.9.3"
     }
 }
