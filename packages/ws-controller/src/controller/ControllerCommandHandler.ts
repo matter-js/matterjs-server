@@ -342,7 +342,12 @@ export class ControllerCommandHandler {
         return node;
     }
 
-    async connect() {
+    /**
+     * Initialize the controller and register all commissioned nodes (populates attribute caches).
+     * Call this before opening the WebSocket server so that clients get a complete node list
+     * on their first `start_listening` request.
+     */
+    async initializeNodes() {
         if (this.#connected) {
             return;
         }
@@ -356,16 +361,28 @@ export class ControllerCommandHandler {
         for (const nodeId of nodes) {
             try {
                 logger.info(`Initializing node "${this.#formatNode(nodeId)}" ...`);
-                // Initialize Node
-                const node = await this.#registerNode(nodeId);
+                await this.#registerNode(nodeId);
+            } catch (error) {
+                logger.warn(`Failed to initialize node "${this.#formatNode(nodeId)}":`, error);
+            }
+        }
 
-                // Trigger connect to node, default values are used
-                node.connect({
+        logger.info(`All ${nodes.length} nodes initialized`);
+    }
+
+    /**
+     * Start connecting all registered nodes to the network.
+     * This triggers subscription setup and can be called after the WebSocket server is open.
+     */
+    connectNodes() {
+        for (const nodeId of this.#nodes.getIds()) {
+            try {
+                this.#nodes.get(nodeId).connect({
                     subscribeMinIntervalFloorSeconds: 1,
                     subscribeMaxIntervalCeilingSeconds: undefined,
                 });
             } catch (error) {
-                logger.warn(`Failed to connect to node "${this.#formatNode(nodeId)}":`, error);
+                logger.warn(`Failed to connect node "${this.#formatNode(nodeId)}":`, error);
             }
         }
     }
@@ -412,7 +429,7 @@ export class ControllerCommandHandler {
      * @param nodeId The node ID
      * @param lastInterviewDate Optional last interview date (tracked externally)
      */
-    async getNodeDetails(nodeId: NodeId, lastInterviewDate?: Date): Promise<MatterNodeData> {
+    getNodeDetails(nodeId: NodeId, lastInterviewDate?: Date): MatterNodeData {
         const node = this.#nodes.get(nodeId);
         const attributeCache = this.#nodes.attributeCache;
 
@@ -509,8 +526,7 @@ export class ControllerCommandHandler {
     ) {
         const { endpointId, clusterId, attributeId } = path;
         if (!clusterData) {
-            const cluster = getClusterById(clusterId);
-            clusterData = ClusterMap[cluster.name.toLowerCase()];
+            clusterData = ClusterMap[clusterId];
         }
         return {
             pathStr: buildAttributePath(endpointId, clusterId, attributeId),
@@ -735,7 +751,7 @@ export class ControllerCommandHandler {
             if (Object.keys(commandData).length === 0) {
                 commandData = undefined;
             } else {
-                const clusterEntry = ClusterMap[cluster.name.toLowerCase()];
+                const clusterEntry = ClusterMap[clusterId];
                 const model = clusterEntry?.commands[commandName.toLowerCase()];
                 if (cluster && model) {
                     commandData = convertCommandDataToMatter(commandData, model, clusterEntry.model);

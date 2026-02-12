@@ -6,7 +6,7 @@
 
 import { camelize, ClusterId, FabricIndex, Logger, LogLevel, Millis, NodeId, ObserverGroup } from "@matter/main";
 import { ControllerCommissioningFlowOptions } from "@matter/main/protocol";
-import { EndpointNumber, getClusterById, QrPairingCodeCodec } from "@matter/main/types";
+import { EndpointNumber, QrPairingCodeCodec } from "@matter/main/types";
 import { NodeStates } from "@project-chip/matter.js/device";
 import { WebSocketServer } from "ws";
 import { ControllerCommandHandler } from "../controller/ControllerCommandHandler.js";
@@ -163,8 +163,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 if (this.#closed) return;
                 const { endpointId, clusterId, attributeId } = data.path;
                 const pathStr = `${endpointId}/${clusterId}/${attributeId}`;
-                const cluster = getClusterById(clusterId);
-                const clusterData = ClusterMap[cluster.name.toLowerCase()];
+                const clusterData = ClusterMap[clusterId];
                 const value = convertMatterToWebSocketTagBased(
                     data.value,
                     clusterData?.attributes[attributeId],
@@ -321,7 +320,12 @@ export class WebSocketControllerHandler implements WebServerHandler {
             );
         });
 
-        await this.#commandHandler.connect();
+        // Register all nodes and populate attribute caches before the server starts listening.
+        // This ensures that the first start_listening response contains all nodes.
+        await this.#commandHandler.initializeNodes();
+
+        // Start connecting nodes to the network (fire-and-forget, actual I/O is async).
+        this.#commandHandler.connectNodes();
     }
 
     unregister(): Promise<void> {
@@ -673,9 +677,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
         // Pass the last interview date for real nodes
         if (handler === this.#commandHandler) {
-            return await this.#commandHandler.getNodeDetails(nodeId, this.#lastInterviewDates.get(nodeId));
+            return this.#commandHandler.getNodeDetails(nodeId, this.#lastInterviewDates.get(nodeId));
         }
-        return await handler.getNodeDetails(nodeId);
+        return handler.getNodeDetails(nodeId);
     }
 
     async #handleGetNodeIpAddresses(
@@ -980,8 +984,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         clusterData?: ClusterMapEntry,
     ) {
         if (!clusterData) {
-            const cluster = getClusterById(clusterId);
-            clusterData = clusterData ?? ClusterMap[cluster.name.toLowerCase()];
+            clusterData = ClusterMap[clusterId];
         }
 
         if (clusterData === undefined || clusterData.commands[commandName.toLowerCase()] === undefined) {

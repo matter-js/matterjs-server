@@ -7,6 +7,9 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
+## __WORK IN PROGRESS__
+- Fix: Improve performance of startup and start_listening Websocket command
+
 ## 0.3.6 (2026-02-11)
 - Enhancement: Update Icons in Dashboard graphs and introduce in UI
 - Adjustment: (Leo2442926161) Update the Heiman custom attributes
