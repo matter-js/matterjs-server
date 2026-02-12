@@ -200,7 +200,12 @@ function classifyModel(model: ValueModel): ConvKind {
     } else if (model.metabase?.metatype === "bytes") {
         kind = ConvKind.Bytes;
     } else if (model.metabase?.metatype === "integer") {
-        kind = model.type === "epoch-s" ? ConvKind.EpochS : model.type === "epoch-us" ? ConvKind.EpochUS : ConvKind.Passthrough;
+        kind =
+            model.type === "epoch-s"
+                ? ConvKind.EpochS
+                : model.type === "epoch-us"
+                  ? ConvKind.EpochUS
+                  : ConvKind.Passthrough;
     } else {
         kind = ConvKind.Passthrough;
     }
@@ -274,7 +279,11 @@ export function convertMatterToWebSocketTagBased(
             const result: { [key: string]: any } = {};
             for (const { name, id, model: memberModel } of getStructMembers(model)) {
                 if (name in (value as Record<string, unknown>)) {
-                    result[id] = convertMatterToWebSocketTagBased((value as Record<string, unknown>)[name], memberModel, clusterModel);
+                    result[id] = convertMatterToWebSocketTagBased(
+                        (value as Record<string, unknown>)[name],
+                        memberModel,
+                        clusterModel,
+                    );
                 }
             }
             return result;
