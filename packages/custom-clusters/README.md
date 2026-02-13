@@ -106,3 +106,9 @@ npm run build
 ```
 
 This compiles the TypeScript definitions to JavaScript in the `dist/` directory.
+
+**Generate cluster descriptions**
+
+```bash
+npm run generate
+```
