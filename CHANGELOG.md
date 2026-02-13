@@ -7,6 +7,9 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
+## __WORK IN PROGRESS__
+- Enhancement: (lboue) Add Eve childLock custom attributes
+
 ## 0.3.7 (2026-02-12)
 - Fix: Improve performance of startup and start_listening WebSocket command
 
@@ -14,7 +17,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Enhancement: Update Icons in Dashboard graphs and introduce in UI
 - Adjustment: (Leo2442926161) Update the Heiman custom attributes
 - Adjustment: Defined Inovelli attributes writable
-- Adjustment: (lboue) Add Eve childLock custom attribute 
+- Enhancement: (lboue) Add Eve childLock custom attribute 
 - Fix: Add missing package dependencies to the docker container to enable BLE support
 - Fix: Update matter.js to 0.16.9-nightly
     - Add Jitter to max ceiling for subscription when thread to spread datareports a bit better
