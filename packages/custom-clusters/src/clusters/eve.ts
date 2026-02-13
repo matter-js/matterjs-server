@@ -12,6 +12,9 @@ export class EveCluster {
     @attribute(0x130a0000, octstr)
     getConfig?: Bytes;
 
+    @attribute(0x130a0001, octstr, writable)
+    setConfig?: Bytes;
+
     @attribute(0x130a0002, octstr)
     loggingMetadata?: Bytes;
 
