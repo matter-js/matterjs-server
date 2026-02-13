@@ -11297,6 +11297,12 @@ export const clusters: Record<number, ClusterDescription> = {
                 "label": "GetConfig",
                 "type": "bytes"
             },
+            "319422465": {
+                "id": 319422465,
+                "cluster_id": 319486977,
+                "label": "SetConfig",
+                "type": "bytes"
+            },
             "319422466": {
                 "id": 319422466,
                 "cluster_id": 319486977,
