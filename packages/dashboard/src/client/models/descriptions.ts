@@ -11295,25 +11295,25 @@ export const clusters: Record<number, ClusterDescription> = {
                 "id": 319422464,
                 "cluster_id": 319486977,
                 "label": "GetConfig",
-                "type": "bytes"
+                "type": "Optional[bytes]"
             },
             "319422465": {
                 "id": 319422465,
                 "cluster_id": 319486977,
                 "label": "SetConfig",
-                "type": "bytes"
+                "type": "Optional[bytes]"
             },
             "319422466": {
                 "id": 319422466,
                 "cluster_id": 319486977,
                 "label": "LoggingMetadata",
-                "type": "bytes"
+                "type": "Optional[bytes]"
             },
             "319422467": {
                 "id": 319422467,
                 "cluster_id": 319486977,
                 "label": "LoggingData",
-                "type": "bytes"
+                "type": "Optional[bytes]"
             },
             "319422470": {
                 "id": 319422470,
@@ -11325,7 +11325,7 @@ export const clusters: Record<number, ClusterDescription> = {
                 "id": 319422471,
                 "cluster_id": 319486977,
                 "label": "LastEventTime",
-                "type": "uint32"
+                "type": "Optional[unknown]"
             },
             "319422472": {
                 "id": 319422472,
@@ -11355,7 +11355,7 @@ export const clusters: Record<number, ClusterDescription> = {
                 "id": 319422476,
                 "cluster_id": 319486977,
                 "label": "StatusFault",
-                "type": "uint8"
+                "type": "Optional[unknown]"
             },
             "319422477": {
                 "id": 319422477,
@@ -11385,7 +11385,7 @@ export const clusters: Record<number, ClusterDescription> = {
                 "id": 319422482,
                 "cluster_id": 319486977,
                 "label": "Rloc16",
-                "type": "uint16"
+                "type": "Optional[unknown]"
             },
             "319422483": {
                 "id": 319422483,
