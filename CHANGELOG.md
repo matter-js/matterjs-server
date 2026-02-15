@@ -10,6 +10,7 @@ This page shows a detailed overview of the changes between versions without the 
 ## __WORK IN PROGRESS__
 - Enhancement: (lboue) Add Eve childLock custom attributes
 - Fix: Correct write_attribute handling for structs and arrays and correctly convert the values
+- Fix: Restore compatibility to Python Matter Server in command requests and responses
 
 ## 0.3.7 (2026-02-12)
 - Fix: Improve performance of startup and start_listening WebSocket command

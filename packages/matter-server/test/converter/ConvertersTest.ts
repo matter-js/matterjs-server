@@ -781,11 +781,10 @@ describe("Converters", () => {
                 TimeSource: 2,
             };
 
-            const result = convertCommandDataToMatter(
-                mixedCasePayload,
-                setUtcTimeCmd,
-                timeSyncCluster.model,
-            ) as Record<string, unknown>;
+            const result = convertCommandDataToMatter(mixedCasePayload, setUtcTimeCmd, timeSyncCluster.model) as Record<
+                string,
+                unknown
+            >;
 
             expect(result).to.have.property("utcTime");
             expect(result).to.not.have.property("UTCTime");
@@ -807,11 +806,10 @@ describe("Converters", () => {
                 timeSource: 2,
             };
 
-            const result = convertCommandDataToMatter(
-                camelCasePayload,
-                setUtcTimeCmd,
-                timeSyncCluster.model,
-            ) as Record<string, unknown>;
+            const result = convertCommandDataToMatter(camelCasePayload, setUtcTimeCmd, timeSyncCluster.model) as Record<
+                string,
+                unknown
+            >;
 
             expect(result).to.have.property("utcTime");
             // utcTime gets epoch offset added (epoch-us conversion)
@@ -833,11 +831,10 @@ describe("Converters", () => {
                 unknownField: "should stay",
             };
 
-            const result = convertCommandDataToMatter(
-                payload,
-                setUtcTimeCmd,
-                timeSyncCluster.model,
-            ) as Record<string, unknown>;
+            const result = convertCommandDataToMatter(payload, setUtcTimeCmd, timeSyncCluster.model) as Record<
+                string,
+                unknown
+            >;
 
             expect(result.unknownField).to.equal("should stay");
         });
@@ -852,11 +849,10 @@ describe("Converters", () => {
             const responseModel = updateFabricLabelCmd.responseModel;
 
             const matterValue = { statusCode: 0, fabricIndex: 5 };
-            const result = convertMatterToWebSocketNameBased(
-                matterValue,
-                responseModel,
-                opCredCluster.model,
-            ) as Record<string, unknown>;
+            const result = convertMatterToWebSocketNameBased(matterValue, responseModel, opCredCluster.model) as Record<
+                string,
+                unknown
+            >;
 
             // Should use names, not numeric IDs
             expect(result).to.have.property("statusCode");
