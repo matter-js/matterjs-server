@@ -14,7 +14,7 @@ import { css, html, LitElement } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { guard } from "lit/directives/guard.js";
 import "../components/ha-svg-icon";
-import { getDeviceIcon } from "../util/device-icons.js";
+import { getDeviceIcon, getEndpointIcon } from "../util/device-icons.js";
 import { formatNodeAddress, getEffectiveFabricIndex } from "../util/format_hex.js";
 import "./components/header";
 import "./components/node-details";
@@ -101,6 +101,11 @@ class MatterNodeView extends LitElement {
                         getUniqueEndpoints(this.node!).map(endPointId => {
                             return html`
                                 <md-list-item type="link" href=${`#node/${this.node!.node_id}/${endPointId}`}>
+                                    <ha-svg-icon
+                                        slot="start"
+                                        class="endpoint-icon"
+                                        .path=${getEndpointIcon(this.node!, endPointId)}
+                                    ></ha-svg-icon>
                                     <div slot="headline">Endpoint ${endPointId}</div>
                                     <div slot="supporting-text">
                                         Device Type(s):
@@ -164,6 +169,10 @@ class MatterNodeView extends LitElement {
         .node-icon {
             --icon-primary-color: var(--md-sys-color-on-surface-variant, #666);
             --mdc-icon-size: 28px;
+        }
+
+        .endpoint-icon {
+            --icon-primary-color: var(--md-sys-color-on-surface-variant, #666);
         }
 
         .node-title-bar h2 {

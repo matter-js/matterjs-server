@@ -369,6 +369,36 @@ export function getPrimaryDeviceType(node: MatterNode): number | undefined {
 }
 
 /**
+ * Gets the appropriate MDI icon path for a specific endpoint on a node.
+ * Prefers non-utility device types when present.
+ */
+export function getEndpointIcon(node: MatterNode, endpoint: number): string {
+    const deviceTypeList = node.attributes[`${endpoint}/29/0`] as Array<Record<string, number>> | undefined;
+    if (!deviceTypeList?.length) {
+        return mdiChip;
+    }
+
+    let firstFound: number | undefined;
+
+    for (const entry of deviceTypeList) {
+        const deviceType = extractDeviceType(entry);
+        if (deviceType === undefined) continue;
+
+        firstFound ??= deviceType;
+
+        if (deviceTypeToIcon[deviceType] && !UTILITY_TYPES.has(deviceType)) {
+            return deviceTypeToIcon[deviceType];
+        }
+    }
+
+    if (firstFound !== undefined && deviceTypeToIcon[firstFound]) {
+        return deviceTypeToIcon[firstFound];
+    }
+
+    return mdiChip;
+}
+
+/**
  * Gets the appropriate MDI icon path for a node.
  * Considers device type and Thread role.
  */
