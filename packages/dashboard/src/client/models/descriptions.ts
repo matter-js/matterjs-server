@@ -11325,7 +11325,7 @@ export const clusters: Record<number, ClusterDescription> = {
                 "id": 319422471,
                 "cluster_id": 319486977,
                 "label": "LastEventTime",
-                "type": "Optional[unknown]"
+                "type": "Optional[uint32]"
             },
             "319422472": {
                 "id": 319422472,
@@ -11355,7 +11355,7 @@ export const clusters: Record<number, ClusterDescription> = {
                 "id": 319422476,
                 "cluster_id": 319486977,
                 "label": "StatusFault",
-                "type": "Optional[unknown]"
+                "type": "Optional[uint8]"
             },
             "319422477": {
                 "id": 319422477,
@@ -11385,7 +11385,7 @@ export const clusters: Record<number, ClusterDescription> = {
                 "id": 319422482,
                 "cluster_id": 319486977,
                 "label": "Rloc16",
-                "type": "Optional[unknown]"
+                "type": "Optional[uint16]"
             },
             "319422483": {
                 "id": 319422483,
