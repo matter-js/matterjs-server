@@ -328,6 +328,29 @@ function extractDeviceType(entry: Record<string, number>): number | undefined {
 }
 
 /**
+ * Selects the best device type from a DeviceTypeList.
+ * Prefers non-utility types that have icon mappings, falls back to the first found type.
+ */
+function selectBestDeviceType(deviceTypeList: Array<Record<string, number>> | undefined): number | undefined {
+    if (!deviceTypeList?.length) return undefined;
+
+    let firstFound: number | undefined;
+
+    for (const entry of deviceTypeList) {
+        const deviceType = extractDeviceType(entry);
+        if (deviceType === undefined) continue;
+
+        firstFound ??= deviceType;
+
+        if (deviceTypeToIcon[deviceType] && !UTILITY_TYPES.has(deviceType)) {
+            return deviceType;
+        }
+    }
+
+    return firstFound;
+}
+
+/**
  * Gets the primary device type ID for a node.
  * Scans all endpoints for DeviceTypeList attribute (x/29/0) and prefers
  * the first explicitly-mapped, non-infrastructure type. Falls back to
@@ -349,19 +372,15 @@ export function getPrimaryDeviceType(node: MatterNode): number | undefined {
 
     for (const ep of endpoints) {
         const deviceTypeList = node.attributes[`${ep}/29/0`] as Array<Record<string, number>> | undefined;
-        if (!deviceTypeList?.length) continue;
+        const deviceType = selectBestDeviceType(deviceTypeList);
+        if (deviceType === undefined) continue;
 
-        for (const entry of deviceTypeList) {
-            const deviceType = extractDeviceType(entry);
-            if (deviceType === undefined) continue;
+        // Remember the very first device type as fallback
+        firstFound ??= deviceType;
 
-            // Remember the very first device type as fallback
-            firstFound ??= deviceType;
-
-            // Prefer a mapped, non-infrastructure type
-            if (deviceTypeToIcon[deviceType] && !UTILITY_TYPES.has(deviceType)) {
-                return deviceType;
-            }
+        // Prefer a mapped, non-infrastructure type
+        if (deviceTypeToIcon[deviceType] && !UTILITY_TYPES.has(deviceType)) {
+            return deviceType;
         }
     }
 
@@ -374,25 +393,10 @@ export function getPrimaryDeviceType(node: MatterNode): number | undefined {
  */
 export function getEndpointIcon(node: MatterNode, endpoint: number): string {
     const deviceTypeList = node.attributes[`${endpoint}/29/0`] as Array<Record<string, number>> | undefined;
-    if (!deviceTypeList?.length) {
-        return mdiChip;
-    }
+    const deviceType = selectBestDeviceType(deviceTypeList);
 
-    let firstFound: number | undefined;
-
-    for (const entry of deviceTypeList) {
-        const deviceType = extractDeviceType(entry);
-        if (deviceType === undefined) continue;
-
-        firstFound ??= deviceType;
-
-        if (deviceTypeToIcon[deviceType] && !UTILITY_TYPES.has(deviceType)) {
-            return deviceTypeToIcon[deviceType];
-        }
-    }
-
-    if (firstFound !== undefined && deviceTypeToIcon[firstFound]) {
-        return deviceTypeToIcon[firstFound];
+    if (deviceType !== undefined && deviceTypeToIcon[deviceType]) {
+        return deviceTypeToIcon[deviceType];
     }
 
     return mdiChip;
