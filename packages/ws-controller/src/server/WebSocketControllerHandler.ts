@@ -33,6 +33,7 @@ import { formatNodeId } from "../util/formatNodeId.js";
 import { MATTER_VERSION } from "../util/matterVersion.js";
 import { ConfigStorage } from "./ConfigStorage.js";
 import {
+    convertMatterToWebSocketNameBased,
     convertMatterToWebSocketTagBased,
     parseBigIntAwareJson,
     splitAttributePath,
@@ -797,7 +798,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         if (TestNodeCommandHandler.isTestNodeId(nodeId) || response_type === null) {
             return null;
         }
-        const cmdResult = this.#convertCommandDataToWebSocketTagBased(ClusterId(clusterId), commandName, result);
+        const cmdResult = this.#convertCommandDataToWebSocket(ClusterId(clusterId), commandName, result);
         if (cmdResult === undefined) {
             return null;
         }
@@ -978,7 +979,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         return this.#commandHandler.getNodeDetails(nodeId, lastInterviewDate);
     }
 
-    #convertCommandDataToWebSocketTagBased(
+    #convertCommandDataToWebSocket(
         clusterId: ClusterId,
         commandName: string,
         value: unknown,
@@ -990,13 +991,13 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
         if (clusterData === undefined || clusterData.commands[commandName.toLowerCase()] === undefined) {
             logger.warn(
-                `Cluster ${clusterId} does not have command ${commandName}. Do not convert data to WebSocket tag based`,
+                `Cluster ${clusterId} does not have command ${commandName}. Do not convert data to WebSocket format`,
                 value,
             );
             return {};
         }
 
-        return convertMatterToWebSocketTagBased(
+        return convertMatterToWebSocketNameBased(
             value,
             clusterData.commands[commandName.toLowerCase()]!.responseModel,
             clusterData.model,
