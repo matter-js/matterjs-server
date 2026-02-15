@@ -97,7 +97,7 @@ class MatterNodeView extends LitElement {
                             <b>Endpoints</b>
                         </div>
                     </md-list-item>
-                    ${guard([this.node?.attributes], () =>
+                    ${guard([this.node, this.node?.attributes], () =>
                         getUniqueEndpoints(this.node!).map(endPointId => {
                             return html`
                                 <md-list-item type="link" href=${`#node/${this.node!.node_id}/${endPointId}`}>
