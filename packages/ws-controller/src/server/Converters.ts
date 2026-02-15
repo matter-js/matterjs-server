@@ -153,7 +153,7 @@ export function convertCommandDataToMatter(
         }
 
         for (const key of valueKeys) {
-            // Try the exact match first, then camelized (handles PascalCase from Python CHIP SDK)
+            // Camelize the key to normalize PascalCase from Python CHIP SDK (e.g. DSTOffset -> dstOffset)
             const camelizedKey = camelize(key);
             if (memberByName[camelizedKey]) {
                 const member = memberByName[camelizedKey];
