@@ -6,6 +6,8 @@
 
 import {
     ClusterMap,
+    convertCommandDataToMatter,
+    convertMatterToWebSocketNameBased,
     convertMatterToWebSocketTagBased,
     convertWebSocketTagBasedToMatter,
     parseBigIntAwareJson,
@@ -743,6 +745,273 @@ describe("Converters", () => {
             expect(result.endpointId).to.be.undefined;
             expect(result.clusterId).to.equal(40);
             expect(result.attributeId).to.be.undefined;
+        });
+    });
+
+    describe("convertCommandDataToMatter - PascalCase normalization (issue #172)", () => {
+        it("should convert PascalCase payload keys to camelCase for SetDSTOffset", () => {
+            // Python CHIP SDK sends PascalCase: { DSTOffset: [...] }
+            // Matter.js expects camelCase: { dstOffset: [...] }
+            const timeSyncCluster = ClusterMap[56]!;
+            const setDstOffsetCmd = timeSyncCluster.commands["setdstoffset"]!;
+
+            const pascalCasePayload = {
+                DSTOffset: [{ offset: 3600, validStarting: 826268400000000, validUntil: 846828000000000 }],
+            };
+
+            const result = convertCommandDataToMatter(
+                pascalCasePayload,
+                setDstOffsetCmd,
+                timeSyncCluster.model,
+            ) as Record<string, unknown>;
+
+            expect(result).to.have.property("dstOffset");
+            expect(result).to.not.have.property("DSTOffset");
+            expect(result.dstOffset).to.be.an("array");
+        });
+
+        it("should convert PascalCase payload keys to camelCase for SetUTCTime", () => {
+            // Python CHIP SDK sends: { UTCTime: 823295811715571, granularity: 2, timeSource: 2 }
+            const timeSyncCluster = ClusterMap[56]!;
+            const setUtcTimeCmd = timeSyncCluster.commands["setutctime"]!;
+
+            const mixedCasePayload = {
+                UTCTime: 823295811715571,
+                Granularity: 2,
+                TimeSource: 2,
+            };
+
+            const result = convertCommandDataToMatter(
+                mixedCasePayload,
+                setUtcTimeCmd,
+                timeSyncCluster.model,
+            ) as Record<string, unknown>;
+
+            expect(result).to.have.property("utcTime");
+            expect(result).to.not.have.property("UTCTime");
+            expect(result).to.have.property("granularity");
+            expect(result).to.not.have.property("Granularity");
+            expect(result).to.have.property("timeSource");
+            expect(result).to.not.have.property("TimeSource");
+        });
+
+        it("should still work with already-camelCase keys", () => {
+            // HA core sends camelCase: { utcTime: ..., granularity: ..., timeSource: ... }
+            // Note: utcTime is epoch-us type, so the converter adds Matter epoch offset (converted to BigInt)
+            const timeSyncCluster = ClusterMap[56]!;
+            const setUtcTimeCmd = timeSyncCluster.commands["setutctime"]!;
+
+            const camelCasePayload = {
+                utcTime: 823295811715571,
+                granularity: 2,
+                timeSource: 2,
+            };
+
+            const result = convertCommandDataToMatter(
+                camelCasePayload,
+                setUtcTimeCmd,
+                timeSyncCluster.model,
+            ) as Record<string, unknown>;
+
+            expect(result).to.have.property("utcTime");
+            // utcTime gets epoch offset added (epoch-us conversion)
+            expect(typeof result.utcTime).to.equal("bigint");
+            expect(result).to.have.property("granularity");
+            expect(result.granularity).to.equal(2);
+            expect(result).to.have.property("timeSource");
+            expect(result.timeSource).to.equal(2);
+        });
+
+        it("should preserve unknown keys as-is", () => {
+            const timeSyncCluster = ClusterMap[56]!;
+            const setUtcTimeCmd = timeSyncCluster.commands["setutctime"]!;
+
+            const payload = {
+                utcTime: 123456,
+                granularity: 2,
+                timeSource: 2,
+                unknownField: "should stay",
+            };
+
+            const result = convertCommandDataToMatter(
+                payload,
+                setUtcTimeCmd,
+                timeSyncCluster.model,
+            ) as Record<string, unknown>;
+
+            expect(result.unknownField).to.equal("should stay");
+        });
+    });
+
+    describe("convertMatterToWebSocketNameBased - named command responses (issue #70)", () => {
+        it("should use camelCase names instead of numeric IDs for struct keys", () => {
+            // OperationalCredentials cluster (62), UpdateFabricLabel response = NOCResponse
+            // NOCResponse has: 0=StatusCode, 1=FabricIndex, 2=DebugText
+            const opCredCluster = ClusterMap[62]!;
+            const updateFabricLabelCmd = opCredCluster.commands["updatefabriclabel"]!;
+            const responseModel = updateFabricLabelCmd.responseModel;
+
+            const matterValue = { statusCode: 0, fabricIndex: 5 };
+            const result = convertMatterToWebSocketNameBased(
+                matterValue,
+                responseModel,
+                opCredCluster.model,
+            ) as Record<string, unknown>;
+
+            // Should use names, not numeric IDs
+            expect(result).to.have.property("statusCode");
+            expect(result).to.have.property("fabricIndex");
+            expect(result).to.not.have.property("0");
+            expect(result).to.not.have.property("1");
+            expect(result.statusCode).to.equal(0);
+            expect(result.fabricIndex).to.equal(5);
+        });
+
+        it("should produce different output than tag-based for same input", () => {
+            const opCredCluster = ClusterMap[62]!;
+            const updateFabricLabelCmd = opCredCluster.commands["updatefabriclabel"]!;
+            const responseModel = updateFabricLabelCmd.responseModel;
+
+            const matterValue = { statusCode: 0, fabricIndex: 5 };
+
+            const tagBased = convertMatterToWebSocketTagBased(
+                matterValue,
+                responseModel,
+                opCredCluster.model,
+            ) as Record<string, unknown>;
+
+            const nameBased = convertMatterToWebSocketNameBased(
+                matterValue,
+                responseModel,
+                opCredCluster.model,
+            ) as Record<string, unknown>;
+
+            // Tag-based uses numeric IDs
+            expect(tagBased).to.have.property("0");
+            expect(tagBased).to.have.property("1");
+
+            // Name-based uses camelCase names
+            expect(nameBased).to.have.property("statusCode");
+            expect(nameBased).to.have.property("fabricIndex");
+        });
+
+        it("should handle null values correctly", () => {
+            const result = convertMatterToWebSocketNameBased(null, undefined, undefined);
+            expect(result).to.be.null;
+        });
+
+        it("should convert nested structs with names", () => {
+            // Descriptor cluster, DeviceTypeStruct
+            const descriptorCluster = ClusterMap[29]!;
+            const deviceTypeListAttr = descriptorCluster.attributes[0]!;
+            const deviceTypeStructModel = deviceTypeListAttr.members[0];
+
+            const matterValue = { deviceType: 256, revision: 2 };
+            const result = convertMatterToWebSocketNameBased(
+                matterValue,
+                deviceTypeStructModel,
+                descriptorCluster.model,
+            ) as Record<string, unknown>;
+
+            expect(result).to.have.property("deviceType");
+            expect(result).to.have.property("revision");
+            expect(result.deviceType).to.equal(256);
+            expect(result.revision).to.equal(2);
+        });
+
+        it("should convert list of structs with names", () => {
+            const descriptorCluster = ClusterMap[29]!;
+            const deviceTypeListAttr = descriptorCluster.attributes[0];
+
+            const matterValue = [
+                { deviceType: 22, revision: 1 },
+                { deviceType: 17, revision: 1 },
+            ];
+            const result = convertMatterToWebSocketNameBased(
+                matterValue,
+                deviceTypeListAttr,
+                descriptorCluster.model,
+            ) as Array<Record<string, unknown>>;
+
+            expect(result).to.have.length(2);
+            expect(result[0]).to.deep.equal({ deviceType: 22, revision: 1 });
+            expect(result[1]).to.deep.equal({ deviceType: 17, revision: 1 });
+        });
+
+        it("should still convert bytes to base64", () => {
+            const networkCommCluster = ClusterMap[49]!;
+            const lastNetworkIdAttr = networkCommCluster.attributes[6];
+
+            const original = new Uint8Array([1, 2, 3, 4]);
+            const result = convertMatterToWebSocketNameBased(original, lastNetworkIdAttr, networkCommCluster.model);
+
+            expect(result).to.be.a("string");
+            expect(result).to.equal(Bytes.toBase64(original));
+        });
+
+        it("should still convert bitmaps to numbers", () => {
+            const networkCommCluster = ClusterMap[49]!;
+            const featureMapAttr = networkCommCluster.attributes[65532];
+
+            const matterValue = {
+                wiFiNetworkInterface: true,
+                threadNetworkInterface: false,
+                ethernetNetworkInterface: true,
+            };
+            const result = convertMatterToWebSocketNameBased(matterValue, featureMapAttr, networkCommCluster.model);
+
+            expect(result).to.equal(5); // bit 0 + bit 2
+        });
+    });
+
+    describe("convertWebSocketTagBasedToMatter - bitmap for write_attribute (issue #259)", () => {
+        it("should convert Fan RockSetting bitmap number to object", () => {
+            // Fan cluster (514), attribute 8 (RockSetting) is a bitmap
+            // RockLeftRight=bit0, RockUpDown=bit1, RockRound=bit2
+            const fanCluster = ClusterMap[514]!;
+            const rockSettingAttr = fanCluster.attributes[8]!;
+
+            // HA sends value: 2 (RockUpDown = bit 1)
+            const result = convertWebSocketTagBasedToMatter(2, rockSettingAttr, fanCluster.model) as Record<
+                string,
+                boolean
+            >;
+
+            expect(result).to.be.an("object");
+            expect(result.rockLeftRight).to.equal(false); // bit 0
+            expect(result.rockUpDown).to.equal(true); // bit 1
+            expect(result.rockRound).to.equal(false); // bit 2
+        });
+
+        it("should convert Fan RockSetting bitmap with multiple bits", () => {
+            const fanCluster = ClusterMap[514]!;
+            const rockSettingAttr = fanCluster.attributes[8]!;
+
+            // Value 3 = RockLeftRight (bit 0) + RockUpDown (bit 1)
+            const result = convertWebSocketTagBasedToMatter(3, rockSettingAttr, fanCluster.model) as Record<
+                string,
+                boolean
+            >;
+
+            expect(result.rockLeftRight).to.equal(true);
+            expect(result.rockUpDown).to.equal(true);
+            expect(result.rockRound).to.equal(false);
+        });
+
+        it("should round-trip Fan RockSetting bitmap correctly", () => {
+            const fanCluster = ClusterMap[514]!;
+            const rockSettingAttr = fanCluster.attributes[8]!;
+
+            // Start with the numeric value HA sends
+            const wsValue = 2;
+
+            // Convert WS → Matter (what write_attribute now does)
+            const matterValue = convertWebSocketTagBasedToMatter(wsValue, rockSettingAttr, fanCluster.model);
+            expect(matterValue).to.be.an("object");
+
+            // Convert Matter → WS (what read_attribute does)
+            const backToWs = convertMatterToWebSocketTagBased(matterValue, rockSettingAttr, fanCluster.model);
+            expect(backToWs).to.equal(wsValue);
         });
     });
 });

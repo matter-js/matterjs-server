@@ -153,9 +153,11 @@ export function convertCommandDataToMatter(
         }
 
         for (const key of valueKeys) {
-            if (memberByName[key]) {
-                const member = memberByName[key];
-                result[key] = convertCommandDataToMatter(value[key], member, clusterModel);
+            // Try the exact match first, then camelized (handles PascalCase from Python CHIP SDK)
+            const camelizedKey = camelize(key);
+            if (memberByName[camelizedKey]) {
+                const member = memberByName[camelizedKey];
+                result[camelizedKey] = convertCommandDataToMatter(value[key], member, clusterModel);
             } else {
                 // Keep unknown keys as-is (fallback for unknown attributes)
                 result[key] = value[key];
@@ -240,6 +242,27 @@ export function convertMatterToWebSocketTagBased(
     model: ValueModel | undefined,
     clusterModel: ClusterModel | undefined,
 ): unknown {
+    return convertMatterToWebSocket(value, model, clusterModel, true);
+}
+
+/**
+ * Same as convertMatterToWebSocketTagBased but uses camelCase names instead of numeric tag IDs for struct keys.
+ * Used for command (invoke) responses to match Python Matter Server behavior.
+ */
+export function convertMatterToWebSocketNameBased(
+    value: unknown,
+    model: ValueModel | undefined,
+    clusterModel: ClusterModel | undefined,
+): unknown {
+    return convertMatterToWebSocket(value, model, clusterModel, false);
+}
+
+function convertMatterToWebSocket(
+    value: unknown,
+    model: ValueModel | undefined,
+    clusterModel: ClusterModel | undefined,
+    tagBased: boolean,
+): unknown {
     if (value === null) {
         return null;
     }
@@ -271,7 +294,7 @@ export function convertMatterToWebSocketTagBased(
 
         case ConvKind.List:
             return Array.isArray(value)
-                ? value.map(v => convertMatterToWebSocketTagBased(v, model.members[0], clusterModel))
+                ? value.map(v => convertMatterToWebSocket(v, model.members[0], clusterModel, tagBased))
                 : value;
 
         case ConvKind.Struct: {
@@ -279,7 +302,12 @@ export function convertMatterToWebSocketTagBased(
             const result: { [key: string]: any } = {};
             for (const { name, id, model: memberModel } of getStructMembers(model)) {
                 if (Object.hasOwn(value, name)) {
-                    result[id] = convertMatterToWebSocketTagBased(value[name], memberModel, clusterModel);
+                    result[tagBased ? id : name] = convertMatterToWebSocket(
+                        value[name],
+                        memberModel,
+                        clusterModel,
+                        tagBased,
+                    );
                 }
             }
             return result;
