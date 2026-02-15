@@ -69,6 +69,7 @@ import {
     buildAttributePath,
     convertCommandDataToMatter,
     convertMatterToWebSocketTagBased,
+    convertWebSocketTagBasedToMatter,
     getDateAsString,
     splitAttributePath,
 } from "../server/Converters.js";
@@ -672,9 +673,16 @@ export class ControllerCommandHandler {
     }
 
     async handleWriteAttribute(data: WriteAttributeRequest): Promise<AttributeResponseStatus> {
-        const { nodeId, endpointId, clusterId, attributeId, value } = data;
+        const { nodeId, endpointId, clusterId, attributeId } = data;
+        let { value } = data;
 
         const client = this.#nodes.clusterClientByIdFor(nodeId, endpointId, clusterId);
+
+        const clusterEntry = ClusterMap[clusterId];
+        const model = clusterEntry?.attributes[attributeId];
+        if (model && clusterEntry) {
+            value = convertWebSocketTagBasedToMatter(value, model, clusterEntry.model);
+        }
 
         logger.info("Writing attribute", attributeId, "with value", value);
         try {
