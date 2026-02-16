@@ -812,8 +812,8 @@ export function getNodeConnections(
         }
         const connectedNode = connectedNodeId ? nodes[connectedNodeId] : undefined;
         const isUnknown = connectedNodeId === undefined;
-        const displayId: string = connectedNodeId
-            ?? `unknown_${neighbor.extAddress.toString(16).toUpperCase().padStart(16, "0")}`;
+        const displayId: string =
+            connectedNodeId ?? `unknown_${neighbor.extAddress.toString(16).toUpperCase().padStart(16, "0")}`;
 
         seenConnectedIds.add(displayId);
 
