@@ -7,7 +7,7 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
-## __WORK IN PROGRESS__
+## 0.3.8 (2026-02-16)
 - Enhancement: (lboue) Add Eve childLock custom attributes
 - Enhancement: Enhance mapping and naming of "Unknown" Nodes in the thread graph
 - Enhancement: (lboue) Also show icons for endpoints in the dashboard
