@@ -1,8 +1,8 @@
 {
-    "name": "matter-server",
+    "name": "@matter-server/ble-proxy",
     "version": "0.0.0-git",
     "type": "module",
-    "description": "WebSocket Matter server based on matter.js",
+    "description": "BLE proxy implementation for matter.js - proxies BLE operations over WebSocket",
     "bugs": {
         "url": "https://github.com/matter-js/matterjs-server/issues"
     },
@@ -11,32 +11,28 @@
         "type": "git",
         "url": "git+https://github.com/matter-js/matterjs-server.git"
     },
-    "author": "Apollon77",
-    "main": "dist/esm/MatterServer.js",
+    "author": "Open Home Foundation",
+    "main": "dist/esm/index.js",
     "scripts": {
         "clean": "matter-build clean",
         "build": "matter-build",
         "build-clean": "matter-build --clean",
-        "server": "node --enable-source-maps dist/esm/MatterServer.js"
+        "noble-ble-proxy": "matter-run src/example/noble-ble-proxy.ts"
     },
     "engines": {
         "node": ">=20.19.0 <22.0.0 || >=22.13.0"
     },
     "dependencies": {
         "@matter/main": "0.16.9-alpha.0-20260204-fd5b6ed86",
-        "@matter-server/ble-proxy": "*",
         "@matter-server/ws-controller": "*",
-        "@matter-server/dashboard": "*",
-        "@matter-server/custom-clusters": "*",
-        "commander": "^14.0.3",
-        "express": "^5.2.1"
+        "ws": "^8.19.0"
+    },
+    "optionalDependencies": {
+        "@matter/nodejs-ble": "0.16.9-alpha.0-20260204-fd5b6ed86"
     },
     "devDependencies": {
-        "@types/express": "^5.0.6",
         "@types/node": "^25.0.10",
-        "@matter/nodejs": "0.16.9-alpha.0-20260204-fd5b6ed86",
-        "@matter/testing": "0.16.9-alpha.0-20260204-fd5b6ed86",
-        "@matter-server/ws-client": "*"
+        "@types/ws": "^8.18.1"
     },
     "files": [
         "dist/**/*",

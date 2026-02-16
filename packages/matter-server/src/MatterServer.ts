@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { BleProxyHandler, ProxyBle } from "@matter-server/ble-proxy";
 import {
     ConfigStorage,
     Environment,
@@ -16,6 +17,7 @@ import {
     WebServerHandler,
     WebSocketControllerHandler,
 } from "@matter-server/ws-controller";
+import { Ble } from "@matter/main/protocol";
 import { open } from "node:fs/promises";
 import { getCliOptions, type LogLevel as CliLogLevel } from "./cli.js";
 import { LegacyDataWriter, loadLegacyData, type LegacyData } from "./converter/index.js";
@@ -85,7 +87,13 @@ const env = Environment.default;
 
 // Apply CLI options to environment variables
 env.vars.set("storage.path", cliOptions.storagePath);
-if (cliOptions.bluetoothAdapter !== null) {
+if (cliOptions.bleProxy) {
+    if (cliOptions.bluetoothAdapter !== null) {
+        logger.warn("--ble-proxy and --bluetooth-adapter are mutually exclusive. Using --ble-proxy.");
+    }
+    env.vars.set("ble.enable", true);
+    logger.info("BLE proxy mode enabled");
+} else if (cliOptions.bluetoothAdapter !== null) {
     env.vars.set("ble.enable", true);
     env.vars.set("ble.hci.id", cliOptions.bluetoothAdapter);
     logger.info(`Bluetooth enabled (hci-id=${cliOptions.bluetoothAdapter})`);
@@ -191,8 +199,19 @@ async function start() {
         });
     }
 
+    // Register BLE proxy if enabled - register the Ble instance on the environment
+    // so matter.js uses it for commissioning, and add the handler for the /ble endpoint
+    let bleProxyHandler: BleProxyHandler | undefined;
+    if (cliOptions.bleProxy) {
+        bleProxyHandler = new BleProxyHandler();
+        env.set(Ble, new ProxyBle(bleProxyHandler));
+    }
+
     const wsHandler = new WebSocketControllerHandler(controller, config, MATTER_SERVER_VERSION);
     const handlers: WebServerHandler[] = [new HealthHandler(wsHandler), wsHandler];
+    if (bleProxyHandler) {
+        handlers.push(bleProxyHandler);
+    }
     if (!cliOptions.disableDashboard) {
         handlers.push(new StaticFileHandler(cliOptions.productionMode));
     } else {

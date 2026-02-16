@@ -8,6 +8,7 @@
         "packages/ws-controller",
         "packages/ws-client",
         "packages/dashboard",
+        "packages/ble-proxy",
         "packages/matter-server"
     ],
     "bugs": {
@@ -32,6 +33,7 @@
         "relock": "node ./utils/relock.js && npm install",
         "sync-matterjs": "node ./utils/sync-matterjs.js && npm install",
         "server": "node --enable-source-maps packages/matter-server/dist/esm/MatterServer.js",
+        "noble-ble-proxy": "npm run noble-ble-proxy -w packages/ble-proxy",
         "send-command": "node --enable-source-maps packages/ws-controller/dist/esm/example/send-command.js"
     },
     "devDependencies": {
