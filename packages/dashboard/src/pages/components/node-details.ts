@@ -12,7 +12,7 @@ import "@material/web/iconbutton/icon-button";
 import "@material/web/list/list";
 import "@material/web/list/list-item";
 import { consume } from "@lit/context";
-import { MatterClient, MatterNode } from "@matter-server/ws-client";
+import { MatterClient, MatterNode, UpdateSource } from "@matter-server/ws-client";
 import { mdiChatProcessing, mdiLink, mdiShareVariant, mdiTrashCan, mdiUpdate } from "@mdi/js";
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
@@ -228,14 +228,32 @@ export class NodeDetails extends LitElement {
             });
             return;
         }
+        const isUnverifiedSource = nodeUpdate.update_source !== UpdateSource.MAIN_NET_DCL;
         if (
             !(await showPromptDialog({
                 title: "Firmware update available",
-                text: `Found a firmware update for this node on ${nodeUpdate.update_source}.
-          Do you want to update this node to version ${nodeUpdate.software_version_string}?
-          Note that updating firmware is at your own risk and may cause the device to
-          malfunction or needs additional handling such as power cycling it and/or recommissioning it.
-          Use with care.\n${nodeUpdate.firmware_information}`,
+                text: html`Found a firmware update for this node on
+                    <b>${nodeUpdate.update_source}</b>.
+                    ${
+                        isUnverifiedSource
+                            ? html`<p
+                                  style="background: #b3261e; color: #fff; padding: 8px 12px; border-radius: 4px; font-weight: bold;"
+                              >
+                                  Warning: This update was found on an unverified source. Updates from test-net or local
+                                  sources have not been certified and may contain untested firmware that could result in
+                                  non-functional devices. Applying these updates is entirely at your own risk.
+                              </p>`
+                            : nothing
+                    }
+                    <p>
+                        Do you want to update this node to version
+                        <b>${nodeUpdate.software_version_string}</b>?
+                    </p>
+                    <p>
+                        Note that updating firmware is at your own risk and may cause the device to malfunction or needs
+                        additional handling such as power cycling it and/or recommissioning it. Use with care.
+                    </p>
+                    ${nodeUpdate.firmware_information ? html`<p>${nodeUpdate.firmware_information}</p>` : nothing}`,
                 confirmText: "Start Update",
             }))
         ) {
