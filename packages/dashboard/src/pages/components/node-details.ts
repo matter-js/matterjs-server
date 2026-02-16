@@ -236,13 +236,13 @@ export class NodeDetails extends LitElement {
                     <b>${nodeUpdate.update_source}</b>.
                     ${
                         isUnverifiedSource
-                            ? html`<p
-                                  style="background: #b3261e; color: #fff; padding: 8px 12px; border-radius: 4px; font-weight: bold;"
-                              >
-                                  Warning: This update was found on an unverified source. Updates from test-net or local
-                                  sources have not been certified and may contain untested firmware that could result in
-                                  non-functional devices. Applying these updates is entirely at your own risk.
-                              </p>`
+                            ? html`
+                                  <p style="background: #b3261e; color: #fff; padding: 8px 12px; border-radius: 4px; font-weight: bold">
+                                      Warning: This update was found on an unverified source. Updates from test-net or local sources have not been
+                                      certified and may contain untested firmware that could result in non-functional devices. Applying these updates is
+                                      entirely at your own risk.
+                                  </p>
+                              `
                             : nothing
                     }
                     <p>
