@@ -17,6 +17,7 @@ import type { ThreadNeighbor } from "./network-types.js";
 import type { NodeConnection } from "./network-utils.js";
 import {
     buildExtAddrMap,
+    buildRloc16Map,
     getDeviceName,
     getNetworkType,
     getNodeConnections,
@@ -195,11 +196,12 @@ export class NetworkDetails extends LitElement {
         const channel = getThreadChannel(node);
         const extAddressHex = getThreadExtendedAddressHex(node);
         const extAddrMap = buildExtAddrMap(this.nodes);
+        const rloc16Map = buildRloc16Map(this.nodes);
 
         // Get all connections (bidirectional) - this matches what the graph shows
         // Use string to avoid BigInt precision loss
         const nodeId = String(node.node_id);
-        const connections = getNodeConnections(nodeId, this.nodes, extAddrMap);
+        const connections = getNodeConnections(nodeId, this.nodes, extAddrMap, rloc16Map);
 
         return html`
             <div class="section">
@@ -536,7 +538,8 @@ export class NetworkDetails extends LitElement {
         const networkType = getNetworkType(node);
         if (networkType === "thread") {
             const extAddrMap = buildExtAddrMap(this.nodes);
-            const connections = getNodeConnections(nodeId, this.nodes, extAddrMap);
+            const rloc16Map = buildRloc16Map(this.nodes);
+            const connections = getNodeConnections(nodeId, this.nodes, extAddrMap, rloc16Map);
             return connections
                 .filter(conn => {
                     // Only include commissioned nodes (not unknown devices)
@@ -576,7 +579,9 @@ export class NetworkDetails extends LitElement {
     private _getSelectedNodeName(): string {
         if (typeof this.selectedNodeId === "string" && this.selectedNodeId.startsWith("unknown_")) {
             const unknown = this.unknownDevices.get(this.selectedNodeId);
-            return unknown ? `Unknown (${unknown.extAddressHex.slice(-8)})` : "Unknown Device";
+            if (!unknown) return "External Device";
+            const typeLabel = unknown.isRouter ? "External Router" : "External Device";
+            return `${typeLabel} (${unknown.extAddressHex.slice(-8)})`;
         }
 
         const node = this.nodes[this.selectedNodeId!.toString()];

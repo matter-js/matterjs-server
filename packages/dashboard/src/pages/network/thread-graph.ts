@@ -11,6 +11,7 @@ import { BaseNetworkGraph } from "./base-network-graph.js";
 import type { NetworkGraphEdge, NetworkGraphNode, UnknownThreadDevice } from "./network-types.js";
 import {
     buildExtAddrMap,
+    buildRloc16Map,
     buildThreadConnections,
     findUnknownDevices,
     getDeviceName,
@@ -60,11 +61,12 @@ export class ThreadGraph extends BaseNetworkGraph {
             return;
         }
 
-        // Build extended address map for connection matching
+        // Build address maps for connection matching
         const extAddrMap = buildExtAddrMap(this.nodes);
+        const rloc16Map = buildRloc16Map(this.nodes);
 
         // Find unknown devices (seen in neighbor tables but not commissioned)
-        this._unknownDevices = findUnknownDevices(this.nodes, extAddrMap);
+        this._unknownDevices = findUnknownDevices(this.nodes, extAddrMap, rloc16Map);
 
         // Rebuild the cached map
         this._unknownDevicesMapCache.clear();
@@ -78,7 +80,7 @@ export class ThreadGraph extends BaseNetworkGraph {
         }
 
         // Build Thread connections (including to unknown devices)
-        const connections = buildThreadConnections(this.nodes, extAddrMap, this._unknownDevices);
+        const connections = buildThreadConnections(this.nodes, extAddrMap, rloc16Map, this._unknownDevices);
 
         // Create node data for vis.js - known Thread devices
         // Use string IDs to avoid precision loss for large bigint node IDs
@@ -99,12 +101,13 @@ export class ThreadGraph extends BaseNetworkGraph {
             };
         });
 
-        // Add unknown devices with question mark icons
+        // Add external devices with question mark icons
         for (const unknown of this._unknownDevices) {
             const isSelected = unknown.id === this._selectedNodeId;
+            const typeLabel = unknown.isRouter ? "External Router" : "External Device";
             graphNodes.push({
                 id: unknown.id,
-                label: `Unknown (${unknown.extAddressHex.slice(-8)})`,
+                label: `${typeLabel} (${unknown.extAddressHex.slice(-8)})`,
                 image: createUnknownDeviceIconDataUrl(unknown.isRouter, isSelected),
                 shape: "image",
                 networkType: "thread",
