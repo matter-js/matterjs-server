@@ -15,6 +15,10 @@ This page shows a detailed overview of the changes between versions without the 
 - Fix: Correct write_attribute handling for structs and arrays and correctly convert the values
 - Fix: Restore compatibility to Python Matter Server in command requests and responses
 - Fix: Fixes "unknown" datatype information in the dashboard for attributes
+- Fix/Enhancement: Update matter.js to 0.16.9-nightly
+    - Batch invoke-commands when received "at the same time" and node supports multiple commands at once
+    - Optimizes OTA handling and prevents the OTA state engine being blocked on failed updates
+    - Matter messaging optimizations
 
 ## 0.3.7 (2026-02-12)
 - Fix: Improve the performance of startup and start_listening WebSocket command
