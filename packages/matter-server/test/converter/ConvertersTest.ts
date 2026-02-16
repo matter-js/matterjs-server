@@ -838,6 +838,44 @@ describe("Converters", () => {
 
             expect(result.unknownField).to.equal("should stay");
         });
+
+        it("should omit null for optional non-nullable fields", () => {
+            const doorLockCluster = ClusterMap[257]!;
+            const unboltDoorCmd = doorLockCluster.commands["unboltdoor"]!;
+
+            const payload = {
+                PINCode: null,
+            };
+
+            const result = convertCommandDataToMatter(payload, unboltDoorCmd, doorLockCluster.model) as Record<
+                string,
+                unknown
+            >;
+
+            expect(result).to.not.have.property("pinCode");
+            expect(result).to.not.have.property("PINCode");
+            expect(result).to.deep.equal({});
+        });
+
+        it("should keep null for mandatory fields", () => {
+            const timeSyncCluster = ClusterMap[56]!;
+            const setUtcTimeCmd = timeSyncCluster.commands["setutctime"]!;
+
+            const payload = {
+                UTCTime: null,
+                Granularity: 2,
+                TimeSource: 2,
+            };
+
+            const result = convertCommandDataToMatter(payload, setUtcTimeCmd, timeSyncCluster.model) as Record<
+                string,
+                unknown
+            >;
+
+            expect(result).to.have.property("utcTime", null);
+            expect(result).to.have.property("granularity", 2);
+            expect(result).to.have.property("timeSource", 2);
+        });
     });
 
     describe("convertMatterToWebSocketNameBased - named command responses (issue #70)", () => {
