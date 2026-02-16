@@ -385,10 +385,12 @@ export function buildRloc16Map(nodes: Record<string, MatterNode>): Map<number, s
  * Finds unknown Thread devices - addresses seen in neighbor tables
  * that don't match any known commissioned device.
  * These are typically Thread Border Routers or devices from other ecosystems.
+ * Uses RLOC16 as fallback when extended address matching fails.
  */
 export function findUnknownDevices(
     nodes: Record<string, MatterNode>,
     extAddrMap: Map<bigint, string>,
+    rloc16Map: Map<number, string>,
 ): UnknownThreadDevice[] {
     const unknownMap = new Map<string, UnknownThreadDevice>();
 
@@ -397,8 +399,11 @@ export function findUnknownDevices(
         const neighbors = parseNeighborTable(node);
 
         for (const neighbor of neighbors) {
-            // Check if this neighbor is in our known devices
+            // Check if this neighbor is in our known devices (by extended address or RLOC16 fallback)
             if (extAddrMap.has(neighbor.extAddress)) {
+                continue;
+            }
+            if (neighbor.rloc16 !== 0 && rloc16Map.has(neighbor.rloc16)) {
                 continue;
             }
 
@@ -637,6 +642,7 @@ export function getWiFiVersionName(version: number | null): string {
 export function buildThreadConnections(
     nodes: Record<string, MatterNode>,
     extAddrMap: Map<bigint, string>,
+    rloc16Map: Map<number, string>,
     unknownDevices: UnknownThreadDevice[],
 ): ThreadConnection[] {
     const connections: ThreadConnection[] = [];
@@ -653,8 +659,11 @@ export function buildThreadConnections(
         const neighbors = parseNeighborTable(node);
 
         for (const neighbor of neighbors) {
-            // Try to find in known devices first
+            // Try to find in known devices first (extAddress, then RLOC16 fallback)
             let toNodeId: string | undefined = extAddrMap.get(neighbor.extAddress);
+            if (toNodeId === undefined && neighbor.rloc16 !== 0) {
+                toNodeId = rloc16Map.get(neighbor.rloc16);
+            }
 
             // If not found, check unknown devices
             if (toNodeId === undefined) {
@@ -704,6 +713,9 @@ export function buildThreadConnections(
             if (!route.linkEstablished || !route.allocated) continue;
 
             let toNodeId: string | undefined = extAddrMap.get(route.extAddress);
+            if (toNodeId === undefined && route.rloc16 !== 0) {
+                toNodeId = rloc16Map.get(route.rloc16);
+            }
             if (toNodeId === undefined) {
                 toNodeId = unknownExtAddrMap.get(route.extAddress);
             }
@@ -780,6 +792,7 @@ export function getNodeConnections(
     nodeId: string,
     nodes: Record<string, MatterNode>,
     extAddrMap: Map<bigint, string>,
+    rloc16Map?: Map<number, string>,
 ): NodeConnection[] {
     const connections: NodeConnection[] = [];
     const seenConnectedIds = new Set<string>();
@@ -793,12 +806,14 @@ export function getNodeConnections(
     // 1. Add neighbors this node reports (outgoing connections)
     const neighbors = parseNeighborTable(node);
     for (const neighbor of neighbors) {
-        const connectedNodeId = extAddrMap.get(neighbor.extAddress);
+        let connectedNodeId = extAddrMap.get(neighbor.extAddress);
+        if (connectedNodeId === undefined && rloc16Map && neighbor.rloc16 !== 0) {
+            connectedNodeId = rloc16Map.get(neighbor.rloc16);
+        }
         const connectedNode = connectedNodeId ? nodes[connectedNodeId] : undefined;
         const isUnknown = connectedNodeId === undefined;
-        const displayId = isUnknown
-            ? `unknown_${neighbor.extAddress.toString(16).toUpperCase().padStart(16, "0")}`
-            : connectedNodeId;
+        const displayId: string =
+            connectedNodeId ?? `unknown_${neighbor.extAddress.toString(16).toUpperCase().padStart(16, "0")}`;
 
         seenConnectedIds.add(displayId);
 

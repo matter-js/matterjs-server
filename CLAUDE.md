@@ -89,7 +89,7 @@ Engine requirement: `>=20.19.0 <22.0.0 || >=22.13.0`
 **Always run these checks before considering work complete:**
 
 ```bash
-# 1. Format code (required)
+# 1. Format code (required - MUST run first, oxfmt rewrites files in-place)
 npm run format
 
 # 2. Lint (required)
@@ -102,7 +102,7 @@ npm run build
 npm test
 ```
 
-All four checks must pass. Fix any issues before committing.
+All four checks must pass **in this order**. `npm run format` must be run **before** build/lint — it rewrites files in-place using oxfmt and the build/lint must validate the formatted output. Skipping format leads to formatting drift that gets caught later.
 
 ## Dashboard Development
 

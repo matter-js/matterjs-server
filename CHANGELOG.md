@@ -9,10 +9,12 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## __WORK IN PROGRESS__
 - Enhancement: (lboue) Add Eve childLock custom attributes
+- Enhancement: Enhance mapping and naming of "Unknown" Nodes in the thread graph
 - Enhancement: (lboue) Also show icons for endpoints in the dashboard
 - Enhancement: Add clear warnings for test-net and local updates also in the dashboard
 - Fix: Correct write_attribute handling for structs and arrays and correctly convert the values
 - Fix: Restore compatibility to Python Matter Server in command requests and responses
+- Fix: Fixes "unknown" datatype information in the dashboard for attributes
 
 ## 0.3.7 (2026-02-12)
 - Fix: Improve the performance of startup and start_listening WebSocket command
