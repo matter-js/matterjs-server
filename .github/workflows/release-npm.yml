@@ -132,6 +132,65 @@ jobs:
         if: steps.automerge.outputs.mergeResult == 'merged'
         run: sleep 120
 
+      - name: Set up Python for PyPI publish
+        if: steps.automerge.outputs.mergeResult == 'merged'
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install Python build tools
+        if: steps.automerge.outputs.mergeResult == 'merged'
+        run: pip install build tomli tomli-w
+
+      - name: Convert version to PEP 440 and set in pyproject.toml
+        if: steps.automerge.outputs.mergeResult == 'merged'
+        id: python_version
+        shell: python
+        env:
+          SEMVER_VERSION: ${{ steps.version.outputs.result }}
+        run: |
+          import re, os, tomli, tomli_w
+
+          version = os.environ["SEMVER_VERSION"]
+
+          # Convert semver to PEP 440
+          match = re.match(r'^(\d+\.\d+\.\d+)(?:-(.+))?$', version)
+          base = match.group(1)
+          prerelease = match.group(2)
+
+          if prerelease:
+              parts = prerelease.split('-')
+              pre_type_num = parts[0]
+              date_str = parts[1] if len(parts) > 1 else "0"
+              pre_type, pre_num = pre_type_num.split('.') if '.' in pre_type_num else (pre_type_num, "0")
+              pep440_pre = {'alpha': 'a', 'beta': 'b', 'rc': 'rc'}.get(pre_type, 'a')
+              pep440_version = f"{base}{pep440_pre}{pre_num}.dev{date_str}"
+          else:
+              pep440_version = base
+
+          print(f"Semver: {version} -> PEP 440: {pep440_version}")
+
+          with open("python_client/pyproject.toml", "rb") as f:
+              pyproject = tomli.load(f)
+          pyproject["project"]["version"] = pep440_version
+          with open("python_client/pyproject.toml", "wb") as f:
+              tomli_w.dump(pyproject, f)
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"pep440_version={pep440_version}\n")
+
+      - name: Build Python client package
+        if: steps.automerge.outputs.mergeResult == 'merged'
+        run: python3 -m build python_client/
+
+      - name: Publish Python client to PyPI
+        if: steps.automerge.outputs.mergeResult == 'merged'
+        uses: pypa/gh-action-pypi-publish@v1.8.14
+        with:
+          user: __token__
+          password: ${{ secrets.PYPI_TOKEN }}
+          packages-dir: python_client/dist/
+
       - name: Log in to GitHub Container Registry
         if: steps.automerge.outputs.mergeResult == 'merged'
         uses: docker/login-action@v3.7.0
