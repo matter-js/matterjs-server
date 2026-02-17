@@ -78,7 +78,7 @@ VOLUME ["/data"]
 EXPOSE 5580
 
 # Health check - verify the server is responding
-HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
+HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --start-interval=5s --retries=3 \
     CMD curl -f http://localhost:5580/health || exit 1
 
 # Run the matter server directly (all config via environment variables)
