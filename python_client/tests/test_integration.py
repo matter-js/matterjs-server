@@ -17,6 +17,7 @@ import logging
 
 import aiohttp
 import pytest
+import pytest_asyncio
 
 from matter_server.common.models import APICommand, EventType
 from tests.helpers import (
@@ -34,6 +35,9 @@ from tests.helpers import (
 )
 
 logger = logging.getLogger(__name__)
+
+# All async tests in this module share a single event loop (module scope)
+pytestmark = pytest.mark.asyncio(loop_scope="module")
 
 # ---------------------------------------------------------------------------
 # Module-level mutable state shared across ordered tests
@@ -61,7 +65,7 @@ async def wait_for_onoff_update(
 # ============================================================================
 
 
-@pytest.fixture(scope="module")
+@pytest_asyncio.fixture(scope="module", loop_scope="module")
 async def env():
     """Start server, connect client, yield shared state, then tear down."""
     server_path, device_path = create_temp_storage_paths()
@@ -75,11 +79,15 @@ async def env():
     await wait_for_port(SERVER_PORT)
     logger.info("Server is ready")
 
-    # Connect client
+    # Connect client and start listening loop
     session = aiohttp.ClientSession()
     client = MatterTestClient(SERVER_WS_URL, session)
-    server_info = await client.connect_and_get_server_info()
-    logger.info("Connected to server, schema version: %s", server_info.schema_version)
+    nodes, listen_task = await client.start_listening_and_get_nodes()
+    logger.info(
+        "Connected to server, schema version: %s, initial nodes: %d",
+        client.server_info.schema_version,
+        len(nodes),
+    )
 
     _state.update(
         {
@@ -90,7 +98,7 @@ async def env():
             "server_path": server_path,
             "device_path": device_path,
             "node_id": None,
-            "listen_task": None,
+            "listen_task": listen_task,
             "test_node_id": None,
             "test_node2_id": None,
         }
@@ -150,8 +158,9 @@ class TestServerCommands:
     async def test_03_no_commissioned_nodes_initially(self, env):
         """start_listening returns empty node list."""
         client: MatterTestClient = env["client"]
-        nodes, listen_task = await client.start_listening_and_get_nodes()
-        env["listen_task"] = listen_task
+        # The listen loop was already started in the fixture;
+        # verify initial node list is empty.
+        nodes = client.get_nodes()
         assert nodes == []
 
     async def test_04_get_nodes_empty(self, env):
