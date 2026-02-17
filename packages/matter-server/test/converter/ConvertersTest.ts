@@ -876,6 +876,19 @@ describe("Converters", () => {
             expect(result).to.have.property("granularity", 2);
             expect(result).to.have.property("timeSource", 2);
         });
+
+        it("should keep null for optional nullable fields", () => {
+            // ValveConfigurationAndControl (129), Open command, OpenDuration is optional+nullable
+            const valveCluster = ClusterMap[129]!;
+            const openCmd = valveCluster.commands["open"]!;
+
+            const payload = { OpenDuration: null };
+
+            const result = convertCommandDataToMatter(payload, openCmd, valveCluster.model) as Record<string, unknown>;
+
+            // null is a valid value for nullable fields - must NOT be omitted
+            expect(result).to.have.property("openDuration", null);
+        });
     });
 
     describe("convertMatterToWebSocketNameBased - named command responses (issue #70)", () => {
