@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import json
+import select
 import subprocess
-import time
 from pathlib import Path
 from typing import Generator
 
@@ -12,6 +12,8 @@ import pytest
 
 REPO_ROOT = Path(__file__).parent.parent.parent
 MOCK_SERVER_SCRIPT = Path(__file__).parent / "mock_server.mjs"
+
+STARTUP_TIMEOUT_SECONDS = 30
 
 
 class MockServerProcess:
@@ -56,8 +58,15 @@ def mock_server() -> Generator[MockServerProcess, None, None]:
         cwd=str(REPO_ROOT),
     )
 
-    # Wait for READY:<port> message
+    # Wait for READY:<port> message with timeout
     assert proc.stdout is not None
+    ready, _, _ = select.select([proc.stdout], [], [], STARTUP_TIMEOUT_SECONDS)
+    if not ready:
+        proc.kill()
+        raise RuntimeError(
+            f"Mock server failed to start within {STARTUP_TIMEOUT_SECONDS} seconds"
+        )
+
     line = proc.stdout.readline().strip()
     if not line.startswith("READY:"):
         stderr = proc.stderr.read() if proc.stderr else ""

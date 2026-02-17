@@ -1,7 +1,5 @@
 """Smoke tests verifying all HA integration imports resolve."""
 
-import pytest
-
 
 def test_client_imports():
     """All client module imports used by HA integration must resolve."""
@@ -71,12 +69,14 @@ def test_custom_cluster_imports():
     from matter_server.common.custom_clusters import (
         DraftElectricalMeasurementCluster,
         EveCluster,
+        HeimanCluster,
         InovelliCluster,
         NeoCluster,
         ThirdRealityMeteringCluster,
     )
 
     assert EveCluster is not None
+    assert HeimanCluster is not None
     assert InovelliCluster is not None
     assert NeoCluster is not None
     assert ThirdRealityMeteringCluster is not None
