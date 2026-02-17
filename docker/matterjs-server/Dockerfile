@@ -1,4 +1,4 @@
-FROM node:22-bookworm-slim
+FROM node:22-trixie-slim
 
 # Set shell
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -61,7 +61,10 @@ RUN \
     && find ./node_modules -name "LICENSE*" -delete 2>/dev/null || true \
     && find ./node_modules -name "CHANGELOG*" -delete 2>/dev/null || true \
     # Clean temp directories
-    && rm -rf /tmp/* /var/tmp/* /root/.npm /root/.cache
+    && rm -rf /tmp/* /var/tmp/* /root/.npm /root/.cache \
+    # Initialize data volume with user permissions
+    && mkdir /data \
+    && chown 1000:1000 /data
 
 # Environment variables with defaults (all CLI options can be set via env vars)
 # See docs/docker.md for full list of available environment variables
@@ -79,5 +82,6 @@ HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
     CMD curl -f http://localhost:5580/health || exit 1
 
 # Run the matter server directly (all config via environment variables)
+USER 1000:1000
 ENTRYPOINT ["node", "--enable-source-maps", "/app/node_modules/matter-server/dist/esm/MatterServer.js"]
 CMD []
