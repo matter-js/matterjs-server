@@ -838,6 +838,57 @@ describe("Converters", () => {
 
             expect(result.unknownField).to.equal("should stay");
         });
+
+        it("should omit null for optional non-nullable fields", () => {
+            const doorLockCluster = ClusterMap[257]!;
+            const unboltDoorCmd = doorLockCluster.commands["unboltdoor"]!;
+
+            const payload = {
+                PINCode: null,
+            };
+
+            const result = convertCommandDataToMatter(payload, unboltDoorCmd, doorLockCluster.model) as Record<
+                string,
+                unknown
+            >;
+
+            expect(result).to.not.have.property("pinCode");
+            expect(result).to.not.have.property("PINCode");
+            expect(result).to.deep.equal({});
+        });
+
+        it("should keep null for mandatory fields", () => {
+            const timeSyncCluster = ClusterMap[56]!;
+            const setUtcTimeCmd = timeSyncCluster.commands["setutctime"]!;
+
+            const payload = {
+                UTCTime: null,
+                Granularity: 2,
+                TimeSource: 2,
+            };
+
+            const result = convertCommandDataToMatter(payload, setUtcTimeCmd, timeSyncCluster.model) as Record<
+                string,
+                unknown
+            >;
+
+            expect(result).to.have.property("utcTime", null);
+            expect(result).to.have.property("granularity", 2);
+            expect(result).to.have.property("timeSource", 2);
+        });
+
+        it("should keep null for optional nullable fields", () => {
+            // ValveConfigurationAndControl (129), Open command, OpenDuration is optional+nullable
+            const valveCluster = ClusterMap[129]!;
+            const openCmd = valveCluster.commands["open"]!;
+
+            const payload = { OpenDuration: null };
+
+            const result = convertCommandDataToMatter(payload, openCmd, valveCluster.model) as Record<string, unknown>;
+
+            // null is a valid value for nullable fields - must NOT be omitted
+            expect(result).to.have.property("openDuration", null);
+        });
     });
 
     describe("convertMatterToWebSocketNameBased - named command responses (issue #70)", () => {
