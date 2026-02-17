@@ -19,9 +19,8 @@ dependencies = [
   "home-assistant-chip-clusters==2025.7.0",
 ]
 description = "Matter Python Client for Home Assistant"
-license = {text = "Apache-2.0"}
+license = "Apache-2.0"
 name = "matter-python-client"
-readme = "README.md"
 requires-python = ">=3.12"
 # The version is set by CI on release
 version = "0.0.0"
