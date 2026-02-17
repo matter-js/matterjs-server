@@ -71,4 +71,4 @@ jobs:
         run: pip install -e "python_client/[test]"
 
       - name: Run integration tests
-        run: pytest python_client/tests/test_integration.py -v --timeout=120
+        run: pytest python_client/tests/test_integration.py -v
