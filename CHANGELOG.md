@@ -10,7 +10,7 @@ This page shows a detailed overview of the changes between versions without the 
 ## __WORK IN PROGRESS__
 - BREAKING: (schildbach) Only for Docker Users: run server as unprivileged user. Use `chown -R 1000:1000 /path-to-data-volume` once to fix permissions!
 - Enhancement: (schildbach) Upgrade docker to use Debian Trixie as base image
-- Fix: Handle null values for optional command fields to restore Python Matter Server compatibility
+- Fix: (majd) Handle null values for optional command fields to restore Python Matter Server compatibility
 
 ## 0.3.8 (2026-02-16)
 - Enhancement: (lboue) Add Eve childLock custom attributes
