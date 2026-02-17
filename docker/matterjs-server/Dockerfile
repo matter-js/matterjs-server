@@ -1,4 +1,4 @@
-FROM node:22-bookworm-slim
+FROM node:22-trixie-slim
 
 # Set shell
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
