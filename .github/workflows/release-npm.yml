@@ -156,7 +156,7 @@ jobs:
 
       - name: Build and push Docker image (release)
         if: steps.automerge.outputs.mergeResult == 'merged' && !contains(steps.version.outputs.result, '-')
-        uses: docker/build-push-action@v6.18.0
+        uses: docker/build-push-action@v6.19.2
         with:
           context: ./docker/matterjs-server
           platforms: linux/amd64,linux/arm64
@@ -174,7 +174,7 @@ jobs:
 
       - name: Build and push Docker image (pre-release)
         if: steps.automerge.outputs.mergeResult == 'merged' && contains(steps.version.outputs.result, '-')
-        uses: docker/build-push-action@v6.18.0
+        uses: docker/build-push-action@v6.19.2
         with:
           context: ./docker/matterjs-server
           platforms: linux/amd64,linux/arm64
