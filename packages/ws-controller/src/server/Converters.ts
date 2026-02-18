@@ -157,6 +157,11 @@ export function convertCommandDataToMatter(
             const camelizedKey = camelize(key);
             if (memberByName[camelizedKey]) {
                 const member = memberByName[camelizedKey];
+                // Treat null for optional non-nullable fields as omitted (e.g. PINCode: null).
+                // This preserves compatibility with clients that send null instead of omitting the field.
+                if (value[key] === null && !member.mandatory && !member.nullable) {
+                    continue;
+                }
                 result[camelizedKey] = convertCommandDataToMatter(value[key], member, clusterModel);
             } else {
                 // Keep unknown keys as-is (fallback for unknown attributes)
