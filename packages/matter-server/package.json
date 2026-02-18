@@ -23,7 +23,7 @@
         "node": ">=20.19.0 <22.0.0 || >=22.13.0"
     },
     "dependencies": {
-        "@matter/main": "0.16.9-alpha.0-20260216-8830213d0",
+        "@matter/main": "0.16.9",
         "@matter-server/ws-controller": "*",
         "@matter-server/dashboard": "*",
         "@matter-server/custom-clusters": "*",
