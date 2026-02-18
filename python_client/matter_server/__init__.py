@@ -1,1 +1,1 @@
-"""Matter Python Client for Home Assistant."""
+"""Python Client for the OHF Matter Server."""

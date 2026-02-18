@@ -18,7 +18,7 @@ dependencies = [
   "orjson",
   "home-assistant-chip-clusters==2025.7.0",
 ]
-description = "Matter Python Client for Home Assistant"
+description = "Python Client for the OHF Matter Server"
 license = "Apache-2.0"
 name = "matter-python-client"
 requires-python = ">=3.12"
