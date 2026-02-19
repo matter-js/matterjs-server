@@ -32,7 +32,12 @@
         "relock": "node ./utils/relock.js && npm install",
         "sync-matterjs": "node ./utils/sync-matterjs.js && npm install",
         "server": "node --enable-source-maps packages/matter-server/dist/esm/MatterServer.js",
-        "send-command": "node --enable-source-maps packages/ws-controller/dist/esm/example/send-command.js"
+        "send-command": "node --enable-source-maps packages/ws-controller/dist/esm/example/send-command.js",
+        "python:install": "cd python_client && python3 -m venv .venv && .venv/bin/pip install -e '.[test]'",
+        "python:test": "cd python_client && .venv/bin/pytest tests/ -v --ignore=tests/test_integration.py",
+        "python:test-integration": "cd python_client && .venv/bin/pytest tests/test_integration.py -v",
+        "python:test-all": "cd python_client && .venv/bin/pytest tests/ -v",
+        "python:build": "cd python_client && .venv/bin/pip install build && .venv/bin/python -m build"
     },
     "devDependencies": {
         "@matter/testing": "0.16.10-alpha.0-20260219-2ba4847f4",
