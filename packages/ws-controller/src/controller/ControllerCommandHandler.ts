@@ -793,13 +793,15 @@ export class ControllerCommandHandler {
                 timeout: timedRequestTimeoutMs !== undefined ? Millis(timedRequestTimeoutMs) : undefined,
                 expectedProcessingTime: interactionTimeoutMs !== undefined ? Millis(interactionTimeoutMs) : undefined,
             },
-        ).finally(() => {
-            this.#inFlightInvokes.delete(dedupKey);
-        });
+        );
 
+        // Store the in-flight invoke immediately so concurrent requests can see it
         this.#inFlightInvokes.set(dedupKey, invokePromise);
 
-        return invokePromise;
+        // Ensure cleanup of the in-flight entry once the invoke completes
+        return invokePromise.finally(() => {
+            this.#inFlightInvokes.delete(dedupKey);
+        });
     }
 
     /** InvokeById minimalistic handler because only used for error testing */
