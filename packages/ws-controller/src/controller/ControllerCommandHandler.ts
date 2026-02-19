@@ -72,6 +72,7 @@ import {
     convertWebSocketTagBasedToMatter,
     getDateAsString,
     splitAttributePath,
+    toBigIntAwareJson,
 } from "../server/Converters.js";
 import {
     AttributeResponseStatus,
@@ -157,6 +158,8 @@ export class ControllerCommandHandler {
     #customClusterPoller: CustomClusterPoller;
     /** Track the last known availability for each node to detect changes */
     #lastAvailability = new Map<NodeId, boolean>();
+    /** Track in-flight invoke-commands for deduplication across all WebSocket connections */
+    readonly #inFlightInvokes = new Map<string, Promise<unknown>>();
     events = {
         started: new AsyncObservable(),
         attributeChanged: new Observable<[nodeId: NodeId, data: DecodedAttributeReportValue<any>]>(),
@@ -733,7 +736,7 @@ export class ControllerCommandHandler {
         }
     }
 
-    async handleInvoke(data: InvokeRequest): Promise<any> {
+    async handleInvoke(data: InvokeRequest): Promise<unknown> {
         const {
             nodeId,
             endpointId,
@@ -764,7 +767,21 @@ export class ControllerCommandHandler {
             }
         }
 
-        return await this.#invokeCommand(
+        // Build dedup key from validated/converted fields
+        const serializedData = commandData !== undefined ? toBigIntAwareJson(commandData as object) : "";
+        const dedupKey = `${nodeId}:${endpointId}:${clusterId}:${commandName}:${serializedData}`;
+
+        // Check for in-flight duplicate
+        const existing = this.#inFlightInvokes.get(dedupKey);
+        if (existing !== undefined) {
+            logger.warn(
+                `Duplicate command detected for ${this.#formatNode(nodeId)}/${endpointId}/${cluster.name}/${commandName} - coalescing with in-flight request`,
+            );
+            return existing;
+        }
+
+        // Execute and track the command
+        const invokePromise = this.#invokeCommand(
             this.#nodes.get(nodeId).node,
             {
                 endpoint: endpointId,
@@ -777,6 +794,14 @@ export class ControllerCommandHandler {
                 expectedProcessingTime: interactionTimeoutMs !== undefined ? Millis(interactionTimeoutMs) : undefined,
             },
         );
+
+        // Store the in-flight invoke immediately so concurrent requests can see it
+        this.#inFlightInvokes.set(dedupKey, invokePromise);
+
+        // Ensure cleanup of the in-flight entry once the invoke completes
+        return invokePromise.finally(() => {
+            this.#inFlightInvokes.delete(dedupKey);
+        });
     }
 
     /** InvokeById minimalistic handler because only used for error testing */
