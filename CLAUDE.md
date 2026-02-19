@@ -104,6 +104,10 @@ npm test
 
 All four checks must pass **in this order**. `npm run format` must be run **before** build/lint — it rewrites files in-place using oxfmt and the build/lint must validate the formatted output. Skipping format leads to formatting drift that gets caught later.
 
+### Plan Documents
+
+Plan/design documents in `docs/plans/` are working files only. **Never commit them to git.** They may exist locally for reference but must not be included in any commit.
+
 ## Dashboard Development
 
 ### Technology Stack
