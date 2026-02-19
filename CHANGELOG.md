@@ -8,7 +8,9 @@ This page shows a detailed overview of the changes between versions without the 
 -->
 
 ## 0.4.0 (2026-02-19)
-- BREAKING: (schildbach) Only for Docker Users: run server as an unprivileged user. Use `chown -R 1000:1000 /path-to-data-volume` once to fix permissions!
+- BREAKING: (schildbach) Only for Docker/Podman users: run server as an unprivileged user. Use `chown -R 1000:1000 /path-to-data-volume` once to migrate permissions!
+  If you're using rootless Podman or Docker and user namespaces, UIDs and GIDs will be remapped to a different value and the previous command
+  needs to be adapted accordingly. If you want to avoid that, use the `--userns=keep-id` option when running the container.
 - Enhancement: (schildbach) Upgrade docker to use Debian Trixie as a base image, improve health checking
 - Enhancement: De-duplicate commands to the same node, endpoint, cluster, and command
 - Fix: (majd) Handle null values for optional command fields to restore Python Matter Server compatibility
