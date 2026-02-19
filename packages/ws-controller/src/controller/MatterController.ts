@@ -286,7 +286,9 @@ export class MatterController {
         if (this.#controllerInstance === undefined) {
             throw new Error("Controller not initialized");
         }
-        await this.#controllerInstance.otaProvider.setStateOf(SoftwareUpdateManager, { allowTestOtaImages: true });
+        await this.#controllerInstance.otaProvider.setStateOf(SoftwareUpdateManager, {
+            allowTestOtaImages: true,
+        });
         logger.info("Enabled test OTA images (test-net DCL)");
     }
 
@@ -312,7 +314,7 @@ export class MatterController {
         );
 
         const storeStream = Readable.toWeb(createReadStream(filePath)) as ReadableStream<Uint8Array>;
-        await otaService.store(storeStream, updateInfo, false);
+        await otaService.store(storeStream, updateInfo, "local");
         return true;
     }
 

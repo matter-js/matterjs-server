@@ -8,9 +8,16 @@ This page shows a detailed overview of the changes between versions without the 
 -->
 
 ## __WORK IN PROGRESS__
-- BREAKING: (schildbach) Only for Docker Users: run server as unprivileged user. Use `chown -R 1000:1000 /path-to-data-volume` once to fix permissions!
-- Enhancement: (schildbach) Upgrade docker to use Debian Trixie as base image
+- BREAKING: (schildbach) Only for Docker Users: run server as an unprivileged user. Use `chown -R 1000:1000 /path-to-data-volume` once to fix permissions!
+- Enhancement: (schildbach) Upgrade docker to use Debian Trixie as a base image, improve health checking
+- Enhancement: De-duplicate commands to the same node, endpoint, cluster, and command
 - Fix: (majd) Handle null values for optional command fields to restore Python Matter Server compatibility
+- Fix/Enhancement: Update matter.js to 0.16.10-nightly
+    - Optimize BLE handling
+    - Ignore known addresses when current MDNS results do not include them anymore
+    - OTA update files are now stored per software version, allowing different updates to be served to different nodes simultaneously. Former files are migrated.
+    - Optimize MRP timings when sending retransmissions to address expected network congestion
+    - Prevent multiple commands for same path are batched into one command
 
 ## 0.3.8 (2026-02-16)
 - Enhancement: (lboue) Add Eve childLock custom attributes
