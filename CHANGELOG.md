@@ -17,7 +17,7 @@ This page shows a detailed overview of the changes between versions without the 
     - Ignore known addresses when current MDNS results do not include them anymore
     - OTA update files are now stored per software version, allowing different updates to be served to different nodes simultaneously. Former files are migrated.
     - Optimize MRP timings when sending retransmissions to address expected network congestion
-    - Prevent that multiple commands for the same path are batched into one command
+    - Prevent multiple commands for the same path from being batched into one command
     - Optimize reconnection handling on OTA updates
 
 ## 0.3.8 (2026-02-16)
