@@ -7,7 +7,7 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
-## __WORK IN PROGRESS__
+## 0.4.0 (2026-02-19)
 - BREAKING: (schildbach) Only for Docker Users: run server as an unprivileged user. Use `chown -R 1000:1000 /path-to-data-volume` once to fix permissions!
 - Enhancement: (schildbach) Upgrade docker to use Debian Trixie as a base image, improve health checking
 - Enhancement: De-duplicate commands to the same node, endpoint, cluster, and command
@@ -17,7 +17,8 @@ This page shows a detailed overview of the changes between versions without the 
     - Ignore known addresses when current MDNS results do not include them anymore
     - OTA update files are now stored per software version, allowing different updates to be served to different nodes simultaneously. Former files are migrated.
     - Optimize MRP timings when sending retransmissions to address expected network congestion
-    - Prevent multiple commands for same path are batched into one command
+    - Prevent multiple commands for the same path from being batched into one command
+    - Optimize reconnection handling on OTA updates
 
 ## 0.3.8 (2026-02-16)
 - Enhancement: (lboue) Add Eve childLock custom attributes
