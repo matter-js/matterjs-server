@@ -35,7 +35,7 @@
         "send-command": "node --enable-source-maps packages/ws-controller/dist/esm/example/send-command.js"
     },
     "devDependencies": {
-        "@matter/testing": "0.16.10-alpha.0-20260219-28569004a",
+        "@matter/testing": "0.16.10-alpha.0-20260219-2ba4847f4",
         "@types/mocha": "^10.0.10",
         "glob": "^13.0.5",
         "globals": "^17.3.0",
