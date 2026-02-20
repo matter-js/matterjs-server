@@ -155,6 +155,11 @@ jobs:
 
           # Convert semver to PEP 440
           match = re.match(r'^(\d+\.\d+\.\d+)(?:-(.+))?$', version)
+          if not match:
+              raise SystemExit(
+                  f"Invalid SEMVER_VERSION format: {version!r}. "
+                  "Expected 'MAJOR.MINOR.PATCH' or 'MAJOR.MINOR.PATCH-prerelease'."
+              )
           base = match.group(1)
           prerelease = match.group(2)
 

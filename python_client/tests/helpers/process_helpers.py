@@ -137,24 +137,26 @@ async def wait_for_device_ready(process: subprocess.Popen, timeout: float = 30.0
         RuntimeError: If the device process exits unexpectedly.
         TimeoutError: If the device doesn't become ready within the timeout.
     """
-    start = time.monotonic()
     assert process.stdout is not None
+    loop = asyncio.get_running_loop()
 
-    while time.monotonic() - start < timeout:
-        # Non-blocking readline
-        line = process.stdout.readline()
-        if not line:
-            if process.poll() is not None:
-                raise RuntimeError("Device process exited unexpectedly")
-            await asyncio.sleep(0.1)
-            continue
-        line = line.strip()
-        if "Manual pairing code:" in line or "commissioned" in line.lower():
-            # Give the device's network stack time to fully initialize
-            await asyncio.sleep(2)
-            return
+    def _read_until_ready() -> None:
+        """Blocking reader, run via run_in_executor to avoid stalling the event loop."""
+        start = time.monotonic()
+        while time.monotonic() - start < timeout:
+            line = process.stdout.readline()
+            if not line:
+                if process.poll() is not None:
+                    raise RuntimeError("Device process exited unexpectedly")
+                time.sleep(0.1)
+                continue
+            if "Manual pairing code:" in line or "commissioned" in line.lower():
+                return
+        raise TimeoutError("Timeout waiting for device to be ready")
 
-    raise TimeoutError("Timeout waiting for device to be ready")
+    await loop.run_in_executor(None, _read_until_ready)
+    # Give the device's network stack time to fully initialize
+    await asyncio.sleep(2)
 
 
 def kill_process(process: subprocess.Popen | None, timeout: float = 5.0) -> None:
