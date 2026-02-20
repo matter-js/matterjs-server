@@ -595,7 +595,7 @@ class InovelliCluster(Cluster, CustomClusterMixin):
             ]
         )
 
-    ledIndicatorIntenstyOn: uint | None = None
+    ledIndicatorIntensityOn: uint | None = None
     ledIndicatorIntensityOff: uint | None = None
     clearNotificationWithConfigDoubleTap: bool | None = None
 
