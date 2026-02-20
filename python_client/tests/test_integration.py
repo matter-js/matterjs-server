@@ -938,7 +938,7 @@ class TestTestNodeFunctionality:
     async def test_59_get_removed_test_node_raises(self, env):
         """Getting a removed test node raises."""
         client: MatterTestClient = env["client"]
-        with pytest.raises(Exception, match="not"):
+        with pytest.raises(Exception, match="does not exist"):
             client.get_node(env["test_node2_id"])
 
     async def test_60_other_test_nodes_still_exist(self, env):

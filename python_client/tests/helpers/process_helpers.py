@@ -176,4 +176,7 @@ def kill_process(process: subprocess.Popen | None, timeout: float = 5.0) -> None
         process.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
         process.kill()
-        process.wait(timeout=2)
+        try:
+            process.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            pass

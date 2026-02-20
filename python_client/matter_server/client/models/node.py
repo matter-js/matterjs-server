@@ -79,7 +79,7 @@ class MatterEndpoint:
 
     @property
     def is_composed_device(self) -> bool:
-        """Return if this endpoint belons to a composed device."""
+        """Return if this endpoint belongs to a composed device."""
         return self.node.get_compose_parent(self.endpoint_id) is not None
 
     @property
@@ -380,7 +380,7 @@ class NodeType(Enum):
 
 
 class NetworkType(Enum):
-    """Custom Enum with Matter network types used for diagnostics.."""
+    """Custom Enum with Matter network types used for diagnostics."""
 
     THREAD = "thread"
     WIFI = "wifi"
@@ -401,8 +401,14 @@ class NodeDiagnostics:
     network_type: NetworkType
     node_type: NodeType
     network_name: str | None  # WiFi SSID or Thread network name
+    # TODO: rename to ip_addresses in next major version (typo kept for API compatibility)
     ip_adresses: list[str]
     mac_address: str | None
     available: bool
     active_fabrics: list[MatterFabricData]
     active_fabric_index: int
+
+    @property
+    def ip_addresses(self) -> list[str]:
+        """Return IP addresses (correctly-spelled alias for ip_adresses)."""
+        return self.ip_adresses

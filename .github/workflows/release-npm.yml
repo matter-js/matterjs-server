@@ -164,12 +164,20 @@ jobs:
           prerelease = match.group(2)
 
           if prerelease:
-              parts = prerelease.split('-')
-              pre_type_num = parts[0]
-              date_str = parts[1] if len(parts) > 1 else "0"
-              pre_type, pre_num = pre_type_num.split('.') if '.' in pre_type_num else (pre_type_num, "0")
-              pep440_pre = {'alpha': 'a', 'beta': 'b', 'rc': 'rc'}.get(pre_type, 'a')
-              pep440_version = f"{base}{pep440_pre}{pre_num}.dev{date_str}"
+              # Expected: alpha.N-YYYYMMDD[-sha] or beta.N-YYYYMMDD[-sha] or rc.N-...
+              pre_match = re.match(r'^(alpha|beta|rc)(?:\.(\d+))?(?:-(\d+))?', prerelease)
+              if not pre_match:
+                  raise SystemExit(
+                      f"Invalid prerelease format in SEMVER_VERSION: {version!r}. "
+                      "Expected 'alpha[.N][-DATE]', 'beta[.N][-DATE]', or 'rc[.N][-DATE]'."
+                  )
+              pre_type = pre_match.group(1)
+              pre_num = pre_match.group(2) or "0"
+              date_str = pre_match.group(3)
+              pep440_pre = {'alpha': 'a', 'beta': 'b', 'rc': 'rc'}[pre_type]
+              pep440_version = f"{base}{pep440_pre}{pre_num}"
+              if date_str:
+                  pep440_version = f"{pep440_version}.dev{date_str}"
           else:
               pep440_version = base
 
