@@ -7,6 +7,9 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
+## __WORK IN PROGRESS__
+- Fix: Fixes custom cluster writable attributes
+
 ## 0.4.0 (2026-02-19)
 - BREAKING: (schildbach) Only for Docker/Podman users: run server as an unprivileged user. Use `chown -R 1000:1000 /path-to-data-volume` once to migrate permissions!
   If you're using rootless Podman or Docker and user namespaces, UIDs and GIDs will be remapped to a different value and the previous command

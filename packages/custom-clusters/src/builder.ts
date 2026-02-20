@@ -6,7 +6,7 @@
 
 import { camelize, capitalize } from "@matter/main";
 import { ClusterModel, ElementTag, GLOBAL_IDS } from "@matter/main/model";
-import { ClusterType, MutableCluster, OptionalAttribute, TlvOfModel } from "@matter/main/types";
+import { ClusterType, MutableCluster, OptionalAttribute, OptionalWritableAttribute, TlvOfModel } from "@matter/main/types";
 
 export function ClusterTypeOfModel(model: ClusterModel) {
     if (model.tag !== ElementTag.Cluster || model.id === undefined) {
@@ -29,7 +29,8 @@ export function ClusterTypeOfModel(model: ClusterModel) {
         }
         const name = camelize(attr.name);
         // TODO respect mandatory flag when needed
-        cluster.attributes![name] = OptionalAttribute(id, TlvOfModel(attr));
+        const tlv = TlvOfModel(attr);
+        cluster.attributes![name] = attr.writable ? OptionalWritableAttribute(id, tlv) : OptionalAttribute(id, tlv);
     }
 
     // TODO also add events and commands when needed
