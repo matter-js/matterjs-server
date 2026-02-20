@@ -6,7 +6,13 @@
 
 import { camelize, capitalize } from "@matter/main";
 import { ClusterModel, ElementTag, GLOBAL_IDS } from "@matter/main/model";
-import { ClusterType, MutableCluster, OptionalAttribute, OptionalWritableAttribute, TlvOfModel } from "@matter/main/types";
+import {
+    ClusterType,
+    MutableCluster,
+    OptionalAttribute,
+    OptionalWritableAttribute,
+    TlvOfModel,
+} from "@matter/main/types";
 
 export function ClusterTypeOfModel(model: ClusterModel) {
     if (model.tag !== ElementTag.Cluster || model.id === undefined) {
