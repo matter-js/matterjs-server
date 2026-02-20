@@ -43,7 +43,11 @@ class MockServerProcess:
         """Stop the mock server."""
         if self.process.poll() is None:
             self.process.terminate()
-            self.process.wait(timeout=5)
+            try:
+                self.process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self.process.kill()
+                self.process.wait()
 
 
 @pytest.fixture(scope="session")
@@ -69,8 +73,9 @@ def mock_server() -> Generator[MockServerProcess, None, None]:
 
     line = proc.stdout.readline().strip()
     if not line.startswith("READY:"):
-        stderr = proc.stderr.read() if proc.stderr else ""
         proc.kill()
+        proc.wait()
+        stderr = proc.stderr.read() if proc.stderr else ""
         raise RuntimeError(f"Mock server failed to start. stdout={line!r}, stderr={stderr!r}")
 
     port = int(line.split(":")[1])
