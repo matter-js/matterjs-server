@@ -192,8 +192,6 @@ jobs:
         if: steps.automerge.outputs.mergeResult == 'merged'
         uses: pypa/gh-action-pypi-publish@v1.8.14
         with:
-          user: __token__
-          password: ${{ secrets.PYPI_TOKEN }}
           packages-dir: python_client/dist/
 
       - name: Log in to GitHub Container Registry
