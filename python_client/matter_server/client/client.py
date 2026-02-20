@@ -10,7 +10,7 @@ import uuid
 from chip.clusters import Objects as Clusters
 from chip.clusters.Types import NullValue
 
-from matter_server.common.errors import ERROR_MAP, NodeNotExists
+from matter_server.common.errors import NodeNotExists, exception_from_error_code
 
 from ..common.helpers.util import (
     convert_ip_address,
@@ -676,7 +676,7 @@ class MatterClient:
                 future.set_result(msg.result)
                 return
             if isinstance(msg, ErrorResultMessage):
-                exc = ERROR_MAP[msg.error_code]
+                exc = exception_from_error_code(msg.error_code)
                 future.set_exception(exc(msg.details))
                 return
 
