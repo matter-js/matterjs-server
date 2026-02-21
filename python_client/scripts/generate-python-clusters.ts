@@ -16,7 +16,7 @@
  * Run with: npx tsx python_client/scripts/generate-python-clusters.ts
  */
 
-import { AttributeModel, ClusterModel, CommandModel, DatatypeModel, EventModel, FieldModel, Matter, ValueModel } from "@matter/main/model";
+import { AttributeModel, ClusterModel, CommandModel, EventModel, Matter, ValueModel } from "@matter/main/model";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -432,8 +432,6 @@ function generateClusterFile(
     }
 
     // Collect Feature bitmap from FeatureMap attribute
-    const featureMapAttr = cluster.children.find(c => c.tag === "attribute" && c.name === "FeatureMap");
-    const featureBits = featureMapAttr?.children || [];
     const features = (cluster as any).features || [];
 
     // Collect commands (from resolved, which includes inherited)
@@ -444,7 +442,7 @@ function generateClusterFile(
     // Collect attributes (excluding global ones that we add ourselves)
     const globalAttrIds = new Set([65528, 65529, 65530, 65531, 65532, 65533]);
     const clusterSpecificAttrs = resolved.attributes.filter(
-        c => !globalAttrIds.has(c.id)
+        c => c.id !== undefined && !globalAttrIds.has(c.id)
     );
 
     // Collect events (from resolved, which includes inherited)
@@ -748,8 +746,8 @@ function generateBitmap(w: PythonWriter, model: ValueModel): void {
 function generateStruct(
     w: PythonWriter,
     model: ValueModel,
-    clusterName: string,
-    datatypeRegistry: Map<string, { metatype: string; clusterName: string }>,
+    _clusterName: string,
+    _datatypeRegistry: Map<string, { metatype: string; clusterName: string }>,
     resolveType: (m: ValueModel) => PythonType,
 ): void {
     w.line("@dataclass");
@@ -801,11 +799,11 @@ function generateStruct(
 function generateCommand(
     w: PythonWriter,
     model: CommandModel,
-    clusterName: string,
+    _clusterName: string,
     clusterId: number,
-    datatypeRegistry: Map<string, { metatype: string; clusterName: string }>,
+    _datatypeRegistry: Map<string, { metatype: string; clusterName: string }>,
     resolveType: (m: ValueModel) => PythonType,
-    responseCommands: CommandModel[],
+    _responseCommands: CommandModel[],
 ): void {
     const isClient = model.direction === "request";
     const commandId = model.id ?? 0;
@@ -869,9 +867,9 @@ function generateCommand(
 function generateAttribute(
     w: PythonWriter,
     model: AttributeModel,
-    clusterName: string,
+    _clusterName: string,
     clusterId: number,
-    datatypeRegistry: Map<string, { metatype: string; clusterName: string }>,
+    _datatypeRegistry: Map<string, { metatype: string; clusterName: string }>,
     resolveType: (m: ValueModel) => PythonType,
 ): void {
     const attrId = model.id ?? 0;
@@ -954,9 +952,9 @@ function generateGlobalAttribute(
 function generateEvent(
     w: PythonWriter,
     model: EventModel,
-    clusterName: string,
+    _clusterName: string,
     clusterId: number,
-    datatypeRegistry: Map<string, { metatype: string; clusterName: string }>,
+    _datatypeRegistry: Map<string, { metatype: string; clusterName: string }>,
     resolveType: (m: ValueModel) => PythonType,
 ): void {
     const eventId = model.id ?? 0;
@@ -1092,7 +1090,7 @@ function generateGlobalsFile(
 // Objects.py re-export file
 // ============================================================================
 
-function generateObjectsReexport(clusterNames: string[]): string {
+function generateObjectsReexport(_clusterNames: string[]): string {
     const w = new PythonWriter();
 
     w.line('"""');

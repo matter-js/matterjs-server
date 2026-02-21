@@ -1,0 +1,11 @@
+{
+    "extends": "../../packages/tools/tsc/tsconfig.base.json",
+    "compilerOptions": {
+        "types": ["node"],
+        "module": "node16",
+        "moduleResolution": "node16",
+        "outDir": "../../build/python-scripts",
+        "rootDir": ".",
+        "noEmit": true
+    }
+}
