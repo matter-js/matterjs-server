@@ -461,7 +461,7 @@ function generateClusterFile(
     function trackCrossClusterImport(annotation: string) {
         // Match patterns like "OtherCluster.Enums.SomeName" or "OtherCluster.Structs.SomeName"
         const match = annotation.match(/^(\w+)\.(?:Enums|Structs|Bitmaps)\./);
-        if (match && match[1] !== clusterName && match[1] !== "Globals") {
+        if (match && match[1] !== clusterName) {
             crossClusterImports.add(match[1]);
         }
         // Also check inside typing wrappers
@@ -469,7 +469,7 @@ function generateClusterFile(
         if (innerMatch) {
             for (const m of innerMatch) {
                 const nameMatch = m.match(/(\w+)\.(?:Enums|Structs|Bitmaps)\./);
-                if (nameMatch && nameMatch[1] !== clusterName && nameMatch[1] !== "Globals") {
+                if (nameMatch && nameMatch[1] !== clusterName) {
                     crossClusterImports.add(nameMatch[1]);
                 }
             }
