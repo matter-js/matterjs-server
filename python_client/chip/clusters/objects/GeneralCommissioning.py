@@ -157,11 +157,11 @@ class GeneralCommissioning(Cluster):
             pass
 
         @dataclass
-        class SetTcAcknowledgements(ClusterCommand):
+        class SetTCAcknowledgements(ClusterCommand):
             cluster_id: typing.ClassVar[int] = 0x00000030
             command_id: typing.ClassVar[int] = 0x00000006
             is_client: typing.ClassVar[bool] = True
-            response_type: typing.ClassVar[typing.Optional[str]] = 'SetTcAcknowledgementsResponse'
+            response_type: typing.ClassVar[typing.Optional[str]] = 'SetTCAcknowledgementsResponse'
 
             @ChipUtility.classproperty
             def descriptor(cls) -> ClusterObjectDescriptor:
@@ -229,7 +229,7 @@ class GeneralCommissioning(Cluster):
             debugText: 'str' = ""
 
         @dataclass
-        class SetTcAcknowledgementsResponse(ClusterCommand):
+        class SetTCAcknowledgementsResponse(ClusterCommand):
             cluster_id: typing.ClassVar[int] = 0x00000030
             command_id: typing.ClassVar[int] = 0x00000007
             is_client: typing.ClassVar[bool] = False

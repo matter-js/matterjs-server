@@ -32,6 +32,27 @@ const objectsDir = join(pythonClientDir, "chip", "clusters", "objects");
 // Name conversion utilities
 // ============================================================================
 
+/** Well-known acronyms that chip-clusters preserves as uppercase in class names. */
+const ACRONYMS = ["OTA", "DST", "UTC", "NTP", "CO", "EV", "CEC", "URL", "PIN", "ACL", "ICAC", "CSR", "NOC", "TC", "VID", "LED", "RFID"];
+
+/**
+ * Convert a PascalCase name from Matter.js to chip-clusters-compatible PascalCase.
+ * Matter.js uses standard PascalCase (e.g., "AnnounceOtaProvider"),
+ * chip-clusters preserves known acronyms (e.g., "AnnounceOTAProvider").
+ */
+function toChipName(name: string): string {
+    let result = name;
+    for (const acr of ACRONYMS) {
+        // Match the title-case version of the acronym at a PascalCase word boundary.
+        // The acronym must be followed by an uppercase letter (next word), end-of-string,
+        // or a non-alpha character — NOT a lowercase letter (which means it's mid-word).
+        const titleCase = acr.charAt(0) + acr.slice(1).toLowerCase();
+        const regex = new RegExp(`${titleCase}(?=[A-Z]|$|[^a-zA-Z])`, "g");
+        result = result.replace(regex, acr);
+    }
+    return result;
+}
+
 /** Convert camelCase name to kPascalCase (chip SDK enum/bitmap naming). */
 function toKName(name: string): string {
     return "k" + name.charAt(0).toUpperCase() + name.slice(1);
@@ -150,24 +171,24 @@ function resolveScalarType(
         const key = `${otherCluster}.${dtName}`;
         const info = knownDatatypes.get(key);
         if (info) {
-            const qualifiedName = `${otherCluster}.${getCategoryForMetatype(info.metatype)}.${dtName}`;
+            const qualifiedName = `${otherCluster}.${getCategoryForMetatype(info.metatype)}.${toChipName(dtName)}`;
             return typeForCategory(info.metatype, qualifiedName);
         }
         // Fallback - assume enum
-        return { annotation: `${otherCluster}.Enums.${dtName}`, defaultValue: "0", needsFactory: false };
+        return { annotation: `${otherCluster}.Enums.${toChipName(dtName)}`, defaultValue: "0", needsFactory: false };
     }
 
     // Check if it's a local datatype reference
     const localInfo = knownDatatypes.get(`${clusterName}.${type}`);
     if (localInfo) {
-        const qualifiedName = `${clusterName}.${getCategoryForMetatype(localInfo.metatype)}.${type}`;
+        const qualifiedName = `${clusterName}.${getCategoryForMetatype(localInfo.metatype)}.${toChipName(type)}`;
         return typeForCategory(localInfo.metatype, qualifiedName);
     }
 
     // Check global datatypes
     const globalInfo = knownDatatypes.get(`Globals.${type}`);
     if (globalInfo) {
-        const qualifiedName = `Globals.${getCategoryForMetatype(globalInfo.metatype)}.${type}`;
+        const qualifiedName = `Globals.${getCategoryForMetatype(globalInfo.metatype)}.${toChipName(type)}`;
         return typeForCategory(globalInfo.metatype, qualifiedName);
     }
 
@@ -242,6 +263,81 @@ function typeForCategory(metatype: string, qualifiedName: string): PythonType {
 }
 
 // ============================================================================
+// Cluster inheritance resolution
+// ============================================================================
+
+/**
+ * For derived clusters (those with `.type`), collect children from the base cluster
+ * that are not already overridden locally. The chip-clusters package duplicates all
+ * inherited members into derived clusters, so we must do the same.
+ */
+function resolveClusterChildren(cluster: ClusterModel): {
+    datatypes: ValueModel[];
+    commands: CommandModel[];
+    attributes: ValueModel[];
+    events: EventModel[];
+} {
+    // Collect local children first
+    const localDatatypeNames = new Set(
+        cluster.children.filter(c => c.tag === "datatype").map(c => c.name),
+    );
+    const localCommandNames = new Set(
+        cluster.children.filter(c => c.tag === "command").map(c => c.name),
+    );
+    const localAttrNames = new Set(
+        cluster.children.filter(c => c.tag === "attribute").map(c => c.name),
+    );
+    const localEventNames = new Set(
+        cluster.children.filter(c => c.tag === "event").map(c => c.name),
+    );
+
+    const datatypes = [...cluster.children.filter(c => c.tag === "datatype")] as ValueModel[];
+    const commands: CommandModel[] = [...cluster.children.filter(c => c.tag === "command")] as CommandModel[];
+    const attributes = [...cluster.children.filter(c => c.tag === "attribute")] as ValueModel[];
+    const events: EventModel[] = [...cluster.children.filter(c => c.tag === "event")] as EventModel[];
+
+    // If cluster derives from a base, merge in missing children from the base
+    if (cluster.type) {
+        const baseCluster = Matter.clusters.find(c => c.name === cluster.type);
+        if (baseCluster) {
+            for (const child of baseCluster.children) {
+                switch (child.tag) {
+                    case "datatype":
+                        if (!localDatatypeNames.has(child.name)) {
+                            datatypes.push(child);
+                        }
+                        break;
+                    case "command":
+                        if (!localCommandNames.has(child.name)) {
+                            commands.push(child);
+                        } else {
+                            // Local override exists but may be missing properties (e.g., direction).
+                            // Replace it with the base version to get full metadata.
+                            const idx = commands.findIndex(c => c.name === child.name);
+                            if (idx >= 0 && commands[idx].direction === undefined) {
+                                commands[idx] = child;
+                            }
+                        }
+                        break;
+                    case "attribute":
+                        if (!localAttrNames.has(child.name)) {
+                            attributes.push(child);
+                        }
+                        break;
+                    case "event":
+                        if (!localEventNames.has(child.name)) {
+                            events.push(child);
+                        }
+                        break;
+                }
+            }
+        }
+    }
+
+    return { datatypes, commands, attributes, events };
+}
+
+// ============================================================================
 // Build the global datatype registry
 // ============================================================================
 
@@ -257,12 +353,12 @@ function buildDatatypeRegistry(): Map<string, { metatype: string; clusterName: s
         }
     }
 
-    // Per-cluster datatypes
+    // Per-cluster datatypes (including inherited ones from base clusters)
     for (const cluster of Matter.clusters) {
         if (cluster.id === undefined) continue;
-        for (const dt of cluster.children.filter(c => c.tag === "datatype")) {
-            const vm = dt as ValueModel;
-            const metatype = vm.effectiveMetatype;
+        const { datatypes } = resolveClusterChildren(cluster);
+        for (const dt of datatypes) {
+            const metatype = dt.effectiveMetatype;
             if (metatype === "enum" || metatype === "bitmap" || metatype === "object") {
                 registry.set(`${cluster.name}.${dt.name}`, { metatype, clusterName: cluster.name });
             }
@@ -320,16 +416,18 @@ function generateClusterFile(
     const clusterId = cluster.id!;
     const crossClusterImports = new Set<string>();
 
+    // Resolve all children including inherited ones from base clusters
+    const resolved = resolveClusterChildren(cluster);
+
     // Collect datatypes
     const enums: ValueModel[] = [];
     const bitmaps: ValueModel[] = [];
     const structs: ValueModel[] = [];
-    for (const dt of cluster.children.filter(c => c.tag === "datatype")) {
-        const vm = dt as ValueModel;
-        switch (vm.effectiveMetatype) {
-            case "enum": enums.push(vm); break;
-            case "bitmap": bitmaps.push(vm); break;
-            case "object": structs.push(vm); break;
+    for (const dt of resolved.datatypes) {
+        switch (dt.effectiveMetatype) {
+            case "enum": enums.push(dt); break;
+            case "bitmap": bitmaps.push(dt); break;
+            case "object": structs.push(dt); break;
         }
     }
 
@@ -338,19 +436,19 @@ function generateClusterFile(
     const featureBits = featureMapAttr?.children || [];
     const features = (cluster as any).features || [];
 
-    // Collect commands
-    const requestCommands = cluster.children.filter(c => c.tag === "command" && c.direction === "request");
-    const responseCommands = cluster.children.filter(c => c.tag === "command" && c.direction === "response");
+    // Collect commands (from resolved, which includes inherited)
+    const requestCommands = resolved.commands.filter(c => c.direction === "request");
+    const responseCommands = resolved.commands.filter(c => c.direction === "response");
     const allCommands = [...requestCommands, ...responseCommands];
 
     // Collect attributes (excluding global ones that we add ourselves)
     const globalAttrIds = new Set([65528, 65529, 65530, 65531, 65532, 65533]);
-    const clusterSpecificAttrs = cluster.children.filter(
-        c => c.tag === "attribute" && !globalAttrIds.has(c.id)
+    const clusterSpecificAttrs = resolved.attributes.filter(
+        c => !globalAttrIds.has(c.id)
     );
 
-    // Collect events
-    const events = cluster.children.filter(c => c.tag === "event");
+    // Collect events (from resolved, which includes inherited)
+    const events = resolved.events;
 
     // Helper to resolve type and track cross-cluster imports
     function resolveType(model: ValueModel): PythonType {
@@ -419,7 +517,7 @@ function generateClusterFile(
 
     // Cluster-specific attributes
     for (const attr of clusterSpecificAttrs) {
-        const pyType = resolveType(attr as ValueModel);
+        const pyType = resolveType(attr);
         w.line(`ClusterObjectFieldDescriptor(Label="${toCamelCase(attr.name)}", Tag=${hex8(attr.id!)}, Type=${pyType.annotation}),`);
     }
     // Global attributes (always present)
@@ -437,7 +535,7 @@ function generateClusterFile(
 
     // Top-level attribute fields
     for (const attr of clusterSpecificAttrs) {
-        const pyType = resolveType(attr as ValueModel);
+        const pyType = resolveType(attr);
         const label = toCamelCase(attr.name);
         if (pyType.needsFactory) {
             w.line(`${label}: '${pyType.annotation}' = ${pyType.defaultValue}`);
@@ -509,7 +607,7 @@ function generateClusterFile(
         w.line("class Commands:");
         w.pushIndent();
         for (const cmd of allCommands) {
-            generateCommand(w, cmd as CommandModel, clusterName, clusterId, datatypeRegistry, resolveType, responseCommands as CommandModel[]);
+            generateCommand(w, cmd, clusterName, clusterId, datatypeRegistry, resolveType, responseCommands);
             w.blankLine();
         }
         w.popIndent();
@@ -577,7 +675,7 @@ function generateClusterFile(
 // ============================================================================
 
 function generateEnum(w: PythonWriter, model: ValueModel): void {
-    w.line(`class ${model.name}(MatterIntEnum):`);
+    w.line(`class ${toChipName(model.name)}(MatterIntEnum):`);
     w.pushIndent();
 
     const members = model.children || [];
@@ -609,7 +707,7 @@ function generateEnum(w: PythonWriter, model: ValueModel): void {
 // ============================================================================
 
 function generateBitmap(w: PythonWriter, model: ValueModel): void {
-    w.line(`class ${model.name}(IntFlag):`);
+    w.line(`class ${toChipName(model.name)}(IntFlag):`);
     w.pushIndent();
 
     const members = model.children || [];
@@ -639,7 +737,7 @@ function generateStruct(
     resolveType: (m: ValueModel) => PythonType,
 ): void {
     w.line("@dataclass");
-    w.line(`class ${model.name}(ClusterObject):`);
+    w.line(`class ${toChipName(model.name)}(ClusterObject):`);
     w.pushIndent();
 
     // Descriptor
@@ -699,11 +797,11 @@ function generateCommand(
     // Determine response_type
     let responseType = "None";
     if (isClient && model.response && model.response !== "status") {
-        responseType = `'${model.response}'`;
+        responseType = `'${toChipName(model.response)}'`;
     }
 
     w.line("@dataclass");
-    w.line(`class ${model.name}(ClusterCommand):`);
+    w.line(`class ${toChipName(model.name)}(ClusterCommand):`);
     w.pushIndent();
 
     w.line(`cluster_id: typing.ClassVar[int] = ${hex8(clusterId)}`);
@@ -848,7 +946,7 @@ function generateEvent(
     const eventId = model.id ?? 0;
 
     w.line("@dataclass");
-    w.line(`class ${model.name}(ClusterEvent):`);
+    w.line(`class ${toChipName(model.name)}(ClusterEvent):`);
     w.pushIndent();
 
     w.line("@ChipUtility.classproperty");

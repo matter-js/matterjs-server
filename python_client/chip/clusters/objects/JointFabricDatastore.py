@@ -690,7 +690,7 @@ class JointFabricDatastore(Cluster):
             nodeId: 'uint' = 0
 
         @dataclass
-        class AddAclToNode(ClusterCommand):
+        class AddACLToNode(ClusterCommand):
             cluster_id: typing.ClassVar[int] = 0x00000752
             command_id: typing.ClassVar[int] = 0x00000012
             is_client: typing.ClassVar[bool] = True
@@ -708,7 +708,7 @@ class JointFabricDatastore(Cluster):
             aclEntry: 'JointFabricDatastore.Structs.DatastoreAccessControlEntryStruct' = field(default_factory=lambda: JointFabricDatastore.Structs.DatastoreAccessControlEntryStruct())
 
         @dataclass
-        class RemoveAclFromNode(ClusterCommand):
+        class RemoveACLFromNode(ClusterCommand):
             cluster_id: typing.ClassVar[int] = 0x00000752
             command_id: typing.ClassVar[int] = 0x00000013
             is_client: typing.ClassVar[bool] = True

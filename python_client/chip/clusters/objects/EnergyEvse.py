@@ -776,7 +776,7 @@ class EnergyEvse(Cluster):
 
     class Events:
         @dataclass
-        class EvConnected(ClusterEvent):
+        class EVConnected(ClusterEvent):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000099
@@ -795,7 +795,7 @@ class EnergyEvse(Cluster):
             sessionId: 'uint' = 0
 
         @dataclass
-        class EvNotDetected(ClusterEvent):
+        class EVNotDetected(ClusterEvent):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000099
@@ -899,7 +899,7 @@ class EnergyEvse(Cluster):
             faultStateCurrentState: 'EnergyEvse.Enums.FaultStateEnum' = 0
 
         @dataclass
-        class Rfid(ClusterEvent):
+        class RFID(ClusterEvent):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000099

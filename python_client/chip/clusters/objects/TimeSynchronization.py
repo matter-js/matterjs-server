@@ -187,7 +187,7 @@ class TimeSynchronization(Cluster):
 
     class Commands:
         @dataclass
-        class SetUtcTime(ClusterCommand):
+        class SetUTCTime(ClusterCommand):
             cluster_id: typing.ClassVar[int] = 0x00000038
             command_id: typing.ClassVar[int] = 0x00000000
             is_client: typing.ClassVar[bool] = True
@@ -241,7 +241,7 @@ class TimeSynchronization(Cluster):
             timeZone: 'typing.List[typing.Optional[TimeSynchronization.Structs.TimeZoneStruct]]' = field(default_factory=lambda: [])
 
         @dataclass
-        class SetDstOffset(ClusterCommand):
+        class SetDSTOffset(ClusterCommand):
             cluster_id: typing.ClassVar[int] = 0x00000038
             command_id: typing.ClassVar[int] = 0x00000004
             is_client: typing.ClassVar[bool] = True
@@ -257,7 +257,7 @@ class TimeSynchronization(Cluster):
             dstOffset: 'typing.List[typing.Optional[TimeSynchronization.Structs.DSTOffsetStruct]]' = field(default_factory=lambda: [])
 
         @dataclass
-        class SetDefaultNtp(ClusterCommand):
+        class SetDefaultNTP(ClusterCommand):
             cluster_id: typing.ClassVar[int] = 0x00000038
             command_id: typing.ClassVar[int] = 0x00000005
             is_client: typing.ClassVar[bool] = True
@@ -581,7 +581,7 @@ class TimeSynchronization(Cluster):
 
     class Events:
         @dataclass
-        class DstTableEmpty(ClusterEvent):
+        class DSTTableEmpty(ClusterEvent):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000038
@@ -599,7 +599,7 @@ class TimeSynchronization(Cluster):
             pass
 
         @dataclass
-        class DstStatus(ClusterEvent):
+        class DSTStatus(ClusterEvent):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000038

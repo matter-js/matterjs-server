@@ -22,7 +22,7 @@ class FixedLabel(Cluster):
     def descriptor(cls) -> ClusterObjectDescriptor:
         return ClusterObjectDescriptor(
             Fields=[
-                ClusterObjectFieldDescriptor(Label="labelList", Tag=0x00000000, Type=typing.List[typing.Optional[uint]]),
+                ClusterObjectFieldDescriptor(Label="labelList", Tag=0x00000000, Type=typing.List[typing.Optional[FixedLabel.Structs.LabelStruct]]),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="attributeList", Tag=0x0000FFFB, Type=typing.List[uint]),
@@ -30,12 +30,27 @@ class FixedLabel(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    labelList: 'typing.List[typing.Optional[uint]]' = field(default_factory=lambda: [])
+    labelList: 'typing.List[typing.Optional[FixedLabel.Structs.LabelStruct]]' = field(default_factory=lambda: [])
     generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
     acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
     attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
     featureMap: 'uint' = 0
     clusterRevision: 'uint' = 0
+
+    class Structs:
+        @dataclass
+        class LabelStruct(ClusterObject):
+            @ChipUtility.classproperty
+            def descriptor(cls) -> ClusterObjectDescriptor:
+                return ClusterObjectDescriptor(
+                    Fields=[
+                        ClusterObjectFieldDescriptor(Label="label", Tag=0, Type=str),
+                        ClusterObjectFieldDescriptor(Label="value", Tag=1, Type=str),
+                    ])
+
+            label: 'str' = ""
+            value: 'str' = ""
+
 
     class Attributes:
         @dataclass
@@ -50,9 +65,9 @@ class FixedLabel(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.List[typing.Optional[uint]])
+                return ClusterObjectFieldDescriptor(Type=typing.List[typing.Optional[FixedLabel.Structs.LabelStruct]])
 
-            value: 'typing.List[typing.Optional[uint]]' = field(default_factory=lambda: [])
+            value: 'typing.List[typing.Optional[FixedLabel.Structs.LabelStruct]]' = field(default_factory=lambda: [])
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):

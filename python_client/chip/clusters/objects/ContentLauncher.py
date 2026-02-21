@@ -248,7 +248,7 @@ class ContentLauncher(Cluster):
             useCurrentContext: 'typing.Optional[bool]' = None
 
         @dataclass
-        class LaunchUrl(ClusterCommand):
+        class LaunchURL(ClusterCommand):
             cluster_id: typing.ClassVar[int] = 0x0000050A
             command_id: typing.ClassVar[int] = 0x00000001
             is_client: typing.ClassVar[bool] = True

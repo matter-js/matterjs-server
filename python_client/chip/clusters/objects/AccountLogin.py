@@ -37,11 +37,11 @@ class AccountLogin(Cluster):
 
     class Commands:
         @dataclass
-        class GetSetupPin(ClusterCommand):
+        class GetSetupPIN(ClusterCommand):
             cluster_id: typing.ClassVar[int] = 0x0000050E
             command_id: typing.ClassVar[int] = 0x00000000
             is_client: typing.ClassVar[bool] = True
-            response_type: typing.ClassVar[typing.Optional[str]] = 'GetSetupPinResponse'
+            response_type: typing.ClassVar[typing.Optional[str]] = 'GetSetupPINResponse'
 
             @ChipUtility.classproperty
             def descriptor(cls) -> ClusterObjectDescriptor:
@@ -89,7 +89,7 @@ class AccountLogin(Cluster):
             node: 'typing.Optional[uint]' = None
 
         @dataclass
-        class GetSetupPinResponse(ClusterCommand):
+        class GetSetupPINResponse(ClusterCommand):
             cluster_id: typing.ClassVar[int] = 0x0000050E
             command_id: typing.ClassVar[int] = 0x00000001
             is_client: typing.ClassVar[bool] = False

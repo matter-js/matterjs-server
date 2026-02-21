@@ -176,7 +176,7 @@ class ContentControl(Cluster):
 
     class Commands:
         @dataclass
-        class UpdatePin(ClusterCommand):
+        class UpdatePIN(ClusterCommand):
             cluster_id: typing.ClassVar[int] = 0x0000050F
             command_id: typing.ClassVar[int] = 0x00000000
             is_client: typing.ClassVar[bool] = True
@@ -194,11 +194,11 @@ class ContentControl(Cluster):
             newPin: 'str' = ""
 
         @dataclass
-        class ResetPin(ClusterCommand):
+        class ResetPIN(ClusterCommand):
             cluster_id: typing.ClassVar[int] = 0x0000050F
             command_id: typing.ClassVar[int] = 0x00000001
             is_client: typing.ClassVar[bool] = True
-            response_type: typing.ClassVar[typing.Optional[str]] = 'ResetPinResponse'
+            response_type: typing.ClassVar[typing.Optional[str]] = 'ResetPINResponse'
 
             @ChipUtility.classproperty
             def descriptor(cls) -> ClusterObjectDescriptor:
@@ -431,7 +431,7 @@ class ContentControl(Cluster):
             timeWindowIndexes: 'typing.List[typing.Optional[uint]]' = field(default_factory=lambda: [])
 
         @dataclass
-        class ResetPinResponse(ClusterCommand):
+        class ResetPINResponse(ClusterCommand):
             cluster_id: typing.ClassVar[int] = 0x0000050F
             command_id: typing.ClassVar[int] = 0x00000002
             is_client: typing.ClassVar[bool] = False

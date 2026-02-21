@@ -508,7 +508,7 @@ class DoorLock(Cluster):
             pinCode: 'typing.Optional[bytes]' = None
 
         @dataclass
-        class SetPinCode(ClusterCommand):
+        class SetPINCode(ClusterCommand):
             cluster_id: typing.ClassVar[int] = 0x00000101
             command_id: typing.ClassVar[int] = 0x00000005
             is_client: typing.ClassVar[bool] = True
@@ -530,11 +530,11 @@ class DoorLock(Cluster):
             pin: 'bytes' = b""
 
         @dataclass
-        class GetPinCode(ClusterCommand):
+        class GetPINCode(ClusterCommand):
             cluster_id: typing.ClassVar[int] = 0x00000101
             command_id: typing.ClassVar[int] = 0x00000006
             is_client: typing.ClassVar[bool] = True
-            response_type: typing.ClassVar[typing.Optional[str]] = 'GetPinCodeResponse'
+            response_type: typing.ClassVar[typing.Optional[str]] = 'GetPINCodeResponse'
 
             @ChipUtility.classproperty
             def descriptor(cls) -> ClusterObjectDescriptor:
@@ -546,7 +546,7 @@ class DoorLock(Cluster):
             userId: 'uint' = 0
 
         @dataclass
-        class ClearPinCode(ClusterCommand):
+        class ClearPINCode(ClusterCommand):
             cluster_id: typing.ClassVar[int] = 0x00000101
             command_id: typing.ClassVar[int] = 0x00000007
             is_client: typing.ClassVar[bool] = True
@@ -562,7 +562,7 @@ class DoorLock(Cluster):
             pinSlotIndex: 'uint' = 0
 
         @dataclass
-        class ClearAllPinCodes(ClusterCommand):
+        class ClearAllPINCodes(ClusterCommand):
             cluster_id: typing.ClassVar[int] = 0x00000101
             command_id: typing.ClassVar[int] = 0x00000008
             is_client: typing.ClassVar[bool] = True
@@ -821,7 +821,7 @@ class DoorLock(Cluster):
             userId: 'uint' = 0
 
         @dataclass
-        class SetRfidCode(ClusterCommand):
+        class SetRFIDCode(ClusterCommand):
             cluster_id: typing.ClassVar[int] = 0x00000101
             command_id: typing.ClassVar[int] = 0x00000016
             is_client: typing.ClassVar[bool] = True
@@ -843,11 +843,11 @@ class DoorLock(Cluster):
             rfidCode: 'bytes' = b""
 
         @dataclass
-        class GetRfidCode(ClusterCommand):
+        class GetRFIDCode(ClusterCommand):
             cluster_id: typing.ClassVar[int] = 0x00000101
             command_id: typing.ClassVar[int] = 0x00000017
             is_client: typing.ClassVar[bool] = True
-            response_type: typing.ClassVar[typing.Optional[str]] = 'GetRfidCodeResponse'
+            response_type: typing.ClassVar[typing.Optional[str]] = 'GetRFIDCodeResponse'
 
             @ChipUtility.classproperty
             def descriptor(cls) -> ClusterObjectDescriptor:
@@ -859,7 +859,7 @@ class DoorLock(Cluster):
             userId: 'uint' = 0
 
         @dataclass
-        class ClearRfidCode(ClusterCommand):
+        class ClearRFIDCode(ClusterCommand):
             cluster_id: typing.ClassVar[int] = 0x00000101
             command_id: typing.ClassVar[int] = 0x00000018
             is_client: typing.ClassVar[bool] = True
@@ -875,7 +875,7 @@ class DoorLock(Cluster):
             rfidSlotIndex: 'uint' = 0
 
         @dataclass
-        class ClearAllRfidCodes(ClusterCommand):
+        class ClearAllRFIDCodes(ClusterCommand):
             cluster_id: typing.ClassVar[int] = 0x00000101
             command_id: typing.ClassVar[int] = 0x00000019
             is_client: typing.ClassVar[bool] = True
@@ -1061,7 +1061,7 @@ class DoorLock(Cluster):
             pass
 
         @dataclass
-        class GetPinCodeResponse(ClusterCommand):
+        class GetPINCodeResponse(ClusterCommand):
             cluster_id: typing.ClassVar[int] = 0x00000101
             command_id: typing.ClassVar[int] = 0x00000006
             is_client: typing.ClassVar[bool] = False
@@ -1197,7 +1197,7 @@ class DoorLock(Cluster):
             userType: 'DoorLock.Enums.UserTypeEnum' = 0
 
         @dataclass
-        class GetRfidCodeResponse(ClusterCommand):
+        class GetRFIDCodeResponse(ClusterCommand):
             cluster_id: typing.ClassVar[int] = 0x00000101
             command_id: typing.ClassVar[int] = 0x00000017
             is_client: typing.ClassVar[bool] = False

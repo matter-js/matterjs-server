@@ -462,7 +462,7 @@ class SmokeCoAlarm(Cluster):
             alarmSeverityLevel: 'SmokeCoAlarm.Enums.AlarmStateEnum' = 0
 
         @dataclass
-        class CoAlarm(ClusterEvent):
+        class COAlarm(ClusterEvent):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x0000005C
@@ -609,7 +609,7 @@ class SmokeCoAlarm(Cluster):
             alarmSeverityLevel: 'SmokeCoAlarm.Enums.AlarmStateEnum' = 0
 
         @dataclass
-        class InterconnectCoAlarm(ClusterEvent):
+        class InterconnectCOAlarm(ClusterEvent):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x0000005C

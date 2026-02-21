@@ -151,11 +151,11 @@ class OperationalCredentials(Cluster):
             certificateType: 'OperationalCredentials.Enums.CertificateChainTypeEnum' = 0
 
         @dataclass
-        class CsrRequest(ClusterCommand):
+        class CSRRequest(ClusterCommand):
             cluster_id: typing.ClassVar[int] = 0x0000003E
             command_id: typing.ClassVar[int] = 0x00000004
             is_client: typing.ClassVar[bool] = True
-            response_type: typing.ClassVar[typing.Optional[str]] = 'CsrResponse'
+            response_type: typing.ClassVar[typing.Optional[str]] = 'CSRResponse'
 
             @ChipUtility.classproperty
             def descriptor(cls) -> ClusterObjectDescriptor:
@@ -169,11 +169,11 @@ class OperationalCredentials(Cluster):
             isForUpdateNoc: 'typing.Optional[bool]' = None
 
         @dataclass
-        class AddNoc(ClusterCommand):
+        class AddNOC(ClusterCommand):
             cluster_id: typing.ClassVar[int] = 0x0000003E
             command_id: typing.ClassVar[int] = 0x00000006
             is_client: typing.ClassVar[bool] = True
-            response_type: typing.ClassVar[typing.Optional[str]] = 'NocResponse'
+            response_type: typing.ClassVar[typing.Optional[str]] = 'NOCResponse'
 
             @ChipUtility.classproperty
             def descriptor(cls) -> ClusterObjectDescriptor:
@@ -193,11 +193,11 @@ class OperationalCredentials(Cluster):
             adminVendorId: 'uint' = 0
 
         @dataclass
-        class UpdateNoc(ClusterCommand):
+        class UpdateNOC(ClusterCommand):
             cluster_id: typing.ClassVar[int] = 0x0000003E
             command_id: typing.ClassVar[int] = 0x00000007
             is_client: typing.ClassVar[bool] = True
-            response_type: typing.ClassVar[typing.Optional[str]] = 'NocResponse'
+            response_type: typing.ClassVar[typing.Optional[str]] = 'NOCResponse'
 
             @ChipUtility.classproperty
             def descriptor(cls) -> ClusterObjectDescriptor:
@@ -217,7 +217,7 @@ class OperationalCredentials(Cluster):
             cluster_id: typing.ClassVar[int] = 0x0000003E
             command_id: typing.ClassVar[int] = 0x00000009
             is_client: typing.ClassVar[bool] = True
-            response_type: typing.ClassVar[typing.Optional[str]] = 'NocResponse'
+            response_type: typing.ClassVar[typing.Optional[str]] = 'NOCResponse'
 
             @ChipUtility.classproperty
             def descriptor(cls) -> ClusterObjectDescriptor:
@@ -235,7 +235,7 @@ class OperationalCredentials(Cluster):
             cluster_id: typing.ClassVar[int] = 0x0000003E
             command_id: typing.ClassVar[int] = 0x0000000A
             is_client: typing.ClassVar[bool] = True
-            response_type: typing.ClassVar[typing.Optional[str]] = 'NocResponse'
+            response_type: typing.ClassVar[typing.Optional[str]] = 'NOCResponse'
 
             @ChipUtility.classproperty
             def descriptor(cls) -> ClusterObjectDescriptor:
@@ -263,7 +263,7 @@ class OperationalCredentials(Cluster):
             rootCaCertificate: 'bytes' = b""
 
         @dataclass
-        class SetVidVerificationStatement(ClusterCommand):
+        class SetVIDVerificationStatement(ClusterCommand):
             cluster_id: typing.ClassVar[int] = 0x0000003E
             command_id: typing.ClassVar[int] = 0x0000000C
             is_client: typing.ClassVar[bool] = True
@@ -283,11 +283,11 @@ class OperationalCredentials(Cluster):
             vvsc: 'typing.Optional[bytes]' = None
 
         @dataclass
-        class SignVidVerificationRequest(ClusterCommand):
+        class SignVIDVerificationRequest(ClusterCommand):
             cluster_id: typing.ClassVar[int] = 0x0000003E
             command_id: typing.ClassVar[int] = 0x0000000D
             is_client: typing.ClassVar[bool] = True
-            response_type: typing.ClassVar[typing.Optional[str]] = 'SignVidVerificationResponse'
+            response_type: typing.ClassVar[typing.Optional[str]] = 'SignVIDVerificationResponse'
 
             @ChipUtility.classproperty
             def descriptor(cls) -> ClusterObjectDescriptor:
@@ -335,7 +335,7 @@ class OperationalCredentials(Cluster):
             certificate: 'bytes' = b""
 
         @dataclass
-        class CsrResponse(ClusterCommand):
+        class CSRResponse(ClusterCommand):
             cluster_id: typing.ClassVar[int] = 0x0000003E
             command_id: typing.ClassVar[int] = 0x00000005
             is_client: typing.ClassVar[bool] = False
@@ -353,7 +353,7 @@ class OperationalCredentials(Cluster):
             attestationSignature: 'bytes' = b""
 
         @dataclass
-        class NocResponse(ClusterCommand):
+        class NOCResponse(ClusterCommand):
             cluster_id: typing.ClassVar[int] = 0x0000003E
             command_id: typing.ClassVar[int] = 0x00000008
             is_client: typing.ClassVar[bool] = False
@@ -373,7 +373,7 @@ class OperationalCredentials(Cluster):
             debugText: 'typing.Optional[str]' = None
 
         @dataclass
-        class SignVidVerificationResponse(ClusterCommand):
+        class SignVIDVerificationResponse(ClusterCommand):
             cluster_id: typing.ClassVar[int] = 0x0000003E
             command_id: typing.ClassVar[int] = 0x0000000E
             is_client: typing.ClassVar[bool] = False

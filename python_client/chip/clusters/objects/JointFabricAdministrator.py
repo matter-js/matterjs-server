@@ -88,11 +88,11 @@ class JointFabricAdministrator(Cluster):
             pass
 
         @dataclass
-        class AddIcac(ClusterCommand):
+        class AddICAC(ClusterCommand):
             cluster_id: typing.ClassVar[int] = 0x00000753
             command_id: typing.ClassVar[int] = 0x00000002
             is_client: typing.ClassVar[bool] = True
-            response_type: typing.ClassVar[typing.Optional[str]] = 'IcacResponse'
+            response_type: typing.ClassVar[typing.Optional[str]] = 'ICACResponse'
 
             @ChipUtility.classproperty
             def descriptor(cls) -> ClusterObjectDescriptor:
@@ -190,7 +190,7 @@ class JointFabricAdministrator(Cluster):
             icaccsr: 'bytes' = b""
 
         @dataclass
-        class IcacResponse(ClusterCommand):
+        class ICACResponse(ClusterCommand):
             cluster_id: typing.ClassVar[int] = 0x00000753
             command_id: typing.ClassVar[int] = 0x00000003
             is_client: typing.ClassVar[bool] = False

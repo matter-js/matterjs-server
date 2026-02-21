@@ -63,6 +63,17 @@ class RefrigeratorAndTemperatureControlledCabinetMode(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 16386
 
+        class ModeChangeStatus(MatterIntEnum):
+            kSuccess = 0x00
+            kUnsupportedMode = 0x01
+            kGenericFailure = 0x02
+            kInvalidInMode = 0x03
+            # All received enum values that are not listed above will be mapped
+            # to kUnknownEnumValue. This is a helper enum value that should only
+            # be used by code to process how it handles receiving an unknown
+            # enum value. This specific value should never be transmitted.
+            kUnknownEnumValue = 4
+
 
     class Bitmaps:
         class Feature(IntFlag):
@@ -79,6 +90,55 @@ class RefrigeratorAndTemperatureControlledCabinetMode(Cluster):
                     ])
 
             pass
+
+        @dataclass
+        class ModeTagStruct(ClusterObject):
+            @ChipUtility.classproperty
+            def descriptor(cls) -> ClusterObjectDescriptor:
+                return ClusterObjectDescriptor(
+                    Fields=[
+                        ClusterObjectFieldDescriptor(Label="mfgCode", Tag=0, Type=typing.Optional[uint]),
+                        ClusterObjectFieldDescriptor(Label="value", Tag=1, Type=RefrigeratorAndTemperatureControlledCabinetMode.Enums.ModeTag),
+                    ])
+
+            mfgCode: 'typing.Optional[uint]' = None
+            value: 'RefrigeratorAndTemperatureControlledCabinetMode.Enums.ModeTag' = 0
+
+
+    class Commands:
+        @dataclass
+        class ChangeToMode(ClusterCommand):
+            cluster_id: typing.ClassVar[int] = 0x00000052
+            command_id: typing.ClassVar[int] = 0x00000000
+            is_client: typing.ClassVar[bool] = True
+            response_type: typing.ClassVar[typing.Optional[str]] = 'ChangeToModeResponse'
+
+            @ChipUtility.classproperty
+            def descriptor(cls) -> ClusterObjectDescriptor:
+                return ClusterObjectDescriptor(
+                    Fields=[
+                        ClusterObjectFieldDescriptor(Label="newMode", Tag=0, Type=uint),
+                    ])
+
+            newMode: 'uint' = 0
+
+        @dataclass
+        class ChangeToModeResponse(ClusterCommand):
+            cluster_id: typing.ClassVar[int] = 0x00000052
+            command_id: typing.ClassVar[int] = 0x00000001
+            is_client: typing.ClassVar[bool] = False
+            response_type: typing.ClassVar[typing.Optional[str]] = None
+
+            @ChipUtility.classproperty
+            def descriptor(cls) -> ClusterObjectDescriptor:
+                return ClusterObjectDescriptor(
+                    Fields=[
+                        ClusterObjectFieldDescriptor(Label="status", Tag=0, Type=RefrigeratorAndTemperatureControlledCabinetMode.Enums.ModeChangeStatus),
+                        ClusterObjectFieldDescriptor(Label="statusText", Tag=1, Type=str),
+                    ])
+
+            status: 'RefrigeratorAndTemperatureControlledCabinetMode.Enums.ModeChangeStatus' = 0
+            statusText: 'str' = ""
 
 
     class Attributes:

@@ -83,9 +83,80 @@ class BridgedDeviceBasicInformation(Cluster):
     featureMap: 'uint' = 0
     clusterRevision: 'uint' = 0
 
+    class Enums:
+        class ProductFinishEnum(MatterIntEnum):
+            kOther = 0x00
+            kMatte = 0x01
+            kSatin = 0x02
+            kPolished = 0x03
+            kRugged = 0x04
+            kFabric = 0x05
+            # All received enum values that are not listed above will be mapped
+            # to kUnknownEnumValue. This is a helper enum value that should only
+            # be used by code to process how it handles receiving an unknown
+            # enum value. This specific value should never be transmitted.
+            kUnknownEnumValue = 6
+
+        class ColorEnum(MatterIntEnum):
+            kBlack = 0x00
+            kNavy = 0x01
+            kGreen = 0x02
+            kTeal = 0x03
+            kMaroon = 0x04
+            kPurple = 0x05
+            kOlive = 0x06
+            kGray = 0x07
+            kBlue = 0x08
+            kLime = 0x09
+            kAqua = 0x0A
+            kRed = 0x0B
+            kFuchsia = 0x0C
+            kYellow = 0x0D
+            kWhite = 0x0E
+            kNickel = 0x0F
+            kChrome = 0x10
+            kBrass = 0x11
+            kCopper = 0x12
+            kSilver = 0x13
+            kGold = 0x14
+            # All received enum values that are not listed above will be mapped
+            # to kUnknownEnumValue. This is a helper enum value that should only
+            # be used by code to process how it handles receiving an unknown
+            # enum value. This specific value should never be transmitted.
+            kUnknownEnumValue = 21
+
+
     class Bitmaps:
         class Feature(IntFlag):
             kBridgedIcdSupport = 0x100000
+
+
+    class Structs:
+        @dataclass
+        class ProductAppearanceStruct(ClusterObject):
+            @ChipUtility.classproperty
+            def descriptor(cls) -> ClusterObjectDescriptor:
+                return ClusterObjectDescriptor(
+                    Fields=[
+                        ClusterObjectFieldDescriptor(Label="finish", Tag=0, Type=BridgedDeviceBasicInformation.Enums.ProductFinishEnum),
+                        ClusterObjectFieldDescriptor(Label="primaryColor", Tag=1, Type=typing.Union[Nullable, BridgedDeviceBasicInformation.Enums.ColorEnum]),
+                    ])
+
+            finish: 'BridgedDeviceBasicInformation.Enums.ProductFinishEnum' = 0
+            primaryColor: 'typing.Union[Nullable, BridgedDeviceBasicInformation.Enums.ColorEnum]' = NullValue
+
+        @dataclass
+        class CapabilityMinimaStruct(ClusterObject):
+            @ChipUtility.classproperty
+            def descriptor(cls) -> ClusterObjectDescriptor:
+                return ClusterObjectDescriptor(
+                    Fields=[
+                        ClusterObjectFieldDescriptor(Label="caseSessionsPerFabric", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="subscriptionsPerFabric", Tag=1, Type=uint),
+                    ])
+
+            caseSessionsPerFabric: 'uint' = 0
+            subscriptionsPerFabric: 'uint' = 0
 
 
     class Commands:
