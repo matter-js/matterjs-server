@@ -21,9 +21,16 @@ dependencies = [
 description = "Python Client for the OHF Matter Server"
 license = "Apache-2.0"
 name = "matter-python-client"
+readme = "README.md"
 requires-python = ">=3.12"
 # The version is set by CI on release
 version = "0.0.0"
+
+[project.urls]
+"Homepage" = "https://github.com/matter-js/matterjs-server"
+"Source" = "https://github.com/matter-js/matterjs-server/tree/main/python_client"
+"Bug Tracker" = "https://github.com/matter-js/matterjs-server/issues"
+"Changelog" = "https://github.com/matter-js/matterjs-server/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 test = [
