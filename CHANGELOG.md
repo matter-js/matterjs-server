@@ -10,6 +10,10 @@ This page shows a detailed overview of the changes between versions without the 
 ## __WORK IN PROGRESS__
 - Feature: Added a new "Drop-in-replacement" matter-python-client as a replacement for the Matter Server package
 - Fix: Fixes custom-cluster writable attributes
+- Fix: Fixed datatype of a thirdreality custom cluster attribute
+- Fix: Update matter.js to 0.16.10-nightly
+    - Fixes waiting time calculation for peer responses
+    - Ensure subscriptions are also properly handled queued
 
 ## 0.4.0 (2026-02-19)
 - BREAKING: (schildbach) Only for Docker/Podman users: run server as an unprivileged user. Use `chown -R 1000:1000 /path-to-data-volume` once to migrate permissions!

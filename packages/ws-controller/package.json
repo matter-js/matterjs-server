@@ -22,11 +22,11 @@
         "node": ">=20.19.0 <22.0.0 || >=22.13.0"
     },
     "optionalDependencies": {
-        "@matter/nodejs-ble": "0.16.10-alpha.0-20260219-2ba4847f4"
+        "@matter/nodejs-ble": "0.16.10-alpha.0-20260221-d899b7e13"
     },
     "dependencies": {
-        "@matter/main": "0.16.10-alpha.0-20260219-2ba4847f4",
-        "@project-chip/matter.js": "0.16.10-alpha.0-20260219-2ba4847f4",
+        "@matter/main": "0.16.10-alpha.0-20260221-d899b7e13",
+        "@project-chip/matter.js": "0.16.10-alpha.0-20260221-d899b7e13",
         "ws": "^8.19.0"
     },
     "devDependencies": {
