@@ -1002,7 +1002,7 @@ class ThirdRealityMeteringCluster(Cluster, CustomClusterMixin):
                     Label="currentSummationDelivered", Tag=0x0000, Type=uint
                 ),
                 ClusterObjectFieldDescriptor(
-                    Label="instantaneousDemand", Tag=0x0400, Type=uint
+                    Label="instantaneousDemand", Tag=0x0400, Type=int
                 ),
                 ClusterObjectFieldDescriptor(Label="multiplier", Tag=0x0301, Type=uint),
                 ClusterObjectFieldDescriptor(Label="divisor", Tag=0x0302, Type=uint),
@@ -1010,7 +1010,7 @@ class ThirdRealityMeteringCluster(Cluster, CustomClusterMixin):
         )
 
     currentSummationDelivered: uint | None = None
-    instantaneousDemand: uint | None = None
+    instantaneousDemand: int | None = None
     multiplier: uint = 1
     divisor: uint = 1
 
@@ -1116,9 +1116,9 @@ class ThirdRealityMeteringCluster(Cluster, CustomClusterMixin):
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 """Return attribute type."""
-                return ClusterObjectFieldDescriptor(Type=uint)
+                return ClusterObjectFieldDescriptor(Type=int)
 
-            value: uint = 0
+            value: int = 0
 
 
 @dataclass
