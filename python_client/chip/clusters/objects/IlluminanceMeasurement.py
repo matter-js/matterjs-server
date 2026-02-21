@@ -55,7 +55,6 @@ class IlluminanceMeasurement(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 2
 
-
     class Attributes:
         @dataclass
         class MeasuredValue(ClusterAttributeDescriptor):
@@ -216,4 +215,3 @@ class IlluminanceMeasurement(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

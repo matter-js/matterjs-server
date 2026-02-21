@@ -805,5 +805,3 @@ class WindowCovering(DeviceType):
         all_clusters.Identify,
         all_clusters.WindowCovering,
     }
-
-

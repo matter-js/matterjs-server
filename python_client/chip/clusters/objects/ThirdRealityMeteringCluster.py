@@ -187,4 +187,3 @@ class ThirdRealityMeteringCluster(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

@@ -51,7 +51,6 @@ class LowPower(Cluster):
 
             pass
 
-
     class Attributes:
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -132,4 +131,3 @@ class LowPower(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

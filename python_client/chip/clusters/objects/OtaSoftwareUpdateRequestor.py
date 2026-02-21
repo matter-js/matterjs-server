@@ -82,7 +82,6 @@ class OtaSoftwareUpdateRequestor(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 5
 
-
     class Structs:
         @dataclass
         class ProviderLocation(ClusterObject):
@@ -98,7 +97,6 @@ class OtaSoftwareUpdateRequestor(Cluster):
             providerNodeId: 'uint' = 0
             endpoint: 'uint' = 0
             fabricIndex: 'uint' = 0
-
 
     class Commands:
         @dataclass
@@ -126,7 +124,6 @@ class OtaSoftwareUpdateRequestor(Cluster):
             metadataForNode: 'typing.Optional[bytes]' = None
             endpoint: 'uint' = 0
             fabricIndex: 'uint' = 0
-
 
     class Attributes:
         @dataclass
@@ -273,7 +270,6 @@ class OtaSoftwareUpdateRequestor(Cluster):
 
             value: 'uint' = 0
 
-
     class Events:
         @dataclass
         class StateTransition(ClusterEvent):
@@ -345,4 +341,3 @@ class OtaSoftwareUpdateRequestor(Cluster):
             bytesDownloaded: 'uint' = 0
             progressPercent: 'typing.Union[Nullable, uint]' = NullValue
             platformCode: 'typing.Union[Nullable, int]' = NullValue
-

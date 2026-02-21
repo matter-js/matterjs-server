@@ -125,11 +125,9 @@ class GeneralDiagnostics(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 7
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kDataModelTest = 0x1
-
 
     class Structs:
         @dataclass
@@ -156,7 +154,6 @@ class GeneralDiagnostics(Cluster):
             iPv4Addresses: 'typing.List[typing.Optional[bytes]]' = field(default_factory=lambda: [])
             iPv6Addresses: 'typing.List[typing.Optional[bytes]]' = field(default_factory=lambda: [])
             type: 'GeneralDiagnostics.Enums.InterfaceTypeEnum' = 0
-
 
     class Commands:
         @dataclass
@@ -245,7 +242,6 @@ class GeneralDiagnostics(Cluster):
                     ])
 
             payload: 'bytes' = b""
-
 
     class Attributes:
         @dataclass
@@ -488,7 +484,6 @@ class GeneralDiagnostics(Cluster):
 
             value: 'uint' = 0
 
-
     class Events:
         @dataclass
         class HardwareFaultChange(ClusterEvent):
@@ -571,4 +566,3 @@ class GeneralDiagnostics(Cluster):
                     ])
 
             bootReason: 'GeneralDiagnostics.Enums.BootReasonEnum' = 0
-

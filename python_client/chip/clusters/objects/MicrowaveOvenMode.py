@@ -74,11 +74,9 @@ class MicrowaveOvenMode(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 4
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kOnOff = 0x1
-
 
     class Structs:
         @dataclass
@@ -108,7 +106,6 @@ class MicrowaveOvenMode(Cluster):
             label: 'str' = ""
             mode: 'uint' = 0
             modeTags: 'typing.List[typing.Optional[MicrowaveOvenMode.Structs.ModeTagStruct]]' = field(default_factory=lambda: [])
-
 
     class Commands:
         @dataclass
@@ -144,7 +141,6 @@ class MicrowaveOvenMode(Cluster):
 
             status: 'MicrowaveOvenMode.Enums.ModeChangeStatus' = 0
             statusText: 'str' = ""
-
 
     class Attributes:
         @dataclass
@@ -290,4 +286,3 @@ class MicrowaveOvenMode(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

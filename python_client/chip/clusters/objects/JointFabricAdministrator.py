@@ -70,7 +70,6 @@ class JointFabricAdministrator(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 7
 
-
     class Commands:
         @dataclass
         class IcaccsrRequest(ClusterCommand):
@@ -221,7 +220,6 @@ class JointFabricAdministrator(Cluster):
 
             statusCode: 'JointFabricAdministrator.Enums.TransferAnchorResponseStatusEnum' = 0
 
-
     class Attributes:
         @dataclass
         class AdministratorFabricIndex(ClusterAttributeDescriptor):
@@ -318,4 +316,3 @@ class JointFabricAdministrator(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

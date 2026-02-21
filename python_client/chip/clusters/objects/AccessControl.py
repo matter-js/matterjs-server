@@ -93,12 +93,10 @@ class AccessControl(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 4
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kExtension = 0x1
             kManagedDevice = 0x2
-
 
     class Structs:
         @dataclass
@@ -193,7 +191,6 @@ class AccessControl(Cluster):
             cluster: 'uint' = 0
             restrictions: 'typing.List[typing.Optional[AccessControl.Structs.AccessRestrictionStruct]]' = field(default_factory=lambda: [])
 
-
     class Commands:
         @dataclass
         class ReviewFabricRestrictions(ClusterCommand):
@@ -226,7 +223,6 @@ class AccessControl(Cluster):
                     ])
 
             token: 'uint' = 0
-
 
     class Attributes:
         @dataclass
@@ -421,7 +417,6 @@ class AccessControl(Cluster):
 
             value: 'uint' = 0
 
-
     class Events:
         @dataclass
         class AccessControlEntryChanged(ClusterEvent):
@@ -501,4 +496,3 @@ class AccessControl(Cluster):
             instruction: 'typing.Optional[str]' = None
             arlRequestFlowUrl: 'typing.Optional[str]' = None
             fabricIndex: 'uint' = 0
-

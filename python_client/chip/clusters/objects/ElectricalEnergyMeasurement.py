@@ -73,14 +73,12 @@ class ElectricalEnergyMeasurement(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 17
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kImportedEnergy = 0x1
             kExportedEnergy = 0x2
             kCumulativeEnergy = 0x4
             kPeriodicEnergy = 0x8
-
 
     class Structs:
         @dataclass
@@ -118,7 +116,6 @@ class ElectricalEnergyMeasurement(Cluster):
             exportedResetTimestamp: 'typing.Union[None, Nullable, uint]' = None
             importedResetSystime: 'typing.Union[None, Nullable, uint]' = None
             exportedResetSystime: 'typing.Union[None, Nullable, uint]' = None
-
 
     class Attributes:
         @dataclass
@@ -297,7 +294,6 @@ class ElectricalEnergyMeasurement(Cluster):
 
             value: 'uint' = 0
 
-
     class Events:
         @dataclass
         class CumulativeEnergyMeasured(ClusterEvent):
@@ -340,4 +336,3 @@ class ElectricalEnergyMeasurement(Cluster):
 
             energyImported: 'typing.Optional[ElectricalEnergyMeasurement.Structs.EnergyMeasurementStruct]' = None
             energyExported: 'typing.Optional[ElectricalEnergyMeasurement.Structs.EnergyMeasurementStruct]' = None
-

@@ -53,7 +53,6 @@ class TemperatureControl(Cluster):
             kTemperatureLevel = 0x2
             kTemperatureStep = 0x4
 
-
     class Commands:
         @dataclass
         class SetTemperature(ClusterCommand):
@@ -72,7 +71,6 @@ class TemperatureControl(Cluster):
 
             targetTemperature: 'typing.Optional[uint]' = None
             targetTemperatureLevel: 'typing.Optional[uint]' = None
-
 
     class Attributes:
         @dataclass
@@ -250,4 +248,3 @@ class TemperatureControl(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

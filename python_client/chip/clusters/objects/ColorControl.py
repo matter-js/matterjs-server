@@ -223,7 +223,6 @@ class ColorControl(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 2
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kHueSaturation = 0x1
@@ -240,7 +239,6 @@ class ColorControl(Cluster):
             kUpdateDirection = 0x2
             kUpdateTime = 0x4
             kUpdateStartHue = 0x8
-
 
     class Commands:
         @dataclass
@@ -690,7 +688,6 @@ class ColorControl(Cluster):
             colorTemperatureMaximumMireds: 'uint' = 0
             optionsMask: 'ColorControl.Bitmaps.OptionsBitmap' = 0
             optionsOverride: 'ColorControl.Bitmaps.OptionsBitmap' = 0
-
 
     class Attributes:
         @dataclass
@@ -1604,4 +1601,3 @@ class ColorControl(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

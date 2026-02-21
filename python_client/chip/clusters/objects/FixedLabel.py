@@ -51,7 +51,6 @@ class FixedLabel(Cluster):
             label: 'str' = ""
             value: 'str' = ""
 
-
     class Attributes:
         @dataclass
         class LabelList(ClusterAttributeDescriptor):
@@ -148,4 +147,3 @@ class FixedLabel(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

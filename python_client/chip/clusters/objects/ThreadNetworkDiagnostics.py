@@ -200,14 +200,12 @@ class ThreadNetworkDiagnostics(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 7
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kPacketCounts = 0x1
             kErrorCounts = 0x2
             kMleCounts = 0x4
             kMacCounts = 0x8
-
 
     class Structs:
         @dataclass
@@ -322,7 +320,6 @@ class ThreadNetworkDiagnostics(Cluster):
             securityPolicyPresent: 'bool' = False
             channelMaskPresent: 'bool' = False
 
-
     class Commands:
         @dataclass
         class ResetCounts(ClusterCommand):
@@ -338,7 +335,6 @@ class ThreadNetworkDiagnostics(Cluster):
                     ])
 
             pass
-
 
     class Attributes:
         @dataclass
@@ -1461,7 +1457,6 @@ class ThreadNetworkDiagnostics(Cluster):
 
             value: 'uint' = 0
 
-
     class Events:
         @dataclass
         class ConnectionStatus(ClusterEvent):
@@ -1502,4 +1497,3 @@ class ThreadNetworkDiagnostics(Cluster):
 
             current: 'typing.List[typing.Optional[ThreadNetworkDiagnostics.Enums.NetworkFaultEnum]]' = field(default_factory=lambda: [])
             previous: 'typing.List[typing.Optional[ThreadNetworkDiagnostics.Enums.NetworkFaultEnum]]' = field(default_factory=lambda: [])
-

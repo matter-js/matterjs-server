@@ -105,7 +105,6 @@ class FanControl(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 6
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kMultiSpeed = 0x1
@@ -123,7 +122,6 @@ class FanControl(Cluster):
         class WindBitmap(IntFlag):
             kSleepWind = 0x1
             kNaturalWind = 0x2
-
 
     class Commands:
         @dataclass
@@ -145,7 +143,6 @@ class FanControl(Cluster):
             direction: 'FanControl.Enums.StepDirectionEnum' = 0
             wrap: 'typing.Optional[bool]' = None
             lowestOff: 'typing.Optional[bool]' = None
-
 
     class Attributes:
         @dataclass
@@ -419,4 +416,3 @@ class FanControl(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

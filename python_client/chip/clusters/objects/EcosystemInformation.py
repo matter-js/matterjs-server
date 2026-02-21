@@ -96,7 +96,6 @@ class EcosystemInformation(Cluster):
             locationDescriptorLastEdit: 'uint' = 0
             fabricIndex: 'uint' = 0
 
-
     class Attributes:
         @dataclass
         class DeviceDirectory(ClusterAttributeDescriptor):
@@ -209,4 +208,3 @@ class EcosystemInformation(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

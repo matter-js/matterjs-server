@@ -84,7 +84,6 @@ class OnOff(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 1
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kLighting = 0x1
@@ -93,7 +92,6 @@ class OnOff(Cluster):
 
         class OnOffControlBitmap(IntFlag):
             kAcceptOnlyWhenOn = 0x1
-
 
     class Commands:
         @dataclass
@@ -193,7 +191,6 @@ class OnOff(Cluster):
             onOffControl: 'OnOff.Bitmaps.OnOffControlBitmap' = 0
             onTime: 'uint' = 0
             offWaitTime: 'uint' = 0
-
 
     class Attributes:
         @dataclass
@@ -355,4 +352,3 @@ class OnOff(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

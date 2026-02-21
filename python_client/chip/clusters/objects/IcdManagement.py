@@ -74,7 +74,6 @@ class IcdManagement(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 2
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kCheckInProtocolSupport = 0x1
@@ -101,7 +100,6 @@ class IcdManagement(Cluster):
             kSetupButtonTimes = 0x8000
             kAppDefinedButton = 0x10000
 
-
     class Structs:
         @dataclass
         class MonitoringRegistrationStruct(ClusterObject):
@@ -121,7 +119,6 @@ class IcdManagement(Cluster):
             key: 'typing.Optional[uint]' = None
             clientType: 'IcdManagement.Enums.ClientTypeEnum' = 0
             fabricIndex: 'uint' = 0
-
 
     class Commands:
         @dataclass
@@ -213,7 +210,6 @@ class IcdManagement(Cluster):
                     ])
 
             promisedActiveDuration: 'uint' = 0
-
 
     class Attributes:
         @dataclass
@@ -455,4 +451,3 @@ class IcdManagement(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

@@ -84,7 +84,6 @@ class LevelControl(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 2
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kOnOff = 0x1
@@ -94,7 +93,6 @@ class LevelControl(Cluster):
         class OptionsBitmap(IntFlag):
             kExecuteIfOff = 0x1
             kCoupleColorTempToLevel = 0x2
-
 
     class Commands:
         @dataclass
@@ -258,7 +256,6 @@ class LevelControl(Cluster):
                     ])
 
             frequency: 'uint' = 0
-
 
     class Attributes:
         @dataclass
@@ -580,4 +577,3 @@ class LevelControl(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

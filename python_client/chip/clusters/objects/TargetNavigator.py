@@ -50,7 +50,6 @@ class TargetNavigator(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 3
 
-
     class Structs:
         @dataclass
         class TargetInfoStruct(ClusterObject):
@@ -64,7 +63,6 @@ class TargetNavigator(Cluster):
 
             identifier: 'uint' = 0
             name: 'str' = ""
-
 
     class Commands:
         @dataclass
@@ -102,7 +100,6 @@ class TargetNavigator(Cluster):
 
             status: 'TargetNavigator.Enums.StatusEnum' = 0
             data: 'typing.Optional[str]' = None
-
 
     class Attributes:
         @dataclass
@@ -217,7 +214,6 @@ class TargetNavigator(Cluster):
 
             value: 'uint' = 0
 
-
     class Events:
         @dataclass
         class TargetUpdated(ClusterEvent):
@@ -241,4 +237,3 @@ class TargetNavigator(Cluster):
             targetList: 'typing.Optional[typing.List[typing.Optional[TargetNavigator.Structs.TargetInfoStruct]]]' = None
             currentTarget: 'typing.Optional[uint]' = None
             data: 'typing.Optional[bytes]' = None
-

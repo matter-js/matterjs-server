@@ -143,7 +143,6 @@ class EnergyEvse(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 3
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kChargingPreferences = 0x1
@@ -160,7 +159,6 @@ class EnergyEvse(Cluster):
             kThursday = 0x10
             kFriday = 0x20
             kSaturday = 0x40
-
 
     class Structs:
         @dataclass
@@ -190,7 +188,6 @@ class EnergyEvse(Cluster):
 
             dayOfWeekForSequence: 'EnergyEvse.Bitmaps.TargetDayOfWeekBitmap' = 0
             chargingTargets: 'typing.List[typing.Optional[EnergyEvse.Structs.ChargingTargetStruct]]' = field(default_factory=lambda: [])
-
 
     class Commands:
         @dataclass
@@ -322,7 +319,6 @@ class EnergyEvse(Cluster):
                     ])
 
             chargingTargetSchedules: 'typing.List[typing.Optional[EnergyEvse.Structs.ChargingTargetScheduleStruct]]' = field(default_factory=lambda: [])
-
 
     class Attributes:
         @dataclass
@@ -773,7 +769,6 @@ class EnergyEvse(Cluster):
 
             value: 'uint' = 0
 
-
     class Events:
         @dataclass
         class EVConnected(ClusterEvent):
@@ -916,4 +911,3 @@ class EnergyEvse(Cluster):
                     ])
 
             uid: 'bytes' = b""
-

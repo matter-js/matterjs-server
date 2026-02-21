@@ -134,7 +134,6 @@ class BooleanState(Cluster):
 
             value: 'uint' = 0
 
-
     class Events:
         @dataclass
         class StateChange(ClusterEvent):
@@ -154,4 +153,3 @@ class BooleanState(Cluster):
                     ])
 
             stateValue: 'bool' = False
-

@@ -42,7 +42,6 @@ class CommissionerControl(Cluster):
         class SupportedDeviceCategoryBitmap(IntFlag):
             kFabricSynchronization = 0x1
 
-
     class Commands:
         @dataclass
         class RequestCommissioningApproval(ClusterCommand):
@@ -107,7 +106,6 @@ class CommissionerControl(Cluster):
             discriminator: 'uint' = 0
             iterations: 'uint' = 0
             salt: 'bytes' = b""
-
 
     class Attributes:
         @dataclass
@@ -206,7 +204,6 @@ class CommissionerControl(Cluster):
 
             value: 'uint' = 0
 
-
     class Events:
         @dataclass
         class CommissioningRequestResult(ClusterEvent):
@@ -232,4 +229,3 @@ class CommissionerControl(Cluster):
             clientNodeId: 'uint' = 0
             statusCode: 'Globals.Enums.status' = 0
             fabricIndex: 'uint' = 0
-

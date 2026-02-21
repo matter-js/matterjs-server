@@ -475,4 +475,3 @@ class EveCluster(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

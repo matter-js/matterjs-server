@@ -71,12 +71,10 @@ class EthernetNetworkDiagnostics(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 10
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kPacketCounts = 0x1
             kErrorCounts = 0x2
-
 
     class Commands:
         @dataclass
@@ -93,7 +91,6 @@ class EthernetNetworkDiagnostics(Cluster):
                     ])
 
             pass
-
 
     class Attributes:
         @dataclass
@@ -319,4 +316,3 @@ class EthernetNetworkDiagnostics(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

@@ -71,7 +71,6 @@ class WiFiNetworkManagement(Cluster):
 
             passphrase: 'bytes' = b""
 
-
     class Attributes:
         @dataclass
         class Ssid(ClusterAttributeDescriptor):
@@ -184,4 +183,3 @@ class WiFiNetworkManagement(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

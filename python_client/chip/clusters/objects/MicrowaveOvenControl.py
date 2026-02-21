@@ -59,7 +59,6 @@ class MicrowaveOvenControl(Cluster):
             kPowerInWatts = 0x2
             kPowerNumberLimits = 0x4
 
-
     class Commands:
         @dataclass
         class SetCookingParameters(ClusterCommand):
@@ -100,7 +99,6 @@ class MicrowaveOvenControl(Cluster):
                     ])
 
             timeToAdd: 'uint' = 0
-
 
     class Attributes:
         @dataclass
@@ -326,4 +324,3 @@ class MicrowaveOvenControl(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

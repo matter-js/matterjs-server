@@ -91,7 +91,6 @@ class NetworkCommissioning(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 13
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kWiFiNetworkInterface = 0x1
@@ -111,7 +110,6 @@ class NetworkCommissioning(Cluster):
             kIsSleepyEndDeviceCapable = 0x4
             kIsFullThreadDevice = 0x8
             kIsSynchronizedSleepyEndDeviceCapable = 0x10
-
 
     class Structs:
         @dataclass
@@ -172,7 +170,6 @@ class NetworkCommissioning(Cluster):
             extendedAddress: 'typing.Optional[bytes]' = None
             rssi: 'typing.Optional[int]' = None
             lqi: 'typing.Optional[uint]' = None
-
 
     class Commands:
         @dataclass
@@ -348,7 +345,6 @@ class NetworkCommissioning(Cluster):
             networkingStatus: 'NetworkCommissioning.Enums.NetworkCommissioningStatusEnum' = 0
             debugText: 'typing.Optional[str]' = None
             errorValue: 'typing.Union[Nullable, int]' = NullValue
-
 
     class Attributes:
         @dataclass
@@ -606,4 +602,3 @@ class NetworkCommissioning(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

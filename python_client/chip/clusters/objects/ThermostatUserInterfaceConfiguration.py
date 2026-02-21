@@ -73,7 +73,6 @@ class ThermostatUserInterfaceConfiguration(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 2
 
-
     class Attributes:
         @dataclass
         class TemperatureDisplayMode(ClusterAttributeDescriptor):
@@ -202,4 +201,3 @@ class ThermostatUserInterfaceConfiguration(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

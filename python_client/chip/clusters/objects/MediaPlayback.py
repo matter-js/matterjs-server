@@ -107,7 +107,6 @@ class MediaPlayback(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 18
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kAdvancedSeek = 0x1
@@ -115,7 +114,6 @@ class MediaPlayback(Cluster):
             kTextTracks = 0x4
             kAudioTracks = 0x8
             kAudioAdvance = 0x10
-
 
     class Structs:
         @dataclass
@@ -158,7 +156,6 @@ class MediaPlayback(Cluster):
             languageCode: 'str' = ""
             characteristics: 'typing.Union[None, Nullable, typing.List[typing.Optional[MediaPlayback.Enums.CharacteristicEnum]]]' = None
             displayName: 'typing.Union[None, Nullable, str]' = None
-
 
     class Commands:
         @dataclass
@@ -397,7 +394,6 @@ class MediaPlayback(Cluster):
 
             status: 'MediaPlayback.Enums.StatusEnum' = 0
             data: 'typing.Optional[str]' = None
-
 
     class Attributes:
         @dataclass
@@ -656,7 +652,6 @@ class MediaPlayback(Cluster):
 
             value: 'uint' = 0
 
-
     class Events:
         @dataclass
         class StateChanged(ClusterEvent):
@@ -692,4 +687,3 @@ class MediaPlayback(Cluster):
             seekRangeStart: 'typing.Optional[uint]' = None
             data: 'typing.Optional[bytes]' = None
             audioAdvanceUnmuted: 'typing.Optional[bool]' = None
-

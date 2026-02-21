@@ -74,7 +74,6 @@ class OperationalCredentials(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 12
 
-
     class Structs:
         @dataclass
         class NOCStruct(ClusterObject):
@@ -115,7 +114,6 @@ class OperationalCredentials(Cluster):
             label: 'str' = ""
             vidVerificationStatement: 'typing.Optional[bytes]' = None
             fabricIndex: 'uint' = 0
-
 
     class Commands:
         @dataclass
@@ -392,7 +390,6 @@ class OperationalCredentials(Cluster):
             fabricBindingVersion: 'uint' = 0
             signature: 'bytes' = b""
 
-
     class Attributes:
         @dataclass
         class Nocs(ClusterAttributeDescriptor):
@@ -569,4 +566,3 @@ class OperationalCredentials(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

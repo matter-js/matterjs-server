@@ -115,7 +115,6 @@ class JointFabricDatastore(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 2
 
-
     class Structs:
         @dataclass
         class DatastoreStatusEntryStruct(ClusterObject):
@@ -345,7 +344,6 @@ class JointFabricDatastore(Cluster):
             epochKey2: 'typing.Union[Nullable, bytes]' = NullValue
             epochStartTime2: 'typing.Union[Nullable, uint]' = NullValue
             groupKeyMulticastPolicy: 'typing.Optional[JointFabricDatastore.Enums.DatastoreGroupKeyMulticastPolicyEnum]' = None
-
 
     class Commands:
         @dataclass
@@ -726,7 +724,6 @@ class JointFabricDatastore(Cluster):
             listId: 'uint' = 0
             nodeId: 'uint' = 0
 
-
     class Attributes:
         @dataclass
         class AnchorRootCa(ClusterAttributeDescriptor):
@@ -1031,4 +1028,3 @@ class JointFabricDatastore(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

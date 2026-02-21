@@ -72,7 +72,6 @@ class Channel(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 4
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kChannelList = 0x1
@@ -84,7 +83,6 @@ class Channel(Cluster):
             kScheduled = 0x1
             kRecordSeries = 0x2
             kRecorded = 0x4
-
 
     class Structs:
         @dataclass
@@ -240,7 +238,6 @@ class Channel(Cluster):
 
             previousToken: 'typing.Union[None, Nullable, Channel.Structs.PageTokenStruct]' = None
             nextToken: 'typing.Union[None, Nullable, Channel.Structs.PageTokenStruct]' = None
-
 
     class Commands:
         @dataclass
@@ -401,7 +398,6 @@ class Channel(Cluster):
             paging: 'Channel.Structs.ChannelPagingStruct' = field(default_factory=lambda: Channel.Structs.ChannelPagingStruct())
             programList: 'typing.List[typing.Optional[Channel.Structs.ProgramStruct]]' = field(default_factory=lambda: [])
 
-
     class Attributes:
         @dataclass
         class ChannelList(ClusterAttributeDescriptor):
@@ -530,4 +526,3 @@ class Channel(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

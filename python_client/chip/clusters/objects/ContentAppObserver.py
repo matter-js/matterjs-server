@@ -45,7 +45,6 @@ class ContentAppObserver(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 2
 
-
     class Commands:
         @dataclass
         class ContentAppMessage(ClusterCommand):
@@ -84,7 +83,6 @@ class ContentAppObserver(Cluster):
             status: 'ContentAppObserver.Enums.StatusEnum' = 0
             data: 'typing.Optional[str]' = None
             encodingHint: 'typing.Optional[str]' = None
-
 
     class Attributes:
         @dataclass
@@ -166,4 +164,3 @@ class ContentAppObserver(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

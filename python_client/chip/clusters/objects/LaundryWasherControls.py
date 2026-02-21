@@ -55,12 +55,10 @@ class LaundryWasherControls(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 4
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kSpin = 0x1
             kRinse = 0x2
-
 
     class Attributes:
         @dataclass
@@ -206,4 +204,3 @@ class LaundryWasherControls(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

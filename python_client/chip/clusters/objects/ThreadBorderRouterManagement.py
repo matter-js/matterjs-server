@@ -51,7 +51,6 @@ class ThreadBorderRouterManagement(Cluster):
         class Feature(IntFlag):
             kPanChange = 0x1
 
-
     class Commands:
         @dataclass
         class GetActiveDatasetRequest(ClusterCommand):
@@ -132,7 +131,6 @@ class ThreadBorderRouterManagement(Cluster):
                     ])
 
             dataset: 'bytes' = b""
-
 
     class Attributes:
         @dataclass
@@ -310,4 +308,3 @@ class ThreadBorderRouterManagement(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

@@ -52,7 +52,6 @@ class Descriptor(Cluster):
         class Feature(IntFlag):
             kTagList = 0x1
 
-
     class Structs:
         @dataclass
         class DeviceTypeStruct(ClusterObject):
@@ -66,7 +65,6 @@ class Descriptor(Cluster):
 
             deviceType: 'uint' = 0
             revision: 'uint' = 0
-
 
     class Attributes:
         @dataclass
@@ -244,4 +242,3 @@ class Descriptor(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

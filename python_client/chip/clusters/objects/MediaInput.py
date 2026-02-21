@@ -59,11 +59,9 @@ class MediaInput(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 12
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kNameUpdates = 0x1
-
 
     class Structs:
         @dataclass
@@ -82,7 +80,6 @@ class MediaInput(Cluster):
             inputType: 'MediaInput.Enums.InputTypeEnum' = 0
             name: 'str' = ""
             description: 'str' = ""
-
 
     class Commands:
         @dataclass
@@ -148,7 +145,6 @@ class MediaInput(Cluster):
 
             index: 'uint' = 0
             name: 'str' = ""
-
 
     class Attributes:
         @dataclass
@@ -262,4 +258,3 @@ class MediaInput(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

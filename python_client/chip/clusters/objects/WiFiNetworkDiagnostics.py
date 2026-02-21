@@ -109,12 +109,10 @@ class WiFiNetworkDiagnostics(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 2
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kPacketCounts = 0x1
             kErrorCounts = 0x2
-
 
     class Commands:
         @dataclass
@@ -131,7 +129,6 @@ class WiFiNetworkDiagnostics(Cluster):
                     ])
 
             pass
-
 
     class Attributes:
         @dataclass
@@ -422,7 +419,6 @@ class WiFiNetworkDiagnostics(Cluster):
 
             value: 'uint' = 0
 
-
     class Events:
         @dataclass
         class Disconnection(ClusterEvent):
@@ -482,4 +478,3 @@ class WiFiNetworkDiagnostics(Cluster):
                     ])
 
             connectionStatus: 'WiFiNetworkDiagnostics.Enums.ConnectionStatusEnum' = 0
-

@@ -149,7 +149,6 @@ class DeviceEnergyManagement(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 3
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kPowerAdjustment = 0x1
@@ -159,7 +158,6 @@ class DeviceEnergyManagement(Cluster):
             kPausable = 0x10
             kForecastAdjustment = 0x20
             kConstraintBasedAdjustment = 0x40
-
 
     class Structs:
         @dataclass
@@ -315,7 +313,6 @@ class DeviceEnergyManagement(Cluster):
             maximumEnergy: 'typing.Optional[uint]' = None
             loadControl: 'typing.Optional[int]' = None
 
-
     class Commands:
         @dataclass
         class PowerAdjustRequest(ClusterCommand):
@@ -455,7 +452,6 @@ class DeviceEnergyManagement(Cluster):
                     ])
 
             pass
-
 
     class Attributes:
         @dataclass
@@ -666,7 +662,6 @@ class DeviceEnergyManagement(Cluster):
 
             value: 'uint' = 0
 
-
     class Events:
         @dataclass
         class PowerAdjustStart(ClusterEvent):
@@ -745,4 +740,3 @@ class DeviceEnergyManagement(Cluster):
                     ])
 
             cause: 'DeviceEnergyManagement.Enums.CauseEnum' = 0
-

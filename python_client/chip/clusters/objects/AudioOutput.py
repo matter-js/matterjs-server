@@ -53,11 +53,9 @@ class AudioOutput(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 6
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kNameUpdates = 0x1
-
 
     class Structs:
         @dataclass
@@ -74,7 +72,6 @@ class AudioOutput(Cluster):
             index: 'uint' = 0
             outputType: 'AudioOutput.Enums.OutputTypeEnum' = 0
             name: 'str' = ""
-
 
     class Commands:
         @dataclass
@@ -110,7 +107,6 @@ class AudioOutput(Cluster):
 
             index: 'uint' = 0
             name: 'str' = ""
-
 
     class Attributes:
         @dataclass
@@ -224,4 +220,3 @@ class AudioOutput(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

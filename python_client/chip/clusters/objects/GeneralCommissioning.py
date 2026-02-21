@@ -82,11 +82,9 @@ class GeneralCommissioning(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 3
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kTermsAndConditions = 0x1
-
 
     class Structs:
         @dataclass
@@ -101,7 +99,6 @@ class GeneralCommissioning(Cluster):
 
             failSafeExpiryLengthSeconds: 'uint' = 0
             maxCumulativeFailsafeSeconds: 'uint' = 0
-
 
     class Commands:
         @dataclass
@@ -244,7 +241,6 @@ class GeneralCommissioning(Cluster):
                     ])
 
             errorCode: 'GeneralCommissioning.Enums.CommissioningErrorEnum' = 0
-
 
     class Attributes:
         @dataclass
@@ -486,4 +482,3 @@ class GeneralCommissioning(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

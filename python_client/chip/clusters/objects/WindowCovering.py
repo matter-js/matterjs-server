@@ -150,7 +150,6 @@ class WindowCovering(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 3
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kLift = 0x1
@@ -192,7 +191,6 @@ class WindowCovering(Cluster):
             kHardwareFailure = 0x200
             kManualOperation = 0x400
             kProtection = 0x800
-
 
     class Commands:
         @dataclass
@@ -307,7 +305,6 @@ class WindowCovering(Cluster):
 
             tiltPercent100thsValue: 'uint' = 0
             ignored: 'typing.Optional[uint]' = None
-
 
     class Attributes:
         @dataclass
@@ -821,4 +818,3 @@ class WindowCovering(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

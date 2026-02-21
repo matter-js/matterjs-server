@@ -50,11 +50,9 @@ class UnitLocalization(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 3
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kTemperatureUnit = 0x1
-
 
     class Attributes:
         @dataclass
@@ -168,4 +166,3 @@ class UnitLocalization(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

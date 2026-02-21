@@ -109,7 +109,6 @@ class ElectricalPowerMeasurement(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 17
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kDirectCurrent = 0x1
@@ -117,7 +116,6 @@ class ElectricalPowerMeasurement(Cluster):
             kPolyphasePower = 0x4
             kHarmonics = 0x8
             kPowerQuality = 0x10
-
 
     class Structs:
         @dataclass
@@ -163,7 +161,6 @@ class ElectricalPowerMeasurement(Cluster):
 
             order: 'uint' = 0
             measurement: 'typing.Union[Nullable, int]' = NullValue
-
 
     class Attributes:
         @dataclass
@@ -550,7 +547,6 @@ class ElectricalPowerMeasurement(Cluster):
 
             value: 'uint' = 0
 
-
     class Events:
         @dataclass
         class MeasurementPeriodRanges(ClusterEvent):
@@ -570,4 +566,3 @@ class ElectricalPowerMeasurement(Cluster):
                     ])
 
             ranges: 'typing.List[typing.Optional[ElectricalPowerMeasurement.Structs.MeasurementRangeStruct]]' = field(default_factory=lambda: [])
-

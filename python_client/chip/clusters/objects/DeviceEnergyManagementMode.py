@@ -76,11 +76,9 @@ class DeviceEnergyManagementMode(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 4
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kOnOff = 0x1
-
 
     class Structs:
         @dataclass
@@ -105,7 +103,6 @@ class DeviceEnergyManagementMode(Cluster):
 
             mfgCode: 'typing.Optional[uint]' = None
             value: 'DeviceEnergyManagementMode.Enums.ModeTag' = 0
-
 
     class Commands:
         @dataclass
@@ -141,7 +138,6 @@ class DeviceEnergyManagementMode(Cluster):
 
             status: 'DeviceEnergyManagementMode.Enums.ModeChangeStatus' = 0
             statusText: 'str' = ""
-
 
     class Attributes:
         @dataclass
@@ -287,4 +283,3 @@ class DeviceEnergyManagementMode(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

@@ -52,7 +52,6 @@ class ModeSelect(Cluster):
         class Feature(IntFlag):
             kOnOff = 0x1
 
-
     class Structs:
         @dataclass
         class SemanticTagStruct(ClusterObject):
@@ -82,7 +81,6 @@ class ModeSelect(Cluster):
             mode: 'uint' = 0
             semanticTags: 'typing.List[typing.Optional[ModeSelect.Structs.SemanticTagStruct]]' = field(default_factory=lambda: [])
 
-
     class Commands:
         @dataclass
         class ChangeToMode(ClusterCommand):
@@ -99,7 +97,6 @@ class ModeSelect(Cluster):
                     ])
 
             newMode: 'uint' = 0
-
 
     class Attributes:
         @dataclass
@@ -277,4 +274,3 @@ class ModeSelect(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

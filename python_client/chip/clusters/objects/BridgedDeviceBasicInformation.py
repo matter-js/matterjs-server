@@ -125,11 +125,9 @@ class BridgedDeviceBasicInformation(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 21
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kBridgedIcdSupport = 0x100000
-
 
     class Structs:
         @dataclass
@@ -158,7 +156,6 @@ class BridgedDeviceBasicInformation(Cluster):
             caseSessionsPerFabric: 'uint' = 0
             subscriptionsPerFabric: 'uint' = 0
 
-
     class Commands:
         @dataclass
         class KeepActive(ClusterCommand):
@@ -177,7 +174,6 @@ class BridgedDeviceBasicInformation(Cluster):
 
             stayActiveDuration: 'uint' = 0
             timeoutMs: 'uint' = 0
-
 
     class Attributes:
         @dataclass
@@ -644,7 +640,6 @@ class BridgedDeviceBasicInformation(Cluster):
 
             value: 'uint' = 0
 
-
     class Events:
         @dataclass
         class StartUp(ClusterEvent):
@@ -737,4 +732,3 @@ class BridgedDeviceBasicInformation(Cluster):
                     ])
 
             promisedActiveDuration: 'uint' = 0
-

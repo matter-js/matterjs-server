@@ -49,7 +49,6 @@ class ScenesManagement(Cluster):
         class CopyModeBitmap(IntFlag):
             kCopyAllScenes = 0x1
 
-
     class Structs:
         @dataclass
         class SceneInfoStruct(ClusterObject):
@@ -130,7 +129,6 @@ class ScenesManagement(Cluster):
             sceneName: 'typing.Optional[str]' = None
             sceneTransitionTime: 'uint' = 0
             extensionFields: 'typing.List[typing.Optional[ScenesManagement.Structs.ExtensionFieldSetStruct]]' = field(default_factory=lambda: [])
-
 
     class Commands:
         @dataclass
@@ -433,7 +431,6 @@ class ScenesManagement(Cluster):
             groupIdentifierFrom: 'uint' = 0
             sceneIdentifierFrom: 'uint' = 0
 
-
     class Attributes:
         @dataclass
         class DoNotUse(ClusterAttributeDescriptor):
@@ -562,4 +559,3 @@ class ScenesManagement(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

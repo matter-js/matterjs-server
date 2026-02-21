@@ -74,7 +74,6 @@ class Identify(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 1
 
-
     class Commands:
         @dataclass
         class Identify(ClusterCommand):
@@ -109,7 +108,6 @@ class Identify(Cluster):
 
             effectIdentifier: 'Identify.Enums.EffectIdentifierEnum' = 0
             effectVariant: 'Identify.Enums.EffectVariantEnum' = 0
-
 
     class Attributes:
         @dataclass
@@ -223,4 +221,3 @@ class Identify(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

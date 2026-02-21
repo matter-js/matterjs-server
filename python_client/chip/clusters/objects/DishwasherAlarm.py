@@ -55,7 +55,6 @@ class DishwasherAlarm(Cluster):
             kTempTooHigh = 0x10
             kWaterLevelError = 0x20
 
-
     class Commands:
         @dataclass
         class Reset(ClusterCommand):
@@ -88,7 +87,6 @@ class DishwasherAlarm(Cluster):
                     ])
 
             mask: 'DishwasherAlarm.Bitmaps.AlarmBitmap' = 0
-
 
     class Attributes:
         @dataclass
@@ -235,7 +233,6 @@ class DishwasherAlarm(Cluster):
 
             value: 'uint' = 0
 
-
     class Events:
         @dataclass
         class Notify(ClusterEvent):
@@ -261,4 +258,3 @@ class DishwasherAlarm(Cluster):
             inactive: 'DishwasherAlarm.Bitmaps.AlarmBitmap' = 0
             state: 'DishwasherAlarm.Bitmaps.AlarmBitmap' = 0
             mask: 'DishwasherAlarm.Bitmaps.AlarmBitmap' = 0
-

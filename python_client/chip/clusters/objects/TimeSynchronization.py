@@ -116,14 +116,12 @@ class TimeSynchronization(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 3
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kTimeZone = 0x1
             kNtpClient = 0x2
             kNtpServer = 0x4
             kTimeSyncClient = 0x8
-
 
     class Structs:
         @dataclass
@@ -183,7 +181,6 @@ class TimeSynchronization(Cluster):
             offset: 'int' = 0
             validStarting: 'uint' = 0
             validUntil: 'typing.Union[Nullable, uint]' = NullValue
-
 
     class Commands:
         @dataclass
@@ -287,7 +284,6 @@ class TimeSynchronization(Cluster):
                     ])
 
             dstOffsetRequired: 'bool' = False
-
 
     class Attributes:
         @dataclass
@@ -578,7 +574,6 @@ class TimeSynchronization(Cluster):
 
             value: 'uint' = 0
 
-
     class Events:
         @dataclass
         class DSTTableEmpty(ClusterEvent):
@@ -673,4 +668,3 @@ class TimeSynchronization(Cluster):
                     ])
 
             pass
-

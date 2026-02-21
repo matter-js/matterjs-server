@@ -68,7 +68,6 @@ class OtaSoftwareUpdateProvider(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 4
 
-
     class Commands:
         @dataclass
         class QueryImage(ClusterCommand):
@@ -184,7 +183,6 @@ class OtaSoftwareUpdateProvider(Cluster):
             action: 'OtaSoftwareUpdateProvider.Enums.ApplyUpdateActionEnum' = 0
             delayedActionTime: 'uint' = 0
 
-
     class Attributes:
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -265,4 +263,3 @@ class OtaSoftwareUpdateProvider(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

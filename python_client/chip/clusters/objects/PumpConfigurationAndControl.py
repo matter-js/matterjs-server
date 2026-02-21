@@ -108,7 +108,6 @@ class PumpConfigurationAndControl(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 8
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kConstantPressure = 0x1
@@ -129,7 +128,6 @@ class PumpConfigurationAndControl(Cluster):
             kRemotePressure = 0x40
             kRemoteFlow = 0x80
             kRemoteTemperature = 0x100
-
 
     class Attributes:
         @dataclass
@@ -596,7 +594,6 @@ class PumpConfigurationAndControl(Cluster):
 
             value: 'uint' = 0
 
-
     class Events:
         @dataclass
         class SupplyVoltageLow(ClusterEvent):
@@ -903,4 +900,3 @@ class PumpConfigurationAndControl(Cluster):
                     ])
 
             pass
-

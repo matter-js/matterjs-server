@@ -125,7 +125,6 @@ class BasicInformation(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 21
 
-
     class Structs:
         @dataclass
         class ProductAppearanceStruct(ClusterObject):
@@ -152,7 +151,6 @@ class BasicInformation(Cluster):
 
             caseSessionsPerFabric: 'uint' = 0
             subscriptionsPerFabric: 'uint' = 0
-
 
     class Attributes:
         @dataclass
@@ -619,7 +617,6 @@ class BasicInformation(Cluster):
 
             value: 'uint' = 0
 
-
     class Events:
         @dataclass
         class StartUp(ClusterEvent):
@@ -695,4 +692,3 @@ class BasicInformation(Cluster):
                     ])
 
             reachableNewValue: 'bool' = False
-

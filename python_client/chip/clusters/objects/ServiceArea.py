@@ -82,13 +82,11 @@ class ServiceArea(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 4
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kSelectWhileRunning = 0x1
             kProgressReporting = 0x2
             kMaps = 0x4
-
 
     class Structs:
         @dataclass
@@ -162,7 +160,6 @@ class ServiceArea(Cluster):
             totalOperationalTime: 'typing.Union[None, Nullable, uint]' = None
             estimatedTime: 'typing.Union[None, Nullable, uint]' = None
 
-
     class Commands:
         @dataclass
         class SelectAreas(ClusterCommand):
@@ -231,7 +228,6 @@ class ServiceArea(Cluster):
 
             status: 'ServiceArea.Enums.SkipAreaStatus' = 0
             statusText: 'str' = ""
-
 
     class Attributes:
         @dataclass
@@ -409,4 +405,3 @@ class ServiceArea(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

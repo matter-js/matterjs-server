@@ -104,7 +104,6 @@ class AccountLogin(Cluster):
 
             setupPin: 'str' = ""
 
-
     class Attributes:
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -186,7 +185,6 @@ class AccountLogin(Cluster):
 
             value: 'uint' = 0
 
-
     class Events:
         @dataclass
         class LoggedOut(ClusterEvent):
@@ -206,4 +204,3 @@ class AccountLogin(Cluster):
                     ])
 
             node: 'typing.Optional[uint]' = None
-

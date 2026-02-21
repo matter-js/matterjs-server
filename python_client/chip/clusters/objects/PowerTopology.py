@@ -46,7 +46,6 @@ class PowerTopology(Cluster):
             kSetTopology = 0x4
             kDynamicPowerFlow = 0x8
 
-
     class Attributes:
         @dataclass
         class AvailableEndpoints(ClusterAttributeDescriptor):
@@ -159,4 +158,3 @@ class PowerTopology(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

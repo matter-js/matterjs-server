@@ -50,7 +50,6 @@ class RefrigeratorAlarm(Cluster):
         class AlarmBitmap(IntFlag):
             kDoorOpen = 0x1
 
-
     class Commands:
         @dataclass
         class ModifyEnabledAlarms(ClusterCommand):
@@ -83,7 +82,6 @@ class RefrigeratorAlarm(Cluster):
                     ])
 
             alarms: 'RefrigeratorAlarm.Bitmaps.AlarmBitmap' = 0
-
 
     class Attributes:
         @dataclass
@@ -230,7 +228,6 @@ class RefrigeratorAlarm(Cluster):
 
             value: 'uint' = 0
 
-
     class Events:
         @dataclass
         class Notify(ClusterEvent):
@@ -256,4 +253,3 @@ class RefrigeratorAlarm(Cluster):
             inactive: 'RefrigeratorAlarm.Bitmaps.AlarmBitmap' = 0
             state: 'RefrigeratorAlarm.Bitmaps.AlarmBitmap' = 0
             mask: 'RefrigeratorAlarm.Bitmaps.AlarmBitmap' = 0
-

@@ -86,7 +86,6 @@ class Actions(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 3
 
-
     class Bitmaps:
         class CommandBits(IntFlag):
             kInstantAction = 0x1
@@ -101,7 +100,6 @@ class Actions(Cluster):
             kEnableActionWithDuration = 0x200
             kDisableAction = 0x400
             kDisableActionWithDuration = 0x800
-
 
     class Structs:
         @dataclass
@@ -141,7 +139,6 @@ class Actions(Cluster):
             name: 'str' = ""
             type: 'Actions.Enums.EndpointListTypeEnum' = 0
             endpoints: 'typing.List[typing.Optional[uint]]' = field(default_factory=lambda: [])
-
 
     class Commands:
         @dataclass
@@ -370,7 +367,6 @@ class Actions(Cluster):
             invokeId: 'typing.Optional[uint]' = None
             duration: 'uint' = 0
 
-
     class Attributes:
         @dataclass
         class ActionList(ClusterAttributeDescriptor):
@@ -500,7 +496,6 @@ class Actions(Cluster):
 
             value: 'uint' = 0
 
-
     class Events:
         @dataclass
         class StateChanged(ClusterEvent):
@@ -549,4 +544,3 @@ class Actions(Cluster):
             invokeId: 'uint' = 0
             newState: 'Actions.Enums.ActionStateEnum' = 0
             error: 'Actions.Enums.ActionErrorEnum' = 0
-

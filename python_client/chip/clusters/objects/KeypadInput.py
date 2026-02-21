@@ -138,13 +138,11 @@ class KeypadInput(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 119
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kNavigationKeyCodes = 0x1
             kLocationKeys = 0x2
             kNumberKeys = 0x4
-
 
     class Commands:
         @dataclass
@@ -178,7 +176,6 @@ class KeypadInput(Cluster):
                     ])
 
             status: 'KeypadInput.Enums.StatusEnum' = 0
-
 
     class Attributes:
         @dataclass
@@ -260,4 +257,3 @@ class KeypadInput(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

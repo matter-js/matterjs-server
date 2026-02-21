@@ -65,7 +65,6 @@ class BooleanStateConfiguration(Cluster):
         class SensorFaultBitmap(IntFlag):
             kGeneralFault = 0x1
 
-
     class Commands:
         @dataclass
         class SuppressAlarm(ClusterCommand):
@@ -98,7 +97,6 @@ class BooleanStateConfiguration(Cluster):
                     ])
 
             alarmsToEnableDisable: 'BooleanStateConfiguration.Bitmaps.AlarmModeBitmap' = 0
-
 
     class Attributes:
         @dataclass
@@ -309,7 +307,6 @@ class BooleanStateConfiguration(Cluster):
 
             value: 'uint' = 0
 
-
     class Events:
         @dataclass
         class AlarmsStateChanged(ClusterEvent):
@@ -350,4 +347,3 @@ class BooleanStateConfiguration(Cluster):
                     ])
 
             sensorFault: 'BooleanStateConfiguration.Bitmaps.SensorFaultBitmap' = 0
-

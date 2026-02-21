@@ -82,11 +82,9 @@ class OvenMode(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 4
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kOnOff = 0x1
-
 
     class Structs:
         @dataclass
@@ -111,7 +109,6 @@ class OvenMode(Cluster):
 
             mfgCode: 'typing.Optional[uint]' = None
             value: 'OvenMode.Enums.ModeTag' = 0
-
 
     class Commands:
         @dataclass
@@ -147,7 +144,6 @@ class OvenMode(Cluster):
 
             status: 'OvenMode.Enums.ModeChangeStatus' = 0
             statusText: 'str' = ""
-
 
     class Attributes:
         @dataclass
@@ -293,4 +289,3 @@ class OvenMode(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

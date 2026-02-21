@@ -57,12 +57,10 @@ class EnergyPreference(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 4
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kEnergyBalance = 0x1
             kLowPowerModeSensitivity = 0x2
-
 
     class Structs:
         @dataclass
@@ -77,7 +75,6 @@ class EnergyPreference(Cluster):
 
             step: 'uint' = 0
             label: 'typing.Optional[str]' = None
-
 
     class Attributes:
         @dataclass
@@ -239,4 +236,3 @@ class EnergyPreference(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

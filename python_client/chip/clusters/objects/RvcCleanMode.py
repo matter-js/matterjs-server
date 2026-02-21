@@ -73,11 +73,9 @@ class RvcCleanMode(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 16388
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kOnOff = 0x1
-
 
     class Structs:
         @dataclass
@@ -102,7 +100,6 @@ class RvcCleanMode(Cluster):
 
             mfgCode: 'typing.Optional[uint]' = None
             value: 'RvcCleanMode.Enums.ModeTag' = 0
-
 
     class Commands:
         @dataclass
@@ -138,7 +135,6 @@ class RvcCleanMode(Cluster):
 
             status: 'RvcCleanMode.Enums.ModeChangeStatus' = 0
             statusText: 'str' = ""
-
 
     class Attributes:
         @dataclass
@@ -284,4 +280,3 @@ class RvcCleanMode(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

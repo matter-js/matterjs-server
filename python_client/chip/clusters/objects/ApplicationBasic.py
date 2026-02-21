@@ -63,7 +63,6 @@ class ApplicationBasic(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 4
 
-
     class Structs:
         @dataclass
         class ApplicationStruct(ClusterObject):
@@ -77,7 +76,6 @@ class ApplicationBasic(Cluster):
 
             catalogVendorId: 'uint' = 0
             applicationId: 'str' = ""
-
 
     class Attributes:
         @dataclass
@@ -287,4 +285,3 @@ class ApplicationBasic(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

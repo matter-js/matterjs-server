@@ -57,7 +57,6 @@ class WaterHeaterManagement(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 2
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kEnergyManagement = 0x1
@@ -69,7 +68,6 @@ class WaterHeaterManagement(Cluster):
             kHeatPump = 0x4
             kBoiler = 0x8
             kOther = 0x10
-
 
     class Structs:
         @dataclass
@@ -92,7 +90,6 @@ class WaterHeaterManagement(Cluster):
             temporarySetpoint: 'typing.Optional[uint]' = None
             targetPercentage: 'typing.Optional[uint]' = None
             targetReheat: 'typing.Optional[uint]' = None
-
 
     class Commands:
         @dataclass
@@ -125,7 +122,6 @@ class WaterHeaterManagement(Cluster):
                     ])
 
             pass
-
 
     class Attributes:
         @dataclass
@@ -304,7 +300,6 @@ class WaterHeaterManagement(Cluster):
 
             value: 'uint' = 0
 
-
     class Events:
         @dataclass
         class BoostStarted(ClusterEvent):
@@ -342,4 +337,3 @@ class WaterHeaterManagement(Cluster):
                     ])
 
             pass
-

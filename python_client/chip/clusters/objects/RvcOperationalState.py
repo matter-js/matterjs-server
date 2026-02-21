@@ -93,7 +93,6 @@ class RvcOperationalState(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 79
 
-
     class Structs:
         @dataclass
         class OperationalStateStruct(ClusterObject):
@@ -122,7 +121,6 @@ class RvcOperationalState(Cluster):
             errorStateId: 'RvcOperationalState.Enums.ErrorStateEnum' = 0
             errorStateLabel: 'typing.Optional[str]' = None
             errorStateDetails: 'typing.Optional[str]' = None
-
 
     class Commands:
         @dataclass
@@ -215,7 +213,6 @@ class RvcOperationalState(Cluster):
                     ])
 
             commandResponseState: 'RvcOperationalState.Structs.ErrorStateStruct' = field(default_factory=lambda: RvcOperationalState.Structs.ErrorStateStruct())
-
 
     class Attributes:
         @dataclass
@@ -394,7 +391,6 @@ class RvcOperationalState(Cluster):
 
             value: 'uint' = 0
 
-
     class Events:
         @dataclass
         class OperationalError(ClusterEvent):
@@ -437,4 +433,3 @@ class RvcOperationalState(Cluster):
             completionErrorCode: 'Globals.Enums.enum8' = 0
             totalOperationalTime: 'typing.Union[None, Nullable, uint]' = None
             pausedTime: 'typing.Union[None, Nullable, uint]' = None
-

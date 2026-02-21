@@ -62,11 +62,9 @@ class AdministratorCommissioning(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 5
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kBasic = 0x1
-
 
     class Commands:
         @dataclass
@@ -123,7 +121,6 @@ class AdministratorCommissioning(Cluster):
                     ])
 
             pass
-
 
     class Attributes:
         @dataclass
@@ -253,4 +250,3 @@ class AdministratorCommissioning(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

@@ -59,7 +59,6 @@ class ThreadNetworkDirectory(Cluster):
             channel: 'uint' = 0
             activeTimestamp: 'uint' = 0
 
-
     class Commands:
         @dataclass
         class AddNetwork(ClusterCommand):
@@ -124,7 +123,6 @@ class ThreadNetworkDirectory(Cluster):
                     ])
 
             operationalDataset: 'bytes' = b""
-
 
     class Attributes:
         @dataclass
@@ -254,4 +252,3 @@ class ThreadNetworkDirectory(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

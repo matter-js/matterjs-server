@@ -74,11 +74,9 @@ class RefrigeratorAndTemperatureControlledCabinetMode(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 4
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kOnOff = 0x1
-
 
     class Structs:
         @dataclass
@@ -103,7 +101,6 @@ class RefrigeratorAndTemperatureControlledCabinetMode(Cluster):
 
             mfgCode: 'typing.Optional[uint]' = None
             value: 'RefrigeratorAndTemperatureControlledCabinetMode.Enums.ModeTag' = 0
-
 
     class Commands:
         @dataclass
@@ -139,7 +136,6 @@ class RefrigeratorAndTemperatureControlledCabinetMode(Cluster):
 
             status: 'RefrigeratorAndTemperatureControlledCabinetMode.Enums.ModeChangeStatus' = 0
             statusText: 'str' = ""
-
 
     class Attributes:
         @dataclass
@@ -285,4 +281,3 @@ class RefrigeratorAndTemperatureControlledCabinetMode(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

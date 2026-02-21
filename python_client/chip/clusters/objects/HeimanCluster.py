@@ -241,4 +241,3 @@ class HeimanCluster(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

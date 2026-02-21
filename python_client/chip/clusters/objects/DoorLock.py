@@ -365,7 +365,6 @@ class DoorLock(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 4
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kPinCredential = 0x1
@@ -426,7 +425,6 @@ class DoorLock(Cluster):
             kFrontEscutcheonRemoved = 0x20
             kDoorForcedOpen = 0x40
 
-
     class Structs:
         @dataclass
         class CredentialStruct(ClusterObject):
@@ -440,7 +438,6 @@ class DoorLock(Cluster):
 
             credentialType: 'DoorLock.Enums.CredentialTypeEnum' = 0
             credentialIndex: 'uint' = 0
-
 
     class Commands:
         @dataclass
@@ -1299,7 +1296,6 @@ class DoorLock(Cluster):
             nextCredentialIndex: 'typing.Union[None, Nullable, uint]' = None
             credentialData: 'typing.Union[None, Nullable, bytes]' = None
 
-
     class Attributes:
         @dataclass
         class LockState(ClusterAttributeDescriptor):
@@ -2117,7 +2113,6 @@ class DoorLock(Cluster):
 
             value: 'uint' = 0
 
-
     class Events:
         @dataclass
         class DoorLockAlarm(ClusterEvent):
@@ -2247,4 +2242,3 @@ class DoorLock(Cluster):
             fabricIndex: 'typing.Union[Nullable, uint]' = NullValue
             sourceNode: 'typing.Union[Nullable, uint]' = NullValue
             dataIndex: 'typing.Union[Nullable, uint]' = NullValue
-

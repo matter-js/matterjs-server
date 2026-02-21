@@ -86,7 +86,6 @@ class ContentLauncher(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 2
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kContentSearch = 0x1
@@ -98,7 +97,6 @@ class ContentLauncher(Cluster):
         class SupportedProtocolsBitmap(IntFlag):
             kDash = 0x1
             kHls = 0x2
-
 
     class Structs:
         @dataclass
@@ -221,7 +219,6 @@ class ContentLauncher(Cluster):
             characteristics: 'typing.Union[None, Nullable, typing.List[typing.Optional[MediaPlayback.Enums.CharacteristicEnum]]]' = None
             audioOutputIndex: 'typing.Union[None, Nullable, uint]' = None
 
-
     class Commands:
         @dataclass
         class LaunchContent(ClusterCommand):
@@ -286,7 +283,6 @@ class ContentLauncher(Cluster):
 
             status: 'ContentLauncher.Enums.StatusEnum' = 0
             data: 'typing.Optional[str]' = None
-
 
     class Attributes:
         @dataclass
@@ -400,4 +396,3 @@ class ContentLauncher(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

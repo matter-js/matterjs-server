@@ -50,7 +50,6 @@ class Switch(Cluster):
             kMomentarySwitchMultiPress = 0x10
             kActionSwitch = 0x20
 
-
     class Attributes:
         @dataclass
         class NumberOfPositions(ClusterAttributeDescriptor):
@@ -179,7 +178,6 @@ class Switch(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-
 
     class Events:
         @dataclass
@@ -318,4 +316,3 @@ class Switch(Cluster):
 
             previousPosition: 'uint' = 0
             totalNumberOfPressesCounted: 'uint' = 0
-

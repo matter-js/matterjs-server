@@ -555,9 +555,11 @@ function generateClusterFile(
         w.blankLine();
         w.line("class Enums:");
         w.pushIndent();
-        for (const e of enums) {
-            generateEnum(w, e);
-            w.blankLine();
+        for (let i = 0; i < enums.length; i++) {
+            generateEnum(w, enums[i]);
+            if (i < enums.length - 1) {
+                w.blankLine();
+            }
         }
         w.popIndent();
     }
@@ -579,12 +581,16 @@ function generateClusterFile(
                 w.line(`${toKName(f.title || f.name)} = 0x${flagValue.toString(16).toUpperCase()}`);
             }
             w.popIndent();
-            w.blankLine();
+            if (bitmaps.length > 0) {
+                w.blankLine();
+            }
         }
 
-        for (const b of bitmaps) {
-            generateBitmap(w, b);
-            w.blankLine();
+        for (let i = 0; i < bitmaps.length; i++) {
+            generateBitmap(w, bitmaps[i]);
+            if (i < bitmaps.length - 1) {
+                w.blankLine();
+            }
         }
         w.popIndent();
     }
@@ -594,9 +600,11 @@ function generateClusterFile(
         w.blankLine();
         w.line("class Structs:");
         w.pushIndent();
-        for (const s of structs) {
-            generateStruct(w, s, clusterName, datatypeRegistry, resolveType);
-            w.blankLine();
+        for (let i = 0; i < structs.length; i++) {
+            generateStruct(w, structs[i], clusterName, datatypeRegistry, resolveType);
+            if (i < structs.length - 1) {
+                w.blankLine();
+            }
         }
         w.popIndent();
     }
@@ -606,9 +614,11 @@ function generateClusterFile(
         w.blankLine();
         w.line("class Commands:");
         w.pushIndent();
-        for (const cmd of allCommands) {
-            generateCommand(w, cmd, clusterName, clusterId, datatypeRegistry, resolveType, responseCommands);
-            w.blankLine();
+        for (let i = 0; i < allCommands.length; i++) {
+            generateCommand(w, allCommands[i], clusterName, clusterId, datatypeRegistry, resolveType, responseCommands);
+            if (i < allCommands.length - 1) {
+                w.blankLine();
+            }
         }
         w.popIndent();
     }
@@ -618,12 +628,17 @@ function generateClusterFile(
     w.line("class Attributes:");
     w.pushIndent();
 
-    for (const attr of clusterSpecificAttrs) {
-        generateAttribute(w, attr as AttributeModel, clusterName, clusterId, datatypeRegistry, resolveType);
-        w.blankLine();
+    for (let i = 0; i < clusterSpecificAttrs.length; i++) {
+        generateAttribute(w, clusterSpecificAttrs[i] as AttributeModel, clusterName, clusterId, datatypeRegistry, resolveType);
+        if (i < clusterSpecificAttrs.length - 1) {
+            w.blankLine();
+        }
     }
 
     // Global attributes
+    if (clusterSpecificAttrs.length > 0) {
+        w.blankLine();
+    }
     generateGlobalAttribute(w, "GeneratedCommandList", 0xFFF8, "typing.List[uint]", clusterId);
     w.blankLine();
     generateGlobalAttribute(w, "AcceptedCommandList", 0xFFF9, "typing.List[uint]", clusterId);
@@ -633,7 +648,6 @@ function generateClusterFile(
     generateGlobalAttribute(w, "FeatureMap", 0xFFFC, "uint", clusterId);
     w.blankLine();
     generateGlobalAttribute(w, "ClusterRevision", 0xFFFD, "uint", clusterId);
-    w.blankLine();
 
     w.popIndent();
 
@@ -642,9 +656,11 @@ function generateClusterFile(
         w.blankLine();
         w.line("class Events:");
         w.pushIndent();
-        for (const evt of events) {
-            generateEvent(w, evt, clusterName, clusterId, datatypeRegistry, resolveType);
-            w.blankLine();
+        for (let i = 0; i < events.length; i++) {
+            generateEvent(w, events[i], clusterName, clusterId, datatypeRegistry, resolveType);
+            if (i < events.length - 1) {
+                w.blankLine();
+            }
         }
         w.popIndent();
     }
@@ -1178,8 +1194,9 @@ function generateDeviceTypes(): string {
     w.blankLine();
 
     // Generate device type classes
-    for (const dt of Matter.deviceTypes) {
-        if (dt.id === undefined) continue;
+    const deviceTypesList = Matter.deviceTypes.filter(dt => dt.id !== undefined);
+    for (let idx = 0; idx < deviceTypesList.length; idx++) {
+        const dt = deviceTypesList[idx];
         const name = dt.name;
 
         // Get required server clusters
@@ -1197,7 +1214,7 @@ function generateDeviceTypes(): string {
 
         w.line(`class ${name}(DeviceType):`);
         w.pushIndent();
-        w.line(`device_type: int = 0x${dt.id.toString(16).toUpperCase().padStart(4, "0")}`);
+        w.line(`device_type: int = 0x${dt.id!.toString(16).toUpperCase().padStart(4, "0")}`);
 
         if (clusterRefs.length === 0) {
             w.line("clusters: set[type[Cluster]] = set()");
@@ -1212,8 +1229,10 @@ function generateDeviceTypes(): string {
         }
 
         w.popIndent();
-        w.blankLine();
-        w.blankLine();
+        if (idx < deviceTypesList.length - 1) {
+            w.blankLine();
+            w.blankLine();
+        }
     }
 
     return w.toString();

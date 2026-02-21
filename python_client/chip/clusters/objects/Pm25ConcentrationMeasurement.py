@@ -95,7 +95,6 @@ class Pm25ConcentrationMeasurement(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 5
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kNumericMeasurement = 0x1
@@ -104,7 +103,6 @@ class Pm25ConcentrationMeasurement(Cluster):
             kCriticalLevel = 0x8
             kPeakMeasurement = 0x10
             kAverageMeasurement = 0x20
-
 
     class Attributes:
         @dataclass
@@ -362,4 +360,3 @@ class Pm25ConcentrationMeasurement(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

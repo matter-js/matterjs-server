@@ -76,7 +76,6 @@ class ValveConfigurationAndControl(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 3
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kTimeSync = 0x1
@@ -89,7 +88,6 @@ class ValveConfigurationAndControl(Cluster):
             kNotConnected = 0x8
             kShortCircuit = 0x10
             kCurrentExceeded = 0x20
-
 
     class Commands:
         @dataclass
@@ -124,7 +122,6 @@ class ValveConfigurationAndControl(Cluster):
                     ])
 
             pass
-
 
     class Attributes:
         @dataclass
@@ -383,7 +380,6 @@ class ValveConfigurationAndControl(Cluster):
 
             value: 'uint' = 0
 
-
     class Events:
         @dataclass
         class ValveStateChanged(ClusterEvent):
@@ -424,4 +420,3 @@ class ValveConfigurationAndControl(Cluster):
                     ])
 
             valveFault: 'ValveConfigurationAndControl.Bitmaps.ValveFaultBitmap' = 0
-

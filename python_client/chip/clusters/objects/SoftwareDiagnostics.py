@@ -47,7 +47,6 @@ class SoftwareDiagnostics(Cluster):
         class Feature(IntFlag):
             kWatermarks = 0x1
 
-
     class Structs:
         @dataclass
         class ThreadMetricsStruct(ClusterObject):
@@ -68,7 +67,6 @@ class SoftwareDiagnostics(Cluster):
             stackFreeMinimum: 'typing.Optional[uint]' = None
             stackSize: 'typing.Optional[uint]' = None
 
-
     class Commands:
         @dataclass
         class ResetWatermarks(ClusterCommand):
@@ -84,7 +82,6 @@ class SoftwareDiagnostics(Cluster):
                     ])
 
             pass
-
 
     class Attributes:
         @dataclass
@@ -231,7 +228,6 @@ class SoftwareDiagnostics(Cluster):
 
             value: 'uint' = 0
 
-
     class Events:
         @dataclass
         class SoftwareFault(ClusterEvent):
@@ -255,4 +251,3 @@ class SoftwareDiagnostics(Cluster):
             id: 'uint' = 0
             name: 'typing.Optional[str]' = None
             faultRecording: 'typing.Optional[bytes]' = None
-

@@ -52,14 +52,12 @@ class AirQuality(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 7
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kFair = 0x1
             kModerate = 0x2
             kVeryPoor = 0x4
             kExtremelyPoor = 0x8
-
 
     class Attributes:
         @dataclass
@@ -157,4 +155,3 @@ class AirQuality(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

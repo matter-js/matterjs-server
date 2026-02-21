@@ -62,11 +62,9 @@ class GroupKeyManagement(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 2
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kCacheAndSync = 0x1
-
 
     class Structs:
         @dataclass
@@ -127,7 +125,6 @@ class GroupKeyManagement(Cluster):
             endpoints: 'typing.List[typing.Optional[uint]]' = field(default_factory=lambda: [])
             groupName: 'typing.Optional[str]' = None
             fabricIndex: 'uint' = 0
-
 
     class Commands:
         @dataclass
@@ -225,7 +222,6 @@ class GroupKeyManagement(Cluster):
                     ])
 
             groupKeySetIDs: 'typing.List[typing.Optional[uint]]' = field(default_factory=lambda: [])
-
 
     class Attributes:
         @dataclass
@@ -371,4 +367,3 @@ class GroupKeyManagement(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

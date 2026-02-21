@@ -57,7 +57,6 @@ class PressureMeasurement(Cluster):
         class Feature(IntFlag):
             kExtended = 0x1
 
-
     class Attributes:
         @dataclass
         class MeasuredValue(ClusterAttributeDescriptor):
@@ -282,4 +281,3 @@ class PressureMeasurement(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

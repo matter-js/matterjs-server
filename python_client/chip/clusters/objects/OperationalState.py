@@ -71,7 +71,6 @@ class OperationalState(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 4
 
-
     class Structs:
         @dataclass
         class OperationalStateStruct(ClusterObject):
@@ -100,7 +99,6 @@ class OperationalState(Cluster):
             errorStateId: 'OperationalState.Enums.ErrorStateEnum' = 0
             errorStateLabel: 'typing.Optional[str]' = None
             errorStateDetails: 'typing.Optional[str]' = None
-
 
     class Commands:
         @dataclass
@@ -178,7 +176,6 @@ class OperationalState(Cluster):
                     ])
 
             commandResponseState: 'OperationalState.Structs.ErrorStateStruct' = field(default_factory=lambda: OperationalState.Structs.ErrorStateStruct())
-
 
     class Attributes:
         @dataclass
@@ -357,7 +354,6 @@ class OperationalState(Cluster):
 
             value: 'uint' = 0
 
-
     class Events:
         @dataclass
         class OperationalError(ClusterEvent):
@@ -400,4 +396,3 @@ class OperationalState(Cluster):
             completionErrorCode: 'Globals.Enums.enum8' = 0
             totalOperationalTime: 'typing.Union[None, Nullable, uint]' = None
             pausedTime: 'typing.Union[None, Nullable, uint]' = None
-

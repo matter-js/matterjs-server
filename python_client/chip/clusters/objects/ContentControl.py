@@ -75,7 +75,6 @@ class ContentControl(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 12
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kScreenTime = 0x1
@@ -95,7 +94,6 @@ class ContentControl(Cluster):
             kThursday = 0x10
             kFriday = 0x20
             kSaturday = 0x40
-
 
     class Structs:
         @dataclass
@@ -172,7 +170,6 @@ class ContentControl(Cluster):
             startMinute: 'uint' = 0
             endHour: 'uint' = 0
             endMinute: 'uint' = 0
-
 
     class Commands:
         @dataclass
@@ -446,7 +443,6 @@ class ContentControl(Cluster):
 
             pinCode: 'str' = ""
 
-
     class Attributes:
         @dataclass
         class Enabled(ClusterAttributeDescriptor):
@@ -704,7 +700,6 @@ class ContentControl(Cluster):
 
             value: 'uint' = 0
 
-
     class Events:
         @dataclass
         class RemainingScreenTimeExpired(ClusterEvent):
@@ -741,4 +736,3 @@ class ContentControl(Cluster):
                     ])
 
             pass
-

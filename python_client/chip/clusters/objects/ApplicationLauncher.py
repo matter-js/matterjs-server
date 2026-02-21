@@ -53,11 +53,9 @@ class ApplicationLauncher(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 6
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kApplicationPlatform = 0x1
-
 
     class Structs:
         @dataclass
@@ -85,7 +83,6 @@ class ApplicationLauncher(Cluster):
 
             application: 'ApplicationLauncher.Structs.ApplicationStruct' = field(default_factory=lambda: ApplicationLauncher.Structs.ApplicationStruct())
             endpoint: 'typing.Optional[uint]' = None
-
 
     class Commands:
         @dataclass
@@ -155,7 +152,6 @@ class ApplicationLauncher(Cluster):
 
             status: 'ApplicationLauncher.Enums.StatusEnum' = 0
             data: 'typing.Optional[bytes]' = None
-
 
     class Attributes:
         @dataclass
@@ -269,4 +265,3 @@ class ApplicationLauncher(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

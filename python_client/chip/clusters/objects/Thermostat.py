@@ -307,7 +307,6 @@ class Thermostat(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 2
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kHeating = 0x1
@@ -378,7 +377,6 @@ class Thermostat(Cluster):
         class ScheduleModeBitmap(IntFlag):
             kHeatSetpointPresent = 0x1
             kCoolSetpointPresent = 0x2
-
 
     class Structs:
         @dataclass
@@ -488,7 +486,6 @@ class Thermostat(Cluster):
             systemMode: 'Thermostat.Enums.SystemModeEnum' = 0
             numberOfSchedules: 'uint' = 0
             scheduleTypeFeatures: 'Thermostat.Bitmaps.ScheduleTypeFeaturesBitmap' = 0
-
 
     class Commands:
         @dataclass
@@ -683,7 +680,6 @@ class Thermostat(Cluster):
             statusCode: 'Globals.Enums.status' = 0
             attributeStatus: 'typing.List[typing.Optional[Globals.Structs.struct]]' = field(default_factory=lambda: [])
             timeout: 'typing.Optional[uint]' = None
-
 
     class Attributes:
         @dataclass
@@ -1725,4 +1721,3 @@ class Thermostat(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

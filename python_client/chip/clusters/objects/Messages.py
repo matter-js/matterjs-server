@@ -63,7 +63,6 @@ class Messages(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 4
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kReceivedConfirmation = 0x1
@@ -77,7 +76,6 @@ class Messages(Cluster):
             kReplyMessage = 0x4
             kMessageConfirmed = 0x8
             kMessageProtected = 0x10
-
 
     class Structs:
         @dataclass
@@ -117,7 +115,6 @@ class Messages(Cluster):
 
             messageResponseId: 'uint' = 0
             label: 'str' = ""
-
 
     class Commands:
         @dataclass
@@ -163,7 +160,6 @@ class Messages(Cluster):
                     ])
 
             messageIDs: 'typing.List[typing.Optional[bytes]]' = field(default_factory=lambda: [])
-
 
     class Attributes:
         @dataclass
@@ -278,7 +274,6 @@ class Messages(Cluster):
 
             value: 'uint' = 0
 
-
     class Events:
         @dataclass
         class MessageQueued(ClusterEvent):
@@ -348,4 +343,3 @@ class Messages(Cluster):
             reply: 'typing.Union[None, Nullable, str]' = None
             futureMessagesPreference: 'typing.Union[Nullable, Messages.Enums.FutureMessagePreferenceEnum]' = NullValue
             fabricIndex: 'uint' = 0
-

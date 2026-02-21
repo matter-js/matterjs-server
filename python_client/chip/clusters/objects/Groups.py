@@ -45,7 +45,6 @@ class Groups(Cluster):
         class NameSupportBitmap(IntFlag):
             kGroupNames = 0x80
 
-
     class Commands:
         @dataclass
         class AddGroup(ClusterCommand):
@@ -220,7 +219,6 @@ class Groups(Cluster):
             status: 'Globals.Enums.status' = 0
             groupId: 'uint' = 0
 
-
     class Attributes:
         @dataclass
         class NameSupport(ClusterAttributeDescriptor):
@@ -317,4 +315,3 @@ class Groups(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

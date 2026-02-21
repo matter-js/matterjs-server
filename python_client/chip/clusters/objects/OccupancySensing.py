@@ -75,7 +75,6 @@ class OccupancySensing(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 4
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kOther = 0x1
@@ -95,7 +94,6 @@ class OccupancySensing(Cluster):
             kUltrasonic = 0x2
             kPhysicalContact = 0x4
 
-
     class Structs:
         @dataclass
         class HoldTimeLimitsStruct(ClusterObject):
@@ -111,7 +109,6 @@ class OccupancySensing(Cluster):
             holdTimeMin: 'uint' = 0
             holdTimeMax: 'uint' = 0
             holdTimeDefault: 'uint' = 0
-
 
     class Attributes:
         @dataclass
@@ -418,7 +415,6 @@ class OccupancySensing(Cluster):
 
             value: 'uint' = 0
 
-
     class Events:
         @dataclass
         class OccupancyChanged(ClusterEvent):
@@ -438,4 +434,3 @@ class OccupancySensing(Cluster):
                     ])
 
             occupancy: 'OccupancySensing.Bitmaps.OccupancyBitmap' = 0
-

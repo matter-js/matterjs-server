@@ -79,13 +79,11 @@ class ActivatedCarbonFilterMonitoring(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 5
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kCondition = 0x1
             kWarning = 0x2
             kReplacementProductList = 0x4
-
 
     class Structs:
         @dataclass
@@ -100,7 +98,6 @@ class ActivatedCarbonFilterMonitoring(Cluster):
 
             productIdentifierType: 'ActivatedCarbonFilterMonitoring.Enums.ProductIdentifierTypeEnum' = 0
             productIdentifierValue: 'str' = ""
-
 
     class Commands:
         @dataclass
@@ -117,7 +114,6 @@ class ActivatedCarbonFilterMonitoring(Cluster):
                     ])
 
             pass
-
 
     class Attributes:
         @dataclass
@@ -295,4 +291,3 @@ class ActivatedCarbonFilterMonitoring(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

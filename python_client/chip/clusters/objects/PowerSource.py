@@ -318,14 +318,12 @@ class PowerSource(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 4
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kWired = 0x1
             kBattery = 0x2
             kRechargeable = 0x4
             kReplaceable = 0x8
-
 
     class Attributes:
         @dataclass
@@ -920,7 +918,6 @@ class PowerSource(Cluster):
 
             value: 'uint' = 0
 
-
     class Events:
         @dataclass
         class WiredFaultChange(ClusterEvent):
@@ -984,4 +981,3 @@ class PowerSource(Cluster):
 
             current: 'typing.List[typing.Optional[PowerSource.Enums.BatChargeFaultEnum]]' = field(default_factory=lambda: [])
             previous: 'typing.List[typing.Optional[PowerSource.Enums.BatChargeFaultEnum]]' = field(default_factory=lambda: [])
-

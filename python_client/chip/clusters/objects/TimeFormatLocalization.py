@@ -72,11 +72,9 @@ class TimeFormatLocalization(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 256
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kCalendarFormat = 0x1
-
 
     class Attributes:
         @dataclass
@@ -206,4 +204,3 @@ class TimeFormatLocalization(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

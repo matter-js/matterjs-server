@@ -57,7 +57,6 @@ class Binding(Cluster):
             cluster: 'typing.Optional[uint]' = None
             fabricIndex: 'uint' = 0
 
-
     class Attributes:
         @dataclass
         class Binding(ClusterAttributeDescriptor):
@@ -154,4 +153,3 @@ class Binding(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

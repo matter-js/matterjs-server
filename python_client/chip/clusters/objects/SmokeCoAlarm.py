@@ -127,12 +127,10 @@ class SmokeCoAlarm(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 4
 
-
     class Bitmaps:
         class Feature(IntFlag):
             kSmokeAlarm = 0x1
             kCoAlarm = 0x2
-
 
     class Commands:
         @dataclass
@@ -149,7 +147,6 @@ class SmokeCoAlarm(Cluster):
                     ])
 
             pass
-
 
     class Attributes:
         @dataclass
@@ -440,7 +437,6 @@ class SmokeCoAlarm(Cluster):
 
             value: 'uint' = 0
 
-
     class Events:
         @dataclass
         class SmokeAlarm(ClusterEvent):
@@ -644,4 +640,3 @@ class SmokeCoAlarm(Cluster):
                     ])
 
             pass
-

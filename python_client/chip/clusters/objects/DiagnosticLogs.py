@@ -67,7 +67,6 @@ class DiagnosticLogs(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 2
 
-
     class Commands:
         @dataclass
         class RetrieveLogsRequest(ClusterCommand):
@@ -110,7 +109,6 @@ class DiagnosticLogs(Cluster):
             logContent: 'bytes' = b""
             utcTimeStamp: 'typing.Optional[uint]' = None
             timeSinceBoot: 'typing.Optional[uint]' = None
-
 
     class Attributes:
         @dataclass
@@ -192,4 +190,3 @@ class DiagnosticLogs(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-

@@ -51,7 +51,6 @@ class LaundryDryerControls(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 4
 
-
     class Attributes:
         @dataclass
         class SupportedDrynessLevels(ClusterAttributeDescriptor):
@@ -164,4 +163,3 @@ class LaundryDryerControls(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: 'uint' = 0
-
