@@ -1212,7 +1212,7 @@ function generateDeviceTypes(): string {
 
         w.line(`class ${name}(DeviceType):`);
         w.pushIndent();
-        w.line(`device_type: int = 0x${dt.id!.toString(16).toUpperCase().padStart(4, "0")}`);
+        w.line(`device_type: int = 0x${dt.id.toString(16).toUpperCase().padStart(4, "0")}`);
 
         if (clusterRefs.length === 0) {
             w.line("clusters: set[type[Cluster]] = set()");
