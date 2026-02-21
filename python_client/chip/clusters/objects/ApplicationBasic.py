@@ -23,9 +23,9 @@ class ApplicationBasic(Cluster):
         return ClusterObjectDescriptor(
             Fields=[
                 ClusterObjectFieldDescriptor(Label="vendorName", Tag=0x00000000, Type=typing.Optional[str]),
-                ClusterObjectFieldDescriptor(Label="vendorId", Tag=0x00000001, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="vendorID", Tag=0x00000001, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="applicationName", Tag=0x00000002, Type=str),
-                ClusterObjectFieldDescriptor(Label="productId", Tag=0x00000003, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="productID", Tag=0x00000003, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="application", Tag=0x00000004, Type=ApplicationBasic.Structs.ApplicationStruct),
                 ClusterObjectFieldDescriptor(Label="status", Tag=0x00000005, Type=ApplicationBasic.Enums.ApplicationStatusEnum),
                 ClusterObjectFieldDescriptor(Label="applicationVersion", Tag=0x00000006, Type=str),
@@ -38,9 +38,9 @@ class ApplicationBasic(Cluster):
             ])
 
     vendorName: 'typing.Optional[str]' = None
-    vendorId: 'typing.Optional[uint]' = None
+    vendorID: 'typing.Optional[uint]' = None
     applicationName: 'str' = ""
-    productId: 'typing.Optional[uint]' = None
+    productID: 'typing.Optional[uint]' = None
     application: 'ApplicationBasic.Structs.ApplicationStruct' = field(default_factory=lambda: ApplicationBasic.Structs.ApplicationStruct())
     status: 'ApplicationBasic.Enums.ApplicationStatusEnum' = 0
     applicationVersion: 'str' = ""
@@ -70,12 +70,12 @@ class ApplicationBasic(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="catalogVendorId", Tag=0, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="applicationId", Tag=1, Type=str),
+                        ClusterObjectFieldDescriptor(Label="catalogVendorID", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="applicationID", Tag=1, Type=str),
                     ])
 
-            catalogVendorId: 'uint' = 0
-            applicationId: 'str' = ""
+            catalogVendorID: 'uint' = 0
+            applicationID: 'str' = ""
 
     class Attributes:
         @dataclass

@@ -80,8 +80,8 @@ class OtaSoftwareUpdateProvider(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="vendorId", Tag=0, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="productId", Tag=1, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="vendorID", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="productID", Tag=1, Type=uint),
                         ClusterObjectFieldDescriptor(Label="softwareVersion", Tag=2, Type=uint),
                         ClusterObjectFieldDescriptor(Label="protocolsSupported", Tag=3, Type=typing.List[typing.Optional[OtaSoftwareUpdateProvider.Enums.DownloadProtocolEnum]]),
                         ClusterObjectFieldDescriptor(Label="hardwareVersion", Tag=4, Type=typing.Optional[uint]),
@@ -90,8 +90,8 @@ class OtaSoftwareUpdateProvider(Cluster):
                         ClusterObjectFieldDescriptor(Label="metadataForProvider", Tag=7, Type=typing.Optional[bytes]),
                     ])
 
-            vendorId: 'uint' = 0
-            productId: 'uint' = 0
+            vendorID: 'uint' = 0
+            productID: 'uint' = 0
             softwareVersion: 'uint' = 0
             protocolsSupported: 'typing.List[typing.Optional[OtaSoftwareUpdateProvider.Enums.DownloadProtocolEnum]]' = field(default_factory=lambda: [])
             hardwareVersion: 'typing.Optional[uint]' = None

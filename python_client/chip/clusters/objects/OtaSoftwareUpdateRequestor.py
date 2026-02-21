@@ -22,7 +22,7 @@ class OtaSoftwareUpdateRequestor(Cluster):
     def descriptor(cls) -> ClusterObjectDescriptor:
         return ClusterObjectDescriptor(
             Fields=[
-                ClusterObjectFieldDescriptor(Label="defaultOtaProviders", Tag=0x00000000, Type=typing.List[typing.Optional[OtaSoftwareUpdateRequestor.Structs.ProviderLocation]]),
+                ClusterObjectFieldDescriptor(Label="defaultOTAProviders", Tag=0x00000000, Type=typing.List[typing.Optional[OtaSoftwareUpdateRequestor.Structs.ProviderLocation]]),
                 ClusterObjectFieldDescriptor(Label="updatePossible", Tag=0x00000001, Type=bool),
                 ClusterObjectFieldDescriptor(Label="updateState", Tag=0x00000002, Type=OtaSoftwareUpdateRequestor.Enums.UpdateStateEnum),
                 ClusterObjectFieldDescriptor(Label="updateStateProgress", Tag=0x00000003, Type=typing.Union[Nullable, uint]),
@@ -33,7 +33,7 @@ class OtaSoftwareUpdateRequestor(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    defaultOtaProviders: 'typing.List[typing.Optional[OtaSoftwareUpdateRequestor.Structs.ProviderLocation]]' = field(default_factory=lambda: [])
+    defaultOTAProviders: 'typing.List[typing.Optional[OtaSoftwareUpdateRequestor.Structs.ProviderLocation]]' = field(default_factory=lambda: [])
     updatePossible: 'bool' = False
     updateState: 'OtaSoftwareUpdateRequestor.Enums.UpdateStateEnum' = 0
     updateStateProgress: 'typing.Union[Nullable, uint]' = NullValue
@@ -89,12 +89,12 @@ class OtaSoftwareUpdateRequestor(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="providerNodeId", Tag=1, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="providerNodeID", Tag=1, Type=uint),
                         ClusterObjectFieldDescriptor(Label="endpoint", Tag=2, Type=uint),
                         ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=254, Type=uint),
                     ])
 
-            providerNodeId: 'uint' = 0
+            providerNodeID: 'uint' = 0
             endpoint: 'uint' = 0
             fabricIndex: 'uint' = 0
 
@@ -110,16 +110,16 @@ class OtaSoftwareUpdateRequestor(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="providerNodeId", Tag=0, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="vendorId", Tag=1, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="providerNodeID", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="vendorID", Tag=1, Type=uint),
                         ClusterObjectFieldDescriptor(Label="announcementReason", Tag=2, Type=OtaSoftwareUpdateRequestor.Enums.AnnouncementReasonEnum),
                         ClusterObjectFieldDescriptor(Label="metadataForNode", Tag=3, Type=typing.Optional[bytes]),
                         ClusterObjectFieldDescriptor(Label="endpoint", Tag=4, Type=uint),
                         ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=254, Type=uint),
                     ])
 
-            providerNodeId: 'uint' = 0
-            vendorId: 'uint' = 0
+            providerNodeID: 'uint' = 0
+            vendorID: 'uint' = 0
             announcementReason: 'OtaSoftwareUpdateRequestor.Enums.AnnouncementReasonEnum' = 0
             metadataForNode: 'typing.Optional[bytes]' = None
             endpoint: 'uint' = 0
@@ -311,11 +311,11 @@ class OtaSoftwareUpdateRequestor(Cluster):
                 return ClusterObjectDescriptor(
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="softwareVersion", Tag=0, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="productId", Tag=1, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="productID", Tag=1, Type=uint),
                     ])
 
             softwareVersion: 'uint' = 0
-            productId: 'uint' = 0
+            productID: 'uint' = 0
 
         @dataclass
         class DownloadError(ClusterEvent):

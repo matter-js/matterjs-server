@@ -100,11 +100,11 @@ class RvcOperationalState(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="operationalStateId", Tag=0, Type=RvcOperationalState.Enums.OperationalStateEnum),
+                        ClusterObjectFieldDescriptor(Label="operationalStateID", Tag=0, Type=RvcOperationalState.Enums.OperationalStateEnum),
                         ClusterObjectFieldDescriptor(Label="operationalStateLabel", Tag=1, Type=typing.Optional[str]),
                     ])
 
-            operationalStateId: 'RvcOperationalState.Enums.OperationalStateEnum' = 0
+            operationalStateID: 'RvcOperationalState.Enums.OperationalStateEnum' = 0
             operationalStateLabel: 'typing.Optional[str]' = None
 
         @dataclass
@@ -113,12 +113,12 @@ class RvcOperationalState(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="errorStateId", Tag=0, Type=RvcOperationalState.Enums.ErrorStateEnum),
+                        ClusterObjectFieldDescriptor(Label="errorStateID", Tag=0, Type=RvcOperationalState.Enums.ErrorStateEnum),
                         ClusterObjectFieldDescriptor(Label="errorStateLabel", Tag=1, Type=typing.Optional[str]),
                         ClusterObjectFieldDescriptor(Label="errorStateDetails", Tag=2, Type=typing.Optional[str]),
                     ])
 
-            errorStateId: 'RvcOperationalState.Enums.ErrorStateEnum' = 0
+            errorStateID: 'RvcOperationalState.Enums.ErrorStateEnum' = 0
             errorStateLabel: 'typing.Optional[str]' = None
             errorStateDetails: 'typing.Optional[str]' = None
 

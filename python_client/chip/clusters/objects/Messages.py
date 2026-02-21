@@ -84,7 +84,7 @@ class Messages(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="messageId", Tag=0, Type=bytes),
+                        ClusterObjectFieldDescriptor(Label="messageID", Tag=0, Type=bytes),
                         ClusterObjectFieldDescriptor(Label="priority", Tag=1, Type=Messages.Enums.MessagePriorityEnum),
                         ClusterObjectFieldDescriptor(Label="messageControl", Tag=2, Type=Messages.Bitmaps.MessageControlBitmap),
                         ClusterObjectFieldDescriptor(Label="startTime", Tag=3, Type=typing.Union[Nullable, uint]),
@@ -94,7 +94,7 @@ class Messages(Cluster):
                         ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=254, Type=uint),
                     ])
 
-            messageId: 'bytes' = b""
+            messageID: 'bytes' = b""
             priority: 'Messages.Enums.MessagePriorityEnum' = 0
             messageControl: 'Messages.Bitmaps.MessageControlBitmap' = 0
             startTime: 'typing.Union[Nullable, uint]' = NullValue
@@ -109,11 +109,11 @@ class Messages(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="messageResponseId", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="messageResponseID", Tag=0, Type=uint),
                         ClusterObjectFieldDescriptor(Label="label", Tag=1, Type=str),
                     ])
 
-            messageResponseId: 'uint' = 0
+            messageResponseID: 'uint' = 0
             label: 'str' = ""
 
     class Commands:
@@ -128,7 +128,7 @@ class Messages(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="messageId", Tag=0, Type=bytes),
+                        ClusterObjectFieldDescriptor(Label="messageID", Tag=0, Type=bytes),
                         ClusterObjectFieldDescriptor(Label="priority", Tag=1, Type=Messages.Enums.MessagePriorityEnum),
                         ClusterObjectFieldDescriptor(Label="messageControl", Tag=2, Type=Messages.Bitmaps.MessageControlBitmap),
                         ClusterObjectFieldDescriptor(Label="startTime", Tag=3, Type=typing.Union[Nullable, uint]),
@@ -137,7 +137,7 @@ class Messages(Cluster):
                         ClusterObjectFieldDescriptor(Label="responses", Tag=6, Type=typing.Optional[typing.List[typing.Optional[Messages.Structs.MessageResponseOptionStruct]]]),
                     ])
 
-            messageId: 'bytes' = b""
+            messageID: 'bytes' = b""
             priority: 'Messages.Enums.MessagePriorityEnum' = 0
             messageControl: 'Messages.Bitmaps.MessageControlBitmap' = 0
             startTime: 'typing.Union[Nullable, uint]' = NullValue
@@ -289,11 +289,11 @@ class Messages(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="messageId", Tag=0, Type=bytes),
+                        ClusterObjectFieldDescriptor(Label="messageID", Tag=0, Type=bytes),
                         ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=254, Type=uint),
                     ])
 
-            messageId: 'bytes' = b""
+            messageID: 'bytes' = b""
             fabricIndex: 'uint' = 0
 
         @dataclass
@@ -310,11 +310,11 @@ class Messages(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="messageId", Tag=0, Type=bytes),
+                        ClusterObjectFieldDescriptor(Label="messageID", Tag=0, Type=bytes),
                         ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=254, Type=uint),
                     ])
 
-            messageId: 'bytes' = b""
+            messageID: 'bytes' = b""
             fabricIndex: 'uint' = 0
 
         @dataclass
@@ -331,15 +331,15 @@ class Messages(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="messageId", Tag=0, Type=bytes),
-                        ClusterObjectFieldDescriptor(Label="responseId", Tag=1, Type=typing.Union[None, Nullable, uint]),
+                        ClusterObjectFieldDescriptor(Label="messageID", Tag=0, Type=bytes),
+                        ClusterObjectFieldDescriptor(Label="responseID", Tag=1, Type=typing.Union[None, Nullable, uint]),
                         ClusterObjectFieldDescriptor(Label="reply", Tag=2, Type=typing.Union[None, Nullable, str]),
                         ClusterObjectFieldDescriptor(Label="futureMessagesPreference", Tag=3, Type=typing.Union[Nullable, Messages.Enums.FutureMessagePreferenceEnum]),
                         ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=254, Type=uint),
                     ])
 
-            messageId: 'bytes' = b""
-            responseId: 'typing.Union[None, Nullable, uint]' = None
+            messageID: 'bytes' = b""
+            responseID: 'typing.Union[None, Nullable, uint]' = None
             reply: 'typing.Union[None, Nullable, str]' = None
             futureMessagesPreference: 'typing.Union[Nullable, Messages.Enums.FutureMessagePreferenceEnum]' = NullValue
             fabricIndex: 'uint' = 0

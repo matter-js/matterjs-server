@@ -24,7 +24,7 @@ class Actions(Cluster):
             Fields=[
                 ClusterObjectFieldDescriptor(Label="actionList", Tag=0x00000000, Type=typing.List[typing.Optional[Actions.Structs.ActionStruct]]),
                 ClusterObjectFieldDescriptor(Label="endpointLists", Tag=0x00000001, Type=typing.List[typing.Optional[Actions.Structs.EndpointListStruct]]),
-                ClusterObjectFieldDescriptor(Label="setupUrl", Tag=0x00000002, Type=typing.Optional[str]),
+                ClusterObjectFieldDescriptor(Label="setupURL", Tag=0x00000002, Type=typing.Optional[str]),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="attributeList", Tag=0x0000FFFB, Type=typing.List[uint]),
@@ -34,7 +34,7 @@ class Actions(Cluster):
 
     actionList: 'typing.List[typing.Optional[Actions.Structs.ActionStruct]]' = field(default_factory=lambda: [])
     endpointLists: 'typing.List[typing.Optional[Actions.Structs.EndpointListStruct]]' = field(default_factory=lambda: [])
-    setupUrl: 'typing.Optional[str]' = None
+    setupURL: 'typing.Optional[str]' = None
     generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
     acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
     attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
@@ -108,18 +108,18 @@ class Actions(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="actionId", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="actionID", Tag=0, Type=uint),
                         ClusterObjectFieldDescriptor(Label="name", Tag=1, Type=str),
                         ClusterObjectFieldDescriptor(Label="type", Tag=2, Type=Actions.Enums.ActionTypeEnum),
-                        ClusterObjectFieldDescriptor(Label="endpointListId", Tag=3, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="endpointListID", Tag=3, Type=uint),
                         ClusterObjectFieldDescriptor(Label="supportedCommands", Tag=4, Type=Actions.Bitmaps.CommandBits),
                         ClusterObjectFieldDescriptor(Label="state", Tag=5, Type=Actions.Enums.ActionStateEnum),
                     ])
 
-            actionId: 'uint' = 0
+            actionID: 'uint' = 0
             name: 'str' = ""
             type: 'Actions.Enums.ActionTypeEnum' = 0
-            endpointListId: 'uint' = 0
+            endpointListID: 'uint' = 0
             supportedCommands: 'Actions.Bitmaps.CommandBits' = 0
             state: 'Actions.Enums.ActionStateEnum' = 0
 
@@ -129,13 +129,13 @@ class Actions(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="endpointListId", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="endpointListID", Tag=0, Type=uint),
                         ClusterObjectFieldDescriptor(Label="name", Tag=1, Type=str),
                         ClusterObjectFieldDescriptor(Label="type", Tag=2, Type=Actions.Enums.EndpointListTypeEnum),
                         ClusterObjectFieldDescriptor(Label="endpoints", Tag=3, Type=typing.List[typing.Optional[uint]]),
                     ])
 
-            endpointListId: 'uint' = 0
+            endpointListID: 'uint' = 0
             name: 'str' = ""
             type: 'Actions.Enums.EndpointListTypeEnum' = 0
             endpoints: 'typing.List[typing.Optional[uint]]' = field(default_factory=lambda: [])
@@ -152,12 +152,12 @@ class Actions(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="actionId", Tag=0, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="invokeId", Tag=1, Type=typing.Optional[uint]),
+                        ClusterObjectFieldDescriptor(Label="actionID", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="invokeID", Tag=1, Type=typing.Optional[uint]),
                     ])
 
-            actionId: 'uint' = 0
-            invokeId: 'typing.Optional[uint]' = None
+            actionID: 'uint' = 0
+            invokeID: 'typing.Optional[uint]' = None
 
         @dataclass
         class InstantActionWithTransition(ClusterCommand):
@@ -170,13 +170,13 @@ class Actions(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="actionId", Tag=0, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="invokeId", Tag=1, Type=typing.Optional[uint]),
+                        ClusterObjectFieldDescriptor(Label="actionID", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="invokeID", Tag=1, Type=typing.Optional[uint]),
                         ClusterObjectFieldDescriptor(Label="transitionTime", Tag=2, Type=uint),
                     ])
 
-            actionId: 'uint' = 0
-            invokeId: 'typing.Optional[uint]' = None
+            actionID: 'uint' = 0
+            invokeID: 'typing.Optional[uint]' = None
             transitionTime: 'uint' = 0
 
         @dataclass
@@ -190,12 +190,12 @@ class Actions(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="actionId", Tag=0, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="invokeId", Tag=1, Type=typing.Optional[uint]),
+                        ClusterObjectFieldDescriptor(Label="actionID", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="invokeID", Tag=1, Type=typing.Optional[uint]),
                     ])
 
-            actionId: 'uint' = 0
-            invokeId: 'typing.Optional[uint]' = None
+            actionID: 'uint' = 0
+            invokeID: 'typing.Optional[uint]' = None
 
         @dataclass
         class StartActionWithDuration(ClusterCommand):
@@ -208,13 +208,13 @@ class Actions(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="actionId", Tag=0, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="invokeId", Tag=1, Type=typing.Optional[uint]),
+                        ClusterObjectFieldDescriptor(Label="actionID", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="invokeID", Tag=1, Type=typing.Optional[uint]),
                         ClusterObjectFieldDescriptor(Label="duration", Tag=2, Type=uint),
                     ])
 
-            actionId: 'uint' = 0
-            invokeId: 'typing.Optional[uint]' = None
+            actionID: 'uint' = 0
+            invokeID: 'typing.Optional[uint]' = None
             duration: 'uint' = 0
 
         @dataclass
@@ -228,12 +228,12 @@ class Actions(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="actionId", Tag=0, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="invokeId", Tag=1, Type=typing.Optional[uint]),
+                        ClusterObjectFieldDescriptor(Label="actionID", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="invokeID", Tag=1, Type=typing.Optional[uint]),
                     ])
 
-            actionId: 'uint' = 0
-            invokeId: 'typing.Optional[uint]' = None
+            actionID: 'uint' = 0
+            invokeID: 'typing.Optional[uint]' = None
 
         @dataclass
         class PauseAction(ClusterCommand):
@@ -246,12 +246,12 @@ class Actions(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="actionId", Tag=0, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="invokeId", Tag=1, Type=typing.Optional[uint]),
+                        ClusterObjectFieldDescriptor(Label="actionID", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="invokeID", Tag=1, Type=typing.Optional[uint]),
                     ])
 
-            actionId: 'uint' = 0
-            invokeId: 'typing.Optional[uint]' = None
+            actionID: 'uint' = 0
+            invokeID: 'typing.Optional[uint]' = None
 
         @dataclass
         class PauseActionWithDuration(ClusterCommand):
@@ -264,13 +264,13 @@ class Actions(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="actionId", Tag=0, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="invokeId", Tag=1, Type=typing.Optional[uint]),
+                        ClusterObjectFieldDescriptor(Label="actionID", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="invokeID", Tag=1, Type=typing.Optional[uint]),
                         ClusterObjectFieldDescriptor(Label="duration", Tag=2, Type=uint),
                     ])
 
-            actionId: 'uint' = 0
-            invokeId: 'typing.Optional[uint]' = None
+            actionID: 'uint' = 0
+            invokeID: 'typing.Optional[uint]' = None
             duration: 'uint' = 0
 
         @dataclass
@@ -284,12 +284,12 @@ class Actions(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="actionId", Tag=0, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="invokeId", Tag=1, Type=typing.Optional[uint]),
+                        ClusterObjectFieldDescriptor(Label="actionID", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="invokeID", Tag=1, Type=typing.Optional[uint]),
                     ])
 
-            actionId: 'uint' = 0
-            invokeId: 'typing.Optional[uint]' = None
+            actionID: 'uint' = 0
+            invokeID: 'typing.Optional[uint]' = None
 
         @dataclass
         class EnableAction(ClusterCommand):
@@ -302,12 +302,12 @@ class Actions(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="actionId", Tag=0, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="invokeId", Tag=1, Type=typing.Optional[uint]),
+                        ClusterObjectFieldDescriptor(Label="actionID", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="invokeID", Tag=1, Type=typing.Optional[uint]),
                     ])
 
-            actionId: 'uint' = 0
-            invokeId: 'typing.Optional[uint]' = None
+            actionID: 'uint' = 0
+            invokeID: 'typing.Optional[uint]' = None
 
         @dataclass
         class EnableActionWithDuration(ClusterCommand):
@@ -320,13 +320,13 @@ class Actions(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="actionId", Tag=0, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="invokeId", Tag=1, Type=typing.Optional[uint]),
+                        ClusterObjectFieldDescriptor(Label="actionID", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="invokeID", Tag=1, Type=typing.Optional[uint]),
                         ClusterObjectFieldDescriptor(Label="duration", Tag=2, Type=uint),
                     ])
 
-            actionId: 'uint' = 0
-            invokeId: 'typing.Optional[uint]' = None
+            actionID: 'uint' = 0
+            invokeID: 'typing.Optional[uint]' = None
             duration: 'uint' = 0
 
         @dataclass
@@ -340,12 +340,12 @@ class Actions(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="actionId", Tag=0, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="invokeId", Tag=1, Type=typing.Optional[uint]),
+                        ClusterObjectFieldDescriptor(Label="actionID", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="invokeID", Tag=1, Type=typing.Optional[uint]),
                     ])
 
-            actionId: 'uint' = 0
-            invokeId: 'typing.Optional[uint]' = None
+            actionID: 'uint' = 0
+            invokeID: 'typing.Optional[uint]' = None
 
         @dataclass
         class DisableActionWithDuration(ClusterCommand):
@@ -358,13 +358,13 @@ class Actions(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="actionId", Tag=0, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="invokeId", Tag=1, Type=typing.Optional[uint]),
+                        ClusterObjectFieldDescriptor(Label="actionID", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="invokeID", Tag=1, Type=typing.Optional[uint]),
                         ClusterObjectFieldDescriptor(Label="duration", Tag=2, Type=uint),
                     ])
 
-            actionId: 'uint' = 0
-            invokeId: 'typing.Optional[uint]' = None
+            actionID: 'uint' = 0
+            invokeID: 'typing.Optional[uint]' = None
             duration: 'uint' = 0
 
     class Attributes:
@@ -511,13 +511,13 @@ class Actions(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="actionId", Tag=0, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="invokeId", Tag=1, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="actionID", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="invokeID", Tag=1, Type=uint),
                         ClusterObjectFieldDescriptor(Label="newState", Tag=2, Type=Actions.Enums.ActionStateEnum),
                     ])
 
-            actionId: 'uint' = 0
-            invokeId: 'uint' = 0
+            actionID: 'uint' = 0
+            invokeID: 'uint' = 0
             newState: 'Actions.Enums.ActionStateEnum' = 0
 
         @dataclass
@@ -534,13 +534,13 @@ class Actions(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="actionId", Tag=0, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="invokeId", Tag=1, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="actionID", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="invokeID", Tag=1, Type=uint),
                         ClusterObjectFieldDescriptor(Label="newState", Tag=2, Type=Actions.Enums.ActionStateEnum),
                         ClusterObjectFieldDescriptor(Label="error", Tag=3, Type=Actions.Enums.ActionErrorEnum),
                     ])
 
-            actionId: 'uint' = 0
-            invokeId: 'uint' = 0
+            actionID: 'uint' = 0
+            invokeID: 'uint' = 0
             newState: 'Actions.Enums.ActionStateEnum' = 0
             error: 'Actions.Enums.ActionErrorEnum' = 0

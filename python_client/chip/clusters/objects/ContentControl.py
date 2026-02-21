@@ -132,12 +132,12 @@ class ContentControl(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="catalogVendorId", Tag=0, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="applicationId", Tag=1, Type=str),
+                        ClusterObjectFieldDescriptor(Label="catalogVendorID", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="applicationID", Tag=1, Type=str),
                     ])
 
-            catalogVendorId: 'uint' = 0
-            applicationId: 'str' = ""
+            catalogVendorID: 'uint' = 0
+            applicationID: 'str' = ""
 
         @dataclass
         class TimeWindowStruct(ClusterObject):
@@ -183,12 +183,12 @@ class ContentControl(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="oldPin", Tag=0, Type=str),
-                        ClusterObjectFieldDescriptor(Label="newPin", Tag=1, Type=str),
+                        ClusterObjectFieldDescriptor(Label="oldPIN", Tag=0, Type=str),
+                        ClusterObjectFieldDescriptor(Label="newPIN", Tag=1, Type=str),
                     ])
 
-            oldPin: 'str' = ""
-            newPin: 'str' = ""
+            oldPIN: 'str' = ""
+            newPIN: 'str' = ""
 
         @dataclass
         class ResetPIN(ClusterCommand):
@@ -246,11 +246,11 @@ class ContentControl(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="pinCode", Tag=0, Type=typing.Optional[str]),
+                        ClusterObjectFieldDescriptor(Label="pINCode", Tag=0, Type=typing.Optional[str]),
                         ClusterObjectFieldDescriptor(Label="bonusTime", Tag=1, Type=uint),
                     ])
 
-            pinCode: 'typing.Optional[str]' = None
+            pINCode: 'typing.Optional[str]' = None
             bonusTime: 'uint' = 0
 
         @dataclass
@@ -438,10 +438,10 @@ class ContentControl(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="pinCode", Tag=0, Type=str),
+                        ClusterObjectFieldDescriptor(Label="pINCode", Tag=0, Type=str),
                     ])
 
-            pinCode: 'str' = ""
+            pINCode: 'str' = ""
 
     class Attributes:
         @dataclass

@@ -77,7 +77,7 @@ class ScenesManagement(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="attributeId", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="attributeID", Tag=0, Type=uint),
                         ClusterObjectFieldDescriptor(Label="valueUnsigned8", Tag=1, Type=typing.Optional[uint]),
                         ClusterObjectFieldDescriptor(Label="valueSigned8", Tag=2, Type=typing.Optional[int]),
                         ClusterObjectFieldDescriptor(Label="valueUnsigned16", Tag=3, Type=typing.Optional[uint]),
@@ -88,7 +88,7 @@ class ScenesManagement(Cluster):
                         ClusterObjectFieldDescriptor(Label="valueSigned64", Tag=8, Type=typing.Optional[int]),
                     ])
 
-            attributeId: 'uint' = 0
+            attributeID: 'uint' = 0
             valueUnsigned8: 'typing.Optional[uint]' = None
             valueSigned8: 'typing.Optional[int]' = None
             valueUnsigned16: 'typing.Optional[uint]' = None
@@ -104,11 +104,11 @@ class ScenesManagement(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="clusterId", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="clusterID", Tag=0, Type=uint),
                         ClusterObjectFieldDescriptor(Label="attributeValueList", Tag=1, Type=typing.List[typing.Optional[ScenesManagement.Structs.AttributeValuePairStruct]]),
                     ])
 
-            clusterId: 'uint' = 0
+            clusterID: 'uint' = 0
             attributeValueList: 'typing.List[typing.Optional[ScenesManagement.Structs.AttributeValuePairStruct]]' = field(default_factory=lambda: [])
 
         @dataclass
@@ -117,15 +117,15 @@ class ScenesManagement(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="sceneGroupId", Tag=0, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="sceneId", Tag=1, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="sceneGroupID", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="sceneID", Tag=1, Type=uint),
                         ClusterObjectFieldDescriptor(Label="sceneName", Tag=2, Type=typing.Optional[str]),
                         ClusterObjectFieldDescriptor(Label="sceneTransitionTime", Tag=3, Type=uint),
                         ClusterObjectFieldDescriptor(Label="extensionFields", Tag=4, Type=typing.List[typing.Optional[ScenesManagement.Structs.ExtensionFieldSetStruct]]),
                     ])
 
-            sceneGroupId: 'uint' = 0
-            sceneId: 'uint' = 0
+            sceneGroupID: 'uint' = 0
+            sceneID: 'uint' = 0
             sceneName: 'typing.Optional[str]' = None
             sceneTransitionTime: 'uint' = 0
             extensionFields: 'typing.List[typing.Optional[ScenesManagement.Structs.ExtensionFieldSetStruct]]' = field(default_factory=lambda: [])
@@ -142,15 +142,15 @@ class ScenesManagement(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="groupId", Tag=0, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="sceneId", Tag=1, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="groupID", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="sceneID", Tag=1, Type=uint),
                         ClusterObjectFieldDescriptor(Label="transitionTime", Tag=2, Type=uint),
                         ClusterObjectFieldDescriptor(Label="sceneName", Tag=3, Type=str),
                         ClusterObjectFieldDescriptor(Label="extensionFieldSetStructs", Tag=4, Type=typing.List[typing.Optional[ScenesManagement.Structs.ExtensionFieldSetStruct]]),
                     ])
 
-            groupId: 'uint' = 0
-            sceneId: 'uint' = 0
+            groupID: 'uint' = 0
+            sceneID: 'uint' = 0
             transitionTime: 'uint' = 0
             sceneName: 'str' = ""
             extensionFieldSetStructs: 'typing.List[typing.Optional[ScenesManagement.Structs.ExtensionFieldSetStruct]]' = field(default_factory=lambda: [])
@@ -166,12 +166,12 @@ class ScenesManagement(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="groupId", Tag=0, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="sceneId", Tag=1, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="groupID", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="sceneID", Tag=1, Type=uint),
                     ])
 
-            groupId: 'uint' = 0
-            sceneId: 'uint' = 0
+            groupID: 'uint' = 0
+            sceneID: 'uint' = 0
 
         @dataclass
         class RemoveScene(ClusterCommand):
@@ -184,12 +184,12 @@ class ScenesManagement(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="groupId", Tag=0, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="sceneId", Tag=1, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="groupID", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="sceneID", Tag=1, Type=uint),
                     ])
 
-            groupId: 'uint' = 0
-            sceneId: 'uint' = 0
+            groupID: 'uint' = 0
+            sceneID: 'uint' = 0
 
         @dataclass
         class RemoveAllScenes(ClusterCommand):
@@ -202,10 +202,10 @@ class ScenesManagement(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="groupId", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="groupID", Tag=0, Type=uint),
                     ])
 
-            groupId: 'uint' = 0
+            groupID: 'uint' = 0
 
         @dataclass
         class StoreScene(ClusterCommand):
@@ -218,12 +218,12 @@ class ScenesManagement(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="groupId", Tag=0, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="sceneId", Tag=1, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="groupID", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="sceneID", Tag=1, Type=uint),
                     ])
 
-            groupId: 'uint' = 0
-            sceneId: 'uint' = 0
+            groupID: 'uint' = 0
+            sceneID: 'uint' = 0
 
         @dataclass
         class RecallScene(ClusterCommand):
@@ -236,13 +236,13 @@ class ScenesManagement(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="groupId", Tag=0, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="sceneId", Tag=1, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="groupID", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="sceneID", Tag=1, Type=uint),
                         ClusterObjectFieldDescriptor(Label="transitionTime", Tag=2, Type=typing.Union[None, Nullable, uint]),
                     ])
 
-            groupId: 'uint' = 0
-            sceneId: 'uint' = 0
+            groupID: 'uint' = 0
+            sceneID: 'uint' = 0
             transitionTime: 'typing.Union[None, Nullable, uint]' = None
 
         @dataclass
@@ -256,10 +256,10 @@ class ScenesManagement(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="groupId", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="groupID", Tag=0, Type=uint),
                     ])
 
-            groupId: 'uint' = 0
+            groupID: 'uint' = 0
 
         @dataclass
         class CopyScene(ClusterCommand):
@@ -297,13 +297,13 @@ class ScenesManagement(Cluster):
                 return ClusterObjectDescriptor(
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="status", Tag=0, Type=Globals.Enums.status),
-                        ClusterObjectFieldDescriptor(Label="groupId", Tag=1, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="sceneId", Tag=2, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="groupID", Tag=1, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="sceneID", Tag=2, Type=uint),
                     ])
 
             status: 'Globals.Enums.status' = 0
-            groupId: 'uint' = 0
-            sceneId: 'uint' = 0
+            groupID: 'uint' = 0
+            sceneID: 'uint' = 0
 
         @dataclass
         class ViewSceneResponse(ClusterCommand):
@@ -317,16 +317,16 @@ class ScenesManagement(Cluster):
                 return ClusterObjectDescriptor(
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="status", Tag=0, Type=Globals.Enums.status),
-                        ClusterObjectFieldDescriptor(Label="groupId", Tag=1, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="sceneId", Tag=2, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="groupID", Tag=1, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="sceneID", Tag=2, Type=uint),
                         ClusterObjectFieldDescriptor(Label="transitionTime", Tag=3, Type=typing.Optional[uint]),
                         ClusterObjectFieldDescriptor(Label="sceneName", Tag=4, Type=typing.Optional[str]),
                         ClusterObjectFieldDescriptor(Label="extensionFieldSetStructs", Tag=5, Type=typing.Optional[typing.List[typing.Optional[ScenesManagement.Structs.ExtensionFieldSetStruct]]]),
                     ])
 
             status: 'Globals.Enums.status' = 0
-            groupId: 'uint' = 0
-            sceneId: 'uint' = 0
+            groupID: 'uint' = 0
+            sceneID: 'uint' = 0
             transitionTime: 'typing.Optional[uint]' = None
             sceneName: 'typing.Optional[str]' = None
             extensionFieldSetStructs: 'typing.Optional[typing.List[typing.Optional[ScenesManagement.Structs.ExtensionFieldSetStruct]]]' = None
@@ -343,13 +343,13 @@ class ScenesManagement(Cluster):
                 return ClusterObjectDescriptor(
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="status", Tag=0, Type=Globals.Enums.status),
-                        ClusterObjectFieldDescriptor(Label="groupId", Tag=1, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="sceneId", Tag=2, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="groupID", Tag=1, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="sceneID", Tag=2, Type=uint),
                     ])
 
             status: 'Globals.Enums.status' = 0
-            groupId: 'uint' = 0
-            sceneId: 'uint' = 0
+            groupID: 'uint' = 0
+            sceneID: 'uint' = 0
 
         @dataclass
         class RemoveAllScenesResponse(ClusterCommand):
@@ -363,11 +363,11 @@ class ScenesManagement(Cluster):
                 return ClusterObjectDescriptor(
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="status", Tag=0, Type=Globals.Enums.status),
-                        ClusterObjectFieldDescriptor(Label="groupId", Tag=1, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="groupID", Tag=1, Type=uint),
                     ])
 
             status: 'Globals.Enums.status' = 0
-            groupId: 'uint' = 0
+            groupID: 'uint' = 0
 
         @dataclass
         class StoreSceneResponse(ClusterCommand):
@@ -381,13 +381,13 @@ class ScenesManagement(Cluster):
                 return ClusterObjectDescriptor(
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="status", Tag=0, Type=Globals.Enums.status),
-                        ClusterObjectFieldDescriptor(Label="groupId", Tag=1, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="sceneId", Tag=2, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="groupID", Tag=1, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="sceneID", Tag=2, Type=uint),
                     ])
 
             status: 'Globals.Enums.status' = 0
-            groupId: 'uint' = 0
-            sceneId: 'uint' = 0
+            groupID: 'uint' = 0
+            sceneID: 'uint' = 0
 
         @dataclass
         class GetSceneMembershipResponse(ClusterCommand):
@@ -402,13 +402,13 @@ class ScenesManagement(Cluster):
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="status", Tag=0, Type=Globals.Enums.status),
                         ClusterObjectFieldDescriptor(Label="capacity", Tag=1, Type=typing.Union[Nullable, uint]),
-                        ClusterObjectFieldDescriptor(Label="groupId", Tag=2, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="groupID", Tag=2, Type=uint),
                         ClusterObjectFieldDescriptor(Label="sceneList", Tag=3, Type=typing.Optional[typing.List[typing.Optional[uint]]]),
                     ])
 
             status: 'Globals.Enums.status' = 0
             capacity: 'typing.Union[Nullable, uint]' = NullValue
-            groupId: 'uint' = 0
+            groupID: 'uint' = 0
             sceneList: 'typing.Optional[typing.List[typing.Optional[uint]]]' = None
 
         @dataclass

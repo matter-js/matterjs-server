@@ -140,16 +140,16 @@ class Channel(Cluster):
                         ClusterObjectFieldDescriptor(Label="description", Tag=6, Type=typing.Optional[str]),
                         ClusterObjectFieldDescriptor(Label="audioLanguages", Tag=7, Type=typing.Optional[typing.List[typing.Optional[str]]]),
                         ClusterObjectFieldDescriptor(Label="ratings", Tag=8, Type=typing.Optional[typing.List[typing.Optional[str]]]),
-                        ClusterObjectFieldDescriptor(Label="thumbnailUrl", Tag=9, Type=typing.Optional[str]),
-                        ClusterObjectFieldDescriptor(Label="posterArtUrl", Tag=10, Type=typing.Optional[str]),
-                        ClusterObjectFieldDescriptor(Label="dvbiUrl", Tag=11, Type=typing.Optional[str]),
+                        ClusterObjectFieldDescriptor(Label="thumbnailURL", Tag=9, Type=typing.Optional[str]),
+                        ClusterObjectFieldDescriptor(Label="posterArtURL", Tag=10, Type=typing.Optional[str]),
+                        ClusterObjectFieldDescriptor(Label="dvbiURL", Tag=11, Type=typing.Optional[str]),
                         ClusterObjectFieldDescriptor(Label="releaseDate", Tag=12, Type=typing.Optional[str]),
                         ClusterObjectFieldDescriptor(Label="parentalGuidanceText", Tag=13, Type=typing.Optional[str]),
                         ClusterObjectFieldDescriptor(Label="recordingFlag", Tag=14, Type=typing.Optional[Channel.Bitmaps.RecordingFlagBitmap]),
                         ClusterObjectFieldDescriptor(Label="seriesInfo", Tag=15, Type=typing.Union[None, Nullable, Channel.Structs.SeriesInfoStruct]),
                         ClusterObjectFieldDescriptor(Label="categoryList", Tag=16, Type=typing.Optional[typing.List[typing.Optional[Channel.Structs.ProgramCategoryStruct]]]),
                         ClusterObjectFieldDescriptor(Label="castList", Tag=17, Type=typing.Optional[typing.List[typing.Optional[Channel.Structs.ProgramCastStruct]]]),
-                        ClusterObjectFieldDescriptor(Label="externalIdList", Tag=18, Type=typing.Optional[typing.List[typing.Optional[ContentLauncher.Structs.AdditionalInfoStruct]]]),
+                        ClusterObjectFieldDescriptor(Label="externalIDList", Tag=18, Type=typing.Optional[typing.List[typing.Optional[ContentLauncher.Structs.AdditionalInfoStruct]]]),
                     ])
 
             identifier: 'str' = ""
@@ -161,16 +161,16 @@ class Channel(Cluster):
             description: 'typing.Optional[str]' = None
             audioLanguages: 'typing.Optional[typing.List[typing.Optional[str]]]' = None
             ratings: 'typing.Optional[typing.List[typing.Optional[str]]]' = None
-            thumbnailUrl: 'typing.Optional[str]' = None
-            posterArtUrl: 'typing.Optional[str]' = None
-            dvbiUrl: 'typing.Optional[str]' = None
+            thumbnailURL: 'typing.Optional[str]' = None
+            posterArtURL: 'typing.Optional[str]' = None
+            dvbiURL: 'typing.Optional[str]' = None
             releaseDate: 'typing.Optional[str]' = None
             parentalGuidanceText: 'typing.Optional[str]' = None
             recordingFlag: 'typing.Optional[Channel.Bitmaps.RecordingFlagBitmap]' = None
             seriesInfo: 'typing.Union[None, Nullable, Channel.Structs.SeriesInfoStruct]' = None
             categoryList: 'typing.Optional[typing.List[typing.Optional[Channel.Structs.ProgramCategoryStruct]]]' = None
             castList: 'typing.Optional[typing.List[typing.Optional[Channel.Structs.ProgramCastStruct]]]' = None
-            externalIdList: 'typing.Optional[typing.List[typing.Optional[ContentLauncher.Structs.AdditionalInfoStruct]]]' = None
+            externalIDList: 'typing.Optional[typing.List[typing.Optional[ContentLauncher.Structs.AdditionalInfoStruct]]]' = None
 
         @dataclass
         class ProgramCategoryStruct(ClusterObject):
@@ -306,7 +306,7 @@ class Channel(Cluster):
                         ClusterObjectFieldDescriptor(Label="channelList", Tag=2, Type=typing.Optional[typing.List[typing.Optional[Channel.Structs.ChannelInfoStruct]]]),
                         ClusterObjectFieldDescriptor(Label="pageToken", Tag=3, Type=typing.Union[None, Nullable, Channel.Structs.PageTokenStruct]),
                         ClusterObjectFieldDescriptor(Label="recordingFlag", Tag=5, Type=typing.Union[None, Nullable, Channel.Bitmaps.RecordingFlagBitmap]),
-                        ClusterObjectFieldDescriptor(Label="externalIdList", Tag=6, Type=typing.Optional[typing.List[typing.Optional[ContentLauncher.Structs.AdditionalInfoStruct]]]),
+                        ClusterObjectFieldDescriptor(Label="externalIDList", Tag=6, Type=typing.Optional[typing.List[typing.Optional[ContentLauncher.Structs.AdditionalInfoStruct]]]),
                         ClusterObjectFieldDescriptor(Label="data", Tag=7, Type=typing.Optional[bytes]),
                     ])
 
@@ -315,7 +315,7 @@ class Channel(Cluster):
             channelList: 'typing.Optional[typing.List[typing.Optional[Channel.Structs.ChannelInfoStruct]]]' = None
             pageToken: 'typing.Union[None, Nullable, Channel.Structs.PageTokenStruct]' = None
             recordingFlag: 'typing.Union[None, Nullable, Channel.Bitmaps.RecordingFlagBitmap]' = None
-            externalIdList: 'typing.Optional[typing.List[typing.Optional[ContentLauncher.Structs.AdditionalInfoStruct]]]' = None
+            externalIDList: 'typing.Optional[typing.List[typing.Optional[ContentLauncher.Structs.AdditionalInfoStruct]]]' = None
             data: 'typing.Optional[bytes]' = None
 
         @dataclass
@@ -331,13 +331,13 @@ class Channel(Cluster):
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="programIdentifier", Tag=0, Type=str),
                         ClusterObjectFieldDescriptor(Label="shouldRecordSeries", Tag=1, Type=bool),
-                        ClusterObjectFieldDescriptor(Label="externalIdList", Tag=2, Type=typing.Optional[typing.List[typing.Optional[ContentLauncher.Structs.AdditionalInfoStruct]]]),
+                        ClusterObjectFieldDescriptor(Label="externalIDList", Tag=2, Type=typing.Optional[typing.List[typing.Optional[ContentLauncher.Structs.AdditionalInfoStruct]]]),
                         ClusterObjectFieldDescriptor(Label="data", Tag=3, Type=typing.Optional[bytes]),
                     ])
 
             programIdentifier: 'str' = ""
             shouldRecordSeries: 'bool' = False
-            externalIdList: 'typing.Optional[typing.List[typing.Optional[ContentLauncher.Structs.AdditionalInfoStruct]]]' = None
+            externalIDList: 'typing.Optional[typing.List[typing.Optional[ContentLauncher.Structs.AdditionalInfoStruct]]]' = None
             data: 'typing.Optional[bytes]' = None
 
         @dataclass
@@ -353,13 +353,13 @@ class Channel(Cluster):
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="programIdentifier", Tag=0, Type=str),
                         ClusterObjectFieldDescriptor(Label="shouldRecordSeries", Tag=1, Type=bool),
-                        ClusterObjectFieldDescriptor(Label="externalIdList", Tag=2, Type=typing.Optional[typing.List[typing.Optional[ContentLauncher.Structs.AdditionalInfoStruct]]]),
+                        ClusterObjectFieldDescriptor(Label="externalIDList", Tag=2, Type=typing.Optional[typing.List[typing.Optional[ContentLauncher.Structs.AdditionalInfoStruct]]]),
                         ClusterObjectFieldDescriptor(Label="data", Tag=3, Type=typing.Optional[bytes]),
                     ])
 
             programIdentifier: 'str' = ""
             shouldRecordSeries: 'bool' = False
-            externalIdList: 'typing.Optional[typing.List[typing.Optional[ContentLauncher.Structs.AdditionalInfoStruct]]]' = None
+            externalIDList: 'typing.Optional[typing.List[typing.Optional[ContentLauncher.Structs.AdditionalInfoStruct]]]' = None
             data: 'typing.Optional[bytes]' = None
 
         @dataclass

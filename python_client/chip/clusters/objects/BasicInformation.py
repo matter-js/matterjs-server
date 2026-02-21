@@ -24,9 +24,9 @@ class BasicInformation(Cluster):
             Fields=[
                 ClusterObjectFieldDescriptor(Label="dataModelRevision", Tag=0x00000000, Type=uint),
                 ClusterObjectFieldDescriptor(Label="vendorName", Tag=0x00000001, Type=str),
-                ClusterObjectFieldDescriptor(Label="vendorId", Tag=0x00000002, Type=uint),
+                ClusterObjectFieldDescriptor(Label="vendorID", Tag=0x00000002, Type=uint),
                 ClusterObjectFieldDescriptor(Label="productName", Tag=0x00000003, Type=str),
-                ClusterObjectFieldDescriptor(Label="productId", Tag=0x00000004, Type=uint),
+                ClusterObjectFieldDescriptor(Label="productID", Tag=0x00000004, Type=uint),
                 ClusterObjectFieldDescriptor(Label="nodeLabel", Tag=0x00000005, Type=str),
                 ClusterObjectFieldDescriptor(Label="location", Tag=0x00000006, Type=str),
                 ClusterObjectFieldDescriptor(Label="hardwareVersion", Tag=0x00000007, Type=uint),
@@ -35,12 +35,12 @@ class BasicInformation(Cluster):
                 ClusterObjectFieldDescriptor(Label="softwareVersionString", Tag=0x0000000A, Type=str),
                 ClusterObjectFieldDescriptor(Label="manufacturingDate", Tag=0x0000000B, Type=typing.Optional[str]),
                 ClusterObjectFieldDescriptor(Label="partNumber", Tag=0x0000000C, Type=typing.Optional[str]),
-                ClusterObjectFieldDescriptor(Label="productUrl", Tag=0x0000000D, Type=typing.Optional[str]),
+                ClusterObjectFieldDescriptor(Label="productURL", Tag=0x0000000D, Type=typing.Optional[str]),
                 ClusterObjectFieldDescriptor(Label="productLabel", Tag=0x0000000E, Type=typing.Optional[str]),
                 ClusterObjectFieldDescriptor(Label="serialNumber", Tag=0x0000000F, Type=typing.Optional[str]),
                 ClusterObjectFieldDescriptor(Label="localConfigDisabled", Tag=0x00000010, Type=typing.Optional[bool]),
                 ClusterObjectFieldDescriptor(Label="reachable", Tag=0x00000011, Type=typing.Optional[bool]),
-                ClusterObjectFieldDescriptor(Label="uniqueId", Tag=0x00000012, Type=str),
+                ClusterObjectFieldDescriptor(Label="uniqueID", Tag=0x00000012, Type=str),
                 ClusterObjectFieldDescriptor(Label="capabilityMinima", Tag=0x00000013, Type=BasicInformation.Structs.CapabilityMinimaStruct),
                 ClusterObjectFieldDescriptor(Label="productAppearance", Tag=0x00000014, Type=typing.Optional[BasicInformation.Structs.ProductAppearanceStruct]),
                 ClusterObjectFieldDescriptor(Label="specificationVersion", Tag=0x00000015, Type=uint),
@@ -55,9 +55,9 @@ class BasicInformation(Cluster):
 
     dataModelRevision: 'uint' = 0
     vendorName: 'str' = ""
-    vendorId: 'uint' = 0
+    vendorID: 'uint' = 0
     productName: 'str' = ""
-    productId: 'uint' = 0
+    productID: 'uint' = 0
     nodeLabel: 'str' = ""
     location: 'str' = ""
     hardwareVersion: 'uint' = 0
@@ -66,12 +66,12 @@ class BasicInformation(Cluster):
     softwareVersionString: 'str' = ""
     manufacturingDate: 'typing.Optional[str]' = None
     partNumber: 'typing.Optional[str]' = None
-    productUrl: 'typing.Optional[str]' = None
+    productURL: 'typing.Optional[str]' = None
     productLabel: 'typing.Optional[str]' = None
     serialNumber: 'typing.Optional[str]' = None
     localConfigDisabled: 'typing.Optional[bool]' = None
     reachable: 'typing.Optional[bool]' = None
-    uniqueId: 'str' = ""
+    uniqueID: 'str' = ""
     capabilityMinima: 'BasicInformation.Structs.CapabilityMinimaStruct' = field(default_factory=lambda: BasicInformation.Structs.CapabilityMinimaStruct())
     productAppearance: 'typing.Optional[BasicInformation.Structs.ProductAppearanceStruct]' = None
     specificationVersion: 'uint' = 0

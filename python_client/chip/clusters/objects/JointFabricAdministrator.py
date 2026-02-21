@@ -97,10 +97,10 @@ class JointFabricAdministrator(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="icacValue", Tag=1, Type=bytes),
+                        ClusterObjectFieldDescriptor(Label="iCACValue", Tag=1, Type=bytes),
                     ])
 
-            icacValue: 'bytes' = b""
+            iCACValue: 'bytes' = b""
 
         @dataclass
         class OpenJointCommissioningWindow(ClusterCommand):
@@ -167,10 +167,10 @@ class JointFabricAdministrator(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="endpointId", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="endpointID", Tag=0, Type=uint),
                     ])
 
-            endpointId: 'uint' = 0
+            endpointID: 'uint' = 0
 
         @dataclass
         class IcaccsrResponse(ClusterCommand):

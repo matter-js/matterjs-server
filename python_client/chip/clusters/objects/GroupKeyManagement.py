@@ -73,13 +73,13 @@ class GroupKeyManagement(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="groupId", Tag=1, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="groupKeySetId", Tag=2, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="groupID", Tag=1, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="groupKeySetID", Tag=2, Type=uint),
                         ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=254, Type=uint),
                     ])
 
-            groupId: 'uint' = 0
-            groupKeySetId: 'uint' = 0
+            groupID: 'uint' = 0
+            groupKeySetID: 'uint' = 0
             fabricIndex: 'uint' = 0
 
         @dataclass
@@ -88,7 +88,7 @@ class GroupKeyManagement(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="groupKeySetId", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="groupKeySetID", Tag=0, Type=uint),
                         ClusterObjectFieldDescriptor(Label="groupKeySecurityPolicy", Tag=1, Type=GroupKeyManagement.Enums.GroupKeySecurityPolicyEnum),
                         ClusterObjectFieldDescriptor(Label="epochKey0", Tag=2, Type=typing.Union[Nullable, bytes]),
                         ClusterObjectFieldDescriptor(Label="epochStartTime0", Tag=3, Type=typing.Union[Nullable, uint]),
@@ -99,7 +99,7 @@ class GroupKeyManagement(Cluster):
                         ClusterObjectFieldDescriptor(Label="groupKeyMulticastPolicy", Tag=8, Type=typing.Optional[GroupKeyManagement.Enums.GroupKeyMulticastPolicyEnum]),
                     ])
 
-            groupKeySetId: 'uint' = 0
+            groupKeySetID: 'uint' = 0
             groupKeySecurityPolicy: 'GroupKeyManagement.Enums.GroupKeySecurityPolicyEnum' = 0
             epochKey0: 'typing.Union[Nullable, bytes]' = NullValue
             epochStartTime0: 'typing.Union[Nullable, uint]' = NullValue
@@ -115,13 +115,13 @@ class GroupKeyManagement(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="groupId", Tag=1, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="groupID", Tag=1, Type=uint),
                         ClusterObjectFieldDescriptor(Label="endpoints", Tag=2, Type=typing.List[typing.Optional[uint]]),
                         ClusterObjectFieldDescriptor(Label="groupName", Tag=3, Type=typing.Optional[str]),
                         ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=254, Type=uint),
                     ])
 
-            groupId: 'uint' = 0
+            groupID: 'uint' = 0
             endpoints: 'typing.List[typing.Optional[uint]]' = field(default_factory=lambda: [])
             groupName: 'typing.Optional[str]' = None
             fabricIndex: 'uint' = 0
@@ -154,10 +154,10 @@ class GroupKeyManagement(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="groupKeySetId", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="groupKeySetID", Tag=0, Type=uint),
                     ])
 
-            groupKeySetId: 'uint' = 0
+            groupKeySetID: 'uint' = 0
 
         @dataclass
         class KeySetRemove(ClusterCommand):
@@ -170,10 +170,10 @@ class GroupKeyManagement(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="groupKeySetId", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="groupKeySetID", Tag=0, Type=uint),
                     ])
 
-            groupKeySetId: 'uint' = 0
+            groupKeySetID: 'uint' = 0
 
         @dataclass
         class KeySetReadAllIndices(ClusterCommand):

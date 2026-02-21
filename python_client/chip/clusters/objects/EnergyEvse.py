@@ -37,11 +37,11 @@ class EnergyEvse(Cluster):
                 ClusterObjectFieldDescriptor(Label="nextChargeTargetTime", Tag=0x00000024, Type=typing.Union[None, Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="nextChargeRequiredEnergy", Tag=0x00000025, Type=typing.Union[None, Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="nextChargeTargetSoC", Tag=0x00000026, Type=typing.Union[None, Nullable, uint]),
-                ClusterObjectFieldDescriptor(Label="approximateEvEfficiency", Tag=0x00000027, Type=typing.Union[None, Nullable, uint]),
+                ClusterObjectFieldDescriptor(Label="approximateEVEfficiency", Tag=0x00000027, Type=typing.Union[None, Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="stateOfCharge", Tag=0x00000030, Type=typing.Union[None, Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="batteryCapacity", Tag=0x00000031, Type=typing.Union[None, Nullable, uint]),
-                ClusterObjectFieldDescriptor(Label="vehicleId", Tag=0x00000032, Type=typing.Union[None, Nullable, str]),
-                ClusterObjectFieldDescriptor(Label="sessionId", Tag=0x00000040, Type=typing.Union[Nullable, uint]),
+                ClusterObjectFieldDescriptor(Label="vehicleID", Tag=0x00000032, Type=typing.Union[None, Nullable, str]),
+                ClusterObjectFieldDescriptor(Label="sessionID", Tag=0x00000040, Type=typing.Union[Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="sessionDuration", Tag=0x00000041, Type=typing.Union[Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="sessionEnergyCharged", Tag=0x00000042, Type=typing.Union[Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="sessionEnergyDischarged", Tag=0x00000043, Type=typing.Union[None, Nullable, uint]),
@@ -67,11 +67,11 @@ class EnergyEvse(Cluster):
     nextChargeTargetTime: 'typing.Union[None, Nullable, uint]' = None
     nextChargeRequiredEnergy: 'typing.Union[None, Nullable, uint]' = None
     nextChargeTargetSoC: 'typing.Union[None, Nullable, uint]' = None
-    approximateEvEfficiency: 'typing.Union[None, Nullable, uint]' = None
+    approximateEVEfficiency: 'typing.Union[None, Nullable, uint]' = None
     stateOfCharge: 'typing.Union[None, Nullable, uint]' = None
     batteryCapacity: 'typing.Union[None, Nullable, uint]' = None
-    vehicleId: 'typing.Union[None, Nullable, str]' = None
-    sessionId: 'typing.Union[Nullable, uint]' = NullValue
+    vehicleID: 'typing.Union[None, Nullable, str]' = None
+    sessionID: 'typing.Union[Nullable, uint]' = NullValue
     sessionDuration: 'typing.Union[Nullable, uint]' = NullValue
     sessionEnergyCharged: 'typing.Union[Nullable, uint]' = NullValue
     sessionEnergyDischarged: 'typing.Union[None, Nullable, uint]' = None
@@ -784,10 +784,10 @@ class EnergyEvse(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="sessionId", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="sessionID", Tag=0, Type=uint),
                     ])
 
-            sessionId: 'uint' = 0
+            sessionID: 'uint' = 0
 
         @dataclass
         class EVNotDetected(ClusterEvent):
@@ -803,14 +803,14 @@ class EnergyEvse(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="sessionId", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="sessionID", Tag=0, Type=uint),
                         ClusterObjectFieldDescriptor(Label="state", Tag=1, Type=EnergyEvse.Enums.StateEnum),
                         ClusterObjectFieldDescriptor(Label="sessionDuration", Tag=2, Type=uint),
                         ClusterObjectFieldDescriptor(Label="sessionEnergyCharged", Tag=3, Type=uint),
                         ClusterObjectFieldDescriptor(Label="sessionEnergyDischarged", Tag=4, Type=typing.Optional[uint]),
                     ])
 
-            sessionId: 'uint' = 0
+            sessionID: 'uint' = 0
             state: 'EnergyEvse.Enums.StateEnum' = 0
             sessionDuration: 'uint' = 0
             sessionEnergyCharged: 'uint' = 0
@@ -830,13 +830,13 @@ class EnergyEvse(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="sessionId", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="sessionID", Tag=0, Type=uint),
                         ClusterObjectFieldDescriptor(Label="state", Tag=1, Type=EnergyEvse.Enums.StateEnum),
                         ClusterObjectFieldDescriptor(Label="maximumCurrent", Tag=2, Type=uint),
                         ClusterObjectFieldDescriptor(Label="maximumDischargeCurrent", Tag=3, Type=typing.Optional[uint]),
                     ])
 
-            sessionId: 'uint' = 0
+            sessionID: 'uint' = 0
             state: 'EnergyEvse.Enums.StateEnum' = 0
             maximumCurrent: 'uint' = 0
             maximumDischargeCurrent: 'typing.Optional[uint]' = None
@@ -855,14 +855,14 @@ class EnergyEvse(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="sessionId", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="sessionID", Tag=0, Type=uint),
                         ClusterObjectFieldDescriptor(Label="state", Tag=1, Type=EnergyEvse.Enums.StateEnum),
                         ClusterObjectFieldDescriptor(Label="reason", Tag=2, Type=EnergyEvse.Enums.EnergyTransferStoppedReasonEnum),
                         ClusterObjectFieldDescriptor(Label="energyTransferred", Tag=4, Type=uint),
                         ClusterObjectFieldDescriptor(Label="energyDischarged", Tag=5, Type=typing.Optional[uint]),
                     ])
 
-            sessionId: 'uint' = 0
+            sessionID: 'uint' = 0
             state: 'EnergyEvse.Enums.StateEnum' = 0
             reason: 'EnergyEvse.Enums.EnergyTransferStoppedReasonEnum' = 0
             energyTransferred: 'uint' = 0
@@ -882,13 +882,13 @@ class EnergyEvse(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="sessionId", Tag=0, Type=typing.Union[Nullable, uint]),
+                        ClusterObjectFieldDescriptor(Label="sessionID", Tag=0, Type=typing.Union[Nullable, uint]),
                         ClusterObjectFieldDescriptor(Label="state", Tag=1, Type=EnergyEvse.Enums.StateEnum),
                         ClusterObjectFieldDescriptor(Label="faultStatePreviousState", Tag=2, Type=EnergyEvse.Enums.FaultStateEnum),
                         ClusterObjectFieldDescriptor(Label="faultStateCurrentState", Tag=4, Type=EnergyEvse.Enums.FaultStateEnum),
                     ])
 
-            sessionId: 'typing.Union[Nullable, uint]' = NullValue
+            sessionID: 'typing.Union[Nullable, uint]' = NullValue
             state: 'EnergyEvse.Enums.StateEnum' = 0
             faultStatePreviousState: 'EnergyEvse.Enums.FaultStateEnum' = 0
             faultStateCurrentState: 'EnergyEvse.Enums.FaultStateEnum' = 0

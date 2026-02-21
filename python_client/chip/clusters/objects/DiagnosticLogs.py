@@ -101,13 +101,13 @@ class DiagnosticLogs(Cluster):
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="status", Tag=0, Type=DiagnosticLogs.Enums.StatusEnum),
                         ClusterObjectFieldDescriptor(Label="logContent", Tag=1, Type=bytes),
-                        ClusterObjectFieldDescriptor(Label="utcTimeStamp", Tag=2, Type=typing.Optional[uint]),
+                        ClusterObjectFieldDescriptor(Label="uTCTimeStamp", Tag=2, Type=typing.Optional[uint]),
                         ClusterObjectFieldDescriptor(Label="timeSinceBoot", Tag=3, Type=typing.Optional[uint]),
                     ])
 
             status: 'DiagnosticLogs.Enums.StatusEnum' = 0
             logContent: 'bytes' = b""
-            utcTimeStamp: 'typing.Optional[uint]' = None
+            uTCTimeStamp: 'typing.Optional[uint]' = None
             timeSinceBoot: 'typing.Optional[uint]' = None
 
     class Attributes:

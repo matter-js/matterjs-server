@@ -33,7 +33,7 @@ const objectsDir = join(pythonClientDir, "chip", "clusters", "objects");
 // ============================================================================
 
 /** Well-known acronyms that chip-clusters preserves as uppercase in class names. */
-const ACRONYMS = ["OTA", "DST", "UTC", "NTP", "CO", "EV", "CEC", "URL", "PIN", "ACL", "ICAC", "CSR", "NOC", "TC", "VID", "LED", "RFID"];
+const ACRONYMS = ["OTA", "DST", "UTC", "NTP", "ICAC", "CSR", "NOC", "CEC", "URL", "PIN", "ACL", "VID", "LED", "RFID", "TC", "CO", "EV", "ID"];
 
 /**
  * Convert a PascalCase name from Matter.js to chip-clusters-compatible PascalCase.
@@ -60,8 +60,10 @@ function toKName(name: string): string {
 
 /** Convert PascalCase name to camelCase (for attribute/field labels). */
 function toCamelCase(name: string): string {
-    // Keep consecutive uppercase sequences (e.g., "IPv4" stays as-is)
-    return name.charAt(0).toLowerCase() + name.slice(1);
+    // First apply acronym preservation to get chip-style name
+    const chipName = toChipName(name);
+    // Then lowercase first char for camelCase
+    return chipName.charAt(0).toLowerCase() + chipName.slice(1);
 }
 
 /** Pad a hex number to 8 hex digits with 0x prefix. */

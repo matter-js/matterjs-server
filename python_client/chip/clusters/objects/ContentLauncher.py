@@ -120,12 +120,12 @@ class ContentLauncher(Cluster):
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="type", Tag=0, Type=ContentLauncher.Enums.ParameterEnum),
                         ClusterObjectFieldDescriptor(Label="value", Tag=1, Type=str),
-                        ClusterObjectFieldDescriptor(Label="externalIdList", Tag=2, Type=typing.Optional[typing.List[typing.Optional[ContentLauncher.Structs.AdditionalInfoStruct]]]),
+                        ClusterObjectFieldDescriptor(Label="externalIDList", Tag=2, Type=typing.Optional[typing.List[typing.Optional[ContentLauncher.Structs.AdditionalInfoStruct]]]),
                     ])
 
             type: 'ContentLauncher.Enums.ParameterEnum' = 0
             value: 'str' = ""
-            externalIdList: 'typing.Optional[typing.List[typing.Optional[ContentLauncher.Structs.AdditionalInfoStruct]]]' = None
+            externalIDList: 'typing.Optional[typing.List[typing.Optional[ContentLauncher.Structs.AdditionalInfoStruct]]]' = None
 
         @dataclass
         class ContentSearchStruct(ClusterObject):
@@ -159,12 +159,12 @@ class ContentLauncher(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="imageUrl", Tag=0, Type=typing.Optional[str]),
+                        ClusterObjectFieldDescriptor(Label="imageURL", Tag=0, Type=typing.Optional[str]),
                         ClusterObjectFieldDescriptor(Label="color", Tag=1, Type=typing.Optional[str]),
                         ClusterObjectFieldDescriptor(Label="size", Tag=2, Type=typing.Optional[ContentLauncher.Structs.DimensionStruct]),
                     ])
 
-            imageUrl: 'typing.Optional[str]' = None
+            imageURL: 'typing.Optional[str]' = None
             color: 'typing.Optional[str]' = None
             size: 'typing.Optional[ContentLauncher.Structs.DimensionStruct]' = None
 
@@ -255,13 +255,13 @@ class ContentLauncher(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="contentUrl", Tag=0, Type=str),
+                        ClusterObjectFieldDescriptor(Label="contentURL", Tag=0, Type=str),
                         ClusterObjectFieldDescriptor(Label="displayString", Tag=1, Type=typing.Optional[str]),
                         ClusterObjectFieldDescriptor(Label="brandingInformation", Tag=2, Type=typing.Optional[ContentLauncher.Structs.BrandingInformationStruct]),
                         ClusterObjectFieldDescriptor(Label="playbackPreferences", Tag=3, Type=typing.Optional[ContentLauncher.Structs.PlaybackPreferencesStruct]),
                     ])
 
-            contentUrl: 'str' = ""
+            contentURL: 'str' = ""
             displayString: 'typing.Optional[str]' = None
             brandingInformation: 'typing.Optional[ContentLauncher.Structs.BrandingInformationStruct]' = None
             playbackPreferences: 'typing.Optional[ContentLauncher.Structs.PlaybackPreferencesStruct]' = None

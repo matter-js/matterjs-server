@@ -64,12 +64,12 @@ class AccountLogin(Cluster):
                 return ClusterObjectDescriptor(
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="tempAccountIdentifier", Tag=0, Type=str),
-                        ClusterObjectFieldDescriptor(Label="setupPin", Tag=1, Type=str),
+                        ClusterObjectFieldDescriptor(Label="setupPIN", Tag=1, Type=str),
                         ClusterObjectFieldDescriptor(Label="node", Tag=2, Type=typing.Optional[uint]),
                     ])
 
             tempAccountIdentifier: 'str' = ""
-            setupPin: 'str' = ""
+            setupPIN: 'str' = ""
             node: 'typing.Optional[uint]' = None
 
         @dataclass
@@ -99,10 +99,10 @@ class AccountLogin(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="setupPin", Tag=0, Type=str),
+                        ClusterObjectFieldDescriptor(Label="setupPIN", Tag=0, Type=str),
                     ])
 
-            setupPin: 'str' = ""
+            setupPIN: 'str' = ""
 
     class Attributes:
         @dataclass

@@ -135,11 +135,11 @@ class MediaPlayback(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="id", Tag=0, Type=str),
+                        ClusterObjectFieldDescriptor(Label="iD", Tag=0, Type=str),
                         ClusterObjectFieldDescriptor(Label="trackAttributes", Tag=1, Type=MediaPlayback.Structs.TrackAttributesStruct),
                     ])
 
-            id: 'str' = ""
+            iD: 'str' = ""
             trackAttributes: 'MediaPlayback.Structs.TrackAttributesStruct' = field(default_factory=lambda: MediaPlayback.Structs.TrackAttributesStruct())
 
         @dataclass
@@ -339,11 +339,11 @@ class MediaPlayback(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="trackId", Tag=0, Type=str),
+                        ClusterObjectFieldDescriptor(Label="trackID", Tag=0, Type=str),
                         ClusterObjectFieldDescriptor(Label="audioOutputIndex", Tag=1, Type=typing.Union[None, Nullable, uint]),
                     ])
 
-            trackId: 'str' = ""
+            trackID: 'str' = ""
             audioOutputIndex: 'typing.Union[None, Nullable, uint]' = None
 
         @dataclass
@@ -357,10 +357,10 @@ class MediaPlayback(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="trackId", Tag=0, Type=str),
+                        ClusterObjectFieldDescriptor(Label="trackID", Tag=0, Type=str),
                     ])
 
-            trackId: 'str' = ""
+            trackID: 'str' = ""
 
         @dataclass
         class DeactivateTextTrack(ClusterCommand):

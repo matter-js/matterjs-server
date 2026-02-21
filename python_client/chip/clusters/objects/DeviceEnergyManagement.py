@@ -213,7 +213,7 @@ class DeviceEnergyManagement(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="forecastId", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="forecastID", Tag=0, Type=uint),
                         ClusterObjectFieldDescriptor(Label="activeSlotNumber", Tag=1, Type=typing.Union[Nullable, uint]),
                         ClusterObjectFieldDescriptor(Label="startTime", Tag=2, Type=uint),
                         ClusterObjectFieldDescriptor(Label="endTime", Tag=3, Type=uint),
@@ -224,7 +224,7 @@ class DeviceEnergyManagement(Cluster):
                         ClusterObjectFieldDescriptor(Label="forecastUpdateReason", Tag=8, Type=DeviceEnergyManagement.Enums.ForecastUpdateReasonEnum),
                     ])
 
-            forecastId: 'uint' = 0
+            forecastID: 'uint' = 0
             activeSlotNumber: 'typing.Union[Nullable, uint]' = NullValue
             startTime: 'uint' = 0
             endTime: 'uint' = 0
@@ -411,12 +411,12 @@ class DeviceEnergyManagement(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="forecastId", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="forecastID", Tag=0, Type=uint),
                         ClusterObjectFieldDescriptor(Label="slotAdjustments", Tag=1, Type=typing.List[typing.Optional[DeviceEnergyManagement.Structs.SlotAdjustmentStruct]]),
                         ClusterObjectFieldDescriptor(Label="cause", Tag=2, Type=DeviceEnergyManagement.Enums.AdjustmentCauseEnum),
                     ])
 
-            forecastId: 'uint' = 0
+            forecastID: 'uint' = 0
             slotAdjustments: 'typing.List[typing.Optional[DeviceEnergyManagement.Structs.SlotAdjustmentStruct]]' = field(default_factory=lambda: [])
             cause: 'DeviceEnergyManagement.Enums.AdjustmentCauseEnum' = 0
 

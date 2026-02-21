@@ -85,13 +85,13 @@ class EcosystemInformation(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="uniqueLocationId", Tag=0, Type=str),
+                        ClusterObjectFieldDescriptor(Label="uniqueLocationID", Tag=0, Type=str),
                         ClusterObjectFieldDescriptor(Label="locationDescriptor", Tag=1, Type=Globals.Structs.locationdesc),
                         ClusterObjectFieldDescriptor(Label="locationDescriptorLastEdit", Tag=2, Type=uint),
                         ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=254, Type=uint),
                     ])
 
-            uniqueLocationId: 'str' = ""
+            uniqueLocationID: 'str' = ""
             locationDescriptor: 'Globals.Structs.locationdesc' = field(default_factory=lambda: Globals.Structs.locationdesc())
             locationDescriptorLastEdit: 'uint' = 0
             fabricIndex: 'uint' = 0

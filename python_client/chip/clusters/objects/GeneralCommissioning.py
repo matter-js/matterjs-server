@@ -28,11 +28,11 @@ class GeneralCommissioning(Cluster):
                 ClusterObjectFieldDescriptor(Label="regulatoryConfig", Tag=0x00000002, Type=GeneralCommissioning.Enums.RegulatoryLocationTypeEnum),
                 ClusterObjectFieldDescriptor(Label="locationCapability", Tag=0x00000003, Type=GeneralCommissioning.Enums.RegulatoryLocationTypeEnum),
                 ClusterObjectFieldDescriptor(Label="supportsConcurrentConnection", Tag=0x00000004, Type=bool),
-                ClusterObjectFieldDescriptor(Label="tcAcceptedVersion", Tag=0x00000005, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="tcMinRequiredVersion", Tag=0x00000006, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="tcAcknowledgements", Tag=0x00000007, Type=typing.Optional[Globals.Bitmaps.map16]),
-                ClusterObjectFieldDescriptor(Label="tcAcknowledgementsRequired", Tag=0x00000008, Type=typing.Optional[bool]),
-                ClusterObjectFieldDescriptor(Label="tcUpdateDeadline", Tag=0x00000009, Type=typing.Union[None, Nullable, uint]),
+                ClusterObjectFieldDescriptor(Label="tCAcceptedVersion", Tag=0x00000005, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="tCMinRequiredVersion", Tag=0x00000006, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="tCAcknowledgements", Tag=0x00000007, Type=typing.Optional[Globals.Bitmaps.map16]),
+                ClusterObjectFieldDescriptor(Label="tCAcknowledgementsRequired", Tag=0x00000008, Type=typing.Optional[bool]),
+                ClusterObjectFieldDescriptor(Label="tCUpdateDeadline", Tag=0x00000009, Type=typing.Union[None, Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="attributeList", Tag=0x0000FFFB, Type=typing.List[uint]),
@@ -45,11 +45,11 @@ class GeneralCommissioning(Cluster):
     regulatoryConfig: 'GeneralCommissioning.Enums.RegulatoryLocationTypeEnum' = 0
     locationCapability: 'GeneralCommissioning.Enums.RegulatoryLocationTypeEnum' = 0
     supportsConcurrentConnection: 'bool' = False
-    tcAcceptedVersion: 'typing.Optional[uint]' = None
-    tcMinRequiredVersion: 'typing.Optional[uint]' = None
-    tcAcknowledgements: 'typing.Optional[Globals.Bitmaps.map16]' = None
-    tcAcknowledgementsRequired: 'typing.Optional[bool]' = None
-    tcUpdateDeadline: 'typing.Union[None, Nullable, uint]' = None
+    tCAcceptedVersion: 'typing.Optional[uint]' = None
+    tCMinRequiredVersion: 'typing.Optional[uint]' = None
+    tCAcknowledgements: 'typing.Optional[Globals.Bitmaps.map16]' = None
+    tCAcknowledgementsRequired: 'typing.Optional[bool]' = None
+    tCUpdateDeadline: 'typing.Union[None, Nullable, uint]' = None
     generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
     acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
     attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
@@ -165,12 +165,12 @@ class GeneralCommissioning(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="tcVersion", Tag=0, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="tcUserResponse", Tag=1, Type=Globals.Bitmaps.map16),
+                        ClusterObjectFieldDescriptor(Label="tCVersion", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="tCUserResponse", Tag=1, Type=Globals.Bitmaps.map16),
                     ])
 
-            tcVersion: 'uint' = 0
-            tcUserResponse: 'Globals.Bitmaps.map16' = 0
+            tCVersion: 'uint' = 0
+            tCUserResponse: 'Globals.Bitmaps.map16' = 0
 
         @dataclass
         class ArmFailSafeResponse(ClusterCommand):

@@ -24,14 +24,14 @@ class SmokeCoAlarm(Cluster):
             Fields=[
                 ClusterObjectFieldDescriptor(Label="expressedState", Tag=0x00000000, Type=SmokeCoAlarm.Enums.ExpressedStateEnum),
                 ClusterObjectFieldDescriptor(Label="smokeState", Tag=0x00000001, Type=typing.Optional[SmokeCoAlarm.Enums.AlarmStateEnum]),
-                ClusterObjectFieldDescriptor(Label="coState", Tag=0x00000002, Type=typing.Optional[SmokeCoAlarm.Enums.AlarmStateEnum]),
+                ClusterObjectFieldDescriptor(Label="cOState", Tag=0x00000002, Type=typing.Optional[SmokeCoAlarm.Enums.AlarmStateEnum]),
                 ClusterObjectFieldDescriptor(Label="batteryAlert", Tag=0x00000003, Type=SmokeCoAlarm.Enums.AlarmStateEnum),
                 ClusterObjectFieldDescriptor(Label="deviceMuted", Tag=0x00000004, Type=typing.Optional[SmokeCoAlarm.Enums.MuteStateEnum]),
                 ClusterObjectFieldDescriptor(Label="testInProgress", Tag=0x00000005, Type=bool),
                 ClusterObjectFieldDescriptor(Label="hardwareFaultAlert", Tag=0x00000006, Type=bool),
                 ClusterObjectFieldDescriptor(Label="endOfServiceAlert", Tag=0x00000007, Type=SmokeCoAlarm.Enums.EndOfServiceEnum),
                 ClusterObjectFieldDescriptor(Label="interconnectSmokeAlarm", Tag=0x00000008, Type=typing.Optional[SmokeCoAlarm.Enums.AlarmStateEnum]),
-                ClusterObjectFieldDescriptor(Label="interconnectCoAlarm", Tag=0x00000009, Type=typing.Optional[SmokeCoAlarm.Enums.AlarmStateEnum]),
+                ClusterObjectFieldDescriptor(Label="interconnectCOAlarm", Tag=0x00000009, Type=typing.Optional[SmokeCoAlarm.Enums.AlarmStateEnum]),
                 ClusterObjectFieldDescriptor(Label="contaminationState", Tag=0x0000000A, Type=typing.Optional[SmokeCoAlarm.Enums.ContaminationStateEnum]),
                 ClusterObjectFieldDescriptor(Label="smokeSensitivityLevel", Tag=0x0000000B, Type=typing.Optional[SmokeCoAlarm.Enums.SensitivityEnum]),
                 ClusterObjectFieldDescriptor(Label="expiryDate", Tag=0x0000000C, Type=typing.Optional[uint]),
@@ -44,14 +44,14 @@ class SmokeCoAlarm(Cluster):
 
     expressedState: 'SmokeCoAlarm.Enums.ExpressedStateEnum' = 0
     smokeState: 'typing.Optional[SmokeCoAlarm.Enums.AlarmStateEnum]' = None
-    coState: 'typing.Optional[SmokeCoAlarm.Enums.AlarmStateEnum]' = None
+    cOState: 'typing.Optional[SmokeCoAlarm.Enums.AlarmStateEnum]' = None
     batteryAlert: 'SmokeCoAlarm.Enums.AlarmStateEnum' = 0
     deviceMuted: 'typing.Optional[SmokeCoAlarm.Enums.MuteStateEnum]' = None
     testInProgress: 'bool' = False
     hardwareFaultAlert: 'bool' = False
     endOfServiceAlert: 'SmokeCoAlarm.Enums.EndOfServiceEnum' = 0
     interconnectSmokeAlarm: 'typing.Optional[SmokeCoAlarm.Enums.AlarmStateEnum]' = None
-    interconnectCoAlarm: 'typing.Optional[SmokeCoAlarm.Enums.AlarmStateEnum]' = None
+    interconnectCOAlarm: 'typing.Optional[SmokeCoAlarm.Enums.AlarmStateEnum]' = None
     contaminationState: 'typing.Optional[SmokeCoAlarm.Enums.ContaminationStateEnum]' = None
     smokeSensitivityLevel: 'typing.Optional[SmokeCoAlarm.Enums.SensitivityEnum]' = None
     expiryDate: 'typing.Optional[uint]' = None

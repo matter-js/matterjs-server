@@ -196,11 +196,11 @@ class Globals:
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="attributeId", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="attributeID", Tag=0, Type=uint),
                         ClusterObjectFieldDescriptor(Label="statusCode", Tag=1, Type=Globals.Enums.status),
                     ])
 
-            attributeId: 'uint' = 0
+            attributeID: 'uint' = 0
             statusCode: 'Globals.Enums.status' = 0
 
         @dataclass
@@ -295,13 +295,13 @@ class Globals:
                 return ClusterObjectDescriptor(
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="mfgCode", Tag=0, Type=typing.Union[Nullable, uint]),
-                        ClusterObjectFieldDescriptor(Label="namespaceId", Tag=1, Type=Globals.Enums.namespace),
+                        ClusterObjectFieldDescriptor(Label="namespaceID", Tag=1, Type=Globals.Enums.namespace),
                         ClusterObjectFieldDescriptor(Label="tag", Tag=2, Type=uint),
                         ClusterObjectFieldDescriptor(Label="label", Tag=3, Type=typing.Union[None, Nullable, str]),
                     ])
 
             mfgCode: 'typing.Union[Nullable, uint]' = NullValue
-            namespaceId: 'Globals.Enums.namespace' = 0
+            namespaceID: 'Globals.Enums.namespace' = 0
             tag: 'uint' = 0
             label: 'typing.Union[None, Nullable, str]' = None
 

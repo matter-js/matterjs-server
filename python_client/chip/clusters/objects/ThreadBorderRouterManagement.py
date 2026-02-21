@@ -23,7 +23,7 @@ class ThreadBorderRouterManagement(Cluster):
         return ClusterObjectDescriptor(
             Fields=[
                 ClusterObjectFieldDescriptor(Label="borderRouterName", Tag=0x00000000, Type=str),
-                ClusterObjectFieldDescriptor(Label="borderAgentId", Tag=0x00000001, Type=bytes),
+                ClusterObjectFieldDescriptor(Label="borderAgentID", Tag=0x00000001, Type=bytes),
                 ClusterObjectFieldDescriptor(Label="threadVersion", Tag=0x00000002, Type=uint),
                 ClusterObjectFieldDescriptor(Label="interfaceEnabled", Tag=0x00000003, Type=bool),
                 ClusterObjectFieldDescriptor(Label="activeDatasetTimestamp", Tag=0x00000004, Type=typing.Union[Nullable, uint]),
@@ -36,7 +36,7 @@ class ThreadBorderRouterManagement(Cluster):
             ])
 
     borderRouterName: 'str' = ""
-    borderAgentId: 'bytes' = b""
+    borderAgentID: 'bytes' = b""
     threadVersion: 'uint' = 0
     interfaceEnabled: 'bool' = False
     activeDatasetTimestamp: 'typing.Union[Nullable, uint]' = NullValue

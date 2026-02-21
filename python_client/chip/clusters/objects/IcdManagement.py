@@ -107,14 +107,14 @@ class IcdManagement(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="checkInNodeId", Tag=1, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="checkInNodeID", Tag=1, Type=uint),
                         ClusterObjectFieldDescriptor(Label="monitoredSubject", Tag=2, Type=uint),
                         ClusterObjectFieldDescriptor(Label="key", Tag=3, Type=typing.Optional[uint]),
                         ClusterObjectFieldDescriptor(Label="clientType", Tag=4, Type=IcdManagement.Enums.ClientTypeEnum),
                         ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=254, Type=uint),
                     ])
 
-            checkInNodeId: 'uint' = 0
+            checkInNodeID: 'uint' = 0
             monitoredSubject: 'uint' = 0
             key: 'typing.Optional[uint]' = None
             clientType: 'IcdManagement.Enums.ClientTypeEnum' = 0
@@ -132,14 +132,14 @@ class IcdManagement(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="checkInNodeId", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="checkInNodeID", Tag=0, Type=uint),
                         ClusterObjectFieldDescriptor(Label="monitoredSubject", Tag=1, Type=uint),
                         ClusterObjectFieldDescriptor(Label="key", Tag=2, Type=bytes),
                         ClusterObjectFieldDescriptor(Label="verificationKey", Tag=3, Type=typing.Optional[bytes]),
                         ClusterObjectFieldDescriptor(Label="clientType", Tag=4, Type=IcdManagement.Enums.ClientTypeEnum),
                     ])
 
-            checkInNodeId: 'uint' = 0
+            checkInNodeID: 'uint' = 0
             monitoredSubject: 'uint' = 0
             key: 'bytes' = b""
             verificationKey: 'typing.Optional[bytes]' = None
@@ -156,11 +156,11 @@ class IcdManagement(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="checkInNodeId", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="checkInNodeID", Tag=0, Type=uint),
                         ClusterObjectFieldDescriptor(Label="verificationKey", Tag=1, Type=typing.Optional[bytes]),
                     ])
 
-            checkInNodeId: 'uint' = 0
+            checkInNodeID: 'uint' = 0
             verificationKey: 'typing.Optional[bytes]' = None
 
         @dataclass

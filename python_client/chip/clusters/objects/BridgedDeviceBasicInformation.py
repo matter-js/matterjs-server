@@ -24,9 +24,9 @@ class BridgedDeviceBasicInformation(Cluster):
             Fields=[
                 ClusterObjectFieldDescriptor(Label="dataModelRevision", Tag=0x00000000, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="vendorName", Tag=0x00000001, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="vendorId", Tag=0x00000002, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="vendorID", Tag=0x00000002, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="productName", Tag=0x00000003, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="productId", Tag=0x00000004, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="productID", Tag=0x00000004, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="nodeLabel", Tag=0x00000005, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="location", Tag=0x00000006, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="hardwareVersion", Tag=0x00000007, Type=typing.Optional[uint]),
@@ -35,12 +35,12 @@ class BridgedDeviceBasicInformation(Cluster):
                 ClusterObjectFieldDescriptor(Label="softwareVersionString", Tag=0x0000000A, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="manufacturingDate", Tag=0x0000000B, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="partNumber", Tag=0x0000000C, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="productUrl", Tag=0x0000000D, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="productURL", Tag=0x0000000D, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="productLabel", Tag=0x0000000E, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="serialNumber", Tag=0x0000000F, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="localConfigDisabled", Tag=0x00000010, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="reachable", Tag=0x00000011, Type=uint),
-                ClusterObjectFieldDescriptor(Label="uniqueId", Tag=0x00000012, Type=uint),
+                ClusterObjectFieldDescriptor(Label="uniqueID", Tag=0x00000012, Type=uint),
                 ClusterObjectFieldDescriptor(Label="capabilityMinima", Tag=0x00000013, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="productAppearance", Tag=0x00000014, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="specificationVersion", Tag=0x00000015, Type=typing.Optional[uint]),
@@ -55,9 +55,9 @@ class BridgedDeviceBasicInformation(Cluster):
 
     dataModelRevision: 'typing.Optional[uint]' = None
     vendorName: 'typing.Optional[uint]' = None
-    vendorId: 'typing.Optional[uint]' = None
+    vendorID: 'typing.Optional[uint]' = None
     productName: 'typing.Optional[uint]' = None
-    productId: 'typing.Optional[uint]' = None
+    productID: 'typing.Optional[uint]' = None
     nodeLabel: 'typing.Optional[uint]' = None
     location: 'typing.Optional[uint]' = None
     hardwareVersion: 'typing.Optional[uint]' = None
@@ -66,12 +66,12 @@ class BridgedDeviceBasicInformation(Cluster):
     softwareVersionString: 'typing.Optional[uint]' = None
     manufacturingDate: 'typing.Optional[uint]' = None
     partNumber: 'typing.Optional[uint]' = None
-    productUrl: 'typing.Optional[uint]' = None
+    productURL: 'typing.Optional[uint]' = None
     productLabel: 'typing.Optional[uint]' = None
     serialNumber: 'typing.Optional[uint]' = None
     localConfigDisabled: 'typing.Optional[uint]' = None
     reachable: 'uint' = 0
-    uniqueId: 'uint' = 0
+    uniqueID: 'uint' = 0
     capabilityMinima: 'typing.Optional[uint]' = None
     productAppearance: 'typing.Optional[uint]' = None
     specificationVersion: 'typing.Optional[uint]' = None

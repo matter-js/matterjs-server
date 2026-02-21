@@ -25,23 +25,23 @@ class ThreadNetworkDiagnostics(Cluster):
                 ClusterObjectFieldDescriptor(Label="channel", Tag=0x00000000, Type=typing.Union[Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="routingRole", Tag=0x00000001, Type=typing.Union[Nullable, ThreadNetworkDiagnostics.Enums.RoutingRoleEnum]),
                 ClusterObjectFieldDescriptor(Label="networkName", Tag=0x00000002, Type=typing.Union[Nullable, str]),
-                ClusterObjectFieldDescriptor(Label="panId", Tag=0x00000003, Type=typing.Union[Nullable, uint]),
-                ClusterObjectFieldDescriptor(Label="extendedPanId", Tag=0x00000004, Type=typing.Union[Nullable, uint]),
+                ClusterObjectFieldDescriptor(Label="panID", Tag=0x00000003, Type=typing.Union[Nullable, uint]),
+                ClusterObjectFieldDescriptor(Label="extendedPanID", Tag=0x00000004, Type=typing.Union[Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="meshLocalPrefix", Tag=0x00000005, Type=typing.Union[Nullable, bytes]),
                 ClusterObjectFieldDescriptor(Label="overrunCount", Tag=0x00000006, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="neighborTable", Tag=0x00000007, Type=typing.List[typing.Optional[ThreadNetworkDiagnostics.Structs.NeighborTableStruct]]),
                 ClusterObjectFieldDescriptor(Label="routeTable", Tag=0x00000008, Type=typing.List[typing.Optional[ThreadNetworkDiagnostics.Structs.RouteTableStruct]]),
-                ClusterObjectFieldDescriptor(Label="partitionId", Tag=0x00000009, Type=typing.Union[Nullable, uint]),
+                ClusterObjectFieldDescriptor(Label="partitionID", Tag=0x00000009, Type=typing.Union[Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="weighting", Tag=0x0000000A, Type=typing.Union[Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="dataVersion", Tag=0x0000000B, Type=typing.Union[Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="stableDataVersion", Tag=0x0000000C, Type=typing.Union[Nullable, uint]),
-                ClusterObjectFieldDescriptor(Label="leaderRouterId", Tag=0x0000000D, Type=typing.Union[Nullable, uint]),
+                ClusterObjectFieldDescriptor(Label="leaderRouterID", Tag=0x0000000D, Type=typing.Union[Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="detachedRoleCount", Tag=0x0000000E, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="childRoleCount", Tag=0x0000000F, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="routerRoleCount", Tag=0x00000010, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="leaderRoleCount", Tag=0x00000011, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="attachAttemptCount", Tag=0x00000012, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="partitionIdChangeCount", Tag=0x00000013, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="partitionIDChangeCount", Tag=0x00000013, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="betterPartitionAttachAttemptCount", Tag=0x00000014, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="parentChangeCount", Tag=0x00000015, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="txTotalCount", Tag=0x00000016, Type=typing.Optional[uint]),
@@ -97,23 +97,23 @@ class ThreadNetworkDiagnostics(Cluster):
     channel: 'typing.Union[Nullable, uint]' = NullValue
     routingRole: 'typing.Union[Nullable, ThreadNetworkDiagnostics.Enums.RoutingRoleEnum]' = NullValue
     networkName: 'typing.Union[Nullable, str]' = NullValue
-    panId: 'typing.Union[Nullable, uint]' = NullValue
-    extendedPanId: 'typing.Union[Nullable, uint]' = NullValue
+    panID: 'typing.Union[Nullable, uint]' = NullValue
+    extendedPanID: 'typing.Union[Nullable, uint]' = NullValue
     meshLocalPrefix: 'typing.Union[Nullable, bytes]' = NullValue
     overrunCount: 'typing.Optional[uint]' = None
     neighborTable: 'typing.List[typing.Optional[ThreadNetworkDiagnostics.Structs.NeighborTableStruct]]' = field(default_factory=lambda: [])
     routeTable: 'typing.List[typing.Optional[ThreadNetworkDiagnostics.Structs.RouteTableStruct]]' = field(default_factory=lambda: [])
-    partitionId: 'typing.Union[Nullable, uint]' = NullValue
+    partitionID: 'typing.Union[Nullable, uint]' = NullValue
     weighting: 'typing.Union[Nullable, uint]' = NullValue
     dataVersion: 'typing.Union[Nullable, uint]' = NullValue
     stableDataVersion: 'typing.Union[Nullable, uint]' = NullValue
-    leaderRouterId: 'typing.Union[Nullable, uint]' = NullValue
+    leaderRouterID: 'typing.Union[Nullable, uint]' = NullValue
     detachedRoleCount: 'typing.Optional[uint]' = None
     childRoleCount: 'typing.Optional[uint]' = None
     routerRoleCount: 'typing.Optional[uint]' = None
     leaderRoleCount: 'typing.Optional[uint]' = None
     attachAttemptCount: 'typing.Optional[uint]' = None
-    partitionIdChangeCount: 'typing.Optional[uint]' = None
+    partitionIDChangeCount: 'typing.Optional[uint]' = None
     betterPartitionAttachAttemptCount: 'typing.Optional[uint]' = None
     parentChangeCount: 'typing.Optional[uint]' = None
     txTotalCount: 'typing.Optional[uint]' = None
@@ -253,7 +253,7 @@ class ThreadNetworkDiagnostics(Cluster):
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="extAddress", Tag=0, Type=uint),
                         ClusterObjectFieldDescriptor(Label="rloc16", Tag=1, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="routerId", Tag=2, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="routerID", Tag=2, Type=uint),
                         ClusterObjectFieldDescriptor(Label="nextHop", Tag=3, Type=uint),
                         ClusterObjectFieldDescriptor(Label="pathCost", Tag=4, Type=uint),
                         ClusterObjectFieldDescriptor(Label="lqiIn", Tag=5, Type=uint),
@@ -265,7 +265,7 @@ class ThreadNetworkDiagnostics(Cluster):
 
             extAddress: 'uint' = 0
             rloc16: 'uint' = 0
-            routerId: 'uint' = 0
+            routerID: 'uint' = 0
             nextHop: 'uint' = 0
             pathCost: 'uint' = 0
             lqiIn: 'uint' = 0
@@ -297,10 +297,10 @@ class ThreadNetworkDiagnostics(Cluster):
                         ClusterObjectFieldDescriptor(Label="pendingTimestampPresent", Tag=1, Type=bool),
                         ClusterObjectFieldDescriptor(Label="masterKeyPresent", Tag=2, Type=bool),
                         ClusterObjectFieldDescriptor(Label="networkNamePresent", Tag=3, Type=bool),
-                        ClusterObjectFieldDescriptor(Label="extendedPanIdPresent", Tag=4, Type=bool),
+                        ClusterObjectFieldDescriptor(Label="extendedPanIDPresent", Tag=4, Type=bool),
                         ClusterObjectFieldDescriptor(Label="meshLocalPrefixPresent", Tag=5, Type=bool),
                         ClusterObjectFieldDescriptor(Label="delayPresent", Tag=6, Type=bool),
-                        ClusterObjectFieldDescriptor(Label="panIdPresent", Tag=7, Type=bool),
+                        ClusterObjectFieldDescriptor(Label="panIDPresent", Tag=7, Type=bool),
                         ClusterObjectFieldDescriptor(Label="channelPresent", Tag=8, Type=bool),
                         ClusterObjectFieldDescriptor(Label="pskcPresent", Tag=9, Type=bool),
                         ClusterObjectFieldDescriptor(Label="securityPolicyPresent", Tag=10, Type=bool),
@@ -311,10 +311,10 @@ class ThreadNetworkDiagnostics(Cluster):
             pendingTimestampPresent: 'bool' = False
             masterKeyPresent: 'bool' = False
             networkNamePresent: 'bool' = False
-            extendedPanIdPresent: 'bool' = False
+            extendedPanIDPresent: 'bool' = False
             meshLocalPrefixPresent: 'bool' = False
             delayPresent: 'bool' = False
-            panIdPresent: 'bool' = False
+            panIDPresent: 'bool' = False
             channelPresent: 'bool' = False
             pskcPresent: 'bool' = False
             securityPolicyPresent: 'bool' = False
