@@ -35,6 +35,7 @@
         "server": "node --enable-source-maps packages/matter-server/dist/esm/MatterServer.js",
         "send-command": "node --enable-source-maps packages/ws-controller/dist/esm/example/send-command.js",
         "python:install": "cd python_client && python3 -m venv .venv && .venv/bin/pip install -e '.[test]'",
+        "python:generate": "npx tsx python_client/scripts/generate-python-clusters.ts",
         "python:test": "cd python_client && .venv/bin/pytest tests/ -v --ignore=tests/test_integration.py",
         "python:test-integration": "cd python_client && .venv/bin/pytest tests/test_integration.py -v",
         "python:test-all": "cd python_client && .venv/bin/pytest tests/ -v",
