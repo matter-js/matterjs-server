@@ -8,6 +8,16 @@ import { Environment, Logger, StorageContext, StorageManager, StorageService } f
 
 const logger = new Logger("ConfigStorage");
 
+const SENSITIVE_KEYS: ReadonlySet<keyof ConfigData> = new Set(["wifiCredentials", "threadDataset"]);
+
+function sanitizeForLog(key: string, value: unknown): string {
+    if (SENSITIVE_KEYS.has(key as keyof ConfigData)) {
+        // Fully redact sensitive values regardless of type or length.
+        return "<redacted>";
+    }
+    return String(value);
+}
+
 interface ConfigData {
     fabricLabel: string;
     nextNodeId: number; // formally wrong, should be bigint
@@ -99,7 +109,7 @@ export class ConfigStorage {
             }
             // @ts-expect-error key is a valid key and TS make sure about the type
             this.#data[key] = data[key];
-            logger.info(`Set config key ${key} to ${data[key as keyof ConfigData]}`);
+            logger.info(`Set config key ${key} to ${sanitizeForLog(key, data[key as keyof ConfigData])}`);
             await this.#configStore.set(key, data[key as keyof ConfigData]);
         }
     }
