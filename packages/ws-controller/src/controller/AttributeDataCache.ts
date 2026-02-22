@@ -6,8 +6,7 @@
 
 import { ClientNode, ClusterBehavior, Logger, NodeId } from "@matter/main";
 import { DecodedAttributeReportValue } from "@matter/main/protocol";
-import { AttributeId, ClusterId, EndpointNumber, getClusterById } from "@matter/main/types";
-import { NodeStates, PairedNode } from "@project-chip/matter.js/device";
+import { PairedNode } from "@project-chip/matter.js/device";
 import { ClusterMap } from "../model/ModelMapper.js";
 import { buildAttributePath, convertMatterToWebSocketTagBased } from "../server/Converters.js";
 import { AttributesData } from "../types/CommandHandler.js";
@@ -16,20 +15,14 @@ import { formatNodeId } from "../util/formatNodeId.js";
 const logger = Logger.get("AttributeDataCache");
 
 /**
- * Nested cache structure for node attributes in WebSocket format.
- * Structure: endpointId -> clusterId -> attributeId -> value
- */
-type EndpointAttributeCache = Map<EndpointNumber, Map<ClusterId, Map<AttributeId, unknown>>>;
-
-/**
  * Cache for node attributes in WebSocket format.
  *
- * Stores attributes pre-converted to WebSocket tag-based format for fast retrieval
- * when clients request node data. The cache is structured as:
- * nodeId -> endpointId -> clusterId -> attributeId -> value
+ * Stores attributes pre-converted to WebSocket tag-based format as flat
+ * "endpoint/cluster/attribute" keyed objects for direct retrieval when
+ * clients request node data.
  */
 export class AttributeDataCache {
-    #cache = new Map<NodeId, EndpointAttributeCache>();
+    #cache = new Map<NodeId, AttributesData>();
 
     /**
      * Add a node to the cache and populate its attributes.
@@ -48,7 +41,7 @@ export class AttributeDataCache {
 
     /**
      * Update (reinitialize) the cache for a node.
-     * Creates a fresh cache structure from the node's current state.
+     * Creates a fresh cache from the node's current state.
      * Use this when the node structure may have changed (endpoints added/removed).
      */
     update(node: PairedNode): void {
@@ -62,27 +55,14 @@ export class AttributeDataCache {
     updateAttribute(nodeId: NodeId, data: DecodedAttributeReportValue<any>): void {
         const { endpointId, clusterId, attributeId } = data.path;
 
-        let nodeCache = this.#cache.get(nodeId);
-        if (!nodeCache) {
-            nodeCache = new Map();
-            this.#cache.set(nodeId, nodeCache);
-        }
-
-        let endpointCache = nodeCache.get(endpointId);
-        if (!endpointCache) {
-            endpointCache = new Map();
-            nodeCache.set(endpointId, endpointCache);
-        }
-
-        let clusterCache = endpointCache.get(clusterId);
-        if (!clusterCache) {
-            clusterCache = new Map();
-            endpointCache.set(clusterId, clusterCache);
+        let attributes = this.#cache.get(nodeId);
+        if (!attributes) {
+            attributes = {};
+            this.#cache.set(nodeId, attributes);
         }
 
         // Convert and store the value
-        const cluster = getClusterById(clusterId);
-        const clusterData = ClusterMap[cluster.name.toLowerCase()];
+        const clusterData = ClusterMap[clusterId];
         const convertedValue = convertMatterToWebSocketTagBased(
             data.value,
             clusterData?.attributes[attributeId],
@@ -91,29 +71,15 @@ export class AttributeDataCache {
         if (convertedValue === undefined) {
             return;
         }
-        clusterCache.set(attributeId, convertedValue);
+        attributes[buildAttributePath(endpointId, clusterId, attributeId)] = convertedValue;
     }
 
     /**
-     * Get cached attributes for a node as flat AttributesData.
+     * Get cached attributes for a node.
      * Returns undefined if no cache exists for the node.
      */
     get(nodeId: NodeId): AttributesData | undefined {
-        const nodeCache = this.#cache.get(nodeId);
-        if (!nodeCache) {
-            return undefined;
-        }
-
-        const attributes: AttributesData = {};
-        for (const [endpointId, endpointCache] of nodeCache) {
-            for (const [clusterId, clusterCache] of endpointCache) {
-                for (const [attributeId, value] of clusterCache) {
-                    const pathStr = buildAttributePath(endpointId, clusterId, attributeId);
-                    attributes[pathStr] = value;
-                }
-            }
-        }
-        return attributes;
+        return this.#cache.get(nodeId);
     }
 
     /**
@@ -125,67 +91,56 @@ export class AttributeDataCache {
 
     /**
      * Populate the cache for a node from its current state.
-     * Creates a completely fresh cache structure.
+     * Creates a completely fresh flat attribute object.
      */
     #populateFromNode(node: PairedNode): void {
         const nodeId = node.nodeId;
-        if (!node.initialized || node.connectionState === NodeStates.Disconnected || !node.node.lifecycle.isReady) {
+        if (!node.initialized || !node.node.lifecycle.isCommissioned || !node.node.lifecycle.isReady) {
             logger.debug(`Node ${formatNodeId(nodeId)} not initialized, skipping cache population`);
             return;
         }
 
-        const nodeCache: EndpointAttributeCache = new Map();
-        this.#collectAttributes(node.node, nodeCache);
-        this.#cache.set(nodeId, nodeCache);
+        try {
+            const attributes: AttributesData = {};
+            this.#collectAttributes(node.node, attributes);
+            this.#cache.set(nodeId, attributes);
+        } catch (error) {
+            logger.warn(`Failed to populate attribute cache for node ${formatNodeId(nodeId)}:`, error);
+            return;
+        }
         logger.debug(`Populated attribute cache for node ${formatNodeId(nodeId)}`);
     }
 
     /**
-     * Recursively collect attributes from an endpoint into the cache structure.
-     * Always creates fresh maps for each endpoint and cluster to ensure no stale data.
+     * Collect attributes from all endpoints into a flat attribute object.
      */
-    #collectAttributes(node: ClientNode, nodeCache: EndpointAttributeCache): void {
+    #collectAttributes(node: ClientNode, attributes: AttributesData): void {
         for (const endpoint of node.endpoints) {
             const endpointId = endpoint.number;
-            // Always create fresh maps for this endpoint
-            const endpointCache: Map<ClusterId, Map<AttributeId, unknown>> = new Map();
 
             for (const behavior of endpoint.behaviors.active) {
                 if (!ClusterBehavior.is(behavior)) {
                     continue;
                 }
                 const cluster = behavior.cluster;
-                const clusterId = cluster.id;
-                const clusterData = ClusterMap[cluster.name.toLowerCase()];
+                const clusterData = ClusterMap[cluster.id];
                 const clusterState = endpoint.stateOf(behavior) as Record<string, unknown>;
-
-                // Always create a fresh map for this cluster
-                const clusterCache: Map<AttributeId, unknown> = new Map();
 
                 for (const attributeName in cluster.attributes) {
                     const attribute = cluster.attributes[attributeName];
                     if (attribute === undefined) {
                         continue;
                     }
-                    const attributeValue = clusterState[attributeName];
                     const convertedValue = convertMatterToWebSocketTagBased(
-                        attributeValue,
+                        clusterState[attributeName],
                         clusterData?.attributes[attribute.id],
                         clusterData?.model,
                     );
                     if (convertedValue === undefined) {
                         continue;
                     }
-                    clusterCache.set(attribute.id, convertedValue);
+                    attributes[buildAttributePath(endpointId, cluster.id, attribute.id)] = convertedValue;
                 }
-
-                if (clusterCache.size) {
-                    endpointCache.set(clusterId, clusterCache);
-                }
-            }
-
-            if (endpointCache.size) {
-                nodeCache.set(endpointId, endpointCache);
             }
         }
     }

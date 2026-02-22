@@ -69,8 +69,10 @@ import {
     buildAttributePath,
     convertCommandDataToMatter,
     convertMatterToWebSocketTagBased,
+    convertWebSocketTagBasedToMatter,
     getDateAsString,
     splitAttributePath,
+    toBigIntAwareJson,
 } from "../server/Converters.js";
 import {
     AttributeResponseStatus,
@@ -156,6 +158,8 @@ export class ControllerCommandHandler {
     #customClusterPoller: CustomClusterPoller;
     /** Track the last known availability for each node to detect changes */
     #lastAvailability = new Map<NodeId, boolean>();
+    /** Track in-flight invoke-commands for deduplication across all WebSocket connections */
+    readonly #inFlightInvokes = new Map<string, Promise<unknown>>();
     events = {
         started: new AsyncObservable(),
         attributeChanged: new Observable<[nodeId: NodeId, data: DecodedAttributeReportValue<any>]>(),
@@ -342,7 +346,14 @@ export class ControllerCommandHandler {
         return node;
     }
 
-    async connect() {
+    /**
+     * Initialize the controller, register all commissioned nodes (populates attribute caches),
+     * and start connecting them to the network.
+     *
+     * Guarded by #connected so it runs exactly once, even if called multiple times
+     * (e.g. when WebServer.start() registers handlers for multiple listen addresses).
+     */
+    async initializeNodes() {
         if (this.#connected) {
             return;
         }
@@ -356,16 +367,23 @@ export class ControllerCommandHandler {
         for (const nodeId of nodes) {
             try {
                 logger.info(`Initializing node "${this.#formatNode(nodeId)}" ...`);
-                // Initialize Node
-                const node = await this.#registerNode(nodeId);
+                await this.#registerNode(nodeId);
+            } catch (error) {
+                logger.warn(`Failed to initialize node "${this.#formatNode(nodeId)}":`, error);
+            }
+        }
 
-                // Trigger connect to node, default values are used
-                node.connect({
+        logger.info(`All ${nodes.length} nodes initialized, starting connections`);
+
+        // Start connecting nodes to the network (fire-and-forget, actual I/O is async).
+        for (const nodeId of this.#nodes.getIds()) {
+            try {
+                this.#nodes.get(nodeId).connect({
                     subscribeMinIntervalFloorSeconds: 1,
                     subscribeMaxIntervalCeilingSeconds: undefined,
                 });
             } catch (error) {
-                logger.warn(`Failed to connect to node "${this.#formatNode(nodeId)}":`, error);
+                logger.warn(`Failed to connect node "${this.#formatNode(nodeId)}":`, error);
             }
         }
     }
@@ -412,7 +430,7 @@ export class ControllerCommandHandler {
      * @param nodeId The node ID
      * @param lastInterviewDate Optional last interview date (tracked externally)
      */
-    async getNodeDetails(nodeId: NodeId, lastInterviewDate?: Date): Promise<MatterNodeData> {
+    getNodeDetails(nodeId: NodeId, lastInterviewDate?: Date): MatterNodeData {
         const node = this.#nodes.get(nodeId);
         const attributeCache = this.#nodes.attributeCache;
 
@@ -509,8 +527,7 @@ export class ControllerCommandHandler {
     ) {
         const { endpointId, clusterId, attributeId } = path;
         if (!clusterData) {
-            const cluster = getClusterById(clusterId);
-            clusterData = ClusterMap[cluster.name.toLowerCase()];
+            clusterData = ClusterMap[clusterId];
         }
         return {
             pathStr: buildAttributePath(endpointId, clusterId, attributeId),
@@ -659,9 +676,16 @@ export class ControllerCommandHandler {
     }
 
     async handleWriteAttribute(data: WriteAttributeRequest): Promise<AttributeResponseStatus> {
-        const { nodeId, endpointId, clusterId, attributeId, value } = data;
+        const { nodeId, endpointId, clusterId, attributeId } = data;
+        let { value } = data;
 
         const client = this.#nodes.clusterClientByIdFor(nodeId, endpointId, clusterId);
+
+        const clusterEntry = ClusterMap[clusterId];
+        const model = clusterEntry?.attributes[attributeId];
+        if (model && clusterEntry) {
+            value = convertWebSocketTagBasedToMatter(value, model, clusterEntry.model);
+        }
 
         logger.info("Writing attribute", attributeId, "with value", value);
         try {
@@ -712,7 +736,7 @@ export class ControllerCommandHandler {
         }
     }
 
-    async handleInvoke(data: InvokeRequest): Promise<any> {
+    async handleInvoke(data: InvokeRequest): Promise<unknown> {
         const {
             nodeId,
             endpointId,
@@ -735,7 +759,7 @@ export class ControllerCommandHandler {
             if (Object.keys(commandData).length === 0) {
                 commandData = undefined;
             } else {
-                const clusterEntry = ClusterMap[cluster.name.toLowerCase()];
+                const clusterEntry = ClusterMap[clusterId];
                 const model = clusterEntry?.commands[commandName.toLowerCase()];
                 if (cluster && model) {
                     commandData = convertCommandDataToMatter(commandData, model, clusterEntry.model);
@@ -743,7 +767,21 @@ export class ControllerCommandHandler {
             }
         }
 
-        return await this.#invokeCommand(
+        // Build dedup key from validated/converted fields
+        const serializedData = commandData !== undefined ? toBigIntAwareJson(commandData as object) : "";
+        const dedupKey = `${nodeId}:${endpointId}:${clusterId}:${commandName}:${serializedData}`;
+
+        // Check for in-flight duplicate
+        const existing = this.#inFlightInvokes.get(dedupKey);
+        if (existing !== undefined) {
+            logger.warn(
+                `Duplicate command detected for ${this.#formatNode(nodeId)}/${endpointId}/${cluster.name}/${commandName} - coalescing with in-flight request`,
+            );
+            return existing;
+        }
+
+        // Execute and track the command
+        const invokePromise = this.#invokeCommand(
             this.#nodes.get(nodeId).node,
             {
                 endpoint: endpointId,
@@ -756,6 +794,14 @@ export class ControllerCommandHandler {
                 expectedProcessingTime: interactionTimeoutMs !== undefined ? Millis(interactionTimeoutMs) : undefined,
             },
         );
+
+        // Store the in-flight invoke immediately so concurrent requests can see it
+        this.#inFlightInvokes.set(dedupKey, invokePromise);
+
+        // Ensure cleanup of the in-flight entry once the invoke completes
+        return invokePromise.finally(() => {
+            this.#inFlightInvokes.delete(dedupKey);
+        });
     }
 
     /** InvokeById minimalistic handler because only used for error testing */

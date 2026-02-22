@@ -6,7 +6,7 @@
 
 import { camelize, ClusterId, FabricIndex, Logger, LogLevel, Millis, NodeId, ObserverGroup } from "@matter/main";
 import { ControllerCommissioningFlowOptions } from "@matter/main/protocol";
-import { EndpointNumber, getClusterById, QrPairingCodeCodec } from "@matter/main/types";
+import { EndpointNumber, QrPairingCodeCodec } from "@matter/main/types";
 import { NodeStates } from "@project-chip/matter.js/device";
 import { WebSocketServer } from "ws";
 import { ControllerCommandHandler } from "../controller/ControllerCommandHandler.js";
@@ -29,9 +29,11 @@ import {
     ServerInfoMessage,
     SuccessResultMessage,
 } from "../types/WebSocketMessageTypes.js";
+import { formatNodeId } from "../util/formatNodeId.js";
 import { MATTER_VERSION } from "../util/matterVersion.js";
 import { ConfigStorage } from "./ConfigStorage.js";
 import {
+    convertMatterToWebSocketNameBased,
     convertMatterToWebSocketTagBased,
     parseBigIntAwareJson,
     splitAttributePath,
@@ -137,17 +139,21 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
                 switch (eventName) {
                     case "node_added":
-                    case "node_updated":
-                        this.#collectNodeDetails(nodeId).then(
-                            nodeDetails => {
-                                logger.debug(`[${connId}] Sending ${eventName} event for Node ${nodeId}`);
-                                ws.send(toBigIntAwareJson({ event: eventName, data: nodeDetails }));
-                            },
-                            err => logger.error(`[${connId}] Failed to collect node details for Node ${nodeId}`, err),
-                        );
+                    case "node_updated": {
+                        try {
+                            const nodeDetails = this.#collectNodeDetails(nodeId);
+                            logger.debug(`[${connId}] Sending ${eventName} event for Node ${formatNodeId(nodeId)}`);
+                            ws.send(toBigIntAwareJson({ event: eventName, data: nodeDetails }));
+                        } catch (err) {
+                            logger.error(
+                                `[${connId}] Failed to collect node details for Node ${formatNodeId(nodeId)}`,
+                                err,
+                            );
+                        }
                         break;
+                    }
                     case "node_removed":
-                        logger.debug(`[${connId}] Sending node_removed event for Node ${nodeId}`);
+                        logger.debug(`[${connId}] Sending node_removed event for Node ${formatNodeId(nodeId)}`);
                         ws.send(toBigIntAwareJson({ event: eventName, data: nodeId }));
                         break;
                 }
@@ -158,14 +164,17 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 if (this.#closed) return;
                 const { endpointId, clusterId, attributeId } = data.path;
                 const pathStr = `${endpointId}/${clusterId}/${attributeId}`;
-                const cluster = getClusterById(clusterId);
-                const clusterData = ClusterMap[cluster.name.toLowerCase()];
+                const clusterData = ClusterMap[clusterId];
                 const value = convertMatterToWebSocketTagBased(
                     data.value,
                     clusterData?.attributes[attributeId],
                     clusterData?.model,
                 );
-                logger.debug(`[${connId}] Sending attribute_updated event for Node ${nodeId}`, pathStr, value);
+                logger.debug(
+                    `[${connId}] Sending attribute_updated event for Node ${formatNodeId(nodeId)}`,
+                    pathStr,
+                    value,
+                );
                 ws.send(toBigIntAwareJson({ event: "attribute_updated", data: [nodeId, pathStr, value] }));
             });
 
@@ -204,7 +213,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     // Store event in the history buffer
                     this.#addEventToHistory(nodeEvent);
 
-                    logger.debug(`[${connId}] Sending node_event for Node ${nodeId}`, nodeEvent);
+                    logger.debug(`[${connId}] Sending node_event for Node ${formatNodeId(nodeId)}`, nodeEvent);
                     ws.send(toBigIntAwareJson({ event: "node_event", data: nodeEvent }));
                 }
             });
@@ -224,7 +233,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
             // Send node_updated when availability changes (debounced)
             observers.on(this.#commandHandler.events.nodeAvailabilityChanged, (nodeId, available) => {
-                logger.info(`[${connId}] Node ${nodeId} availability changed to ${available}`);
+                logger.info(`[${connId}] Node ${formatNodeId(nodeId)} availability changed to ${available}`);
                 sendNodeDetailsEvent("node_updated", nodeId);
             });
 
@@ -238,7 +247,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
             observers.on(this.#commandHandler.events.nodeEndpointAdded, (nodeId, endpointId) => {
                 if (this.#closed || !listening) return;
-                logger.info(`[${connId}] Sending endpoint_added event for Node ${nodeId} endpoint ${endpointId}`);
+                logger.info(
+                    `[${connId}] Sending endpoint_added event for Node ${formatNodeId(nodeId)} endpoint ${endpointId}`,
+                );
                 ws.send(
                     toBigIntAwareJson({ event: "endpoint_added", data: { node_id: nodeId, endpoint_id: endpointId } }),
                 );
@@ -246,7 +257,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
             observers.on(this.#commandHandler.events.nodeEndpointRemoved, (nodeId, endpointId) => {
                 if (this.#closed || !listening) return;
-                logger.info(`[${connId}] Sending endpoint_removed event for Node ${nodeId} endpoint ${endpointId}`);
+                logger.info(
+                    `[${connId}] Sending endpoint_removed event for Node ${formatNodeId(nodeId)} endpoint ${endpointId}`,
+                );
                 ws.send(
                     toBigIntAwareJson({
                         event: "endpoint_removed",
@@ -264,7 +277,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
             observers.on(this.#testNodeHandler.nodeRemoved, nodeId => {
                 if (this.#closed || !listening) return;
-                logger.info(`[${connId}] Sending node_removed event for test node ${nodeId}`);
+                logger.info(`[${connId}] Sending node_removed event for test node ${formatNodeId(nodeId)}`);
                 ws.send(toBigIntAwareJson({ event: "node_removed", data: nodeId }));
             });
 
@@ -308,7 +321,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
             );
         });
 
-        await this.#commandHandler.connect();
+        // Initialize all nodes (populates attribute caches) and start connecting them.
+        // Guarded internally so it runs exactly once even with multiple listen addresses.
+        await this.#commandHandler.initializeNodes();
     }
 
     unregister(): Promise<void> {
@@ -359,7 +374,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             let enableListeners: boolean | undefined = undefined;
             switch (command) {
                 case "start_listening":
-                    result = await this.#handleStartListening(args);
+                    result = this.#handleStartListening(args);
                     enableListeners = true;
                     break;
                 case "set_default_fabric_label":
@@ -375,7 +390,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     result = await this.#handleGetNode(args);
                     break;
                 case "get_nodes":
-                    result = await this.#handleGetNodes(args);
+                    result = this.#handleGetNodes(args);
                     break;
                 case "get_node_ip_addresses":
                     result = await this.#handleGetNodeIpAddresses(args);
@@ -401,7 +416,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 case "diagnostics":
                     result = {
                         info: await this.#getServerInfo(),
-                        nodes: await this.#handleGetNodes(args),
+                        nodes: this.#handleGetNodes(args),
                         events: this.getEventHistory(),
                     };
                     break;
@@ -530,8 +545,11 @@ export class WebSocketControllerHandler implements WebServerHandler {
         this.#broadcastEvent("server_info_updated", serverInfo);
     }
 
-    async #handleStartListening(_args: ArgsOf<"start_listening">): Promise<ResponseOf<"start_listening">> {
-        return await this.#handleGetNodes({});
+    #handleStartListening(_args: ArgsOf<"start_listening">): ResponseOf<"start_listening"> {
+        logger.info("WebSocket server start_listening");
+        const data = this.#handleGetNodes({});
+        logger.info("WebSocket server start_listening. Returned", data.length, "nodes");
+        return data;
     }
 
     async #handleSetDefaultFabricLabel(
@@ -579,7 +597,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             threadCredentials,
         });
 
-        return await this.#collectNodeDetails(nodeId);
+        return this.#collectNodeDetails(nodeId);
     }
 
     async #handleCommissionOnNetwork(
@@ -627,15 +645,15 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
         const { nodeId } = await this.#commandHandler.commissionNode(commissionRequest);
 
-        return await this.#collectNodeDetails(nodeId);
+        return this.#collectNodeDetails(nodeId);
     }
 
-    async #handleGetNodes(args: ArgsOf<"get_nodes">): Promise<ResponseOf<"get_nodes">> {
+    #handleGetNodes(args: ArgsOf<"get_nodes">): ResponseOf<"get_nodes"> {
         const { only_available = false } = args ?? {};
         const nodeDetails = new Array<MatterNode>();
         // Include real nodes
         for (const node of this.#commandHandler.getNodeIds()) {
-            const details = await this.#collectNodeDetails(node);
+            const details = this.#collectNodeDetails(node);
             if (!only_available || details.available) {
                 nodeDetails.push(details);
             }
@@ -660,9 +678,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
         // Pass the last interview date for real nodes
         if (handler === this.#commandHandler) {
-            return await this.#commandHandler.getNodeDetails(nodeId, this.#lastInterviewDates.get(nodeId));
+            return this.#commandHandler.getNodeDetails(nodeId, this.#lastInterviewDates.get(nodeId));
         }
-        return await handler.getNodeDetails(nodeId);
+        return handler.getNodeDetails(nodeId);
     }
 
     async #handleGetNodeIpAddresses(
@@ -780,7 +798,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         if (TestNodeCommandHandler.isTestNodeId(nodeId) || response_type === null) {
             return null;
         }
-        const cmdResult = this.#convertCommandDataToWebSocketTagBased(ClusterId(clusterId), commandName, result);
+        const cmdResult = this.#convertCommandDataToWebSocket(ClusterId(clusterId), commandName, result);
         if (cmdResult === undefined) {
             return null;
         }
@@ -797,8 +815,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
             if (testNode === undefined) {
                 throw ServerError.nodeNotExists(nodeId);
             }
-            logger.debug(`interview_node called for test node ${nodeId}`);
-            // Update last interview date for test node
+            logger.debug(`interview_node called for test node ${formatNodeId(nodeId)}`);
+            // Update the last interview date for the test node
             testNode.last_interview = new Date().toISOString().replace("Z", "000");
             this.#broadcastEvent("node_updated", testNode);
             return null;
@@ -955,31 +973,30 @@ export class WebSocketControllerHandler implements WebServerHandler {
         return await this.#commandHandler.updateNode(NodeId(node_id), targetVersion);
     }
 
-    async #collectNodeDetails(nodeId: NodeId): Promise<MatterNode> {
+    #collectNodeDetails(nodeId: NodeId): MatterNode {
         const lastInterviewDate = this.#lastInterviewDates.get(nodeId);
-        return await this.#commandHandler.getNodeDetails(nodeId, lastInterviewDate);
+        return this.#commandHandler.getNodeDetails(nodeId, lastInterviewDate);
     }
 
-    #convertCommandDataToWebSocketTagBased(
+    #convertCommandDataToWebSocket(
         clusterId: ClusterId,
         commandName: string,
         value: unknown,
         clusterData?: ClusterMapEntry,
     ) {
         if (!clusterData) {
-            const cluster = getClusterById(clusterId);
-            clusterData = clusterData ?? ClusterMap[cluster.name.toLowerCase()];
+            clusterData = ClusterMap[clusterId];
         }
 
         if (clusterData === undefined || clusterData.commands[commandName.toLowerCase()] === undefined) {
             logger.warn(
-                `Cluster ${clusterId} does not have command ${commandName}. Do not convert data to WebSocket tag based`,
+                `Cluster ${clusterId} does not have command ${commandName}. Do not convert data to WebSocket format`,
                 value,
             );
             return {};
         }
 
-        return convertMatterToWebSocketTagBased(
+        return convertMatterToWebSocketNameBased(
             value,
             clusterData.commands[commandName.toLowerCase()]!.responseModel,
             clusterData.model,

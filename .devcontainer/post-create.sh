@@ -11,3 +11,6 @@ sudo chown $USER node_modules
 
 # Install dependencies
 npm ci
+
+# Build all packages so the environment is ready to use
+npm run build

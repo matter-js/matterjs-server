@@ -24,19 +24,25 @@ export class DialogBox extends LitElement {
         return html`
             <md-dialog open @cancel=${preventDefault} @closed=${this._handleClosed}>
                 ${params.title ? html`<div slot="headline">${params.title}</div>` : ""}
-                ${params.text
-                    ? html`<div slot="content">
-                          ${params.asCodeBlock && typeof params.text === "string"
-                              ? html`<code>${params.text}</code>`
-                              : params.text}
+                ${
+                    params.text
+                        ? html`<div slot="content">
+                          ${
+                              params.asCodeBlock && typeof params.text === "string"
+                                  ? html`<code>${params.text}</code>`
+                                  : params.text
+                          }
                       </div>`
-                    : ""}
+                        : ""
+                }
                 <div slot="actions">
-                    ${this.type === "prompt"
-                        ? html`
+                    ${
+                        this.type === "prompt"
+                            ? html`
                               <md-text-button @click=${this._cancel}>${params.cancelText ?? "Cancel"}</md-text-button>
                           `
-                        : ""}
+                            : ""
+                    }
                     <md-text-button @click=${this._confirm}>${params.confirmText ?? "OK"}</md-text-button>
                 </div>
             </md-dialog>

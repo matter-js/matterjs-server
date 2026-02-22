@@ -25,7 +25,6 @@ import { ConfigStorage } from "../server/ConfigStorage.js";
 import { ControllerCommandHandler } from "./ControllerCommandHandler.js";
 import { LegacyDataInjector, LegacyServerData } from "./LegacyDataInjector.js";
 import { resolveServerId } from "./ServerIdResolver.js";
-
 // Register BLE
 import "@matter/nodejs-ble";
 
@@ -167,6 +166,7 @@ export class MatterController {
             enableOtaProvider: !this.#disableOtaProvider,
             basicInformation: {
                 vendorName: "Open Home Foundation",
+                productName: "OHF Matter Server",
                 productId: 1,
                 hardwareVersion: 1,
                 hardwareVersionString: "1.0",
@@ -287,7 +287,9 @@ export class MatterController {
         if (this.#controllerInstance === undefined) {
             throw new Error("Controller not initialized");
         }
-        await this.#controllerInstance.otaProvider.setStateOf(SoftwareUpdateManager, { allowTestOtaImages: true });
+        await this.#controllerInstance.otaProvider.setStateOf(SoftwareUpdateManager, {
+            allowTestOtaImages: true,
+        });
         logger.info("Enabled test OTA images (test-net DCL)");
     }
 
@@ -313,7 +315,7 @@ export class MatterController {
         );
 
         const storeStream = Readable.toWeb(createReadStream(filePath)) as ReadableStream<Uint8Array>;
-        await otaService.store(storeStream, updateInfo, false);
+        await otaService.store(storeStream, updateInfo, "local");
         return true;
     }
 

@@ -107,22 +107,26 @@ export class DashboardHeader extends LitElement {
                     aria-current=${this.activeView === "nodes" ? "page" : nothing}
                     >Nodes</a
                 >
-                ${showThreadTab
-                    ? html`<a
+                ${
+                    showThreadTab
+                        ? html`<a
                           href="#thread"
                           class="nav-tab ${this.activeView === "thread" ? "active" : ""}"
                           aria-current=${this.activeView === "thread" ? "page" : nothing}
                           >Thread</a
                       >`
-                    : nothing}
-                ${showWifiTab
-                    ? html`<a
+                        : nothing
+                }
+                ${
+                    showWifiTab
+                        ? html`<a
                           href="#wifi"
                           class="nav-tab ${this.activeView === "wifi" ? "active" : ""}"
                           aria-current=${this.activeView === "wifi" ? "page" : nothing}
                           >WiFi</a
                       >`
-                    : nothing}
+                        : nothing
+                }
             </nav>
         `;
     }
@@ -131,13 +135,15 @@ export class DashboardHeader extends LitElement {
         return html`
             <div class="header">
                 <!-- optional back button -->
-                ${this.backButton
-                    ? html` <a .href=${this.backButton}>
+                ${
+                    this.backButton
+                        ? html` <a .href=${this.backButton}>
                           <md-icon-button>
                               <ha-svg-icon .path=${mdiArrowLeft}></ha-svg-icon>
                           </md-icon-button>
                       </a>`
-                    : ""}
+                        : ""
+                }
 
                 <div class="title">${this.title ?? ""}</div>
                 ${this._renderNavTabs()}
@@ -150,25 +156,29 @@ export class DashboardHeader extends LitElement {
                         `;
                     })}
                     <!-- settings button (only when connected) -->
-                    ${this.client
-                        ? html`
+                    ${
+                        this.client
+                            ? html`
                               <md-icon-button @click=${this._openSettings} title="Server Settings">
                                   <ha-svg-icon .path=${mdiCog}></ha-svg-icon>
                               </md-icon-button>
                           `
-                        : nothing}
+                            : nothing
+                    }
                     <!-- theme toggle button -->
                     <md-icon-button @click=${this._cycleTheme} .title=${this._getThemeTooltip()}>
                         <ha-svg-icon .path=${this._getThemeIcon()}></ha-svg-icon>
                     </md-icon-button>
                     <!-- optional logout button (only when client exists and not in production) -->
-                    ${this.client && !this.client.isProduction
-                        ? html`
+                    ${
+                        this.client && !this.client.isProduction
+                            ? html`
                               <md-icon-button @click=${this.client.disconnect}>
                                   <ha-svg-icon .path=${mdiLogout}></ha-svg-icon>
                               </md-icon-button>
                           `
-                        : nothing}
+                            : nothing
+                    }
                 </div>
             </div>
         `;

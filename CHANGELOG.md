@@ -8,7 +8,59 @@ This page shows a detailed overview of the changes between versions without the 
 -->
 
 ## __WORK IN PROGRESS__
+- Fix: Sanitize wifi/thread credentials in the log when setting them
+- Fix: Update matter.js to 0.16.10
+
+## 0.4.1 (2026-02-21)
+- Feature: Added a new "Drop-in-replacement" matter-python-client as a replacement for the Matter Server package
+- Fix: Fixes custom-cluster writable attributes
+- Fix: Fixed datatype of a thirdreality custom cluster attribute
+- Fix: Update matter.js to 0.16.10-nightly
+    - Fixes waiting time calculation for peer responses
+    - Ensure subscriptions are also properly handled queued
+
+## 0.4.0 (2026-02-19)
+- BREAKING: (schildbach) Only for Docker/Podman users: run server as an unprivileged user. Use `chown -R 1000:1000 /path-to-data-volume` once to migrate permissions!
+  If you're using rootless Podman or Docker and user namespaces, UIDs and GIDs will be remapped to a different value and the previous command
+  needs to be adapted accordingly. If you want to avoid that, use the `--userns=keep-id` option when running the container.
+- Enhancement: (schildbach) Upgrade docker to use Debian Trixie as a base image, improve health checking
+- Enhancement: De-duplicate commands to the same node, endpoint, cluster, and command
+- Fix: (majd) Handle null values for optional command fields to restore Python Matter Server compatibility
+- Fix/Enhancement: Update matter.js to 0.16.10-nightly
+    - Optimize BLE handling
+    - Ignore known addresses when current MDNS results do not include them anymore
+    - OTA update files are now stored per software version, allowing different updates to be served to different nodes simultaneously. Former files are migrated.
+    - Optimize MRP timings when sending retransmissions to address expected network congestion
+    - Prevent multiple commands for the same path from being batched into one command
+    - Optimize reconnection handling on OTA updates
+
+## 0.3.8 (2026-02-16)
+- Enhancement: (lboue) Add Eve childLock custom attributes
+- Enhancement: Enhance mapping and naming of "Unknown" Nodes in the thread graph
+- Enhancement: (lboue) Also show icons for endpoints in the dashboard
+- Enhancement: Add clear warnings for test-net and local updates also in the dashboard
+- Fix: Correct write_attribute handling for structs and arrays and correctly convert the values
+- Fix: Restore compatibility to Python Matter Server in command requests and responses
+- Fix: Fixes "unknown" datatype information in the dashboard for attributes
+- Fix/Enhancement: Update matter.js to 0.16.9-nightly
+    - Batch invoke-commands when received "at the same time" and node supports multiple commands at once
+    - Optimizes OTA handling and prevents the OTA state engine being blocked on failed updates
+    - Matter messaging optimizations
+
+## 0.3.7 (2026-02-12)
+- Fix: Improve the performance of startup and start_listening WebSocket command
+
+## 0.3.6 (2026-02-11)
+- Enhancement: Update Icons in Dashboard graphs and introduce in UI
+- Adjustment: (Leo2442926161) Update the Heiman custom attributes
+- Adjustment: Defined Inovelli attributes writable
+- Enhancement: (lboue) Add Eve childLock custom attribute 
 - Fix: Add missing package dependencies to the docker container to enable BLE support
+- Fix: Update matter.js to 0.16.9-nightly
+    - Add Jitter to max ceiling for subscription when thread to spread datareports a bit better
+    - Prevent duplicate or suppressed attribute changes
+    - Ignore invalid VendorIds or DeviceTypeIds when processing MDNS data
+    - Correctly initialize ReceptionCounter for CASE sessions
 
 ## 0.3.5 (2026-02-04)
 

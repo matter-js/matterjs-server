@@ -13,9 +13,7 @@ export class DashboardFooter extends LitElement {
         return html`
             <div class="footer">
                 The OHF Matter Server is a project by the Open Home Foundation.
-                <a href="https://www.openhomefoundation.org/structure/#support-our-work" target="_blank"
-                    >Support development</a
-                >
+                <a href="https://www.openhomefoundation.org/structure/#support-our-work" target="_blank">Support development</a>
             </div>
         `;
     }

@@ -153,9 +153,16 @@ export function convertCommandDataToMatter(
         }
 
         for (const key of valueKeys) {
-            if (memberByName[key]) {
-                const member = memberByName[key];
-                result[key] = convertCommandDataToMatter(value[key], member, clusterModel);
+            // Camelize the key to normalize PascalCase from Python CHIP SDK (e.g. DSTOffset -> dstOffset)
+            const camelizedKey = camelize(key);
+            if (memberByName[camelizedKey]) {
+                const member = memberByName[camelizedKey];
+                // Treat null for optional non-nullable fields as omitted (e.g. PINCode: null).
+                // This preserves compatibility with clients that send null instead of omitting the field.
+                if (value[key] === null && !member.mandatory && !member.nullable) {
+                    continue;
+                }
+                result[camelizedKey] = convertCommandDataToMatter(value[key], member, clusterModel);
             } else {
                 // Keep unknown keys as-is (fallback for unknown attributes)
                 result[key] = value[key];
@@ -168,46 +175,152 @@ export function convertCommandDataToMatter(
 }
 
 /**
+ * Model conversion kinds, classified once per ValueModel and cached for fast dispatch.
+ */
+const enum ConvKind {
+    Passthrough,
+    EpochS,
+    EpochUS,
+    Bytes,
+    Bitmap,
+    Struct,
+    List,
+}
+
+/** Cached model-to-kind classification. Avoids repeated metabase property traversal. */
+const modelKindCache = new WeakMap<ValueModel, ConvKind>();
+
+/** Precomputed struct member info: avoids camelize() on every conversion. */
+type StructMemberEntry = { readonly name: string; readonly id: number; readonly model: ValueModel };
+const structMemberCache = new WeakMap<ValueModel, StructMemberEntry[]>();
+
+function classifyModel(model: ValueModel): ConvKind {
+    let kind = modelKindCache.get(model);
+    if (kind !== undefined) return kind;
+
+    if (model.type === "list") {
+        kind = ConvKind.List;
+    } else if (model.metabase?.name === "struct") {
+        kind = ConvKind.Struct;
+    } else if (model.metabase?.metatype === "bitmap") {
+        kind = ConvKind.Bitmap;
+    } else if (model.metabase?.metatype === "bytes") {
+        kind = ConvKind.Bytes;
+    } else if (model.metabase?.metatype === "integer") {
+        kind =
+            model.type === "epoch-s"
+                ? ConvKind.EpochS
+                : model.type === "epoch-us"
+                  ? ConvKind.EpochUS
+                  : ConvKind.Passthrough;
+    } else {
+        kind = ConvKind.Passthrough;
+    }
+
+    modelKindCache.set(model, kind);
+    return kind;
+}
+
+function getStructMembers(model: ValueModel): StructMemberEntry[] {
+    let members = structMemberCache.get(model);
+    if (members !== undefined) return members;
+
+    members = [];
+    for (const member of model.members) {
+        if (member.name !== undefined && member.id !== undefined) {
+            members.push({ name: camelize(member.name), id: member.id, model: member });
+        }
+    }
+    structMemberCache.set(model, members);
+    return members;
+}
+
+/**
  * Uses the matter.js Model to convert the response data for read, subscribe and invoke into a tag-based response
  * including conversion of data types.
+ *
+ * Model classification and struct member info are cached in WeakMaps so that repeated calls
+ * for the same model (e.g. across 160 nodes with identical clusters) skip the metabase traversal.
  */
 export function convertMatterToWebSocketTagBased(
     value: unknown,
     model: ValueModel | undefined,
     clusterModel: ClusterModel | undefined,
 ): unknown {
+    return convertMatterToWebSocket(value, model, clusterModel, true);
+}
+
+/**
+ * Same as convertMatterToWebSocketTagBased but uses camelCase names instead of numeric tag IDs for struct keys.
+ * Used for command (invoke) responses to match Python Matter Server behavior.
+ */
+export function convertMatterToWebSocketNameBased(
+    value: unknown,
+    model: ValueModel | undefined,
+    clusterModel: ClusterModel | undefined,
+): unknown {
+    return convertMatterToWebSocket(value, model, clusterModel, false);
+}
+
+function convertMatterToWebSocket(
+    value: unknown,
+    model: ValueModel | undefined,
+    clusterModel: ClusterModel | undefined,
+    tagBased: boolean,
+): unknown {
     if (value === null) {
         return null;
     }
     if (model === undefined) {
-        // Do some simple conversions when we have unknown attributes
+        // Unknown attributes: simple type conversions only
         if (Bytes.isBytes(value)) {
-            return `${Bytes.toBase64(value)}`;
+            return Bytes.toBase64(value);
         }
         if (isObject(value) || !["string", "number", "bigint", "boolean", "undefined"].includes(typeof value)) {
-            return null; // We cannot convert this
+            return null;
         }
-
         return value;
     }
-    if (Array.isArray(value) && model.type === "list") {
-        return value.map(v => convertMatterToWebSocketTagBased(v, model.members[0], clusterModel));
-    }
-    if (isObject(value) && model.metabase?.name === "struct") {
-        const valueKeys = Object.keys(value);
-        const result: { [key: string]: any } = {};
-        for (const member of model.members) {
-            const name = camelize(member.name);
-            if (member.name !== undefined && member.id !== undefined && valueKeys.includes(name)) {
-                result[member.id] = convertMatterToWebSocketTagBased(value[name], member, clusterModel);
-            }
-        }
-        return result;
-    }
-    if (isObject(value) && model.metabase?.metatype === "bitmap") {
-        if (clusterModel !== undefined) {
-            let numberValue = 0;
 
+    switch (classifyModel(model)) {
+        case ConvKind.Passthrough:
+            return value;
+
+        case ConvKind.EpochS:
+            return typeof value === "number" ? value - MATTER_EPOCH_OFFSET_S : value;
+
+        case ConvKind.EpochUS:
+            return typeof value === "number" || typeof value === "bigint"
+                ? BigInt(value) - MATTER_EPOCH_OFFSET_US
+                : value;
+
+        case ConvKind.Bytes:
+            return value instanceof Uint8Array ? Bytes.toBase64(value) : value;
+
+        case ConvKind.List:
+            return Array.isArray(value)
+                ? value.map(v => convertMatterToWebSocket(v, model.members[0], clusterModel, tagBased))
+                : value;
+
+        case ConvKind.Struct: {
+            if (!isObject(value)) return value;
+            const result: { [key: string]: any } = {};
+            for (const { name, id, model: memberModel } of getStructMembers(model)) {
+                if (Object.hasOwn(value, name)) {
+                    result[tagBased ? id : name] = convertMatterToWebSocket(
+                        value[name],
+                        memberModel,
+                        clusterModel,
+                        tagBased,
+                    );
+                }
+            }
+            return result;
+        }
+
+        case ConvKind.Bitmap: {
+            if (!isObject(value) || clusterModel === undefined) return value;
+            let numberValue = 0;
             for (const member of clusterModel.scope.membersOf(model)) {
                 const memberValue =
                     member.name !== undefined && value[camelize(member.name)]
@@ -231,26 +344,9 @@ export function convertMatterToWebSocketTagBased(
                     numberValue |= typeof memberValue === "boolean" ? 1 : memberValue << minBit;
                 }
             }
-
             return numberValue;
         }
     }
-
-    if (value instanceof Uint8Array && model.metabase?.metatype === "bytes") {
-        value = `${Bytes.toBase64(value)}`;
-    }
-
-    if (model.metabase?.metatype === "integer") {
-        // Convert Epoch timestamps to Unix timestamps we use internally
-        if (model.type === "epoch-s" && typeof value === "number") {
-            value -= MATTER_EPOCH_OFFSET_S;
-        } else if (model.type === "epoch-us" && (typeof value === "number" || typeof value === "bigint")) {
-            value = BigInt(value) - MATTER_EPOCH_OFFSET_US;
-        }
-        return value;
-    }
-
-    return value;
 }
 
 /**

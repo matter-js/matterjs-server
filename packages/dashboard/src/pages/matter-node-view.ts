@@ -14,6 +14,7 @@ import { css, html, LitElement } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { guard } from "lit/directives/guard.js";
 import "../components/ha-svg-icon";
+import { getDeviceIcon, getEndpointIcon } from "../util/device-icons.js";
 import { formatNodeAddress, getEffectiveFabricIndex } from "../util/format_hex.js";
 import "./components/header";
 import "./components/node-details";
@@ -72,15 +73,18 @@ class MatterNodeView extends LitElement {
             <!-- node details section -->
             <div class="container">
                 <div class="node-title-bar">
+                    <ha-svg-icon class="node-icon" .path=${getDeviceIcon(this.node)}></ha-svg-icon>
                     <h2>Node ${this.node.node_id} <span class="node-id-hex">${nodeHex}</span></h2>
-                    ${showGraphButton
-                        ? html`
+                    ${
+                        showGraphButton
+                            ? html`
                               <a href=${graphUrl} class="show-in-graph-button" title="Show in ${graphViewType} graph">
                                   <ha-svg-icon .path=${mdiGraphOutline}></ha-svg-icon>
                                   <span class="button-text">Show in graph</span>
                               </a>
                           `
-                        : ""}
+                            : ""
+                    }
                 </div>
                 <node-details .node=${this.node} .client=${this.client}></node-details>
             </div>
@@ -93,10 +97,15 @@ class MatterNodeView extends LitElement {
                             <b>Endpoints</b>
                         </div>
                     </md-list-item>
-                    ${guard([this.node?.attributes.length], () =>
+                    ${guard([this.node, this.node?.attributes], () =>
                         getUniqueEndpoints(this.node!).map(endPointId => {
                             return html`
                                 <md-list-item type="link" href=${`#node/${this.node!.node_id}/${endPointId}`}>
+                                    <ha-svg-icon
+                                        slot="start"
+                                        class="endpoint-icon"
+                                        .path=${getEndpointIcon(this.node!, endPointId)}
+                                    ></ha-svg-icon>
                                     <div slot="headline">Endpoint ${endPointId}</div>
                                     <div slot="supporting-text">
                                         Device Type(s):
@@ -155,6 +164,15 @@ class MatterNodeView extends LitElement {
             align-items: center;
             gap: 16px;
             margin-bottom: 16px;
+        }
+
+        .node-icon {
+            --icon-primary-color: var(--md-sys-color-on-surface-variant, #666);
+            --mdc-icon-size: 28px;
+        }
+
+        .endpoint-icon {
+            --icon-primary-color: var(--md-sys-color-on-surface-variant, #666);
         }
 
         .node-title-bar h2 {

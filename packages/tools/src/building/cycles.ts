@@ -6,15 +6,14 @@
 
 const MAX_CYCLES = 1000;
 
-import { readFile } from "node:fs/promises";
-import { Package } from "../util/package.js";
-import { Progress } from "../util/progress.js";
-
 // @ts-expect-error we don't have types for detective-typescript
 import detective from "detective-typescript";
+import { readFile } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 import { std } from "../ansi-text/std.js";
 import { ansi } from "../ansi-text/text-builder.js";
+import { Package } from "../util/package.js";
+import { Progress } from "../util/progress.js";
 
 export async function reportCycles(pkg: Package, progress: Progress) {
     const cycles = await progress.run(pkg.name, () => identifyCycles(pkg, progress));

@@ -132,6 +132,76 @@ jobs:
         if: steps.automerge.outputs.mergeResult == 'merged'
         run: sleep 120
 
+      - name: Set up Python for PyPI publish
+        if: steps.automerge.outputs.mergeResult == 'merged'
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install Python build tools
+        if: steps.automerge.outputs.mergeResult == 'merged'
+        run: pip install build tomli tomli-w
+
+      - name: Convert version to PEP 440 and set in pyproject.toml
+        if: steps.automerge.outputs.mergeResult == 'merged'
+        id: python_version
+        shell: python
+        env:
+          SEMVER_VERSION: ${{ steps.version.outputs.result }}
+        run: |
+          import re, os, tomli, tomli_w
+
+          version = os.environ["SEMVER_VERSION"]
+
+          # Convert semver to PEP 440
+          match = re.match(r'^(\d+\.\d+\.\d+)(?:-(.+))?$', version)
+          if not match:
+              raise SystemExit(
+                  f"Invalid SEMVER_VERSION format: {version!r}. "
+                  "Expected 'MAJOR.MINOR.PATCH' or 'MAJOR.MINOR.PATCH-prerelease'."
+              )
+          base = match.group(1)
+          prerelease = match.group(2)
+
+          if prerelease:
+              # Expected: alpha.N-YYYYMMDD[-sha] or beta.N-YYYYMMDD[-sha] or rc.N-...
+              pre_match = re.match(r'^(alpha|beta|rc)(?:\.(\d+))?(?:-(\d+))?', prerelease)
+              if not pre_match:
+                  raise SystemExit(
+                      f"Invalid prerelease format in SEMVER_VERSION: {version!r}. "
+                      "Expected 'alpha[.N][-DATE]', 'beta[.N][-DATE]', or 'rc[.N][-DATE]'."
+                  )
+              pre_type = pre_match.group(1)
+              pre_num = pre_match.group(2) or "0"
+              date_str = pre_match.group(3)
+              pep440_pre = {'alpha': 'a', 'beta': 'b', 'rc': 'rc'}[pre_type]
+              pep440_version = f"{base}{pep440_pre}{pre_num}"
+              if date_str:
+                  pep440_version = f"{pep440_version}.dev{date_str}"
+          else:
+              pep440_version = base
+
+          print(f"Semver: {version} -> PEP 440: {pep440_version}")
+
+          with open("python_client/pyproject.toml", "rb") as f:
+              pyproject = tomli.load(f)
+          pyproject["project"]["version"] = pep440_version
+          with open("python_client/pyproject.toml", "wb") as f:
+              tomli_w.dump(pyproject, f)
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"pep440_version={pep440_version}\n")
+
+      - name: Build Python client package
+        if: steps.automerge.outputs.mergeResult == 'merged'
+        run: python3 -m build python_client/
+
+      - name: Publish Python client to PyPI
+        if: steps.automerge.outputs.mergeResult == 'merged'
+        uses: pypa/gh-action-pypi-publish@v1.13.0
+        with:
+          packages-dir: python_client/dist/
+
       - name: Log in to GitHub Container Registry
         if: steps.automerge.outputs.mergeResult == 'merged'
         uses: docker/login-action@v3.7.0
@@ -156,7 +226,7 @@ jobs:
 
       - name: Build and push Docker image (release)
         if: steps.automerge.outputs.mergeResult == 'merged' && !contains(steps.version.outputs.result, '-')
-        uses: docker/build-push-action@v6.18.0
+        uses: docker/build-push-action@v6.19.2
         with:
           context: ./docker/matterjs-server
           platforms: linux/amd64,linux/arm64
@@ -174,7 +244,7 @@ jobs:
 
       - name: Build and push Docker image (pre-release)
         if: steps.automerge.outputs.mergeResult == 'merged' && contains(steps.version.outputs.result, '-')
-        uses: docker/build-push-action@v6.18.0
+        uses: docker/build-push-action@v6.19.2
         with:
           context: ./docker/matterjs-server
           platforms: linux/amd64,linux/arm64

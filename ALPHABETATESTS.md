@@ -37,6 +37,16 @@ Starting with version 8.2.0, the Home Assistant Matter Server add-on includes a 
 4. Restart the add-on
 5. (Optional) Monitor the Matter Server add-on logs to observe the Node.js installation, Matter Server installation, and migration process, which can take a few minutes
 
+## How to get logs
+
+You can use the add-on UI pages in Home Assistant to grab up to 10,000 lines of logs. If you need more, use the HA CLI:
+
+```bash
+ha apps logs core_matter_server -n 1000000 > /config/matter.log
+```
+
+Then download it from the config folder (via Samba or Code app)
+
 ### Reverting to the Python-based Server
 
 To revert to the Python-based Matter Server, simply disable the "Beta" flag in the add-on configuration and restart the add-on.

@@ -4,10 +4,21 @@
 
 services:
   devcontainer:
-    image: "mcr.microsoft.com/devcontainers/javascript-node:1-22-bookworm"
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        TZ: ${TZ:-America/Los_Angeles}
+        GIT_DELTA_VERSION: "0.18.2"
+        ZSH_IN_DOCKER_VERSION: "1.2.0"
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
     volumes:
       - ..:/matterjs-server:cached
       - node-modules:/matterjs-server/node_modules
+      - claude-code-config:/home/node/.claude
+      - claude-code-bashhistory:/commandhistory
     networks:
       - "matter"
     ports:
@@ -16,6 +27,8 @@ services:
 
 volumes:
   node-modules:
+  claude-code-config:
+  claude-code-bashhistory:
 
 networks:
   matter:

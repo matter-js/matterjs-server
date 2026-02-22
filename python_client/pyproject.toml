@@ -1,0 +1,54 @@
+[build-system]
+build-backend = "setuptools.build_meta"
+requires = ["setuptools>=62.3"]
+
+[project]
+authors = [
+  {name = "Open Home Foundation", email = "hello@openhomefoundation.io"},
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Home Automation",
+]
+dependencies = [
+  "aiohttp",
+  "orjson",
+  "home-assistant-chip-clusters==2025.7.0",
+]
+description = "Python Client for the OHF Matter Server"
+license = "Apache-2.0"
+name = "matter-python-client"
+readme = "README.md"
+requires-python = ">=3.12"
+# The version is set by CI on release
+version = "0.0.0"
+
+[project.urls]
+"Homepage" = "https://github.com/matter-js/matterjs-server"
+"Source" = "https://github.com/matter-js/matterjs-server/tree/main/python_client"
+"Bug Tracker" = "https://github.com/matter-js/matterjs-server/issues"
+"Changelog" = "https://github.com/matter-js/matterjs-server/blob/main/CHANGELOG.md"
+
+[project.optional-dependencies]
+test = [
+  "pytest>=9.0",
+  "pytest-asyncio>=0.24",
+  "pytest-aiohttp>=1.0",
+]
+
+[tool.setuptools]
+include-package-data = true
+platforms = ["any"]
+zip-safe = false
+
+[tool.setuptools.package-data]
+matter_server = ["py.typed"]
+
+[tool.setuptools.packages.find]
+include = ["matter_server*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

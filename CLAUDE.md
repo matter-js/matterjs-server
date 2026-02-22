@@ -27,11 +27,11 @@ npm run server -- --storage-path data --primary-interface en0
 # Run tests (uses @matter/testing with mocha)
 npm test
 
-# Lint
+# Lint (oxlint with type-aware checking)
 npm run lint
 npm run lint-fix
 
-# Format
+# Format (oxfmt)
 npm run format
 npm run format-verify
 ```
@@ -70,18 +70,26 @@ Uses custom `@matter/tools` build system:
 - Dashboard uses Rollup for bundling with Babel
 
 Package-level builds: `matter-build` (aliased in each package.json)
+
 Dashboard has additional `npm run generate` step for cluster descriptions.
 
 ## Node.js Requirements
 
 Engine requirement: `>=20.19.0 <22.0.0 || >=22.13.0`
 
-## Code Quality Checklist
+## Code Quality
+
+### Tooling
+- **Linter**: [oxlint](https://oxc.rs) with type-aware checking (config: `.oxlintrc.json`)
+- **Formatter**: [oxfmt](https://oxc.rs) (config: `.oxfmtrc.json`)
+- Both are Rust-based and run in <1s across the entire monorepo
+
+### Checklist
 
 **Always run these checks before considering work complete:**
 
 ```bash
-# 1. Format code (required)
+# 1. Format code (required - MUST run first, oxfmt rewrites files in-place)
 npm run format
 
 # 2. Lint (required)
@@ -94,7 +102,11 @@ npm run build
 npm test
 ```
 
-All four checks must pass. Fix any issues before committing.
+All four checks must pass **in this order**. `npm run format` must be run **before** build/lint — it rewrites files in-place using oxfmt and the build/lint must validate the formatted output. Skipping format leads to formatting drift that gets caught later.
+
+### Plan Documents
+
+Plan/design documents in `docs/plans/` are working files only. **Never commit them to git.** They may exist locally for reference but must not be included in any commit.
 
 ## Dashboard Development
 

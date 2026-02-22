@@ -11045,6 +11045,48 @@ export const clusters: Record<number, ClusterDescription> = {
         "id": 302775297,
         "label": "HeimanCluster",
         "attributes": {
+            "16": {
+                "id": 16,
+                "cluster_id": 302775297,
+                "label": "TamperAlarm",
+                "type": "Optional[unknown]"
+            },
+            "17": {
+                "id": 17,
+                "cluster_id": 302775297,
+                "label": "PreheatingState",
+                "type": "Optional[unknown]"
+            },
+            "18": {
+                "id": 18,
+                "cluster_id": 302775297,
+                "label": "NoDisturbingState",
+                "type": "Optional[unknown]"
+            },
+            "19": {
+                "id": 19,
+                "cluster_id": 302775297,
+                "label": "SensorType",
+                "type": "Optional[unknown]"
+            },
+            "20": {
+                "id": 20,
+                "cluster_id": 302775297,
+                "label": "SirenActive",
+                "type": "Optional[unknown]"
+            },
+            "21": {
+                "id": 21,
+                "cluster_id": 302775297,
+                "label": "AlarmMute",
+                "type": "Optional[unknown]"
+            },
+            "22": {
+                "id": 22,
+                "cluster_id": 302775297,
+                "label": "LowPowerMode",
+                "type": "Optional[unknown]"
+            },
             "65528": {
                 "id": 65528,
                 "cluster_id": 302775297,
@@ -11080,48 +11122,6 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 302775297,
                 "label": "ClusterRevision",
                 "type": "uint16"
-            },
-            "302710800": {
-                "id": 302710800,
-                "cluster_id": 302775297,
-                "label": "TamperAlarm",
-                "type": "Optional[unknown]"
-            },
-            "302710801": {
-                "id": 302710801,
-                "cluster_id": 302775297,
-                "label": "PreheatingState",
-                "type": "Optional[unknown]"
-            },
-            "302710802": {
-                "id": 302710802,
-                "cluster_id": 302775297,
-                "label": "NoDisturbingState",
-                "type": "Optional[unknown]"
-            },
-            "302710803": {
-                "id": 302710803,
-                "cluster_id": 302775297,
-                "label": "SensorType",
-                "type": "Optional[unknown]"
-            },
-            "302710804": {
-                "id": 302710804,
-                "cluster_id": 302775297,
-                "label": "SirenActive",
-                "type": "Optional[unknown]"
-            },
-            "302710805": {
-                "id": 302710805,
-                "cluster_id": 302775297,
-                "label": "AlarmMute",
-                "type": "Optional[unknown]"
-            },
-            "302710806": {
-                "id": 302710806,
-                "cluster_id": 302775297,
-                "label": "LowPowerMode",
-                "type": "Optional[unknown]"
             }
         }
     },
@@ -11291,10 +11291,40 @@ export const clusters: Record<number, ClusterDescription> = {
                 "label": "ClusterRevision",
                 "type": "uint16"
             },
+            "319422464": {
+                "id": 319422464,
+                "cluster_id": 319486977,
+                "label": "GetConfig",
+                "type": "Optional[bytes]"
+            },
+            "319422465": {
+                "id": 319422465,
+                "cluster_id": 319486977,
+                "label": "SetConfig",
+                "type": "Optional[bytes]"
+            },
+            "319422466": {
+                "id": 319422466,
+                "cluster_id": 319486977,
+                "label": "LoggingMetadata",
+                "type": "Optional[bytes]"
+            },
+            "319422467": {
+                "id": 319422467,
+                "cluster_id": 319486977,
+                "label": "LoggingData",
+                "type": "Optional[bytes]"
+            },
             "319422470": {
                 "id": 319422470,
                 "cluster_id": 319486977,
                 "label": "TimesOpened",
+                "type": "Optional[unknown]"
+            },
+            "319422471": {
+                "id": 319422471,
+                "cluster_id": 319486977,
+                "label": "LastEventTime",
                 "type": "Optional[unknown]"
             },
             "319422472": {
@@ -11321,6 +11351,12 @@ export const clusters: Record<number, ClusterDescription> = {
                 "label": "WattAccumulated",
                 "type": "Optional[unknown]"
             },
+            "319422476": {
+                "id": 319422476,
+                "cluster_id": 319486977,
+                "label": "StatusFault",
+                "type": "Optional[unknown]"
+            },
             "319422477": {
                 "id": 319422477,
                 "cluster_id": 319486977,
@@ -11338,6 +11374,18 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 319486977,
                 "label": "ObstructionDetected",
                 "type": "Optional[bool]"
+            },
+            "319422481": {
+                "id": 319422481,
+                "cluster_id": 319486977,
+                "label": "ChildLock",
+                "type": "Optional[bool]"
+            },
+            "319422482": {
+                "id": 319422482,
+                "cluster_id": 319486977,
+                "label": "Rloc16",
+                "type": "Optional[unknown]"
             },
             "319422483": {
                 "id": 319422483,
