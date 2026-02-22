@@ -11,9 +11,9 @@ const logger = new Logger("ConfigStorage");
 const SENSITIVE_KEYS: ReadonlySet<keyof ConfigData> = new Set(["wifiCredentials", "threadDataset"]);
 
 function sanitizeForLog(key: string, value: unknown): string {
-    if (typeof value === "string" && SENSITIVE_KEYS.has(key as keyof ConfigData)) {
-        if (value.length <= 8) return "***";
-        return `${value.slice(0, 4)}***${value.slice(-4)}`;
+    if (SENSITIVE_KEYS.has(key as keyof ConfigData)) {
+        // Fully redact sensitive values regardless of type or length.
+        return "<redacted>";
     }
     return String(value);
 }
