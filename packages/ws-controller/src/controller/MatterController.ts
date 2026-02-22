@@ -166,6 +166,7 @@ export class MatterController {
             enableOtaProvider: !this.#disableOtaProvider,
             basicInformation: {
                 vendorName: "Open Home Foundation",
+                productName: "OHF Matter Server",
                 productId: 1,
                 hardwareVersion: 1,
                 hardwareVersionString: "1.0",
