@@ -64,7 +64,7 @@ import {
 } from "@matter/main/types";
 import { CommissioningController, NodeCommissioningOptions } from "@project-chip/matter.js";
 import { NodeStates } from "@project-chip/matter.js/device";
-import { ClusterMap, ClusterMapEntry } from "../model/ModelMapper.js";
+import { ClusterMap, ClusterMapEntry, GlobalAttributes } from "../model/ModelMapper.js";
 import {
     buildAttributePath,
     convertCommandDataToMatter,
@@ -531,7 +531,11 @@ export class ControllerCommandHandler {
         }
         return {
             pathStr: buildAttributePath(endpointId, clusterId, attributeId),
-            value: convertMatterToWebSocketTagBased(value, clusterData?.attributes[attributeId], clusterData?.model),
+            value: convertMatterToWebSocketTagBased(
+                value,
+                clusterData?.attributes[attributeId] ?? GlobalAttributes[attributeId],
+                clusterData?.model,
+            ),
         };
     }
 

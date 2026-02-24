@@ -276,6 +276,10 @@ function convertMatterToWebSocket(
         if (Bytes.isBytes(value)) {
             return Bytes.toBase64(value);
         }
+        if (Array.isArray(value)) {
+            // Best-effort: recursively convert elements without schema
+            return value.map(v => convertMatterToWebSocket(v, undefined, clusterModel, tagBased));
+        }
         if (isObject(value) || !["string", "number", "bigint", "boolean", "undefined"].includes(typeof value)) {
             return null;
         }

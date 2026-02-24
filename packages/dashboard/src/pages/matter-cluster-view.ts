@@ -129,7 +129,7 @@ class MatterClusterView extends LitElement {
                                 </div>
                                 <div slot="end">
                                     ${
-                                        toBigIntAwareJson(attribute.value).length > 20
+                                        toBigIntAwareJson(attribute.value).length > 30
                                             ? html`<button
                                               @click=${() => {
                                                   this._showAttributeValue(attribute.value);
