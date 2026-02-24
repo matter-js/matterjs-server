@@ -25,7 +25,14 @@ import {
     SoftwareUpdateManager,
 } from "@matter/main";
 import { OperationalCredentialsClient } from "@matter/main/behaviors";
-import { AccessControl, Binding, GeneralCommissioning, OperationalCredentials } from "@matter/main/clusters";
+import {
+    AccessControl,
+    BasicInformation,
+    Binding,
+    BridgedDeviceBasicInformation,
+    GeneralCommissioning,
+    OperationalCredentials,
+} from "@matter/main/clusters";
 import {
     DecodedAttributeReportValue,
     DecodedEventReportValue,
@@ -111,6 +118,16 @@ import { CustomClusterPoller } from "./CustomClusterPoller.js";
 import { Nodes } from "./Nodes.js";
 
 const logger = Logger.get("ControllerCommandHandler");
+
+/**
+ * Cluster IDs whose attribute changes should trigger a full node_updated broadcast.
+ * BasicInformation (0x28) covers firmware version, product name, etc.
+ * BridgedDeviceBasicInformation (0x39) covers the same for bridged child nodes.
+ */
+const FULL_UPDATE_CLUSTER_IDS = new Set<ClusterId>([
+    BasicInformation.Cluster.id,
+    BridgedDeviceBasicInformation.Cluster.id,
+]);
 
 /**
  * Determine the Matter specification version from cached attributes.
@@ -277,11 +294,25 @@ export class ControllerCommandHandler {
         const attributeCache = this.#nodes.attributeCache;
 
         // Wire all Events to the Event emitters
+        // Track if a BasicInformation or BridgedDeviceBasicInformation attribute changed during
+        // a subscription batch. When the batch ends (connectionAlive), emit a full node_updated.
+        let basicInfoChangedInBatch = false;
         node.events.attributeChanged.on(data => {
             // Update the attribute cache with the new value in WebSocket format
             attributeCache.updateAttribute(nodeId, data);
             // Then emit the event for listeners
             this.events.attributeChanged.emit(nodeId, data);
+            // Mark for full node_updated if any BasicInformation cluster attribute changed
+            if (FULL_UPDATE_CLUSTER_IDS.has(data.path.clusterId)) {
+                basicInfoChangedInBatch = true;
+            }
+        });
+        node.events.connectionAlive.on(() => {
+            if (basicInfoChangedInBatch) {
+                basicInfoChangedInBatch = false;
+                logger.info(`Node ${this.#formatNode(nodeId)} basic information changed, sending full node_updated`);
+                this.events.nodeStructureChanged.emit(nodeId);
+            }
         });
         node.events.eventTriggered.on(data => this.events.eventChanged.emit(nodeId, data));
         node.events.stateChanged.on(state => {
@@ -324,6 +355,7 @@ export class ControllerCommandHandler {
             if (node.isConnected) {
                 attributeCache.update(node);
             }
+            basicInfoChangedInBatch = false;
             this.events.nodeStructureChanged.emit(nodeId);
         });
         node.events.decommissioned.on(() => this.events.nodeDecommissioned.emit(nodeId));
