@@ -7,7 +7,7 @@
 import { consume } from "@lit/context";
 import "@material/web/divider/divider";
 import { isTestNodeId, type MatterClient, type MatterNode } from "@matter-server/ws-client";
-import { mdiClose, mdiRefresh, mdiSignal, mdiSignalCellular1, mdiSignalCellular2 } from "@mdi/js";
+import { mdiClose, mdiRefresh, mdiSignalCellular1, mdiSignalCellular2, mdiSignalCellular3 } from "@mdi/js";
 import { LitElement, TemplateResult, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { clientContext } from "../../client/client-context.js";
@@ -101,13 +101,13 @@ export class NetworkDetails extends LitElement {
 
     private _getSignalIcon(neighbor: ThreadNeighbor): string {
         const color = getSignalColor(neighbor);
-        if (color === "#4caf50") return mdiSignal; // Strong
+        if (color === "#4caf50") return mdiSignalCellular3; // Strong
         if (color === "#ff9800") return mdiSignalCellular2; // Medium
         return mdiSignalCellular1; // Weak
     }
 
     private _getSignalIconFromColor(color: string): string {
-        if (color === "#4caf50") return mdiSignal; // Strong
+        if (color === "#4caf50") return mdiSignalCellular3; // Strong
         if (color === "#ff9800") return mdiSignalCellular2; // Medium
         return mdiSignalCellular1; // Weak
     }

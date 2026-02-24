@@ -10,6 +10,7 @@ This page shows a detailed overview of the changes between versions without the 
 ## __WORK IN PROGRESS__
 - Fix: Fixed encoding of custom array-based data types
 - Fix: Triggers a full node-update when a (Bridged Node) Basic Information cluster attribute changes
+- Fix: Uses the same kind of signal icons for all signal levels
 
 ## 0.4.2 (2026-02-22)
 - Fix: Sanitize wifi/thread credentials in the log when setting them
