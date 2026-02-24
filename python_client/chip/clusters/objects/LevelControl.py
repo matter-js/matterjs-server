@@ -194,7 +194,6 @@ class LevelControl(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class MoveWithOnOff(ClusterCommand):
@@ -209,7 +208,6 @@ class LevelControl(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class StepWithOnOff(ClusterCommand):
@@ -224,7 +222,6 @@ class LevelControl(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class StopWithOnOff(ClusterCommand):
@@ -239,7 +236,6 @@ class LevelControl(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class MoveToClosestFrequency(ClusterCommand):

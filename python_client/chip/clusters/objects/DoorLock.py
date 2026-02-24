@@ -485,7 +485,6 @@ class DoorLock(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class UnlockWithTimeout(ClusterCommand):
@@ -572,7 +571,6 @@ class DoorLock(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class SetUserStatus(ClusterCommand):
@@ -885,7 +883,6 @@ class DoorLock(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class SetUser(ClusterCommand):
@@ -1056,7 +1053,6 @@ class DoorLock(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class GetPINCodeResponse(ClusterCommand):

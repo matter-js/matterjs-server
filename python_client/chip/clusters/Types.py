@@ -16,6 +16,15 @@ class Nullable:
     def __lt__(self, other):
         return True
 
+    def __le__(self, other):
+        return True  # self < other or self == other, both are always True for this sentinel
+
+    def __gt__(self, other):
+        return False  # negation of __le__
+
+    def __ge__(self, other):
+        return isinstance(other, Nullable)  # True when compared to another Nullable, False otherwise
+
     def __hash__(self):
         return 0
 

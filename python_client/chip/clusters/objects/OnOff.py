@@ -107,7 +107,6 @@ class OnOff(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class On(ClusterCommand):
@@ -122,7 +121,6 @@ class OnOff(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class Toggle(ClusterCommand):
@@ -137,7 +135,6 @@ class OnOff(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class OffWithEffect(ClusterCommand):
@@ -170,7 +167,6 @@ class OnOff(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class OnWithTimedOff(ClusterCommand):

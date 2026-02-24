@@ -187,7 +187,6 @@ class GeneralDiagnostics(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class PayloadTestRequest(ClusterCommand):

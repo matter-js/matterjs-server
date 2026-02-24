@@ -114,7 +114,6 @@ class OvenCavityOperationalState(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class Stop(ClusterCommand):
@@ -129,7 +128,6 @@ class OvenCavityOperationalState(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class Start(ClusterCommand):
@@ -144,7 +142,6 @@ class OvenCavityOperationalState(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class Resume(ClusterCommand):
@@ -159,7 +156,6 @@ class OvenCavityOperationalState(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class OperationalCommandResponse(ClusterCommand):

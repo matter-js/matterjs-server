@@ -125,7 +125,6 @@ class Groups(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class AddGroupIfIdentifying(ClusterCommand):

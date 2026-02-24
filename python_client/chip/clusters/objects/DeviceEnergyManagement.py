@@ -347,7 +347,6 @@ class DeviceEnergyManagement(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class StartTimeAdjustRequest(ClusterCommand):
@@ -398,7 +397,6 @@ class DeviceEnergyManagement(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class ModifyForecastRequest(ClusterCommand):
@@ -451,7 +449,6 @@ class DeviceEnergyManagement(Cluster):
                     Fields=[
                     ])
 
-            pass
 
     class Attributes:
         @dataclass

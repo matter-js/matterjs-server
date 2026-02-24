@@ -113,7 +113,6 @@ class HepaFilterMonitoring(Cluster):
                     Fields=[
                     ])
 
-            pass
 
     class Attributes:
         @dataclass

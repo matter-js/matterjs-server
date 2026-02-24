@@ -1,7 +1,7 @@
 """
-Device type definitions.
+ Device type definitions.
 
-This file is auto-generated, DO NOT edit.
+ This file is auto-generated, DO NOT edit.
 """
 
 from __future__ import annotations
@@ -9,12 +9,12 @@ from __future__ import annotations
 from chip.clusters import Objects as all_clusters
 from chip.clusters.ClusterObjects import Cluster
 
+
 ALL_TYPES: dict[int, type[DeviceType]] = {}
 
 
 class DeviceType:
     """Base class for Matter device types."""
-
     device_type: int = 0
     clusters: set[type[Cluster]] = set()
 

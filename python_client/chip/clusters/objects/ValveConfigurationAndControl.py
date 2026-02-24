@@ -121,7 +121,6 @@ class ValveConfigurationAndControl(Cluster):
                     Fields=[
                     ])
 
-            pass
 
     class Attributes:
         @dataclass

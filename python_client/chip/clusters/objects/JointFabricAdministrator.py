@@ -84,7 +84,6 @@ class JointFabricAdministrator(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class AddICAC(ClusterCommand):
@@ -139,7 +138,6 @@ class JointFabricAdministrator(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class TransferAnchorComplete(ClusterCommand):
@@ -154,7 +152,6 @@ class JointFabricAdministrator(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class AnnounceJointFabricAdministrator(ClusterCommand):

@@ -53,7 +53,6 @@ class WiFiNetworkManagement(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class NetworkPassphraseResponse(ClusterCommand):

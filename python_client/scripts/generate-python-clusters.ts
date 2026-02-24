@@ -855,9 +855,7 @@ function generateCommand(
         w.line(`${toCamelCase(f.name)}: '${pyType.annotation}' = ${pyType.defaultValue}`);
     }
 
-    if (fields.length === 0) {
-        w.line("pass");
-    }
+    // No need for pass - the descriptor method is already present
 
     w.popIndent();
 }

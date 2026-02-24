@@ -113,7 +113,6 @@ class WaterTankLevelMonitoring(Cluster):
                     Fields=[
                     ])
 
-            pass
 
     class Attributes:
         @dataclass

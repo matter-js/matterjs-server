@@ -111,7 +111,6 @@ class MediaInput(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class HideInputStatus(ClusterCommand):
@@ -126,7 +125,6 @@ class MediaInput(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class RenameInput(ClusterCommand):

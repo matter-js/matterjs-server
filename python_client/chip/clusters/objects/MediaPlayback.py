@@ -171,7 +171,6 @@ class MediaPlayback(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class Pause(ClusterCommand):
@@ -186,7 +185,6 @@ class MediaPlayback(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class Stop(ClusterCommand):
@@ -201,7 +199,6 @@ class MediaPlayback(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class StartOver(ClusterCommand):
@@ -216,7 +213,6 @@ class MediaPlayback(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class Previous(ClusterCommand):
@@ -231,7 +227,6 @@ class MediaPlayback(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class Next(ClusterCommand):
@@ -246,7 +241,6 @@ class MediaPlayback(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class Rewind(ClusterCommand):
@@ -375,7 +369,6 @@ class MediaPlayback(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class PlaybackResponse(ClusterCommand):

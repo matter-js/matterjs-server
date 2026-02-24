@@ -121,7 +121,6 @@ class WaterHeaterManagement(Cluster):
                     Fields=[
                     ])
 
-            pass
 
     class Attributes:
         @dataclass

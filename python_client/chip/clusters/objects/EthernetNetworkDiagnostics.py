@@ -90,7 +90,6 @@ class EthernetNetworkDiagnostics(Cluster):
                     Fields=[
                     ])
 
-            pass
 
     class Attributes:
         @dataclass

@@ -146,7 +146,6 @@ class SmokeCoAlarm(Cluster):
                     Fields=[
                     ])
 
-            pass
 
     class Attributes:
         @dataclass

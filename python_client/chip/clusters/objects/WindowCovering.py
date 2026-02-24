@@ -206,7 +206,6 @@ class WindowCovering(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class DownOrClose(ClusterCommand):
@@ -221,7 +220,6 @@ class WindowCovering(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class StopMotion(ClusterCommand):
@@ -236,7 +234,6 @@ class WindowCovering(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class GoToLiftValue(ClusterCommand):

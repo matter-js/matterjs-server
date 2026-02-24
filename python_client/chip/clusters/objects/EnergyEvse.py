@@ -203,7 +203,6 @@ class EnergyEvse(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class EnableCharging(ClusterCommand):
@@ -256,7 +255,6 @@ class EnergyEvse(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class SetTargets(ClusterCommand):
@@ -287,7 +285,6 @@ class EnergyEvse(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class ClearTargets(ClusterCommand):
@@ -302,7 +299,6 @@ class EnergyEvse(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class GetTargetsResponse(ClusterCommand):

@@ -559,7 +559,6 @@ class Thermostat(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class SetActiveScheduleRequest(ClusterCommand):

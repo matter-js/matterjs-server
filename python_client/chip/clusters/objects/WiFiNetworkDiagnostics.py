@@ -128,7 +128,6 @@ class WiFiNetworkDiagnostics(Cluster):
                     Fields=[
                     ])
 
-            pass
 
     class Attributes:
         @dataclass

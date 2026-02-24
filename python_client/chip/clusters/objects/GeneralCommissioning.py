@@ -152,7 +152,6 @@ class GeneralCommissioning(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class SetTCAcknowledgements(ClusterCommand):

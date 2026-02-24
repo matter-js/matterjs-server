@@ -136,7 +136,6 @@ class RvcOperationalState(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class Stop(ClusterCommand):
@@ -151,7 +150,6 @@ class RvcOperationalState(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class Start(ClusterCommand):
@@ -166,7 +164,6 @@ class RvcOperationalState(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class Resume(ClusterCommand):
@@ -181,7 +178,6 @@ class RvcOperationalState(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class GoHome(ClusterCommand):
@@ -196,7 +192,6 @@ class RvcOperationalState(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class OperationalCommandResponse(ClusterCommand):

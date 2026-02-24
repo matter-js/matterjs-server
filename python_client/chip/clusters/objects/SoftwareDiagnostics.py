@@ -81,7 +81,6 @@ class SoftwareDiagnostics(Cluster):
                     Fields=[
                     ])
 
-            pass
 
     class Attributes:
         @dataclass

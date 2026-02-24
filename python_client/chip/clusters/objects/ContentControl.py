@@ -203,7 +203,6 @@ class ContentControl(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class Enable(ClusterCommand):
@@ -218,7 +217,6 @@ class ContentControl(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class Disable(ClusterCommand):
@@ -233,7 +231,6 @@ class ContentControl(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class AddBonusTime(ClusterCommand):
@@ -282,7 +279,6 @@ class ContentControl(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class UnblockUnratedContent(ClusterCommand):
@@ -297,7 +293,6 @@ class ContentControl(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class SetOnDemandRatingThreshold(ClusterCommand):

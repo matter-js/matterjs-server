@@ -65,7 +65,6 @@ class ThreadBorderRouterManagement(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class GetPendingDatasetRequest(ClusterCommand):
@@ -80,7 +79,6 @@ class ThreadBorderRouterManagement(Cluster):
                     Fields=[
                     ])
 
-            pass
 
         @dataclass
         class SetActiveDatasetRequest(ClusterCommand):
