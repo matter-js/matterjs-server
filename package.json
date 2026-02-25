@@ -41,13 +41,13 @@
         "python:build": "cd python_client && .venv/bin/pip install build && .venv/bin/python -m build"
     },
     "devDependencies": {
-        "@matter/testing": "0.16.10",
+        "@matter/testing": "0.16.11-alpha.0-20260225-033797f3c",
         "@types/mocha": "^10.0.10",
-        "glob": "^13.0.5",
+        "glob": "^13.0.6",
         "globals": "^17.3.0",
-        "oxfmt": "^0.33.0",
-        "oxlint": "^1.48.0",
-        "oxlint-tsgolint": "^0.14.1",
+        "oxfmt": "^0.35.0",
+        "oxlint": "^1.50.0",
+        "oxlint-tsgolint": "^0.15.0",
         "tsx": "^4.21.0",
         "typescript": "~5.9.3"
     }

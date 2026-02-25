@@ -8,6 +8,7 @@ This page shows a detailed overview of the changes between versions without the 
 -->
 
 ## __WORK IN PROGRESS__
+- Adjustment: Sort connection quality entries in network graph details by quality
 - Fix: Fixed encoding of custom array-based data types
 - Fix: Triggers a full node-update when a (Bridged Node) Basic Information cluster attribute changes
 - Fix: Uses the same kind of signal icons for all signal levels

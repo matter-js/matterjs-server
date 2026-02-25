@@ -254,7 +254,9 @@ export class NetworkDetails extends LitElement {
                       <div class="section">
                           <h4>Connections (${connections.length})</h4>
                           <div class="neighbors-list">
-                              ${connections.map((conn: NodeConnection) => {
+                              ${[...connections]
+                                  .sort((a, b) => (b.rssi ?? -Infinity) - (a.rssi ?? -Infinity))
+                                  .map((conn: NodeConnection) => {
                                   return html`
                                       <div
                                           class="neighbor-item clickable"
@@ -623,7 +625,13 @@ export class NetworkDetails extends LitElement {
                       <div class="section">
                           <h4>Connected Nodes</h4>
                           <div class="connected-nodes-list">
-                              ${ap.connectedNodes.map(nodeId => {
+                              ${[...ap.connectedNodes]
+                                  .sort((a, b) => {
+                                      const rssiA = getWiFiDiagnostics(this.nodes[a.toString()])?.rssi ?? -Infinity;
+                                      const rssiB = getWiFiDiagnostics(this.nodes[b.toString()])?.rssi ?? -Infinity;
+                                      return rssiB - rssiA;
+                                  })
+                                  .map(nodeId => {
                                   const node = this.nodes[nodeId.toString()];
                                   if (!node) return nothing;
                                   const wifiDiag = getWiFiDiagnostics(node);
