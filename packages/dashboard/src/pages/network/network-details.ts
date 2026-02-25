@@ -257,7 +257,7 @@ export class NetworkDetails extends LitElement {
                               ${[...connections]
                                   .sort((a, b) => (b.rssi ?? -Infinity) - (a.rssi ?? -Infinity))
                                   .map((conn: NodeConnection) => {
-                                  return html`
+                                      return html`
                                       <div
                                           class="neighbor-item clickable"
                                           role="button"
@@ -305,7 +305,7 @@ export class NetworkDetails extends LitElement {
                                           </div>
                                       </div>
                                   `;
-                              })}
+                                  })}
                           </div>
                       </div>
                   `
@@ -632,12 +632,12 @@ export class NetworkDetails extends LitElement {
                                       return rssiB - rssiA;
                                   })
                                   .map(nodeId => {
-                                  const node = this.nodes[nodeId.toString()];
-                                  if (!node) return nothing;
-                                  const wifiDiag = getWiFiDiagnostics(node);
-                                  const signalColor = getSignalColorFromRssi(wifiDiag.rssi);
+                                      const node = this.nodes[nodeId.toString()];
+                                      if (!node) return nothing;
+                                      const wifiDiag = getWiFiDiagnostics(node);
+                                      const signalColor = getSignalColorFromRssi(wifiDiag.rssi);
 
-                                  return html`
+                                      return html`
                                       <div
                                           class="connected-node-item clickable"
                                           role="button"
@@ -659,7 +659,7 @@ export class NetworkDetails extends LitElement {
                                           }
                                       </div>
                                   `;
-                              })}
+                                  })}
                           </div>
                       </div>
                   `
