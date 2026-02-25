@@ -31,8 +31,14 @@ npm run format
 npm run format-verify
 ```
 
-**Always run in this order before committing:** `format` → `lint` → `build` → `test`.  
-`format` must come first — it rewrites files in-place and the build/lint validate the formatted output.
+> **MANDATORY — no exceptions:** After every code change, always run these four commands **in this exact order** before considering the work done:
+> ```bash
+> npm run format   # rewrites files in-place — MUST be first
+> npm run lint
+> npm run build
+> npm test
+> ```
+> Skipping `format` is the most common mistake — oxfmt rewrites files in-place and the build/lint validate the formatted output. If you skip it, CI will fail.
 
 **CI enforces formatting and linting.** The `check-and-lint` job in `build-test.js.yml` runs `npm run format-verify` and `npm run lint` and all other CI jobs (`test`, `build-non-linux`) are gated on it. PRs will fail if either check does not pass.
 

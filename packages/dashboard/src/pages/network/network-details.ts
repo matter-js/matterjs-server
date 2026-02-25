@@ -436,29 +436,31 @@ export class NetworkDetails extends LitElement {
                       <div class="section">
                           <h4>Neighbors (${unknown.seenBy.length})</h4>
                           <div class="neighbors-list">
-                              ${unknown.seenBy.toSorted((a, b) => {
-                                  const score = (nodeId: string): number => {
-                                      const n = this.nodes[nodeId.toString()];
-                                      if (!n) return -Infinity;
-                                      const entry = this._findNeighborEntry(n, unknown.extAddressHex);
-                                      if (!entry) return -Infinity;
-                                      const rssi = entry.avgRssi ?? entry.lastRssi;
-                                      if (rssi !== null && rssi !== undefined) return rssi;
-                                      if (entry.lqi !== null && entry.lqi !== undefined) return entry.lqi;
-                                      return -Infinity;
-                                  };
-                                  return score(b) - score(a);
-                              }).map(nodeId => {
-                                  const node = this.nodes[nodeId.toString()];
-                                  if (!node) return nothing;
+                              ${unknown.seenBy
+                                  .toSorted((a, b) => {
+                                      const score = (nodeId: string): number => {
+                                          const n = this.nodes[nodeId.toString()];
+                                          if (!n) return -Infinity;
+                                          const entry = this._findNeighborEntry(n, unknown.extAddressHex);
+                                          if (!entry) return -Infinity;
+                                          const rssi = entry.avgRssi ?? entry.lastRssi;
+                                          if (rssi !== null && rssi !== undefined) return rssi;
+                                          if (entry.lqi !== null && entry.lqi !== undefined) return entry.lqi;
+                                          return -Infinity;
+                                      };
+                                      return score(b) - score(a);
+                                  })
+                                  .map(nodeId => {
+                                      const node = this.nodes[nodeId.toString()];
+                                      if (!node) return nothing;
 
-                                  // Find the neighbor entry to get RSSI/LQI
-                                  const neighborEntry = this._findNeighborEntry(node, unknown.extAddressHex);
-                                  const signalColor = neighborEntry ? getSignalColor(neighborEntry) : "#999";
-                                  const rssi = neighborEntry?.avgRssi ?? neighborEntry?.lastRssi ?? null;
-                                  const lqi = neighborEntry?.lqi;
+                                      // Find the neighbor entry to get RSSI/LQI
+                                      const neighborEntry = this._findNeighborEntry(node, unknown.extAddressHex);
+                                      const signalColor = neighborEntry ? getSignalColor(neighborEntry) : "#999";
+                                      const rssi = neighborEntry?.avgRssi ?? neighborEntry?.lastRssi ?? null;
+                                      const lqi = neighborEntry?.lqi;
 
-                                  return html`
+                                      return html`
                                       <div
                                           class="neighbor-item clickable"
                                           role="button"
@@ -495,7 +497,7 @@ export class NetworkDetails extends LitElement {
                                           </div>
                                       </div>
                                   `;
-                              })}
+                                  })}
                           </div>
                       </div>
                   `
