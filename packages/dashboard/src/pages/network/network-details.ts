@@ -255,7 +255,18 @@ export class NetworkDetails extends LitElement {
                           <h4>Connections (${connections.length})</h4>
                           <div class="neighbors-list">
                               ${[...connections]
-                                  .sort((a, b) => (b.rssi ?? -Infinity) - (a.rssi ?? -Infinity))
+                                  .sort((a, b) => {
+                                      const score = (conn: NodeConnection): number => {
+                                          if (conn.rssi !== null && conn.rssi !== undefined) {
+                                              return conn.rssi;
+                                          }
+                                          if (conn.lqi !== null && conn.lqi !== undefined) {
+                                              return conn.lqi;
+                                          }
+                                          return -Infinity;
+                                      };
+                                      return score(b) - score(a);
+                                  })
                                   .map((conn: NodeConnection) => {
                                       return html`
                                       <div
@@ -627,8 +638,10 @@ export class NetworkDetails extends LitElement {
                           <div class="connected-nodes-list">
                               ${[...ap.connectedNodes]
                                   .sort((a, b) => {
-                                      const rssiA = getWiFiDiagnostics(this.nodes[a.toString()])?.rssi ?? -Infinity;
-                                      const rssiB = getWiFiDiagnostics(this.nodes[b.toString()])?.rssi ?? -Infinity;
+                                      const nodeA = this.nodes[a.toString()];
+                                      const nodeB = this.nodes[b.toString()];
+                                      const rssiA = nodeA ? getWiFiDiagnostics(nodeA)?.rssi ?? -Infinity : -Infinity;
+                                      const rssiB = nodeB ? getWiFiDiagnostics(nodeB)?.rssi ?? -Infinity : -Infinity;
                                       return rssiB - rssiA;
                                   })
                                   .map(nodeId => {
