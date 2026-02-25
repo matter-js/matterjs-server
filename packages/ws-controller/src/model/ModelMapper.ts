@@ -20,13 +20,18 @@ import {
 
 type AttributeDetails = { readonly [key: string]: AttributeModel | undefined };
 
-/** Metadata for Global attributes */
+/** Metadata for Global attributes, indexed by both name and numeric ID */
 export const GlobalAttributes: AttributeDetails = Object.freeze({
     clusterRevision: ClusterRevision,
+    [ClusterRevision.id]: ClusterRevision,
     featureMap: FeatureMap,
+    [FeatureMap.id]: FeatureMap,
     attributeList: AttributeList,
+    [AttributeList.id]: AttributeList,
     acceptedCommandList: AcceptedCommandList,
+    [AcceptedCommandList.id]: AcceptedCommandList,
     generatedCommandList: GeneratedCommandList,
+    [GeneratedCommandList.id]: GeneratedCommandList,
 });
 
 /**
