@@ -254,7 +254,8 @@ export class NetworkDetails extends LitElement {
                       <div class="section">
                           <h4>Connections (${connections.length})</h4>
                           <div class="neighbors-list">
-                              ${connections.toSorted((a, b) => {
+                              ${connections
+                                  .toSorted((a, b) => {
                                       const score = (conn: NodeConnection): number => {
                                           if (conn.rssi !== null && conn.rssi !== undefined) {
                                               return conn.rssi;
@@ -635,7 +636,8 @@ export class NetworkDetails extends LitElement {
                       <div class="section">
                           <h4>Connected Nodes</h4>
                           <div class="connected-nodes-list">
-                              ${ap.connectedNodes.toSorted((a, b) => {
+                              ${ap.connectedNodes
+                                  .toSorted((a, b) => {
                                       const nodeA = this.nodes[a.toString()];
                                       const nodeB = this.nodes[b.toString()];
                                       const rssiA = nodeA ? (getWiFiDiagnostics(nodeA)?.rssi ?? -Infinity) : -Infinity;
