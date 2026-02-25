@@ -640,8 +640,8 @@ export class NetworkDetails extends LitElement {
                                   .sort((a, b) => {
                                       const nodeA = this.nodes[a.toString()];
                                       const nodeB = this.nodes[b.toString()];
-                                      const rssiA = nodeA ? getWiFiDiagnostics(nodeA)?.rssi ?? -Infinity : -Infinity;
-                                      const rssiB = nodeB ? getWiFiDiagnostics(nodeB)?.rssi ?? -Infinity : -Infinity;
+                                      const rssiA = nodeA ? (getWiFiDiagnostics(nodeA)?.rssi ?? -Infinity) : -Infinity;
+                                      const rssiB = nodeB ? (getWiFiDiagnostics(nodeB)?.rssi ?? -Infinity) : -Infinity;
                                       return rssiB - rssiA;
                                   })
                                   .map(nodeId => {
