@@ -118,7 +118,7 @@ The dashboard build runs: `generate` (produces `src/client/models/descriptions.t
 ### Dashboard conventions
 - Component styles: `static override styles = css\`...\`` (Lit inline pattern)
 - Icons: import SVG paths from `@mdi/js` (e.g., `mdiSignalCellular3`) and render via `<ha-svg-icon .path=${...}>`
-- Signal quality icons use `mdiSignalCellular1/2/3` consistently (1=weak, 2=medium, 3=strong) — never mix with `mdiSignal` (4-bar style)
+Base tsconfig targets **ES2022**. The dashboard includes the `"es2023"` lib to enable ES2023 features such as `Array.prototype.toSorted()`.
 - Theme management: `src/util/theme-service.ts` singleton; supports `light`/`dark`/`system`; persisted in `localStorage` as `matterTheme`
 - The dashboard connects to the server via `@matter-server/ws-client`; avoid `location.reload()` when server may be offline — use WebSocket reconnect instead
 - Connection lists (Thread neighbors, WiFi nodes) are sorted by signal quality descending: RSSI preferred, LQI as fallback, missing values sort last
