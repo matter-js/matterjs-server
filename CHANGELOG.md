@@ -8,7 +8,7 @@ This page shows a detailed overview of the changes between versions without the 
 -->
 
 ## __WORK IN PROGRESS__
-- Adjustment: Also sorts neighbors by quality in network graph details by quality
+- Adjustment: Also sorts neighbors in network graph details by quality
 
 ## 0.4.3 (2026-02-25)
 - Adjustment: Sort connection quality entries in network graph details by quality
