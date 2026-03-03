@@ -54,6 +54,12 @@ class MatterNetworkView extends LitElement {
     @state()
     private _physicsEnabled = true;
 
+    @state()
+    private _threadAddressSearch = "";
+
+    @state()
+    private _threadAddressSearchStatus: "idle" | "found" | "not-found" = "idle";
+
     private _initialSelectionApplied = false;
     private _selectRetryTimer?: ReturnType<typeof setTimeout>;
 
@@ -162,30 +168,86 @@ class MatterNetworkView extends LitElement {
         this._wifiGraph?.setPhysicsEnabled(event.detail.enabled);
     }
 
+    private _handleThreadAddressSearchInput(event: Event): void {
+        this._threadAddressSearch = (event.target as HTMLInputElement).value;
+        this._threadAddressSearchStatus = "idle";
+    }
+
+    private _handleThreadAddressSearchSubmit(event: Event): void {
+        event.preventDefault();
+
+        const searchValue = this._threadAddressSearch.trim();
+        if (!searchValue) {
+            this._threadAddressSearchStatus = "idle";
+            return;
+        }
+
+        this._searchThreadAddressWhenReady(searchValue);
+    }
+
+    private _searchThreadAddressWhenReady(searchValue: string, retries: number = 10): void {
+        const graph = this._threadGraph;
+
+        if (!graph?.isReady()) {
+            if (retries > 0) {
+                this._selectRetryTimer = setTimeout(() => this._searchThreadAddressWhenReady(searchValue, retries - 1), 100);
+            } else {
+                this._threadAddressSearchStatus = "not-found";
+            }
+            return;
+        }
+
+        const found = graph.selectByExtendedAddress(searchValue);
+        this._threadAddressSearchStatus = found ? "found" : "not-found";
+    }
+
     private _renderThreadView() {
         return html`
             <div class="graph-section">
                 <div class="graph-header">
                     <h2>Thread Network Mesh</h2>
-                    <div class="graph-controls">
-                        <button class="control-button" @click=${this._handleZoomIn} title="Zoom in">
-                            <ha-svg-icon .path=${mdiMagnifyPlus}></ha-svg-icon>
-                        </button>
-                        <button class="control-button" @click=${this._handleZoomOut} title="Zoom out">
-                            <ha-svg-icon .path=${mdiMagnifyMinus}></ha-svg-icon>
-                        </button>
-                        <button class="control-button" @click=${this._handleFitToScreen} title="Fit to screen">
-                            <ha-svg-icon .path=${mdiFitToScreen}></ha-svg-icon>
-                        </button>
-                        <button
-                            class="control-button ${this._physicsEnabled ? "" : "active"}"
-                            @click=${this._handleTogglePhysics}
-                            title="${this._physicsEnabled ? "Freeze layout" : "Unfreeze layout"}"
-                        >
-                            <ha-svg-icon .path=${this._physicsEnabled ? mdiPause : mdiPlay}></ha-svg-icon>
-                        </button>
+                    <div class="graph-actions">
+                        <form class="thread-search" @submit=${this._handleThreadAddressSearchSubmit}>
+                            <input
+                                type="text"
+                                .value=${this._threadAddressSearch}
+                                @input=${this._handleThreadAddressSearchInput}
+                                placeholder="Search extended address"
+                                title="Find device by Thread extended address (EUI-64)"
+                            />
+                            <button type="submit" class="search-button">Find</button>
+                        </form>
+                        <div class="graph-controls">
+                            <button class="control-button" @click=${this._handleZoomIn} title="Zoom in">
+                                <ha-svg-icon .path=${mdiMagnifyPlus}></ha-svg-icon>
+                            </button>
+                            <button class="control-button" @click=${this._handleZoomOut} title="Zoom out">
+                                <ha-svg-icon .path=${mdiMagnifyMinus}></ha-svg-icon>
+                            </button>
+                            <button class="control-button" @click=${this._handleFitToScreen} title="Fit to screen">
+                                <ha-svg-icon .path=${mdiFitToScreen}></ha-svg-icon>
+                            </button>
+                            <button
+                                class="control-button ${this._physicsEnabled ? "" : "active"}"
+                                @click=${this._handleTogglePhysics}
+                                title="${this._physicsEnabled ? "Freeze layout" : "Unfreeze layout"}"
+                            >
+                                <ha-svg-icon .path=${this._physicsEnabled ? mdiPause : mdiPlay}></ha-svg-icon>
+                            </button>
+                        </div>
                     </div>
                 </div>
+                ${
+                    this._threadAddressSearchStatus === "idle"
+                        ? ""
+                        : html`<div class="thread-search-status ${this._threadAddressSearchStatus}">
+                              ${
+                                  this._threadAddressSearchStatus === "found"
+                                      ? "Node highlighted."
+                                      : "No matching extended address found."
+                              }
+                          </div>`
+                }
                 <thread-graph
                     .nodes=${this.nodes}
                     @node-selected=${this._handleNodeSelected}
@@ -323,6 +385,63 @@ class MatterNetworkView extends LitElement {
             gap: 4px;
         }
 
+        .graph-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-width: 0;
+        }
+
+        .thread-search {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .thread-search input {
+            width: 260px;
+            max-width: 45vw;
+            padding: 6px 8px;
+            border: 1px solid var(--md-sys-color-outline-variant, #ccc);
+            border-radius: 4px;
+            background-color: var(--md-sys-color-surface, #fff);
+            color: var(--md-sys-color-on-surface, #1c1b1f);
+            font: inherit;
+        }
+
+        .thread-search input:focus {
+            outline: 2px solid var(--md-sys-color-primary, #6750a4);
+            outline-offset: 1px;
+        }
+
+        .search-button {
+            padding: 6px 10px;
+            border: 1px solid var(--md-sys-color-outline-variant, #ccc);
+            border-radius: 4px;
+            background-color: var(--md-sys-color-surface, #fff);
+            color: var(--md-sys-color-on-surface, #1c1b1f);
+            cursor: pointer;
+            font: inherit;
+        }
+
+        .search-button:hover {
+            background-color: var(--md-sys-color-surface-container-high, #e8e8e8);
+        }
+
+        .thread-search-status {
+            margin: 0 0 6px;
+            font-size: 0.85rem;
+            color: var(--md-sys-color-on-surface-variant, #666);
+        }
+
+        .thread-search-status.found {
+            color: #2e7d32;
+        }
+
+        .thread-search-status.not-found {
+            color: #c62828;
+        }
+
         .control-button {
             background: none;
             border: 1px solid var(--md-sys-color-outline-variant, #ccc);
@@ -408,6 +527,31 @@ class MatterNetworkView extends LitElement {
         @media (max-width: 600px) {
             .content {
                 padding: 8px;
+            }
+
+            .graph-header {
+                align-items: flex-start;
+                gap: 6px;
+            }
+
+            .graph-actions {
+                flex-direction: column;
+                align-items: stretch;
+                width: 100%;
+            }
+
+            .thread-search {
+                width: 100%;
+            }
+
+            .thread-search input {
+                flex: 1 1 auto;
+                width: auto;
+                max-width: none;
+            }
+
+            .graph-controls {
+                justify-content: flex-end;
             }
         }
     `;

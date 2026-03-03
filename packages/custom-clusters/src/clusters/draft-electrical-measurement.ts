@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { attribute, cluster, uint32 } from "@matter/main/model";
+import { attribute, cluster, uint32, int32 } from "@matter/main/model";
 
 @cluster(0x00000b04)
 export class DraftElectricalMeasurementCluster {
@@ -14,7 +14,7 @@ export class DraftElectricalMeasurementCluster {
     @attribute(0x00000508, uint32)
     rmsCurrent?: number;
 
-    @attribute(0x0000050b, uint32)
+    @attribute(0x0000050b, int32)
     activePower?: number;
 
     @attribute(0x00000600, uint32)

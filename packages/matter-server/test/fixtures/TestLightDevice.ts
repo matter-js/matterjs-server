@@ -13,6 +13,7 @@
 import { Environment, ServerNode } from "@matter/main";
 import { OnOffLightDevice } from "@matter/main/devices/on-off-light";
 import { VendorId } from "@matter/main/types";
+import { DEVICE_DISCRIMINATOR, DEVICE_PASSCODE, MANUAL_PAIRING_CODE } from "../helpers/ProcessHelpers.js";
 
 // Parse CLI args for storage path
 const args = process.argv.slice(2);
@@ -30,8 +31,8 @@ const node = await ServerNode.create({
     },
 
     commissioning: {
-        passcode: 20202021,
-        discriminator: 3840,
+        passcode: DEVICE_PASSCODE,
+        discriminator: DEVICE_DISCRIMINATOR,
     },
 
     productDescription: {
@@ -56,8 +57,7 @@ await node.add(OnOffLightDevice, {
 
 console.log("Test Light Device starting...");
 console.log(`Storage path: ${storagePath}`);
-console.log(`Manual pairing code: 34970112332`);
-console.log(`QR pairing code: MT:Y.K9042C00KA0648G00`);
+console.log(`Manual pairing code: ${MANUAL_PAIRING_CODE}`);
 
 // Run the device
 await node.run();

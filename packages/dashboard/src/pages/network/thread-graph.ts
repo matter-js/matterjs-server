@@ -16,6 +16,7 @@ import {
     findUnknownDevices,
     getDeviceName,
     getNetworkType,
+    getThreadExtendedAddressHex,
     getThreadRole,
 } from "./network-utils.js";
 
@@ -42,6 +43,44 @@ export class ThreadGraph extends BaseNetworkGraph {
         { extAddressHex: string; isRouter: boolean; seenBy: string[]; bestRssi: number | null }
     > {
         return this._unknownDevicesMapCache;
+    }
+
+    /**
+     * Searches for a Thread node (known or unknown) by extended address and selects it.
+     * Accepts formats like:
+     * - AABBCCDDEEFF0011
+     * - AA:BB:CC:DD:EE:FF:00:11
+     * - 0xAABBCCDDEEFF0011
+     * Returns true when a match is found.
+     */
+    public selectByExtendedAddress(address: string): boolean {
+        const normalized = normalizeExtendedAddressInput(address);
+        if (!normalized) {
+            return false;
+        }
+
+        // Search commissioned Thread devices first
+        for (const node of Object.values(this.nodes)) {
+            if (getNetworkType(node) !== "thread") {
+                continue;
+            }
+
+            const extAddressHex = getThreadExtendedAddressHex(node);
+            if (extAddressHex && extAddressHex === normalized) {
+                this.selectNode(String(node.node_id));
+                return true;
+            }
+        }
+
+        // Then search unknown/external Thread devices
+        for (const [unknownId, unknown] of this._unknownDevicesMapCache) {
+            if (normalizeExtendedAddressInput(unknown.extAddressHex) === normalized) {
+                this.selectNode(unknownId);
+                return true;
+            }
+        }
+
+        return false;
     }
 
     protected override _updateGraph(): void {
@@ -172,4 +211,20 @@ export class ThreadGraph extends BaseNetworkGraph {
             <div class="graph-container"></div>
         `;
     }
+}
+
+function normalizeExtendedAddressInput(address: string): string | null {
+    const trimmed = address.trim();
+    if (!trimmed) {
+        return null;
+    }
+
+    const noPrefix = trimmed.startsWith("0x") || trimmed.startsWith("0X") ? trimmed.slice(2) : trimmed;
+    const hexOnly = noPrefix.replace(/[^a-fA-F0-9]/g, "");
+
+    if (hexOnly.length !== 16 || !/^[a-fA-F0-9]{16}$/.test(hexOnly)) {
+        return null;
+    }
+
+    return hexOnly.toUpperCase();
 }

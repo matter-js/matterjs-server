@@ -1387,6 +1387,11 @@ export class ControllerCommandHandler {
         if (!this.#nodes.has(nodeId)) {
             throw ServerError.nodeNotExists(nodeId);
         }
+        if (!this.#nodes.isAvailable(nodeId)) {
+            throw ServerError.updateError(
+                `Node ${this.#formatNode(nodeId)} is not connected. Retry later`,
+            );
+        }
 
         // Check if node is already updating by checking the OTA Requestor UpdateState attribute
         // Attribute path: 0/42/2 (endpoint 0, OtaSoftwareUpdateRequestor cluster, UpdateState attribute)

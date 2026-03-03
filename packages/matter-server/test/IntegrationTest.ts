@@ -16,6 +16,8 @@ import { ChildProcess } from "child_process";
 import {
     cleanupTempStorage,
     createTempStoragePaths,
+    DEVICE_DISCRIMINATOR,
+    DEVICE_PASSCODE,
     killProcess,
     MANUAL_PAIRING_CODE,
     MatterTestClient,
@@ -1054,75 +1056,30 @@ describe("Integration Test", function () {
     });
 
     // =========================================================================
-    // TODO: Medium Difficulty Tests (need specific setup)
+    // Commission On Network Test
     // =========================================================================
 
-    describe("Medium Difficulty Tests", function () {
-        it.skip("should commission device on network with passcode", async function () {
-            // TODO: Implement commission_on_network test
-            // Requires device in commissioning mode with known passcode
-            // Need to reset device to uncommissioned state first
-        });
+    describe("Commission On Network", function () {
+        it("should commission device using passcode and long discriminator", async function () {
+            // After decommissioning the device returns to commissioning mode.
+            // Give it time to re-advertise via mDNS.
+            await new Promise(r => setTimeout(r, 3000));
 
-        it.skip("should remove matter fabric from device", async function () {
-            // TODO: Implement remove_matter_fabric test
-            // Requires having multiple fabrics on the device
-            // Would need to commission from a second controller first
-        });
+            const node = await client.commissionOnNetwork(DEVICE_PASSCODE, 2, DEVICE_DISCRIMINATOR);
+            const networkNodeId = Number(node.node_id);
 
-        it.skip("should set ACL entry on node", async function () {
-            // TODO: Implement set_acl_entry test
-            // Requires understanding of ACL structure and valid entries
-            // Example ACL entry structure:
-            // {
-            //   privilege: 5, // Administer
-            //   auth_mode: 2, // CASE
-            //   subjects: [nodeId],
-            //   targets: null
-            // }
-        });
+            console.log("Node commissioned via network:", networkNodeId);
 
-        it.skip("should set node binding", async function () {
-            // TODO: Implement set_node_binding test
-            // Requires valid binding context (another device to bind to)
-            // Example binding:
-            // {
-            //   node: targetNodeId,
-            //   group: null,
-            //   endpoint: 1,
-            //   cluster: 6 // OnOff
-            // }
-        });
-    });
+            expect(node.available).to.be.true;
+            expect(node.is_bridge).to.be.false;
+            expect(node.attributes["0/40/1"]).to.equal("Test Vendor");
+            expect(node.attributes["0/40/3"]).to.equal("Test Light");
+            expect(node.attributes["1/6/0"]).to.equal(false); // OnOff initially off
 
-    // =========================================================================
-    // TODO: Hard Tests (need OTA/special setup)
-    // =========================================================================
-
-    describe("OTA Update Tests", function () {
-        it.skip("should check for node updates", async function () {
-            // TODO: Implement check_node_update test
-            // Requires OTA provider setup with --enable-test-net-dcl
-            // and valid OTA images available for the device
-        });
-
-        it.skip("should update node firmware", async function () {
-            // TODO: Implement update_node test
-            // Requires:
-            // 1. OTA provider configured
-            // 2. Valid OTA image for test device
-            // 3. Device that supports OTA updates
-        });
-    });
-
-    // =========================================================================
-    // TODO: Incomplete/Stub Commands
-    // =========================================================================
-
-    describe("Incomplete Commands", function () {
-        it.skip("should subscribe to attribute updates", async function () {
-            // TODO: Implement subscribe_attribute test
-            // This command appears to be a stub/incomplete in the server
+            // Clean up
+            client.clearEvents();
+            await client.removeNode(networkNodeId);
+            await client.waitForEvent("node_removed", data => Number(data) === networkNodeId, 10_000);
         });
     });
 });

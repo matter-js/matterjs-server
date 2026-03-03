@@ -19,6 +19,8 @@ export const SERVER_PORT = 5580;
 export const SERVER_WS_URL = `ws://localhost:${SERVER_PORT}/ws`;
 export const DEVICE_PORT = 5540;
 export const MANUAL_PAIRING_CODE = "34970112332";
+export const DEVICE_PASSCODE = 20202021;
+export const DEVICE_DISCRIMINATOR = 3840;
 
 /**
  * Creates temporary storage directories for server and device.
