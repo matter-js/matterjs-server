@@ -1388,9 +1388,7 @@ export class ControllerCommandHandler {
             throw ServerError.nodeNotExists(nodeId);
         }
         if (!this.#nodes.isAvailable(nodeId)) {
-            throw ServerError.updateError(
-                `Node ${this.#formatNode(nodeId)} is not connected. Retry later`,
-            );
+            throw ServerError.updateError(`Node ${this.#formatNode(nodeId)} is not connected. Retry later`);
         }
 
         // Check if node is already updating by checking the OTA Requestor UpdateState attribute

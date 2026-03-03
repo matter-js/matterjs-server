@@ -190,7 +190,10 @@ class MatterNetworkView extends LitElement {
 
         if (!graph?.isReady()) {
             if (retries > 0) {
-                this._selectRetryTimer = setTimeout(() => this._searchThreadAddressWhenReady(searchValue, retries - 1), 100);
+                this._selectRetryTimer = setTimeout(
+                    () => this._searchThreadAddressWhenReady(searchValue, retries - 1),
+                    100,
+                );
             } else {
                 this._threadAddressSearchStatus = "not-found";
             }
