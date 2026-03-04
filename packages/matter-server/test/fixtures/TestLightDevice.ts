@@ -50,8 +50,8 @@ const node = await ServerNode.create({
     },
 
     subscriptions: {
-        persistenceEnabled: false
-    }
+        persistenceEnabled: false,
+    },
 });
 
 // Add the OnOffLight endpoint
