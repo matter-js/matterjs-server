@@ -77,13 +77,23 @@ export function startServer(storagePath: string): ChildProcess {
 }
 
 /**
- * Starts the test device process.
+ * Starts the test device process with persistent stdout/stderr logging.
  */
 export function startTestDevice(storagePath: string): ChildProcess {
-    return spawn("npx", ["tsx", "test/fixtures/TestLightDevice.ts", `--storage-path=${storagePath}`], {
+    const proc = spawn("npx", ["tsx", "test/fixtures/TestLightDevice.ts", `--storage-path=${storagePath}`], {
         cwd: process.cwd(),
         stdio: ["pipe", "pipe", "pipe"],
     });
+
+    // Keep logging throughout the entire test run (not just during startup)
+    proc.stdout?.on("data", (data: Buffer) => {
+        console.log("[device]", data.toString().trim());
+    });
+    proc.stderr?.on("data", (data: Buffer) => {
+        console.log("[device:err]", data.toString().trim());
+    });
+
+    return proc;
 }
 
 /**
@@ -111,34 +121,27 @@ export async function waitForPort(port: number, timeoutMs = 30_000): Promise<voi
 
 /**
  * Waits for the device process to output readiness indicators.
+ * Logging is handled by startTestDevice; this only resolves on the readiness signal.
  */
 export function waitForDeviceReady(process: ChildProcess, timeoutMs = 30_000): Promise<void> {
     return new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
             process.stdout?.off("data", onData);
-            process.stderr?.off("data", onError);
             reject(new Error("Timeout waiting for device to be ready"));
         }, timeoutMs);
 
         const onData = (data: Buffer) => {
             const output = data.toString();
-            console.log("[device]", output.trim());
             // Device is ready when it shows the pairing codes
             if (output.includes("Manual pairing code:") || output.includes("commissioned")) {
                 clearTimeout(timeout);
                 process.stdout?.off("data", onData);
-                process.stderr?.off("data", onError);
                 // Give it a moment to fully initialize network
                 setTimeout(resolve, 2000);
             }
         };
 
-        const onError = (data: Buffer) => {
-            console.log("[device:err]", data.toString().trim());
-        };
-
         process.stdout?.on("data", onData);
-        process.stderr?.on("data", onError);
     });
 }
 
