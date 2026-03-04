@@ -517,6 +517,7 @@ describe("Integration Test", function () {
         it("should interview node and receive node_updated event", async function () {
             client.clearEvents();
 
+            const beforeInterview = new Date();
             await client.interviewNode(commissionedNodeId);
 
             // Should receive node_updated event
@@ -526,6 +527,13 @@ describe("Integration Test", function () {
                 10_000,
             );
             expect(event).to.exist;
+
+            // Verify last_interview is set and reflects a recent timestamp
+            const node = event as unknown as { node_id: number; last_interview: string | null };
+            expect(node.last_interview).to.be.a("string");
+            // Format is "YYYY-MM-DDTHH:MM:SS.mmm000" — parse the millisecond-precision prefix
+            const interviewDate = new Date((node.last_interview as string).slice(0, 23));
+            expect(interviewDate.getTime()).to.be.at.least(beforeInterview.getTime());
         });
     });
 

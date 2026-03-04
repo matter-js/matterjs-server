@@ -443,8 +443,8 @@ export class ControllerCommandHandler {
         const node = this.#nodes.get(nodeId);
 
         // Our nodes are kept up-to-date via attribute subscriptions, so we don't need
-        // to re-read all attributes like the Python server does.
-        // Just emit a node_updated event with the current (already fresh) data.
+        // to re-read all attributes like the Python server does. The caller is responsible
+        // for broadcasting node_updated after the interview completes.
         logger.info(`Interview requested for node ${this.formatNode(nodeId)} - do a complete read`);
 
         // Do a full Read of the node
@@ -456,9 +456,6 @@ export class ControllerCommandHandler {
             includeKnownVersions: true, // do not send DataVersionFilters, so we do a new clean read
         };
         for await (const _chunk of (node.node.interaction as ClientNodeInteraction).read(read));
-
-        // Emit node_updated event (same as Python server behavior after the interview)
-        this.events.nodeStateChanged.emit(nodeId, node.connectionState);
     }
 
     /**

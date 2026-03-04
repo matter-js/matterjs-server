@@ -833,8 +833,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
         await this.#commandHandler.interviewNode(nodeId);
 
-        // Update last interview date
+        // Update last interview date and broadcast node_updated with fresh data
         this.#lastInterviewDates.set(nodeId, new Date());
+        this.#broadcastEvent("node_updated", this.#collectNodeDetails(nodeId));
 
         return null;
     }

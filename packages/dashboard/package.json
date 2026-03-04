@@ -32,7 +32,7 @@
         "@rollup/plugin-terser": "^0.4.4",
         "@rollup/plugin-typescript": "^12.3.0",
         "rollup": "^4.59.0",
-        "serve": "^14.2.5"
+        "serve": "^14.2.6"
     },
     "dependencies": {
         "@lit/context": "^1.1.6",
