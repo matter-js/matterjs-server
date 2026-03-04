@@ -26,7 +26,7 @@
     },
     "dependencies": {
         "@matter/main": "0.16.11-alpha.0-20260225-033797f3c",
-        "@project-chip/matter.js": "0.16.11-alpha.0-20260225-033797f3c",
+        "@project-chip/matter.js": "0.16.11-alpha.0-20260301-bae8468e3",
         "ws": "^8.19.0"
     },
     "devDependencies": {
