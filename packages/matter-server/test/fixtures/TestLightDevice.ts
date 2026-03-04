@@ -48,6 +48,10 @@ const node = await ServerNode.create({
         serialNumber: "TEST-001",
         uniqueId: "test-light-unique-id",
     },
+
+    subscriptions: {
+        persistenceEnabled: false
+    }
 });
 
 // Add the OnOffLight endpoint
