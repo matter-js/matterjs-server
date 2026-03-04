@@ -41,7 +41,7 @@
         "python:build": "cd python_client && .venv/bin/pip install build && .venv/bin/python -m build"
     },
     "devDependencies": {
-        "@matter/testing": "0.16.11-alpha.0-20260225-033797f3c",
+        "@matter/testing": "0.16.11-alpha.0-20260301-bae8468e3",
         "@types/mocha": "^10.0.10",
         "glob": "^13.0.6",
         "globals": "^17.3.0",
