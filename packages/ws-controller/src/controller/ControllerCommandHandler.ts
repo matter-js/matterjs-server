@@ -369,6 +369,15 @@ export class ControllerCommandHandler {
         // Store the node for direct access
         this.#nodes.set(nodeId, node);
 
+        // Seed state tracking from the node's current connection state so the first
+        // stateChanged event shows a real previous state instead of "undefined".
+        const initialState = node.connectionState;
+        this.#nodes.setPreviousState(nodeId, initialState);
+        // Only mark as available when actually connected; all other states default to false (unavailable).
+        if (initialState === NodeStates.Connected) {
+            this.#lastAvailability.set(nodeId, true);
+        }
+
         // Initialize attribute cache if node is already initialized
         if (node.initialized) {
             attributeCache.add(node);
