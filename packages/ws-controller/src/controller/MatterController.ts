@@ -170,7 +170,7 @@ export class MatterController {
                 productId: 1,
                 hardwareVersion: 1,
                 hardwareVersionString: "1.0",
-                softwareVersion: parseVersionToNumber(this.#serverVersion),
+                softwareVersion: parseVersionToNumber(this.#serverVersion) || 1,
                 softwareVersionString: this.#serverVersion.split("-")[0], // Base version without alpha/beta suffix
             },
         });

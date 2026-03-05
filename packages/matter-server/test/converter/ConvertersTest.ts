@@ -6,6 +6,7 @@
 
 import {
     ClusterMap,
+    GlobalAttributes,
     convertCommandDataToMatter,
     convertMatterToWebSocketNameBased,
     convertMatterToWebSocketTagBased,
@@ -1059,6 +1060,102 @@ describe("Converters", () => {
             // Convert Matter → WS (what read_attribute does)
             const backToWs = convertMatterToWebSocketTagBased(matterValue, rockSettingAttr, fanCluster.model);
             expect(backToWs).to.equal(wsValue);
+        });
+    });
+
+    describe("convertMatterToWebSocketTagBased - unknown/custom cluster handling", () => {
+        it("should return null for objects without a model", () => {
+            const result = convertMatterToWebSocketTagBased({ foo: "bar" }, undefined, undefined);
+            expect(result).to.equal(null);
+        });
+
+        it("should pass through primitive numbers without a model", () => {
+            const result = convertMatterToWebSocketTagBased(42, undefined, undefined);
+            expect(result).to.equal(42);
+        });
+
+        it("should pass through primitive strings without a model", () => {
+            const result = convertMatterToWebSocketTagBased("hello", undefined, undefined);
+            expect(result).to.equal("hello");
+        });
+
+        it("should pass through primitive booleans without a model", () => {
+            const result = convertMatterToWebSocketTagBased(true, undefined, undefined);
+            expect(result).to.equal(true);
+        });
+
+        it("should convert array of primitives to array (not null) without a model", () => {
+            // This was the bug: arrays were returned as null when model was undefined
+            const result = convertMatterToWebSocketTagBased([1, 2, 3], undefined, undefined);
+            expect(result).to.deep.equal([1, 2, 3]);
+        });
+
+        it("should convert array of command IDs (acceptedCommandList) without a model", () => {
+            const result = convertMatterToWebSocketTagBased([0, 1, 3], undefined, undefined);
+            expect(result).to.deep.equal([0, 1, 3]);
+        });
+
+        it("should convert empty array without a model", () => {
+            const result = convertMatterToWebSocketTagBased([], undefined, undefined);
+            expect(result).to.deep.equal([]);
+        });
+
+        it("should convert nested array of objects without a model (best-effort, nulls for inner objects)", () => {
+            const result = convertMatterToWebSocketTagBased([{ a: 1 }, { b: 2 }], undefined, undefined);
+            expect(result).to.be.an("array").with.lengthOf(2);
+            // Inner objects have no model either, so they become null
+            expect((result as unknown[])[0]).to.equal(null);
+        });
+    });
+
+    describe("GlobalAttributes - numeric ID indexing", () => {
+        // Global attribute IDs defined in the Matter spec
+        const CLUSTER_REVISION_ID = 65533; // 0xfffd
+        const FEATURE_MAP_ID = 65532; // 0xfffc
+        const ATTRIBUTE_LIST_ID = 65531; // 0xfffb
+        const ACCEPTED_COMMAND_LIST_ID = 65529; // 0xfff9
+        const GENERATED_COMMAND_LIST_ID = 65528; // 0xfff8
+
+        it("should look up clusterRevision by numeric ID", () => {
+            expect(GlobalAttributes[CLUSTER_REVISION_ID]).to.not.be.undefined;
+        });
+
+        it("should look up featureMap by numeric ID", () => {
+            expect(GlobalAttributes[FEATURE_MAP_ID]).to.not.be.undefined;
+        });
+
+        it("should look up attributeList by numeric ID", () => {
+            expect(GlobalAttributes[ATTRIBUTE_LIST_ID]).to.not.be.undefined;
+        });
+
+        it("should look up acceptedCommandList by numeric ID", () => {
+            expect(GlobalAttributes[ACCEPTED_COMMAND_LIST_ID]).to.not.be.undefined;
+        });
+
+        it("should look up generatedCommandList by numeric ID", () => {
+            expect(GlobalAttributes[GENERATED_COMMAND_LIST_ID]).to.not.be.undefined;
+        });
+
+        it("should convert attributeList array using its schema model (not null)", () => {
+            // attributeList is List[attrib-id] - array of numbers
+            const model = GlobalAttributes[ATTRIBUTE_LIST_ID]!;
+            const descriptorCluster = ClusterMap[29]!;
+            const result = convertMatterToWebSocketTagBased([65528, 65529, 65531], model, descriptorCluster.model);
+            expect(result).to.deep.equal([65528, 65529, 65531]);
+        });
+
+        it("should convert acceptedCommandList array using its schema model (not null)", () => {
+            const model = GlobalAttributes[ACCEPTED_COMMAND_LIST_ID]!;
+            const descriptorCluster = ClusterMap[29]!;
+            const result = convertMatterToWebSocketTagBased([0, 1], model, descriptorCluster.model);
+            expect(result).to.deep.equal([0, 1]);
+        });
+
+        it("should convert generatedCommandList array using its schema model (not null)", () => {
+            const model = GlobalAttributes[GENERATED_COMMAND_LIST_ID]!;
+            const descriptorCluster = ClusterMap[29]!;
+            const result = convertMatterToWebSocketTagBased([2, 3], model, descriptorCluster.model);
+            expect(result).to.deep.equal([2, 3]);
         });
     });
 });

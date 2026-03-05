@@ -132,7 +132,7 @@ export class Nodes {
     /**
      * Get the interaction client for a node.
      */
-    interactionClientFor(nodeId: NodeId): Promise<InteractionClient> {
+    interactionClientFor(nodeId: NodeId): InteractionClient {
         return this.get(nodeId).getInteractionClient();
     }
 

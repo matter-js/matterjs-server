@@ -7,7 +7,7 @@
 import { consume } from "@lit/context";
 import "@material/web/divider/divider";
 import { isTestNodeId, type MatterClient, type MatterNode } from "@matter-server/ws-client";
-import { mdiClose, mdiRefresh, mdiSignal, mdiSignalCellular1, mdiSignalCellular2 } from "@mdi/js";
+import { mdiClose, mdiRefresh, mdiSignalCellular1, mdiSignalCellular2, mdiSignalCellular3 } from "@mdi/js";
 import { LitElement, TemplateResult, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { clientContext } from "../../client/client-context.js";
@@ -101,13 +101,13 @@ export class NetworkDetails extends LitElement {
 
     private _getSignalIcon(neighbor: ThreadNeighbor): string {
         const color = getSignalColor(neighbor);
-        if (color === "#4caf50") return mdiSignal; // Strong
+        if (color === "#4caf50") return mdiSignalCellular3; // Strong
         if (color === "#ff9800") return mdiSignalCellular2; // Medium
         return mdiSignalCellular1; // Weak
     }
 
     private _getSignalIconFromColor(color: string): string {
-        if (color === "#4caf50") return mdiSignal; // Strong
+        if (color === "#4caf50") return mdiSignalCellular3; // Strong
         if (color === "#ff9800") return mdiSignalCellular2; // Medium
         return mdiSignalCellular1; // Weak
     }
@@ -254,8 +254,21 @@ export class NetworkDetails extends LitElement {
                       <div class="section">
                           <h4>Connections (${connections.length})</h4>
                           <div class="neighbors-list">
-                              ${connections.map((conn: NodeConnection) => {
-                                  return html`
+                              ${connections
+                                  .toSorted((a, b) => {
+                                      const score = (conn: NodeConnection): number => {
+                                          if (conn.rssi !== null && conn.rssi !== undefined) {
+                                              return conn.rssi;
+                                          }
+                                          if (conn.lqi !== null && conn.lqi !== undefined) {
+                                              return conn.lqi;
+                                          }
+                                          return -Infinity;
+                                      };
+                                      return score(b) - score(a);
+                                  })
+                                  .map((conn: NodeConnection) => {
+                                      return html`
                                       <div
                                           class="neighbor-item clickable"
                                           role="button"
@@ -303,7 +316,7 @@ export class NetworkDetails extends LitElement {
                                           </div>
                                       </div>
                                   `;
-                              })}
+                                  })}
                           </div>
                       </div>
                   `
@@ -423,17 +436,31 @@ export class NetworkDetails extends LitElement {
                       <div class="section">
                           <h4>Neighbors (${unknown.seenBy.length})</h4>
                           <div class="neighbors-list">
-                              ${unknown.seenBy.map(nodeId => {
-                                  const node = this.nodes[nodeId.toString()];
-                                  if (!node) return nothing;
+                              ${unknown.seenBy
+                                  .toSorted((a, b) => {
+                                      const score = (nodeId: string): number => {
+                                          const n = this.nodes[nodeId.toString()];
+                                          if (!n) return -Infinity;
+                                          const entry = this._findNeighborEntry(n, unknown.extAddressHex);
+                                          if (!entry) return -Infinity;
+                                          const rssi = entry.avgRssi ?? entry.lastRssi;
+                                          if (rssi !== null && rssi !== undefined) return rssi;
+                                          if (entry.lqi !== null && entry.lqi !== undefined) return entry.lqi;
+                                          return -Infinity;
+                                      };
+                                      return score(b) - score(a);
+                                  })
+                                  .map(nodeId => {
+                                      const node = this.nodes[nodeId.toString()];
+                                      if (!node) return nothing;
 
-                                  // Find the neighbor entry to get RSSI/LQI
-                                  const neighborEntry = this._findNeighborEntry(node, unknown.extAddressHex);
-                                  const signalColor = neighborEntry ? getSignalColor(neighborEntry) : "#999";
-                                  const rssi = neighborEntry?.avgRssi ?? neighborEntry?.lastRssi ?? null;
-                                  const lqi = neighborEntry?.lqi;
+                                      // Find the neighbor entry to get RSSI/LQI
+                                      const neighborEntry = this._findNeighborEntry(node, unknown.extAddressHex);
+                                      const signalColor = neighborEntry ? getSignalColor(neighborEntry) : "#999";
+                                      const rssi = neighborEntry?.avgRssi ?? neighborEntry?.lastRssi ?? null;
+                                      const lqi = neighborEntry?.lqi;
 
-                                  return html`
+                                      return html`
                                       <div
                                           class="neighbor-item clickable"
                                           role="button"
@@ -470,7 +497,7 @@ export class NetworkDetails extends LitElement {
                                           </div>
                                       </div>
                                   `;
-                              })}
+                                  })}
                           </div>
                       </div>
                   `
@@ -623,13 +650,21 @@ export class NetworkDetails extends LitElement {
                       <div class="section">
                           <h4>Connected Nodes</h4>
                           <div class="connected-nodes-list">
-                              ${ap.connectedNodes.map(nodeId => {
-                                  const node = this.nodes[nodeId.toString()];
-                                  if (!node) return nothing;
-                                  const wifiDiag = getWiFiDiagnostics(node);
-                                  const signalColor = getSignalColorFromRssi(wifiDiag.rssi);
+                              ${ap.connectedNodes
+                                  .toSorted((a, b) => {
+                                      const nodeA = this.nodes[a.toString()];
+                                      const nodeB = this.nodes[b.toString()];
+                                      const rssiA = nodeA ? (getWiFiDiagnostics(nodeA)?.rssi ?? -Infinity) : -Infinity;
+                                      const rssiB = nodeB ? (getWiFiDiagnostics(nodeB)?.rssi ?? -Infinity) : -Infinity;
+                                      return rssiB - rssiA;
+                                  })
+                                  .map(nodeId => {
+                                      const node = this.nodes[nodeId.toString()];
+                                      if (!node) return nothing;
+                                      const wifiDiag = getWiFiDiagnostics(node);
+                                      const signalColor = getSignalColorFromRssi(wifiDiag.rssi);
 
-                                  return html`
+                                      return html`
                                       <div
                                           class="connected-node-item clickable"
                                           role="button"
@@ -651,7 +686,7 @@ export class NetworkDetails extends LitElement {
                                           }
                                       </div>
                                   `;
-                              })}
+                                  })}
                           </div>
                       </div>
                   `

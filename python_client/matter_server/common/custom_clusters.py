@@ -105,7 +105,7 @@ class EveCluster(Cluster, CustomClusterMixin):
                     Label="altitude", Tag=0x130A0013, Type=float32
                 ),
                 ClusterObjectFieldDescriptor(
-                    Label="pressure", Tag=0x130A0014, Type=float32
+                    Label="pressure", Tag=0x130A0014, Type=uint
                 ),
                 ClusterObjectFieldDescriptor(
                     Label="weatherTrend", Tag=0x130A0015, Type=int
@@ -132,7 +132,7 @@ class EveCluster(Cluster, CustomClusterMixin):
     voltage: float32 | None = None
     current: float32 | None = None
     altitude: float32 | None = None
-    pressure: float32 | None = None
+    pressure: uint | None = None
     weatherTrend: int | None = None
     valvePosition: int | None = None
     motionSensitivity: int | None = None
@@ -500,9 +500,9 @@ class EveCluster(Cluster, CustomClusterMixin):
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 """Return attribute type."""
-                return ClusterObjectFieldDescriptor(Type=float32)
+                return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: float32 = 0
+            value: uint = 0
 
         @dataclass
         class WeatherTrend(ClusterAttributeDescriptor, CustomClusterAttributeMixin):
@@ -1139,7 +1139,7 @@ class DraftElectricalMeasurementCluster(Cluster, CustomClusterMixin):
                     Label="rmsCurrent", Tag=0x00000508, Type=uint
                 ),
                 ClusterObjectFieldDescriptor(
-                    Label="activePower", Tag=0x0000050B, Type=uint
+                    Label="activePower", Tag=0x0000050B, Type=int
                 ),
                 ClusterObjectFieldDescriptor(
                     Label="acVoltageMultiplier", Tag=0x00000600, Type=uint
@@ -1164,7 +1164,7 @@ class DraftElectricalMeasurementCluster(Cluster, CustomClusterMixin):
 
     rmsVoltage: uint | None = None
     rmsCurrent: uint | None = None
-    activePower: uint | None = None
+    activePower: int | None = None
     acVoltageMultiplier: uint | None = None
     acVoltageDivisor: uint | None = None
     acCurrentMultiplier: uint | None = None
@@ -1234,9 +1234,9 @@ class DraftElectricalMeasurementCluster(Cluster, CustomClusterMixin):
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 """Return attribute type."""
-                return ClusterObjectFieldDescriptor(Type=uint)
+                return ClusterObjectFieldDescriptor(Type=int)
 
-            value: uint = 0
+            value: int = 0
 
         @dataclass
         class AcVoltageMultiplier(

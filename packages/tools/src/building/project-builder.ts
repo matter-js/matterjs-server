@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2022-2025 Matter.js Authors
+ * Copyright 2022-2026 Matter.js Authors
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -41,7 +41,7 @@ export class ProjectBuilder {
         this.graph = options.graph;
         this.unconditional =
             options.clean || (options.targets !== undefined && options.targets?.indexOf(Target.clean) !== -1);
-        this.tsgo = options.tsgo;
+        this.tsgo = options.tsgo || (!!process.env.MATTER_TSGO && process.env.MATTER_TSGO !== "0");
     }
 
     get hasClean() {
