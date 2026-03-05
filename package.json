@@ -40,6 +40,12 @@
         "python:test-all": "cd python_client && .venv/bin/pytest tests/ -v",
         "python:build": "cd python_client && .venv/bin/pip install build && .venv/bin/python -m build"
     },
+    "overrides": {
+        "mocha": {
+            "diff": "^8.0.3",
+            "serialize-javascript": "^7.0.4"
+        }
+    },
     "devDependencies": {
         "@matter/testing": "0.17.0-alpha.0-20260304-444297156",
         "@types/mocha": "^10.0.10",

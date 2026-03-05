@@ -1,12 +1,13 @@
 /**
  * @license
- * Copyright 2022-2025 Matter.js Authors
+ * Copyright 2022-2026 Matter.js Authors
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import colors from "ansi-colors";
 import { spawn, SpawnOptions } from "node:child_process";
 import { platform } from "node:os";
+
+import colors from "ansi-colors";
 
 export async function execute(bin: string, argv: string[], env?: typeof process.env) {
     return new Promise<number>((resolve, reject) => {
