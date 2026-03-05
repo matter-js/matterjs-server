@@ -5,9 +5,9 @@
  */
 
 import {
+    Abort,
     AsyncObservable,
     camelize,
-    ChannelType,
     ClientNode,
     ClientNodeInteraction,
     CommissioningClient,
@@ -23,6 +23,7 @@ import {
     ServerAddressUdp,
     SoftwareUpdateInfo,
     SoftwareUpdateManager,
+    DnsRecordType,
 } from "@matter/main";
 import { OperationalCredentialsClient } from "@matter/main/behaviors";
 import {
@@ -39,8 +40,9 @@ import {
     Invoke,
     PeerAddress,
     Read,
-    ScannerSet,
     SupportedTransportsSchema,
+    PeerSet,
+    getOperationalDeviceQname,
 } from "@matter/main/protocol";
 import {
     Attribute,
@@ -190,6 +192,7 @@ export class ControllerCommandHandler {
         nodeEndpointAdded: new Observable<[nodeId: NodeId, endpointId: EndpointNumber]>(),
         nodeEndpointRemoved: new Observable<[nodeId: NodeId, endpointId: EndpointNumber]>(),
     };
+    #peers?: PeerSet;
 
     constructor(controllerInstance: CommissioningController, bleEnabled: boolean, otaEnabled: boolean) {
         this.#controller = controllerInstance;
@@ -209,9 +212,9 @@ export class ControllerCommandHandler {
 
     /**
      * Format a NodeId as a PeerAddress string for logging.
-     * Uses the controller's fabric index when available, otherwise defaults to 1.
+     * Uses the controller's fabric index when available, otherwise "?" is used.
      */
-    #formatNode(nodeId: NodeId): string {
+    formatNode(nodeId: NodeId): string {
         const fabricIndex = this.#controller.fabric?.fabricIndex;
         return formatNodeId(nodeId, fabricIndex);
     }
@@ -232,6 +235,7 @@ export class ControllerCommandHandler {
 
         await this.#controller.start();
         logger.info(`Controller started`);
+        this.#peers = this.#controller.node.env.get(PeerSet);
 
         if (this.#otaEnabled) {
             // Subscribe to OTA provider events to track available updates
@@ -310,7 +314,7 @@ export class ControllerCommandHandler {
         node.events.connectionAlive.on(() => {
             if (basicInfoChangedInBatch) {
                 basicInfoChangedInBatch = false;
-                logger.info(`Node ${this.#formatNode(nodeId)} basic information changed, sending full node_updated`);
+                logger.info(`Node ${this.formatNode(nodeId)} basic information changed, sending full node_updated`);
                 this.events.nodeStructureChanged.emit(nodeId);
             }
         });
@@ -345,7 +349,7 @@ export class ControllerCommandHandler {
             // Emit availability changed if it actually changed
             if (wasAvailable !== isAvailable) {
                 logger.info(
-                    `Node ${this.#formatNode(nodeId)} availability changed: ${wasAvailable} -> ${isAvailable} (state: ${NodeStates[previousState ?? -1]} -> ${NodeStates[state]})`,
+                    `Node ${this.formatNode(nodeId)} availability changed: ${wasAvailable} -> ${isAvailable} (state: ${NodeStates[previousState ?? -1]} -> ${NodeStates[state]})`,
                 );
                 this.events.nodeAvailabilityChanged.emit(nodeId, isAvailable);
             }
@@ -364,6 +368,15 @@ export class ControllerCommandHandler {
 
         // Store the node for direct access
         this.#nodes.set(nodeId, node);
+
+        // Seed state tracking from the node's current connection state so the first
+        // stateChanged event shows a real previous state instead of "undefined".
+        const initialState = node.connectionState;
+        this.#nodes.setPreviousState(nodeId, initialState);
+        // Only mark as available when actually connected; all other states default to false (unavailable).
+        if (initialState === NodeStates.Connected) {
+            this.#lastAvailability.set(nodeId, true);
+        }
 
         // Initialize attribute cache if node is already initialized
         if (node.initialized) {
@@ -394,14 +407,14 @@ export class ControllerCommandHandler {
         await this.start();
 
         const nodes = this.#controller.getCommissionedNodes();
-        logger.info(`Found ${nodes.length} nodes: ${nodes.map(nodeId => this.#formatNode(nodeId)).join(", ")}`);
+        logger.info(`Found ${nodes.length} nodes: ${nodes.map(nodeId => this.formatNode(nodeId)).join(", ")}`);
 
         for (const nodeId of nodes) {
             try {
-                logger.info(`Initializing node "${this.#formatNode(nodeId)}" ...`);
+                logger.info(`Initializing node "${this.formatNode(nodeId)}" ...`);
                 await this.#registerNode(nodeId);
             } catch (error) {
-                logger.warn(`Failed to initialize node "${this.#formatNode(nodeId)}":`, error);
+                logger.warn(`Failed to initialize node "${this.formatNode(nodeId)}":`, error);
             }
         }
 
@@ -415,7 +428,7 @@ export class ControllerCommandHandler {
                     subscribeMaxIntervalCeilingSeconds: undefined,
                 });
             } catch (error) {
-                logger.warn(`Failed to connect node "${this.#formatNode(nodeId)}":`, error);
+                logger.warn(`Failed to connect node "${this.formatNode(nodeId)}":`, error);
             }
         }
     }
@@ -439,9 +452,9 @@ export class ControllerCommandHandler {
         const node = this.#nodes.get(nodeId);
 
         // Our nodes are kept up-to-date via attribute subscriptions, so we don't need
-        // to re-read all attributes like the Python server does.
-        // Just emit a node_updated event with the current (already fresh) data.
-        logger.info(`Interview requested for node ${this.#formatNode(nodeId)} - do a complete read`);
+        // to re-read all attributes like the Python server does. The caller is responsible
+        // for broadcasting node_updated after the interview completes.
+        logger.info(`Interview requested for node ${this.formatNode(nodeId)} - do a complete read`);
 
         // Do a full Read of the node
         const read = {
@@ -452,9 +465,6 @@ export class ControllerCommandHandler {
             includeKnownVersions: true, // do not send DataVersionFilters, so we do a new clean read
         };
         for await (const _chunk of (node.node.interaction as ClientNodeInteraction).read(read));
-
-        // Emit node_updated event (same as Python server behavior after the interview)
-        this.events.nodeStateChanged.emit(nodeId, node.connectionState);
     }
 
     /**
@@ -506,7 +516,7 @@ export class ControllerCommandHandler {
         fabricFiltered = false,
     ): Promise<AttributesData> {
         const result: AttributesData = {};
-        const client = await this.#nodes.interactionClientFor(nodeId);
+        const client = this.#nodes.interactionClientFor(nodeId);
         const batchSize = 9;
 
         // Parse all paths (wildcards become undefined for that component)
@@ -585,7 +595,7 @@ export class ControllerCommandHandler {
 
     async handleReadEvent(data: ReadEventRequest): Promise<ReadEventResponse> {
         const { nodeId, endpointId, clusterId, eventId, eventMin } = data;
-        const client = await this.#nodes.interactionClientFor(nodeId);
+        const client = this.#nodes.interactionClientFor(nodeId);
         const { eventData, eventStatus } = await client.getMultipleEventsAndStatus({
             events: [
                 {
@@ -619,7 +629,7 @@ export class ControllerCommandHandler {
 
     async handleSubscribeAttribute(data: SubscribeAttributeRequest): Promise<SubscribeAttributeResponse> {
         const { nodeId, endpointId, clusterId, attributeId, minInterval, maxInterval, changeListener } = data;
-        const client = await this.#nodes.interactionClientFor(nodeId);
+        const client = this.#nodes.interactionClientFor(nodeId);
         const updated = Observable<[void]>();
         let ignoreData = true; // We ignore data coming in during initial seeding
         const { attributeReports = [] } = await client.subscribeMultipleAttributesAndEvents({
@@ -665,7 +675,7 @@ export class ControllerCommandHandler {
 
     async handleSubscribeEvent(data: SubscribeEventRequest): Promise<SubscribeEventResponse> {
         const { nodeId, endpointId, clusterId, eventId, minInterval, maxInterval, changeListener } = data;
-        const client = await this.#nodes.interactionClientFor(nodeId);
+        const client = this.#nodes.interactionClientFor(nodeId);
         const updated = Observable<[void]>();
         let ignoreData = true; // We ignore data coming in during initial seeding
         const { eventReports = [] } = await client.subscribeMultipleAttributesAndEvents({
@@ -811,7 +821,7 @@ export class ControllerCommandHandler {
         const existing = this.#inFlightInvokes.get(dedupKey);
         if (existing !== undefined) {
             logger.warn(
-                `Duplicate command detected for ${this.#formatNode(nodeId)}/${endpointId}/${cluster.name}/${commandName} - coalescing with in-flight request`,
+                `Duplicate command detected for ${this.formatNode(nodeId)}/${endpointId}/${cluster.name}/${commandName} - coalescing with in-flight request`,
             );
             return existing;
         }
@@ -843,7 +853,7 @@ export class ControllerCommandHandler {
     /** InvokeById minimalistic handler because only used for error testing */
     async handleInvokeById(data: InvokeByIdRequest): Promise<void> {
         const { nodeId, endpointId, clusterId, commandId, data: commandData, timedInteractionTimeoutMs } = data;
-        const client = await this.#nodes.interactionClientFor(nodeId);
+        const client = this.#nodes.interactionClientFor(nodeId);
         await client.invoke<Command<any, any, any>>({
             endpointId,
             clusterId: clusterId,
@@ -860,7 +870,7 @@ export class ControllerCommandHandler {
     async handleWriteAttributeById(data: WriteAttributeByIdRequest): Promise<void> {
         const { nodeId, endpointId, clusterId, attributeId, value } = data;
 
-        const client = await this.#nodes.interactionClientFor(nodeId);
+        const client = this.#nodes.interactionClientFor(nodeId);
 
         logger.info("Writing attribute", attributeId, "with value", value);
 
@@ -1061,7 +1071,16 @@ export class ControllerCommandHandler {
         });
     }
 
-    async getNodeIpAddresses(nodeId: NodeId, _preferCache = true) {
+    async getNodeIpAddresses(nodeId: NodeId, preferCache = true) {
+        if (this.#peers !== undefined && preferCache) {
+            const peer = this.#peers.for(this.#controller.fabric.addressOf(nodeId));
+            const addresses = new Array<string>();
+            for (const address of peer.service.addresses) {
+                addresses.push(address.ip);
+            }
+            return addresses;
+        }
+
         // Try mDNS discovery first (like Python matter server does)
         const addresses = await this.#discoverNodeAddressesViaMdns(nodeId);
         if (addresses.length > 0) {
@@ -1073,7 +1092,7 @@ export class ControllerCommandHandler {
         const commissioningAddresses = node.node.maybeStateOf(CommissioningClient)?.addresses;
         if (commissioningAddresses !== undefined && commissioningAddresses.length > 0) {
             logger.info(
-                `Node ${this.#formatNode(nodeId)}: mDNS discovery returned no addresses, using commissioning addresses`,
+                `Node ${this.formatNode(nodeId)}: mDNS discovery returned no addresses, using commissioning addresses`,
                 commissioningAddresses,
             );
             const fallbackAddresses = commissioningAddresses
@@ -1093,28 +1112,29 @@ export class ControllerCommandHandler {
      */
     async #discoverNodeAddressesViaMdns(nodeId: NodeId): Promise<string[]> {
         try {
-            const scanners = this.#controller.node.env.get(ScannerSet);
-            const mdnsScanner = scanners.scannerFor(ChannelType.UDP);
-            if (!mdnsScanner) {
-                logger.debug(`Node ${this.#formatNode(nodeId)}: No mDNS scanner available`);
+            if (this.#peers === undefined) {
+                logger.debug(`Node ${this.formatNode(nodeId)}: No PeerSet available, Controller started?`);
                 return [];
             }
 
-            const fabric = this.#controller.fabric;
-            logger.info(`Node ${this.#formatNode(nodeId)}: Discovering addresses via mDNS (3s timeout)`);
+            const peer = this.#peers.for(this.#controller.fabric.addressOf(nodeId));
 
-            const device = await mdnsScanner.findOperationalDevice(fabric, nodeId, Seconds(3), false);
-            if (!device || device.addresses.length === 0) {
-                logger.info(`Node ${this.#formatNode(nodeId)}: mDNS discovery found no addresses`);
-                return [];
+            const abort = new Abort({ timeout: Seconds(3) });
+            const names = peer.service.names;
+            await names.solicitor.discover({
+                abort,
+                name: names.get(getOperationalDeviceQname(this.#controller.fabric.globalId, nodeId)),
+                recordTypes: [DnsRecordType.SRV],
+            });
+
+            const addresses = new Array<string>();
+            for (const address of peer.service.addresses) {
+                addresses.push(address.ip);
             }
 
-            // Extract IP addresses from a discovered device (includes scoped addresses with %interface)
-            const addresses = device.addresses.map(addr => addr.ip);
-            logger.info(`Node ${this.#formatNode(nodeId)}: mDNS discovered ${addresses.length} addresses:`, addresses);
             return addresses;
         } catch (error) {
-            logger.info(`Node ${this.#formatNode(nodeId)}: mDNS discovery failed`, error);
+            logger.info(`Node ${this.formatNode(nodeId)}: mDNS discovery failed`, error);
             return [];
         }
     }
@@ -1134,11 +1154,11 @@ export class ControllerCommandHandler {
         const ipAddresses = await this.getNodeIpAddresses(nodeId, false);
 
         if (ipAddresses.length === 0) {
-            logger.info(`No IP addresses found for node ${this.#formatNode(nodeId)}`);
+            logger.info(`No IP addresses found for node ${this.formatNode(nodeId)}`);
             return result;
         }
 
-        logger.info(`Pinging node ${this.#formatNode(nodeId)} on ${ipAddresses.length} addresses:`, ipAddresses);
+        logger.info(`Pinging node ${this.formatNode(nodeId)} on ${ipAddresses.length} addresses:`, ipAddresses);
 
         // Ping all addresses in parallel
         const pingPromises = ipAddresses.map(async ip => {
@@ -1158,7 +1178,7 @@ export class ControllerCommandHandler {
             if (!anySuccess && ipAddresses.length > 0) {
                 // Node is connected, but no pings succeeded - this can happen
                 // with Thread devices or certain network configurations
-                logger.info(`Node ${this.#formatNode(nodeId)} is connected but no pings succeeded`);
+                logger.info(`Node ${this.formatNode(nodeId)} is connected but no pings succeeded`);
             }
         }
 
@@ -1370,7 +1390,7 @@ export class ControllerCommandHandler {
 
             return null;
         } catch (error) {
-            logger.warn(`Failed to check for updates for node ${this.#formatNode(nodeId)}:`, error);
+            logger.warn(`Failed to check for updates for node ${this.formatNode(nodeId)}:`, error);
             return null;
         }
     }
@@ -1387,6 +1407,9 @@ export class ControllerCommandHandler {
         if (!this.#nodes.has(nodeId)) {
             throw ServerError.nodeNotExists(nodeId);
         }
+        if (!this.#nodes.isAvailable(nodeId)) {
+            throw ServerError.updateError(`Node ${this.formatNode(nodeId)} is not connected. Retry later`);
+        }
 
         // Check if node is already updating by checking the OTA Requestor UpdateState attribute
         // Attribute path: 0/42/2 (endpoint 0, OtaSoftwareUpdateRequestor cluster, UpdateState attribute)
@@ -1395,7 +1418,7 @@ export class ControllerCommandHandler {
         const updateState = cachedAttributes?.["0/42/2"];
         if (updateState !== undefined && updateState !== 1) {
             throw ServerError.updateError(
-                `Node ${this.#formatNode(nodeId)} is already in the process of updating (state: ${updateState})`,
+                `Node ${this.formatNode(nodeId)} is already in the process of updating (state: ${updateState})`,
             );
         }
 
@@ -1419,7 +1442,7 @@ export class ControllerCommandHandler {
                 }
             }
 
-            logger.info(`Starting update for node ${this.#formatNode(nodeId)} to version ${softwareVersion}`);
+            logger.info(`Starting update for node ${this.formatNode(nodeId)} to version ${softwareVersion}`);
 
             // Trigger the update using forceUpdate via dynamic behavior access
             await otaProvider.act(agent =>
@@ -1436,7 +1459,7 @@ export class ControllerCommandHandler {
             // Return the update info
             return this.#convertToMatterSoftwareVersion(updateInfo);
         } catch (error) {
-            logger.error(`Failed to update node ${this.#formatNode(nodeId)}:`, error);
+            logger.error(`Failed to update node ${this.formatNode(nodeId)}:`, error);
             throw error;
         }
     }

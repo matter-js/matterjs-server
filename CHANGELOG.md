@@ -8,7 +8,13 @@ This page shows a detailed overview of the changes between versions without the 
 -->
 
 ## __WORK IN PROGRESS__
+- Feature: Allows searching for thread nodes in the network graph by extended address
 - Adjustment: Also sorts neighbors in network graph details by quality
+- Fix: Fixed datatype of some custom cluster attributes
+- Fix: Only allows starting a node update when the node is connected/subscribed currently
+- Fix/Enhancement: Update matter.js to 0.17.0-nightly
+    - Rework and further optimize Discovery and connection logic
+    - Fix cases where BLE disconnects could crash the server 
 
 ## 0.4.3 (2026-02-25)
 - Adjustment: Sort connection quality entries in network graph details by quality

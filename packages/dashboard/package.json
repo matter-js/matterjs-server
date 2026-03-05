@@ -23,7 +23,7 @@
     },
     "devDependencies": {
         "@babel/preset-env": "^7.29.0",
-        "@matter/main": "0.16.11-alpha.0-20260225-033797f3c",
+        "@matter/main": "0.17.0-alpha.0-20260304-444297156",
         "@rollup/plugin-babel": "^6.1.0",
         "@rollup/plugin-commonjs": "^29.0.0",
         "rollup-plugin-copy": "^3.5.0",
@@ -32,7 +32,7 @@
         "@rollup/plugin-terser": "^0.4.4",
         "@rollup/plugin-typescript": "^12.3.0",
         "rollup": "^4.59.0",
-        "serve": "^14.2.5"
+        "serve": "^14.2.6"
     },
     "dependencies": {
         "@lit/context": "^1.1.6",

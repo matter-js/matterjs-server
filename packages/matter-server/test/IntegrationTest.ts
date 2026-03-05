@@ -16,6 +16,8 @@ import { ChildProcess } from "child_process";
 import {
     cleanupTempStorage,
     createTempStoragePaths,
+    DEVICE_DISCRIMINATOR,
+    DEVICE_PASSCODE,
     killProcess,
     MANUAL_PAIRING_CODE,
     MatterTestClient,
@@ -515,6 +517,7 @@ describe("Integration Test", function () {
         it("should interview node and receive node_updated event", async function () {
             client.clearEvents();
 
+            const beforeInterview = new Date();
             await client.interviewNode(commissionedNodeId);
 
             // Should receive node_updated event
@@ -524,6 +527,13 @@ describe("Integration Test", function () {
                 10_000,
             );
             expect(event).to.exist;
+
+            // Verify last_interview is set and reflects a recent timestamp
+            const node = event.data as { node_id: number; last_interview: string | null };
+            expect(node.last_interview).to.be.a("string");
+            // Format is "YYYY-MM-DDTHH:MM:SS.mmm000" — parse the millisecond-precision prefix
+            const interviewDate = new Date((node.last_interview as string).slice(0, 23));
+            expect(interviewDate.getTime()).to.be.at.least(beforeInterview.getTime());
         });
     });
 
@@ -930,6 +940,31 @@ describe("Integration Test", function () {
     });
 
     // =========================================================================
+    // NodeLabel Write + Attribute Event Test (pre-restart baseline)
+    // =========================================================================
+
+    describe("NodeLabel Persistence Baseline", function () {
+        it("should write NodeLabel and receive attribute_updated event before restart", async function () {
+            client.clearEvents();
+
+            // Write a distinct label that we can verify survives the server restart
+            await client.writeAttribute(commissionedNodeId, "0/40/5", "Restart Persistence Label");
+
+            // Wait for the subscription to report the change back
+            const event = await client.waitForEvent(
+                "attribute_updated",
+                data => {
+                    const [eventNodeId, path] = data as [number, string, unknown];
+                    return eventNodeId === commissionedNodeId && path === "0/40/5";
+                },
+                10_000,
+            );
+            const [, , value] = event.data as [number, string, string];
+            expect(value).to.equal("Restart Persistence Label");
+        });
+    });
+
+    // =========================================================================
     // Server Restart Persistence Test
     // =========================================================================
 
@@ -1054,75 +1089,33 @@ describe("Integration Test", function () {
     });
 
     // =========================================================================
-    // TODO: Medium Difficulty Tests (need specific setup)
+    // Commission On Network Test
     // =========================================================================
 
-    describe("Medium Difficulty Tests", function () {
-        it.skip("should commission device on network with passcode", async function () {
-            // TODO: Implement commission_on_network test
-            // Requires device in commissioning mode with known passcode
-            // Need to reset device to uncommissioned state first
-        });
+    describe("Commission On Network", function () {
+        it("should commission device using passcode and long discriminator", async function () {
+            // After decommissioning, the device goes through two phases:
+            // 1. Immediately advertises commissioning (~1.7s after removeFabric)
+            // 2. Full factory reset (~7-8s after removeFabric), kills all sessions, re-advertises
+            // We must wait past the factory reset to avoid commissioning against a transient session
+            // that will be destroyed mid-way. 12 seconds gives a safe margin.
+            await new Promise(r => setTimeout(r, 12_000));
 
-        it.skip("should remove matter fabric from device", async function () {
-            // TODO: Implement remove_matter_fabric test
-            // Requires having multiple fabrics on the device
-            // Would need to commission from a second controller first
-        });
+            const node = await client.commissionOnNetwork(DEVICE_PASSCODE, 2, DEVICE_DISCRIMINATOR);
+            const networkNodeId = Number(node.node_id);
 
-        it.skip("should set ACL entry on node", async function () {
-            // TODO: Implement set_acl_entry test
-            // Requires understanding of ACL structure and valid entries
-            // Example ACL entry structure:
-            // {
-            //   privilege: 5, // Administer
-            //   auth_mode: 2, // CASE
-            //   subjects: [nodeId],
-            //   targets: null
-            // }
-        });
+            console.log("Node commissioned via network:", networkNodeId);
 
-        it.skip("should set node binding", async function () {
-            // TODO: Implement set_node_binding test
-            // Requires valid binding context (another device to bind to)
-            // Example binding:
-            // {
-            //   node: targetNodeId,
-            //   group: null,
-            //   endpoint: 1,
-            //   cluster: 6 // OnOff
-            // }
-        });
-    });
+            expect(node.available).to.be.true;
+            expect(node.is_bridge).to.be.false;
+            expect(node.attributes["0/40/1"]).to.equal("Test Vendor");
+            expect(node.attributes["0/40/3"]).to.equal("Test Light");
+            expect(node.attributes["1/6/0"]).to.equal(false); // OnOff initially off
 
-    // =========================================================================
-    // TODO: Hard Tests (need OTA/special setup)
-    // =========================================================================
-
-    describe("OTA Update Tests", function () {
-        it.skip("should check for node updates", async function () {
-            // TODO: Implement check_node_update test
-            // Requires OTA provider setup with --enable-test-net-dcl
-            // and valid OTA images available for the device
-        });
-
-        it.skip("should update node firmware", async function () {
-            // TODO: Implement update_node test
-            // Requires:
-            // 1. OTA provider configured
-            // 2. Valid OTA image for test device
-            // 3. Device that supports OTA updates
-        });
-    });
-
-    // =========================================================================
-    // TODO: Incomplete/Stub Commands
-    // =========================================================================
-
-    describe("Incomplete Commands", function () {
-        it.skip("should subscribe to attribute updates", async function () {
-            // TODO: Implement subscribe_attribute test
-            // This command appears to be a stub/incomplete in the server
+            // Clean up
+            client.clearEvents();
+            await client.removeNode(networkNodeId);
+            await client.waitForEvent("node_removed", data => Number(data) === networkNodeId, 10_000);
         });
     });
 });
