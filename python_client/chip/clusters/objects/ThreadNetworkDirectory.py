@@ -126,7 +126,7 @@ class ThreadNetworkDirectory(Cluster):
 
     class Attributes:
         @dataclass
-        class PreferredExtendedPanId(ClusterAttributeDescriptor):
+        class PreferredExtendedPanID(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000453

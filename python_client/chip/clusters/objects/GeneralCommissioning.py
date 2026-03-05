@@ -323,7 +323,7 @@ class GeneralCommissioning(Cluster):
             value: 'bool' = False
 
         @dataclass
-        class TcAcceptedVersion(ClusterAttributeDescriptor):
+        class TCAcceptedVersion(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000030
@@ -339,7 +339,7 @@ class GeneralCommissioning(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class TcMinRequiredVersion(ClusterAttributeDescriptor):
+        class TCMinRequiredVersion(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000030
@@ -355,7 +355,7 @@ class GeneralCommissioning(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class TcAcknowledgements(ClusterAttributeDescriptor):
+        class TCAcknowledgements(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000030
@@ -371,7 +371,7 @@ class GeneralCommissioning(Cluster):
             value: 'typing.Optional[Globals.Bitmaps.map16]' = None
 
         @dataclass
-        class TcAcknowledgementsRequired(ClusterAttributeDescriptor):
+        class TCAcknowledgementsRequired(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000030
@@ -387,7 +387,7 @@ class GeneralCommissioning(Cluster):
             value: 'typing.Optional[bool]' = None
 
         @dataclass
-        class TcUpdateDeadline(ClusterAttributeDescriptor):
+        class TCUpdateDeadline(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000030

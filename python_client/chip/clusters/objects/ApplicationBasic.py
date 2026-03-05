@@ -95,7 +95,7 @@ class ApplicationBasic(Cluster):
             value: 'typing.Optional[str]' = None
 
         @dataclass
-        class VendorId(ClusterAttributeDescriptor):
+        class VendorID(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x0000050D
@@ -127,7 +127,7 @@ class ApplicationBasic(Cluster):
             value: 'str' = ""
 
         @dataclass
-        class ProductId(ClusterAttributeDescriptor):
+        class ProductID(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x0000050D

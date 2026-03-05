@@ -51,7 +51,7 @@ class HeimanCluster(Cluster):
 
     class Attributes:
         @dataclass
-        class tamperAlarm(ClusterAttributeDescriptor):
+        class TamperAlarm(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x120BFC01
@@ -67,7 +67,7 @@ class HeimanCluster(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class preheatingState(ClusterAttributeDescriptor):
+        class PreheatingState(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x120BFC01
@@ -83,7 +83,7 @@ class HeimanCluster(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class noDisturbingState(ClusterAttributeDescriptor):
+        class NoDisturbingState(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x120BFC01
@@ -99,7 +99,7 @@ class HeimanCluster(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class sensorType(ClusterAttributeDescriptor):
+        class SensorType(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x120BFC01
@@ -115,7 +115,7 @@ class HeimanCluster(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class sirenActive(ClusterAttributeDescriptor):
+        class SirenActive(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x120BFC01
@@ -131,7 +131,7 @@ class HeimanCluster(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class alarmMute(ClusterAttributeDescriptor):
+        class AlarmMute(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x120BFC01
@@ -147,7 +147,7 @@ class HeimanCluster(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class lowPowerMode(ClusterAttributeDescriptor):
+        class LowPowerMode(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x120BFC01

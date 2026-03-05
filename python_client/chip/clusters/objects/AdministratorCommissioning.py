@@ -155,7 +155,7 @@ class AdministratorCommissioning(Cluster):
             value: 'typing.Union[Nullable, uint]' = NullValue
 
         @dataclass
-        class AdminVendorId(ClusterAttributeDescriptor):
+        class AdminVendorID(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x0000003C

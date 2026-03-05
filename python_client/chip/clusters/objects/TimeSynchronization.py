@@ -287,7 +287,7 @@ class TimeSynchronization(Cluster):
 
     class Attributes:
         @dataclass
-        class UtcTime(ClusterAttributeDescriptor):
+        class UTCTime(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000038
@@ -351,7 +351,7 @@ class TimeSynchronization(Cluster):
             value: 'typing.Union[None, Nullable, TimeSynchronization.Structs.TrustedTimeSourceStruct]' = None
 
         @dataclass
-        class DefaultNtp(ClusterAttributeDescriptor):
+        class DefaultNTP(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000038
@@ -383,7 +383,7 @@ class TimeSynchronization(Cluster):
             value: 'typing.Optional[typing.List[typing.Optional[TimeSynchronization.Structs.TimeZoneStruct]]]' = None
 
         @dataclass
-        class DstOffset(ClusterAttributeDescriptor):
+        class DSTOffset(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000038
@@ -431,7 +431,7 @@ class TimeSynchronization(Cluster):
             value: 'typing.Optional[TimeSynchronization.Enums.TimeZoneDatabaseEnum]' = None
 
         @dataclass
-        class NtpServerAvailable(ClusterAttributeDescriptor):
+        class NTPServerAvailable(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000038
@@ -463,7 +463,7 @@ class TimeSynchronization(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class DstOffsetListMaxSize(ClusterAttributeDescriptor):
+        class DSTOffsetListMaxSize(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000038

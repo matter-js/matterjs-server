@@ -186,7 +186,7 @@ class BasicInformation(Cluster):
             value: 'str' = ""
 
         @dataclass
-        class VendorId(ClusterAttributeDescriptor):
+        class VendorID(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000028
@@ -218,7 +218,7 @@ class BasicInformation(Cluster):
             value: 'str' = ""
 
         @dataclass
-        class ProductId(ClusterAttributeDescriptor):
+        class ProductID(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000028
@@ -362,7 +362,7 @@ class BasicInformation(Cluster):
             value: 'typing.Optional[str]' = None
 
         @dataclass
-        class ProductUrl(ClusterAttributeDescriptor):
+        class ProductURL(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000028
@@ -442,7 +442,7 @@ class BasicInformation(Cluster):
             value: 'typing.Optional[bool]' = None
 
         @dataclass
-        class UniqueId(ClusterAttributeDescriptor):
+        class UniqueID(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000028

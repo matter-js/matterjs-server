@@ -148,7 +148,7 @@ class ThreadBorderRouterManagement(Cluster):
             value: 'str' = ""
 
         @dataclass
-        class BorderAgentId(ClusterAttributeDescriptor):
+        class BorderAgentID(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000452

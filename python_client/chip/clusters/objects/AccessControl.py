@@ -226,7 +226,7 @@ class AccessControl(Cluster):
 
     class Attributes:
         @dataclass
-        class Acl(ClusterAttributeDescriptor):
+        class ACL(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x0000001F

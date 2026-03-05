@@ -127,7 +127,7 @@ class OtaSoftwareUpdateRequestor(Cluster):
 
     class Attributes:
         @dataclass
-        class DefaultOtaProviders(ClusterAttributeDescriptor):
+        class DefaultOTAProviders(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x0000002A

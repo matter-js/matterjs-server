@@ -45,7 +45,7 @@ class ThirdRealityMeteringCluster(Cluster):
 
     class Attributes:
         @dataclass
-        class currentSummationDelivered(ClusterAttributeDescriptor):
+        class CurrentSummationDelivered(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x130DFC02
@@ -61,7 +61,7 @@ class ThirdRealityMeteringCluster(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class instantaneousDemand(ClusterAttributeDescriptor):
+        class InstantaneousDemand(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x130DFC02
@@ -77,7 +77,7 @@ class ThirdRealityMeteringCluster(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class multiplier(ClusterAttributeDescriptor):
+        class Multiplier(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x130DFC02
@@ -93,7 +93,7 @@ class ThirdRealityMeteringCluster(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class divisor(ClusterAttributeDescriptor):
+        class Divisor(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x130DFC02

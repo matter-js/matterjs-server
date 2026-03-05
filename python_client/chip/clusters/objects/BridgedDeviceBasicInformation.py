@@ -209,7 +209,7 @@ class BridgedDeviceBasicInformation(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class VendorId(ClusterAttributeDescriptor):
+        class VendorID(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000039
@@ -241,7 +241,7 @@ class BridgedDeviceBasicInformation(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class ProductId(ClusterAttributeDescriptor):
+        class ProductID(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000039
@@ -385,7 +385,7 @@ class BridgedDeviceBasicInformation(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class ProductUrl(ClusterAttributeDescriptor):
+        class ProductURL(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000039
@@ -465,7 +465,7 @@ class BridgedDeviceBasicInformation(Cluster):
             value: 'uint' = 0
 
         @dataclass
-        class UniqueId(ClusterAttributeDescriptor):
+        class UniqueID(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000039

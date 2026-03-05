@@ -148,7 +148,7 @@ class Descriptor(Cluster):
             value: 'typing.Optional[typing.List[typing.Optional[Globals.Structs.semtag]]]' = None
 
         @dataclass
-        class EndpointUniqueId(ClusterAttributeDescriptor):
+        class EndpointUniqueID(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x0000001D

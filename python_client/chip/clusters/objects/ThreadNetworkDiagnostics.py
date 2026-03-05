@@ -385,7 +385,7 @@ class ThreadNetworkDiagnostics(Cluster):
             value: 'typing.Union[Nullable, str]' = NullValue
 
         @dataclass
-        class PanId(ClusterAttributeDescriptor):
+        class PanID(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000035
@@ -401,7 +401,7 @@ class ThreadNetworkDiagnostics(Cluster):
             value: 'typing.Union[Nullable, uint]' = NullValue
 
         @dataclass
-        class ExtendedPanId(ClusterAttributeDescriptor):
+        class ExtendedPanID(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000035
@@ -481,7 +481,7 @@ class ThreadNetworkDiagnostics(Cluster):
             value: 'typing.List[typing.Optional[ThreadNetworkDiagnostics.Structs.RouteTableStruct]]' = field(default_factory=lambda: [])
 
         @dataclass
-        class PartitionId(ClusterAttributeDescriptor):
+        class PartitionID(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000035
@@ -545,7 +545,7 @@ class ThreadNetworkDiagnostics(Cluster):
             value: 'typing.Union[Nullable, uint]' = NullValue
 
         @dataclass
-        class LeaderRouterId(ClusterAttributeDescriptor):
+        class LeaderRouterID(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000035
@@ -641,7 +641,7 @@ class ThreadNetworkDiagnostics(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class PartitionIdChangeCount(ClusterAttributeDescriptor):
+        class PartitionIDChangeCount(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000035

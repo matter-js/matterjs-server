@@ -558,7 +558,7 @@ class EnergyEvse(Cluster):
             value: 'typing.Union[None, Nullable, uint]' = None
 
         @dataclass
-        class ApproximateEvEfficiency(ClusterAttributeDescriptor):
+        class ApproximateEVEfficiency(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000099
@@ -606,7 +606,7 @@ class EnergyEvse(Cluster):
             value: 'typing.Union[None, Nullable, uint]' = None
 
         @dataclass
-        class VehicleId(ClusterAttributeDescriptor):
+        class VehicleID(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000099
@@ -622,7 +622,7 @@ class EnergyEvse(Cluster):
             value: 'typing.Union[None, Nullable, str]' = None
 
         @dataclass
-        class SessionId(ClusterAttributeDescriptor):
+        class SessionID(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000099

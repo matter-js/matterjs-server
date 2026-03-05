@@ -225,11 +225,11 @@ class ClusterCommand(ClusterObject):
             pass
 
     @ChipUtility.classproperty
-    def cluster_id(self) -> int:
+    def cluster_id(cls) -> int:
         raise NotImplementedError()
 
     @ChipUtility.classproperty
-    def command_id(self) -> int:
+    def command_id(cls) -> int:
         raise NotImplementedError()
 
     @ChipUtility.classproperty
@@ -286,11 +286,11 @@ class ClusterAttributeDescriptor:
         ).Value
 
     @ChipUtility.classproperty
-    def cluster_id(self) -> int:
+    def cluster_id(cls) -> int:
         raise NotImplementedError()
 
     @ChipUtility.classproperty
-    def attribute_id(self) -> int:
+    def attribute_id(cls) -> int:
         raise NotImplementedError()
 
     @ChipUtility.classproperty
@@ -337,9 +337,9 @@ class ClusterEvent(ClusterObject):
         ALL_EVENTS[cls.cluster_id][cls.event_id] = cls
 
     @ChipUtility.classproperty
-    def cluster_id(self) -> int:
+    def cluster_id(cls) -> int:
         raise NotImplementedError()
 
     @ChipUtility.classproperty
-    def event_id(self) -> int:
+    def event_id(cls) -> int:
         raise NotImplementedError()

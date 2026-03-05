@@ -17,12 +17,14 @@
  */
 
 import { AttributeModel, ClusterModel, CommandModel, EventModel, Matter, ValueModel } from "@matter/main/model";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// Include custom cluster definitions in the model
+// Include custom cluster definitions in the model (registers them in Matter)
 import "@matter-server/custom-clusters";
+// Also import the class names to identify which clusters are custom
+import * as CustomClusterClasses from "../../packages/custom-clusters/dist/esm/clusters/index.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pythonClientDir = join(__dirname, "..");
@@ -874,9 +876,13 @@ function generateAttribute(
 ): void {
     const attrId = model.id ?? 0;
     const pyType = resolveType(model);
+    // Attribute class names must be PascalCase (chip SDK convention).
+    // Standard clusters already have PascalCase model names; custom clusters use
+    // camelCase TypeScript field names that need to be capitalized.
+    const attrClassName = toChipName(model.name.charAt(0).toUpperCase() + model.name.slice(1));
 
     w.line("@dataclass");
-    w.line(`class ${model.name}(ClusterAttributeDescriptor):`);
+    w.line(`class ${attrClassName}(ClusterAttributeDescriptor):`);
     w.pushIndent();
 
     w.line("@ChipUtility.classproperty");
@@ -1166,16 +1172,15 @@ function generateDeviceTypes(): string {
     const w = new PythonWriter();
 
     w.line('"""');
-    w.line(" Device type definitions.");
+    w.line("Device type definitions.");
     w.blankLine();
-    w.line(" This file is auto-generated, DO NOT edit.");
+    w.line("This file is auto-generated, DO NOT edit.");
     w.line('"""');
     w.blankLine();
     w.line("from __future__ import annotations");
     w.blankLine();
     w.line("from chip.clusters import Objects as all_clusters");
     w.line("from chip.clusters.ClusterObjects import Cluster");
-    w.blankLine();
     w.blankLine();
 
     // Collect cluster names for lookup
@@ -1191,6 +1196,7 @@ function generateDeviceTypes(): string {
     w.line("class DeviceType:");
     w.pushIndent();
     w.line('"""Base class for Matter device types."""');
+    w.blankLine();
     w.line("device_type: int = 0");
     w.line("clusters: set[type[Cluster]] = set()");
     w.blankLine();
@@ -1255,6 +1261,9 @@ function generateDeviceTypes(): string {
 // Main
 // ============================================================================
 
+// Names of custom cluster classes exported from @matter-server/custom-clusters
+const customClusterNames = new Set(Object.keys(CustomClusterClasses));
+
 function main(): void {
     console.log("Building datatype registry...");
     const datatypeRegistry = buildDatatypeRegistry();
@@ -1298,7 +1307,52 @@ function main(): void {
     const deviceTypesContent = generateDeviceTypes();
     writeFileSync(join(pythonClientDir, "matter_server", "client", "models", "device_types.py"), deviceTypesContent);
 
-    console.log(`Done! Generated ${results.length} cluster files + Globals + Objects.py + device_types.py`);
+    // Generate matter_server/common/custom_clusters.py — a single re-export shim over
+    // chip/clusters/objects/* that maintains the HA-compatible import path.
+    // The actual cluster definitions live in chip/clusters/objects/ (generated above).
+    console.log("Generating custom_clusters.py...");
+
+    // Remove legacy custom_clusters/ directory if present (replaced by single file)
+    const legacyDir = join(pythonClientDir, "matter_server", "common", "custom_clusters");
+    if (existsSync(legacyDir)) {
+        rmSync(legacyDir, { recursive: true });
+        console.log("  Removed legacy custom_clusters/ directory");
+    }
+
+    // Custom clusters from results (only those whose class name is in customClusterNames)
+    const customResults = results.filter(r => customClusterNames.has(r.className));
+    // Sort by class name for deterministic output
+    customResults.sort((a, b) => a.className.localeCompare(b.className));
+
+    const customLines: string[] = [
+        '"""Custom (vendor-specific) cluster re-exports (auto-generated, DO NOT edit)."""',
+        "",
+    ];
+    for (const r of customResults) {
+        customLines.push(`from chip.clusters.objects.${r.className} import ${r.className}`);
+    }
+    customLines.push("");
+    customLines.push("ALL_CUSTOM_CLUSTERS: dict = {");
+    for (const r of customResults) {
+        customLines.push(`    ${r.className}.id: ${r.className},`);
+    }
+    customLines.push("}");
+    customLines.push("");
+    customLines.push("__all__ = [");
+    customLines.push('    "ALL_CUSTOM_CLUSTERS",');
+    for (const r of customResults) {
+        customLines.push(`    "${r.className}",`);
+    }
+    customLines.push("]");
+    customLines.push("");
+
+    writeFileSync(
+        join(pythonClientDir, "matter_server", "common", "custom_clusters.py"),
+        customLines.join("\n"),
+    );
+    console.log(`  Generated custom_clusters.py with ${customResults.length} cluster re-exports`);
+
+    console.log(`Done! Generated ${results.length} cluster files + Globals + Objects.py + device_types.py + custom_clusters.py`);
 }
 
 main();

@@ -742,7 +742,7 @@ class JointFabricDatastore(Cluster):
             value: 'typing.Optional[bytes]' = None
 
         @dataclass
-        class AnchorNodeId(ClusterAttributeDescriptor):
+        class AnchorNodeID(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000752
@@ -758,7 +758,7 @@ class JointFabricDatastore(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class AnchorVendorId(ClusterAttributeDescriptor):
+        class AnchorVendorID(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000752
@@ -870,7 +870,7 @@ class JointFabricDatastore(Cluster):
             value: 'typing.Optional[JointFabricDatastore.Structs.DatastoreStatusEntryStruct]' = None
 
         @dataclass
-        class EndpointGroupIdList(ClusterAttributeDescriptor):
+        class EndpointGroupIDList(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000752
@@ -918,7 +918,7 @@ class JointFabricDatastore(Cluster):
             value: 'typing.Optional[typing.List[typing.Optional[JointFabricDatastore.Structs.DatastoreNodeKeySetEntryStruct]]]' = None
 
         @dataclass
-        class NodeAclList(ClusterAttributeDescriptor):
+        class NodeACLList(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000752

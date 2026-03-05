@@ -181,7 +181,7 @@ class SmokeCoAlarm(Cluster):
             value: 'typing.Optional[SmokeCoAlarm.Enums.AlarmStateEnum]' = None
 
         @dataclass
-        class CoState(ClusterAttributeDescriptor):
+        class COState(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x0000005C
@@ -293,7 +293,7 @@ class SmokeCoAlarm(Cluster):
             value: 'typing.Optional[SmokeCoAlarm.Enums.AlarmStateEnum]' = None
 
         @dataclass
-        class InterconnectCoAlarm(ClusterAttributeDescriptor):
+        class InterconnectCOAlarm(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x0000005C

@@ -77,7 +77,7 @@ class EveCluster(Cluster):
 
     class Attributes:
         @dataclass
-        class getConfig(ClusterAttributeDescriptor):
+        class GetConfig(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x130AFC01
@@ -93,7 +93,7 @@ class EveCluster(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class setConfig(ClusterAttributeDescriptor):
+        class SetConfig(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x130AFC01
@@ -109,7 +109,7 @@ class EveCluster(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class loggingMetadata(ClusterAttributeDescriptor):
+        class LoggingMetadata(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x130AFC01
@@ -125,7 +125,7 @@ class EveCluster(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class loggingData(ClusterAttributeDescriptor):
+        class LoggingData(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x130AFC01
@@ -141,7 +141,7 @@ class EveCluster(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class timesOpened(ClusterAttributeDescriptor):
+        class TimesOpened(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x130AFC01
@@ -157,7 +157,7 @@ class EveCluster(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class lastEventTime(ClusterAttributeDescriptor):
+        class LastEventTime(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x130AFC01
@@ -173,7 +173,7 @@ class EveCluster(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class watt(ClusterAttributeDescriptor):
+        class Watt(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x130AFC01
@@ -189,7 +189,7 @@ class EveCluster(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class wattAccumulated(ClusterAttributeDescriptor):
+        class WattAccumulated(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x130AFC01
@@ -205,7 +205,7 @@ class EveCluster(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class statusFault(ClusterAttributeDescriptor):
+        class StatusFault(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x130AFC01
@@ -221,7 +221,7 @@ class EveCluster(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class wattAccumulatedControlPoint(ClusterAttributeDescriptor):
+        class WattAccumulatedControlPoint(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x130AFC01
@@ -237,7 +237,7 @@ class EveCluster(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class voltage(ClusterAttributeDescriptor):
+        class Voltage(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x130AFC01
@@ -253,7 +253,7 @@ class EveCluster(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class current(ClusterAttributeDescriptor):
+        class Current(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x130AFC01
@@ -269,7 +269,7 @@ class EveCluster(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class obstructionDetected(ClusterAttributeDescriptor):
+        class ObstructionDetected(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x130AFC01
@@ -285,7 +285,7 @@ class EveCluster(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class childLock(ClusterAttributeDescriptor):
+        class ChildLock(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x130AFC01
@@ -301,7 +301,7 @@ class EveCluster(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class rloc16(ClusterAttributeDescriptor):
+        class Rloc16(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x130AFC01
@@ -317,7 +317,7 @@ class EveCluster(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class altitude(ClusterAttributeDescriptor):
+        class Altitude(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x130AFC01
@@ -333,7 +333,7 @@ class EveCluster(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class pressure(ClusterAttributeDescriptor):
+        class Pressure(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x130AFC01
@@ -349,7 +349,7 @@ class EveCluster(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class weatherTrend(ClusterAttributeDescriptor):
+        class WeatherTrend(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x130AFC01
@@ -365,7 +365,7 @@ class EveCluster(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class valvePosition(ClusterAttributeDescriptor):
+        class ValvePosition(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x130AFC01
@@ -381,7 +381,7 @@ class EveCluster(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class motionSensitivity(ClusterAttributeDescriptor):
+        class MotionSensitivity(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x130AFC01

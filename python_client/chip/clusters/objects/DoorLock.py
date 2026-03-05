@@ -1422,7 +1422,7 @@ class DoorLock(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class NumberOfPinUsersSupported(ClusterAttributeDescriptor):
+        class NumberOfPINUsersSupported(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000101
@@ -1438,7 +1438,7 @@ class DoorLock(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class NumberOfRfidUsersSupported(ClusterAttributeDescriptor):
+        class NumberOfRFIDUsersSupported(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000101
@@ -1502,7 +1502,7 @@ class DoorLock(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class MaxPinCodeLength(ClusterAttributeDescriptor):
+        class MaxPINCodeLength(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000101
@@ -1518,7 +1518,7 @@ class DoorLock(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class MinPinCodeLength(ClusterAttributeDescriptor):
+        class MinPINCodeLength(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000101
@@ -1534,7 +1534,7 @@ class DoorLock(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class MaxRfidCodeLength(ClusterAttributeDescriptor):
+        class MaxRFIDCodeLength(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000101
@@ -1550,7 +1550,7 @@ class DoorLock(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class MinRfidCodeLength(ClusterAttributeDescriptor):
+        class MinRFIDCodeLength(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000101
@@ -1614,7 +1614,7 @@ class DoorLock(Cluster):
             value: 'typing.Optional[str]' = None
 
         @dataclass
-        class LedSettings(ClusterAttributeDescriptor):
+        class LEDSettings(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000101
@@ -1742,7 +1742,7 @@ class DoorLock(Cluster):
             value: 'typing.Optional[bool]' = None
 
         @dataclass
-        class EnableInsideStatusLed(ClusterAttributeDescriptor):
+        class EnableInsideStatusLED(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000101
@@ -1822,7 +1822,7 @@ class DoorLock(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class SendPinOverTheAir(ClusterAttributeDescriptor):
+        class SendPINOverTheAir(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000101
@@ -1838,7 +1838,7 @@ class DoorLock(Cluster):
             value: 'typing.Optional[bool]' = None
 
         @dataclass
-        class RequirePinForRemoteOperation(ClusterAttributeDescriptor):
+        class RequirePINForRemoteOperation(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000101

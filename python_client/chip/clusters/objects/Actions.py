@@ -401,7 +401,7 @@ class Actions(Cluster):
             value: 'typing.List[typing.Optional[Actions.Structs.EndpointListStruct]]' = field(default_factory=lambda: [])
 
         @dataclass
-        class SetupUrl(ClusterAttributeDescriptor):
+        class SetupURL(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000025

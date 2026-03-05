@@ -444,7 +444,7 @@ class NetworkCommissioning(Cluster):
             value: 'typing.Union[Nullable, NetworkCommissioning.Enums.NetworkCommissioningStatusEnum]' = NullValue
 
         @dataclass
-        class LastNetworkId(ClusterAttributeDescriptor):
+        class LastNetworkID(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000031

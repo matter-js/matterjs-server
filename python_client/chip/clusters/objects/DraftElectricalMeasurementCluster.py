@@ -55,7 +55,7 @@ class DraftElectricalMeasurementCluster(Cluster):
 
     class Attributes:
         @dataclass
-        class rmsVoltage(ClusterAttributeDescriptor):
+        class RmsVoltage(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000B04
@@ -71,7 +71,7 @@ class DraftElectricalMeasurementCluster(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class rmsCurrent(ClusterAttributeDescriptor):
+        class RmsCurrent(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000B04
@@ -87,7 +87,7 @@ class DraftElectricalMeasurementCluster(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class activePower(ClusterAttributeDescriptor):
+        class ActivePower(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000B04
@@ -103,7 +103,7 @@ class DraftElectricalMeasurementCluster(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class acVoltageMultiplier(ClusterAttributeDescriptor):
+        class AcVoltageMultiplier(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000B04
@@ -119,7 +119,7 @@ class DraftElectricalMeasurementCluster(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class acVoltageDivisor(ClusterAttributeDescriptor):
+        class AcVoltageDivisor(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000B04
@@ -135,7 +135,7 @@ class DraftElectricalMeasurementCluster(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class acCurrentMultiplier(ClusterAttributeDescriptor):
+        class AcCurrentMultiplier(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000B04
@@ -151,7 +151,7 @@ class DraftElectricalMeasurementCluster(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class acCurrentDivisor(ClusterAttributeDescriptor):
+        class AcCurrentDivisor(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000B04
@@ -167,7 +167,7 @@ class DraftElectricalMeasurementCluster(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class acPowerMultiplier(ClusterAttributeDescriptor):
+        class AcPowerMultiplier(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000B04
@@ -183,7 +183,7 @@ class DraftElectricalMeasurementCluster(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class acPowerDivisor(ClusterAttributeDescriptor):
+        class AcPowerDivisor(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000B04

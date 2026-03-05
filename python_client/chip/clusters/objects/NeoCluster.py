@@ -45,7 +45,7 @@ class NeoCluster(Cluster):
 
     class Attributes:
         @dataclass
-        class wattAccumulated(ClusterAttributeDescriptor):
+        class WattAccumulated(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x125DFC11
@@ -61,7 +61,7 @@ class NeoCluster(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class watt(ClusterAttributeDescriptor):
+        class Watt(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x125DFC11
@@ -77,7 +77,7 @@ class NeoCluster(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class current(ClusterAttributeDescriptor):
+        class Current(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x125DFC11
@@ -93,7 +93,7 @@ class NeoCluster(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class voltage(ClusterAttributeDescriptor):
+        class Voltage(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x125DFC11

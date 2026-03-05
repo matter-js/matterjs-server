@@ -43,7 +43,7 @@ class InovelliCluster(Cluster):
 
     class Attributes:
         @dataclass
-        class ledIndicatorIntensityOn(ClusterAttributeDescriptor):
+        class LEDIndicatorIntensityOn(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x122FFC31
@@ -59,7 +59,7 @@ class InovelliCluster(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class ledIndicatorIntensityOff(ClusterAttributeDescriptor):
+        class LEDIndicatorIntensityOff(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x122FFC31
@@ -75,7 +75,7 @@ class InovelliCluster(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class clearNotificationWithConfigDoubleTap(ClusterAttributeDescriptor):
+        class ClearNotificationWithConfigDoubleTap(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x122FFC31
