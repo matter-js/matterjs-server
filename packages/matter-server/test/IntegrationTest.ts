@@ -940,6 +940,31 @@ describe("Integration Test", function () {
     });
 
     // =========================================================================
+    // NodeLabel Write + Attribute Event Test (pre-restart baseline)
+    // =========================================================================
+
+    describe("NodeLabel Persistence Baseline", function () {
+        it("should write NodeLabel and receive attribute_updated event before restart", async function () {
+            client.clearEvents();
+
+            // Write a distinct label that we can verify survives the server restart
+            await client.writeAttribute(commissionedNodeId, "0/40/5", "Restart Persistence Label");
+
+            // Wait for the subscription to report the change back
+            const event = await client.waitForEvent(
+                "attribute_updated",
+                data => {
+                    const [eventNodeId, path] = data as [number, string, unknown];
+                    return eventNodeId === commissionedNodeId && path === "0/40/5";
+                },
+                10_000,
+            );
+            const [, , value] = event.data as [number, string, string];
+            expect(value).to.equal("Restart Persistence Label");
+        });
+    });
+
+    // =========================================================================
     // Server Restart Persistence Test
     // =========================================================================
 
