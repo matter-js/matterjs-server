@@ -7,7 +7,7 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
-## __WORK IN PROGRESS__
+## 0.5.0 (2026-03-05)
 - Feature: Allows searching for thread nodes in the network graph by extended address
 - Adjustment: Also sorts neighbors in network graph details by quality
 - Fix: Fixed datatype of some custom cluster attributes
