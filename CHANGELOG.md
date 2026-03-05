@@ -7,7 +7,7 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
-## __WORK IN PROGRESS__
+## 0.5.1 (2026-03-05)
 - Fix: Revert one Eve change for pressure custom attribute
 - Fix/Enhancement: Update matter.js to 0.17.0-nightly
   - Fix invoke batching
