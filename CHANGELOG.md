@@ -7,6 +7,12 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
+## __WORK IN PROGRESS__
+- Fix: Revert one Eve change for pressure custom attribute
+- Fix/Enhancement: Update matter.js to 0.17.0-nightly
+  - Fix invoke batching
+  - Fix uncommissioned peer startup issues
+
 ## 0.5.0 (2026-03-05)
 - Feature: Allows searching for thread nodes in the network graph by extended address
 - Adjustment: Also sorts neighbors in network graph details by quality
