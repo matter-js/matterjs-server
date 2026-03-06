@@ -7,6 +7,11 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
+## __WORK IN PROGRESS__
+- Fix/Enhancement: Update matter.js to 0.17.0-nightly
+  - Fix hanging interactions (Read/Subscribe) and ensure proper timeouts when the device answered unexpectedly, or we aborted internally
+  - Prevents removing clusters when devices contain them but not declaring them ("Schrödinger's clusters")
+
 ## 0.5.1 (2026-03-05)
 - Fix: Revert one Eve change for pressure custom attribute
 - Fix/Enhancement: Update matter.js to 0.17.0-nightly
