@@ -134,6 +134,7 @@ export namespace LegacyDataInjector {
 
     export async function injectCredentials(
         credentialsStorage: StorageContext,
+        fabricsStorage: StorageContext,
         crypto: Crypto,
         credentialData: CertificateAuthority.Configuration,
         fabricData?: LegacyFabricConfigData,
@@ -190,6 +191,7 @@ export namespace LegacyDataInjector {
                 logger.warn("Existing fabric root public key changed. Rewriting from legacy data");
             } else {
                 logger.info("Fabric root public key unchanged. Skipping rewrite.");
+                await syncFabrics(fabricsStorage, storedFabric);
                 return;
             }
         }
@@ -209,6 +211,24 @@ export namespace LegacyDataInjector {
         const rootFabric = await builder.build(tempFabric.fabricIndex);
 
         await credentialsStorage.set("fabric", rootFabric.config);
+
+        await syncFabrics(fabricsStorage, rootFabric.config);
+    }
+
+    async function syncFabrics(fabricsStorage: StorageContext, fabricConfig: Fabric.Config) {
+        if (!(await fabricsStorage.has("fabrics"))) {
+            await fabricsStorage.set("fabrics", [fabricConfig]);
+            logger.info("Initializing FabricManager storage");
+            return;
+        }
+        const fabrics = await fabricsStorage.get<Fabric.Config[]>("fabrics", []);
+        if (fabrics.some(({ fabricIndex }) => fabricIndex === fabricConfig.fabricIndex)) {
+            logger.info("FabricManager storage already has fabric index. Skipping update.");
+            return;
+        }
+        fabrics.push(fabricConfig);
+        await fabricsStorage.set("fabrics", fabrics);
+        logger.info("Added fabric to FabricManager storage");
     }
 
     export async function injectNodeData(

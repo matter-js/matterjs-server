@@ -100,6 +100,7 @@ export class MatterController {
             if (legacyData.credentials && legacyData.fabricId) {
                 await LegacyDataInjector.injectCredentials(
                     baseStorage.createContext("credentials"),
+                    baseStorage.createContext("fabrics"),
                     crypto,
                     legacyData.credentials,
                     legacyData.fabric,
