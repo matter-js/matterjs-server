@@ -7,7 +7,7 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
-## __WORK IN PROGRESS__
+## 0.5.3 (2026-03-07)
 - Fix: Update matter.js to the latest 0.17.0-nightly
   - Fixes the broken storage initialization that rendered 0.5.2 unusable depending on how the storage path was provided in CLI
 
