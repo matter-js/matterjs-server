@@ -29,6 +29,7 @@ jobs:
           echo "matterjs_version=$MATTERJS_VERSION" >> $GITHUB_OUTPUT
           echo "Syncing to matter.js version: $MATTERJS_VERSION"
           npm run sync-matterjs
+          npm run relock
 
       - name: Check for changes
         id: check-changes
