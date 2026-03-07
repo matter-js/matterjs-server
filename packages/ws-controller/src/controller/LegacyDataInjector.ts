@@ -185,13 +185,15 @@ export namespace LegacyDataInjector {
             keyPair: await crypto.createKeyPair(), // Just use a new keypair temporarily because chip data does not have it
         });
 
+        let keyRewritten = false;
         if (await credentialsStorage.has("fabric")) {
             const storedFabric = await credentialsStorage.get<Fabric.Config>("fabric");
             if (!Bytes.areEqual(storedFabric.rootPublicKey!, tempFabric.rootPublicKey)) {
                 logger.warn("Existing fabric root public key changed. Rewriting from legacy data");
+                keyRewritten = true;
             } else {
                 logger.info("Fabric root public key unchanged. Skipping rewrite.");
-                await syncFabrics(fabricsStorage, storedFabric);
+                await syncFabrics(fabricsStorage, storedFabric, false);
                 return;
             }
         }
@@ -212,17 +214,19 @@ export namespace LegacyDataInjector {
 
         await credentialsStorage.set("fabric", rootFabric.config);
 
-        await syncFabrics(fabricsStorage, rootFabric.config);
+        await syncFabrics(fabricsStorage, rootFabric.config, keyRewritten);
     }
 
-    async function syncFabrics(fabricsStorage: StorageContext, fabricConfig: Fabric.Config) {
+    async function syncFabrics(fabricsStorage: StorageContext, fabricConfig: Fabric.Config, overwriteKey: boolean) {
         if (!(await fabricsStorage.has("fabrics"))) {
             await fabricsStorage.set("fabrics", [fabricConfig]);
             logger.info("Initializing FabricManager storage");
             return;
         }
-        const fabrics = await fabricsStorage.get<Fabric.Config[]>("fabrics", []);
-        if (fabrics.some(({ fabricIndex }) => fabricIndex === fabricConfig.fabricIndex)) {
+        let fabrics = await fabricsStorage.get<Fabric.Config[]>("fabrics", []);
+        if (overwriteKey) {
+            fabrics = fabrics.filter(f => f.fabricIndex !== fabricConfig.fabricIndex);
+        } else if (fabrics.some(({ fabricIndex }) => fabricIndex === fabricConfig.fabricIndex)) {
             logger.info("FabricManager storage already has fabric index. Skipping update.");
             return;
         }
