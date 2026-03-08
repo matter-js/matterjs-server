@@ -31,7 +31,7 @@
         "format-verify": "oxfmt --check \"packages/**/*.ts\"",
         "test": "matter-test --force-exit",
         "relock": "node ./utils/relock.js && npm install",
-        "sync-matterjs": "node ./utils/sync-matterjs.js && npm install",
+        "sync-matterjs": "node ./utils/sync-matterjs.js && npm run relock",
         "server": "node --enable-source-maps packages/matter-server/dist/esm/MatterServer.js",
         "send-command": "node --enable-source-maps packages/ws-controller/dist/esm/example/send-command.js",
         "python:install": "cd python_client && python3 -m venv .venv && .venv/bin/pip install -e '.[test]'",
@@ -47,7 +47,7 @@
         }
     },
     "devDependencies": {
-        "@matter/testing": "0.17.0-alpha.0-20260307-3a4d58cbd",
+        "@matter/testing": "0.17.0-alpha.0-20260308-2d3759f3b",
         "@types/mocha": "^10.0.10",
         "glob": "^13.0.6",
         "globals": "^17.4.0",
