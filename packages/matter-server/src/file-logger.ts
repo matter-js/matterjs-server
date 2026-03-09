@@ -5,7 +5,7 @@
  */
 
 import { mkdir, open, rename, unlink } from "node:fs/promises";
-import { dirname } from "node:path";
+import { basename, dirname } from "node:path";
 
 const LOG_ROTATION_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const LOG_BACKUP_COUNT = 7; // keep up to 7 daily backup files
@@ -24,9 +24,12 @@ function isEnoent(err: unknown): boolean {
  * any buffered data and release the file handle.
  */
 export async function createFileLogger(path: string) {
+    if (!basename(path)) {
+        throw new Error(`Log file path must include a filename, not just a directory: "${path}"`);
+    }
     await mkdir(dirname(path), { recursive: true });
 
-    async function openFreshLogFile() {
+    async function shiftBackups() {
         // Remove the oldest backup to make room, then shift: .6→.7, …, .1→.2, current→.1
         try {
             await unlink(`${path}.${LOG_BACKUP_COUNT}`);
@@ -51,47 +54,67 @@ export async function createFileLogger(path: string) {
                 throw err;
             }
         }
+    }
+
+    async function openNewLogFile() {
         const fileHandle = await open(path, "a");
         const writer = fileHandle.createWriteStream();
         writer.on("error", err => console.error(`Log file write error: ${err}`));
         return { fileHandle, writer };
     }
 
-    let { fileHandle, writer } = await openFreshLogFile();
+    // Shift existing backups then open the initial log file
+    await shiftBackups();
+    let { fileHandle, writer } = await openNewLogFile();
 
-    let rotating = false;
+    // Track in-progress rotation so close() can wait for it to finish.
+    let rotationPromise: Promise<void> | null = null;
 
-    async function rotateLog() {
-        if (rotating) {
-            return;
-        }
-        rotating = true;
+    async function doRotate() {
+        const oldWriter = writer;
+        const oldHandle = fileHandle;
+        // Flush and close the old file BEFORE renaming — required on Windows
+        // where an open file cannot be renamed.
         try {
-            const oldWriter = writer;
-            const oldHandle = fileHandle;
-            let next;
-            try {
-                next = await openFreshLogFile();
-            } catch (err) {
-                console.error(`Log file rotation failed, keeping current log file: ${err}`);
-                return;
-            }
-            fileHandle = next.fileHandle;
-            writer = next.writer;
             await new Promise<void>((resolve, reject) =>
                 oldWriter.end((err?: Error | null) => (err ? reject(err) : resolve())),
             );
-            await oldHandle.close().catch(err => console.error(`Failed to close old log file: ${err}`));
-        } finally {
-            rotating = false;
+        } catch (err) {
+            console.error(`Failed to flush old log file during rotation: ${err}`);
         }
+        await oldHandle.close().catch(err => console.error(`Failed to close old log file: ${err}`));
+        // Now shift backups and open a fresh file
+        try {
+            await shiftBackups();
+        } catch (err) {
+            console.error(`Log file rotation failed, keeping current log file: ${err}`);
+            return;
+        }
+        const next = await openNewLogFile();
+        fileHandle = next.fileHandle;
+        writer = next.writer;
     }
 
-    const rotationTimer = setInterval(() => void rotateLog(), LOG_ROTATION_INTERVAL_MS);
+    function rotateLog() {
+        if (rotationPromise !== null) {
+            return;
+        }
+        rotationPromise = doRotate()
+            .catch(err => console.error(`Log file rotation failed: ${err}`))
+            .finally(() => {
+                rotationPromise = null;
+            });
+    }
+
+    const rotationTimer = setInterval(() => rotateLog(), LOG_ROTATION_INTERVAL_MS);
     rotationTimer.unref();
 
     async function close() {
         clearInterval(rotationTimer);
+        // If a rotation is in progress, let it finish before we close.
+        if (rotationPromise !== null) {
+            await rotationPromise.catch(() => {});
+        }
         await new Promise<void>((resolve, reject) =>
             writer.end((err?: Error | null) => (err ? reject(err) : resolve())),
         );

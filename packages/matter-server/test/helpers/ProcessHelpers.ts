@@ -23,10 +23,14 @@ export const DEVICE_PASSCODE = 20202021;
 export const DEVICE_DISCRIMINATOR = 3840;
 
 /**
- * Creates temporary storage directories for server and device.
+ * Creates temporary storage directories for server and device, plus a log file path.
  * Returns paths that should be cleaned up after tests.
  */
-export async function createTempStoragePaths(): Promise<{ serverStoragePath: string; deviceStoragePath: string }> {
+export async function createTempStoragePaths(): Promise<{
+    serverStoragePath: string;
+    deviceStoragePath: string;
+    logFilePath: string;
+}> {
     const timestamp = Date.now();
     const serverStoragePath = join(tmpdir(), `matter-test-server-${timestamp}`);
     const deviceStoragePath = join(tmpdir(), `matter-test-device-${timestamp}`);
@@ -34,7 +38,10 @@ export async function createTempStoragePaths(): Promise<{ serverStoragePath: str
     await mkdir(serverStoragePath, { recursive: true });
     await mkdir(deviceStoragePath, { recursive: true });
 
-    return { serverStoragePath, deviceStoragePath };
+    // Log file lives inside server storage dir so it is cleaned up automatically.
+    const logFilePath = join(serverStoragePath, "server.log");
+
+    return { serverStoragePath, deviceStoragePath, logFilePath };
 }
 
 /**
@@ -50,21 +57,21 @@ export async function cleanupTempStorage(serverStoragePath: string, deviceStorag
 }
 
 /**
- * Starts the Matter server process.
+ * Starts the Matter server process, optionally writing logs to a file.
  */
-export function startServer(storagePath: string): ChildProcess {
-    const serverProcess = spawn(
-        "node",
-        [
-            "--enable-source-maps",
-            "../../packages/matter-server/dist/esm/MatterServer.js",
-            `--storage-path=${storagePath}`,
-        ],
-        {
-            cwd: process.cwd(),
-            stdio: ["pipe", "pipe", "pipe"],
-        },
-    );
+export function startServer(storagePath: string, logFilePath?: string): ChildProcess {
+    const args = [
+        "--enable-source-maps",
+        "../../packages/matter-server/dist/esm/MatterServer.js",
+        `--storage-path=${storagePath}`,
+    ];
+    if (logFilePath !== undefined) {
+        args.push(`--log-file=${logFilePath}`);
+    }
+    const serverProcess = spawn("node", args, {
+        cwd: process.cwd(),
+        stdio: ["pipe", "pipe", "pipe"],
+    });
 
     serverProcess.stdout?.on("data", (data: Buffer) => {
         console.log("[server]", data.toString().trim());

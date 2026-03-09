@@ -49,7 +49,7 @@ npm run format-verify
 npm run server
 
 # With options
-npm run server -- --storage-path data --primary-interface en0 --ble
+npm run server -- --storage-path data --primary-interface en0 --bluetooth-adapter 0
 ```
 
 ### Debugging

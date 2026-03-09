@@ -13,6 +13,7 @@
 
 import { ServerErrorCode } from "@matter-server/ws-controller";
 import { ChildProcess } from "child_process";
+import { stat } from "node:fs/promises";
 import {
     cleanupTempStorage,
     createTempStoragePaths,
@@ -55,6 +56,8 @@ describe("Integration Test", function () {
     let client: MatterTestClient;
     let serverStoragePath: string;
     let deviceStoragePath: string;
+    let logFilePath: string;
+    let firstRunLogFileSize: number;
     let commissionedNodeId: number;
 
     before(async function () {
@@ -62,13 +65,15 @@ describe("Integration Test", function () {
         const paths = await createTempStoragePaths();
         serverStoragePath = paths.serverStoragePath;
         deviceStoragePath = paths.deviceStoragePath;
+        logFilePath = paths.logFilePath;
 
         console.log(`Server storage: ${serverStoragePath}`);
         console.log(`Device storage: ${deviceStoragePath}`);
+        console.log(`Log file: ${logFilePath}`);
 
         // Start server process
         console.log("Starting server...");
-        serverProcess = startServer(serverStoragePath);
+        serverProcess = startServer(serverStoragePath, logFilePath);
 
         // Wait for server to be ready
         await waitForPort(SERVER_PORT);
@@ -267,6 +272,18 @@ describe("Integration Test", function () {
                 expect(error.error_code).to.equal(ServerErrorCode.NodeNotExists);
                 expect(error.details).to.include("999999");
             });
+        });
+    });
+
+    // =========================================================================
+    // Log File Tests (first server run)
+    // =========================================================================
+
+    describe("Log File (first server run)", function () {
+        it("should create the log file on startup", async function () {
+            const fileStat = await stat(logFilePath);
+            expect(fileStat.isFile()).to.be.true;
+            expect(fileStat.size).to.be.greaterThan(0);
         });
     });
 
@@ -973,16 +990,20 @@ describe("Integration Test", function () {
             // Close current client connection
             await client.close();
 
-            // Stop the server
+            // Stop the server (sends SIGINT; stop() flushes the log before exit)
             console.log("Stopping server for restart test...");
             await killProcess(serverProcess);
+
+            // The log is now fully flushed and closed. Capture the final size —
+            // on next startup it is renamed to .1, so these must match exactly.
+            firstRunLogFileSize = (await stat(logFilePath)).size;
 
             // Wait a moment for cleanup
             await new Promise(r => setTimeout(r, 2000));
 
             // Restart the server with the same storage path
             console.log("Restarting server...");
-            serverProcess = startServer(serverStoragePath);
+            serverProcess = startServer(serverStoragePath, logFilePath);
             await waitForPort(SERVER_PORT);
             console.log("Server restarted");
 
@@ -1039,6 +1060,24 @@ describe("Integration Test", function () {
             await waitForOnOffUpdate(client, commissionedNodeId, false);
 
             console.log("Server restart test passed - node persisted and functional");
+        });
+    });
+
+    // =========================================================================
+    // Log File Tests (after server restart)
+    // =========================================================================
+
+    describe("Log File (after server restart)", function () {
+        it("should create a fresh log file on restart", async function () {
+            const fileStat = await stat(logFilePath);
+            expect(fileStat.isFile()).to.be.true;
+            expect(fileStat.size).to.be.greaterThan(0);
+        });
+
+        it("should have rotated the previous log to .1 on restart", async function () {
+            const backupStat = await stat(`${logFilePath}.1`);
+            expect(backupStat.isFile()).to.be.true;
+            expect(backupStat.size).to.equal(firstRunLogFileSize);
         });
     });
 

@@ -198,7 +198,11 @@ async function stop() {
         await legacyDataWriter.flush();
     }
     await config?.close();
-    await fileLoggerClose?.();
+    try {
+        await fileLoggerClose?.();
+    } catch (err) {
+        console.error(`Failed to flush log file on shutdown: ${err}`);
+    }
     process.exit(0);
 }
 
