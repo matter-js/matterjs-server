@@ -59,6 +59,13 @@ docker run -d \
 > [!NOTE]
 > The container uses environment variables for configuration by default (`STORAGE_PATH=/data`). You can override any setting using environment variables or CLI arguments.
 
+> [!WARNING]
+> **Security:** The server binds to all network interfaces by default. You are responsible for
+> securing access according to your requirements and use-case — for example by setting
+> `LISTEN_ADDRESS=127.0.0.1` to restrict the WebSocket port to localhost, setting
+> `PRIMARY_INTERFACE=eth0` to control which interface Matter uses, or placing a firewall or
+> authenticating reverse proxy in front of the server.
+
 ### Command Line Options
 
 You can also pass CLI arguments directly (these override environment variables):

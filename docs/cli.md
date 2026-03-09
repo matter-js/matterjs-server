@@ -43,6 +43,14 @@ npm run server -- --bluetooth-adapter 0
 > every 24 hours, and on each startup: backups are shifted (`.6`→`.7`, …, `.1`→`.2`, current→`.1`),
 > keeping up to seven daily backup files (≈ 7 days of history). No further cleanup is performed.
 
+> [!WARNING]
+> **Security:** By default the WebSocket server binds to **all network interfaces**, making it
+> reachable by any host on your network. You are responsible for securing access according to your
+> requirements and use-case. Use `--listen-address` to restrict binding to a specific interface
+> (e.g. `--listen-address 127.0.0.1` for localhost-only), and use `--primary-interface` to control
+> which interface Matter mDNS announcements and communication use (e.g. `--primary-interface eth0`).
+> Additionally consider firewall rules, VPN, or reverse-proxy authentication in front of the server.
+
 ### Behavioral Differences from Python Matter Server
 
 | Option     | Python Default | Matter.js Default | Notes                                                   |

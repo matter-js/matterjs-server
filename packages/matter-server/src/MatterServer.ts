@@ -180,6 +180,12 @@ async function start() {
     }
     server = new WebServer({ listenAddresses: cliOptions.listenAddress, port: cliOptions.port }, handlers);
 
+    if (!cliOptions.listenAddress) {
+        logger.warn(
+            `WebSocket server is listening on all network interfaces. Use --listen-address to restrict access. Ensure your environment (firewall, network) prevents unauthorized access.`,
+        );
+    }
+
     await server.start();
 }
 
