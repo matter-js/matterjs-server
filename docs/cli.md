@@ -72,8 +72,8 @@ The following Python Matter Server options are **not supported** in the Matter.j
 
 The underlying matter.js library exposes additional configuration options via `MATTER_*` environment
 variables. These follow the pattern `MATTER_<KEY>` where the key maps to a dot-notation config path
-(e.g. `MATTER_LOG_LEVEL` → `log.level`). Some settings overlap with the CLI options documented above, 
-then ideally choose CLI instead!
+(e.g. `MATTER_LOG_LEVEL` → `log.level`). Some settings overlap with the CLI options documented above,
+so you should ideally use the CLI options instead.
 
 A useful example is specifying a self-hosted node of the Matter CSA Device Certificate Ledger (DCL) for professional use:
 

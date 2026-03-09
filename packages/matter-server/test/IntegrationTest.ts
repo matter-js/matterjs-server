@@ -57,7 +57,7 @@ describe("Integration Test", function () {
     let serverStoragePath: string;
     let deviceStoragePath: string;
     let logFilePath: string;
-    let firstRunLogFileSize: number;
+    let firstRunLogFileSize = -1; // set after the first server run completes
     let commissionedNodeId: number;
 
     before(async function () {
@@ -990,9 +990,11 @@ describe("Integration Test", function () {
             // Close current client connection
             await client.close();
 
-            // Stop the server (sends SIGINT; stop() flushes the log before exit)
+            // Stop the server (sends SIGINT; stop() flushes the log before exit).
+            // Use a generous timeout so the server has time to flush gracefully
+            // before SIGKILL, which matters for the log-size assertion below.
             console.log("Stopping server for restart test...");
-            await killProcess(serverProcess);
+            await killProcess(serverProcess, 10_000);
 
             // The log is now fully flushed and closed. Capture the final size —
             // on next startup it is renamed to .1, so these must match exactly.
@@ -1075,6 +1077,10 @@ describe("Integration Test", function () {
         });
 
         it("should have rotated the previous log to .1 on restart", async function () {
+            expect(
+                firstRunLogFileSize,
+                "firstRunLogFileSize was not captured — did the restart test run?",
+            ).to.be.greaterThan(0);
             const backupStat = await stat(`${logFilePath}.1`);
             expect(backupStat.isFile()).to.be.true;
             expect(backupStat.size).to.equal(firstRunLogFileSize);
