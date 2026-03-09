@@ -12,6 +12,7 @@
     },
     "bin": {
         "matter-build": "bin/build.js",
+        "matter-embed-examples": "bin/embed-examples.js",
         "matter-run": "bin/run.js",
         "matter-version": "bin/version.js"
     },
@@ -65,7 +66,7 @@
         "commander": "^14.0.3",
         "detective-typescript": "^14.0.0",
         "esbuild": "^0.27.3",
-        "minimatch": "^10.2.3",
+        "minimatch": "^10.2.4",
         "type-fest": "^5.4.4",
         "typedoc": "^0.28.17",
         "typedoc-github-theme": "^0.4.0",
@@ -76,7 +77,7 @@
     },
     "devDependencies": {
         "@types/madge": "^5.0.3",
-        "@types/node": "^25.3.0"
+        "@types/node": "^25.3.3"
     },
     "publishConfig": {
         "access": "public"

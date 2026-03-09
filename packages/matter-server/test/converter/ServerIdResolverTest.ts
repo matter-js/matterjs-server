@@ -13,7 +13,7 @@ import {
     storageExists,
 } from "@matter-server/ws-controller";
 import { StorageService } from "@matter/general";
-import { StorageFactory, StorageType } from "@matter/nodejs";
+import { StorageBackendDisk } from "@matter/nodejs";
 import { access, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -116,13 +116,11 @@ describe("ServerIdResolver", () => {
             env.vars.set("storage.path", resolveTestDir);
 
             // Set up StorageService with a factory for file-based storage
-            const storageService = new StorageService(env);
-            storageService.factory = namespace =>
-                StorageFactory.create({
-                    driver: StorageType.FILE,
-                    rootDir: resolveTestDir,
-                    namespace,
-                });
+            const storageService = new StorageService(env, async namespace => {
+                const storage = new StorageBackendDisk(join(resolveTestDir, namespace), false);
+                await storage.initialize();
+                return storage;
+            });
             storageService.location = resolveTestDir;
 
             // Create ConfigStorage

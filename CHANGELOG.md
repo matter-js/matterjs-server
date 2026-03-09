@@ -7,7 +7,31 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
-## __WORK IN PROGRESS__
+## 0.5.4 (2026-03-08)
+- Fix: Initializes the Fabric storage when migrating from Python server to prevent startup issues
+- Fix: Update matter.js to the latest 0.17.0-nightly
+  - Increase subscription timeout with 8-second bonus time
+  - Re-introduce data version filter refresh after incomplete reads or subscriptions
+  - Ensures delivery of all events to the ChangeNotificationService (and to WebSocket clients)
+  - Restores processing of incoming data reports from the final message directly rather than after receiving the acknowledgement
+  - Prepares configuration options for the network profiles (official support introduced in a later release)
+
+## 0.5.3 (2026-03-07)
+- Fix: Update matter.js to the latest 0.17.0-nightly
+  - Fixes the broken storage initialization that rendered 0.5.2 unusable depending on how the storage path was provided in CLI
+
+## 0.5.2 (2026-03-06) - REVERTED!!! DO NOT USE!
+- Fix/Enhancement: Update matter.js to the latest 0.17.0-nightly
+  - Fix hanging interactions (Read/Subscribe) and ensure proper timeouts when the device answered unexpectedly, or we aborted internally
+  - Prevents removing clusters when devices contain them but not declaring them ("Schrödinger's clusters")
+
+## 0.5.1 (2026-03-05)
+- Fix: Revert one Eve change for pressure custom attribute
+- Fix/Enhancement: Update matter.js to 0.17.0-nightly
+  - Fix invoke batching
+  - Fix uncommissioned peer startup issues
+
+## 0.5.0 (2026-03-05)
 - Feature: Allows searching for thread nodes in the network graph by extended address
 - Adjustment: Also sorts neighbors in network graph details by quality
 - Fix: Fixed datatype of some custom cluster attributes
