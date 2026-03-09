@@ -42,6 +42,16 @@ npm run format-verify
 
 **CI enforces formatting and linting.** The `check-and-lint` job in `build-test.js.yml` runs `npm run format-verify` and `npm run lint` and all other CI jobs (`test`, `build-non-linux`) are gated on it. PRs will fail if either check does not pass.
 
+### Running the server
+
+```bash
+# Start the server (requires a prior build)
+npm run server
+
+# With options
+npm run server -- --storage-path data --primary-interface en0 --ble
+```
+
 ### Debugging
 
 ```bash
@@ -49,6 +59,19 @@ npm run format-verify
 npm run send-command -- ws://localhost:5580/ws server_info
 npm run send-command -- ws://localhost:5580/ws get_node '{"node_id": 1}'
 npm run send-command -- ws://localhost:5580/ws device_command '{"node_id":1,"endpoint_id":1,"cluster_id":6,"command_name":"toggle","payload":{}}'
+```
+
+### Python client
+
+```bash
+# Install
+npm run python:install
+
+# Unit tests (fast, no server needed)
+npm run python:test
+
+# Integration tests (requires a running server on localhost:5580)
+npm run python:test-integration
 ```
 
 ## Monorepo Structure
@@ -125,6 +148,16 @@ Base tsconfig targets **ES2022**. The dashboard includes the `"es2023"` lib to e
 
 ### TypeScript target
 Base tsconfig targets **ES2022**. The dashboard adds `"ES2023.Array"` to its lib to enable `Array.prototype.toSorted()`.
+
+## Test Nodes
+
+`TestNodeCommandHandler` manages synthetic nodes used for testing (e.g., importing a HA diagnostics dump without real hardware). Test node IDs are `>= 0xffff_fffe_0000_0000`. The WS handler automatically routes commands to the correct handler via `#handlerFor(nodeId)` — real nodes go to `ControllerCommandHandler`, test nodes go to `TestNodeCommandHandler`.
+
+To import test nodes, send `import_test_nodes` with a JSON dump string (HA diagnostics format). Test nodes support `read_attribute` and `attribute_updated` events but do not perform real Matter communication.
+
+## Legacy Data Migration
+
+`packages/matter-server/src/converter/` handles one-time migration from Python Matter Server storage format. On startup, `MatterServer.ts` calls `loadLegacyData()` to detect and import fabric config and node data from the old format. This path is only active when legacy data is present.
 
 ## Custom Clusters
 

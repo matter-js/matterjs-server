@@ -16,9 +16,9 @@ import {
     WebServerHandler,
     WebSocketControllerHandler,
 } from "@matter-server/ws-controller";
-import { open } from "node:fs/promises";
 import { getCliOptions, type LogLevel as CliLogLevel } from "./cli.js";
 import { LegacyDataWriter, loadLegacyData, type LegacyData } from "./converter/index.js";
+import { createFileLogger } from "./file-logger.js";
 import { initializeOta } from "./ota.js";
 import { HealthHandler } from "./server/HealthHandler.js";
 import { StaticFileHandler } from "./server/StaticFileHandler.js";
@@ -26,27 +26,6 @@ import { WebServer } from "./server/WebServer.js";
 import { MATTER_SERVER_VERSION } from "./version.js";
 // Register the custom clusters
 import "@matter-server/custom-clusters";
-
-/**
- * Creates a file-based logger that appends to the given path.
- * The file is opened on start and closed when the process shuts down.
- */
-async function createFileLogger(path: string) {
-    const fileHandle = await open(path, "a");
-    const writer = fileHandle.createWriteStream();
-    process.on(
-        "beforeExit",
-        () => void fileHandle.close().catch(err => err && console.error(`Failed to close log file: ${err}`)),
-    );
-
-    return (formattedLog: string) => {
-        try {
-            writer.write(`${formattedLog}\n`);
-        } catch (error) {
-            console.error(`Failed to write to log file: ${error}`);
-        }
-    };
-}
 
 // Parse CLI options early for logging setup
 const cliOptions = getCliOptions();
@@ -98,14 +77,16 @@ let server: WebServer;
 let config: ConfigStorage;
 let legacyData: LegacyData;
 let legacyDataWriter: LegacyDataWriter | undefined;
+let fileLoggerClose: (() => Promise<void>) | undefined;
 
 async function start() {
     // Set up file logging additionally to the console if configured
     if (cliOptions.logFile) {
         try {
-            const fileWriter = await createFileLogger(cliOptions.logFile);
+            const fileLogger = await createFileLogger(cliOptions.logFile);
+            fileLoggerClose = fileLogger.close;
             Logger.destinations.file = LogDestination({
-                write: fileWriter,
+                write: fileLogger.write,
                 level: mapLogLevel(cliOptions.logLevel),
                 format: LogFormat("plain"),
             });
@@ -211,6 +192,7 @@ async function stop() {
         await legacyDataWriter.flush();
     }
     await config?.close();
+    await fileLoggerClose?.();
     process.exit(0);
 }
 
