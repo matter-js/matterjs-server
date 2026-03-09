@@ -10,16 +10,9 @@
  */
 
 import { Command, InvalidArgumentError, Option } from "commander";
-import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-
-// Read the version from package.json using an ESM-native approach
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const packageJsonPath = join(__dirname, "../../package.json");
-const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8")) as { version: string };
-const VERSION = packageJson.version;
+import { join } from "node:path";
+import { MATTER_SERVER_VERSION } from "./version.js";
 
 // Default values (exported for use in LegacyDataLoader)
 export const DEFAULT_VENDOR_ID = 0xfff1;
@@ -98,7 +91,12 @@ const DEPRECATED_OPTIONS: Record<string, string> = {
 export function parseCliArgs(argv?: string[]): CliOptions {
     const program = new Command();
 
-    program.name("matter-server").description("Matter Controller Server using WebSockets.").version(VERSION);
+    program.name("matter-server").description("Matter Controller Server using WebSockets.").version(MATTER_SERVER_VERSION);
+
+    // When called programmatically (e.g. tests), throw on errors instead of calling process.exit()
+    if (argv !== undefined) {
+        program.exitOverride();
+    }
 
     program
         .addOption(
