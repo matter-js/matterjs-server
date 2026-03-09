@@ -181,6 +181,8 @@ export class MatterController {
         this.vendorInfoService;
         /* eslint-disable @typescript-eslint/no-unused-expressions */
         this.certificateService;
+        /* eslint-disable @typescript-eslint/no-unused-expressions */
+        this.otaUpdateService;
     }
 
     get commandHandler() {
@@ -224,7 +226,10 @@ export class MatterController {
      */
     get vendorInfoService(): DclVendorInfoService {
         if (!this.#env.has(DclVendorInfoService)) {
-            new DclVendorInfoService(this.#env);
+            const productionUrl = this.#env.vars.string("dcl.productionurl");
+            new DclVendorInfoService(this.#env, {
+                dclConfig: productionUrl ? { url: productionUrl } : undefined,
+            });
         }
         return this.services.get(DclVendorInfoService);
     }
@@ -235,9 +240,27 @@ export class MatterController {
      */
     get certificateService() {
         if (!this.#env.has(DclCertificateService)) {
-            new DclCertificateService(this.#env, { fetchTestCertificates: this.#enableTestNetDcl });
+            const productionUrl = this.#env.vars.string("dcl.productionurl");
+            new DclCertificateService(this.#env, {
+                fetchTestCertificates: this.#enableTestNetDcl,
+                dclConfig: productionUrl ? { url: productionUrl } : undefined,
+            });
         }
         return this.services.get(DclCertificateService);
+    }
+
+    /**
+     * Get the DCL OTA update service instance.
+     * Lazily initializes the service if not already present.
+     */
+    get otaUpdateService(): DclOtaUpdateService {
+        if (!this.#env.has(DclOtaUpdateService)) {
+            const productionUrl = this.#env.vars.string("dcl.productionurl");
+            new DclOtaUpdateService(this.#env, {
+                productionDclConfig: productionUrl ? { url: productionUrl } : undefined,
+            });
+        }
+        return this.services.get(DclOtaUpdateService);
     }
 
     /**
@@ -302,7 +325,7 @@ export class MatterController {
     async storeOtaImageFromFile(filePath: string): Promise<boolean> {
         const { createReadStream } = await import("node:fs");
         const { pathToFileURL } = await import("node:url");
-        const otaService = this.services.get(DclOtaUpdateService);
+        const otaService = this.otaUpdateService;
 
         // Convert file path to file:// URL for the OTA service
         const fileUrl = pathToFileURL(filePath).href;
