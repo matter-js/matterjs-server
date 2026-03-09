@@ -241,9 +241,15 @@ export class MatterController {
     get certificateService() {
         if (!this.#env.has(DclCertificateService)) {
             const productionUrl = this.#env.vars.string("dcl.productionurl");
+            const testUrl = this.#env.vars.string("dcl.testurl");
+            const fetchTestCertificates =
+                this.#env.vars.boolean("dcl.fetchtestcertificates") ?? this.#enableTestNetDcl;
+            const fetchGithubCertificates = this.#env.vars.boolean("dcl.fetchgithubcertificates");
             new DclCertificateService(this.#env, {
-                fetchTestCertificates: this.#enableTestNetDcl,
+                fetchTestCertificates,
+                fetchGithubCertificates: fetchGithubCertificates ?? undefined,
                 dclConfig: productionUrl ? { url: productionUrl } : undefined,
+                testDclConfig: testUrl ? { url: testUrl } : undefined,
             });
         }
         return this.services.get(DclCertificateService);
@@ -256,8 +262,10 @@ export class MatterController {
     get otaUpdateService(): DclOtaUpdateService {
         if (!this.#env.has(DclOtaUpdateService)) {
             const productionUrl = this.#env.vars.string("dcl.productionurl");
+            const testUrl = this.#env.vars.string("dcl.testurl");
             new DclOtaUpdateService(this.#env, {
                 productionDclConfig: productionUrl ? { url: productionUrl } : undefined,
+                testDclConfig: testUrl ? { url: testUrl } : undefined,
             });
         }
         return this.services.get(DclOtaUpdateService);
