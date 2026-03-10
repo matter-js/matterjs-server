@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { closeSync, createWriteStream, openSync, renameSync, unlinkSync, type WriteStream } from "node:fs";
+import { closeSync, createWriteStream, renameSync, unlinkSync, type WriteStream } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { basename, dirname, posix, sep } from "node:path";
 
@@ -53,20 +53,34 @@ export async function createFileLogger(logPath: string) {
         }
     }
 
-    /** Open a write stream at filePath and wait until it is ready. */
-    function openLogStream(filePath: string, flags = "a"): Promise<{ stream: WriteStream; fd: number }> {
+    /** Open a write stream at filePath and wait until it is ready.
+     *  Pass autoClose:false for streams whose fd lifetime is managed explicitly
+     *  (e.g. the rotation temp stream, where we call closeSync before renaming). */
+    function openLogStream(
+        filePath: string,
+        flags = "a",
+        autoClose = true,
+    ): Promise<{ stream: WriteStream; fd: number }> {
         return new Promise<{ stream: WriteStream; fd: number }>((resolve, reject) => {
-            const stream = createWriteStream(filePath, { flags });
+            const stream = createWriteStream(filePath, { flags, autoClose });
             stream.once("open", (fd: number) => resolve({ stream, fd }));
             stream.once("error", reject);
         });
     }
 
-    /** Drain (end) a stream and resolve when flushed. */
+    /** End a stream and resolve when all data is flushed ('finish').
+     *  Rejects if the stream emits an error before finishing, preventing an
+     *  unresolvable hang when e.g. the disk is full during a rotation flush. */
     function drainStream(stream: WriteStream): Promise<void> {
-        return new Promise<void>((resolve, reject) =>
-            stream.end((err?: Error | null) => (err ? reject(err) : resolve())),
-        );
+        return new Promise<void>((resolve, reject) => {
+            const onError = (err: Error) => reject(err);
+            stream.once("error", onError);
+            stream.end((err?: Error | null) => {
+                stream.removeListener("error", onError);
+                if (err) reject(err);
+                else resolve();
+            });
+        });
     }
 
     // Startup: clean up any stale temp file from a previously crashed rotation,
@@ -84,6 +98,11 @@ export async function createFileLogger(logPath: string) {
     let { stream: writer } = await openLogStream(logPath);
     writer.on("error", err => console.error(`Log file write error: ${err}`));
 
+    // When non-null, write() buffers lines here instead of writing to the stream.
+    // Used during the drain+rename phase of rotation to capture writes that arrive
+    // while tempStream is being flushed, with no fd open for them yet.
+    let pendingLines: string[] | null = null;
+
     // Track in-progress rotation so close() can wait for it to finish.
     let rotationPromise: Promise<void> | null = null;
 
@@ -95,7 +114,8 @@ export async function createFileLogger(logPath: string) {
         let tempStream: WriteStream;
         let tempFd: number;
         try {
-            ({ stream: tempStream, fd: tempFd } = await openLogStream(tempPath, "w"));
+            // autoClose:false — we own tempFd and must closeSync it before renameSync (required on Windows)
+            ({ stream: tempStream, fd: tempFd } = await openLogStream(tempPath, "w", false));
             tempStream.on("error", err => console.error(`Log file write error: ${err}`));
         } catch (err) {
             console.error(`Failed to open temp log file for rotation: ${err}`);
@@ -123,32 +143,47 @@ export async function createFileLogger(logPath: string) {
             console.error(`Log file backup shifting failed: ${err}`);
         }
 
-        // 5. Brief sync block — no await here, so the event loop cannot yield and
-        //    no write() call can be interleaved between these three operations:
-        //      a) close the temp stream fd  (required on Windows before rename)
-        //      b) rename .new → logPath     (atomic filesystem rename)
-        //      c) reopen logPath            (new fd; tempStream fd is now invalid)
-        //    After (c), the new writer is swapped in synchronously, so there is
-        //    no window where write() could hit a closed or non-existent stream.
+        // 5. Enable in-memory buffering so writes that arrive during the next two
+        //    async steps are captured rather than going to the soon-to-be-closed
+        //    tempStream or a not-yet-open finalStream.
+        pendingLines = [];
+
+        // 6. Drain tempStream fully before closing its fd. This guarantees no
+        //    in-flight libuv fs.write() calls remain when closeSync runs below,
+        //    eliminating the risk of EBADF errors from a closed fd.
         try {
-            tempStream.removeAllListeners("error");
-            // Absorb any EBADF error from in-flight libuv fs.write() callbacks that
-            // complete after closeSync below — without this, no-listener throws crashes.
-            tempStream.on("error", () => {});
+            await drainStream(tempStream);
+        } catch (err) {
+            console.error(`Failed to flush temp log file during rotation: ${err}`);
+        }
+
+        // 7. Close tempFd (required on Windows before rename) and rename .new → logPath.
+        //    pendingLines buffers any writes that arrive while this is in progress.
+        try {
             closeSync(tempFd);
             renameSync(tempPath, logPath);
-            const finalFd = openSync(logPath, "a");
-            // createWriteStream with an existing fd is synchronously usable — no 'open'
-            // event needed. autoClose:true means stream.end() will close finalFd.
-            const finalStream = createWriteStream(logPath, { fd: finalFd });
-            finalStream.on("error", err => console.error(`Log file write error: ${err}`));
-            writer = finalStream; // sync swap — no writes lost
         } catch (err) {
             console.error(`Failed to finalize log file rotation: ${err}`);
-            // Destroy the stream: its fd is already closed by closeSync() above, so any
-            // further write() call would produce EBADF with no error listener and crash.
-            // Setting destroyed=true lets the write() guard below silently drop writes.
-            writer.destroy();
+            // Rotation failed: reopen logPath in append mode so logging can continue.
+            // pendingLines is flushed into the reopened stream below.
+        }
+
+        // 8. Open the final stream and flush any lines that were buffered during steps 6–7.
+        //    openLogStream is used here (no manual openSync) so there is no fd leak risk.
+        const buffered = pendingLines ?? [];
+        pendingLines = null;
+        try {
+            let finalStream: WriteStream;
+            ({ stream: finalStream } = await openLogStream(logPath, "a"));
+            finalStream.on("error", err => console.error(`Log file write error: ${err}`));
+            writer = finalStream;
+            for (const line of buffered) {
+                finalStream.write(`${line}\n`);
+            }
+        } catch (err) {
+            console.error(`Failed to open final log file after rotation: ${err}`);
+            // writer still points to the ended tempStream; the guards in write()
+            // (writableEnded / destroyed) will silently drop further writes.
         }
     }
 
@@ -177,9 +212,11 @@ export async function createFileLogger(logPath: string) {
 
     return {
         write: (formattedLog: string) => {
-            // writableEnded: set by close(); destroyed: set on error-path destroy().
-            // Both guard against writing to a stream that can no longer accept data.
-            if (!writer.writableEnded && !writer.destroyed) {
+            if (pendingLines !== null) {
+                // Rotation in progress: buffer the line; it will be flushed to the
+                // final stream once the new file is open (step 8 in doRotate).
+                pendingLines.push(formattedLog);
+            } else if (!writer.writableEnded && !writer.destroyed) {
                 writer.write(`${formattedLog}\n`);
             }
         },
