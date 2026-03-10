@@ -168,22 +168,28 @@ export async function createFileLogger(logPath: string) {
             // pendingLines is flushed into the reopened stream below.
         }
 
-        // 8. Open the final stream and flush any lines that were buffered during steps 6–7.
-        //    openLogStream is used here (no manual openSync) so there is no fd leak risk.
-        const buffered = pendingLines ?? [];
-        pendingLines = null;
+        // 8. Open the final stream. pendingLines remains active so that writes
+        //    arriving while the file is opening are buffered, not dropped.
+        let finalStream: WriteStream | undefined;
         try {
-            let finalStream: WriteStream;
             ({ stream: finalStream } = await openLogStream(logPath, "a"));
             finalStream.on("error", err => console.error(`Log file write error: ${err}`));
-            writer = finalStream;
-            for (const line of buffered) {
-                finalStream.write(`${line}\n`);
-            }
         } catch (err) {
             console.error(`Failed to open final log file after rotation: ${err}`);
             // writer still points to the ended tempStream; the guards in write()
             // (writableEnded / destroyed) will silently drop further writes.
+        }
+
+        // Disable buffering and flush everything captured since step 5. Done
+        // synchronously so write() cannot observe a window where pendingLines is
+        // null but writer still points to the ended tempStream.
+        const buffered = pendingLines ?? [];
+        pendingLines = null;
+        if (finalStream !== undefined) {
+            writer = finalStream;
+            for (const line of buffered) {
+                finalStream.write(`${line}\n`);
+            }
         }
     }
 

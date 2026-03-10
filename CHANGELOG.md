@@ -8,7 +8,7 @@ This page shows a detailed overview of the changes between versions without the 
 -->
 
 ## __WORK IN PROGRESS__
-- Enhancement: Adds logfile rotation (seven generations, rotated daily) to the logfile when --log-file is specified
+- Enhancement: Adds log file rotation (seven daily backups, rotated on startup and every 24 hours) when --log-file is specified
 
 ## 0.5.4 (2026-03-08)
 - Fix: Initializes the Fabric storage when migrating from Python server to prevent startup issues
