@@ -54,9 +54,9 @@ export async function createFileLogger(logPath: string) {
     }
 
     /** Open a write stream at filePath and wait until it is ready. */
-    function openLogStream(filePath: string): Promise<{ stream: WriteStream; fd: number }> {
+    function openLogStream(filePath: string, flags = "a"): Promise<{ stream: WriteStream; fd: number }> {
         return new Promise<{ stream: WriteStream; fd: number }>((resolve, reject) => {
-            const stream = createWriteStream(filePath, { flags: "a" });
+            const stream = createWriteStream(filePath, { flags });
             stream.once("open", (fd: number) => resolve({ stream, fd }));
             stream.once("error", reject);
         });
@@ -69,7 +69,13 @@ export async function createFileLogger(logPath: string) {
         );
     }
 
-    // Startup: shift existing backups, then open the log file.
+    // Startup: clean up any stale temp file from a previously crashed rotation,
+    // shift existing backups, then open the log file.
+    try {
+        unlinkSync(`${logPath}${LOG_TEMP_SUFFIX}`);
+    } catch (err) {
+        if (!isEnoent(err)) console.error(`Failed to clean up stale log temp file: ${err}`);
+    }
     try {
         shiftBackupsSync();
     } catch (err) {
@@ -84,12 +90,12 @@ export async function createFileLogger(logPath: string) {
     async function doRotate() {
         const tempPath = `${logPath}${LOG_TEMP_SUFFIX}`;
 
-        // 1. Open the temp file. Once the writer is swapped below, all new log
-        //    lines go here immediately — no gap in logging.
+        // 1. Open the temp file with "w" (truncate) — ensures any stale .new file from
+        //    a previously crashed rotation is discarded rather than appended to.
         let tempStream: WriteStream;
         let tempFd: number;
         try {
-            ({ stream: tempStream, fd: tempFd } = await openLogStream(tempPath));
+            ({ stream: tempStream, fd: tempFd } = await openLogStream(tempPath, "w"));
             tempStream.on("error", err => console.error(`Log file write error: ${err}`));
         } catch (err) {
             console.error(`Failed to open temp log file for rotation: ${err}`);
@@ -125,7 +131,10 @@ export async function createFileLogger(logPath: string) {
         //    After (c), the new writer is swapped in synchronously, so there is
         //    no window where write() could hit a closed or non-existent stream.
         try {
-            tempStream.removeAllListeners("error"); // prevent spurious error from closed fd
+            tempStream.removeAllListeners("error");
+            // Absorb any EBADF error from in-flight libuv fs.write() callbacks that
+            // complete after closeSync below — without this, no-listener throws crashes.
+            tempStream.on("error", () => {});
             closeSync(tempFd);
             renameSync(tempPath, logPath);
             const finalFd = openSync(logPath, "a");
