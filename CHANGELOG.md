@@ -7,7 +7,7 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
-## __WORK IN PROGRESS__
+## 0.5.5 (2026-03-11)
 - Enhancement: Adds log file rotation (seven daily backups, rotated on startup and every 24 hours) when --log-file is specified
 - Enhancement: Allows configuration of the DCL location and networking settings
 - Fix: Update matter.js to the latest 0.17.0-nightly
