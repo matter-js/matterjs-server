@@ -128,6 +128,12 @@ const K_VALUE_OVERRIDES: Record<string, string> = {
     InvalidNodeOpId: "InvalidNodeOpId",
     // CSR → Csr (inside NodeOperationalCertStatusEnum.MissingCsr)
     MissingCsr: "MissingCsr",
+    // WindowCovering.TypeEnum — matter.js spells these as one word ("rollershade"),
+    // but chip SDK treats it as two words ("kRollerShade").
+    Rollershade: "RollerShade",
+    Rollershade2Motor: "RollerShade2Motor",
+    RollershadeExterior: "RollerShadeExterior",
+    RollershadeExterior2Motor: "RollerShadeExterior2Motor",
 
     // --- WiFiBandEnum: chip SDK uses all-lowercase for GHz-band names ---
     "2G4": "2g4",

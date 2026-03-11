@@ -93,10 +93,10 @@ class WindowCovering(Cluster):
 
     class Enums:
         class TypeEnum(MatterIntEnum):
-            kRollershade = 0x00
-            kRollershade2Motor = 0x01
-            kRollershadeExterior = 0x02
-            kRollershadeExterior2Motor = 0x03
+            kRollerShade = 0x00
+            kRollerShade2Motor = 0x01
+            kRollerShadeExterior = 0x02
+            kRollerShadeExterior2Motor = 0x03
             kDrapery = 0x04
             kAwning = 0x05
             kShutter = 0x06
