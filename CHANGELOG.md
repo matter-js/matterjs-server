@@ -9,6 +9,13 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## __WORK IN PROGRESS__
 - Enhancement: Adds log file rotation (seven daily backups, rotated on startup and every 24 hours) when --log-file is specified
+- Enhancement: Allows configuration of the DCL location and networking settings
+- Fix: Update matter.js to the latest 0.17.0-nightly
+    - Sets subscription minimum interval to 0 for ICD devices
+    - Only declare peer lost when an exchange received no response
+    - Skip deletion of already-destroyed child endpoints during peer removal
+    - Respect the 5 minute BDX timeout also for transfer problems
+    - Properly expire commissionable device records when TTL runs out
 
 ## 0.5.4 (2026-03-08)
 - Fix: Initializes the Fabric storage when migrating from Python server to prevent startup issues

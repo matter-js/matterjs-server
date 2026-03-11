@@ -154,7 +154,7 @@ async function start() {
     );
 
     if (!cliOptions.disableOta) {
-        await initializeOta(controller, cliOptions);
+        controller.commandHandler?.events.started.once(async () => await initializeOta(controller, cliOptions));
     }
 
     // Subscribe to node events for legacy data file updates
