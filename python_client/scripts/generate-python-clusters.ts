@@ -35,9 +35,12 @@ const objectsDir = join(pythonClientDir, "chip", "clusters", "objects");
 // ============================================================================
 
 /** Well-known acronyms that chip-clusters preserves as uppercase in class names.
- * Ordering is defensive — in practice, no title-case form of one acronym is a
- * substring of another's title-case form, so ordering does not affect correctness.
- * Compound/longer acronyms are listed first as a precaution.
+ * ORDER MATTERS: entries are checked left-to-right via replace(). An acronym that
+ * is a suffix of another must come AFTER the longer one, or the short form matches
+ * first and leaves the remainder un-expanded. Critical ordering constraints:
+ *   SNTP before NTP — "Ntp" is a suffix of "Sntp"
+ *   UTC  before TC  — "Tc"  is a suffix of "Utc"
+ *   PIN  before PI  — "Pi"  is a suffix of "Pin"
  */
 const ACRONYMS = [
     // Compound acronyms first as a precaution
@@ -55,6 +58,7 @@ const ACRONYMS = [
     // Standard acronyms (alphabetical within groups for readability)
     "ANSI",    // e.g. BatANSIDesignation
     // "ARL" intentionally omitted — old pkg has both CommissioningARL (needs ARL) and Arl attr (must stay Arl)
+    // "ACL" intentionally omitted — chip SDK uses Acl for the AccessControl attribute (not ACL)
     "BDX",     // e.g. kBDXAsynchronous, kBDXSynchronous
     "BLE",     // e.g. kBLEFault
     "CEC",     // e.g. CEC key codes
@@ -190,8 +194,11 @@ function toChipName(name: string): string {
 
 /**
  * Strip a trailing "Enum" suffix from an enum type name.
- * Matter.js appends "Enum" to some enum names; chip-clusters omits it.
- * e.g. "LockStateEnum" → "LockState", "TypeEnum" → "Type"
+ * Matter.js appends "Enum" to most enum names; the old chip-clusters package (≤2024.11.4)
+ * KEEPS the suffix in generated class names (e.g. LockStateEnum, AlarmCodeEnum).
+ * This function is used only for datatype registry lookup aliases so that attribute
+ * type references that omit the suffix (as Matter.js sometimes does internally) can
+ * still resolve. Do NOT use it to rename enum classes in generated output.
  */
 function stripEnumSuffix(name: string): string {
     return name.endsWith("Enum") ? name.slice(0, -4) : name;
