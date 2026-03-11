@@ -77,7 +77,7 @@
     },
     "devDependencies": {
         "@types/madge": "^5.0.3",
-        "@types/node": "^25.3.3"
+        "@types/node": "^25.4.0"
     },
     "publishConfig": {
         "access": "public"
