@@ -245,7 +245,7 @@ export class MatterController {
     }
 
     /**
-     * Get the DCL certificate service instance
+     * Get the DCL OTA update service instance
      * Lazily initializes the service if not already present.
      */
     async otaUpdateService() {
