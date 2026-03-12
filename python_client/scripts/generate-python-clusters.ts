@@ -85,7 +85,7 @@ const ACRONYMS = [
     "PIN",     // e.g. kPINManagement
     "PI",      // e.g. PICoolingDemand, PIHeatingDemand
     "PV",      // e.g. kSolarPV
-    "PAKE",    // e.g. PAKEPasscodeVerifier — before PA
+    "PAKE",    // e.g. PAKEPasscodeVerifier (add before any future PA entry)
     "IPK",     // e.g. IPKValue (Identity Protection Key)
     "LQI",     // e.g. LQIIn, LQIOut (Thread Link Quality Indicator)
     // BX/BY/GX/GY/RX/RY intentionally omitted from ACRONYMS — too broad (would turn "ByNumber" → "BYNumber").
@@ -219,6 +219,7 @@ const FIELD_NAME_OVERRIDES: Record<string, string> = {
 
     // --- ARL: intentionally not in ACRONYMS (breaks Arl attribute) ---
     CommissioningArl:            "commissioningARL",
+    // Note: chip SDK uppercases URL here (unlike dvbiUrl/posterArtUrl which keep "Url")
     ArlRequestFlowUrl:           "ARLRequestFlowUrl",
 
     // --- CA: not in ACRONYMS (would conflict with ICAC/DAC/MAC handling) ---
@@ -231,7 +232,9 @@ const FIELD_NAME_OVERRIDES: Record<string, string> = {
     NocsrElements:               "NOCSRElements",
 
     // --- DoorLock quirks ---
+    // Note: chip SDK lowercases "for" here (requirePINforRemoteOperation — not a typo)
     RequirePINForRemoteOperation: "requirePINforRemoteOperation",
+    // Note: chip SDK lowercases the "f" in "format" here (ACCapacityformat — chip SDK quirk)
     AcCapacityFormat:            "ACCapacityformat",
 
     // --- IPv4/IPv6: old chip SDK used "IPv4"/"IPv6" (capital I, lowercase v) ---
