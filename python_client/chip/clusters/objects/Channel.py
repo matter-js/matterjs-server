@@ -142,9 +142,9 @@ class Channel(Cluster):
                         ClusterObjectFieldDescriptor(Label="description", Tag=6, Type=typing.Optional[str]),
                         ClusterObjectFieldDescriptor(Label="audioLanguages", Tag=7, Type=typing.Optional[typing.List[typing.Optional[str]]]),
                         ClusterObjectFieldDescriptor(Label="ratings", Tag=8, Type=typing.Optional[typing.List[typing.Optional[str]]]),
-                        ClusterObjectFieldDescriptor(Label="thumbnailURL", Tag=9, Type=typing.Optional[str]),
-                        ClusterObjectFieldDescriptor(Label="posterArtURL", Tag=10, Type=typing.Optional[str]),
-                        ClusterObjectFieldDescriptor(Label="dvbiURL", Tag=11, Type=typing.Optional[str]),
+                        ClusterObjectFieldDescriptor(Label="thumbnailUrl", Tag=9, Type=typing.Optional[str]),
+                        ClusterObjectFieldDescriptor(Label="posterArtUrl", Tag=10, Type=typing.Optional[str]),
+                        ClusterObjectFieldDescriptor(Label="dvbiUrl", Tag=11, Type=typing.Optional[str]),
                         ClusterObjectFieldDescriptor(Label="releaseDate", Tag=12, Type=typing.Optional[str]),
                         ClusterObjectFieldDescriptor(Label="parentalGuidanceText", Tag=13, Type=typing.Optional[str]),
                         ClusterObjectFieldDescriptor(Label="recordingFlag", Tag=14, Type=typing.Optional[Channel.Bitmaps.RecordingFlagBitmap]),
@@ -163,9 +163,9 @@ class Channel(Cluster):
             description: 'typing.Optional[str]' = None
             audioLanguages: 'typing.Optional[typing.List[typing.Optional[str]]]' = None
             ratings: 'typing.Optional[typing.List[typing.Optional[str]]]' = None
-            thumbnailURL: 'typing.Optional[str]' = None
-            posterArtURL: 'typing.Optional[str]' = None
-            dvbiURL: 'typing.Optional[str]' = None
+            thumbnailUrl: 'typing.Optional[str]' = None
+            posterArtUrl: 'typing.Optional[str]' = None
+            dvbiUrl: 'typing.Optional[str]' = None
             releaseDate: 'typing.Optional[str]' = None
             parentalGuidanceText: 'typing.Optional[str]' = None
             recordingFlag: 'typing.Optional[Channel.Bitmaps.RecordingFlagBitmap]' = None

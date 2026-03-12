@@ -50,13 +50,13 @@ class ThreadNetworkDirectory(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="extendedPanID", Tag=0, Type=bytes),
+                        ClusterObjectFieldDescriptor(Label="extendedPanId", Tag=0, Type=bytes),
                         ClusterObjectFieldDescriptor(Label="networkName", Tag=1, Type=str),
                         ClusterObjectFieldDescriptor(Label="channel", Tag=2, Type=uint),
                         ClusterObjectFieldDescriptor(Label="activeTimestamp", Tag=3, Type=uint),
                     ])
 
-            extendedPanID: 'bytes' = b""
+            extendedPanId: 'bytes' = b""
             networkName: 'str' = ""
             channel: 'uint' = 0
             activeTimestamp: 'uint' = 0
@@ -89,10 +89,10 @@ class ThreadNetworkDirectory(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="extendedPanID", Tag=0, Type=bytes),
+                        ClusterObjectFieldDescriptor(Label="extendedPanId", Tag=0, Type=bytes),
                     ])
 
-            extendedPanID: 'bytes' = b""
+            extendedPanId: 'bytes' = b""
 
         @dataclass
         class GetOperationalDataset(ClusterCommand):
@@ -105,10 +105,10 @@ class ThreadNetworkDirectory(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="extendedPanID", Tag=0, Type=bytes),
+                        ClusterObjectFieldDescriptor(Label="extendedPanId", Tag=0, Type=bytes),
                     ])
 
-            extendedPanID: 'bytes' = b""
+            extendedPanId: 'bytes' = b""
 
         @dataclass
         class OperationalDatasetResponse(ClusterCommand):

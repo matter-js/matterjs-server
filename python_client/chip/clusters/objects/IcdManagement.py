@@ -26,7 +26,7 @@ class IcdManagement(Cluster):
                 ClusterObjectFieldDescriptor(Label="activeModeDuration", Tag=0x00000001, Type=uint),
                 ClusterObjectFieldDescriptor(Label="activeModeThreshold", Tag=0x00000002, Type=uint),
                 ClusterObjectFieldDescriptor(Label="registeredClients", Tag=0x00000003, Type=typing.Optional[typing.List[typing.Optional[IcdManagement.Structs.MonitoringRegistrationStruct]]]),
-                ClusterObjectFieldDescriptor(Label="iCDCounter", Tag=0x00000004, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="ICDCounter", Tag=0x00000004, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="clientsSupportedPerFabric", Tag=0x00000005, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="userActiveModeTriggerHint", Tag=0x00000006, Type=typing.Optional[IcdManagement.Bitmaps.UserActiveModeTriggerBitmap]),
                 ClusterObjectFieldDescriptor(Label="userActiveModeTriggerInstruction", Tag=0x00000007, Type=typing.Optional[str]),
@@ -44,7 +44,7 @@ class IcdManagement(Cluster):
     activeModeDuration: 'uint' = 0
     activeModeThreshold: 'uint' = 0
     registeredClients: 'typing.Optional[typing.List[typing.Optional[IcdManagement.Structs.MonitoringRegistrationStruct]]]' = None
-    iCDCounter: 'typing.Optional[uint]' = None
+    ICDCounter: 'typing.Optional[uint]' = None
     clientsSupportedPerFabric: 'typing.Optional[uint]' = None
     userActiveModeTriggerHint: 'typing.Optional[IcdManagement.Bitmaps.UserActiveModeTriggerBitmap]' = None
     userActiveModeTriggerInstruction: 'typing.Optional[str]' = None
@@ -192,10 +192,10 @@ class IcdManagement(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="iCDCounter", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="ICDCounter", Tag=0, Type=uint),
                     ])
 
-            iCDCounter: 'uint' = 0
+            ICDCounter: 'uint' = 0
 
         @dataclass
         class StayActiveResponse(ClusterCommand):

@@ -27,9 +27,9 @@ class OccupancySensing(Cluster):
                 ClusterObjectFieldDescriptor(Label="occupancySensorTypeBitmap", Tag=0x00000002, Type=OccupancySensing.Bitmaps.OccupancySensorTypeBitmap),
                 ClusterObjectFieldDescriptor(Label="holdTime", Tag=0x00000003, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="holdTimeLimits", Tag=0x00000004, Type=typing.Optional[OccupancySensing.Structs.HoldTimeLimitsStruct]),
-                ClusterObjectFieldDescriptor(Label="pIROccupiedToUnoccupiedDelay", Tag=0x00000010, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="pIRUnoccupiedToOccupiedDelay", Tag=0x00000011, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="pIRUnoccupiedToOccupiedThreshold", Tag=0x00000012, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="PIROccupiedToUnoccupiedDelay", Tag=0x00000010, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="PIRUnoccupiedToOccupiedDelay", Tag=0x00000011, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="PIRUnoccupiedToOccupiedThreshold", Tag=0x00000012, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="ultrasonicOccupiedToUnoccupiedDelay", Tag=0x00000020, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="ultrasonicUnoccupiedToOccupiedDelay", Tag=0x00000021, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="ultrasonicUnoccupiedToOccupiedThreshold", Tag=0x00000022, Type=typing.Optional[uint]),
@@ -49,9 +49,9 @@ class OccupancySensing(Cluster):
     occupancySensorTypeBitmap: 'OccupancySensing.Bitmaps.OccupancySensorTypeBitmap' = 0
     holdTime: 'typing.Optional[uint]' = None
     holdTimeLimits: 'typing.Optional[OccupancySensing.Structs.HoldTimeLimitsStruct]' = None
-    pIROccupiedToUnoccupiedDelay: 'typing.Optional[uint]' = None
-    pIRUnoccupiedToOccupiedDelay: 'typing.Optional[uint]' = None
-    pIRUnoccupiedToOccupiedThreshold: 'typing.Optional[uint]' = None
+    PIROccupiedToUnoccupiedDelay: 'typing.Optional[uint]' = None
+    PIRUnoccupiedToOccupiedDelay: 'typing.Optional[uint]' = None
+    PIRUnoccupiedToOccupiedThreshold: 'typing.Optional[uint]' = None
     ultrasonicOccupiedToUnoccupiedDelay: 'typing.Optional[uint]' = None
     ultrasonicUnoccupiedToOccupiedDelay: 'typing.Optional[uint]' = None
     ultrasonicUnoccupiedToOccupiedThreshold: 'typing.Optional[uint]' = None

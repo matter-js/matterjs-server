@@ -154,24 +154,24 @@ class NetworkCommissioning(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="panID", Tag=0, Type=typing.Optional[uint]),
-                        ClusterObjectFieldDescriptor(Label="extendedPanID", Tag=1, Type=typing.Optional[uint]),
+                        ClusterObjectFieldDescriptor(Label="panId", Tag=0, Type=typing.Optional[uint]),
+                        ClusterObjectFieldDescriptor(Label="extendedPanId", Tag=1, Type=typing.Optional[uint]),
                         ClusterObjectFieldDescriptor(Label="networkName", Tag=2, Type=typing.Optional[str]),
                         ClusterObjectFieldDescriptor(Label="channel", Tag=3, Type=typing.Optional[uint]),
                         ClusterObjectFieldDescriptor(Label="version", Tag=4, Type=typing.Optional[uint]),
                         ClusterObjectFieldDescriptor(Label="extendedAddress", Tag=5, Type=typing.Optional[bytes]),
                         ClusterObjectFieldDescriptor(Label="rssi", Tag=6, Type=typing.Optional[int]),
-                        ClusterObjectFieldDescriptor(Label="lqi", Tag=7, Type=typing.Optional[uint]),
+                        ClusterObjectFieldDescriptor(Label="LQI", Tag=7, Type=typing.Optional[uint]),
                     ])
 
-            panID: 'typing.Optional[uint]' = None
-            extendedPanID: 'typing.Optional[uint]' = None
+            panId: 'typing.Optional[uint]' = None
+            extendedPanId: 'typing.Optional[uint]' = None
             networkName: 'typing.Optional[str]' = None
             channel: 'typing.Optional[uint]' = None
             version: 'typing.Optional[uint]' = None
             extendedAddress: 'typing.Optional[bytes]' = None
             rssi: 'typing.Optional[int]' = None
-            lqi: 'typing.Optional[uint]' = None
+            LQI: 'typing.Optional[uint]' = None
 
     class Commands:
         @dataclass

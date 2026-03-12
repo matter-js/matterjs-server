@@ -43,7 +43,7 @@ class DoorLock(Cluster):
                 ClusterObjectFieldDescriptor(Label="credentialRulesSupport", Tag=0x0000001B, Type=typing.Optional[DoorLock.Bitmaps.CredentialRulesBitmap]),
                 ClusterObjectFieldDescriptor(Label="numberOfCredentialsSupportedPerUser", Tag=0x0000001C, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="language", Tag=0x00000021, Type=typing.Optional[str]),
-                ClusterObjectFieldDescriptor(Label="lEDSettings", Tag=0x00000022, Type=typing.Optional[DoorLock.Enums.LEDSettingEnum]),
+                ClusterObjectFieldDescriptor(Label="LEDSettings", Tag=0x00000022, Type=typing.Optional[DoorLock.Enums.LEDSettingEnum]),
                 ClusterObjectFieldDescriptor(Label="autoRelockTime", Tag=0x00000023, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="soundVolume", Tag=0x00000024, Type=typing.Optional[DoorLock.Enums.SoundVolumeEnum]),
                 ClusterObjectFieldDescriptor(Label="operatingMode", Tag=0x00000025, Type=DoorLock.Enums.OperatingModeEnum),
@@ -97,7 +97,7 @@ class DoorLock(Cluster):
     credentialRulesSupport: 'typing.Optional[DoorLock.Bitmaps.CredentialRulesBitmap]' = None
     numberOfCredentialsSupportedPerUser: 'typing.Optional[uint]' = None
     language: 'typing.Optional[str]' = None
-    lEDSettings: 'typing.Optional[DoorLock.Enums.LEDSettingEnum]' = None
+    LEDSettings: 'typing.Optional[DoorLock.Enums.LEDSettingEnum]' = None
     autoRelockTime: 'typing.Optional[uint]' = None
     soundVolume: 'typing.Optional[DoorLock.Enums.SoundVolumeEnum]' = None
     operatingMode: 'DoorLock.Enums.OperatingModeEnum' = 0
@@ -453,10 +453,10 @@ class DoorLock(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="pINCode", Tag=0, Type=typing.Optional[bytes]),
+                        ClusterObjectFieldDescriptor(Label="PINCode", Tag=0, Type=typing.Optional[bytes]),
                     ])
 
-            pINCode: 'typing.Optional[bytes]' = None
+            PINCode: 'typing.Optional[bytes]' = None
 
         @dataclass
         class UnlockDoor(ClusterCommand):
@@ -469,10 +469,10 @@ class DoorLock(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="pINCode", Tag=0, Type=typing.Optional[bytes]),
+                        ClusterObjectFieldDescriptor(Label="PINCode", Tag=0, Type=typing.Optional[bytes]),
                     ])
 
-            pINCode: 'typing.Optional[bytes]' = None
+            PINCode: 'typing.Optional[bytes]' = None
 
         @dataclass
         class Toggle(ClusterCommand):
@@ -500,11 +500,11 @@ class DoorLock(Cluster):
                 return ClusterObjectDescriptor(
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="timeout", Tag=0, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="pINCode", Tag=1, Type=typing.Optional[bytes]),
+                        ClusterObjectFieldDescriptor(Label="PINCode", Tag=1, Type=typing.Optional[bytes]),
                     ])
 
             timeout: 'uint' = 0
-            pINCode: 'typing.Optional[bytes]' = None
+            PINCode: 'typing.Optional[bytes]' = None
 
         @dataclass
         class SetPINCode(ClusterCommand):
@@ -520,13 +520,13 @@ class DoorLock(Cluster):
                         ClusterObjectFieldDescriptor(Label="userID", Tag=0, Type=uint),
                         ClusterObjectFieldDescriptor(Label="userStatus", Tag=1, Type=typing.Union[Nullable, DoorLock.Enums.UserStatusEnum]),
                         ClusterObjectFieldDescriptor(Label="userType", Tag=2, Type=typing.Union[Nullable, DoorLock.Enums.UserTypeEnum]),
-                        ClusterObjectFieldDescriptor(Label="pIN", Tag=3, Type=bytes),
+                        ClusterObjectFieldDescriptor(Label="PIN", Tag=3, Type=bytes),
                     ])
 
             userID: 'uint' = 0
             userStatus: 'typing.Union[Nullable, DoorLock.Enums.UserStatusEnum]' = NullValue
             userType: 'typing.Union[Nullable, DoorLock.Enums.UserTypeEnum]' = NullValue
-            pIN: 'bytes' = b""
+            PIN: 'bytes' = b""
 
         @dataclass
         class GetPINCode(ClusterCommand):
@@ -555,10 +555,10 @@ class DoorLock(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="pINSlotIndex", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="PINSlotIndex", Tag=0, Type=uint),
                     ])
 
-            pINSlotIndex: 'uint' = 0
+            PINSlotIndex: 'uint' = 0
 
         @dataclass
         class ClearAllPINCodes(ClusterCommand):
@@ -832,13 +832,13 @@ class DoorLock(Cluster):
                         ClusterObjectFieldDescriptor(Label="userID", Tag=0, Type=uint),
                         ClusterObjectFieldDescriptor(Label="userStatus", Tag=1, Type=typing.Union[Nullable, DoorLock.Enums.UserStatusEnum]),
                         ClusterObjectFieldDescriptor(Label="userType", Tag=2, Type=typing.Union[Nullable, DoorLock.Enums.UserTypeEnum]),
-                        ClusterObjectFieldDescriptor(Label="rFIDCode", Tag=3, Type=bytes),
+                        ClusterObjectFieldDescriptor(Label="RFIDCode", Tag=3, Type=bytes),
                     ])
 
             userID: 'uint' = 0
             userStatus: 'typing.Union[Nullable, DoorLock.Enums.UserStatusEnum]' = NullValue
             userType: 'typing.Union[Nullable, DoorLock.Enums.UserTypeEnum]' = NullValue
-            rFIDCode: 'bytes' = b""
+            RFIDCode: 'bytes' = b""
 
         @dataclass
         class GetRFIDCode(ClusterCommand):
@@ -867,10 +867,10 @@ class DoorLock(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="rFIDSlotIndex", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="RFIDSlotIndex", Tag=0, Type=uint),
                     ])
 
-            rFIDSlotIndex: 'uint' = 0
+            RFIDSlotIndex: 'uint' = 0
 
         @dataclass
         class ClearAllRFIDCodes(ClusterCommand):
@@ -1015,10 +1015,10 @@ class DoorLock(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="pINCode", Tag=0, Type=typing.Optional[bytes]),
+                        ClusterObjectFieldDescriptor(Label="PINCode", Tag=0, Type=typing.Optional[bytes]),
                     ])
 
-            pINCode: 'typing.Optional[bytes]' = None
+            PINCode: 'typing.Optional[bytes]' = None
 
         @dataclass
         class SetAliroReaderConfig(ClusterCommand):
@@ -1070,13 +1070,13 @@ class DoorLock(Cluster):
                         ClusterObjectFieldDescriptor(Label="userID", Tag=0, Type=uint),
                         ClusterObjectFieldDescriptor(Label="userStatus", Tag=1, Type=typing.Union[Nullable, DoorLock.Enums.UserStatusEnum]),
                         ClusterObjectFieldDescriptor(Label="userType", Tag=2, Type=typing.Union[Nullable, DoorLock.Enums.UserTypeEnum]),
-                        ClusterObjectFieldDescriptor(Label="pINCode", Tag=3, Type=typing.Union[Nullable, bytes]),
+                        ClusterObjectFieldDescriptor(Label="PINCode", Tag=3, Type=typing.Union[Nullable, bytes]),
                     ])
 
             userID: 'uint' = 0
             userStatus: 'typing.Union[Nullable, DoorLock.Enums.UserStatusEnum]' = NullValue
             userType: 'typing.Union[Nullable, DoorLock.Enums.UserTypeEnum]' = NullValue
-            pINCode: 'typing.Union[Nullable, bytes]' = NullValue
+            PINCode: 'typing.Union[Nullable, bytes]' = NullValue
 
         @dataclass
         class GetUserStatusResponse(ClusterCommand):
@@ -1206,13 +1206,13 @@ class DoorLock(Cluster):
                         ClusterObjectFieldDescriptor(Label="userID", Tag=0, Type=uint),
                         ClusterObjectFieldDescriptor(Label="userStatus", Tag=1, Type=typing.Union[Nullable, DoorLock.Enums.UserStatusEnum]),
                         ClusterObjectFieldDescriptor(Label="userType", Tag=2, Type=typing.Union[Nullable, DoorLock.Enums.UserTypeEnum]),
-                        ClusterObjectFieldDescriptor(Label="rFIDCode", Tag=3, Type=typing.Union[Nullable, bytes]),
+                        ClusterObjectFieldDescriptor(Label="RFIDCode", Tag=3, Type=typing.Union[Nullable, bytes]),
                     ])
 
             userID: 'uint' = 0
             userStatus: 'typing.Union[Nullable, DoorLock.Enums.UserStatusEnum]' = NullValue
             userType: 'typing.Union[Nullable, DoorLock.Enums.UserTypeEnum]' = NullValue
-            rFIDCode: 'typing.Union[Nullable, bytes]' = NullValue
+            RFIDCode: 'typing.Union[Nullable, bytes]' = NullValue
 
         @dataclass
         class GetUserResponse(ClusterCommand):

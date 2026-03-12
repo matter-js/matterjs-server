@@ -30,9 +30,9 @@ class Thermostat(Cluster):
                 ClusterObjectFieldDescriptor(Label="absMaxHeatSetpointLimit", Tag=0x00000004, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="absMinCoolSetpointLimit", Tag=0x00000005, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="absMaxCoolSetpointLimit", Tag=0x00000006, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="pICoolingDemand", Tag=0x00000007, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="pIHeatingDemand", Tag=0x00000008, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="hVACSystemTypeConfiguration", Tag=0x00000009, Type=typing.Optional[Thermostat.Bitmaps.HVACSystemTypeBitmap]),
+                ClusterObjectFieldDescriptor(Label="PICoolingDemand", Tag=0x00000007, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="PIHeatingDemand", Tag=0x00000008, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="HVACSystemTypeConfiguration", Tag=0x00000009, Type=typing.Optional[Thermostat.Bitmaps.HVACSystemTypeBitmap]),
                 ClusterObjectFieldDescriptor(Label="localTemperatureCalibration", Tag=0x00000010, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="occupiedCoolingSetpoint", Tag=0x00000011, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="occupiedHeatingSetpoint", Tag=0x00000012, Type=typing.Optional[uint]),
@@ -64,14 +64,14 @@ class Thermostat(Cluster):
                 ClusterObjectFieldDescriptor(Label="unoccupiedSetbackMin", Tag=0x00000038, Type=typing.Union[None, Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="unoccupiedSetbackMax", Tag=0x00000039, Type=typing.Union[None, Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="emergencyHeatDelta", Tag=0x0000003A, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="aCType", Tag=0x00000040, Type=typing.Optional[Thermostat.Enums.ACTypeEnum]),
-                ClusterObjectFieldDescriptor(Label="aCCapacity", Tag=0x00000041, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="aCRefrigerantType", Tag=0x00000042, Type=typing.Optional[Thermostat.Enums.ACRefrigerantTypeEnum]),
-                ClusterObjectFieldDescriptor(Label="aCCompressorType", Tag=0x00000043, Type=typing.Optional[Thermostat.Enums.ACCompressorTypeEnum]),
-                ClusterObjectFieldDescriptor(Label="aCErrorCode", Tag=0x00000044, Type=typing.Optional[Thermostat.Bitmaps.ACErrorCodeBitmap]),
-                ClusterObjectFieldDescriptor(Label="aCLouverPosition", Tag=0x00000045, Type=typing.Optional[Thermostat.Enums.ACLouverPositionEnum]),
-                ClusterObjectFieldDescriptor(Label="aCCoilTemperature", Tag=0x00000046, Type=typing.Union[None, Nullable, uint]),
-                ClusterObjectFieldDescriptor(Label="aCCapacityFormat", Tag=0x00000047, Type=typing.Optional[Thermostat.Enums.ACCapacityFormatEnum]),
+                ClusterObjectFieldDescriptor(Label="ACType", Tag=0x00000040, Type=typing.Optional[Thermostat.Enums.ACTypeEnum]),
+                ClusterObjectFieldDescriptor(Label="ACCapacity", Tag=0x00000041, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="ACRefrigerantType", Tag=0x00000042, Type=typing.Optional[Thermostat.Enums.ACRefrigerantTypeEnum]),
+                ClusterObjectFieldDescriptor(Label="ACCompressorType", Tag=0x00000043, Type=typing.Optional[Thermostat.Enums.ACCompressorTypeEnum]),
+                ClusterObjectFieldDescriptor(Label="ACErrorCode", Tag=0x00000044, Type=typing.Optional[Thermostat.Bitmaps.ACErrorCodeBitmap]),
+                ClusterObjectFieldDescriptor(Label="ACLouverPosition", Tag=0x00000045, Type=typing.Optional[Thermostat.Enums.ACLouverPositionEnum]),
+                ClusterObjectFieldDescriptor(Label="ACCoilTemperature", Tag=0x00000046, Type=typing.Union[None, Nullable, uint]),
+                ClusterObjectFieldDescriptor(Label="ACCapacityformat", Tag=0x00000047, Type=typing.Optional[Thermostat.Enums.ACCapacityFormatEnum]),
                 ClusterObjectFieldDescriptor(Label="presetTypes", Tag=0x00000048, Type=typing.Optional[typing.List[typing.Optional[Thermostat.Structs.PresetTypeStruct]]]),
                 ClusterObjectFieldDescriptor(Label="scheduleTypes", Tag=0x00000049, Type=typing.Optional[typing.List[typing.Optional[Thermostat.Structs.ScheduleTypeStruct]]]),
                 ClusterObjectFieldDescriptor(Label="numberOfPresets", Tag=0x0000004A, Type=typing.Optional[uint]),
@@ -98,9 +98,9 @@ class Thermostat(Cluster):
     absMaxHeatSetpointLimit: 'typing.Optional[uint]' = None
     absMinCoolSetpointLimit: 'typing.Optional[uint]' = None
     absMaxCoolSetpointLimit: 'typing.Optional[uint]' = None
-    pICoolingDemand: 'typing.Optional[uint]' = None
-    pIHeatingDemand: 'typing.Optional[uint]' = None
-    hVACSystemTypeConfiguration: 'typing.Optional[Thermostat.Bitmaps.HVACSystemTypeBitmap]' = None
+    PICoolingDemand: 'typing.Optional[uint]' = None
+    PIHeatingDemand: 'typing.Optional[uint]' = None
+    HVACSystemTypeConfiguration: 'typing.Optional[Thermostat.Bitmaps.HVACSystemTypeBitmap]' = None
     localTemperatureCalibration: 'typing.Optional[uint]' = None
     occupiedCoolingSetpoint: 'typing.Optional[uint]' = None
     occupiedHeatingSetpoint: 'typing.Optional[uint]' = None
@@ -132,14 +132,14 @@ class Thermostat(Cluster):
     unoccupiedSetbackMin: 'typing.Union[None, Nullable, uint]' = None
     unoccupiedSetbackMax: 'typing.Union[None, Nullable, uint]' = None
     emergencyHeatDelta: 'typing.Optional[uint]' = None
-    aCType: 'typing.Optional[Thermostat.Enums.ACTypeEnum]' = None
-    aCCapacity: 'typing.Optional[uint]' = None
-    aCRefrigerantType: 'typing.Optional[Thermostat.Enums.ACRefrigerantTypeEnum]' = None
-    aCCompressorType: 'typing.Optional[Thermostat.Enums.ACCompressorTypeEnum]' = None
-    aCErrorCode: 'typing.Optional[Thermostat.Bitmaps.ACErrorCodeBitmap]' = None
-    aCLouverPosition: 'typing.Optional[Thermostat.Enums.ACLouverPositionEnum]' = None
-    aCCoilTemperature: 'typing.Union[None, Nullable, uint]' = None
-    aCCapacityFormat: 'typing.Optional[Thermostat.Enums.ACCapacityFormatEnum]' = None
+    ACType: 'typing.Optional[Thermostat.Enums.ACTypeEnum]' = None
+    ACCapacity: 'typing.Optional[uint]' = None
+    ACRefrigerantType: 'typing.Optional[Thermostat.Enums.ACRefrigerantTypeEnum]' = None
+    ACCompressorType: 'typing.Optional[Thermostat.Enums.ACCompressorTypeEnum]' = None
+    ACErrorCode: 'typing.Optional[Thermostat.Bitmaps.ACErrorCodeBitmap]' = None
+    ACLouverPosition: 'typing.Optional[Thermostat.Enums.ACLouverPositionEnum]' = None
+    ACCoilTemperature: 'typing.Union[None, Nullable, uint]' = None
+    ACCapacityformat: 'typing.Optional[Thermostat.Enums.ACCapacityFormatEnum]' = None
     presetTypes: 'typing.Optional[typing.List[typing.Optional[Thermostat.Structs.PresetTypeStruct]]]' = None
     scheduleTypes: 'typing.Optional[typing.List[typing.Optional[Thermostat.Structs.ScheduleTypeStruct]]]' = None
     numberOfPresets: 'typing.Optional[uint]' = None

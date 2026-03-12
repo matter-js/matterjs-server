@@ -22,9 +22,9 @@ class DeviceEnergyManagement(Cluster):
     def descriptor(cls) -> ClusterObjectDescriptor:
         return ClusterObjectDescriptor(
             Fields=[
-                ClusterObjectFieldDescriptor(Label="eSAType", Tag=0x00000000, Type=DeviceEnergyManagement.Enums.ESATypeEnum),
-                ClusterObjectFieldDescriptor(Label="eSACanGenerate", Tag=0x00000001, Type=bool),
-                ClusterObjectFieldDescriptor(Label="eSAState", Tag=0x00000002, Type=DeviceEnergyManagement.Enums.ESAStateEnum),
+                ClusterObjectFieldDescriptor(Label="ESAType", Tag=0x00000000, Type=DeviceEnergyManagement.Enums.ESATypeEnum),
+                ClusterObjectFieldDescriptor(Label="ESACanGenerate", Tag=0x00000001, Type=bool),
+                ClusterObjectFieldDescriptor(Label="ESAState", Tag=0x00000002, Type=DeviceEnergyManagement.Enums.ESAStateEnum),
                 ClusterObjectFieldDescriptor(Label="absMinPower", Tag=0x00000003, Type=uint),
                 ClusterObjectFieldDescriptor(Label="absMaxPower", Tag=0x00000004, Type=uint),
                 ClusterObjectFieldDescriptor(Label="powerAdjustmentCapability", Tag=0x00000005, Type=typing.Union[None, Nullable, DeviceEnergyManagement.Structs.PowerAdjustCapabilityStruct]),
@@ -38,9 +38,9 @@ class DeviceEnergyManagement(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    eSAType: 'DeviceEnergyManagement.Enums.ESATypeEnum' = 0
-    eSACanGenerate: 'bool' = False
-    eSAState: 'DeviceEnergyManagement.Enums.ESAStateEnum' = 0
+    ESAType: 'DeviceEnergyManagement.Enums.ESATypeEnum' = 0
+    ESACanGenerate: 'bool' = False
+    ESAState: 'DeviceEnergyManagement.Enums.ESAStateEnum' = 0
     absMinPower: 'uint' = 0
     absMaxPower: 'uint' = 0
     powerAdjustmentCapability: 'typing.Union[None, Nullable, DeviceEnergyManagement.Structs.PowerAdjustCapabilityStruct]' = None

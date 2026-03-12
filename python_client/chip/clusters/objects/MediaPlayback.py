@@ -137,11 +137,11 @@ class MediaPlayback(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="iD", Tag=0, Type=str),
+                        ClusterObjectFieldDescriptor(Label="id", Tag=0, Type=str),
                         ClusterObjectFieldDescriptor(Label="trackAttributes", Tag=1, Type=MediaPlayback.Structs.TrackAttributesStruct),
                     ])
 
-            iD: 'str' = ""
+            id: 'str' = ""
             trackAttributes: 'MediaPlayback.Structs.TrackAttributesStruct' = field(default_factory=lambda: MediaPlayback.Structs.TrackAttributesStruct())
 
         @dataclass

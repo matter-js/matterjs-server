@@ -22,7 +22,7 @@ class WakeOnLan(Cluster):
     def descriptor(cls) -> ClusterObjectDescriptor:
         return ClusterObjectDescriptor(
             Fields=[
-                ClusterObjectFieldDescriptor(Label="mACAddress", Tag=0x00000000, Type=typing.Optional[str]),
+                ClusterObjectFieldDescriptor(Label="MACAddress", Tag=0x00000000, Type=typing.Optional[str]),
                 ClusterObjectFieldDescriptor(Label="linkLocalAddress", Tag=0x00000001, Type=typing.Optional[bytes]),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
@@ -32,7 +32,7 @@ class WakeOnLan(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    mACAddress: 'typing.Optional[str]' = None
+    MACAddress: 'typing.Optional[str]' = None
     linkLocalAddress: 'typing.Optional[bytes]' = None
     generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
     acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])

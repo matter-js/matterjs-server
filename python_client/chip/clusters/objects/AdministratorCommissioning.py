@@ -24,7 +24,7 @@ class AdministratorCommissioning(Cluster):
             Fields=[
                 ClusterObjectFieldDescriptor(Label="windowStatus", Tag=0x00000000, Type=AdministratorCommissioning.Enums.CommissioningWindowStatusEnum),
                 ClusterObjectFieldDescriptor(Label="adminFabricIndex", Tag=0x00000001, Type=typing.Union[Nullable, uint]),
-                ClusterObjectFieldDescriptor(Label="adminVendorID", Tag=0x00000002, Type=typing.Union[Nullable, uint]),
+                ClusterObjectFieldDescriptor(Label="adminVendorId", Tag=0x00000002, Type=typing.Union[Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="eventList", Tag=0x0000FFFA, Type=typing.List[uint]),
@@ -35,7 +35,7 @@ class AdministratorCommissioning(Cluster):
 
     windowStatus: 'AdministratorCommissioning.Enums.CommissioningWindowStatusEnum' = 0
     adminFabricIndex: 'typing.Union[Nullable, uint]' = NullValue
-    adminVendorID: 'typing.Union[Nullable, uint]' = NullValue
+    adminVendorId: 'typing.Union[Nullable, uint]' = NullValue
     generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
     acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
     eventList: 'typing.List[uint]' = field(default_factory=lambda: [])
@@ -56,7 +56,7 @@ class AdministratorCommissioning(Cluster):
 
         class StatusCodeEnum(MatterIntEnum):
             kBusy = 0x02
-            kPakeParameterError = 0x03
+            kPAKEParameterError = 0x03
             kWindowNotOpen = 0x04
             # All received enum values that are not listed above will be mapped
             # to kUnknownEnumValue. This is a helper enum value that should only
@@ -81,14 +81,14 @@ class AdministratorCommissioning(Cluster):
                 return ClusterObjectDescriptor(
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="commissioningTimeout", Tag=0, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="pakePasscodeVerifier", Tag=1, Type=bytes),
+                        ClusterObjectFieldDescriptor(Label="PAKEPasscodeVerifier", Tag=1, Type=bytes),
                         ClusterObjectFieldDescriptor(Label="discriminator", Tag=2, Type=uint),
                         ClusterObjectFieldDescriptor(Label="iterations", Tag=3, Type=uint),
                         ClusterObjectFieldDescriptor(Label="salt", Tag=4, Type=bytes),
                     ])
 
             commissioningTimeout: 'uint' = 0
-            pakePasscodeVerifier: 'bytes' = b""
+            PAKEPasscodeVerifier: 'bytes' = b""
             discriminator: 'uint' = 0
             iterations: 'uint' = 0
             salt: 'bytes' = b""

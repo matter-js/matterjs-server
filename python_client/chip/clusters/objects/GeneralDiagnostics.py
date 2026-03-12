@@ -143,8 +143,8 @@ class GeneralDiagnostics(Cluster):
                         ClusterObjectFieldDescriptor(Label="offPremiseServicesReachableIPV4", Tag=2, Type=typing.Union[Nullable, bool]),
                         ClusterObjectFieldDescriptor(Label="offPremiseServicesReachableIPV6", Tag=3, Type=typing.Union[Nullable, bool]),
                         ClusterObjectFieldDescriptor(Label="hardwareAddress", Tag=4, Type=bytes),
-                        ClusterObjectFieldDescriptor(Label="iPV4Addresses", Tag=5, Type=typing.List[typing.Optional[bytes]]),
-                        ClusterObjectFieldDescriptor(Label="iPV6Addresses", Tag=6, Type=typing.List[typing.Optional[bytes]]),
+                        ClusterObjectFieldDescriptor(Label="IPV4Addresses", Tag=5, Type=typing.List[typing.Optional[bytes]]),
+                        ClusterObjectFieldDescriptor(Label="IPV6Addresses", Tag=6, Type=typing.List[typing.Optional[bytes]]),
                         ClusterObjectFieldDescriptor(Label="type", Tag=7, Type=GeneralDiagnostics.Enums.InterfaceTypeEnum),
                     ])
 
@@ -153,8 +153,8 @@ class GeneralDiagnostics(Cluster):
             offPremiseServicesReachableIPV4: 'typing.Union[Nullable, bool]' = NullValue
             offPremiseServicesReachableIPV6: 'typing.Union[Nullable, bool]' = NullValue
             hardwareAddress: 'bytes' = b""
-            iPV4Addresses: 'typing.List[typing.Optional[bytes]]' = field(default_factory=lambda: [])
-            iPV6Addresses: 'typing.List[typing.Optional[bytes]]' = field(default_factory=lambda: [])
+            IPV4Addresses: 'typing.List[typing.Optional[bytes]]' = field(default_factory=lambda: [])
+            IPV6Addresses: 'typing.List[typing.Optional[bytes]]' = field(default_factory=lambda: [])
             type: 'GeneralDiagnostics.Enums.InterfaceTypeEnum' = 0
 
     class Commands:

@@ -75,12 +75,12 @@ class GroupKeyManagement(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="groupID", Tag=1, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="groupId", Tag=1, Type=uint),
                         ClusterObjectFieldDescriptor(Label="groupKeySetID", Tag=2, Type=uint),
                         ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=254, Type=uint),
                     ])
 
-            groupID: 'uint' = 0
+            groupId: 'uint' = 0
             groupKeySetID: 'uint' = 0
             fabricIndex: 'uint' = 0
 
@@ -117,13 +117,13 @@ class GroupKeyManagement(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="groupID", Tag=1, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="groupId", Tag=1, Type=uint),
                         ClusterObjectFieldDescriptor(Label="endpoints", Tag=2, Type=typing.List[typing.Optional[uint]]),
                         ClusterObjectFieldDescriptor(Label="groupName", Tag=3, Type=typing.Optional[str]),
                         ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=254, Type=uint),
                     ])
 
-            groupID: 'uint' = 0
+            groupId: 'uint' = 0
             endpoints: 'typing.List[typing.Optional[uint]]' = field(default_factory=lambda: [])
             groupName: 'typing.Optional[str]' = None
             fabricIndex: 'uint' = 0

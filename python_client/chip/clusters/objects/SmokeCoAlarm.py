@@ -24,7 +24,7 @@ class SmokeCoAlarm(Cluster):
             Fields=[
                 ClusterObjectFieldDescriptor(Label="expressedState", Tag=0x00000000, Type=SmokeCoAlarm.Enums.ExpressedStateEnum),
                 ClusterObjectFieldDescriptor(Label="smokeState", Tag=0x00000001, Type=typing.Optional[SmokeCoAlarm.Enums.AlarmStateEnum]),
-                ClusterObjectFieldDescriptor(Label="cOState", Tag=0x00000002, Type=typing.Optional[SmokeCoAlarm.Enums.AlarmStateEnum]),
+                ClusterObjectFieldDescriptor(Label="COState", Tag=0x00000002, Type=typing.Optional[SmokeCoAlarm.Enums.AlarmStateEnum]),
                 ClusterObjectFieldDescriptor(Label="batteryAlert", Tag=0x00000003, Type=SmokeCoAlarm.Enums.AlarmStateEnum),
                 ClusterObjectFieldDescriptor(Label="deviceMuted", Tag=0x00000004, Type=typing.Optional[SmokeCoAlarm.Enums.MuteStateEnum]),
                 ClusterObjectFieldDescriptor(Label="testInProgress", Tag=0x00000005, Type=bool),
@@ -45,7 +45,7 @@ class SmokeCoAlarm(Cluster):
 
     expressedState: 'SmokeCoAlarm.Enums.ExpressedStateEnum' = 0
     smokeState: 'typing.Optional[SmokeCoAlarm.Enums.AlarmStateEnum]' = None
-    cOState: 'typing.Optional[SmokeCoAlarm.Enums.AlarmStateEnum]' = None
+    COState: 'typing.Optional[SmokeCoAlarm.Enums.AlarmStateEnum]' = None
     batteryAlert: 'SmokeCoAlarm.Enums.AlarmStateEnum' = 0
     deviceMuted: 'typing.Optional[SmokeCoAlarm.Enums.MuteStateEnum]' = None
     testInProgress: 'bool' = False

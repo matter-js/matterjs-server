@@ -62,7 +62,7 @@ class JointFabricAdministrator(Cluster):
 
         class StatusCodeEnum(MatterIntEnum):
             kBusy = 0x02
-            kPakeParameterError = 0x03
+            kPAKEParameterError = 0x03
             kWindowNotOpen = 0x04
             kVIDNotVerified = 0x05
             kInvalidAdministratorFabricIndex = 0x06
@@ -98,10 +98,10 @@ class JointFabricAdministrator(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="iCACValue", Tag=1, Type=bytes),
+                        ClusterObjectFieldDescriptor(Label="ICACValue", Tag=1, Type=bytes),
                     ])
 
-            iCACValue: 'bytes' = b""
+            ICACValue: 'bytes' = b""
 
         @dataclass
         class OpenJointCommissioningWindow(ClusterCommand):
@@ -115,14 +115,14 @@ class JointFabricAdministrator(Cluster):
                 return ClusterObjectDescriptor(
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="commissioningTimeout", Tag=0, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="pakePasscodeVerifier", Tag=1, Type=bytes),
+                        ClusterObjectFieldDescriptor(Label="PAKEPasscodeVerifier", Tag=1, Type=bytes),
                         ClusterObjectFieldDescriptor(Label="discriminator", Tag=2, Type=uint),
                         ClusterObjectFieldDescriptor(Label="iterations", Tag=3, Type=uint),
                         ClusterObjectFieldDescriptor(Label="salt", Tag=4, Type=bytes),
                     ])
 
             commissioningTimeout: 'uint' = 0
-            pakePasscodeVerifier: 'bytes' = b""
+            PAKEPasscodeVerifier: 'bytes' = b""
             discriminator: 'uint' = 0
             iterations: 'uint' = 0
             salt: 'bytes' = b""

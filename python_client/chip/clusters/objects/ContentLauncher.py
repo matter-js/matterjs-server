@@ -181,7 +181,7 @@ class ContentLauncher(Cluster):
                         ClusterObjectFieldDescriptor(Label="logo", Tag=2, Type=typing.Optional[ContentLauncher.Structs.StyleInformationStruct]),
                         ClusterObjectFieldDescriptor(Label="progressBar", Tag=3, Type=typing.Optional[ContentLauncher.Structs.StyleInformationStruct]),
                         ClusterObjectFieldDescriptor(Label="splash", Tag=4, Type=typing.Optional[ContentLauncher.Structs.StyleInformationStruct]),
-                        ClusterObjectFieldDescriptor(Label="watermark", Tag=5, Type=typing.Optional[ContentLauncher.Structs.StyleInformationStruct]),
+                        ClusterObjectFieldDescriptor(Label="waterMark", Tag=5, Type=typing.Optional[ContentLauncher.Structs.StyleInformationStruct]),
                     ])
 
             providerName: 'str' = ""
@@ -189,7 +189,7 @@ class ContentLauncher(Cluster):
             logo: 'typing.Optional[ContentLauncher.Structs.StyleInformationStruct]' = None
             progressBar: 'typing.Optional[ContentLauncher.Structs.StyleInformationStruct]' = None
             splash: 'typing.Optional[ContentLauncher.Structs.StyleInformationStruct]' = None
-            watermark: 'typing.Optional[ContentLauncher.Structs.StyleInformationStruct]' = None
+            waterMark: 'typing.Optional[ContentLauncher.Structs.StyleInformationStruct]' = None
 
         @dataclass
         class PlaybackPreferencesStruct(ClusterObject):

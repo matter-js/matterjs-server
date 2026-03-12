@@ -150,7 +150,7 @@ class OtaSoftwareUpdateProvider(Cluster):
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="status", Tag=0, Type=OtaSoftwareUpdateProvider.Enums.StatusEnum),
                         ClusterObjectFieldDescriptor(Label="delayedActionTime", Tag=1, Type=typing.Optional[uint]),
-                        ClusterObjectFieldDescriptor(Label="imageUri", Tag=2, Type=typing.Optional[str]),
+                        ClusterObjectFieldDescriptor(Label="imageURI", Tag=2, Type=typing.Optional[str]),
                         ClusterObjectFieldDescriptor(Label="softwareVersion", Tag=3, Type=typing.Optional[uint]),
                         ClusterObjectFieldDescriptor(Label="softwareVersionString", Tag=4, Type=typing.Optional[str]),
                         ClusterObjectFieldDescriptor(Label="updateToken", Tag=5, Type=typing.Optional[bytes]),
@@ -160,7 +160,7 @@ class OtaSoftwareUpdateProvider(Cluster):
 
             status: 'OtaSoftwareUpdateProvider.Enums.StatusEnum' = 0
             delayedActionTime: 'typing.Optional[uint]' = None
-            imageUri: 'typing.Optional[str]' = None
+            imageURI: 'typing.Optional[str]' = None
             softwareVersion: 'typing.Optional[uint]' = None
             softwareVersionString: 'typing.Optional[str]' = None
             updateToken: 'typing.Optional[bytes]' = None

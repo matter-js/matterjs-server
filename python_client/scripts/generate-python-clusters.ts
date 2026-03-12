@@ -85,6 +85,12 @@ const ACRONYMS = [
     "PIN",     // e.g. kPINManagement
     "PI",      // e.g. PICoolingDemand, PIHeatingDemand
     "PV",      // e.g. kSolarPV
+    "PAKE",    // e.g. PAKEPasscodeVerifier — before PA
+    "IPK",     // e.g. IPKValue (Identity Protection Key)
+    "LQI",     // e.g. LQIIn, LQIOut (Thread Link Quality Indicator)
+    // BX/BY/GX/GY/RX/RY intentionally omitted from ACRONYMS — too broad (would turn "ByNumber" → "BYNumber").
+    // ColorPoint coordinate attributes are handled via FIELD_NAME_OVERRIDES instead.
+    "URI",     // e.g. imageURI
     "RF",      // e.g. kRFSensing
     "RMS",     // e.g. RMSCurrent, RMSVoltage, RMSPower
     "UTC",     // e.g. UTCTime — before TC (TC is a suffix of UTC)
@@ -179,6 +185,63 @@ const K_VALUE_OVERRIDES: Record<string, string> = {
 };
 
 /**
+ * Overrides for specific field names (cluster attributes, struct fields, command fields)
+ * where the old chip-clusters package used a non-standard casing that differs from what
+ * toChipName + toCamelCase would produce.
+ * Key: PascalCase matter.js model name.
+ * Value: expected Python field name.
+ */
+const FIELD_NAME_OVERRIDES: Record<string, string> = {
+    // --- ID suffix: old chip SDK kept lowercase "Id" (not "ID") for these ---
+    Id:                          "id",
+    GroupId:                     "groupId",
+    PanId:                       "panId",
+    ExtendedPanId:               "extendedPanId",
+    LeaderRouterId:              "leaderRouterId",
+    PartitionId:                 "partitionId",
+    PartitionIdChangeCount:      "partitionIdChangeCount",
+    RouterId:                    "routerId",
+    ExtendedPanIDPresent:        "extendedPanIdPresent",
+    PanIDPresent:                "panIdPresent",
+    AdminVendorId:               "adminVendorId",
+
+    // --- NOC struct: old chip SDK used fully lowercase (no acronym expansion) ---
+    Icac:                        "icac",
+    Noc:                         "noc",
+
+    // --- MLE: old chip SDK kept mle lowercase in mid-word position ---
+    MleFrameCounter:             "mleFrameCounter",
+
+    // --- URL vs Url: old chip SDK kept "Url" (not "URL") for these specific fields ---
+    DvbiUrl:                     "dvbiUrl",
+    PosterArtUrl:                "posterArtUrl",
+    ThumbnailUrl:                "thumbnailUrl",
+
+    // --- ARL: intentionally not in ACRONYMS (breaks Arl attribute) ---
+    CommissioningArl:            "commissioningARL",
+    ArlRequestFlowUrl:           "ARLRequestFlowUrl",
+
+    // --- CA: not in ACRONYMS (would conflict with ICAC/DAC/MAC handling) ---
+    RootCaCertificate:           "rootCACertificate",
+
+    // --- Watermark: matter.js spells as one word, chip SDK as two ---
+    Watermark:                   "waterMark",
+
+    // --- NOCSR: not a standalone acronym in ACRONYMS ---
+    NocsrElements:               "NOCSRElements",
+
+    // --- DoorLock quirks ---
+    RequirePINForRemoteOperation: "requirePINforRemoteOperation",
+    AcCapacityFormat:            "ACCapacityformat",
+
+    // --- IPv4/IPv6: old chip SDK used "IPv4"/"IPv6" (capital I, lowercase v) ---
+    Ipv4Addresses:               "IPv4Addresses",
+    Ipv6Addresses:               "IPv6Addresses",
+    OffPremiseServicesReachableIPV4: "offPremiseServicesReachableIPv4",
+    OffPremiseServicesReachableIPV6: "offPremiseServicesReachableIPv6",
+};
+
+/**
  * Convert a PascalCase name from Matter.js to chip-clusters-compatible PascalCase.
  * Matter.js uses standard PascalCase (e.g., "AnnounceOtaProvider"),
  * chip-clusters preserves known acronyms (e.g., "AnnounceOTAProvider").
@@ -221,9 +284,18 @@ function toKName(name: string): string {
 
 /** Convert PascalCase name to camelCase (for attribute/field labels). */
 function toCamelCase(name: string): string {
-    // First apply acronym preservation to get chip-style name
+    // Check per-name overrides first (covers chip SDK inconsistencies)
+    if (name in FIELD_NAME_OVERRIDES) {
+        return FIELD_NAME_OVERRIDES[name];
+    }
     const chipName = toChipName(name);
-    // Then lowercase first char for camelCase
+    // If toChipName produced 2+ consecutive uppercase letters at the start,
+    // chip SDK keeps the acronym uppercase in field names too.
+    // e.g. "ESAType" stays "ESAType" (not "eSAType"), "ACCapacity" → "ACCapacity".
+    // Single-uppercase starts (e.g. "SoftwareVersion") still lowercase to "softwareVersion".
+    if (/^[A-Z]{2}/.test(chipName)) {
+        return chipName;
+    }
     return chipName.charAt(0).toLowerCase() + chipName.slice(1);
 }
 

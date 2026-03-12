@@ -22,7 +22,7 @@ class OperationalCredentials(Cluster):
     def descriptor(cls) -> ClusterObjectDescriptor:
         return ClusterObjectDescriptor(
             Fields=[
-                ClusterObjectFieldDescriptor(Label="nOCs", Tag=0x00000000, Type=typing.List[typing.Optional[OperationalCredentials.Structs.NOCStruct]]),
+                ClusterObjectFieldDescriptor(Label="NOCs", Tag=0x00000000, Type=typing.List[typing.Optional[OperationalCredentials.Structs.NOCStruct]]),
                 ClusterObjectFieldDescriptor(Label="fabrics", Tag=0x00000001, Type=typing.List[typing.Optional[OperationalCredentials.Structs.FabricDescriptorStruct]]),
                 ClusterObjectFieldDescriptor(Label="supportedFabrics", Tag=0x00000002, Type=uint),
                 ClusterObjectFieldDescriptor(Label="commissionedFabrics", Tag=0x00000003, Type=uint),
@@ -36,7 +36,7 @@ class OperationalCredentials(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    nOCs: 'typing.List[typing.Optional[OperationalCredentials.Structs.NOCStruct]]' = field(default_factory=lambda: [])
+    NOCs: 'typing.List[typing.Optional[OperationalCredentials.Structs.NOCStruct]]' = field(default_factory=lambda: [])
     fabrics: 'typing.List[typing.Optional[OperationalCredentials.Structs.FabricDescriptorStruct]]' = field(default_factory=lambda: [])
     supportedFabrics: 'uint' = 0
     commissionedFabrics: 'uint' = 0
@@ -83,14 +83,14 @@ class OperationalCredentials(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="nOC", Tag=1, Type=bytes),
-                        ClusterObjectFieldDescriptor(Label="iCAC", Tag=2, Type=typing.Union[Nullable, bytes]),
+                        ClusterObjectFieldDescriptor(Label="noc", Tag=1, Type=bytes),
+                        ClusterObjectFieldDescriptor(Label="icac", Tag=2, Type=typing.Union[Nullable, bytes]),
                         ClusterObjectFieldDescriptor(Label="vvsc", Tag=3, Type=typing.Optional[bytes]),
                         ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=254, Type=uint),
                     ])
 
-            nOC: 'bytes' = b""
-            iCAC: 'typing.Union[Nullable, bytes]' = NullValue
+            noc: 'bytes' = b""
+            icac: 'typing.Union[Nullable, bytes]' = NullValue
             vvsc: 'typing.Optional[bytes]' = None
             fabricIndex: 'uint' = 0
 
@@ -105,7 +105,7 @@ class OperationalCredentials(Cluster):
                         ClusterObjectFieldDescriptor(Label="fabricID", Tag=3, Type=uint),
                         ClusterObjectFieldDescriptor(Label="nodeID", Tag=4, Type=uint),
                         ClusterObjectFieldDescriptor(Label="label", Tag=5, Type=str),
-                        ClusterObjectFieldDescriptor(Label="vIDVerificationStatement", Tag=6, Type=typing.Optional[bytes]),
+                        ClusterObjectFieldDescriptor(Label="VIDVerificationStatement", Tag=6, Type=typing.Optional[bytes]),
                         ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=254, Type=uint),
                     ])
 
@@ -114,7 +114,7 @@ class OperationalCredentials(Cluster):
             fabricID: 'uint' = 0
             nodeID: 'uint' = 0
             label: 'str' = ""
-            vIDVerificationStatement: 'typing.Optional[bytes]' = None
+            VIDVerificationStatement: 'typing.Optional[bytes]' = None
             fabricIndex: 'uint' = 0
 
     class Commands:
@@ -161,11 +161,11 @@ class OperationalCredentials(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="cSRNonce", Tag=0, Type=bytes),
+                        ClusterObjectFieldDescriptor(Label="CSRNonce", Tag=0, Type=bytes),
                         ClusterObjectFieldDescriptor(Label="isForUpdateNOC", Tag=1, Type=typing.Optional[bool]),
                     ])
 
-            cSRNonce: 'bytes' = b""
+            CSRNonce: 'bytes' = b""
             isForUpdateNOC: 'typing.Optional[bool]' = None
 
         @dataclass
@@ -179,18 +179,18 @@ class OperationalCredentials(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="nOCValue", Tag=0, Type=bytes),
-                        ClusterObjectFieldDescriptor(Label="iCACValue", Tag=1, Type=typing.Optional[bytes]),
-                        ClusterObjectFieldDescriptor(Label="ipkValue", Tag=2, Type=bytes),
+                        ClusterObjectFieldDescriptor(Label="NOCValue", Tag=0, Type=bytes),
+                        ClusterObjectFieldDescriptor(Label="ICACValue", Tag=1, Type=typing.Optional[bytes]),
+                        ClusterObjectFieldDescriptor(Label="IPKValue", Tag=2, Type=bytes),
                         ClusterObjectFieldDescriptor(Label="caseAdminSubject", Tag=3, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="adminVendorID", Tag=4, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="adminVendorId", Tag=4, Type=uint),
                     ])
 
-            nOCValue: 'bytes' = b""
-            iCACValue: 'typing.Optional[bytes]' = None
-            ipkValue: 'bytes' = b""
+            NOCValue: 'bytes' = b""
+            ICACValue: 'typing.Optional[bytes]' = None
+            IPKValue: 'bytes' = b""
             caseAdminSubject: 'uint' = 0
-            adminVendorID: 'uint' = 0
+            adminVendorId: 'uint' = 0
 
         @dataclass
         class UpdateNOC(ClusterCommand):
@@ -203,13 +203,13 @@ class OperationalCredentials(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="nOCValue", Tag=0, Type=bytes),
-                        ClusterObjectFieldDescriptor(Label="iCACValue", Tag=1, Type=typing.Optional[bytes]),
+                        ClusterObjectFieldDescriptor(Label="NOCValue", Tag=0, Type=bytes),
+                        ClusterObjectFieldDescriptor(Label="ICACValue", Tag=1, Type=typing.Optional[bytes]),
                         ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=254, Type=uint),
                     ])
 
-            nOCValue: 'bytes' = b""
-            iCACValue: 'typing.Optional[bytes]' = None
+            NOCValue: 'bytes' = b""
+            ICACValue: 'typing.Optional[bytes]' = None
             fabricIndex: 'uint' = 0
 
         @dataclass
@@ -257,10 +257,10 @@ class OperationalCredentials(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="rootCaCertificate", Tag=0, Type=bytes),
+                        ClusterObjectFieldDescriptor(Label="rootCACertificate", Tag=0, Type=bytes),
                     ])
 
-            rootCaCertificate: 'bytes' = b""
+            rootCACertificate: 'bytes' = b""
 
         @dataclass
         class SetVIDVerificationStatement(ClusterCommand):
@@ -274,12 +274,12 @@ class OperationalCredentials(Cluster):
                 return ClusterObjectDescriptor(
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="vendorID", Tag=0, Type=typing.Optional[uint]),
-                        ClusterObjectFieldDescriptor(Label="vIDVerificationStatement", Tag=1, Type=typing.Optional[bytes]),
+                        ClusterObjectFieldDescriptor(Label="VIDVerificationStatement", Tag=1, Type=typing.Optional[bytes]),
                         ClusterObjectFieldDescriptor(Label="vvsc", Tag=2, Type=typing.Optional[bytes]),
                     ])
 
             vendorID: 'typing.Optional[uint]' = None
-            vIDVerificationStatement: 'typing.Optional[bytes]' = None
+            VIDVerificationStatement: 'typing.Optional[bytes]' = None
             vvsc: 'typing.Optional[bytes]' = None
 
         @dataclass
@@ -345,11 +345,11 @@ class OperationalCredentials(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="nocsrElements", Tag=0, Type=bytes),
+                        ClusterObjectFieldDescriptor(Label="NOCSRElements", Tag=0, Type=bytes),
                         ClusterObjectFieldDescriptor(Label="attestationSignature", Tag=1, Type=bytes),
                     ])
 
-            nocsrElements: 'bytes' = b""
+            NOCSRElements: 'bytes' = b""
             attestationSignature: 'bytes' = b""
 
         @dataclass
