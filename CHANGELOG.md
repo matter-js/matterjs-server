@@ -7,7 +7,7 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
-## __WORK IN PROGRESS__
+## 0.5.6 (2026-03-12)
 
 - Fix: Fixes event payload in websocket messages to be correctly encoded like the Python server
 - Fix: When querying IPs always include the IP of the current session (if any) and/or the fallback IP
