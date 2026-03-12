@@ -1,5 +1,7 @@
 """Smoke tests verifying all HA integration imports resolve."""
 
+from typing import Any
+
 
 def test_client_imports():
     """All client module imports used by HA integration must resolve."""
@@ -145,7 +147,7 @@ def test_administrator_commissioning_timed_invoke() -> None:
     assert cls.must_use_timed_invoke is True, "OpenCommissioningWindow.must_use_timed_invoke must return True"
 
 
-def _assert_mode_option_struct_fields(struct: type, cluster_name: str) -> None:
+def _assert_mode_option_struct_fields(struct: Any, cluster_name: str) -> None:
     # Use __dataclass_fields__ because modeTags uses default_factory and
     # therefore has no class-level attribute (hasattr returns False for it).
     fields = set(struct.__dataclass_fields__.keys())
