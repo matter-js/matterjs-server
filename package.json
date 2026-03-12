@@ -47,7 +47,7 @@
         }
     },
     "devDependencies": {
-        "@matter/testing": "0.17.0-alpha.0-20260311-5fb2f183e",
+        "@matter/testing": "0.17.0-alpha.0-20260312-920b3a4ec",
         "@types/mocha": "^10.0.10",
         "glob": "^13.0.6",
         "globals": "^17.4.0",

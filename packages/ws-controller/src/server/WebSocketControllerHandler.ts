@@ -186,6 +186,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 if (this.#closed || !listening) return;
                 const { path, events } = data;
                 const { endpointId, clusterId, eventId } = path;
+                const clusterData = ClusterMap[clusterId];
 
                 for (const event of events) {
                     let timestamp: number | bigint;
@@ -202,6 +203,12 @@ export class WebSocketControllerHandler implements WebServerHandler {
                         timestampType = 2; // POSIX (fallback)
                     }
 
+                    const eventModel = clusterData?.events[eventId];
+                    const convertedData =
+                        event.data !== undefined
+                            ? convertMatterToWebSocketTagBased(event.data, eventModel, clusterData?.model)
+                            : null;
+
                     const nodeEvent: MatterNodeEvent = {
                         node_id: nodeId,
                         endpoint_id: endpointId,
@@ -211,7 +218,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                         priority: event.priority,
                         timestamp,
                         timestamp_type: timestampType,
-                        data: event.data ?? null,
+                        data: convertedData,
                     };
 
                     // Store event in the history buffer

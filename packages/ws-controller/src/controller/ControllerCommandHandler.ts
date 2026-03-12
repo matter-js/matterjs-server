@@ -1072,19 +1072,22 @@ export class ControllerCommandHandler {
     }
 
     async getNodeIpAddresses(nodeId: NodeId, preferCache = true) {
-        if (this.#peers !== undefined && preferCache) {
-            const peer = this.#peers.for(this.#controller.fabric.addressOf(nodeId));
-            const addresses = new Array<string>();
-            for (const address of peer.service.addresses) {
-                addresses.push(address.ip);
+        const addresses = new Set<string>();
+        const peer = this.#peers?.for(this.#controller.fabric.addressOf(nodeId));
+        if (!preferCache) {
+            // Try mDNS discovery first (like Python matter server does)
+            for (const address of await this.#discoverNodeAddressesViaMdns(nodeId)) {
+                addresses.add(address);
             }
-            return addresses;
         }
-
-        // Try mDNS discovery first (like Python matter server does)
-        const addresses = await this.#discoverNodeAddressesViaMdns(nodeId);
-        if (addresses.length > 0) {
-            return addresses;
+        if (peer) {
+            for (const address of peer.service.addresses) {
+                addresses.add(address.ip);
+            }
+            const sessionIp = peer.newestSession?.channel.networkAddress?.ip;
+            if (sessionIp) {
+                addresses.add(sessionIp);
+            }
         }
 
         // Fall back to commissioning addresses from the node state if mDNS fails
@@ -1098,12 +1101,12 @@ export class ControllerCommandHandler {
             const fallbackAddresses = commissioningAddresses
                 .filter((addr): addr is ServerAddressUdp => addr.type === "udp")
                 .map(addr => addr.ip);
-            if (fallbackAddresses.length > 0) {
-                return fallbackAddresses;
+            for (const address of fallbackAddresses) {
+                addresses.add(address);
             }
         }
 
-        return [];
+        return [...addresses.values()];
     }
 
     /**

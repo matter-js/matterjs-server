@@ -7,6 +7,14 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
+## __WORK IN PROGRESS__
+
+- Fix: Fixes event payload in websocket messages to be correctly encoded like the Python server
+- Fix: When querying IPs always include the IP of the current session (if any) and/or the fallback IP
+- Fix: Update matter.js to the latest 0.17.0-nightly
+    - Enhances session and OTA management when devices reboot surprisingly and push new sessions
+    - Optimized OTA process for Ikea "multiple reboots" OTA updates
+
 ## 0.5.5 (2026-03-11)
 - Enhancement: Adds log file rotation (seven daily backups, rotated on startup and every 24 hours) when --log-file is specified
 - Enhancement: Allows configuration of the DCL location and networking settings
