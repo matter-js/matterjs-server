@@ -7,7 +7,7 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
-## __WORK IN PROGRESS__
+## 0.5.7 (2026-03-13)
 - Fix: Corrects event payload encoding in websocket messages to match the Python server (and fixes bug from 0.5.6)
 - Fix: Only stream attribute updates after start_listening like all other event-style websocket messages
 - Fix: Try to optimize requested IP list for the node
