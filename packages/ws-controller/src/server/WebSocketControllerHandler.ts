@@ -165,7 +165,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
             // Register all event listeners using ObserverGroup for easy cleanup
             observers.on(this.#commandHandler.events.attributeChanged, (nodeId, data) => {
-                if (this.#closed) return;
+                if (this.#closed || !listening) return;
                 const { endpointId, clusterId, attributeId } = data.path;
                 const pathStr = `${endpointId}/${clusterId}/${attributeId}`;
                 const clusterData = ClusterMap[clusterId];
@@ -206,7 +206,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     const eventModel = clusterData?.events[eventId];
                     const convertedData =
                         event.data !== undefined
-                            ? convertMatterToWebSocketTagBased(event.data, eventModel, clusterData?.model)
+                            ? convertMatterToWebSocketNameBased(event.data, eventModel, clusterData?.model)
                             : null;
 
                     const nodeEvent: MatterNodeEvent = {
@@ -382,7 +382,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
     ): Promise<{ response: ErrorResultMessage | SuccessResultMessage<any>; enableListeners?: boolean }> {
         let messageId: string | undefined;
         try {
-            logger.debug(`[${connId}] Received WebSocket request`, () => data);
+            logger.debug(`[${connId}] WebSocket request`, () => data);
             const request = parseBigIntAwareJson(data) as { message_id: string; command: string; args: any };
             const { command, args } = request;
             messageId = request.message_id;
@@ -491,9 +491,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 throw ServerError.sdkStackError("Command handler returned no response");
             }
             if (skipMessageContentInLogFor.includes(command)) {
-                logger.debug(`[${connId}] WebSocket request (${command}) handled`, messageId);
+                logger.debug(`[${connId}] WebSocket response (${command})`, messageId);
             } else {
-                logger.debug(`[${connId}] WebSocket request (${command}) handled`, messageId, result);
+                logger.debug(`[${connId}] WebSocket response (${command})`, messageId, result);
             }
             return {
                 response: {

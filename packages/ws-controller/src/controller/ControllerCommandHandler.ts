@@ -42,7 +42,6 @@ import {
     Read,
     SupportedTransportsSchema,
     PeerSet,
-    getOperationalDeviceQname,
 } from "@matter/main/protocol";
 import {
     Attribute,
@@ -1074,16 +1073,18 @@ export class ControllerCommandHandler {
     async getNodeIpAddresses(nodeId: NodeId, preferCache = true) {
         const addresses = new Set<string>();
         const peer = this.#peers?.for(this.#controller.fabric.addressOf(nodeId));
-        if (!preferCache) {
+        if (peer) {
+            for (const address of peer.service.addresses) {
+                addresses.add(address.ip);
+            }
+        }
+        if (!preferCache || !addresses.size) {
             // Try mDNS discovery first (like Python matter server does)
             for (const address of await this.#discoverNodeAddressesViaMdns(nodeId)) {
                 addresses.add(address);
             }
         }
         if (peer) {
-            for (const address of peer.service.addresses) {
-                addresses.add(address.ip);
-            }
             const sessionIp = peer.newestSession?.channel.networkAddress?.ip;
             if (sessionIp) {
                 addresses.add(sessionIp);
@@ -1094,10 +1095,6 @@ export class ControllerCommandHandler {
         const node = this.#nodes.get(nodeId);
         const commissioningAddresses = node.node.maybeStateOf(CommissioningClient)?.addresses;
         if (commissioningAddresses !== undefined && commissioningAddresses.length > 0) {
-            logger.info(
-                `Node ${this.formatNode(nodeId)}: mDNS discovery returned no addresses, using commissioning addresses`,
-                commissioningAddresses,
-            );
             const fallbackAddresses = commissioningAddresses
                 .filter((addr): addr is ServerAddressUdp => addr.type === "udp")
                 .map(addr => addr.ip);
@@ -1126,7 +1123,7 @@ export class ControllerCommandHandler {
             const names = peer.service.names;
             await names.solicitor.discover({
                 abort,
-                name: names.get(getOperationalDeviceQname(this.#controller.fabric.globalId, nodeId)),
+                name: peer.service.name,
                 recordTypes: [DnsRecordType.SRV],
             });
 
