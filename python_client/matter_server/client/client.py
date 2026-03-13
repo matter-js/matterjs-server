@@ -4,22 +4,20 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING, Any, Final, cast
+from typing import TYPE_CHECKING, Any, Final, Self, cast
 import uuid
 
 from chip.clusters import Objects as Clusters
 from chip.clusters.Types import NullValue
-
 from matter_server.common.errors import NodeNotExists, exception_from_error_code
-
-from ..common.helpers.util import (
+from matter_server.common.helpers.util import (
     convert_ip_address,
     convert_mac_address,
     create_attribute_path_from_attribute,
     dataclass_from_dict,
     dataclass_to_dict,
 )
-from ..common.models import (
+from matter_server.common.models import (
     APICommand,
     CommandMessage,
     CommissionableNodeData,
@@ -37,6 +35,7 @@ from ..common.models import (
     ServerInfoMessage,
     SuccessResultMessage,
 )
+
 from .connection import MatterClientConnection
 from .exceptions import ConnectionClosed, InvalidState, ServerVersionTooOld
 from .models.node import (
@@ -52,6 +51,7 @@ if TYPE_CHECKING:
     from types import TracebackType
 
     from aiohttp import ClientSession
+
     from chip.clusters.Objects import ClusterCommand
 
 SUB_WILDCARD: Final = "*"
@@ -62,7 +62,7 @@ SUB_WILDCARD: Final = "*"
 class MatterClient:
     """Manage a Matter server over WebSockets."""
 
-    def __init__(self, ws_server_url: str, aiohttp_session: ClientSession):
+    def __init__(self, ws_server_url: str, aiohttp_session: ClientSession) -> None:
         """Initialize the Client class."""
         self.connection = MatterClientConnection(ws_server_url, aiohttp_session)
         self.logger = logging.getLogger(__package__)
@@ -98,16 +98,10 @@ class MatterClient:
         # for fast lookups we create a key based on the filters, allowing
         # a "catch all" with a wildcard (*).
         _event_filter: str
-        if event_filter is None:
-            _event_filter = SUB_WILDCARD
-        else:
-            _event_filter = event_filter.value
+        _event_filter = SUB_WILDCARD if event_filter is None else event_filter.value
 
         _node_filter: str
-        if node_filter is None:
-            _node_filter = SUB_WILDCARD
-        else:
-            _node_filter = str(node_filter)
+        _node_filter = SUB_WILDCARD if node_filter is None else str(node_filter)
 
         if attr_path_filter is None:
             attr_path_filter = SUB_WILDCARD
@@ -188,7 +182,7 @@ class MatterClient:
     async def open_commissioning_window(
         self,
         node_id: int,
-        timeout: int = 300,  # noqa: ASYNC109 timeout parameter required for native timeout
+        timeout: int = 300,
         iteration: int = 1000,
         option: int = 1,
         discriminator: int | None = None,
@@ -225,7 +219,6 @@ class MatterClient:
 
         Returns a list of MatterFabricData objects.
         """
-
         node = self.get_node(node_id)
 
         # refresh node's fabrics if the node is available so we have the latest info
@@ -306,10 +299,10 @@ class MatterClient:
             if not network_interface.isOperational:
                 continue
             # enumerate ipv4 and ipv6 addresses
-            for ipv4_address_hex in network_interface.IPv4Addresses:
+            for ipv4_address_hex in network_interface.iPv4Addresses:
                 ipv4_address = convert_ip_address(ipv4_address_hex)
                 ip_addresses.append(ipv4_address)
-            for ipv6_address_hex in network_interface.IPv6Addresses:
+            for ipv6_address_hex in network_interface.iPv6Addresses:
                 ipv6_address = convert_ip_address(ipv6_address_hex, True)
                 ip_addresses.append(ipv6_address)
             break
@@ -395,7 +388,7 @@ class MatterClient:
             last_network_id := node.get_attribute_value(
                 0,
                 cluster=None,
-                attribute=Clusters.NetworkCommissioning.Attributes.LastNetworkID,
+                attribute=Clusters.NetworkCommissioning.Attributes.LastNetworkId,
             )
         ):
             if isinstance(last_network_id, bytes):
@@ -553,7 +546,8 @@ class MatterClient:
         **kwargs: Any,
     ) -> CommandMessage:
         if not self.connection.connected:
-            raise InvalidState("Not connected")
+            msg = "Not connected"
+            raise InvalidState(msg)
 
         if (
             require_schema is not None
@@ -579,7 +573,8 @@ class MatterClient:
     ) -> Any:
         """Send a command and get a response."""
         if not self._loop:
-            raise InvalidState("Not connected")
+            msg = "Not connected"
+            raise InvalidState(msg)
 
         message = self._prepare_message(command, require_schema, **kwargs)
         future: asyncio.Future[Any] = self._loop.create_future()
@@ -597,7 +592,6 @@ class MatterClient:
         **kwargs: Any,
     ) -> None:
         """Send a command without waiting for the response."""
-
         message = self._prepare_message(command, require_schema, **kwargs)
         await self.connection.send_message(message)
 
@@ -788,7 +782,7 @@ class MatterClient:
                     for callback in self._subscribers.get(key, []):
                         callback(event, data)
 
-    async def __aenter__(self) -> "MatterClient":
+    async def __aenter__(self) -> Self:
         """Initialize and connect the Matter Websocket client."""
         await self.connect()
         return self

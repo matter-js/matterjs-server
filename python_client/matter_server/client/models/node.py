@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from chip.clusters import Objects as Clusters
 from chip.clusters.ClusterObjects import ALL_ATTRIBUTES, ALL_CLUSTERS
-
 from matter_server.common.helpers.util import (
     create_attribute_path,
     parse_attribute_path,
@@ -134,7 +133,8 @@ class MatterEndpoint:
         if cluster is None:
             # allow sending None for Cluster to auto resolve it from the Attribute
             if isinstance(attribute, int):
-                raise TypeError("Attribute can not be integer if Cluster is omitted")
+                msg = "Attribute can not be integer if Cluster is omitted"
+                raise TypeError(msg)
             cluster = attribute.cluster_id
         # get cluster first, grab value from cluster instance next
         if cluster_obj := self.get_cluster(cluster):
@@ -166,7 +166,8 @@ class MatterEndpoint:
         """
         if cluster is None:
             if isinstance(attribute, int):
-                raise TypeError("Attribute can not be integer if Cluster is omitted")
+                msg = "Attribute can not be integer if Cluster is omitted"
+                raise TypeError(msg)
             # allow sending None for Cluster to auto resolve it from the Attribute
             cluster = attribute.cluster_id
         cluster_id = cluster if isinstance(cluster, int) else cluster.id
@@ -224,6 +225,8 @@ class MatterEndpoint:
         # extract device types from Descriptor Cluster
         if cluster := self.get_cluster(Clusters.Descriptor):
             for dev_info in cluster.deviceTypeList:
+                if dev_info is None:
+                    continue
                 device_type = DEVICE_TYPES.get(dev_info.deviceType)
                 if device_type is None:
                     LOGGER.debug("Found unknown device type %s", dev_info)

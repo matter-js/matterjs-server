@@ -16,8 +16,29 @@ env:
   PYTHON_VERSION: "3.12"
 
 jobs:
+  lint:
+    name: Python client linting and type checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Python client with test dependencies
+        run: pip install -e "python_client/[test]"
+
+      - name: Run ruff linter
+        run: cd python_client && ruff check . --exclude chip
+
+      - name: Run mypy type checker
+        run: cd python_client && mypy .
+
   unit-tests:
     name: Python client unit tests
+    needs: lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -46,6 +67,7 @@ jobs:
 
   integration-tests:
     name: Python client integration tests
+    needs: lint
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

@@ -1,0 +1,4 @@
+# Mark auto-generated Python cluster files as generated for GitHub
+python_client/chip/clusters/objects/*.py linguist-generated=true
+python_client/chip/clusters/Objects.py linguist-generated=true
+python_client/matter_server/client/models/device_types.py linguist-generated=true
