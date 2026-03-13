@@ -8,13 +8,13 @@ This page shows a detailed overview of the changes between versions without the 
 -->
 
 ## __WORK IN PROGRESS__
-- Fix: Fixes event payload in websocket messages to be really correctly encoded like the Python server (and fix bug from 0.5.6)
+- Fix: Corrects event payload encoding in websocket messages to match the Python server (and fixes bug from 0.5.6)
 - Fix: Only stream attribute updates after start_listening like all other event-style websocket messages
 - Fix: Try to optimize requested IP list for the node
 
 ## 0.5.6 (2026-03-12)
 
-- Fix: Fixes event payload in websocket messages to be correctly encoded like the Python server
+- Fix: Corrects event payload encoding in websocket messages to match the Python server
 - Fix: When querying IPs always include the IP of the current session (if any) and/or the fallback IP
 - Fix: Update matter.js to the latest 0.17.0-nightly
     - Enhances session and OTA management when devices reboot surprisingly and push new sessions
