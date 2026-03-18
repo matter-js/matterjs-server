@@ -22,7 +22,7 @@
         "bundle": "rollup -c"
     },
     "devDependencies": {
-        "@babel/preset-env": "^7.29.0",
+        "@babel/preset-env": "^7.29.2",
         "@matter/main": "0.17.0-alpha.0-20260312-920b3a4ec",
         "@rollup/plugin-babel": "^7.0.0",
         "@rollup/plugin-commonjs": "^29.0.2",
