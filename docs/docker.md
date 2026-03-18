@@ -235,3 +235,16 @@ If you need to discover Matter devices via the hosts BLE, you can use this worka
 3. Run docker with the root user `docker run --user=0:0 …` (for compose: `user: 0:0`)
 
 However, be aware this workaround effectively disables container isolation. For this reason, using other means of device commissioning (e.g. via the Home Assistant app) are preferred to applying this workaround.
+
+
+### Pinging device fails
+
+When pinging a Matter device (e.g. via the Home Assistant UI) the matter.js server uses the system `ping` or `ping6` command to send an ICMP echo request to the device and listen for its response.
+
+To allow this, modern Linux distributions use a sysctl `net.ipv4.ping_group_range` with a value of `0 2147483647`, meaning all user groups may send echo requests and responses (but *not* any other ICMP packet, see below).
+
+If your host still has the old value of `1 0` (no pings allowed for anyone), it is recommended to either
+- update the value to include group id 1000, or to
+- grant the kernel capability `CAP_NET_RAW` instead: `docker run --cap-add NET_RAW` (for compose: `cap_add: NET_RAW`)
+
+Note that the latter is a broader permission: it could be exploited to craft malicious network packets of any form.
