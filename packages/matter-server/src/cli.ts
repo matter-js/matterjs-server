@@ -11,7 +11,7 @@
 
 import { Command, InvalidArgumentError, Option } from "commander";
 import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, networkInterfaces } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -207,6 +207,25 @@ export function parseCliArgs(argv?: string[]): CliOptions {
         listenAddress = [process.env.LISTEN_ADDRESS];
     }
 
+    // Substitute {{interface}} patterns with its primary IP addresse
+    if (listenAddress) {
+      const interfaces = networkInterfaces();
+      listenAddress = listenAddress.map((address) => {
+        const match = address.match(/^{{(.+)}}$/);
+        if (match) {
+          const interfaceName = match[1];
+          const ipv4Address = interfaces[interfaceName]?.find(
+            (addr) => addr.family === "IPv4" && !addr.internal,
+          );
+          if (!ipv4Address)
+            throw new Error(
+              `No IPv4 address found for interface ${interfaceName}`,
+            );
+          return ipv4Address.address;
+        }
+        return address;
+      });
+    }
     return {
         vendorId: opts.vendorid,
         fabricId: opts.fabricid ?? undefined,
