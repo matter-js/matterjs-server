@@ -188,6 +188,11 @@ export class MatterClient {
         await this.sendCommand("interview_node", 0, { node_id: nodeId }, timeout);
     }
 
+    async setCustomNodeLabel(nodeId: number | bigint, label: string, timeout?: number): Promise<void> {
+        // Set a custom user-defined label for a node. Empty string to clear.
+        await this.sendCommand("set_custom_node_label", 0, { node_id: nodeId, label }, timeout);
+    }
+
     async importTestNode(dump: string, timeout?: number): Promise<void> {
         // Import test node(s) from a HA or Matter server diagnostics dump.
         await this.sendCommand("import_test_node", 0, { dump }, timeout);

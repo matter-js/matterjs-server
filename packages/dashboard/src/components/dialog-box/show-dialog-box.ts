@@ -28,6 +28,25 @@ const showDialogBox = async (type: "alert" | "prompt", dialogParams: PromptDialo
     });
 };
 
+export interface InputDialogBoxParams {
+    title: string;
+    text?: string;
+    label?: string;
+    defaultValue?: string;
+    confirmText?: string;
+    cancelText?: string;
+}
+
 export const showAlertDialog = (dialogParams: BaseDialogBoxParams) => showDialogBox("alert", dialogParams);
 
 export const showPromptDialog = (dialogParams: BaseDialogBoxParams) => showDialogBox("prompt", dialogParams);
+
+export const showInputDialog = async (dialogParams: InputDialogBoxParams): Promise<string | null> => {
+    await import("./input-dialog-box.js");
+    return new Promise<string | null>(resolve => {
+        const dialog = document.createElement("input-dialog-box");
+        dialog.params = dialogParams;
+        dialog.dialogResult = resolve;
+        document.body.appendChild(dialog);
+    });
+};

@@ -21,6 +21,11 @@ export interface MatterNodeData {
      * Optional - not available in Python Matter Server.
      */
     matter_version?: string;
+    /**
+     * Custom user-defined label for the node (optional).
+     * Stored server-side, separate from Matter's NodeLabel attribute (0/40/5).
+     */
+    custom_label?: string;
 }
 
 export class MatterNode {
@@ -37,6 +42,11 @@ export class MatterNode {
      * Optional - not available in Python Matter Server.
      */
     matter_version?: string;
+    /**
+     * Custom user-defined label for the node (optional).
+     * Stored server-side, separate from Matter's NodeLabel attribute (0/40/5).
+     */
+    custom_label?: string;
 
     constructor(public data: MatterNodeData) {
         this.node_id = data.node_id;
@@ -48,6 +58,11 @@ export class MatterNode {
         this.attributes = data.attributes;
         this.attribute_subscriptions = data.attribute_subscriptions;
         this.matter_version = data.matter_version;
+        this.custom_label = data.custom_label;
+    }
+
+    get customLabel(): string {
+        return this.custom_label ?? "";
     }
 
     get nodeLabel(): string {

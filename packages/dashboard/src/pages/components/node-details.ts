@@ -13,11 +13,11 @@ import "@material/web/list/list";
 import "@material/web/list/list-item";
 import { consume } from "@lit/context";
 import { MatterClient, MatterNode, UpdateSource } from "@matter-server/ws-client";
-import { mdiChatProcessing, mdiLink, mdiShareVariant, mdiTrashCan, mdiUpdate } from "@mdi/js";
+import { mdiChatProcessing, mdiLink, mdiPencil, mdiShareVariant, mdiTrashCan, mdiUpdate } from "@mdi/js";
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { DeviceType } from "../../client/models/descriptions.js";
-import { showAlertDialog, showPromptDialog } from "../../components/dialog-box/show-dialog-box.js";
+import { showAlertDialog, showInputDialog, showPromptDialog } from "../../components/dialog-box/show-dialog-box.js";
 import { showNodeBindingDialog } from "../../components/dialogs/binding/show-node-binding-dialog.js";
 import { handleAsync } from "../../util/async-handler.js";
 import "../../components/ha-svg-icon";
@@ -80,7 +80,10 @@ export class NodeDetails extends LitElement {
                 <md-list-item>
                     <ha-svg-icon slot="start" class="device-icon" .path=${getDeviceIcon(this.node)}></ha-svg-icon>
                     <div slot="headline">
-                        <b>${this.node.nodeLabel || "Node Info"}</b>
+                        <b>${this.node.customLabel || this.node.nodeLabel || "Node Info"}</b>
+                        <md-icon-button class="edit-label-btn" @click=${handleAsync(() => this._editCustomLabel())}>
+                            <ha-svg-icon .path=${mdiPencil}></ha-svg-icon>
+                        </md-icon-button>
                         ${
                             this.node.available
                                 ? nothing
@@ -162,6 +165,25 @@ export class NodeDetails extends LitElement {
                 </md-list-item>
             </md-list>
         `;
+    }
+
+    private async _editCustomLabel() {
+        const newLabel = await showInputDialog({
+            title: "Edit Node Label",
+            text: "Enter a custom label for this node. Leave empty to clear.",
+            label: "Custom label",
+            defaultValue: this.node!.customLabel,
+            confirmText: "Save",
+        });
+        if (newLabel === null) return; // cancelled
+        try {
+            await this.client.setCustomNodeLabel(this.node!.node_id, newLabel);
+        } catch (err: any) {
+            showAlertDialog({
+                title: "Failed to set node label",
+                text: err.message,
+            });
+        }
     }
 
     private async _reinterview() {
@@ -339,6 +361,13 @@ export class NodeDetails extends LitElement {
             color: var(--danger-color);
             font-weight: bold;
             font-size: 0.8em;
+        }
+
+        .edit-label-btn {
+            --md-icon-button-icon-size: 18px;
+            --md-icon-button-state-layer-height: 28px;
+            --md-icon-button-state-layer-width: 28px;
+            vertical-align: middle;
         }
     `;
 }

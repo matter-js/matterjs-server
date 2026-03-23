@@ -494,6 +494,10 @@ export function getSignalColorFromLqi(lqi: number): string {
  * Format: nodeLabel || productName (serialNumber)
  */
 export function getDeviceName(node: MatterNode): string {
+    if (node.customLabel) {
+        return node.customLabel;
+    }
+
     if (node.nodeLabel) {
         return node.nodeLabel;
     }

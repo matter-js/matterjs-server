@@ -169,6 +169,10 @@ export interface APICommands {
         requestArgs: { console_loglevel?: LogLevelString; file_loglevel?: LogLevelString };
         response: LogLevelResponse;
     };
+    set_custom_node_label: {
+        requestArgs: { node_id: number | bigint; label: string };
+        response: null;
+    };
 }
 
 /** Log level string values matching CLI options */

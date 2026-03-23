@@ -484,6 +484,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 case "set_loglevel":
                     result = this.#handleSetLogLevel(args);
                     break;
+                case "set_custom_node_label":
+                    result = await this.#handleSetCustomNodeLabel(args);
+                    break;
                 default:
                     throw ServerError.invalidCommand(command);
             }
@@ -677,6 +680,10 @@ export class WebSocketControllerHandler implements WebServerHandler {
         // Include test nodes
         for (const testNode of this.#testNodeHandler.getNodes()) {
             if (!only_available || testNode.available) {
+                const customLabel = this.#config.getNodeLabel(String(testNode.node_id));
+                if (customLabel) {
+                    testNode.custom_label = customLabel;
+                }
                 nodeDetails.push(testNode);
             }
         }
@@ -693,10 +700,17 @@ export class WebSocketControllerHandler implements WebServerHandler {
         }
 
         // Pass the last interview date for real nodes
+        let details: MatterNode;
         if (handler === this.#commandHandler) {
-            return this.#commandHandler.getNodeDetails(nodeId, this.#lastInterviewDates.get(nodeId));
+            details = this.#commandHandler.getNodeDetails(nodeId, this.#lastInterviewDates.get(nodeId));
+        } else {
+            details = await handler.getNodeDetails(nodeId);
         }
-        return handler.getNodeDetails(nodeId);
+        const customLabel = this.#config.getNodeLabel(String(nodeId));
+        if (customLabel) {
+            details.custom_label = customLabel;
+        }
+        return details;
     }
 
     async #handleGetNodeIpAddresses(
@@ -990,9 +1004,42 @@ export class WebSocketControllerHandler implements WebServerHandler {
         return await this.#commandHandler.updateNode(NodeId(node_id), targetVersion);
     }
 
+    async #handleSetCustomNodeLabel(
+        args: ArgsOf<"set_custom_node_label">,
+    ): Promise<ResponseOf<"set_custom_node_label">> {
+        const { node_id, label } = args;
+        const nodeId = NodeId(node_id);
+        const handler = this.#handlerFor(node_id);
+
+        if (!handler.hasNode(nodeId)) {
+            throw ServerError.nodeNotExists(node_id);
+        }
+
+        await this.#config.setNodeLabel(String(nodeId), label);
+
+        // Broadcast node_updated so all connected clients see the new label
+        if (handler === this.#commandHandler) {
+            this.#broadcastEvent("node_updated", this.#collectNodeDetails(nodeId));
+        } else {
+            const details = await handler.getNodeDetails(nodeId);
+            const customLabel = this.#config.getNodeLabel(String(nodeId));
+            if (customLabel) {
+                details.custom_label = customLabel;
+            }
+            this.#broadcastEvent("node_updated", details);
+        }
+
+        return null;
+    }
+
     #collectNodeDetails(nodeId: NodeId): MatterNode {
         const lastInterviewDate = this.#lastInterviewDates.get(nodeId);
-        return this.#commandHandler.getNodeDetails(nodeId, lastInterviewDate);
+        const details = this.#commandHandler.getNodeDetails(nodeId, lastInterviewDate);
+        const customLabel = this.#config.getNodeLabel(String(nodeId));
+        if (customLabel) {
+            details.custom_label = customLabel;
+        }
+        return details;
     }
 
     #convertCommandDataToWebSocket(

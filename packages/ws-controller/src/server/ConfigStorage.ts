@@ -31,6 +31,8 @@ export class ConfigStorage {
     #storageService?: StorageService;
     #storage?: StorageManager;
     #configStore?: StorageContext;
+    #nodeLabelStore?: StorageContext;
+    readonly #nodeLabels = new Map<string, string>();
     readonly #data: ConfigData = {
         nextNodeId: 1,
         fabricLabel: "HomeAssistant",
@@ -80,6 +82,18 @@ export class ConfigStorage {
             ? await this.#configStore.get<string>("threadDataset", "")
             : undefined;
         await this.set({ fabricLabel, nextNodeId, wifiSsid, wifiCredentials, threadDataset });
+
+        // Load custom node labels
+        this.#nodeLabelStore = this.#storage.createContext("node-labels");
+        for (const key of await this.#nodeLabelStore.keys()) {
+            const label = await this.#nodeLabelStore.get<string>(key);
+            if (label) {
+                this.#nodeLabels.set(key, label);
+            }
+        }
+        if (this.#nodeLabels.size > 0) {
+            logger.info(`Loaded ${this.#nodeLabels.size} custom node label(s)`);
+        }
     }
 
     get fabricLabel() {
@@ -96,6 +110,25 @@ export class ConfigStorage {
     }
     get threadDataset() {
         return this.#data.threadDataset;
+    }
+
+    getNodeLabel(nodeId: string): string | undefined {
+        return this.#nodeLabels.get(nodeId);
+    }
+
+    async setNodeLabel(nodeId: string, label: string) {
+        if (!this.#nodeLabelStore) {
+            throw new Error("Storage not open");
+        }
+        if (label) {
+            this.#nodeLabels.set(nodeId, label);
+            await this.#nodeLabelStore.set(nodeId, label);
+            logger.info(`Set custom label for node ${nodeId} to "${label}"`);
+        } else {
+            this.#nodeLabels.delete(nodeId);
+            this.#nodeLabelStore.delete(nodeId);
+            logger.info(`Cleared custom label for node ${nodeId}`);
+        }
     }
 
     async set(data: Partial<ConfigData>) {

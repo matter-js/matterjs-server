@@ -106,7 +106,7 @@ class MatterServerView extends LitElement {
                                     }
                                 </div>
                                 <div slot="supporting-text">
-                                    ${node.nodeLabel ? `${node.nodeLabel} | ` : nothing} ${node.vendorName} |
+                                    ${node.customLabel ? `${node.customLabel} | ` : nothing}${node.nodeLabel ? `${node.nodeLabel} | ` : nothing}${node.vendorName} |
                                     ${node.productName}
                                 </div>
                                 <ha-svg-icon slot="end" .path=${mdiChevronRight}></ha-svg-icon>

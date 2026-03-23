@@ -555,6 +555,54 @@ describe("Integration Test", function () {
     });
 
     // =========================================================================
+    // Custom Node Label Tests
+    // =========================================================================
+
+    describe("Custom Node Label", function () {
+        it("should set custom node label and receive node_updated event", async function () {
+            client.clearEvents();
+
+            await client.setCustomNodeLabel(commissionedNodeId, "My Kitchen Plug");
+
+            // Should receive node_updated event with custom_label
+            const event = await client.waitForEvent(
+                "node_updated",
+                data => Number((data as { node_id: number }).node_id) === commissionedNodeId,
+                5_000,
+            );
+            expect(event).to.exist;
+
+            const node = event.data as { node_id: number; custom_label?: string };
+            expect(node.custom_label).to.equal("My Kitchen Plug");
+        });
+
+        it("should include custom_label in get_node response", async function () {
+            // Label was set in the previous test
+            const nodes = await client.getNodes();
+            const node = nodes.find(n => Number(n.node_id) === commissionedNodeId);
+            expect(node).to.exist;
+            expect(node!.custom_label).to.equal("My Kitchen Plug");
+        });
+
+        it("should clear custom label with empty string", async function () {
+            client.clearEvents();
+
+            await client.setCustomNodeLabel(commissionedNodeId, "");
+
+            const event = await client.waitForEvent(
+                "node_updated",
+                data => Number((data as { node_id: number }).node_id) === commissionedNodeId,
+                5_000,
+            );
+            expect(event).to.exist;
+
+            // custom_label should be absent or empty
+            const node = event.data as { node_id: number; custom_label?: string };
+            expect(node.custom_label ?? "").to.equal("");
+        });
+    });
+
+    // =========================================================================
     // Commissioning Window Tests
     // =========================================================================
 

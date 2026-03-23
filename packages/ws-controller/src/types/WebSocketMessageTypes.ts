@@ -22,6 +22,11 @@ export interface MatterNode {
      * Optional - not available in Python Matter Server.
      */
     matter_version?: string;
+    /**
+     * Custom user-defined label for the node (optional).
+     * Stored server-side, separate from Matter's NodeLabel attribute (0/40/5).
+     */
+    custom_label?: string;
 }
 
 export interface APICommands {
@@ -230,6 +235,14 @@ export interface APICommands {
             bindings: BindingTarget[];
         };
         response: AttributeWriteResult[] | null;
+    };
+    set_custom_node_label: {
+        requestArgs: {
+            node_id: number | bigint;
+            /** Custom label string. Empty string to clear. */
+            label: string;
+        };
+        response: null;
     };
     get_loglevel: {
         requestArgs: {};

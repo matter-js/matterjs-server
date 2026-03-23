@@ -10,6 +10,7 @@ import {
     ConnectionClosedError,
     DEFAULT_COMMAND_TIMEOUT,
     MatterClient,
+    MatterNode,
     WebSocketLike,
 } from "../src/index.js";
 import { parseBigIntAwareJson, toBigIntAwareJson } from "../src/json-utils.js";
@@ -301,6 +302,34 @@ describe("ws-client", () => {
                 expect(receivedDump).to.equal(dumpWithLargeNumber);
             });
 
+            it("should send set_custom_node_label command", async () => {
+                let receivedArgs: { node_id: number | bigint; label: string } | undefined;
+                server.onCommand("set_custom_node_label", args => {
+                    receivedArgs = args as { node_id: number | bigint; label: string };
+                    return null;
+                });
+                await client.connect();
+
+                await client.setCustomNodeLabel(BigInt(1), "My Custom Label");
+
+                expect(receivedArgs).to.exist;
+                expect(receivedArgs!.label).to.equal("My Custom Label");
+            });
+
+            it("should send empty label to clear custom node label", async () => {
+                let receivedArgs: { node_id: number | bigint; label: string } | undefined;
+                server.onCommand("set_custom_node_label", args => {
+                    receivedArgs = args as { node_id: number | bigint; label: string };
+                    return null;
+                });
+                await client.connect();
+
+                await client.setCustomNodeLabel(BigInt(1), "");
+
+                expect(receivedArgs).to.exist;
+                expect(receivedArgs!.label).to.equal("");
+            });
+
             it("should handle error responses", async () => {
                 server.onCommand("remove_node", () => {
                     throw new Error("Node not found");
@@ -378,6 +407,77 @@ describe("ws-client", () => {
                 expect(nodesChangedCalled).to.be.true;
                 const nodeKey = String(nodeId);
                 expect(client.nodes[nodeKey]?.attributes["1/6/0"]).to.equal(true);
+            });
+        });
+
+        describe("MatterNode model", () => {
+            it("should return customLabel from custom_label field", () => {
+                const node = new MatterNode({
+                    node_id: 1,
+                    date_commissioned: "2025-01-01T00:00:00.000000",
+                    last_interview: "2025-01-01T00:00:00.000000",
+                    interview_version: 6,
+                    available: true,
+                    is_bridge: false,
+                    attributes: {},
+                    attribute_subscriptions: [],
+                    custom_label: "My Device",
+                });
+                expect(node.customLabel).to.equal("My Device");
+                expect(node.custom_label).to.equal("My Device");
+            });
+
+            it("should return empty string when custom_label is undefined", () => {
+                const node = new MatterNode({
+                    node_id: 1,
+                    date_commissioned: "2025-01-01T00:00:00.000000",
+                    last_interview: "2025-01-01T00:00:00.000000",
+                    interview_version: 6,
+                    available: true,
+                    is_bridge: false,
+                    attributes: {},
+                    attribute_subscriptions: [],
+                });
+                expect(node.customLabel).to.equal("");
+                expect(node.custom_label).to.be.undefined;
+            });
+
+            it("should preserve custom_label through update()", () => {
+                const node = new MatterNode({
+                    node_id: 1,
+                    date_commissioned: "2025-01-01T00:00:00.000000",
+                    last_interview: "2025-01-01T00:00:00.000000",
+                    interview_version: 6,
+                    available: true,
+                    is_bridge: false,
+                    attributes: {},
+                    attribute_subscriptions: [],
+                    custom_label: "Original Label",
+                });
+                const updated = node.update({ available: false });
+                expect(updated.customLabel).to.equal("Original Label");
+                expect(updated.available).to.be.false;
+            });
+
+            it("should receive custom_label via node_updated event", async () => {
+                server.onCommand("start_listening", () => []);
+                await client.startListening();
+
+                server.sendEvent("node_updated", {
+                    node_id: 1,
+                    date_commissioned: "2025-01-01T00:00:00.000000",
+                    last_interview: "2025-01-01T00:00:00.000000",
+                    interview_version: 6,
+                    available: true,
+                    is_bridge: false,
+                    attributes: {},
+                    custom_label: "Event Label",
+                });
+
+                await new Promise(resolve => setTimeout(resolve, 100));
+
+                expect(client.nodes["1"]).to.exist;
+                expect(client.nodes["1"].customLabel).to.equal("Event Label");
             });
         });
 
