@@ -153,15 +153,32 @@ export class HomeAssistantClient {
         return matches;
     }
 
+    /** Default timeout for HA API requests (30 seconds) */
+    static readonly REQUEST_TIMEOUT_MS = 30_000;
+
     async #fetch(path: string, init?: RequestInit): Promise<Response> {
         const url = `${this.baseUrl}${path}`;
-        return fetch(url, {
-            ...init,
-            headers: {
-                Authorization: `Bearer ${this.token}`,
-                "Content-Type": "application/json",
-                ...(init?.headers as Record<string, string>),
-            },
-        });
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), HomeAssistantClient.REQUEST_TIMEOUT_MS);
+        try {
+            return await fetch(url, {
+                ...init,
+                signal: controller.signal,
+                headers: {
+                    Authorization: `Bearer ${this.token}`,
+                    "Content-Type": "application/json",
+                    ...(init?.headers as Record<string, string>),
+                },
+            });
+        } catch (err) {
+            if (err instanceof DOMException && err.name === "AbortError") {
+                throw new Error(
+                    `Home Assistant request timed out after ${HomeAssistantClient.REQUEST_TIMEOUT_MS}ms: ${path}`,
+                );
+            }
+            throw err;
+        } finally {
+            clearTimeout(timeout);
+        }
     }
 }
