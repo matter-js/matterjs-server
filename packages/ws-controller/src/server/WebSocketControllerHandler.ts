@@ -361,7 +361,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 }
             }
         });
-        console.log("send close to clients");
+        logger.debug("Sending close message to clients");
 
         const wss = this.#wss;
         // Wait for the WebSocket server to close properly
