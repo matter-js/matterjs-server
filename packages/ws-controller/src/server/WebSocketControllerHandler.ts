@@ -39,6 +39,7 @@ import {
     splitAttributePath,
     toBigIntAwareJson,
 } from "./Converters.js";
+import { HomeAssistantClient } from "./HomeAssistantClient.js";
 
 const logger = Logger.get("WebSocketControllerHandler");
 
@@ -75,6 +76,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
     #eventHistory: MatterNodeEvent[] = [];
     /** Track when each node was last interviewed (connected) - keyed by nodeId */
     #lastInterviewDates = new Map<NodeId, Date>();
+    /** Home Assistant API client (undefined if not configured) */
+    #haClient?: HomeAssistantClient;
 
     constructor(controller: MatterController, config: ConfigStorage, serverVersion: string) {
         this.#controller = controller;
@@ -82,6 +85,11 @@ export class WebSocketControllerHandler implements WebServerHandler {
         this.#testNodeHandler = new TestNodeCommandHandler();
         this.#config = config;
         this.#serverVersion = serverVersion;
+        // Auto-detect Home Assistant (Supervisor token takes precedence over stored config)
+        this.#haClient = HomeAssistantClient.create(config);
+        if (this.#haClient) {
+            logger.info("Home Assistant integration enabled");
+        }
     }
 
     /**
@@ -487,6 +495,15 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 case "set_custom_node_label":
                     result = await this.#handleSetCustomNodeLabel(args);
                     break;
+                case "set_ha_credentials":
+                    result = await this.#handleSetHaCredentials(args);
+                    break;
+                case "sync_ha_names":
+                    result = await this.#handleSyncHaNames();
+                    break;
+                case "push_node_label_to_ha":
+                    result = await this.#handlePushNodeLabelToHa(args);
+                    break;
                 default:
                     throw ServerError.invalidCommand(command);
             }
@@ -535,6 +552,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             wifi_credentials_set: !!(this.#config.wifiSsid && this.#config.wifiCredentials),
             thread_credentials_set: !!this.#config.threadDataset,
             bluetooth_enabled: this.#commandHandler.bleEnabled,
+            ha_url_set: this.#config.haConfigured,
         };
     }
 
@@ -1027,6 +1045,100 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 details.custom_label = customLabel;
             }
             this.#broadcastEvent("node_updated", details);
+        }
+
+        return null;
+    }
+
+    async #handleSetHaCredentials(args: ArgsOf<"set_ha_credentials">): Promise<ResponseOf<"set_ha_credentials">> {
+        const { url, token } = args;
+        // Normalize: strip trailing slash from URL
+        const normalizedUrl = url.replace(/\/+$/, "");
+        await this.#config.set({ haUrl: normalizedUrl, haToken: token });
+
+        // Create or replace the HA client
+        this.#haClient = HomeAssistantClient.create(this.#config);
+        logger.info(`Home Assistant credentials configured for ${normalizedUrl}`);
+
+        try {
+            await this.#broadcastServerInfoUpdated();
+        } catch (error) {
+            logger.warn("Failed to broadcast server info update", error);
+        }
+        return null;
+    }
+
+    async #handleSyncHaNames(): Promise<ResponseOf<"sync_ha_names">> {
+        if (!this.#haClient) {
+            throw ServerError.invalidArguments("Home Assistant is not configured");
+        }
+
+        const errors: string[] = [];
+        let synced = 0;
+
+        try {
+            const devices = await this.#haClient.getDeviceRegistry();
+            const { compressedFabricId } = await this.#commandHandler.getCommissionerFabricData();
+            const matches = HomeAssistantClient.matchDevicesToNodes(devices, compressedFabricId);
+
+            for (const [nodeIdStr, match] of matches) {
+                try {
+                    const nodeId = NodeId(Number(nodeIdStr));
+                    if (!this.#commandHandler.hasNode(nodeId)) continue;
+
+                    const currentLabel = this.#config.getNodeLabel(nodeIdStr);
+                    if (currentLabel === match.name) continue; // Already in sync
+
+                    await this.#config.setNodeLabel(nodeIdStr, match.name);
+                    this.#broadcastEvent("node_updated", this.#collectNodeDetails(nodeId));
+                    synced++;
+                } catch (err) {
+                    errors.push(`Node ${nodeIdStr}: ${err instanceof Error ? err.message : String(err)}`);
+                }
+            }
+        } catch (err) {
+            throw ServerError.unknownError(
+                `Failed to sync from Home Assistant: ${err instanceof Error ? err.message : String(err)}`,
+            );
+        }
+
+        if (synced > 0) {
+            logger.info(`Synced ${synced} node name(s) from Home Assistant`);
+        }
+        return { synced, errors };
+    }
+
+    async #handlePushNodeLabelToHa(
+        args: ArgsOf<"push_node_label_to_ha">,
+    ): Promise<ResponseOf<"push_node_label_to_ha">> {
+        if (!this.#haClient) {
+            throw ServerError.invalidArguments("Home Assistant is not configured");
+        }
+
+        const { node_id } = args;
+        const nodeIdStr = String(node_id);
+        const label = this.#config.getNodeLabel(nodeIdStr);
+        if (!label) {
+            throw ServerError.invalidArguments(`Node ${node_id} has no custom label to push`);
+        }
+
+        try {
+            const devices = await this.#haClient.getDeviceRegistry();
+            const { compressedFabricId } = await this.#commandHandler.getCommissionerFabricData();
+            const matches = HomeAssistantClient.matchDevicesToNodes(devices, compressedFabricId);
+            const match = matches.get(nodeIdStr);
+
+            if (!match) {
+                throw ServerError.invalidArguments(`Node ${node_id} not found in Home Assistant device registry`);
+            }
+
+            await this.#haClient.updateDeviceName(match.deviceId, label);
+            logger.info(`Pushed label "${label}" to Home Assistant for node ${node_id}`);
+        } catch (err) {
+            if (err instanceof ServerError) throw err;
+            throw ServerError.unknownError(
+                `Failed to push label to Home Assistant: ${err instanceof Error ? err.message : String(err)}`,
+            );
         }
 
         return null;

@@ -173,6 +173,18 @@ export interface APICommands {
         requestArgs: { node_id: number | bigint; label: string };
         response: null;
     };
+    set_ha_credentials: {
+        requestArgs: { url: string; token: string };
+        response: null;
+    };
+    sync_ha_names: {
+        requestArgs: Record<string, never>;
+        response: { synced: number; errors: string[] };
+    };
+    push_node_label_to_ha: {
+        requestArgs: { node_id: number | bigint };
+        response: null;
+    };
 }
 
 /** Log level string values matching CLI options */
@@ -242,6 +254,8 @@ export interface ServerInfoMessage {
     wifi_credentials_set: boolean;
     thread_credentials_set: boolean;
     bluetooth_enabled: boolean;
+    /** Whether Home Assistant credentials are configured. Optional - not available in Python Matter Server. */
+    ha_url_set?: boolean;
 }
 
 interface ServerEventNodeAdded {

@@ -8,7 +8,7 @@ import { Environment, Logger, StorageContext, StorageManager, StorageService } f
 
 const logger = new Logger("ConfigStorage");
 
-const SENSITIVE_KEYS: ReadonlySet<keyof ConfigData> = new Set(["wifiCredentials", "threadDataset"]);
+const SENSITIVE_KEYS: ReadonlySet<keyof ConfigData> = new Set(["wifiCredentials", "threadDataset", "haToken"]);
 
 function sanitizeForLog(key: string, value: unknown): string {
     if (SENSITIVE_KEYS.has(key as keyof ConfigData)) {
@@ -24,6 +24,8 @@ interface ConfigData {
     wifiSsid?: string;
     wifiCredentials?: string;
     threadDataset?: string;
+    haUrl?: string;
+    haToken?: string;
 }
 
 export class ConfigStorage {
@@ -39,6 +41,8 @@ export class ConfigStorage {
         wifiSsid: undefined,
         wifiCredentials: undefined,
         threadDataset: undefined,
+        haUrl: undefined,
+        haToken: undefined,
     };
 
     static async create(env: Environment) {
@@ -81,7 +85,13 @@ export class ConfigStorage {
         const threadDataset = (await this.#configStore.has("threadDataset"))
             ? await this.#configStore.get<string>("threadDataset", "")
             : undefined;
-        await this.set({ fabricLabel, nextNodeId, wifiSsid, wifiCredentials, threadDataset });
+        const haUrl = (await this.#configStore.has("haUrl"))
+            ? await this.#configStore.get<string>("haUrl", "")
+            : undefined;
+        const haToken = (await this.#configStore.has("haToken"))
+            ? await this.#configStore.get<string>("haToken", "")
+            : undefined;
+        await this.set({ fabricLabel, nextNodeId, wifiSsid, wifiCredentials, threadDataset, haUrl, haToken });
 
         // Load custom node labels
         this.#nodeLabelStore = this.#storage.createContext("node-labels");
@@ -110,6 +120,17 @@ export class ConfigStorage {
     }
     get threadDataset() {
         return this.#data.threadDataset;
+    }
+    get haUrl() {
+        return this.#data.haUrl;
+    }
+    get haToken() {
+        return this.#data.haToken;
+    }
+
+    /** True if HA credentials are configured (either via storage or SUPERVISOR_TOKEN env var) */
+    get haConfigured(): boolean {
+        return !!(this.#data.haUrl && this.#data.haToken) || !!process.env.SUPERVISOR_TOKEN;
     }
 
     getNodeLabel(nodeId: string): string | undefined {

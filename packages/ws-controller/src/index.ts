@@ -20,6 +20,7 @@ export * from "./model/ModelMapper.js";
 // Export server handlers and types
 export * from "./server/ConfigStorage.js";
 export * from "./server/Converters.js";
+export * from "./server/HomeAssistantClient.js";
 export * from "./server/WebSocketControllerHandler.js";
 export * from "./types/WebServer.js";
 

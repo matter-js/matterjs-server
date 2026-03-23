@@ -244,6 +244,30 @@ export interface APICommands {
         };
         response: null;
     };
+    set_ha_credentials: {
+        requestArgs: {
+            /** Home Assistant URL (e.g. "http://homeassistant.local:8123") */
+            url: string;
+            /** Long-lived access token */
+            token: string;
+        };
+        response: null;
+    };
+    sync_ha_names: {
+        requestArgs: {};
+        response: {
+            /** Number of node labels synced from HA */
+            synced: number;
+            /** Any errors encountered during sync */
+            errors: string[];
+        };
+    };
+    push_node_label_to_ha: {
+        requestArgs: {
+            node_id: number | bigint;
+        };
+        response: null;
+    };
     get_loglevel: {
         requestArgs: {};
         response: {
@@ -328,6 +352,11 @@ export interface ServerInfoMessage {
     wifi_credentials_set: boolean;
     thread_credentials_set: boolean;
     bluetooth_enabled: boolean;
+    /**
+     * Whether Home Assistant credentials are configured.
+     * Optional - not available in Python Matter Server.
+     */
+    ha_url_set?: boolean;
 }
 
 /**

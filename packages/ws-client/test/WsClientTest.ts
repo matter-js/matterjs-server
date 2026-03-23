@@ -330,6 +330,44 @@ describe("ws-client", () => {
                 expect(receivedArgs!.label).to.equal("");
             });
 
+            it("should send set_ha_credentials command", async () => {
+                let receivedArgs: { url: string; token: string } | undefined;
+                server.onCommand("set_ha_credentials", args => {
+                    receivedArgs = args as { url: string; token: string };
+                    return null;
+                });
+                await client.connect();
+
+                await client.setHaCredentials("http://ha.local:8123", "my-token");
+
+                expect(receivedArgs).to.exist;
+                expect(receivedArgs!.url).to.equal("http://ha.local:8123");
+                expect(receivedArgs!.token).to.equal("my-token");
+            });
+
+            it("should send sync_ha_names command", async () => {
+                server.onCommand("sync_ha_names", () => ({ synced: 3, errors: [] }));
+                await client.connect();
+
+                const result = await client.syncHaNames();
+
+                expect(result.synced).to.equal(3);
+                expect(result.errors).to.deep.equal([]);
+            });
+
+            it("should send push_node_label_to_ha command", async () => {
+                let receivedArgs: { node_id: number | bigint } | undefined;
+                server.onCommand("push_node_label_to_ha", args => {
+                    receivedArgs = args as { node_id: number | bigint };
+                    return null;
+                });
+                await client.connect();
+
+                await client.pushNodeLabelToHa(BigInt(1));
+
+                expect(receivedArgs).to.exist;
+            });
+
             it("should handle error responses", async () => {
                 server.onCommand("remove_node", () => {
                     throw new Error("Node not found");

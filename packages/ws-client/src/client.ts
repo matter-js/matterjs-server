@@ -193,6 +193,21 @@ export class MatterClient {
         await this.sendCommand("set_custom_node_label", 0, { node_id: nodeId, label }, timeout);
     }
 
+    async setHaCredentials(url: string, token: string, timeout?: number): Promise<void> {
+        // Set Home Assistant URL and long-lived access token for name sync.
+        await this.sendCommand("set_ha_credentials", 0, { url, token }, timeout);
+    }
+
+    async syncHaNames(timeout?: number): Promise<{ synced: number; errors: string[] }> {
+        // Pull device names from Home Assistant and sync as custom node labels.
+        return await this.sendCommand("sync_ha_names", 0, {}, timeout);
+    }
+
+    async pushNodeLabelToHa(nodeId: number | bigint, timeout?: number): Promise<void> {
+        // Push a node's custom label to Home Assistant's device registry.
+        await this.sendCommand("push_node_label_to_ha", 0, { node_id: nodeId }, timeout);
+    }
+
     async importTestNode(dump: string, timeout?: number): Promise<void> {
         // Import test node(s) from a HA or Matter server diagnostics dump.
         await this.sendCommand("import_test_node", 0, { dump }, timeout);
