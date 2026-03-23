@@ -81,7 +81,11 @@ export class NodeDetails extends LitElement {
                     <ha-svg-icon slot="start" class="device-icon" .path=${getDeviceIcon(this.node)}></ha-svg-icon>
                     <div slot="headline">
                         <b>${this.node.customLabel || this.node.nodeLabel || "Node Info"}</b>
-                        <md-icon-button class="edit-label-btn" @click=${handleAsync(() => this._editCustomLabel())}>
+                        <md-icon-button
+                            class="edit-label-btn"
+                            aria-label="Edit node label"
+                            @click=${handleAsync(() => this._editCustomLabel())}
+                        >
                             <ha-svg-icon .path=${mdiPencil}></ha-svg-icon>
                         </md-icon-button>
                         ${
