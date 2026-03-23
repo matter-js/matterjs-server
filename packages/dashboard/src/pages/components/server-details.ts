@@ -58,11 +58,13 @@ export class ServerDetails extends LitElement {
             <div class="left">Node count: </div>${Object.keys(this.client.nodes).length}
           </div>
           <div slot="supporting-text">
-            <div class="left">HA integration: </div>${this.client.serverInfo.ha_url_set === undefined
-                ? "N/A"
-                : this.client.serverInfo.ha_url_set
-                    ? "Configured"
-                    : "Not configured"}
+            <div class="left">HA integration: </div>${
+                this.client.serverInfo.ha_credentials_set === undefined
+                    ? "N/A"
+                    : this.client.serverInfo.ha_credentials_set
+                      ? "Configured"
+                      : "Not configured"
+            }
           </div>
         </md-list-item>
         <md-list-item>

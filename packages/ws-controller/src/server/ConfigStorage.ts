@@ -144,11 +144,11 @@ export class ConfigStorage {
         if (label) {
             this.#nodeLabels.set(nodeId, label);
             await this.#nodeLabelStore.set(nodeId, label);
-            logger.info(`Set custom label for node ${nodeId} to "${label}"`);
+            logger.debug(`Set custom label for node ${nodeId}`);
         } else {
             this.#nodeLabels.delete(nodeId);
             await this.#nodeLabelStore.delete(nodeId);
-            logger.info(`Cleared custom label for node ${nodeId}`);
+            logger.debug(`Cleared custom label for node ${nodeId}`);
         }
     }
 

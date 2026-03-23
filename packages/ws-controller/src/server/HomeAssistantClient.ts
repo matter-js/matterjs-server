@@ -25,6 +25,8 @@ export interface HaNodeMatch {
     name: string;
     /** The identifier string that matched */
     identifier: string;
+    /** The endpoint number extracted from the identifier */
+    endpoint: number;
 }
 
 /**
@@ -134,17 +136,19 @@ export class HomeAssistantClient {
 
                 // Prefer endpoint 0 (root), otherwise keep lowest endpoint
                 const existing = matches.get(nodeIdStr);
-                if (
-                    !existing ||
-                    endpoint === 0 ||
-                    (existing.identifier.endsWith("-0")
-                        ? false
-                        : endpoint < parseInt(existing.identifier.split("-").pop()!, 10))
-                ) {
+                if (!existing) {
                     matches.set(nodeIdStr, {
                         deviceId: device.id,
                         name: device.name_by_user ?? device.name,
                         identifier,
+                        endpoint,
+                    });
+                } else if (endpoint === 0 || (existing.endpoint !== 0 && endpoint < existing.endpoint)) {
+                    matches.set(nodeIdStr, {
+                        deviceId: device.id,
+                        name: device.name_by_user ?? device.name,
+                        identifier,
+                        endpoint,
                     });
                 }
             }
@@ -161,14 +165,16 @@ export class HomeAssistantClient {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), HomeAssistantClient.REQUEST_TIMEOUT_MS);
         try {
+            const headers = new Headers(init?.headers);
+            headers.set("Authorization", `Bearer ${this.token}`);
+            if (!headers.has("Content-Type")) {
+                headers.set("Content-Type", "application/json");
+            }
+
             return await fetch(url, {
                 ...init,
                 signal: controller.signal,
-                headers: {
-                    Authorization: `Bearer ${this.token}`,
-                    "Content-Type": "application/json",
-                    ...(init?.headers as Record<string, string>),
-                },
+                headers,
             });
         } catch (err) {
             if (err instanceof DOMException && err.name === "AbortError") {

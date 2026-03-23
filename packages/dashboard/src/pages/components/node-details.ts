@@ -184,7 +184,7 @@ export class NodeDetails extends LitElement {
             await this.client.setCustomNodeLabel(this.node!.node_id, newLabel);
 
             // Offer to push the new label to Home Assistant if configured
-            if (newLabel && this.client.serverInfo.ha_url_set) {
+            if (newLabel && this.client.serverInfo.ha_credentials_set) {
                 const pushToHa = await showPromptDialog({
                     title: "Update Home Assistant?",
                     text: "Also update this device name in Home Assistant?",

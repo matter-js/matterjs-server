@@ -356,7 +356,7 @@ export interface ServerInfoMessage {
      * Whether Home Assistant credentials are configured.
      * Optional - not available in Python Matter Server.
      */
-    ha_url_set?: boolean;
+    ha_credentials_set?: boolean;
 }
 
 /**

@@ -24,14 +24,14 @@ export class HaIntegrationDialog extends LitElement {
     @state() private _syncing = false;
     @state() private _syncResult: string | null = null;
 
-    @query("md-outlined-text-field[label='Home Assistant URL']")
+    @query("#ha-url")
     private _urlField!: MdOutlinedTextField;
 
-    @query("md-outlined-text-field[label='Access Token']")
+    @query("#ha-token")
     private _tokenField!: MdOutlinedTextField;
 
     private get _haConfigured(): boolean {
-        return this.client.serverInfo.ha_url_set === true;
+        return this.client.serverInfo.ha_credentials_set === true;
     }
 
     private async _save() {
@@ -101,6 +101,7 @@ export class HaIntegrationDialog extends LitElement {
                     </p>
                     <div class="form-field">
                         <md-outlined-text-field
+                            id="ha-url"
                             label="Home Assistant URL"
                             placeholder="http://homeassistant.local:8123"
                             type="url"
@@ -108,6 +109,7 @@ export class HaIntegrationDialog extends LitElement {
                     </div>
                     <div class="form-field">
                         <md-outlined-text-field
+                            id="ha-token"
                             label="Access Token"
                             placeholder="Long-lived access token"
                             type="password"

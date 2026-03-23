@@ -369,7 +369,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 }
             }
         });
-        console.log("send close to clients");
+        logger.debug("Sending close message to clients");
 
         const wss = this.#wss;
         // Wait for the WebSocket server to close properly
@@ -552,7 +552,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             wifi_credentials_set: !!(this.#config.wifiSsid && this.#config.wifiCredentials),
             thread_credentials_set: !!this.#config.threadDataset,
             bluetooth_enabled: this.#commandHandler.bleEnabled,
-            ha_url_set: this.#config.haConfigured,
+            ha_credentials_set: this.#config.haConfigured,
         };
     }
 

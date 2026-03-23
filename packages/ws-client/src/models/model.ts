@@ -255,7 +255,7 @@ export interface ServerInfoMessage {
     thread_credentials_set: boolean;
     bluetooth_enabled: boolean;
     /** Whether Home Assistant credentials are configured. Optional - not available in Python Matter Server. */
-    ha_url_set?: boolean;
+    ha_credentials_set?: boolean;
 }
 
 interface ServerEventNodeAdded {
