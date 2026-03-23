@@ -512,7 +512,12 @@ describe("ws-client", () => {
                     custom_label: "Event Label",
                 });
 
-                await new Promise(resolve => setTimeout(resolve, 100));
+                await new Promise<void>(resolve => {
+                    const removeListener = client.addEventListener("nodes_changed", () => {
+                        removeListener();
+                        resolve();
+                    });
+                });
 
                 expect(client.nodes["1"]).to.exist;
                 expect(client.nodes["1"].customLabel).to.equal("Event Label");

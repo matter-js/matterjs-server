@@ -1056,8 +1056,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
         const normalizedUrl = url.replace(/\/+$/, "");
         await this.#config.set({ haUrl: normalizedUrl, haToken: token });
 
-        // Create or replace the HA client
-        this.#haClient = HomeAssistantClient.create(this.#config);
+        // Use fromConfig directly so user-provided credentials take effect
+        // even when running under Supervisor (where create() would prefer SUPERVISOR_TOKEN)
+        this.#haClient = HomeAssistantClient.fromConfig(this.#config);
         logger.info(`Home Assistant credentials configured for ${normalizedUrl}`);
 
         try {

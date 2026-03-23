@@ -94,7 +94,7 @@ export class HaIntegrationDialog extends LitElement {
                         ${
                             this._haConfigured
                                 ? html`
-                                      <br /><span class="status-ok">Connected</span>
+                                      <br /><span class="status-ok">Configured</span>
                                   `
                                 : nothing
                         }

@@ -10,5 +10,5 @@ export const showSettingsMenuDialog = async (client: MatterClient) => {
     await import("./settings-menu-dialog.js");
     const dialog = document.createElement("settings-menu-dialog");
     dialog.client = client;
-    document.querySelector("matter-dashboard-app")?.renderRoot.appendChild(dialog);
+    document.body.appendChild(dialog);
 };
