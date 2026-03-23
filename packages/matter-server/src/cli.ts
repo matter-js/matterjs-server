@@ -207,7 +207,7 @@ export function parseCliArgs(argv?: string[]): CliOptions {
         listenAddress = [process.env.LISTEN_ADDRESS];
     }
 
-    // Substitute {{interface}} patterns with its primary IP addresse
+    // Substitute {{interface}} patterns with its primary IP address
     if (listenAddress) {
       const interfaces = networkInterfaces();
       listenAddress = listenAddress.map((address) => {
