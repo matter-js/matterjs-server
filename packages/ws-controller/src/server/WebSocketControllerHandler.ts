@@ -1083,7 +1083,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
             for (const [nodeIdStr, match] of matches) {
                 try {
-                    const nodeId = NodeId(Number(nodeIdStr));
+                    const nodeId = NodeId(BigInt(nodeIdStr));
                     if (!this.#commandHandler.hasNode(nodeId)) continue;
 
                     const currentLabel = this.#config.getNodeLabel(nodeIdStr);
