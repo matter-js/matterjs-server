@@ -13,7 +13,7 @@ import { MatterClient } from "@matter-server/ws-client";
 import { mdiArrowLeft, mdiBrightnessAuto, mdiCog, mdiLogout, mdiWeatherNight, mdiWeatherSunny } from "@mdi/js";
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
-import { showLogLevelDialog } from "../../components/dialogs/settings/show-log-level-dialog.js";
+import { showSettingsMenuDialog } from "../../components/dialogs/settings/show-settings-menu-dialog.js";
 import "../../components/ha-svg-icon";
 import { EffectiveTheme, ThemePreference, ThemeService } from "../../util/theme-service.js";
 
@@ -59,7 +59,7 @@ export class DashboardHeader extends LitElement {
 
     private _openSettings() {
         if (this.client) {
-            showLogLevelDialog(this.client);
+            showSettingsMenuDialog(this.client);
         }
     }
 

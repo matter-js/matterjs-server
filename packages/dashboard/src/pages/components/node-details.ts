@@ -178,6 +178,25 @@ export class NodeDetails extends LitElement {
         if (newLabel === null) return; // cancelled
         try {
             await this.client.setCustomNodeLabel(this.node!.node_id, newLabel);
+
+            // Offer to push the new label to Home Assistant if configured
+            if (newLabel && this.client.serverInfo.ha_url_set) {
+                const pushToHa = await showPromptDialog({
+                    title: "Update Home Assistant?",
+                    text: "Also update this device name in Home Assistant?",
+                    confirmText: "Update HA",
+                });
+                if (pushToHa) {
+                    try {
+                        await this.client.pushNodeLabelToHa(this.node!.node_id);
+                    } catch (haErr: any) {
+                        showAlertDialog({
+                            title: "Failed to update Home Assistant",
+                            text: haErr.message,
+                        });
+                    }
+                }
+            }
         } catch (err: any) {
             showAlertDialog({
                 title: "Failed to set node label",
