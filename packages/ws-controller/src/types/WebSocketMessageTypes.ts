@@ -15,7 +15,7 @@ export interface MatterNode {
     is_bridge: boolean;
     attributes: AttributesData;
     /** Attribute subscriptions (always empty array in current protocol, matches Python Matter Server) */
-    attribute_subscriptions: [];
+    attribute_subscriptions: readonly [];
     /**
      * Matter specification version of the node (e.g., "1.2.0", "1.3.0", "1.4.0").
      * Determined from the SpecificationVersion attribute (0x15) if available,
@@ -99,8 +99,11 @@ export interface APICommands {
             node_id: number | bigint;
             timeout: number; // seconds
             iteration?: number; // 1000
-            /** Commissioning window type: 0=Enhanced, 1=Basic (default: 1) */
-            option?: number;
+            /**
+             * Commissioning window type: 0=Enhanced, 1=Basic.
+             * If omitted, the server treats it as Basic (1).
+             */
+            option?: 0 | 1;
             /** Discriminator value (null for random) */
             discriminator?: number | null;
         };
@@ -127,8 +130,8 @@ export interface APICommands {
             cluster_id: number;
             command_name: string;
             payload: unknown;
-            /** Response type hint (unused, reserved for future) */
-            response_type: unknown;
+            /** Optional response type hint (currently ignored, reserved for future use) */
+            response_type?: unknown;
             timed_request_timeout_ms?: number | null;
             interaction_timeout_ms?: number | null;
         };
