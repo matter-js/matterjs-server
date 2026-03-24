@@ -47,13 +47,13 @@
         }
     },
     "devDependencies": {
-        "@matter/testing": "0.17.0-alpha.0-20260312-920b3a4ec",
+        "@matter/testing": "0.17.0-alpha.0-20260323-33bf55b7c",
         "@types/mocha": "^10.0.10",
         "glob": "^13.0.6",
         "globals": "^17.4.0",
-        "oxfmt": "^0.38.0",
-        "oxlint": "^1.51.0",
-        "oxlint-tsgolint": "^0.16.0",
+        "oxfmt": "^0.41.0",
+        "oxlint": "^1.56.0",
+        "oxlint-tsgolint": "^0.17.1",
         "tsx": "^4.21.0",
         "typescript": "~5.9.3"
     }

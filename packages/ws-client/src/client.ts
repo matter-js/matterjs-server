@@ -91,7 +91,7 @@ export class MatterClient {
         // network_only: If True, restricts device discovery to network only.
         // timeout: Optional command timeout in milliseconds.
         // Returns: The NodeInfo of the commissioned device.
-        return await this.sendCommand(
+        const data = await this.sendCommand(
             "commission_with_code",
             0,
             {
@@ -100,6 +100,7 @@ export class MatterClient {
             },
             timeout,
         );
+        return new MatterNode(data);
     }
 
     async setWifiCredentials(ssid: string, credentials: string, timeout?: number): Promise<void> {
@@ -287,11 +288,13 @@ export class MatterClient {
     }
 
     async getNodes(onlyAvailable = false, timeout?: number): Promise<MatterNode[]> {
-        return await this.sendCommand("get_nodes", 0, { only_available: onlyAvailable }, timeout);
+        const data = await this.sendCommand("get_nodes", 0, { only_available: onlyAvailable }, timeout);
+        return data.map(n => new MatterNode(n));
     }
 
     async getNode(nodeId: number | bigint, timeout?: number): Promise<MatterNode> {
-        return await this.sendCommand("get_node", 0, { node_id: nodeId }, timeout);
+        const data = await this.sendCommand("get_node", 0, { node_id: nodeId }, timeout);
+        return new MatterNode(data);
     }
 
     async getVendorNames(filterVendors?: number[], timeout?: number): Promise<Record<string, string>> {

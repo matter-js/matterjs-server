@@ -24,10 +24,10 @@
     },
     "dependencies": {},
     "devDependencies": {
-        "@types/node": "^25.4.0",
+        "@types/node": "^25.5.0",
         "@types/ws": "^8.18.1",
-        "@matter/testing": "0.17.0-alpha.0-20260312-920b3a4ec",
-        "ws": "^8.19.0"
+        "@matter/testing": "0.17.0-alpha.0-20260323-33bf55b7c",
+        "ws": "^8.20.0"
     },
     "files": [
         "dist/**/*",

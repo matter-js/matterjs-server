@@ -22,16 +22,16 @@
         "bundle": "rollup -c"
     },
     "devDependencies": {
-        "@babel/preset-env": "^7.29.0",
-        "@matter/main": "0.17.0-alpha.0-20260312-920b3a4ec",
+        "@babel/preset-env": "^7.29.2",
+        "@matter/main": "0.17.0-alpha.0-20260323-33bf55b7c",
         "@rollup/plugin-babel": "^7.0.0",
         "@rollup/plugin-commonjs": "^29.0.2",
         "rollup-plugin-copy": "^3.5.0",
         "@rollup/plugin-json": "^6.1.0",
         "@rollup/plugin-node-resolve": "^16.0.3",
-        "@rollup/plugin-terser": "^0.4.4",
+        "@rollup/plugin-terser": "^1.0.0",
         "@rollup/plugin-typescript": "^12.3.0",
-        "rollup": "^4.59.0",
+        "rollup": "^4.60.0",
         "serve": "^14.2.6"
     },
     "dependencies": {

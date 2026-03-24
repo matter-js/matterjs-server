@@ -117,6 +117,7 @@ export class CustomClusterPoller {
     #attributeReader: NodeAttributeReader;
     #isPolling = false;
     #currentDelayPromise?: CancelablePromise;
+    #currentReadPromise?: Promise<void>;
     #closed = false;
 
     constructor(attributeReader: NodeAttributeReader) {
@@ -160,13 +161,16 @@ export class CustomClusterPoller {
     }
 
     /**
-     * Stop all polling and cleanup.
+     * Stop all polling and cleanup. Awaits any in-flight read operation.
      */
-    stop(): void {
+    async stop(): Promise<void> {
         this.#closed = true;
         this.#currentDelayPromise?.cancel(new Error("Close"));
         this.#pollerTimer?.stop();
         this.#polledAttributes.clear();
+        if (this.#currentReadPromise) {
+            await this.#currentReadPromise;
+        }
         logger.info("Custom attribute poller stopped");
     }
 
@@ -210,6 +214,9 @@ export class CustomClusterPoller {
         try {
             const entries = Array.from(this.#polledAttributes.entries());
             for (let i = 0; i < entries.length; i++) {
+                if (this.#closed) {
+                    break;
+                }
                 const [nodeId, attributePaths] = entries[i];
                 if (!this.#polledAttributes.has(nodeId)) {
                     // Node was removed, so skip it
@@ -253,9 +260,16 @@ export class CustomClusterPoller {
         try {
             // Read with fabricFiltered=true as per Eve's requirements
             // This automatically updates the attribute cache and triggers change events
-            await this.#attributeReader.handleReadAttributes(nodeId, paths, true);
+            const readPromise = this.#attributeReader.handleReadAttributes(nodeId, paths, true);
+            this.#currentReadPromise = readPromise.then(
+                () => {},
+                () => {},
+            );
+            await readPromise;
         } catch (error) {
             logger.warn(`Failed to poll custom attributes for node ${nodeId}: `, error);
+        } finally {
+            this.#currentReadPromise = undefined;
         }
     }
 }

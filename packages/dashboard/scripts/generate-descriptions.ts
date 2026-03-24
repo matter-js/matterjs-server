@@ -56,7 +56,7 @@ function getTypeString(attr: AttributeModel): string {
 
     // Handle list types
     if (type === "list" && attr.members.length > 0) {
-        const entryType = attr.members[0].type ?? "any";
+        const entryType = attr.members.at(0)!.type ?? "any";
         return `List[${entryType}]`;
     }
 

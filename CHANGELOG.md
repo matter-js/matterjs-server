@@ -7,6 +7,15 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
+## __WORK IN PROGRESS__
+- Enhancement/Fix: Update matter.js to the latest 0.17.0-nightly
+    - Optimizes commissioning process and device connections during commissioning
+    - RAM usage reductions and improvements
+    - Optimizes reconnections and how fast we react to new detected IPs to speed up reconnections
+    - Probes discovered addresses and potentially updates the session address when they change even when we have a valid working session
+    - Ensures a proper BDX session teardown when non-bdx errors happened
+    - Fixes crash cases during commissioning (BLE and when multiple IPs were found)
+
 ## 0.5.7 (2026-03-13)
 - Fix: Corrects event payload encoding in websocket messages to match the Python server (and fixes bug from 0.5.6)
 - Fix: Only stream attribute updates after start_listening like all other event-style websocket messages

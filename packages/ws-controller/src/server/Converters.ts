@@ -90,7 +90,7 @@ export function convertWebSocketTagBasedToMatter(
 
     // Handle lists
     if (Array.isArray(value) && model.type === "list") {
-        return value.map(v => convertWebSocketTagBasedToMatter(v, model.members[0], clusterModel));
+        return value.map(v => convertWebSocketTagBasedToMatter(v, model.members.at(0), clusterModel));
     }
 
     // Handle structs - convert numeric keys to camelCased member names
@@ -136,7 +136,7 @@ export function convertCommandDataToMatter(
 
     // Handle lists
     if (Array.isArray(value) && model.type === "list") {
-        return value.map(v => convertCommandDataToMatter(v, model.members[0], clusterModel));
+        return value.map(v => convertCommandDataToMatter(v, model.members.at(0), clusterModel));
     }
 
     // Handle structs - convert numeric keys to camelCased member names
@@ -303,7 +303,7 @@ function convertMatterToWebSocket(
 
         case ConvKind.List:
             return Array.isArray(value)
-                ? value.map(v => convertMatterToWebSocket(v, model.members[0], clusterModel, tagBased))
+                ? value.map(v => convertMatterToWebSocket(v, model.members.at(0), clusterModel, tagBased))
                 : value;
 
         case ConvKind.Struct: {
@@ -527,7 +527,7 @@ export function convertWebsocketDataToMatter(value: any, model: ValueModel): any
             value = parseChipJSON(value);
         }
         if (Array.isArray(value)) {
-            return value.map(v => convertWebsocketDataToMatter(v, model.members[0]));
+            return value.map(v => convertWebsocketDataToMatter(v, model.members.at(0)!));
         }
     }
 
