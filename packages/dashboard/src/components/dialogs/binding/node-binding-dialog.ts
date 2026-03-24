@@ -76,10 +76,16 @@ export class NodeBindingDialog extends LitElement {
         }
     }
 
-    /** Helper to convert node_id (number | bigint) to number for API calls */
+    /** Helper to safely convert node_id (number | bigint) to number for API calls */
     private getNodeIdAsNumber(): number {
         const nodeId = this.node!.node_id;
-        return typeof nodeId === "bigint" ? Number(nodeId) : nodeId;
+        if (typeof nodeId === "bigint") {
+            if (nodeId > BigInt(Number.MAX_SAFE_INTEGER)) {
+                throw new Error(`Node ID ${nodeId} exceeds Number.MAX_SAFE_INTEGER and cannot be safely converted`);
+            }
+            return Number(nodeId);
+        }
+        return nodeId;
     }
 
     private async removeNodeAtACLEntry(
