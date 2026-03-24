@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { LegacyFabricConfigData } from "@matter-server/ws-controller";
+import { getErrorMessage, LegacyFabricConfigData } from "@matter-server/ws-controller";
 import { Bytes, Key, StandardCrypto, type BinaryKeyPair } from "@matter/main";
 import { CertificateAuthority, Icac, Noc, Rcac } from "@matter/main/protocol";
 import { readFile, writeFile } from "node:fs/promises";
@@ -614,7 +614,7 @@ export class ChipConfigData {
             result.rcacValid = true;
         } catch (e) {
             result.rcacValid = false;
-            return { ...result, error: `RCAC verification failed: ${e instanceof Error ? e.message : String(e)}` };
+            return { ...result, error: `RCAC verification failed: ${getErrorMessage(e)}` };
         }
 
         // Verify ICAC (if present)
@@ -624,7 +624,7 @@ export class ChipConfigData {
                 result.icacValid = true;
             } catch (e) {
                 result.icacValid = false;
-                return { ...result, error: `ICAC verification failed: ${e instanceof Error ? e.message : String(e)}` };
+                return { ...result, error: `ICAC verification failed: ${getErrorMessage(e)}` };
             }
         }
 
@@ -634,7 +634,7 @@ export class ChipConfigData {
             result.nocValid = true;
         } catch (e) {
             result.nocValid = false;
-            return { ...result, error: `NOC verification failed: ${e instanceof Error ? e.message : String(e)}` };
+            return { ...result, error: `NOC verification failed: ${getErrorMessage(e)}` };
         }
 
         result.valid = true;

@@ -113,6 +113,7 @@ import {
     ServerError,
     UpdateSource,
 } from "../types/WebSocketMessageTypes.js";
+import { getErrorMessage } from "../util/errorUtils.js";
 import { formatNodeId } from "../util/formatNodeId.js";
 import { pingIp } from "../util/network.js";
 import { CustomClusterPoller } from "./CustomClusterPoller.js";
@@ -992,9 +993,8 @@ export class ControllerCommandHandler {
             });
         } catch (error) {
             // Preserve the original error message with context
-            const originalMessage = error instanceof Error ? error.message : String(error);
             throw ServerError.nodeCommissionFailed(
-                `Commission failed: ${originalMessage}`,
+                `Commission failed: ${getErrorMessage(error)}`,
                 error instanceof Error ? error : undefined,
             );
         }

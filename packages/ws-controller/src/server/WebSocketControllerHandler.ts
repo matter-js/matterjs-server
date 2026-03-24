@@ -29,6 +29,7 @@ import {
     ServerInfoMessage,
     SuccessResultMessage,
 } from "../types/WebSocketMessageTypes.js";
+import { getErrorMessage } from "../util/errorUtils.js";
 import { formatNodeId } from "../util/formatNodeId.js";
 import { MATTER_VERSION } from "../util/matterVersion.js";
 import { ConfigStorage } from "./ConfigStorage.js";
@@ -509,7 +510,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 response: {
                     message_id: messageId ?? "",
                     error_code: errorCode,
-                    details: (err as Error).message,
+                    details: getErrorMessage(err),
                 },
             };
         }
