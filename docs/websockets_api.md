@@ -744,15 +744,38 @@ Attribute paths use the format: `endpoint/cluster/attribute`
 | WindowCovering | 258 | Blinds/shades |
 | Thermostat | 513 | HVAC control |
 
+## Schema Version
+
+The current schema version is **11**. The server reports `schema_version` and `min_supported_schema_version` in the initial connection message and via `server_info`. Clients should verify that the server's `schema_version` is within their supported range.
+
+## BigInt Handling
+
+Node IDs and some other fields (e.g., `fabric_id`, `compressed_fabric_id`, `event_number`, `timestamp`) may be BigInt values that exceed `Number.MAX_SAFE_INTEGER`. The server uses a custom JSON serializer that:
+
+- Serializes BigInt values as unquoted numbers in JSON (e.g., `18446744069414584320` instead of `"18446744069414584320"`)
+- Because JSON has only a single numeric literal type, clients must use a parser or configuration that preserves large integer literals (or field-aware handling for known ID/counter fields) rather than relying on a drop-in `JSON.parse` replacement
+- Standard JSON parsing that eagerly maps all numbers to IEEE-754 doubles may silently lose precision for these values instead of throwing an error; avoid using such parsers for Matter IDs and counters
+- Non-JavaScript clients should use JSON parsing options/libraries that can keep large integers as big-integer types for these fields (for example: Python's `json` with custom decoders, Java's `BigInteger`-aware parsers, or Go's `encoding/json` with `UseNumber` combined with `math/big.Int`)
+- The `@matter-server/ws-client` package handles this automatically
+
 ## Error Codes
 
-| Code | Description |
-|------|-------------|
-| 0 | Unknown error |
-| 1 | Invalid command |
-| 2 | Invalid arguments |
-| 3 | Node not found |
-| 5 | Node does not exist |
+Error codes match the [Python Matter Server](https://github.com/home-assistant-libs/python-matter-server) for API compatibility.
+
+| Code | Name | Description |
+|------|------|-------------|
+| 0 | UnknownError | Generic/unknown error |
+| 1 | NodeCommissionFailed | Node commissioning failed |
+| 2 | NodeInterviewFailed | Node interview failed |
+| 3 | NodeNotReady | Node is not ready (offline or not yet interviewed) |
+| 4 | NodeNotResolving | Node not resolving (CASE session establishment failed) |
+| 5 | NodeNotExists | Node does not exist |
+| 6 | VersionMismatch | SDK version mismatch |
+| 7 | SDKStackError | SDK/Stack error |
+| 8 | InvalidArguments | Invalid command arguments |
+| 9 | InvalidCommand | Invalid/unknown command |
+| 10 | UpdateCheckError | OTA update check failed |
+| 11 | UpdateError | OTA update failed |
 
 ## Python Matter Server Compatibility
 
