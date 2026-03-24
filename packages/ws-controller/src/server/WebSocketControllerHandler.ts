@@ -390,7 +390,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             let enableListeners: boolean | undefined = undefined;
             switch (command) {
                 case "start_listening":
-                    result = this.#handleStartListening(args);
+                    result = await this.#handleStartListening(args);
                     enableListeners = true;
                     break;
                 case "set_default_fabric_label":
@@ -406,7 +406,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     result = await this.#handleGetNode(args);
                     break;
                 case "get_nodes":
-                    result = this.#handleGetNodes(args);
+                    result = await this.#handleGetNodes(args);
                     break;
                 case "get_node_ip_addresses":
                     result = await this.#handleGetNodeIpAddresses(args);
@@ -432,7 +432,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 case "diagnostics":
                     result = {
                         info: await this.#getServerInfo(),
-                        nodes: this.#handleGetNodes(args),
+                        nodes: await this.#handleGetNodes(args),
                         events: this.getEventHistory(),
                     };
                     break;
@@ -479,10 +479,10 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     result = await this.#handleDiscoverCommissionableNodes({});
                     break;
                 case "get_loglevel":
-                    result = this.#handleGetLogLevel();
+                    result = await this.#handleGetLogLevel();
                     break;
                 case "set_loglevel":
-                    result = this.#handleSetLogLevel(args);
+                    result = await this.#handleSetLogLevel(args);
                     break;
                 default:
                     throw ServerError.invalidCommand(command);
@@ -561,9 +561,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
         this.#broadcastEvent("server_info_updated", serverInfo);
     }
 
-    #handleStartListening(_args: ArgsOf<"start_listening">): ResponseOf<"start_listening"> {
+    async #handleStartListening(_args: ArgsOf<"start_listening">): Promise<ResponseOf<"start_listening">> {
         logger.info("WebSocket server start_listening");
-        const data = this.#handleGetNodes({});
+        const data = await this.#handleGetNodes({});
         logger.info("WebSocket server start_listening. Returned", data.length, "nodes");
         return data;
     }
@@ -664,7 +664,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         return this.#collectNodeDetails(nodeId);
     }
 
-    #handleGetNodes(args: ArgsOf<"get_nodes">): ResponseOf<"get_nodes"> {
+    async #handleGetNodes(args: ArgsOf<"get_nodes">): Promise<ResponseOf<"get_nodes">> {
         const { only_available = false } = args ?? {};
         const nodeDetails = new Array<MatterNode>();
         // Include real nodes
@@ -1060,7 +1060,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         }
     }
 
-    #handleGetLogLevel(): ResponseOf<"get_loglevel"> {
+    async #handleGetLogLevel(): Promise<ResponseOf<"get_loglevel">> {
         // Logger.level can be LogLevel enum or string, convert string to enum first
         const currentLevel =
             typeof Logger.level === "string" ? this.#stringToLogLevel(Logger.level as LogLevelString) : Logger.level;
@@ -1085,7 +1085,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         };
     }
 
-    #handleSetLogLevel(args: ArgsOf<"set_loglevel">): ResponseOf<"set_loglevel"> {
+    async #handleSetLogLevel(args: ArgsOf<"set_loglevel">): Promise<ResponseOf<"set_loglevel">> {
         const { console_loglevel, file_loglevel } = args;
 
         // Set console log level if provided
@@ -1106,6 +1106,6 @@ export class WebSocketControllerHandler implements WebServerHandler {
         }
 
         // Return current levels
-        return this.#handleGetLogLevel();
+        return await this.#handleGetLogLevel();
     }
 }
