@@ -430,11 +430,10 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     result = await this.#handlePingNode(args);
                     break;
                 case "diagnostics":
-                    result = {
-                        info: await this.#getServerInfo(),
-                        nodes: await this.#handleGetNodes(args),
-                        events: this.getEventHistory(),
-                    };
+                    {
+                        const [info, nodes] = await Promise.all([this.#getServerInfo(), this.#handleGetNodes(args)]);
+                        result = { info, nodes, events: this.getEventHistory() };
+                    }
                     break;
                 case "remove_node":
                     result = await this.#handleRemoveNode(args);
@@ -1106,6 +1105,6 @@ export class WebSocketControllerHandler implements WebServerHandler {
         }
 
         // Return current levels
-        return await this.#handleGetLogLevel();
+        return this.#handleGetLogLevel();
     }
 }
