@@ -143,7 +143,7 @@ export interface APICommands {
         response: { [key: string]: string };
     };
     subscribe_attribute: {
-        requestArgs: {};
+        requestArgs: Record<string, never>;
         response: null;
     };
     read_attribute: {
