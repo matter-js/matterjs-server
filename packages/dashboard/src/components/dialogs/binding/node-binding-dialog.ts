@@ -81,7 +81,9 @@ export class NodeBindingDialog extends LitElement {
         const nodeId = this.node!.node_id;
         if (typeof nodeId === "bigint") {
             if (nodeId > BigInt(Number.MAX_SAFE_INTEGER)) {
-                throw new Error(`Node ID ${nodeId} exceeds Number.MAX_SAFE_INTEGER and cannot be safely converted`);
+                throw new RangeError(
+                    `Node ID ${nodeId} exceeds Number.MAX_SAFE_INTEGER and cannot be safely converted`,
+                );
             }
             return Number(nodeId);
         }
