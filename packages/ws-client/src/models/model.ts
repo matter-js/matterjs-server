@@ -5,7 +5,7 @@
  */
 
 import type { MatterNodeData } from "./node.js";
-// Re-export so consumers can import MatterNode class and MatterNodeData interface from the same module
+// Re-export so consumers can import the MatterNodeData type from this module
 export type { MatterNodeData } from "./node.js";
 
 /** Attribute data stored as path -> value mapping */
