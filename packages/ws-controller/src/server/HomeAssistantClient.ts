@@ -131,8 +131,10 @@ export class HomeAssistantClient {
 
                 const nodeIdStr = suffix.slice(0, dashIdx);
                 const endpointStr = suffix.slice(dashIdx + 1);
-                const endpoint = parseInt(endpointStr, 10);
-                if (!Number.isFinite(endpoint)) continue;
+                // Ensure nodeId and endpoint are strictly decimal digits to avoid partial numeric parses
+                if (!/^\d+$/.test(nodeIdStr) || !/^\d+$/.test(endpointStr)) continue;
+                const endpoint = Number(endpointStr);
+                if (!Number.isSafeInteger(endpoint)) continue;
 
                 // Prefer endpoint 0 (root), otherwise keep lowest endpoint
                 const existing = matches.get(nodeIdStr);

@@ -13,7 +13,6 @@ import { mdiHomeAssistant, mdiMathLog } from "@mdi/js";
 import { css, html, LitElement } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import "../../../components/ha-svg-icon";
-import { preventDefault } from "../../../util/prevent_default.js";
 import { showHaIntegrationDialog } from "./show-ha-integration-dialog.js";
 import { showLogLevelDialog } from "./show-log-level-dialog.js";
 
@@ -42,7 +41,7 @@ export class SettingsMenuDialog extends LitElement {
 
     protected override render() {
         return html`
-            <md-dialog open @cancel=${preventDefault} @closed=${this._handleClosed}>
+            <md-dialog open @closed=${this._handleClosed}>
                 <div slot="headline">Settings</div>
                 <div slot="content">
                     <md-list>
