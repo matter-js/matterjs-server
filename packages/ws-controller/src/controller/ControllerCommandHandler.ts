@@ -753,7 +753,6 @@ export class ControllerCommandHandler {
         }
     }
 
-    // TODO improve response typing
     async #invokeCommand<const C extends ClusterType>(
         node: ClientNode,
         request: Invoke.ConcreteCommandRequest<C>,
@@ -923,7 +922,7 @@ export class ControllerCommandHandler {
             passcode = pairingCodeCodec.passcode;
         } else if ("qrCode" in data && data.qrCode.length > 0) {
             const pairingCodeCodec = QrPairingCodeCodec.decode(data.qrCode);
-            // TODO handle the case where multiple devices are included
+            // Only uses the first device entry; see #430 for multi-device support
             longDiscriminator = pairingCodeCodec[0].discriminator;
             shortDiscriminator = undefined;
             passcode = pairingCodeCodec[0].passcode;
@@ -1246,7 +1245,7 @@ export class ControllerCommandHandler {
     /**
      * Set Access Control List entries on a node.
      * Writes to the ACL attribute on the AccessControl cluster (endpoint 0).
-     * TODO Migrate to new Node API
+     * See #428 for migration to new Node API.
      */
     async setAclEntry(nodeId: NodeId, entries: AccessControlEntry[]): Promise<AttributeWriteResult[] | null> {
         const client = this.#nodes.clusterClientFor(nodeId, EndpointNumber(0), AccessControl.Cluster);
@@ -1297,7 +1296,7 @@ export class ControllerCommandHandler {
     /**
      * Set bindings on a specific endpoint of a node.
      * Writes to the Binding attribute on the Binding cluster.
-     * TODO Migrate to new Node API
+     * See #428 for migration to new Node API.
      */
     async setNodeBinding(
         nodeId: NodeId,

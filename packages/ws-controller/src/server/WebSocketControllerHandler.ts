@@ -644,7 +644,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     throw ServerError.invalidArguments("filter required for filter_type 2 (long discriminator)");
                 commissionRequest = { ...baseRequest, passcode: setup_pin_code, longDiscriminator: filter };
                 break;
-            case 3: // Vendor ID (requires product ID too, but Python server only passes vendor ID)  // TODO, will basically never work!
+            case 3: // Vendor ID — limited: Python server only passes vendor_id without product_id (see #431)
                 if (filter === undefined)
                     throw ServerError.invalidArguments("filter required for filter_type 3 (vendor ID)");
                 commissionRequest = { ...baseRequest, passcode: setup_pin_code, vendorId: filter, productId: 0 };
@@ -923,7 +923,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 mrpSessionIdleInterval,
             }) => ({
                 instance_name: instanceName,
-                host_name: hostName, // TODO
+                host_name: hostName,
                 port,
                 long_discriminator: longDiscriminator,
                 vendor_id: vendorId,
