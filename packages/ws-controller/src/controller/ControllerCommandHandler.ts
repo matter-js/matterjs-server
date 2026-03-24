@@ -753,6 +753,7 @@ export class ControllerCommandHandler {
         }
     }
 
+    // See #438 for improving response typing
     async #invokeCommand<const C extends ClusterType>(
         node: ClientNode,
         request: Invoke.ConcreteCommandRequest<C>,
