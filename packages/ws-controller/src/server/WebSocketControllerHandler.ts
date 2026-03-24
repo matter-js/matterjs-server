@@ -85,7 +85,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         this.#testNodeHandler = new TestNodeCommandHandler();
         this.#config = config;
         this.#serverVersion = serverVersion;
-        // Auto-detect Home Assistant (Supervisor token takes precedence over stored config)
+        // Auto-detect Home Assistant (Supervisor token used at startup; user-provided credentials preferred after set_ha_credentials)
         this.#haClient = HomeAssistantClient.create(config);
         if (this.#haClient) {
             logger.info("Home Assistant integration enabled");
@@ -1042,10 +1042,16 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
     async #handleSetHaCredentials(args: ArgsOf<"set_ha_credentials">): Promise<ResponseOf<"set_ha_credentials">> {
         const { url, token } = args;
-        // Normalize: strip trailing slash from URL
-        const normalizedUrl = url.replace(/\/+$/, "");
+        // Normalize: trim whitespace and strip trailing slash from URL
+        const normalizedUrl = url.trim().replace(/\/+$/, "");
+        const trimmedToken = token.trim();
 
-        // Allow empty values to clear credentials; validate non-empty URLs
+        // Enforce both-or-neither: partial config is invalid
+        if ((normalizedUrl && !trimmedToken) || (!normalizedUrl && trimmedToken)) {
+            throw ServerError.invalidArguments("Both URL and token must be provided, or both empty to clear");
+        }
+
+        // Validate non-empty URLs
         if (normalizedUrl) {
             try {
                 const parsed = new URL(normalizedUrl);
@@ -1058,9 +1064,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
             }
         }
 
-        await this.#config.set({ haUrl: normalizedUrl, haToken: token });
+        await this.#config.set({ haUrl: normalizedUrl, haToken: trimmedToken });
 
-        // Prefer explicit credentials from config; if none/invalid, fall back to Supervisor/env client
+        // Prefer explicit credentials from config; if missing, fall back to Supervisor/env client
         const clientFromConfig = HomeAssistantClient.fromConfig(this.#config);
         if (clientFromConfig) {
             this.#haClient = clientFromConfig;
@@ -1090,7 +1096,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         }
 
         const errors: string[] = [];
-        let synced = 0;
+        const updatedNodeIds: NodeId[] = [];
 
         try {
             const devices = await this.#haClient.getDeviceRegistry();
@@ -1106,8 +1112,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     if (currentLabel === match.name) continue; // Already in sync
 
                     await this.#config.setNodeLabel(nodeIdStr, match.name);
-                    this.#broadcastEvent("node_updated", this.#collectNodeDetails(nodeId));
-                    synced++;
+                    updatedNodeIds.push(nodeId);
                 } catch (err) {
                     errors.push(`Node ${nodeIdStr}: ${err instanceof Error ? err.message : String(err)}`);
                 }
@@ -1118,10 +1123,15 @@ export class WebSocketControllerHandler implements WebServerHandler {
             );
         }
 
-        if (synced > 0) {
-            logger.info(`Synced ${synced} node name(s) from Home Assistant`);
+        // Broadcast updates after all labels are persisted to avoid per-node WS traffic bursts
+        for (const nodeId of updatedNodeIds) {
+            this.#broadcastEvent("node_updated", this.#collectNodeDetails(nodeId));
         }
-        return { synced, errors };
+
+        if (updatedNodeIds.length > 0) {
+            logger.info(`Synced ${updatedNodeIds.length} node name(s) from Home Assistant`);
+        }
+        return { synced: updatedNodeIds.length, errors };
     }
 
     async #handlePushNodeLabelToHa(
@@ -1156,7 +1166,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             }
 
             await this.#haClient.updateDeviceName(match.deviceId, label);
-            logger.info(`Pushed label "${label}" to Home Assistant for node ${node_id}`);
+            logger.debug(`Pushed custom label to Home Assistant for node ${node_id}`);
         } catch (err) {
             if (err instanceof ServerError) throw err;
             throw ServerError.unknownError(

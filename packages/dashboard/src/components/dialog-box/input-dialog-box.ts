@@ -29,6 +29,7 @@ export class InputDialogBox extends LitElement {
                     <md-outlined-text-field
                         .value=${params.defaultValue ?? ""}
                         .label=${params.label ?? ""}
+                        aria-label=${params.label || params.title || "Input"}
                         @keydown=${this._handleKeydown}
                     ></md-outlined-text-field>
                 </div>
