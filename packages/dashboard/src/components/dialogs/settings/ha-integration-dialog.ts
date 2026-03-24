@@ -13,7 +13,6 @@ import { MatterClient } from "@matter-server/ws-client";
 import { css, html, LitElement, nothing } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
 import { handleAsync } from "../../../util/async-handler.js";
-import { preventDefault } from "../../../util/prevent_default.js";
 
 @customElement("ha-integration-dialog")
 export class HaIntegrationDialog extends LitElement {
@@ -81,7 +80,7 @@ export class HaIntegrationDialog extends LitElement {
         this._syncResult = null;
         try {
             await this.client.setHaCredentials("", "");
-            this._syncResult = "Home Assistant integration cleared.";
+            this._syncResult = "Stored credentials cleared.";
             this._urlField.value = "";
             this._tokenField.value = "";
         } catch (err) {
@@ -96,12 +95,12 @@ export class HaIntegrationDialog extends LitElement {
     }
 
     private _handleClosed() {
-        this.parentNode!.removeChild(this);
+        this.remove();
     }
 
     protected override render() {
         return html`
-            <md-dialog open @cancel=${preventDefault} @closed=${this._handleClosed}>
+            <md-dialog open @closed=${this._handleClosed}>
                 <div slot="headline">Home Assistant Integration</div>
                 <div slot="content">
                     <p class="hint">
@@ -109,7 +108,7 @@ export class HaIntegrationDialog extends LitElement {
                         ${
                             this._haConfigured
                                 ? html`
-                                      <br /><span class="status-ok">Configured</span>
+                                      <br /><span class="status-ok">Credentials saved</span>
                                   `
                                 : nothing
                         }

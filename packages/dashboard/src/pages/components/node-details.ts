@@ -193,18 +193,18 @@ export class NodeDetails extends LitElement {
                 if (pushToHa) {
                     try {
                         await this.client.pushNodeLabelToHa(this.node!.node_id);
-                    } catch (haErr: any) {
+                    } catch (haErr) {
                         showAlertDialog({
                             title: "Failed to update Home Assistant",
-                            text: haErr.message,
+                            text: haErr instanceof Error ? haErr.message : String(haErr),
                         });
                     }
                 }
             }
-        } catch (err: any) {
+        } catch (err) {
             showAlertDialog({
                 title: "Failed to set node label",
-                text: err.message,
+                text: err instanceof Error ? err.message : String(err),
             });
         }
     }

@@ -390,9 +390,12 @@ describe("ws-client", () => {
                 await client.startListening();
 
                 const nodeId = BigInt("18446744069414584320");
-                let nodesChangedCalled = false;
-                client.addEventListener("nodes_changed", () => {
-                    nodesChangedCalled = true;
+
+                const eventReceived = new Promise<void>(resolve => {
+                    const removeListener = client.addEventListener("nodes_changed", () => {
+                        removeListener();
+                        resolve();
+                    });
                 });
 
                 server.sendEvent("node_added", {
@@ -405,10 +408,7 @@ describe("ws-client", () => {
                     attributes: {},
                 });
 
-                // Wait for event to be processed
-                await new Promise(resolve => setTimeout(resolve, 100));
-
-                expect(nodesChangedCalled).to.be.true;
+                await eventReceived;
                 const nodeKey = String(nodeId);
                 expect(client.nodes[nodeKey]).to.exist;
             });
@@ -431,18 +431,17 @@ describe("ws-client", () => {
 
                 await client.startListening();
 
-                let nodesChangedCalled = false;
-                client.addEventListener("nodes_changed", () => {
-                    nodesChangedCalled = true;
+                const eventReceived = new Promise<void>(resolve => {
+                    const removeListener = client.addEventListener("nodes_changed", () => {
+                        removeListener();
+                        resolve();
+                    });
                 });
 
                 // Send attribute update event
                 server.sendEvent("attribute_updated", [nodeId, "1/6/0", true]);
 
-                // Wait for event to be processed
-                await new Promise(resolve => setTimeout(resolve, 100));
-
-                expect(nodesChangedCalled).to.be.true;
+                await eventReceived;
                 const nodeKey = String(nodeId);
                 expect(client.nodes[nodeKey]?.attributes["1/6/0"]).to.equal(true);
             });

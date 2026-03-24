@@ -11,7 +11,6 @@ import type { MdDialog } from "@material/web/dialog/dialog.js";
 import type { MdOutlinedTextField } from "@material/web/textfield/outlined-text-field.js";
 import { css, html, LitElement } from "lit";
 import { customElement, property } from "lit/decorators.js";
-import { preventDefault } from "../../util/prevent_default.js";
 import type { InputDialogBoxParams } from "./show-dialog-box.js";
 
 @customElement("input-dialog-box")
@@ -23,7 +22,7 @@ export class InputDialogBox extends LitElement {
     protected override render() {
         const params = this.params;
         return html`
-            <md-dialog open @cancel=${preventDefault} @closed=${this._handleClosed}>
+            <md-dialog open @closed=${this._handleClosed}>
                 ${params.title ? html`<div slot="headline">${params.title}</div>` : ""}
                 <div slot="content">
                     ${params.text ? html`<p>${params.text}</p>` : ""}
@@ -71,7 +70,7 @@ export class InputDialogBox extends LitElement {
             this._resolved = true;
             this.dialogResult(null);
         }
-        this.parentElement!.removeChild(this);
+        this.remove();
     }
 
     static override styles = css`

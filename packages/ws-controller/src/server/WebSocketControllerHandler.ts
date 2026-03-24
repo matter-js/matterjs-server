@@ -1044,13 +1044,27 @@ export class WebSocketControllerHandler implements WebServerHandler {
         const { url, token } = args;
         // Normalize: strip trailing slash from URL
         const normalizedUrl = url.replace(/\/+$/, "");
+
+        // Allow empty values to clear credentials; validate non-empty URLs
+        if (normalizedUrl) {
+            try {
+                const parsed = new URL(normalizedUrl);
+                if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+                    throw ServerError.invalidArguments(`Unsupported URL protocol: ${parsed.protocol}`);
+                }
+            } catch (err) {
+                if (err instanceof ServerError) throw err;
+                throw ServerError.invalidArguments(`Invalid Home Assistant URL: ${normalizedUrl}`);
+            }
+        }
+
         await this.#config.set({ haUrl: normalizedUrl, haToken: token });
 
         // Prefer explicit credentials from config; if none/invalid, fall back to Supervisor/env client
         const clientFromConfig = HomeAssistantClient.fromConfig(this.#config);
         if (clientFromConfig) {
             this.#haClient = clientFromConfig;
-            logger.info(`Home Assistant credentials configured for ${normalizedUrl}`);
+            logger.debug(`Home Assistant credentials configured for ${normalizedUrl}`);
         } else {
             const supervisorClient = HomeAssistantClient.create(this.#config);
             if (supervisorClient) {
@@ -1155,10 +1169,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
     #applyCustomLabel(details: MatterNode): MatterNode {
         const customLabel = this.#config.getNodeLabel(String(details.node_id));
-        if (customLabel) {
-            details.custom_label = customLabel;
-        }
-        return details;
+        return customLabel ? { ...details, custom_label: customLabel } : details;
     }
 
     #collectNodeDetails(nodeId: NodeId): MatterNode {

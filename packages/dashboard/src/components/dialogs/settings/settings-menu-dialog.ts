@@ -36,7 +36,7 @@ export class SettingsMenuDialog extends LitElement {
     }
 
     private _handleClosed() {
-        this.parentNode!.removeChild(this);
+        this.remove();
     }
 
     protected override render() {
