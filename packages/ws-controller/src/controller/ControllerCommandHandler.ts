@@ -361,7 +361,23 @@ export class ControllerCommandHandler {
             basicInfoChangedInBatch = false;
             this.events.nodeStructureChanged.emit(nodeId);
         });
-        node.events.decommissioned.on(() => this.events.nodeDecommissioned.emit(nodeId));
+        node.events.decommissioned.on(() => {
+            // Defer so that any events emitted synchronously in the same call stack
+            // (e.g. the BasicInformation Leave event that triggers decommissioning) are
+            // relayed to clients before node_removed.  See matter-js/matterjs-server#75.
+            queueMicrotask(() => {
+                try {
+                    // Clean up internal state — mirrors the cleanup in decommissionNode() so
+                    // that nodes removed by an external controller are handled identically.
+                    this.#nodes.delete(nodeId);
+                    this.#customClusterPoller.unregisterNode(nodeId);
+
+                    this.events.nodeDecommissioned.emit(nodeId);
+                } catch (error) {
+                    logger.error(`Error during decommission cleanup for node ${this.formatNode(nodeId)}`, error);
+                }
+            });
+        });
         node.events.nodeEndpointAdded.on(endpointId => this.events.nodeEndpointAdded.emit(nodeId, endpointId));
         node.events.nodeEndpointRemoved.on(endpointId => this.events.nodeEndpointRemoved.emit(nodeId, endpointId));
 
