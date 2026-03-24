@@ -754,11 +754,13 @@ Node IDs and some other fields (e.g., `fabric_id`, `compressed_fabric_id`, `even
 
 - Serializes BigInt values as unquoted numbers in JSON (e.g., `18446744069414584320` instead of `"18446744069414584320"`)
 - Clients must use a BigInt-aware JSON parser to correctly handle these values
+- Standard JSON parsing that maps numbers to IEEE-754 doubles may silently lose precision for these values instead of throwing an error; avoid using such parsers for Matter IDs and counters
+- Non-JavaScript clients should use JSON parsing options/libraries that preserve large integers as big-integer types (for example: Python's `json` with custom decoders, Java's `BigInteger`-aware parsers, or Go's `encoding/json` with `UseNumber` combined with `math/big.Int`)
 - The `@matter-server/ws-client` package handles this automatically
 
 ## Error Codes
 
-Error codes match the [Python Matter Server](https://github.com/home-assistant-libs/python-matter-server/blob/main/matter_server/common/errors.py) for API compatibility.
+Error codes match the [Python Matter Server](https://github.com/home-assistant-libs/python-matter-server) for API compatibility.
 
 | Code | Name | Description |
 |------|------|-------------|
