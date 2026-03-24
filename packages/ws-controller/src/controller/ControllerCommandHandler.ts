@@ -33,6 +33,7 @@ import {
     BridgedDeviceBasicInformation,
     GeneralCommissioning,
     OperationalCredentials,
+    TimeSynchronization,
 } from "@matter/main/clusters";
 import {
     DecodedAttributeReportValue,
@@ -117,6 +118,7 @@ import { formatNodeId } from "../util/formatNodeId.js";
 import { pingIp } from "../util/network.js";
 import { CustomClusterPoller } from "./CustomClusterPoller.js";
 import { Nodes } from "./Nodes.js";
+import { TimeSyncManager } from "./TimeSyncManager.js";
 
 const logger = Logger.get("ControllerCommandHandler");
 
@@ -174,6 +176,8 @@ export class ControllerCommandHandler {
     #availableUpdates = new Map<NodeId, SoftwareUpdateInfo>();
     /** Poller for custom cluster attributes (Eve energy, etc.) */
     #customClusterPoller: CustomClusterPoller;
+    /** Manages time synchronization for nodes with the TimeSynchronization cluster */
+    #timeSyncManager: TimeSyncManager;
     /** Track the last known availability for each node to detect changes */
     #lastAvailability = new Map<NodeId, boolean>();
     /** Track in-flight invoke-commands for deduplication across all WebSocket connections */
@@ -206,6 +210,12 @@ export class ControllerCommandHandler {
             nodeConnected: nodeId => !!(this.#nodes.has(nodeId) && this.#nodes.get(nodeId).isConnected),
             handleReadAttributes: (nodeId, paths, fabricFiltered) =>
                 this.handleReadAttributes(nodeId, paths, fabricFiltered),
+        });
+
+        // Initialize time sync manager for nodes with TimeSynchronization cluster
+        this.#timeSyncManager = new TimeSyncManager({
+            syncTime: nodeId => this.#syncNodeTime(nodeId),
+            nodeConnected: nodeId => !!(this.#nodes.has(nodeId) && this.#nodes.get(nodeId).isConnected),
         });
     }
 
@@ -286,9 +296,22 @@ export class ControllerCommandHandler {
         }
     }
 
+    /**
+     * Send a setUtcTime command to a node's TimeSynchronization cluster.
+     */
+    async #syncNodeTime(nodeId: NodeId): Promise<void> {
+        const client = this.#nodes.clusterClientByIdFor(nodeId, EndpointNumber(0), TimeSynchronization.Cluster.id);
+        await client.commands.setUtcTime({
+            utcTime: Date.now() * 1000,
+            granularity: TimeSynchronization.Granularity.MillisecondsGranularity,
+            timeSource: TimeSynchronization.TimeSource.Admin,
+        });
+    }
+
     close() {
         if (!this.#started) return;
         this.#customClusterPoller.stop();
+        this.#timeSyncManager.stop();
         return this.#controller.close();
     }
 
@@ -317,7 +340,10 @@ export class ControllerCommandHandler {
                 this.events.nodeStructureChanged.emit(nodeId);
             }
         });
-        node.events.eventTriggered.on(data => this.events.eventChanged.emit(nodeId, data));
+        node.events.eventTriggered.on(data => {
+            this.events.eventChanged.emit(nodeId, data);
+            this.#timeSyncManager.handleEvent(nodeId, data);
+        });
         node.events.stateChanged.on(state => {
             if (state === NodeStates.Disconnected) {
                 return;
@@ -331,10 +357,11 @@ export class ControllerCommandHandler {
             // Only refresh cache on Connected state (not Reconnecting, WaitingForDiscovery, etc.)
             if (state === NodeStates.Connected) {
                 attributeCache.update(node);
-                // Register for custom cluster polling (e.g., Eve energy) after cache is updated
+                // Register for custom cluster polling (e.g., Eve energy) and time sync after cache is updated
                 const attributes = attributeCache.get(nodeId);
                 if (attributes) {
                     this.#customClusterPoller.registerNode(nodeId, attributes);
+                    this.#timeSyncManager.registerNode(nodeId, attributes);
                 }
             }
 
@@ -380,10 +407,11 @@ export class ControllerCommandHandler {
         // Initialize attribute cache if node is already initialized
         if (node.initialized) {
             attributeCache.add(node);
-            // Register for custom cluster polling (e.g., Eve energy)
+            // Register for custom cluster polling (e.g., Eve energy) and time sync
             const attributes = attributeCache.get(nodeId);
             if (attributes) {
                 this.#customClusterPoller.registerNode(nodeId, attributes);
+                this.#timeSyncManager.registerNode(nodeId, attributes);
             }
         }
 
@@ -1193,8 +1221,9 @@ export class ControllerCommandHandler {
         await this.#controller.removeNode(nodeId, !!node?.isConnected);
         // Remove node from storage (also clears attribute cache)
         this.#nodes.delete(nodeId);
-        // Unregister from custom cluster polling
+        // Unregister from custom cluster polling and time sync
         this.#customClusterPoller.unregisterNode(nodeId);
+        this.#timeSyncManager.unregisterNode(nodeId);
     }
 
     async openCommissioningWindow(data: OpenCommissioningWindowRequest): Promise<OpenCommissioningWindowResponse> {
