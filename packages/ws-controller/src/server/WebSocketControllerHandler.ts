@@ -1026,6 +1026,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         args: ArgsOf<"set_custom_node_label">,
     ): Promise<ResponseOf<"set_custom_node_label">> {
         const { node_id, label } = args;
+        const normalizedLabel = label?.trim() ?? "";
         const nodeId = NodeId(node_id);
         const handler = this.#handlerFor(node_id);
 
@@ -1033,7 +1034,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             throw ServerError.nodeNotExists(node_id);
         }
 
-        await this.#config.setNodeLabel(String(nodeId), label);
+        await this.#config.setNodeLabel(String(nodeId), normalizedLabel);
 
         // Broadcast node_updated so all connected clients see the new label
         if (handler === this.#commandHandler) {
@@ -1117,6 +1118,13 @@ export class WebSocketControllerHandler implements WebServerHandler {
         }
 
         const { node_id } = args;
+        const nodeId = NodeId(node_id);
+        const handler = this.#handlerFor(node_id);
+
+        if (!handler.hasNode(nodeId)) {
+            throw ServerError.nodeNotExists(node_id);
+        }
+
         const nodeIdStr = String(node_id);
         const label = this.#config.getNodeLabel(nodeIdStr);
         if (!label) {

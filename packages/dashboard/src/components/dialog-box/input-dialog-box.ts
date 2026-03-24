@@ -43,16 +43,24 @@ export class InputDialogBox extends LitElement {
 
     private _handleKeydown(e: KeyboardEvent) {
         if (e.key === "Enter") {
+            e.preventDefault();
+            e.stopPropagation();
             this._confirm();
         }
     }
 
     private _cancel() {
+        if (this._resolved) return;
+        this._resolved = true;
         this.dialogResult(null);
         this.shadowRoot!.querySelector<MdDialog>("md-dialog")!.close();
     }
 
+    private _resolved = false;
+
     private _confirm() {
+        if (this._resolved) return;
+        this._resolved = true;
         const textField = this.shadowRoot!.querySelector<MdOutlinedTextField>("md-outlined-text-field")!;
         this.dialogResult(textField.value);
         this.shadowRoot!.querySelector<MdDialog>("md-dialog")!.close();
