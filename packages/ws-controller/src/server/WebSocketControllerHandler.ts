@@ -698,10 +698,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         // Include test nodes
         for (const testNode of this.#testNodeHandler.getNodes()) {
             if (!only_available || testNode.available) {
-                const customLabel = this.#config.getNodeLabel(String(testNode.node_id));
-                if (customLabel) {
-                    testNode.custom_label = customLabel;
-                }
+                this.#applyCustomLabel(testNode);
                 nodeDetails.push(testNode);
             }
         }
@@ -724,11 +721,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         } else {
             details = await handler.getNodeDetails(nodeId);
         }
-        const customLabel = this.#config.getNodeLabel(String(nodeId));
-        if (customLabel) {
-            details.custom_label = customLabel;
-        }
-        return details;
+        return this.#applyCustomLabel(details);
     }
 
     async #handleGetNodeIpAddresses(
@@ -1041,11 +1034,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             this.#broadcastEvent("node_updated", this.#collectNodeDetails(nodeId));
         } else {
             const details = await handler.getNodeDetails(nodeId);
-            const customLabel = this.#config.getNodeLabel(String(nodeId));
-            if (customLabel) {
-                details.custom_label = customLabel;
-            }
-            this.#broadcastEvent("node_updated", details);
+            this.#broadcastEvent("node_updated", this.#applyCustomLabel(details));
         }
 
         return null;
@@ -1066,9 +1055,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             const supervisorClient = HomeAssistantClient.create(this.#config);
             if (supervisorClient) {
                 this.#haClient = supervisorClient;
-                logger.info(
-                    "Home Assistant stored credentials cleared or invalid; falling back to Supervisor configuration",
-                );
+                logger.info("Home Assistant stored credentials missing; falling back to Supervisor configuration");
             } else {
                 this.#haClient = undefined;
                 logger.info("Home Assistant credentials cleared; Home Assistant integration disabled");
@@ -1166,14 +1153,18 @@ export class WebSocketControllerHandler implements WebServerHandler {
         return null;
     }
 
-    #collectNodeDetails(nodeId: NodeId): MatterNode {
-        const lastInterviewDate = this.#lastInterviewDates.get(nodeId);
-        const details = this.#commandHandler.getNodeDetails(nodeId, lastInterviewDate);
-        const customLabel = this.#config.getNodeLabel(String(nodeId));
+    #applyCustomLabel(details: MatterNode): MatterNode {
+        const customLabel = this.#config.getNodeLabel(String(details.node_id));
         if (customLabel) {
             details.custom_label = customLabel;
         }
         return details;
+    }
+
+    #collectNodeDetails(nodeId: NodeId): MatterNode {
+        const lastInterviewDate = this.#lastInterviewDates.get(nodeId);
+        const details = this.#commandHandler.getNodeDetails(nodeId, lastInterviewDate);
+        return this.#applyCustomLabel(details);
     }
 
     #convertCommandDataToWebSocket(

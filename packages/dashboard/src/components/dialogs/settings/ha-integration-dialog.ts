@@ -76,6 +76,21 @@ export class HaIntegrationDialog extends LitElement {
         }
     }
 
+    private async _clear() {
+        this._saving = true;
+        this._syncResult = null;
+        try {
+            await this.client.setHaCredentials("", "");
+            this._syncResult = "Home Assistant integration cleared.";
+            this._urlField.value = "";
+            this._tokenField.value = "";
+        } catch (err) {
+            this._syncResult = `Failed to clear: ${err instanceof Error ? err.message : String(err)}`;
+        } finally {
+            this._saving = false;
+        }
+    }
+
     private _close() {
         this.shadowRoot!.querySelector<MdDialog>("md-dialog")!.close();
     }
@@ -123,6 +138,12 @@ export class HaIntegrationDialog extends LitElement {
                         ?disabled=${!this._haConfigured || this._syncing}
                     >
                         ${this._syncing ? "Syncing..." : "Sync Names from HA"}
+                    </md-text-button>
+                    <md-text-button
+                        @click=${handleAsync(() => this._clear())}
+                        ?disabled=${!this._haConfigured || this._saving}
+                    >
+                        Clear
                     </md-text-button>
                     <md-text-button @click=${this._close}>Cancel</md-text-button>
                     <md-text-button
