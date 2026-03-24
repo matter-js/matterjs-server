@@ -14,7 +14,8 @@ export interface MatterNode {
     available: boolean;
     is_bridge: boolean;
     attributes: AttributesData;
-    attribute_subscriptions: []; // ???
+    /** Attribute subscriptions (always empty array in current protocol, matches Python Matter Server) */
+    attribute_subscriptions: [];
     /**
      * Matter specification version of the node (e.g., "1.2.0", "1.3.0", "1.4.0").
      * Determined from the SpecificationVersion attribute (0x15) if available,
@@ -57,9 +58,9 @@ export interface APICommands {
     };
     get_node: {
         requestArgs: {
-            node_id: number | bigint; // ????
+            node_id: number | bigint;
         };
-        response: MatterNode; // ????
+        response: MatterNode;
     };
     commission_with_code: {
         requestArgs: {
@@ -95,11 +96,13 @@ export interface APICommands {
     };
     open_commissioning_window: {
         requestArgs: {
-            node_id: number | bigint; //????
+            node_id: number | bigint;
             timeout: number; // seconds
             iteration?: number; // 1000
-            option?: number; // 1??
-            discriminator?: number | null; // ???
+            /** Commissioning window type: 0=Enhanced, 1=Basic (default: 1) */
+            option?: number;
+            /** Discriminator value (null for random) */
+            discriminator?: number | null;
         };
         response: {
             setup_pin_code: number;
@@ -113,18 +116,19 @@ export interface APICommands {
     };
     interview_node: {
         requestArgs: {
-            node_id: number | bigint; // ???
+            node_id: number | bigint;
         };
         response: null;
     };
     device_command: {
         requestArgs: {
-            node_id: number | bigint; // ??
+            node_id: number | bigint;
             endpoint_id: number;
             cluster_id: number;
             command_name: string;
             payload: unknown;
-            response_type: unknown; // ????
+            /** Response type hint (unused, reserved for future) */
+            response_type: unknown;
             timed_request_timeout_ms?: number | null;
             interaction_timeout_ms?: number | null;
         };
@@ -132,7 +136,7 @@ export interface APICommands {
     };
     remove_node: {
         requestArgs: {
-            node_id: number | bigint; // ???
+            node_id: number | bigint;
         };
         response: null;
     };
@@ -158,7 +162,7 @@ export interface APICommands {
     };
     write_attribute: {
         requestArgs: {
-            node_id: number | bigint; //???,
+            node_id: number | bigint;
             attribute_path: string;
             value: unknown;
         };
@@ -187,7 +191,7 @@ export interface APICommands {
     };
     get_node_ip_addresses: {
         requestArgs: {
-            node_id: number | bigint; // ????
+            node_id: number | bigint;
             prefer_cache: boolean;
             scoped: boolean;
         };
