@@ -76,16 +76,21 @@ export class NodeBindingDialog extends LitElement {
         }
     }
 
-    /** Helper to safely convert node_id (number | bigint) to number for API calls */
+    /**
+     * Safely convert node_id (number | bigint) to number for API calls.
+     * Mirrors safeNodeIdToNumber() from @matter-server/ws-controller — inlined
+     * here because the dashboard should not depend on the server-side package.
+     */
     private getNodeIdAsNumber(): number {
         const nodeId = this.node!.node_id;
         if (typeof nodeId === "bigint") {
-            if (nodeId > BigInt(Number.MAX_SAFE_INTEGER)) {
-                throw new RangeError(
-                    `Node ID ${nodeId} exceeds Number.MAX_SAFE_INTEGER and cannot be safely converted`,
-                );
+            if (nodeId < 0n || nodeId > BigInt(Number.MAX_SAFE_INTEGER)) {
+                throw new RangeError(`Node ID ${nodeId} cannot be safely converted to number`);
             }
             return Number(nodeId);
+        }
+        if (!Number.isSafeInteger(nodeId) || nodeId < 0) {
+            throw new RangeError(`Node ID ${nodeId} is not a non-negative safe integer`);
         }
         return nodeId;
     }
