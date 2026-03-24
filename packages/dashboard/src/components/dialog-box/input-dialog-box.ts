@@ -67,6 +67,10 @@ export class InputDialogBox extends LitElement {
     }
 
     private _handleClosed() {
+        if (!this._resolved) {
+            this._resolved = true;
+            this.dialogResult(null);
+        }
         this.parentElement!.removeChild(this);
     }
 

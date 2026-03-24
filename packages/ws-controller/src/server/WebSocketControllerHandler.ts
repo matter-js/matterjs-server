@@ -1057,10 +1057,23 @@ export class WebSocketControllerHandler implements WebServerHandler {
         const normalizedUrl = url.replace(/\/+$/, "");
         await this.#config.set({ haUrl: normalizedUrl, haToken: token });
 
-        // Use fromConfig directly so user-provided credentials take effect
-        // even when running under Supervisor (where create() would prefer SUPERVISOR_TOKEN)
-        this.#haClient = HomeAssistantClient.fromConfig(this.#config);
-        logger.info(`Home Assistant credentials configured for ${normalizedUrl}`);
+        // Prefer explicit credentials from config; if none/invalid, fall back to Supervisor/env client
+        const clientFromConfig = HomeAssistantClient.fromConfig(this.#config);
+        if (clientFromConfig) {
+            this.#haClient = clientFromConfig;
+            logger.info(`Home Assistant credentials configured for ${normalizedUrl}`);
+        } else {
+            const supervisorClient = HomeAssistantClient.create(this.#config);
+            if (supervisorClient) {
+                this.#haClient = supervisorClient;
+                logger.info(
+                    "Home Assistant stored credentials cleared or invalid; falling back to Supervisor configuration",
+                );
+            } else {
+                this.#haClient = undefined;
+                logger.info("Home Assistant credentials cleared; Home Assistant integration disabled");
+            }
+        }
 
         try {
             await this.#broadcastServerInfoUpdated();
