@@ -62,10 +62,10 @@ export class HomeAssistantClient {
     }
 
     /**
-     * Create a client, preferring Supervisor token over stored config.
+     * Create a client, preferring stored config over Supervisor token.
      */
     static create(config: ConfigStorage): HomeAssistantClient | undefined {
-        return HomeAssistantClient.fromSupervisor() ?? HomeAssistantClient.fromConfig(config);
+        return HomeAssistantClient.fromConfig(config) ?? HomeAssistantClient.fromSupervisor();
     }
 
     /**
@@ -141,14 +141,14 @@ export class HomeAssistantClient {
                 if (!existing) {
                     matches.set(nodeIdStr, {
                         deviceId: device.id,
-                        name: device.name_by_user ?? device.name,
+                        name: device.name_by_user?.trim() || device.name,
                         identifier,
                         endpoint,
                     });
                 } else if (endpoint === 0 || (existing.endpoint !== 0 && endpoint < existing.endpoint)) {
                     matches.set(nodeIdStr, {
                         deviceId: device.id,
-                        name: device.name_by_user ?? device.name,
+                        name: device.name_by_user?.trim() || device.name,
                         identifier,
                         endpoint,
                     });

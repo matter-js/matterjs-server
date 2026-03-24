@@ -85,7 +85,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         this.#testNodeHandler = new TestNodeCommandHandler();
         this.#config = config;
         this.#serverVersion = serverVersion;
-        // Auto-detect Home Assistant (Supervisor token used at startup; user-provided credentials preferred after set_ha_credentials)
+        // Auto-detect Home Assistant (stored config preferred over Supervisor token)
         this.#haClient = HomeAssistantClient.create(config);
         if (this.#haClient) {
             logger.info("Home Assistant integration enabled");
@@ -1149,7 +1149,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             throw ServerError.nodeNotExists(node_id);
         }
 
-        const nodeIdStr = String(node_id);
+        const nodeIdStr = String(nodeId);
         const label = this.#config.getNodeLabel(nodeIdStr);
         if (!label) {
             throw ServerError.invalidArguments(`Node ${node_id} has no custom label to push`);
