@@ -130,8 +130,8 @@ export interface APICommands {
             cluster_id: number;
             command_name: string;
             payload: unknown;
-            /** Optional response type hint (currently ignored, reserved for future use) */
-            response_type?: unknown;
+            /** Response type hint used for response conversion; pass null to skip conversion */
+            response_type: unknown;
             timed_request_timeout_ms?: number | null;
             interaction_timeout_ms?: number | null;
         };
