@@ -85,13 +85,13 @@ export interface APICommands {
             ssid: string;
             credentials: string;
         };
-        response: {};
+        response: null;
     };
     set_thread_dataset: {
         requestArgs: {
             dataset: string;
         };
-        response: {};
+        response: null;
     };
     open_commissioning_window: {
         requestArgs: {
@@ -144,7 +144,7 @@ export interface APICommands {
     };
     subscribe_attribute: {
         requestArgs: {};
-        response: {};
+        response: null;
     };
     read_attribute: {
         requestArgs: {
@@ -214,7 +214,7 @@ export interface APICommands {
             node_id: number | bigint;
             fabric_index: number;
         };
-        response: {};
+        response: null;
     };
     set_acl_entry: {
         requestArgs: {

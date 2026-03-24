@@ -49,11 +49,11 @@ export interface APICommands {
     };
     set_wifi_credentials: {
         requestArgs: { ssid: string; credentials: string };
-        response: Record<string, never>;
+        response: null;
     };
     set_thread_dataset: {
         requestArgs: { dataset: string };
-        response: Record<string, never>;
+        response: null;
     };
     open_commissioning_window: {
         requestArgs: {
@@ -96,7 +96,7 @@ export interface APICommands {
     };
     subscribe_attribute: {
         requestArgs: Record<string, never>;
-        response: Record<string, never>;
+        response: null;
     };
     read_attribute: {
         requestArgs: {
@@ -147,7 +147,7 @@ export interface APICommands {
     };
     remove_matter_fabric: {
         requestArgs: { node_id: number | bigint; fabric_index: number };
-        response: Record<string, never>;
+        response: null;
     };
     set_acl_entry: {
         requestArgs: { node_id: number | bigint; entry: AccessControlEntry[] };
@@ -159,7 +159,7 @@ export interface APICommands {
     };
     set_default_fabric_label: {
         requestArgs: { label: string | null };
-        response: Record<string, never>;
+        response: null;
     };
     get_loglevel: {
         requestArgs: Record<string, never>;

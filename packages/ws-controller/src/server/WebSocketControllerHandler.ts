@@ -867,7 +867,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         } catch (error) {
             logger.warn("Failed to broadcast server info update", error);
         }
-        return {};
+        return null;
     }
 
     async #handleSetThreadDataset(args: ArgsOf<"set_thread_dataset">): Promise<ResponseOf<"set_thread_dataset">> {
@@ -879,7 +879,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         } catch (error) {
             logger.warn("Failed to broadcast server info update", error);
         }
-        return {};
+        return null;
     }
 
     async #handleOpenCommissioningWindow(
@@ -958,7 +958,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
     async #handleRemoveMatterFabric(args: ArgsOf<"remove_matter_fabric">): Promise<ResponseOf<"remove_matter_fabric">> {
         const { node_id, fabric_index } = args;
         await this.#commandHandler.removeFabric(NodeId(node_id), FabricIndex(fabric_index));
-        return {};
+        return null;
     }
 
     async #handleSetAclEntry(args: ArgsOf<"set_acl_entry">): Promise<ResponseOf<"set_acl_entry">> {
