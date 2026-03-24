@@ -744,15 +744,36 @@ Attribute paths use the format: `endpoint/cluster/attribute`
 | WindowCovering | 258 | Blinds/shades |
 | Thermostat | 513 | HVAC control |
 
+## Schema Version
+
+The current schema version is **11**. The server reports `schema_version` and `min_supported_schema_version` in the initial connection message and via `server_info`. Clients should verify that the server's `schema_version` is within their supported range.
+
+## BigInt Handling
+
+Node IDs and some other fields (e.g., `fabric_id`, `compressed_fabric_id`, `event_number`, `timestamp`) may be BigInt values that exceed `Number.MAX_SAFE_INTEGER`. The server uses a custom JSON serializer that:
+
+- Serializes BigInt values as unquoted numbers in JSON (e.g., `18446744069414584320` instead of `"18446744069414584320"`)
+- Clients must use a BigInt-aware JSON parser to correctly handle these values
+- The `@matter-server/ws-client` package handles this automatically
+
 ## Error Codes
 
-| Code | Description |
-|------|-------------|
-| 0 | Unknown error |
-| 1 | Invalid command |
-| 2 | Invalid arguments |
-| 3 | Node not found |
-| 5 | Node does not exist |
+Error codes match the [Python Matter Server](https://github.com/home-assistant-libs/python-matter-server/blob/main/matter_server/common/errors.py) for API compatibility.
+
+| Code | Name | Description |
+|------|------|-------------|
+| 0 | UnknownError | Generic/unknown error |
+| 1 | NodeCommissionFailed | Node commissioning failed |
+| 2 | NodeInterviewFailed | Node interview failed |
+| 3 | NodeNotReady | Node is not ready (offline or not yet interviewed) |
+| 4 | NodeNotResolving | Node not resolving (CASE session establishment failed) |
+| 5 | NodeNotExists | Node does not exist |
+| 6 | VersionMismatch | SDK version mismatch |
+| 7 | SDKStackError | SDK/Stack error |
+| 8 | InvalidArguments | Invalid command arguments |
+| 9 | InvalidCommand | Invalid/unknown command |
+| 10 | UpdateCheckError | OTA update check failed |
+| 11 | UpdateError | OTA update failed |
 
 ## Python Matter Server Compatibility
 
