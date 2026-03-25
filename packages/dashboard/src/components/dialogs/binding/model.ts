@@ -21,6 +21,7 @@ export class BindingEntryDataTransformer {
         [inputKey: string]: keyof BindingEntryStruct;
     } = {
         "1": "node",
+        "2": "group",
         "3": "endpoint",
         "4": "cluster",
         "254": "fabricIndex",
@@ -45,8 +46,9 @@ export class BindingEntryDataTransformer {
                     if (mappedKey === "node") {
                         // Node IDs can be bigint - preserve the original type
                         result[mappedKey] = value;
-                    } else if (mappedKey === "fabricIndex" || mappedKey === "endpoint" || mappedKey === "cluster") {
-                        result[mappedKey] = value === undefined ? undefined : Number(value);
+                    } else {
+                        // group, endpoint, cluster, fabricIndex are all numeric
+                        result[mappedKey] = Number(value);
                     }
                 }
             }

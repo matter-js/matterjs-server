@@ -8,6 +8,7 @@ This page shows a detailed overview of the changes between versions without the 
 -->
 
 ## __WORK IN PROGRESS__
+- Increase Legacy Eve device energy data polling to 60s (was 30s) to reduce traffic on thread network
 - Enhancement/Fix: Update matter.js to the latest 0.17.0-nightly
     - Optimizes commissioning process and device connections during commissioning
     - RAM usage reductions and improvements

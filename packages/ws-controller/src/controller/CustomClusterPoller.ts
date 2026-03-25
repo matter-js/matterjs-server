@@ -32,10 +32,10 @@ const EVE_ENERGY_ATTRIBUTE_IDS = {
 // Standard Matter ElectricalPowerMeasurement cluster ID
 const ELECTRICAL_POWER_MEASUREMENT_CLUSTER_ID = 0x0090; // 144
 
-// Polling interval in milliseconds (30 seconds, same as Python server)
-const POLLING_INTERVAL_MS = 30_000;
+// Polling interval in milliseconds (60 seconds)
+const POLLING_INTERVAL_MS = 60_000;
 
-// Maximum initial delay in milliseconds (random 0-30s to stagger startup)
+// Maximum initial delay in milliseconds (random 30-60s to stagger startup)
 const MAX_INITIAL_DELAY_MS = 30_000;
 
 // Attribute path format: endpoint/cluster/attribute
@@ -122,7 +122,7 @@ export class CustomClusterPoller {
 
     constructor(attributeReader: NodeAttributeReader) {
         this.#attributeReader = attributeReader;
-        const delay = Millis(Math.random() * MAX_INITIAL_DELAY_MS);
+        const delay = Millis(MAX_INITIAL_DELAY_MS + Math.random() * MAX_INITIAL_DELAY_MS);
         this.#pollerTimer = Time.getTimer("eve-poller", delay, () => this.#pollAllNodes());
     }
 

@@ -215,7 +215,15 @@ export class NodeBindingDialog extends LitElement {
     }
 
     async addBindingHandler() {
-        const targetNodeId = this._targetNodeId.value ? BigInt(this._targetNodeId.value) : undefined;
+        let targetNodeId: bigint | undefined;
+        const rawNodeId = this._targetNodeId.value?.trim();
+        if (rawNodeId) {
+            if (!/^\d+$/.test(rawNodeId)) {
+                alert("Please enter a valid target node ID");
+                return;
+            }
+            targetNodeId = BigInt(rawNodeId);
+        }
         const targetEndpoint = this._targetEndpoint.value ? parseInt(this._targetEndpoint.value, 10) : undefined;
         const targetCluster = this._targetCluster.value ? parseInt(this._targetCluster.value, 10) : undefined;
 
