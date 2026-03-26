@@ -18,7 +18,9 @@ import { fileURLToPath } from "node:url";
 // Read the version from package.json using an ESM-native approach
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const packageJsonPath = join(__dirname, "../../package.json");
-const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8")) as { version: string };
+const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8")) as {
+    version: string;
+};
 const VERSION = packageJson.version;
 
 // Default values (exported for use in LegacyDataLoader)
@@ -207,18 +209,29 @@ export function parseCliArgs(argv?: string[]): CliOptions {
         listenAddress = [process.env.LISTEN_ADDRESS];
     }
 
-    // Substitute {{interface}} patterns with its primary IP address
+    // Substitute {{interface}} patterns with all its IP addresses
     if (listenAddress) {
         const interfaces = networkInterfaces();
-        listenAddress = listenAddress.map(address => {
+        listenAddress = listenAddress.flatMap(address => {
             const match = address.match(/^{{(.+)}}$/);
             if (match) {
                 const interfaceName = match[1];
-                const ipv4Address = interfaces[interfaceName]?.find(addr => addr.family === "IPv4" && !addr.internal);
-                if (!ipv4Address) throw new Error(`No IPv4 address found for interface ${interfaceName}`);
-                return ipv4Address.address;
+                const interfaceAddresses = interfaces[interfaceName] || [];
+
+                // Add scope to ipv6 link local addresses
+                const normalizedInterfaceAddresses = interfaceAddresses.map(a =>
+                    a.address.toLowerCase().startsWith("fe80:") && !a.address.includes("%")
+                        ? `${a.address}%${interfaceName}`
+                        : a.address,
+                );
+
+                if (normalizedInterfaceAddresses.length === 0) {
+                    throw new Error(`No valid IP address found for interface ${interfaceName}`);
+                }
+
+                return normalizedInterfaceAddresses;
             }
-            return address;
+            return [address];
         });
     }
     return {
