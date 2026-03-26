@@ -95,7 +95,7 @@ npm workspaces with six packages:
 - `StaticFileHandler` — serves dashboard assets
 - `HealthHandler` — `/health` endpoint
 
-Custom clusters are registered at import time via `import "@matter-server/custom-clusters"` in `MatterServer.ts`. The registration in `custom-clusters/src/register.ts` pushes each cluster definition into `MatterModel` and `ClusterRegistry`.
+Custom clusters are registered at import time via `import "@matter-server/custom-clusters"` in `MatterServer.ts`. The registration in `custom-clusters/src/register.ts` pushes each cluster definition into `Matter` and `ClusterRegistry`.
 
 ### WebSocket Protocol (Schema version 11)
 Messages follow the Python Matter Server protocol. Key commands: `start_listening`, `commission_with_code`, `commission_on_network`, `device_command`, `read_attribute`, `write_attribute`, `subscribe_attribute`, `get_nodes`, `get_node`, `server_info`, `diagnostics`.
@@ -114,7 +114,7 @@ The WS protocol uses a custom JSON serialiser (`toBigIntAwareJson`) and parser (
 Attribute changes normally emit granular `attribute_updated` events. Changes to the **BasicInformation** (0x28) or **BridgedDeviceBasicInformation** (0x39) clusters trigger a full `node_updated` broadcast instead (firmware version, product name, etc. are reflected in the node object).
 
 ### `ModelMapper` / cluster metadata
-`ClusterMap` in `ws-controller/src/model/ModelMapper.ts` is built at module load time from `MatterModel.standard`. It indexes clusters by lowercase name and numeric ID. `GlobalAttributes` (IDs 65528–65533) are indexed by both name and numeric ID to support decoding in custom/unknown clusters.
+`ClusterMap` in `ws-controller/src/model/ModelMapper.ts` is built at module load time from `Matter`. It indexes clusters by lowercase name and numeric ID. `GlobalAttributes` (IDs 65528–65533) are indexed by both name and numeric ID to support decoding in custom/unknown clusters.
 
 ## Dashboard
 

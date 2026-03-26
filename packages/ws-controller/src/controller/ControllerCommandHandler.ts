@@ -286,9 +286,9 @@ export class ControllerCommandHandler {
         }
     }
 
-    close() {
+    async close() {
         if (!this.#started) return;
-        this.#customClusterPoller.stop();
+        await this.#customClusterPoller.stop();
         return this.#controller.close();
     }
 

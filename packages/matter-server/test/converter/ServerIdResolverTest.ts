@@ -12,8 +12,8 @@ import {
     resolveServerId,
     storageExists,
 } from "@matter-server/ws-controller";
-import { StorageService } from "@matter/general";
-import { StorageBackendDisk } from "@matter/nodejs";
+import { Filesystem, StorageService } from "@matter/main";
+import { FileStorageDriver, NodeJsFilesystem } from "@matter/nodejs";
 import { access, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -111,17 +111,14 @@ describe("ServerIdResolver", () => {
             resolveTestDir = join(testDir, `resolve-${Date.now()}`);
             await mkdir(resolveTestDir, { recursive: true });
 
-            // Create environment with storage path
+            // Create an environment with a storage path
             env = new Environment("test");
             env.vars.set("storage.path", resolveTestDir);
+            env.set(Filesystem, new NodeJsFilesystem(() => resolveTestDir));
 
-            // Set up StorageService with a factory for file-based storage
-            const storageService = new StorageService(env, async namespace => {
-                const storage = new StorageBackendDisk(join(resolveTestDir, namespace), false);
-                await storage.initialize();
-                return storage;
-            });
-            storageService.location = resolveTestDir;
+            const service = env.get(StorageService);
+            service.registerDriver(FileStorageDriver);
+            service.defaultDriver = "file";
 
             // Create ConfigStorage
             config = await ConfigStorage.create(env);

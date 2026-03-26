@@ -54,8 +54,10 @@ export class NodeBindingDialog extends LitElement {
         return Object.values(bindings_raw).map(value => BindingEntryDataTransformer.transform(value));
     }
 
-    private fetchACLEntry(targetNodeId: number): AccessControlEntryStruct[] {
-        const acl_cluster_raw = this.client.nodes[targetNodeId]?.attributes["0/31/0"] as InputType[] | undefined;
+    private fetchACLEntry(targetNodeId: number | bigint): AccessControlEntryStruct[] {
+        const acl_cluster_raw = this.client.nodes[String(targetNodeId)]?.attributes["0/31/0"] as
+            | InputType[]
+            | undefined;
         if (!acl_cluster_raw) return [];
         return Object.values(acl_cluster_raw).map((value: InputType) =>
             AccessControlEntryDataTransformer.transform(value),
@@ -68,7 +70,7 @@ export class NodeBindingDialog extends LitElement {
             const targetNodeId = rawBindings[index].node;
             const endpoint = rawBindings[index].endpoint;
             if (targetNodeId === undefined || endpoint === undefined) return;
-            await this.removeNodeAtACLEntry(this.getNodeIdAsNumber(), endpoint, targetNodeId);
+            await this.removeNodeAtACLEntry(this.node!.node_id, endpoint, targetNodeId);
             const updatedBindings = this.removeBindingAtIndex(rawBindings, index);
             await this.syncBindingUpdates(updatedBindings, index);
         } catch (error) {
@@ -76,16 +78,10 @@ export class NodeBindingDialog extends LitElement {
         }
     }
 
-    /** Helper to convert node_id (number | bigint) to number for API calls */
-    private getNodeIdAsNumber(): number {
-        const nodeId = this.node!.node_id;
-        return typeof nodeId === "bigint" ? Number(nodeId) : nodeId;
-    }
-
     private async removeNodeAtACLEntry(
-        sourceNodeId: number,
+        sourceNodeId: number | bigint,
         sourceEndpoint: number,
-        targetNodeId: number,
+        targetNodeId: number | bigint,
     ): Promise<void> {
         const aclEntries = this.fetchACLEntry(targetNodeId);
 
@@ -99,7 +95,7 @@ export class NodeBindingDialog extends LitElement {
     }
 
     private removeEntryAtACL(
-        nodeId: number,
+        nodeId: number | bigint,
         sourceEndpoint: number,
         entry: AccessControlEntryStruct,
     ): AccessControlEntryStruct | undefined {
@@ -117,7 +113,7 @@ export class NodeBindingDialog extends LitElement {
     private async syncBindingUpdates(updatedBindings: BindingEntryStruct[], index: number): Promise<void> {
         // Convert to API format (without fabricIndex - server handles it)
         const apiBindings = updatedBindings.map(b => this.toBindingTarget(b));
-        await this.client.setNodeBinding(this.getNodeIdAsNumber(), this.endpoint, apiBindings);
+        await this.client.setNodeBinding(this.node!.node_id, this.endpoint, apiBindings);
 
         const attributePath = `${this.endpoint}/30/0`;
         const currentBindings = this.node!.attributes[attributePath] as BindingEntryStruct[] | undefined;
@@ -135,10 +131,13 @@ export class NodeBindingDialog extends LitElement {
         console.error(`Binding deletion failed: ${errorMessage}`);
     }
 
-    private async add_target_acl(targetNodeId: number, entry: AccessControlEntryStruct): Promise<MatterBatchResult> {
+    private async add_target_acl(
+        targetNodeId: number | bigint,
+        entry: AccessControlEntryStruct,
+    ): Promise<MatterBatchResult> {
         try {
             // Fetch existing ACL entries and transform to local struct format
-            const rawEntries = this.client.nodes[targetNodeId]?.attributes["0/31/0"] as InputType[] | undefined;
+            const rawEntries = this.client.nodes[String(targetNodeId)]?.attributes["0/31/0"] as InputType[] | undefined;
             const entries = rawEntries
                 ? Object.values(rawEntries).map(v => AccessControlEntryDataTransformer.transform(v))
                 : [];
@@ -196,7 +195,7 @@ export class NodeBindingDialog extends LitElement {
         try {
             // Convert to API format (without fabricIndex - server handles it)
             const apiBindings = bindings.map(b => this.toBindingTarget(b));
-            const results = await this.client.setNodeBinding(this.getNodeIdAsNumber(), endpoint, apiBindings);
+            const results = await this.client.setNodeBinding(this.node!.node_id, endpoint, apiBindings);
 
             const batchResult = analyzeBatchResults(results);
             if (batchResult.outcome !== "all_success") {
@@ -216,12 +215,19 @@ export class NodeBindingDialog extends LitElement {
     }
 
     async addBindingHandler() {
-        const targetNodeId = this._targetNodeId.value ? parseInt(this._targetNodeId.value, 10) : undefined;
+        let targetNodeId: bigint | undefined;
+        const rawNodeId = this._targetNodeId.value?.trim();
+        if (rawNodeId) {
+            if (!/^\d+$/.test(rawNodeId)) {
+                alert("Please enter a valid target node ID");
+                return;
+            }
+            targetNodeId = BigInt(rawNodeId);
+        }
         const targetEndpoint = this._targetEndpoint.value ? parseInt(this._targetEndpoint.value, 10) : undefined;
         const targetCluster = this._targetCluster.value ? parseInt(this._targetCluster.value, 10) : undefined;
 
-        // Matter Server does not use random NodeIds, so this is ok for now, but needs to be adjusted later
-        if (targetNodeId === undefined || targetNodeId <= 0 || targetNodeId > 65535) {
+        if (targetNodeId === undefined || targetNodeId <= 0n) {
             alert("Please enter a valid target node ID");
             return;
         }
@@ -250,7 +256,7 @@ export class NodeBindingDialog extends LitElement {
         const acl_entry: AccessControlEntryStruct = {
             privilege: 5,
             authMode: 2,
-            subjects: [this.getNodeIdAsNumber()],
+            subjects: [this.node!.node_id],
             targets: [targets],
             fabricIndex: 0, // Placeholder - server will use correct fabric index
         };
@@ -300,16 +306,21 @@ export class NodeBindingDialog extends LitElement {
 
     private onChange(e: Event) {
         const textfield = e.target as MdOutlinedTextField;
-        const value = parseInt(textfield.value, 10);
-
-        if (parseInt(textfield.max, 10) < value || value < parseInt(textfield.min, 10)) {
-            textfield.error = true;
-            textfield.errorText = "value error";
+        if (textfield.type === "number" && textfield.max && textfield.min) {
+            const value = parseInt(textfield.value, 10);
+            if (parseInt(textfield.max, 10) < value || value < parseInt(textfield.min, 10)) {
+                textfield.error = true;
+                textfield.errorText = "value error";
+            } else {
+                textfield.error = false;
+            }
         } else {
-            textfield.error = false;
+            // Text field with pattern validation (e.g. node ID)
+            textfield.error = textfield.value !== "" && !/^[0-9]+$/.test(textfield.value);
+            if (textfield.error) {
+                textfield.errorText = "must be a numeric value";
+            }
         }
-
-        // console.log(`value: ${value} error: ${textfield.error}`);
     }
 
     protected override render() {
@@ -349,9 +360,8 @@ export class NodeBindingDialog extends LitElement {
                                 <md-outlined-text-field
                                     label="node id"
                                     name="NodeId"
-                                    type="number"
-                                    min="0"
-                                    max="65535"
+                                    type="text"
+                                    pattern="[0-9]+"
                                     class="target-item"
                                     @change=${this.onChange}
                                     supporting-text="required"
