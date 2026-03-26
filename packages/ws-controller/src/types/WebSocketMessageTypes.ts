@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+<<<<<<< fix/416-clean-type-annotations
 export type AttributesData = { [key: string]: unknown };
 
 export interface MatterNode {
@@ -437,39 +438,49 @@ export interface MatterFabricData {
 export type NotificationType = "success" | "info" | "warning" | "error";
 export type NodePingResult = Record<string, boolean>;
 
+=======
+>>>>>>> main
 /**
- * WebSocket Command Message generic type.
+ * WebSocket protocol types.
+ *
+ * Canonical type definitions live in @matter-server/ws-client.
+ * This module re-exports them for backward compatibility and adds server-only types.
  */
-export interface CommandMessage {
-    message_id: string;
-    command: keyof APICommands;
-    args?: APICommands[keyof APICommands]["requestArgs"];
-}
 
-/** WebSocket Result Message base fields type */
-interface ResultMessageBase {
-    message_id: string;
-}
+// Re-export all shared protocol types from ws-client
+export {
+    type AccessControlEntry,
+    type AccessControlTarget,
+    type APICommands,
+    type APIEvents,
+    type ArgsOf,
+    type AttributesData,
+    type AttributeWriteResult,
+    type BindingTarget,
+    type CommandMessage,
+    type CommissionableNodeData,
+    type CommissioningParameters,
+    type ErrorResultMessage,
+    type EventMessage,
+    type EventTypes,
+    type LogLevelResponse,
+    type LogLevelString,
+    type MatterFabricData,
+    type MatterNodeEvent,
+    type NodePingResult,
+    type NotificationType,
+    type ResponseOf,
+    type ResultMessageBase,
+    type ServerInfoMessage,
+    type SuccessResultMessage,
+    type MatterSoftwareVersion,
+    type WebSocketConfig,
+    TEST_NODE_START,
+    UpdateSource,
+} from "@matter-server/ws-client";
 
-/** WebSocket Error Result Message type */
-export interface ErrorResultMessage extends ResultMessageBase {
-    error_code: number;
-    details?: string;
-}
-
-/** WebSocket Success Result Message type */
-export interface SuccessResultMessage<T extends keyof APICommands> extends ResultMessageBase {
-    result: APICommands[T]["response"];
-}
-
-export type ArgsOf<R extends keyof APICommands> = APICommands[R]["requestArgs"];
-export type ResponseOf<R extends keyof APICommands> = APICommands[R]["response"];
-
-/**
- * Minimum test node ID. Node IDs >= this value are reserved for test nodes.
- * Uses high 64-bit range (0xFFFF_FFFE_0000_0000) to avoid collision with real node IDs.
- */
-export const TEST_NODE_START = 0xffff_fffe_0000_0000n;
+// Re-export MatterNodeData as MatterNode for backward compatibility within ws-controller
+export type { MatterNodeData as MatterNode } from "@matter-server/ws-client";
 
 /**
  * Error codes matching Python Matter Server for API compatibility.

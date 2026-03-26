@@ -122,9 +122,10 @@ export class MatterController {
 
             // Check if the nextNodeId needs to be updated based on legacy data
             const lastNodeId = legacyData.nodeData?.last_node_id;
-            if (typeof lastNodeId === "number") {
-                if (config.nextNodeId <= lastNodeId) {
-                    const newNextNodeId = lastNodeId + 10;
+            if (typeof lastNodeId === "number" || typeof lastNodeId === "bigint") {
+                // Compare as BigInt to safely handle both number and bigint types
+                if (BigInt(config.nextNodeId) <= BigInt(lastNodeId)) {
+                    const newNextNodeId = BigInt(lastNodeId) + 10n;
                     logger.info(
                         `Updating nextNodeId from ${config.nextNodeId} to ${newNextNodeId} (legacy last_node_id: ${lastNodeId})`,
                     );

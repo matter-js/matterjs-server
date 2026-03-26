@@ -4,7 +4,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { MatterNode } from "./node.js";
+import type { MatterNodeData } from "./node.js";
+// Re-export so consumers can import the MatterNodeData type from this module
+export type { MatterNodeData } from "./node.js";
 
 /** Attribute data stored as path -> value mapping */
 export type AttributesData = { [key: string]: unknown };
@@ -12,13 +14,13 @@ export type AttributesData = { [key: string]: unknown };
 export interface APICommands {
     start_listening: {
         requestArgs: Record<string, never>;
-        response: Array<MatterNode>;
+        response: Array<MatterNodeData>;
     };
     diagnostics: {
         requestArgs: Record<string, never>;
         response: {
             info: ServerInfoMessage;
-            nodes: Array<MatterNode>;
+            nodes: Array<MatterNodeData>;
             events: Array<MatterNodeEvent>;
         };
     };
@@ -28,24 +30,27 @@ export interface APICommands {
     };
     get_nodes: {
         requestArgs: { only_available?: boolean };
-        response: Array<MatterNode>;
+        response: Array<MatterNodeData>;
     };
     get_node: {
         requestArgs: { node_id: number | bigint };
-        response: MatterNode;
+        response: MatterNodeData;
     };
     commission_with_code: {
         requestArgs: { code: string; network_only?: boolean };
-        response: MatterNode;
+        response: MatterNodeData;
     };
     commission_on_network: {
         requestArgs: {
             setup_pin_code: number;
+            /** Discovery filter type: 0=None, 1=ShortDiscriminator, 2=LongDiscriminator, 3=VendorId, 4=DeviceType */
             filter_type?: number;
+            /** Filter value (discriminator, vendor ID, or device type depending on filter_type) */
             filter?: number;
+            /** Direct IP address for commissioning */
             ip_addr?: string;
         };
-        response: MatterNode;
+        response: MatterNodeData;
     };
     set_wifi_credentials: {
         requestArgs: { ssid: string; credentials: string };
@@ -101,7 +106,9 @@ export interface APICommands {
     read_attribute: {
         requestArgs: {
             node_id: number | bigint;
+            /** Single attribute path or array of paths. Supports wildcards (*) for cluster and attribute IDs. */
             attribute_path: string | string[];
+            /** Filter by fabric (default: false) */
             fabric_filtered?: boolean;
         };
         response: AttributesData;
@@ -159,7 +166,7 @@ export interface APICommands {
     };
     set_default_fabric_label: {
         requestArgs: { label: string | null };
-        response: Record<string, never>;
+        response: null;
     };
     get_loglevel: {
         requestArgs: Record<string, never>;
@@ -170,6 +177,12 @@ export interface APICommands {
         response: LogLevelResponse;
     };
 }
+
+/** Utility type to extract request args for a command */
+export type ArgsOf<R extends keyof APICommands> = APICommands[R]["requestArgs"];
+
+/** Utility type to extract response type for a command */
+export type ResponseOf<R extends keyof APICommands> = APICommands[R]["response"];
 
 /** Log level string values matching CLI options */
 export type LogLevelString = "critical" | "error" | "warning" | "info" | "debug";
@@ -240,13 +253,47 @@ export interface ServerInfoMessage {
     bluetooth_enabled: boolean;
 }
 
+/** WebSocket event types and their data payloads */
+export interface APIEvents {
+    node_added: {
+        data: MatterNodeData;
+    };
+    node_updated: {
+        data: MatterNodeData;
+    };
+    node_removed: {
+        data: number | bigint;
+    };
+    node_event: {
+        data: MatterNodeEvent;
+    };
+    attribute_updated: {
+        data: [node_id: number | bigint, attribute_path: string, value: unknown];
+    };
+    server_shutdown: {
+        data: Record<string, never>;
+    };
+    endpoint_added: {
+        data: { node_id: number | bigint; endpoint_id: number };
+    };
+    endpoint_removed: {
+        data: { node_id: number | bigint; endpoint_id: number };
+    };
+    server_info_updated: {
+        data: ServerInfoMessage;
+    };
+}
+
+/** All known event type names */
+export type EventTypes = keyof APIEvents;
+
 interface ServerEventNodeAdded {
     event: "node_added";
-    data: MatterNode;
+    data: MatterNodeData;
 }
 interface ServerEventNodeUpdated {
     event: "node_updated";
-    data: MatterNode;
+    data: MatterNodeData;
 }
 interface ServerEventNodeRemoved {
     event: "node_removed";

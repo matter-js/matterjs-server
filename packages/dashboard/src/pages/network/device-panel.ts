@@ -27,7 +27,7 @@ export class DevicePanel extends LitElement {
     public type: PanelType = "wifi";
 
     @property({ type: Array })
-    public nodeIds: number[] = [];
+    public nodeIds: (number | bigint)[] = [];
 
     @property({ type: Object })
     public nodes: Record<string, MatterNode> = {};
@@ -70,7 +70,7 @@ export class DevicePanel extends LitElement {
         this._isExpanded = !this._isExpanded;
     }
 
-    private _handleNodeClick(nodeId: number): void {
+    private _handleNodeClick(nodeId: number | bigint): void {
         this.dispatchEvent(
             new CustomEvent("node-selected", {
                 detail: { nodeId },

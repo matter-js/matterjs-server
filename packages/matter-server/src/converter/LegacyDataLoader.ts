@@ -637,13 +637,12 @@ export class LegacyDataWriter {
 
         // Apply all tasks in order
         for (const task of tasks) {
-            const nodeIdNum = typeof task.nodeId === "bigint" ? Number(task.nodeId) : task.nodeId;
-            const nodeIdStr = nodeIdNum.toString();
+            const nodeIdStr = String(task.nodeId);
 
             if (task.type === "add") {
                 // Add the node entry
                 serverFile.nodes[nodeIdStr] = {
-                    node_id: nodeIdNum,
+                    node_id: task.nodeId,
                     date_commissioned: task.dateCommissioned,
                     last_interview: task.dateCommissioned,
                     interview_version: 6,
@@ -653,9 +652,9 @@ export class LegacyDataWriter {
                     attribute_subscriptions: [],
                 };
 
-                // Update last_node_id if this node is higher
-                if (nodeIdNum > serverFile.last_node_id) {
-                    serverFile.last_node_id = nodeIdNum;
+                // Update last_node_id if this node is higher (compare as BigInt for safety)
+                if (BigInt(task.nodeId) > BigInt(serverFile.last_node_id)) {
+                    serverFile.last_node_id = task.nodeId;
                 }
 
                 added.push(nodeIdStr);
