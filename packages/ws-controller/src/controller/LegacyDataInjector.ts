@@ -102,7 +102,7 @@ export interface LegacyNodeData {
     available: boolean;
     is_bridge: boolean;
     attributes: Record<string, unknown>;
-    attribute_subscriptions: unknown[];
+    attribute_subscriptions: readonly [];
 }
 
 /** Structure of the <compressedFabricId>.json file */

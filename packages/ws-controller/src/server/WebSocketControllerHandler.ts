@@ -799,7 +799,6 @@ export class WebSocketControllerHandler implements WebServerHandler {
             cluster_id: clusterId,
             command_name: commandName,
             payload,
-            response_type,
             timed_request_timeout_ms: timedInteractionTimeoutMs,
         } = args;
 
@@ -813,8 +812,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 typeof timedInteractionTimeoutMs === "number" ? Millis(timedInteractionTimeoutMs) : undefined,
         });
 
-        // Test nodes and null response_type return null
-        if (TestNodeCommandHandler.isTestNodeId(nodeId) || response_type === null) {
+        // Test nodes return null
+        if (TestNodeCommandHandler.isTestNodeId(nodeId)) {
             return null;
         }
         const cmdResult = this.#convertCommandDataToWebSocket(ClusterId(clusterId), commandName, result);

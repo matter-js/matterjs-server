@@ -65,7 +65,12 @@ export interface APICommands {
             node_id: number | bigint;
             timeout?: number;
             iteration?: number;
-            option?: number;
+            /**
+             * Commissioning window type: 0=Enhanced, 1=Basic.
+             * If omitted, the server treats it as Basic (1).
+             */
+            option?: 0 | 1;
+            /** Discriminator value (null for random) */
             discriminator?: number | null;
         };
         response: CommissioningParameters;
@@ -85,6 +90,7 @@ export interface APICommands {
             cluster_id: number;
             command_name: string;
             payload: unknown;
+            /** Response type hint passed by the client SDK (currently unused by server) */
             response_type: unknown;
             timed_request_timeout_ms?: number | null;
             interaction_timeout_ms?: number | null;

@@ -117,7 +117,7 @@ export class MatterClient {
         nodeId: number | bigint,
         windowTimeout?: number,
         iteration?: number,
-        option?: number,
+        option?: 0 | 1,
         discriminator?: number,
         timeout?: number,
     ): Promise<CommissioningParameters> {
