@@ -392,7 +392,7 @@ Command with parameters (e.g., move to level):
 ```
 
 Optional parameters:
-- `response_type`: Set to `null` to suppress response data
+- `response_type`: Client SDK type hint (currently ignored by the server)
 - `timed_request_timeout_ms`: Timeout for timed interactions (required for some commands like door lock)
 
 ### Node Management

@@ -67,7 +67,7 @@ export interface APICommands {
             iteration?: number;
             /**
              * Commissioning window type: 0=Enhanced, 1=Basic.
-             * If omitted, the server treats it as Basic (1).
+             * Currently ignored by the server (always uses Enhanced).
              */
             option?: 0 | 1;
             /** Discriminator value (null for random) */
