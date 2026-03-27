@@ -7,7 +7,7 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
-## __WORK IN PROGRESS__
+## 0.5.10 (2026-03-27)
 - Fix: Ensures correct shutdown flow including releasing all locks
 
 ## 0.5.9 (2026-03-26)
