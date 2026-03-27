@@ -7,6 +7,9 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
+## __WORK IN PROGRESS__
+- Fix: Ensures correct shutdown flow including releasing all locks
+
 ## 0.5.9 (2026-03-26)
 - Fix: Always return response data for device commands (ignore "response_type")
 

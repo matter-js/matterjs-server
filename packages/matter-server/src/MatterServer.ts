@@ -190,23 +190,49 @@ async function start() {
 }
 
 async function stop() {
-    await server?.stop();
-    await controller?.stop();
-    // Flush any pending legacy data writes before closing
-    if (legacyDataWriter?.hasPendingWork()) {
-        logger.info("Flushing pending legacy data writes...");
-        await legacyDataWriter.flush();
+    try {
+        await server?.stop();
+    } catch (err) {
+        console.error(`Failed to stop server: ${err}`);
     }
-    await config?.close();
+    try {
+        await controller?.stop();
+    } catch (err) {
+        console.error(`Failed to stop controller: ${err}`);
+    }
+    // Flush any pending legacy data writes before closing
+    try {
+        if (legacyDataWriter?.hasPendingWork()) {
+            logger.info("Flushing pending legacy data writes...");
+            await legacyDataWriter.flush();
+        }
+    } catch (err) {
+        console.error(`Failed to flush legacy data: ${err}`);
+    }
+    try {
+        await config?.close();
+    } catch (err) {
+        console.error(`Failed to close config storage: ${err}`);
+    }
+    // Wait for the Environment runtime to fully shut down (flushes all storage,
+    // completes async worker cleanup). Without this, controller storage like
+    // "server-1-fff1" may not be flushed before the process exits.
+    try {
+        await env.runtime.close();
+    } catch (err) {
+        console.error(`Failed to close runtime: ${err}`);
+    }
     try {
         await fileLoggerClose?.();
     } catch (err) {
         console.error(`Failed to flush log file on shutdown: ${err}`);
     }
-    process.exit(0);
 }
 
-start().catch(err => console.error(err));
+start().catch(async err => {
+    console.error(err);
+    await config?.close();
+});
 
 process.on("SIGINT", () => void stop().catch(err => console.error(err)));
 process.on("SIGTERM", () => void stop().catch(err => console.error(err)));
