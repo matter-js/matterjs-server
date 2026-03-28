@@ -150,7 +150,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     case "node_updated": {
                         try {
                             const nodeDetails = this.#collectNodeDetails(nodeId);
-                            logger.debug(
+                            (
+                              (
                                 `[${connId}] Sending ${eventName} event for Node ${this.#commandHandler.formatNode(nodeId)}`,
                             );
                             ws.send(toBigIntAwareJson({ event: eventName, data: nodeDetails }));
@@ -369,7 +370,6 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 }
             }
         });
-        logger.debug("Sending close message to clients");
 
         const wss = this.#wss;
         // Wait for the WebSocket server to close properly
@@ -387,7 +387,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
     async #handleWebSocketRequest(
         connId: string,
         data: string,
-    ): Promise<{ response: ErrorResultMessage | SuccessResultMessage<any>; enableListeners?: boolean }> {
+    ): Promise<{ response: ErrorResultMessage | SuccessResultMessage; enableListeners?: boolean }> {
         let messageId: string | undefined;
         try {
             logger.debug(`[${connId}] WebSocket request`, () => data);
@@ -624,7 +624,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
             }
         }
 
-        await this.#config.set({ nextNodeId: nextNodeId + 1 });
+        await this.#config.set({
+            nextNodeId: typeof nextNodeId === "bigint" ? nextNodeId + 1n : nextNodeId + 1,
+        });
 
         const { nodeId } = await this.#commandHandler.commissionNode({
             nodeId: NodeId(nextNodeId),
@@ -678,7 +680,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 break;
         }
 
-        await this.#config.set({ nextNodeId: nextNodeId + 1 });
+        await this.#config.set({
+            nextNodeId: typeof nextNodeId === "bigint" ? nextNodeId + 1n : nextNodeId + 1,
+        });
 
         const { nodeId } = await this.#commandHandler.commissionNode(commissionRequest);
 
@@ -821,7 +825,6 @@ export class WebSocketControllerHandler implements WebServerHandler {
             cluster_id: clusterId,
             command_name: commandName,
             payload,
-            response_type,
             timed_request_timeout_ms: timedInteractionTimeoutMs,
         } = args;
 
@@ -835,8 +838,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 typeof timedInteractionTimeoutMs === "number" ? Millis(timedInteractionTimeoutMs) : undefined,
         });
 
-        // Test nodes and null response_type return null
-        if (TestNodeCommandHandler.isTestNodeId(nodeId) || response_type === null) {
+        // Test nodes return null
+        if (TestNodeCommandHandler.isTestNodeId(nodeId)) {
             return null;
         }
         const cmdResult = this.#convertCommandDataToWebSocket(ClusterId(clusterId), commandName, result);

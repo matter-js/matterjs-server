@@ -35,16 +35,20 @@ const TEST_TIMEOUT = 120_000; // 2 minutes for Matter commissioning
 /**
  * Helper to wait for OnOff attribute update event.
  */
-async function waitForOnOffUpdate(client: MatterTestClient, nodeId: number, expectedValue: boolean): Promise<void> {
+async function waitForOnOffUpdate(
+    client: MatterTestClient,
+    nodeId: number | bigint,
+    expectedValue: boolean,
+): Promise<void> {
     const event = await client.waitForEvent(
         "attribute_updated",
         data => {
-            const [eventNodeId, path] = data as [number, string, unknown];
-            return eventNodeId === nodeId && path === "1/6/0";
+            const [eventNodeId, path] = data as [number | bigint, string, unknown];
+            return BigInt(eventNodeId) === BigInt(nodeId) && path === "1/6/0";
         },
         10_000,
     );
-    const [, , value] = event.data as [number, string, boolean];
+    const [, , value] = event.data as [number | bigint, string, boolean];
     expect(value).to.equal(expectedValue);
 }
 
@@ -58,7 +62,7 @@ describe("Integration Test", function () {
     let deviceStoragePath: string;
     let logFilePath: string;
     let firstRunLogFileSize = -1; // set after the first server run completes
-    let commissionedNodeId: number;
+    let commissionedNodeId: number | bigint;
 
     before(async function () {
         // Create temp directories
@@ -330,12 +334,12 @@ describe("Integration Test", function () {
             console.log("Commissioning device...");
 
             const node = await client.commissionWithCode(MANUAL_PAIRING_CODE);
-            commissionedNodeId = Number(node.node_id);
+            commissionedNodeId = node.node_id;
 
             console.log("Node commissioned:", commissionedNodeId);
 
-            // Verify node ID is 2
-            expect(commissionedNodeId).to.equal(1);
+            // Verify node ID is 1
+            expect(BigInt(commissionedNodeId)).to.equal(1n);
 
             // Verify node metadata
             expect(node.available).to.be.true;
@@ -369,7 +373,7 @@ describe("Integration Test", function () {
             const nodes = await client.getNodes();
 
             expect(nodes).to.be.an("array").with.lengthOf(1);
-            expect(Number(nodes[0].node_id)).to.equal(commissionedNodeId);
+            expect(BigInt(nodes[0].node_id)).to.equal(BigInt(commissionedNodeId));
         });
 
         it("should filter available nodes via get_nodes", async function () {
@@ -382,7 +386,7 @@ describe("Integration Test", function () {
         it("should get specific node via get_node", async function () {
             const node = await client.getNode(commissionedNodeId);
 
-            expect(Number(node.node_id)).to.equal(commissionedNodeId);
+            expect(BigInt(node.node_id)).to.equal(BigInt(commissionedNodeId));
             expect(node.attributes["0/40/1"]).to.equal("Test Vendor");
         });
 
@@ -540,13 +544,13 @@ describe("Integration Test", function () {
             // Should receive node_updated event
             const event = await client.waitForEvent(
                 "node_updated",
-                data => Number((data as { node_id: number }).node_id) === commissionedNodeId,
+                data => BigInt((data as { node_id: number | bigint }).node_id) === BigInt(commissionedNodeId),
                 10_000,
             );
             expect(event).to.exist;
 
             // Verify last_interview is set and reflects a recent timestamp
-            const node = event.data as { node_id: number; last_interview: string | null };
+            const node = event.data as { node_id: number | bigint; last_interview: string | null };
             expect(node.last_interview).to.be.a("string");
             // Format is "YYYY-MM-DDTHH:MM:SS.mmm000" — parse the millisecond-precision prefix
             const interviewDate = new Date((node.last_interview as string).slice(0, 23));
@@ -1019,12 +1023,12 @@ describe("Integration Test", function () {
             const event = await client.waitForEvent(
                 "attribute_updated",
                 data => {
-                    const [eventNodeId, path] = data as [number, string, unknown];
-                    return eventNodeId === commissionedNodeId && path === "0/40/5";
+                    const [eventNodeId, path] = data as [number | bigint, string, unknown];
+                    return BigInt(eventNodeId) === BigInt(commissionedNodeId) && path === "0/40/5";
                 },
                 10_000,
             );
-            const [, , value] = event.data as [number, string, string];
+            const [, , value] = event.data as [number | bigint, string, string];
             expect(value).to.equal("Restart Persistence Label");
         });
     });
@@ -1069,7 +1073,7 @@ describe("Integration Test", function () {
             expect(realNodes).to.be.an("array").with.lengthOf(1);
 
             const node = realNodes[0];
-            expect(Number(node.node_id)).to.equal(commissionedNodeId);
+            expect(BigInt(node.node_id)).to.equal(BigInt(commissionedNodeId));
             // Node may not be immediately available after restart - wait for reconnection
             // The available state will be updated when the device reconnects
 
@@ -1083,7 +1087,7 @@ describe("Integration Test", function () {
             for (let i = 0; i < 20; i++) {
                 await new Promise(r => setTimeout(r, 500));
                 const updatedNodes = await client.getNodes();
-                const updatedNode = updatedNodes.find(n => Number(n.node_id) === commissionedNodeId);
+                const updatedNode = updatedNodes.find(n => BigInt(n.node_id) === BigInt(commissionedNodeId));
                 if (updatedNode?.available) {
                     nodeAvailable = true;
                     break;
@@ -1146,7 +1150,7 @@ describe("Integration Test", function () {
             for (let i = 0; i < 20; i++) {
                 const nodes = await client.getNodes();
                 const realNodes = nodes.filter(n => BigInt(n.node_id) < BigInt("0xfffffffe00000000"));
-                const node = realNodes.find(n => Number(n.node_id) === commissionedNodeId);
+                const node = realNodes.find(n => BigInt(n.node_id) === BigInt(commissionedNodeId));
                 if (node?.available) {
                     nodeAvailable = true;
                     break;
@@ -1165,14 +1169,13 @@ describe("Integration Test", function () {
 
             await client.removeNode(commissionedNodeId);
 
-            // Wait for node_removed event (compare with Number() to handle bigint)
             const removeEvent = await client.waitForEvent(
                 "node_removed",
-                data => Number(data) === commissionedNodeId,
+                data => BigInt(data as number | bigint) === BigInt(commissionedNodeId),
                 10_000,
             );
             expect(removeEvent).to.exist;
-            expect(Number(removeEvent.data)).to.equal(commissionedNodeId);
+            expect(BigInt(removeEvent.data as number | bigint)).to.equal(BigInt(commissionedNodeId));
 
             // Verify no real nodes remain (test nodes may still exist)
             const nodes = await client.getNodes();
@@ -1195,7 +1198,7 @@ describe("Integration Test", function () {
             await new Promise(r => setTimeout(r, 12_000));
 
             const node = await client.commissionOnNetwork(DEVICE_PASSCODE, 2, DEVICE_DISCRIMINATOR);
-            const networkNodeId = Number(node.node_id);
+            const networkNodeId = node.node_id;
 
             console.log("Node commissioned via network:", networkNodeId);
 
@@ -1208,7 +1211,11 @@ describe("Integration Test", function () {
             // Clean up
             client.clearEvents();
             await client.removeNode(networkNodeId);
-            await client.waitForEvent("node_removed", data => Number(data) === networkNodeId, 10_000);
+            await client.waitForEvent(
+                "node_removed",
+                data => BigInt(data as number | bigint) === BigInt(networkNodeId),
+                10_000,
+            );
         });
     });
 });

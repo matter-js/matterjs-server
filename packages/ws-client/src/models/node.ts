@@ -13,7 +13,8 @@ export interface MatterNodeData {
     available: boolean;
     is_bridge: boolean;
     attributes: { [key: string]: unknown };
-    attribute_subscriptions: Array<[number | null, number | null, number | null]>;
+    /** Attribute subscriptions (always empty array in current protocol, matches Python Matter Server) */
+    attribute_subscriptions: readonly [];
     /**
      * Matter specification version of the node (e.g., "1.2.0", "1.3.0", "1.4.0").
      * Determined from the SpecificationVersion attribute (0x15) if available,
@@ -36,7 +37,8 @@ export class MatterNode {
     available: boolean;
     is_bridge: boolean;
     attributes: { [key: string]: unknown };
-    attribute_subscriptions: Array<[number | null, number | null, number | null]>;
+    /** Attribute subscriptions (always empty array in current protocol, matches Python Matter Server) */
+    attribute_subscriptions: readonly [];
     /**
      * Matter specification version of the node (e.g., "1.2.0", "1.3.0", "1.4.0").
      * Optional - not available in Python Matter Server.

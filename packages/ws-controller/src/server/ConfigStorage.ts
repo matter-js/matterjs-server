@@ -20,7 +20,7 @@ function sanitizeForLog(key: string, value: unknown): string {
 
 interface ConfigData {
     fabricLabel: string;
-    nextNodeId: number; // formally wrong, should be bigint
+    nextNodeId: number | bigint;
     wifiSsid?: string;
     wifiCredentials?: string;
     threadDataset?: string;
@@ -74,7 +74,7 @@ export class ConfigStorage {
         const fabricLabel = (await this.#configStore.has("fabricLabel"))
             ? await this.#configStore.get<string>("fabricLabel")
             : (this.#env.vars.string("fabricLabel") ?? this.#data.fabricLabel);
-        const nextNodeId = await this.#configStore.get<number>("nextNodeId", this.#data.nextNodeId);
+        const nextNodeId = await this.#configStore.get<number | bigint>("nextNodeId", this.#data.nextNodeId);
 
         const wifiSsid = (await this.#configStore.has("wifiSsid"))
             ? await this.#configStore.get<string>("wifiSsid", "")
