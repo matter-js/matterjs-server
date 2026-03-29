@@ -730,6 +730,13 @@ function resolveClusterChildren(cluster: ClusterModel): {
                     case "attribute":
                         if (!localAttrNames.has(child.name)) {
                             attributes.push(child);
+                        } else {
+                            // Local override exists but may be an empty stub (no type/children).
+                            // Replace it with the base version to get full type info.
+                            const idx = attributes.findIndex(c => c.name === child.name);
+                            if (idx >= 0 && !(attributes[idx] as any).type && (child as any).type) {
+                                attributes[idx] = child;
+                            }
                         }
                         break;
                     case "event":
