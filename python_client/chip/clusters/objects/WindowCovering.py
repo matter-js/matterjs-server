@@ -29,10 +29,10 @@ class WindowCovering(Cluster):
                 ClusterObjectFieldDescriptor(Label="currentPositionTilt", Tag=0x00000004, Type=typing.Union[None, Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="numberOfActuationsLift", Tag=0x00000005, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="numberOfActuationsTilt", Tag=0x00000006, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="configStatus", Tag=0x00000007, Type=WindowCovering.Bitmaps.ConfigStatusBitmap),
+                ClusterObjectFieldDescriptor(Label="configStatus", Tag=0x00000007, Type=WindowCovering.Bitmaps.ConfigStatus),
                 ClusterObjectFieldDescriptor(Label="currentPositionLiftPercentage", Tag=0x00000008, Type=typing.Union[None, Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="currentPositionTiltPercentage", Tag=0x00000009, Type=typing.Union[None, Nullable, uint]),
-                ClusterObjectFieldDescriptor(Label="operationalStatus", Tag=0x0000000A, Type=WindowCovering.Bitmaps.OperationalStatusBitmap),
+                ClusterObjectFieldDescriptor(Label="operationalStatus", Tag=0x0000000A, Type=WindowCovering.Bitmaps.OperationalStatus),
                 ClusterObjectFieldDescriptor(Label="targetPositionLiftPercent100ths", Tag=0x0000000B, Type=typing.Union[None, Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="targetPositionTiltPercent100ths", Tag=0x0000000C, Type=typing.Union[None, Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="endProductType", Tag=0x0000000D, Type=WindowCovering.Enums.EndProductType),
@@ -45,10 +45,10 @@ class WindowCovering(Cluster):
                 ClusterObjectFieldDescriptor(Label="velocityLift", Tag=0x00000014, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="accelerationTimeLift", Tag=0x00000015, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="decelerationTimeLift", Tag=0x00000016, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="mode", Tag=0x00000017, Type=WindowCovering.Bitmaps.ModeBitmap),
+                ClusterObjectFieldDescriptor(Label="mode", Tag=0x00000017, Type=WindowCovering.Bitmaps.Mode),
                 ClusterObjectFieldDescriptor(Label="intermediateSetpointsLift", Tag=0x00000018, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="intermediateSetpointsTilt", Tag=0x00000019, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="safetyStatus", Tag=0x0000001A, Type=typing.Optional[WindowCovering.Bitmaps.SafetyStatusBitmap]),
+                ClusterObjectFieldDescriptor(Label="safetyStatus", Tag=0x0000001A, Type=typing.Optional[WindowCovering.Bitmaps.SafetyStatus]),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="eventList", Tag=0x0000FFFA, Type=typing.List[uint]),
@@ -64,10 +64,10 @@ class WindowCovering(Cluster):
     currentPositionTilt: typing.Union[None, Nullable, uint] = None
     numberOfActuationsLift: typing.Optional[uint] = None
     numberOfActuationsTilt: typing.Optional[uint] = None
-    configStatus: WindowCovering.Bitmaps.ConfigStatusBitmap = 0
+    configStatus: WindowCovering.Bitmaps.ConfigStatus = 0
     currentPositionLiftPercentage: typing.Union[None, Nullable, uint] = None
     currentPositionTiltPercentage: typing.Union[None, Nullable, uint] = None
-    operationalStatus: WindowCovering.Bitmaps.OperationalStatusBitmap = 0
+    operationalStatus: WindowCovering.Bitmaps.OperationalStatus = 0
     targetPositionLiftPercent100ths: typing.Union[None, Nullable, uint] = None
     targetPositionTiltPercent100ths: typing.Union[None, Nullable, uint] = None
     endProductType: WindowCovering.Enums.EndProductType = 0
@@ -80,10 +80,10 @@ class WindowCovering(Cluster):
     velocityLift: typing.Optional[uint] = None
     accelerationTimeLift: typing.Optional[uint] = None
     decelerationTimeLift: typing.Optional[uint] = None
-    mode: WindowCovering.Bitmaps.ModeBitmap = 0
+    mode: WindowCovering.Bitmaps.Mode = 0
     intermediateSetpointsLift: typing.Optional[uint] = None
     intermediateSetpointsTilt: typing.Optional[uint] = None
-    safetyStatus: typing.Optional[WindowCovering.Bitmaps.SafetyStatusBitmap] = None
+    safetyStatus: typing.Optional[WindowCovering.Bitmaps.SafetyStatus] = None
     generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
     acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
     eventList: typing.List[uint] = field(default_factory=lambda: [])
@@ -160,7 +160,7 @@ class WindowCovering(Cluster):
             kAbsolutePosition = 0x8
             kPositionAwareTilt = 0x10
 
-        class ConfigStatusBitmap(IntFlag):
+        class ConfigStatus(IntFlag):
             kOperational = 0x1
             kOnlineReserved = 0x2
             kLiftMovementReversed = 0x4
@@ -169,18 +169,18 @@ class WindowCovering(Cluster):
             kLiftEncoderControlled = 0x20
             kTiltEncoderControlled = 0x40
 
-        class ModeBitmap(IntFlag):
+        class Mode(IntFlag):
             kMotorDirectionReversed = 0x1
             kCalibrationMode = 0x2
             kMaintenanceMode = 0x4
             kLEDFeedback = 0x8
 
-        class OperationalStatusBitmap(IntFlag):
+        class OperationalStatus(IntFlag):
             kGlobal = 0x3
             kLift = 0xC
             kTilt = 0x30
 
-        class SafetyStatusBitmap(IntFlag):
+        class SafetyStatus(IntFlag):
             kRemoteLockout = 0x1
             kTamperDetection = 0x2
             kFailedCommunication = 0x4
@@ -430,9 +430,9 @@ class WindowCovering(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=WindowCovering.Bitmaps.ConfigStatusBitmap)
+                return ClusterObjectFieldDescriptor(Type=WindowCovering.Bitmaps.ConfigStatus)
 
-            value: WindowCovering.Bitmaps.ConfigStatusBitmap = 0
+            value: WindowCovering.Bitmaps.ConfigStatus = 0
 
         @dataclass
         class CurrentPositionLiftPercentage(ClusterAttributeDescriptor):
@@ -478,9 +478,9 @@ class WindowCovering(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=WindowCovering.Bitmaps.OperationalStatusBitmap)
+                return ClusterObjectFieldDescriptor(Type=WindowCovering.Bitmaps.OperationalStatus)
 
-            value: WindowCovering.Bitmaps.OperationalStatusBitmap = 0
+            value: WindowCovering.Bitmaps.OperationalStatus = 0
 
         @dataclass
         class TargetPositionLiftPercent100ths(ClusterAttributeDescriptor):
@@ -686,9 +686,9 @@ class WindowCovering(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=WindowCovering.Bitmaps.ModeBitmap)
+                return ClusterObjectFieldDescriptor(Type=WindowCovering.Bitmaps.Mode)
 
-            value: WindowCovering.Bitmaps.ModeBitmap = 0
+            value: WindowCovering.Bitmaps.Mode = 0
 
         @dataclass
         class IntermediateSetpointsLift(ClusterAttributeDescriptor):
@@ -734,9 +734,9 @@ class WindowCovering(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[WindowCovering.Bitmaps.SafetyStatusBitmap])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[WindowCovering.Bitmaps.SafetyStatus])
 
-            value: typing.Optional[WindowCovering.Bitmaps.SafetyStatusBitmap] = None
+            value: typing.Optional[WindowCovering.Bitmaps.SafetyStatus] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):

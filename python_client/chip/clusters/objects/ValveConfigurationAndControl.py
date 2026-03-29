@@ -70,7 +70,7 @@ class ValveConfigurationAndControl(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 3
 
-        class StatusCode(MatterIntEnum):
+        class StatusCodeEnum(MatterIntEnum):
             kFailureDueToFault = 0x02
             # All received enum values that are not listed above will be mapped
             # to kUnknownEnumValue. This is a helper enum value that should only

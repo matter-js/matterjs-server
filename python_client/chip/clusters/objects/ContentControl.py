@@ -60,7 +60,7 @@ class ContentControl(Cluster):
     clusterRevision: uint = 0
 
     class Enums:
-        class StatusCode(MatterIntEnum):
+        class StatusCodeEnum(MatterIntEnum):
             kInvalidPINCode = 0x02
             kInvalidRating = 0x03
             kInvalidChannel = 0x04
