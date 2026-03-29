@@ -57,7 +57,7 @@ class DraftElectricalMeasurementCluster(Cluster):
 
     class Attributes:
         @dataclass
-        class RMSVoltage(ClusterAttributeDescriptor):
+        class RmsVoltage(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000B04
@@ -73,7 +73,7 @@ class DraftElectricalMeasurementCluster(Cluster):
             value: typing.Optional[uint] = None
 
         @dataclass
-        class RMSCurrent(ClusterAttributeDescriptor):
+        class RmsCurrent(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000B04

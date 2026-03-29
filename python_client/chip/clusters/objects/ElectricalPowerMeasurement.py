@@ -34,8 +34,8 @@ class ElectricalPowerMeasurement(Cluster):
                 ClusterObjectFieldDescriptor(Label="activePower", Tag=0x00000008, Type=typing.Union[Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="reactivePower", Tag=0x00000009, Type=typing.Union[None, Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="apparentPower", Tag=0x0000000A, Type=typing.Union[None, Nullable, uint]),
-                ClusterObjectFieldDescriptor(Label="RMSVoltage", Tag=0x0000000B, Type=typing.Union[None, Nullable, uint]),
-                ClusterObjectFieldDescriptor(Label="RMSCurrent", Tag=0x0000000C, Type=typing.Union[None, Nullable, uint]),
+                ClusterObjectFieldDescriptor(Label="rmsVoltage", Tag=0x0000000B, Type=typing.Union[None, Nullable, uint]),
+                ClusterObjectFieldDescriptor(Label="rmsCurrent", Tag=0x0000000C, Type=typing.Union[None, Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="RMSPower", Tag=0x0000000D, Type=typing.Union[None, Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="frequency", Tag=0x0000000E, Type=typing.Union[None, Nullable, int]),
                 ClusterObjectFieldDescriptor(Label="harmonicCurrents", Tag=0x0000000F, Type=typing.Union[None, Nullable, typing.List[ElectricalPowerMeasurement.Structs.HarmonicMeasurementStruct]]),
@@ -61,8 +61,8 @@ class ElectricalPowerMeasurement(Cluster):
     activePower: typing.Union[Nullable, uint] = NullValue
     reactivePower: typing.Union[None, Nullable, uint] = None
     apparentPower: typing.Union[None, Nullable, uint] = None
-    RMSVoltage: typing.Union[None, Nullable, uint] = None
-    RMSCurrent: typing.Union[None, Nullable, uint] = None
+    rmsVoltage: typing.Union[None, Nullable, uint] = None
+    rmsCurrent: typing.Union[None, Nullable, uint] = None
     RMSPower: typing.Union[None, Nullable, uint] = None
     frequency: typing.Union[None, Nullable, int] = None
     harmonicCurrents: typing.Union[None, Nullable, typing.List[ElectricalPowerMeasurement.Structs.HarmonicMeasurementStruct]] = None
@@ -342,7 +342,7 @@ class ElectricalPowerMeasurement(Cluster):
             value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
-        class RMSVoltage(ClusterAttributeDescriptor):
+        class RmsVoltage(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000090
@@ -358,7 +358,7 @@ class ElectricalPowerMeasurement(Cluster):
             value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
-        class RMSCurrent(ClusterAttributeDescriptor):
+        class RmsCurrent(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000090
