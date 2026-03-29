@@ -22,10 +22,10 @@ class RefrigeratorAlarm(Cluster):
     def descriptor(cls) -> ClusterObjectDescriptor:
         return ClusterObjectDescriptor(
             Fields=[
-                ClusterObjectFieldDescriptor(Label="mask", Tag=0x00000000, Type=uint),
-                ClusterObjectFieldDescriptor(Label="latch", Tag=0x00000001, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="state", Tag=0x00000002, Type=uint),
-                ClusterObjectFieldDescriptor(Label="supported", Tag=0x00000003, Type=uint),
+                ClusterObjectFieldDescriptor(Label="mask", Tag=0x00000000, Type=RefrigeratorAlarm.Bitmaps.AlarmBitmap),
+                ClusterObjectFieldDescriptor(Label="latch", Tag=0x00000001, Type=typing.Optional[RefrigeratorAlarm.Bitmaps.AlarmBitmap]),
+                ClusterObjectFieldDescriptor(Label="state", Tag=0x00000002, Type=RefrigeratorAlarm.Bitmaps.AlarmBitmap),
+                ClusterObjectFieldDescriptor(Label="supported", Tag=0x00000003, Type=RefrigeratorAlarm.Bitmaps.AlarmBitmap),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="eventList", Tag=0x0000FFFA, Type=typing.List[uint]),
@@ -34,10 +34,10 @@ class RefrigeratorAlarm(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    mask: uint = 0
-    latch: typing.Optional[uint] = None
-    state: uint = 0
-    supported: uint = 0
+    mask: RefrigeratorAlarm.Bitmaps.AlarmBitmap = 0
+    latch: typing.Optional[RefrigeratorAlarm.Bitmaps.AlarmBitmap] = None
+    state: RefrigeratorAlarm.Bitmaps.AlarmBitmap = 0
+    supported: RefrigeratorAlarm.Bitmaps.AlarmBitmap = 0
     generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
     acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
     eventList: typing.List[uint] = field(default_factory=lambda: [])
@@ -64,10 +64,10 @@ class RefrigeratorAlarm(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="mask", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="mask", Tag=0, Type=RefrigeratorAlarm.Bitmaps.AlarmBitmap),
                     ])
 
-            mask: uint = 0
+            mask: RefrigeratorAlarm.Bitmaps.AlarmBitmap = 0
 
         @dataclass
         class Reset(ClusterCommand):
@@ -80,10 +80,10 @@ class RefrigeratorAlarm(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="alarms", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="alarms", Tag=0, Type=RefrigeratorAlarm.Bitmaps.AlarmBitmap),
                     ])
 
-            alarms: uint = 0
+            alarms: RefrigeratorAlarm.Bitmaps.AlarmBitmap = 0
 
     class Attributes:
         @dataclass
@@ -98,9 +98,9 @@ class RefrigeratorAlarm(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=uint)
+                return ClusterObjectFieldDescriptor(Type=RefrigeratorAlarm.Bitmaps.AlarmBitmap)
 
-            value: uint = 0
+            value: RefrigeratorAlarm.Bitmaps.AlarmBitmap = 0
 
         @dataclass
         class Latch(ClusterAttributeDescriptor):
@@ -114,9 +114,9 @@ class RefrigeratorAlarm(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[RefrigeratorAlarm.Bitmaps.AlarmBitmap])
 
-            value: typing.Optional[uint] = None
+            value: typing.Optional[RefrigeratorAlarm.Bitmaps.AlarmBitmap] = None
 
         @dataclass
         class State(ClusterAttributeDescriptor):
@@ -130,9 +130,9 @@ class RefrigeratorAlarm(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=uint)
+                return ClusterObjectFieldDescriptor(Type=RefrigeratorAlarm.Bitmaps.AlarmBitmap)
 
-            value: uint = 0
+            value: RefrigeratorAlarm.Bitmaps.AlarmBitmap = 0
 
         @dataclass
         class Supported(ClusterAttributeDescriptor):
@@ -146,9 +146,9 @@ class RefrigeratorAlarm(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=uint)
+                return ClusterObjectFieldDescriptor(Type=RefrigeratorAlarm.Bitmaps.AlarmBitmap)
 
-            value: uint = 0
+            value: RefrigeratorAlarm.Bitmaps.AlarmBitmap = 0
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -261,13 +261,13 @@ class RefrigeratorAlarm(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="active", Tag=0, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="inactive", Tag=1, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="state", Tag=2, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="mask", Tag=3, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="active", Tag=0, Type=RefrigeratorAlarm.Bitmaps.AlarmBitmap),
+                        ClusterObjectFieldDescriptor(Label="inactive", Tag=1, Type=RefrigeratorAlarm.Bitmaps.AlarmBitmap),
+                        ClusterObjectFieldDescriptor(Label="state", Tag=2, Type=RefrigeratorAlarm.Bitmaps.AlarmBitmap),
+                        ClusterObjectFieldDescriptor(Label="mask", Tag=3, Type=RefrigeratorAlarm.Bitmaps.AlarmBitmap),
                     ])
 
-            active: uint = 0
-            inactive: uint = 0
-            state: uint = 0
-            mask: uint = 0
+            active: RefrigeratorAlarm.Bitmaps.AlarmBitmap = 0
+            inactive: RefrigeratorAlarm.Bitmaps.AlarmBitmap = 0
+            state: RefrigeratorAlarm.Bitmaps.AlarmBitmap = 0
+            mask: RefrigeratorAlarm.Bitmaps.AlarmBitmap = 0

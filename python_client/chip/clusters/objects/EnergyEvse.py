@@ -184,11 +184,11 @@ class EnergyEvse(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="dayOfWeekForSequence", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="dayOfWeekForSequence", Tag=0, Type=EnergyEvse.Bitmaps.TargetDayOfWeekBitmap),
                         ClusterObjectFieldDescriptor(Label="chargingTargets", Tag=1, Type=typing.List[EnergyEvse.Structs.ChargingTargetStruct]),
                     ])
 
-            dayOfWeekForSequence: uint = 0
+            dayOfWeekForSequence: EnergyEvse.Bitmaps.TargetDayOfWeekBitmap = 0
             chargingTargets: typing.List[EnergyEvse.Structs.ChargingTargetStruct] = field(default_factory=lambda: [])
 
     class Commands:

@@ -23,7 +23,7 @@ class Groups(Cluster):
     def descriptor(cls) -> ClusterObjectDescriptor:
         return ClusterObjectDescriptor(
             Fields=[
-                ClusterObjectFieldDescriptor(Label="nameSupport", Tag=0x00000000, Type=uint),
+                ClusterObjectFieldDescriptor(Label="nameSupport", Tag=0x00000000, Type=Groups.Bitmaps.NameSupportBitmap),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="eventList", Tag=0x0000FFFA, Type=typing.List[uint]),
@@ -32,7 +32,7 @@ class Groups(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    nameSupport: uint = 0
+    nameSupport: Groups.Bitmaps.NameSupportBitmap = 0
     generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
     acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
     eventList: typing.List[uint] = field(default_factory=lambda: [])
@@ -233,9 +233,9 @@ class Groups(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=uint)
+                return ClusterObjectFieldDescriptor(Type=Groups.Bitmaps.NameSupportBitmap)
 
-            value: uint = 0
+            value: Groups.Bitmaps.NameSupportBitmap = 0
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):

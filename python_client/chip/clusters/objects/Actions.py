@@ -114,7 +114,7 @@ class Actions(Cluster):
                         ClusterObjectFieldDescriptor(Label="name", Tag=1, Type=str),
                         ClusterObjectFieldDescriptor(Label="type", Tag=2, Type=Actions.Enums.ActionTypeEnum),
                         ClusterObjectFieldDescriptor(Label="endpointListID", Tag=3, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="supportedCommands", Tag=4, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="supportedCommands", Tag=4, Type=Actions.Bitmaps.CommandBits),
                         ClusterObjectFieldDescriptor(Label="state", Tag=5, Type=Actions.Enums.ActionStateEnum),
                     ])
 
@@ -122,7 +122,7 @@ class Actions(Cluster):
             name: str = ""
             type: Actions.Enums.ActionTypeEnum = 0
             endpointListID: uint = 0
-            supportedCommands: uint = 0
+            supportedCommands: Actions.Bitmaps.CommandBits = 0
             state: Actions.Enums.ActionStateEnum = 0
 
         @dataclass

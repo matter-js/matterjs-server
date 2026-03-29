@@ -22,9 +22,9 @@ class OccupancySensing(Cluster):
     def descriptor(cls) -> ClusterObjectDescriptor:
         return ClusterObjectDescriptor(
             Fields=[
-                ClusterObjectFieldDescriptor(Label="occupancy", Tag=0x00000000, Type=uint),
+                ClusterObjectFieldDescriptor(Label="occupancy", Tag=0x00000000, Type=OccupancySensing.Bitmaps.OccupancyBitmap),
                 ClusterObjectFieldDescriptor(Label="occupancySensorType", Tag=0x00000001, Type=OccupancySensing.Enums.OccupancySensorTypeEnum),
-                ClusterObjectFieldDescriptor(Label="occupancySensorTypeBitmap", Tag=0x00000002, Type=uint),
+                ClusterObjectFieldDescriptor(Label="occupancySensorTypeBitmap", Tag=0x00000002, Type=OccupancySensing.Bitmaps.OccupancySensorTypeBitmap),
                 ClusterObjectFieldDescriptor(Label="holdTime", Tag=0x00000003, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="holdTimeLimits", Tag=0x00000004, Type=typing.Optional[OccupancySensing.Structs.HoldTimeLimitsStruct]),
                 ClusterObjectFieldDescriptor(Label="PIROccupiedToUnoccupiedDelay", Tag=0x00000010, Type=typing.Optional[uint]),
@@ -44,9 +44,9 @@ class OccupancySensing(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    occupancy: uint = 0
+    occupancy: OccupancySensing.Bitmaps.OccupancyBitmap = 0
     occupancySensorType: OccupancySensing.Enums.OccupancySensorTypeEnum = 0
-    occupancySensorTypeBitmap: uint = 0
+    occupancySensorTypeBitmap: OccupancySensing.Bitmaps.OccupancySensorTypeBitmap = 0
     holdTime: typing.Optional[uint] = None
     holdTimeLimits: typing.Optional[OccupancySensing.Structs.HoldTimeLimitsStruct] = None
     PIROccupiedToUnoccupiedDelay: typing.Optional[uint] = None
@@ -125,9 +125,9 @@ class OccupancySensing(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=uint)
+                return ClusterObjectFieldDescriptor(Type=OccupancySensing.Bitmaps.OccupancyBitmap)
 
-            value: uint = 0
+            value: OccupancySensing.Bitmaps.OccupancyBitmap = 0
 
         @dataclass
         class OccupancySensorType(ClusterAttributeDescriptor):
@@ -157,9 +157,9 @@ class OccupancySensing(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=uint)
+                return ClusterObjectFieldDescriptor(Type=OccupancySensing.Bitmaps.OccupancySensorTypeBitmap)
 
-            value: uint = 0
+            value: OccupancySensing.Bitmaps.OccupancySensorTypeBitmap = 0
 
         @dataclass
         class HoldTime(ClusterAttributeDescriptor):
@@ -448,7 +448,7 @@ class OccupancySensing(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="occupancy", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="occupancy", Tag=0, Type=OccupancySensing.Bitmaps.OccupancyBitmap),
                     ])
 
-            occupancy: uint = 0
+            occupancy: OccupancySensing.Bitmaps.OccupancyBitmap = 0

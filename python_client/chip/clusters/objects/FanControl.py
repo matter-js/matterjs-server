@@ -29,10 +29,10 @@ class FanControl(Cluster):
                 ClusterObjectFieldDescriptor(Label="speedMax", Tag=0x00000004, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="speedSetting", Tag=0x00000005, Type=typing.Union[None, Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="speedCurrent", Tag=0x00000006, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="rockSupport", Tag=0x00000007, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="rockSetting", Tag=0x00000008, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="windSupport", Tag=0x00000009, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="windSetting", Tag=0x0000000A, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="rockSupport", Tag=0x00000007, Type=typing.Optional[FanControl.Bitmaps.RockBitmap]),
+                ClusterObjectFieldDescriptor(Label="rockSetting", Tag=0x00000008, Type=typing.Optional[FanControl.Bitmaps.RockBitmap]),
+                ClusterObjectFieldDescriptor(Label="windSupport", Tag=0x00000009, Type=typing.Optional[FanControl.Bitmaps.WindBitmap]),
+                ClusterObjectFieldDescriptor(Label="windSetting", Tag=0x0000000A, Type=typing.Optional[FanControl.Bitmaps.WindBitmap]),
                 ClusterObjectFieldDescriptor(Label="airflowDirection", Tag=0x0000000B, Type=typing.Optional[FanControl.Enums.AirflowDirectionEnum]),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
@@ -49,10 +49,10 @@ class FanControl(Cluster):
     speedMax: typing.Optional[uint] = None
     speedSetting: typing.Union[None, Nullable, uint] = None
     speedCurrent: typing.Optional[uint] = None
-    rockSupport: typing.Optional[uint] = None
-    rockSetting: typing.Optional[uint] = None
-    windSupport: typing.Optional[uint] = None
-    windSetting: typing.Optional[uint] = None
+    rockSupport: typing.Optional[FanControl.Bitmaps.RockBitmap] = None
+    rockSetting: typing.Optional[FanControl.Bitmaps.RockBitmap] = None
+    windSupport: typing.Optional[FanControl.Bitmaps.WindBitmap] = None
+    windSetting: typing.Optional[FanControl.Bitmaps.WindBitmap] = None
     airflowDirection: typing.Optional[FanControl.Enums.AirflowDirectionEnum] = None
     generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
     acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
@@ -271,9 +271,9 @@ class FanControl(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[FanControl.Bitmaps.RockBitmap])
 
-            value: typing.Optional[uint] = None
+            value: typing.Optional[FanControl.Bitmaps.RockBitmap] = None
 
         @dataclass
         class RockSetting(ClusterAttributeDescriptor):
@@ -287,9 +287,9 @@ class FanControl(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[FanControl.Bitmaps.RockBitmap])
 
-            value: typing.Optional[uint] = None
+            value: typing.Optional[FanControl.Bitmaps.RockBitmap] = None
 
         @dataclass
         class WindSupport(ClusterAttributeDescriptor):
@@ -303,9 +303,9 @@ class FanControl(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[FanControl.Bitmaps.WindBitmap])
 
-            value: typing.Optional[uint] = None
+            value: typing.Optional[FanControl.Bitmaps.WindBitmap] = None
 
         @dataclass
         class WindSetting(ClusterAttributeDescriptor):
@@ -319,9 +319,9 @@ class FanControl(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[FanControl.Bitmaps.WindBitmap])
 
-            value: typing.Optional[uint] = None
+            value: typing.Optional[FanControl.Bitmaps.WindBitmap] = None
 
         @dataclass
         class AirflowDirection(ClusterAttributeDescriptor):

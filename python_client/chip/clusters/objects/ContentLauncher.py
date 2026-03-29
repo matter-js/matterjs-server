@@ -24,7 +24,7 @@ class ContentLauncher(Cluster):
         return ClusterObjectDescriptor(
             Fields=[
                 ClusterObjectFieldDescriptor(Label="acceptHeader", Tag=0x00000000, Type=typing.Optional[typing.List[str]]),
-                ClusterObjectFieldDescriptor(Label="supportedStreamingProtocols", Tag=0x00000001, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="supportedStreamingProtocols", Tag=0x00000001, Type=typing.Optional[ContentLauncher.Bitmaps.SupportedProtocolsBitmap]),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="eventList", Tag=0x0000FFFA, Type=typing.List[uint]),
@@ -34,7 +34,7 @@ class ContentLauncher(Cluster):
             ])
 
     acceptHeader: typing.Optional[typing.List[str]] = None
-    supportedStreamingProtocols: typing.Optional[uint] = None
+    supportedStreamingProtocols: typing.Optional[ContentLauncher.Bitmaps.SupportedProtocolsBitmap] = None
     generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
     acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
     eventList: typing.List[uint] = field(default_factory=lambda: [])
@@ -315,9 +315,9 @@ class ContentLauncher(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[ContentLauncher.Bitmaps.SupportedProtocolsBitmap])
 
-            value: typing.Optional[uint] = None
+            value: typing.Optional[ContentLauncher.Bitmaps.SupportedProtocolsBitmap] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):

@@ -12,6 +12,7 @@ from ...tlv import float32, uint
 from ..ClusterObjects import (Cluster, ClusterAttributeDescriptor, ClusterCommand, ClusterEvent, ClusterObject,
                               ClusterObjectDescriptor, ClusterObjectFieldDescriptor)
 from ..Types import Nullable, NullValue
+from .Globals import Globals
 
 
 @dataclass
@@ -29,7 +30,7 @@ class GeneralCommissioning(Cluster):
                 ClusterObjectFieldDescriptor(Label="supportsConcurrentConnection", Tag=0x00000004, Type=bool),
                 ClusterObjectFieldDescriptor(Label="TCAcceptedVersion", Tag=0x00000005, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="TCMinRequiredVersion", Tag=0x00000006, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="TCAcknowledgements", Tag=0x00000007, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="TCAcknowledgements", Tag=0x00000007, Type=typing.Optional[Globals.Bitmaps.map16]),
                 ClusterObjectFieldDescriptor(Label="TCAcknowledgementsRequired", Tag=0x00000008, Type=typing.Optional[bool]),
                 ClusterObjectFieldDescriptor(Label="TCUpdateDeadline", Tag=0x00000009, Type=typing.Union[None, Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
@@ -47,7 +48,7 @@ class GeneralCommissioning(Cluster):
     supportsConcurrentConnection: bool = False
     TCAcceptedVersion: typing.Optional[uint] = None
     TCMinRequiredVersion: typing.Optional[uint] = None
-    TCAcknowledgements: typing.Optional[uint] = None
+    TCAcknowledgements: typing.Optional[Globals.Bitmaps.map16] = None
     TCAcknowledgementsRequired: typing.Optional[bool] = None
     TCUpdateDeadline: typing.Union[None, Nullable, uint] = None
     generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
@@ -166,11 +167,11 @@ class GeneralCommissioning(Cluster):
                 return ClusterObjectDescriptor(
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="TCVersion", Tag=0, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="TCUserResponse", Tag=1, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="TCUserResponse", Tag=1, Type=Globals.Bitmaps.map16),
                     ])
 
             TCVersion: uint = 0
-            TCUserResponse: uint = 0
+            TCUserResponse: Globals.Bitmaps.map16 = 0
 
         @dataclass
         class ArmFailSafeResponse(ClusterCommand):
@@ -367,9 +368,9 @@ class GeneralCommissioning(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[Globals.Bitmaps.map16])
 
-            value: typing.Optional[uint] = None
+            value: typing.Optional[Globals.Bitmaps.map16] = None
 
         @dataclass
         class TCAcknowledgementsRequired(ClusterAttributeDescriptor):

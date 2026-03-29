@@ -147,7 +147,7 @@ class Channel(Cluster):
                         ClusterObjectFieldDescriptor(Label="dvbiUrl", Tag=11, Type=typing.Optional[str]),
                         ClusterObjectFieldDescriptor(Label="releaseDate", Tag=12, Type=typing.Optional[str]),
                         ClusterObjectFieldDescriptor(Label="parentalGuidanceText", Tag=13, Type=typing.Optional[str]),
-                        ClusterObjectFieldDescriptor(Label="recordingFlag", Tag=14, Type=typing.Optional[uint]),
+                        ClusterObjectFieldDescriptor(Label="recordingFlag", Tag=14, Type=typing.Optional[Channel.Bitmaps.RecordingFlagBitmap]),
                         ClusterObjectFieldDescriptor(Label="seriesInfo", Tag=15, Type=typing.Union[None, Nullable, Channel.Structs.SeriesInfoStruct]),
                         ClusterObjectFieldDescriptor(Label="categoryList", Tag=16, Type=typing.Optional[typing.List[Channel.Structs.ProgramCategoryStruct]]),
                         ClusterObjectFieldDescriptor(Label="castList", Tag=17, Type=typing.Optional[typing.List[Channel.Structs.ProgramCastStruct]]),
@@ -168,7 +168,7 @@ class Channel(Cluster):
             dvbiUrl: typing.Optional[str] = None
             releaseDate: typing.Optional[str] = None
             parentalGuidanceText: typing.Optional[str] = None
-            recordingFlag: typing.Optional[uint] = None
+            recordingFlag: typing.Optional[Channel.Bitmaps.RecordingFlagBitmap] = None
             seriesInfo: typing.Union[None, Nullable, Channel.Structs.SeriesInfoStruct] = None
             categoryList: typing.Optional[typing.List[Channel.Structs.ProgramCategoryStruct]] = None
             castList: typing.Optional[typing.List[Channel.Structs.ProgramCastStruct]] = None
@@ -307,7 +307,7 @@ class Channel(Cluster):
                         ClusterObjectFieldDescriptor(Label="endTime", Tag=1, Type=uint),
                         ClusterObjectFieldDescriptor(Label="channelList", Tag=2, Type=typing.Optional[typing.List[Channel.Structs.ChannelInfoStruct]]),
                         ClusterObjectFieldDescriptor(Label="pageToken", Tag=3, Type=typing.Union[None, Nullable, Channel.Structs.PageTokenStruct]),
-                        ClusterObjectFieldDescriptor(Label="recordingFlag", Tag=5, Type=typing.Union[None, Nullable, uint]),
+                        ClusterObjectFieldDescriptor(Label="recordingFlag", Tag=5, Type=typing.Union[None, Nullable, Channel.Bitmaps.RecordingFlagBitmap]),
                         ClusterObjectFieldDescriptor(Label="externalIDList", Tag=6, Type=typing.Optional[typing.List[ContentLauncher.Structs.AdditionalInfoStruct]]),
                         ClusterObjectFieldDescriptor(Label="data", Tag=7, Type=typing.Optional[bytes]),
                     ])
@@ -316,7 +316,7 @@ class Channel(Cluster):
             endTime: uint = 0
             channelList: typing.Optional[typing.List[Channel.Structs.ChannelInfoStruct]] = None
             pageToken: typing.Union[None, Nullable, Channel.Structs.PageTokenStruct] = None
-            recordingFlag: typing.Union[None, Nullable, uint] = None
+            recordingFlag: typing.Union[None, Nullable, Channel.Bitmaps.RecordingFlagBitmap] = None
             externalIDList: typing.Optional[typing.List[ContentLauncher.Structs.AdditionalInfoStruct]] = None
             data: typing.Optional[bytes] = None
 

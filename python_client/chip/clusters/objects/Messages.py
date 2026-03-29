@@ -88,7 +88,7 @@ class Messages(Cluster):
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="messageID", Tag=0, Type=bytes),
                         ClusterObjectFieldDescriptor(Label="priority", Tag=1, Type=Messages.Enums.MessagePriorityEnum),
-                        ClusterObjectFieldDescriptor(Label="messageControl", Tag=2, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="messageControl", Tag=2, Type=Messages.Bitmaps.MessageControlBitmap),
                         ClusterObjectFieldDescriptor(Label="startTime", Tag=3, Type=typing.Union[Nullable, uint]),
                         ClusterObjectFieldDescriptor(Label="duration", Tag=4, Type=typing.Union[Nullable, uint]),
                         ClusterObjectFieldDescriptor(Label="messageText", Tag=5, Type=str),
@@ -98,7 +98,7 @@ class Messages(Cluster):
 
             messageID: bytes = b""
             priority: Messages.Enums.MessagePriorityEnum = 0
-            messageControl: uint = 0
+            messageControl: Messages.Bitmaps.MessageControlBitmap = 0
             startTime: typing.Union[Nullable, uint] = NullValue
             duration: typing.Union[Nullable, uint] = NullValue
             messageText: str = ""
@@ -132,7 +132,7 @@ class Messages(Cluster):
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="messageID", Tag=0, Type=bytes),
                         ClusterObjectFieldDescriptor(Label="priority", Tag=1, Type=Messages.Enums.MessagePriorityEnum),
-                        ClusterObjectFieldDescriptor(Label="messageControl", Tag=2, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="messageControl", Tag=2, Type=Messages.Bitmaps.MessageControlBitmap),
                         ClusterObjectFieldDescriptor(Label="startTime", Tag=3, Type=typing.Union[Nullable, uint]),
                         ClusterObjectFieldDescriptor(Label="duration", Tag=4, Type=typing.Union[Nullable, uint]),
                         ClusterObjectFieldDescriptor(Label="messageText", Tag=5, Type=str),
@@ -141,7 +141,7 @@ class Messages(Cluster):
 
             messageID: bytes = b""
             priority: Messages.Enums.MessagePriorityEnum = 0
-            messageControl: uint = 0
+            messageControl: Messages.Bitmaps.MessageControlBitmap = 0
             startTime: typing.Union[Nullable, uint] = NullValue
             duration: typing.Union[Nullable, uint] = NullValue
             messageText: str = ""

@@ -181,12 +181,12 @@ class OnOff(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="onOffControl", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="onOffControl", Tag=0, Type=OnOff.Bitmaps.OnOffControlBitmap),
                         ClusterObjectFieldDescriptor(Label="onTime", Tag=1, Type=uint),
                         ClusterObjectFieldDescriptor(Label="offWaitTime", Tag=2, Type=uint),
                     ])
 
-            onOffControl: uint = 0
+            onOffControl: OnOff.Bitmaps.OnOffControlBitmap = 0
             onTime: uint = 0
             offWaitTime: uint = 0
 

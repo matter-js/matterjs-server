@@ -148,12 +148,12 @@ class ContentControl(Cluster):
                 return ClusterObjectDescriptor(
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="timeWindowIndex", Tag=0, Type=typing.Union[Nullable, uint]),
-                        ClusterObjectFieldDescriptor(Label="dayOfWeek", Tag=1, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="dayOfWeek", Tag=1, Type=ContentControl.Bitmaps.DayOfWeekBitmap),
                         ClusterObjectFieldDescriptor(Label="timePeriod", Tag=2, Type=typing.List[ContentControl.Structs.TimePeriodStruct]),
                     ])
 
             timeWindowIndex: typing.Union[Nullable, uint] = NullValue
-            dayOfWeek: uint = 0
+            dayOfWeek: ContentControl.Bitmaps.DayOfWeekBitmap = 0
             timePeriod: typing.List[ContentControl.Structs.TimePeriodStruct] = field(default_factory=lambda: [])
 
         @dataclass

@@ -28,7 +28,7 @@ class IcdManagement(Cluster):
                 ClusterObjectFieldDescriptor(Label="registeredClients", Tag=0x00000003, Type=typing.Optional[typing.List[IcdManagement.Structs.MonitoringRegistrationStruct]]),
                 ClusterObjectFieldDescriptor(Label="ICDCounter", Tag=0x00000004, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="clientsSupportedPerFabric", Tag=0x00000005, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="userActiveModeTriggerHint", Tag=0x00000006, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="userActiveModeTriggerHint", Tag=0x00000006, Type=typing.Optional[IcdManagement.Bitmaps.UserActiveModeTriggerBitmap]),
                 ClusterObjectFieldDescriptor(Label="userActiveModeTriggerInstruction", Tag=0x00000007, Type=typing.Optional[str]),
                 ClusterObjectFieldDescriptor(Label="operatingMode", Tag=0x00000008, Type=typing.Optional[IcdManagement.Enums.OperatingModeEnum]),
                 ClusterObjectFieldDescriptor(Label="maximumCheckInBackoff", Tag=0x00000009, Type=typing.Optional[uint]),
@@ -46,7 +46,7 @@ class IcdManagement(Cluster):
     registeredClients: typing.Optional[typing.List[IcdManagement.Structs.MonitoringRegistrationStruct]] = None
     ICDCounter: typing.Optional[uint] = None
     clientsSupportedPerFabric: typing.Optional[uint] = None
-    userActiveModeTriggerHint: typing.Optional[uint] = None
+    userActiveModeTriggerHint: typing.Optional[IcdManagement.Bitmaps.UserActiveModeTriggerBitmap] = None
     userActiveModeTriggerInstruction: typing.Optional[str] = None
     operatingMode: typing.Optional[IcdManagement.Enums.OperatingModeEnum] = None
     maximumCheckInBackoff: typing.Optional[uint] = None
@@ -322,9 +322,9 @@ class IcdManagement(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[IcdManagement.Bitmaps.UserActiveModeTriggerBitmap])
 
-            value: typing.Optional[uint] = None
+            value: typing.Optional[IcdManagement.Bitmaps.UserActiveModeTriggerBitmap] = None
 
         @dataclass
         class UserActiveModeTriggerInstruction(ClusterAttributeDescriptor):

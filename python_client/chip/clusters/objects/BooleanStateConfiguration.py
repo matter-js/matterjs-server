@@ -25,11 +25,11 @@ class BooleanStateConfiguration(Cluster):
                 ClusterObjectFieldDescriptor(Label="currentSensitivityLevel", Tag=0x00000000, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="supportedSensitivityLevels", Tag=0x00000001, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="defaultSensitivityLevel", Tag=0x00000002, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="alarmsActive", Tag=0x00000003, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="alarmsSuppressed", Tag=0x00000004, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="alarmsEnabled", Tag=0x00000005, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="alarmsSupported", Tag=0x00000006, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="sensorFault", Tag=0x00000007, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="alarmsActive", Tag=0x00000003, Type=typing.Optional[BooleanStateConfiguration.Bitmaps.AlarmModeBitmap]),
+                ClusterObjectFieldDescriptor(Label="alarmsSuppressed", Tag=0x00000004, Type=typing.Optional[BooleanStateConfiguration.Bitmaps.AlarmModeBitmap]),
+                ClusterObjectFieldDescriptor(Label="alarmsEnabled", Tag=0x00000005, Type=typing.Optional[BooleanStateConfiguration.Bitmaps.AlarmModeBitmap]),
+                ClusterObjectFieldDescriptor(Label="alarmsSupported", Tag=0x00000006, Type=typing.Optional[BooleanStateConfiguration.Bitmaps.AlarmModeBitmap]),
+                ClusterObjectFieldDescriptor(Label="sensorFault", Tag=0x00000007, Type=typing.Optional[BooleanStateConfiguration.Bitmaps.SensorFaultBitmap]),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="eventList", Tag=0x0000FFFA, Type=typing.List[uint]),
@@ -41,11 +41,11 @@ class BooleanStateConfiguration(Cluster):
     currentSensitivityLevel: typing.Optional[uint] = None
     supportedSensitivityLevels: typing.Optional[uint] = None
     defaultSensitivityLevel: typing.Optional[uint] = None
-    alarmsActive: typing.Optional[uint] = None
-    alarmsSuppressed: typing.Optional[uint] = None
-    alarmsEnabled: typing.Optional[uint] = None
-    alarmsSupported: typing.Optional[uint] = None
-    sensorFault: typing.Optional[uint] = None
+    alarmsActive: typing.Optional[BooleanStateConfiguration.Bitmaps.AlarmModeBitmap] = None
+    alarmsSuppressed: typing.Optional[BooleanStateConfiguration.Bitmaps.AlarmModeBitmap] = None
+    alarmsEnabled: typing.Optional[BooleanStateConfiguration.Bitmaps.AlarmModeBitmap] = None
+    alarmsSupported: typing.Optional[BooleanStateConfiguration.Bitmaps.AlarmModeBitmap] = None
+    sensorFault: typing.Optional[BooleanStateConfiguration.Bitmaps.SensorFaultBitmap] = None
     generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
     acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
     eventList: typing.List[uint] = field(default_factory=lambda: [])
@@ -79,10 +79,10 @@ class BooleanStateConfiguration(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="alarmsToSuppress", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="alarmsToSuppress", Tag=0, Type=BooleanStateConfiguration.Bitmaps.AlarmModeBitmap),
                     ])
 
-            alarmsToSuppress: uint = 0
+            alarmsToSuppress: BooleanStateConfiguration.Bitmaps.AlarmModeBitmap = 0
 
         @dataclass
         class EnableDisableAlarm(ClusterCommand):
@@ -95,10 +95,10 @@ class BooleanStateConfiguration(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="alarmsToEnableDisable", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="alarmsToEnableDisable", Tag=0, Type=BooleanStateConfiguration.Bitmaps.AlarmModeBitmap),
                     ])
 
-            alarmsToEnableDisable: uint = 0
+            alarmsToEnableDisable: BooleanStateConfiguration.Bitmaps.AlarmModeBitmap = 0
 
     class Attributes:
         @dataclass
@@ -161,9 +161,9 @@ class BooleanStateConfiguration(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[BooleanStateConfiguration.Bitmaps.AlarmModeBitmap])
 
-            value: typing.Optional[uint] = None
+            value: typing.Optional[BooleanStateConfiguration.Bitmaps.AlarmModeBitmap] = None
 
         @dataclass
         class AlarmsSuppressed(ClusterAttributeDescriptor):
@@ -177,9 +177,9 @@ class BooleanStateConfiguration(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[BooleanStateConfiguration.Bitmaps.AlarmModeBitmap])
 
-            value: typing.Optional[uint] = None
+            value: typing.Optional[BooleanStateConfiguration.Bitmaps.AlarmModeBitmap] = None
 
         @dataclass
         class AlarmsEnabled(ClusterAttributeDescriptor):
@@ -193,9 +193,9 @@ class BooleanStateConfiguration(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[BooleanStateConfiguration.Bitmaps.AlarmModeBitmap])
 
-            value: typing.Optional[uint] = None
+            value: typing.Optional[BooleanStateConfiguration.Bitmaps.AlarmModeBitmap] = None
 
         @dataclass
         class AlarmsSupported(ClusterAttributeDescriptor):
@@ -209,9 +209,9 @@ class BooleanStateConfiguration(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[BooleanStateConfiguration.Bitmaps.AlarmModeBitmap])
 
-            value: typing.Optional[uint] = None
+            value: typing.Optional[BooleanStateConfiguration.Bitmaps.AlarmModeBitmap] = None
 
         @dataclass
         class SensorFault(ClusterAttributeDescriptor):
@@ -225,9 +225,9 @@ class BooleanStateConfiguration(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[BooleanStateConfiguration.Bitmaps.SensorFaultBitmap])
 
-            value: typing.Optional[uint] = None
+            value: typing.Optional[BooleanStateConfiguration.Bitmaps.SensorFaultBitmap] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -340,12 +340,12 @@ class BooleanStateConfiguration(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="alarmsActive", Tag=0, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="alarmsSuppressed", Tag=1, Type=typing.Optional[uint]),
+                        ClusterObjectFieldDescriptor(Label="alarmsActive", Tag=0, Type=BooleanStateConfiguration.Bitmaps.AlarmModeBitmap),
+                        ClusterObjectFieldDescriptor(Label="alarmsSuppressed", Tag=1, Type=typing.Optional[BooleanStateConfiguration.Bitmaps.AlarmModeBitmap]),
                     ])
 
-            alarmsActive: uint = 0
-            alarmsSuppressed: typing.Optional[uint] = None
+            alarmsActive: BooleanStateConfiguration.Bitmaps.AlarmModeBitmap = 0
+            alarmsSuppressed: typing.Optional[BooleanStateConfiguration.Bitmaps.AlarmModeBitmap] = None
 
         @dataclass
         class SensorFault(ClusterEvent):
@@ -361,7 +361,7 @@ class BooleanStateConfiguration(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="sensorFault", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="sensorFault", Tag=0, Type=BooleanStateConfiguration.Bitmaps.SensorFaultBitmap),
                     ])
 
-            sensorFault: uint = 0
+            sensorFault: BooleanStateConfiguration.Bitmaps.SensorFaultBitmap = 0

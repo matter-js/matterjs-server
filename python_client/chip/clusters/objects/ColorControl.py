@@ -32,7 +32,7 @@ class ColorControl(Cluster):
                 ClusterObjectFieldDescriptor(Label="compensationText", Tag=0x00000006, Type=typing.Optional[str]),
                 ClusterObjectFieldDescriptor(Label="colorTemperatureMireds", Tag=0x00000007, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="colorMode", Tag=0x00000008, Type=ColorControl.Enums.ColorModeEnum),
-                ClusterObjectFieldDescriptor(Label="options", Tag=0x0000000F, Type=uint),
+                ClusterObjectFieldDescriptor(Label="options", Tag=0x0000000F, Type=ColorControl.Bitmaps.OptionsBitmap),
                 ClusterObjectFieldDescriptor(Label="numberOfPrimaries", Tag=0x00000010, Type=typing.Union[Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="primary1X", Tag=0x00000011, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="primary1Y", Tag=0x00000012, Type=typing.Optional[uint]),
@@ -70,7 +70,7 @@ class ColorControl(Cluster):
                 ClusterObjectFieldDescriptor(Label="colorLoopTime", Tag=0x00004004, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="colorLoopStartEnhancedHue", Tag=0x00004005, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="colorLoopStoredEnhancedHue", Tag=0x00004006, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="colorCapabilities", Tag=0x0000400A, Type=uint),
+                ClusterObjectFieldDescriptor(Label="colorCapabilities", Tag=0x0000400A, Type=Globals.Bitmaps.map16),
                 ClusterObjectFieldDescriptor(Label="colorTempPhysicalMinMireds", Tag=0x0000400B, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="colorTempPhysicalMaxMireds", Tag=0x0000400C, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="coupleColorTempToLevelMinMireds", Tag=0x0000400D, Type=typing.Optional[uint]),
@@ -92,7 +92,7 @@ class ColorControl(Cluster):
     compensationText: typing.Optional[str] = None
     colorTemperatureMireds: typing.Optional[uint] = None
     colorMode: ColorControl.Enums.ColorModeEnum = 0
-    options: uint = 0
+    options: ColorControl.Bitmaps.OptionsBitmap = 0
     numberOfPrimaries: typing.Union[Nullable, uint] = NullValue
     primary1X: typing.Optional[uint] = None
     primary1Y: typing.Optional[uint] = None
@@ -130,7 +130,7 @@ class ColorControl(Cluster):
     colorLoopTime: typing.Optional[uint] = None
     colorLoopStartEnhancedHue: typing.Optional[uint] = None
     colorLoopStoredEnhancedHue: typing.Optional[uint] = None
-    colorCapabilities: uint = 0
+    colorCapabilities: Globals.Bitmaps.map16 = 0
     colorTempPhysicalMinMireds: typing.Optional[uint] = None
     colorTempPhysicalMaxMireds: typing.Optional[uint] = None
     coupleColorTempToLevelMinMireds: typing.Optional[uint] = None
@@ -257,15 +257,15 @@ class ColorControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="hue", Tag=0, Type=uint),
                         ClusterObjectFieldDescriptor(Label="direction", Tag=1, Type=ColorControl.Enums.DirectionEnum),
                         ClusterObjectFieldDescriptor(Label="transitionTime", Tag=2, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=3, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=4, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=3, Type=ColorControl.Bitmaps.OptionsBitmap),
+                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=4, Type=ColorControl.Bitmaps.OptionsBitmap),
                     ])
 
             hue: uint = 0
             direction: ColorControl.Enums.DirectionEnum = 0
             transitionTime: uint = 0
-            optionsMask: uint = 0
-            optionsOverride: uint = 0
+            optionsMask: ColorControl.Bitmaps.OptionsBitmap = 0
+            optionsOverride: ColorControl.Bitmaps.OptionsBitmap = 0
 
         @dataclass
         class MoveHue(ClusterCommand):
@@ -280,14 +280,14 @@ class ColorControl(Cluster):
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="moveMode", Tag=0, Type=ColorControl.Enums.MoveModeEnum),
                         ClusterObjectFieldDescriptor(Label="rate", Tag=1, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=2, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=3, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=2, Type=ColorControl.Bitmaps.OptionsBitmap),
+                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=3, Type=ColorControl.Bitmaps.OptionsBitmap),
                     ])
 
             moveMode: ColorControl.Enums.MoveModeEnum = 0
             rate: uint = 0
-            optionsMask: uint = 0
-            optionsOverride: uint = 0
+            optionsMask: ColorControl.Bitmaps.OptionsBitmap = 0
+            optionsOverride: ColorControl.Bitmaps.OptionsBitmap = 0
 
         @dataclass
         class StepHue(ClusterCommand):
@@ -303,15 +303,15 @@ class ColorControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="stepMode", Tag=0, Type=ColorControl.Enums.StepModeEnum),
                         ClusterObjectFieldDescriptor(Label="stepSize", Tag=1, Type=uint),
                         ClusterObjectFieldDescriptor(Label="transitionTime", Tag=2, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=3, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=4, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=3, Type=ColorControl.Bitmaps.OptionsBitmap),
+                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=4, Type=ColorControl.Bitmaps.OptionsBitmap),
                     ])
 
             stepMode: ColorControl.Enums.StepModeEnum = 0
             stepSize: uint = 0
             transitionTime: uint = 0
-            optionsMask: uint = 0
-            optionsOverride: uint = 0
+            optionsMask: ColorControl.Bitmaps.OptionsBitmap = 0
+            optionsOverride: ColorControl.Bitmaps.OptionsBitmap = 0
 
         @dataclass
         class MoveToSaturation(ClusterCommand):
@@ -326,14 +326,14 @@ class ColorControl(Cluster):
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="saturation", Tag=0, Type=uint),
                         ClusterObjectFieldDescriptor(Label="transitionTime", Tag=1, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=2, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=3, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=2, Type=ColorControl.Bitmaps.OptionsBitmap),
+                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=3, Type=ColorControl.Bitmaps.OptionsBitmap),
                     ])
 
             saturation: uint = 0
             transitionTime: uint = 0
-            optionsMask: uint = 0
-            optionsOverride: uint = 0
+            optionsMask: ColorControl.Bitmaps.OptionsBitmap = 0
+            optionsOverride: ColorControl.Bitmaps.OptionsBitmap = 0
 
         @dataclass
         class MoveSaturation(ClusterCommand):
@@ -348,14 +348,14 @@ class ColorControl(Cluster):
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="moveMode", Tag=0, Type=ColorControl.Enums.MoveModeEnum),
                         ClusterObjectFieldDescriptor(Label="rate", Tag=1, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=2, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=3, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=2, Type=ColorControl.Bitmaps.OptionsBitmap),
+                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=3, Type=ColorControl.Bitmaps.OptionsBitmap),
                     ])
 
             moveMode: ColorControl.Enums.MoveModeEnum = 0
             rate: uint = 0
-            optionsMask: uint = 0
-            optionsOverride: uint = 0
+            optionsMask: ColorControl.Bitmaps.OptionsBitmap = 0
+            optionsOverride: ColorControl.Bitmaps.OptionsBitmap = 0
 
         @dataclass
         class StepSaturation(ClusterCommand):
@@ -371,15 +371,15 @@ class ColorControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="stepMode", Tag=0, Type=ColorControl.Enums.StepModeEnum),
                         ClusterObjectFieldDescriptor(Label="stepSize", Tag=1, Type=uint),
                         ClusterObjectFieldDescriptor(Label="transitionTime", Tag=2, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=3, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=4, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=3, Type=ColorControl.Bitmaps.OptionsBitmap),
+                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=4, Type=ColorControl.Bitmaps.OptionsBitmap),
                     ])
 
             stepMode: ColorControl.Enums.StepModeEnum = 0
             stepSize: uint = 0
             transitionTime: uint = 0
-            optionsMask: uint = 0
-            optionsOverride: uint = 0
+            optionsMask: ColorControl.Bitmaps.OptionsBitmap = 0
+            optionsOverride: ColorControl.Bitmaps.OptionsBitmap = 0
 
         @dataclass
         class MoveToHueAndSaturation(ClusterCommand):
@@ -395,15 +395,15 @@ class ColorControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="hue", Tag=0, Type=uint),
                         ClusterObjectFieldDescriptor(Label="saturation", Tag=1, Type=uint),
                         ClusterObjectFieldDescriptor(Label="transitionTime", Tag=2, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=3, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=4, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=3, Type=ColorControl.Bitmaps.OptionsBitmap),
+                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=4, Type=ColorControl.Bitmaps.OptionsBitmap),
                     ])
 
             hue: uint = 0
             saturation: uint = 0
             transitionTime: uint = 0
-            optionsMask: uint = 0
-            optionsOverride: uint = 0
+            optionsMask: ColorControl.Bitmaps.OptionsBitmap = 0
+            optionsOverride: ColorControl.Bitmaps.OptionsBitmap = 0
 
         @dataclass
         class MoveToColor(ClusterCommand):
@@ -419,15 +419,15 @@ class ColorControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="colorX", Tag=0, Type=uint),
                         ClusterObjectFieldDescriptor(Label="colorY", Tag=1, Type=uint),
                         ClusterObjectFieldDescriptor(Label="transitionTime", Tag=2, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=3, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=4, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=3, Type=ColorControl.Bitmaps.OptionsBitmap),
+                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=4, Type=ColorControl.Bitmaps.OptionsBitmap),
                     ])
 
             colorX: uint = 0
             colorY: uint = 0
             transitionTime: uint = 0
-            optionsMask: uint = 0
-            optionsOverride: uint = 0
+            optionsMask: ColorControl.Bitmaps.OptionsBitmap = 0
+            optionsOverride: ColorControl.Bitmaps.OptionsBitmap = 0
 
         @dataclass
         class MoveColor(ClusterCommand):
@@ -442,14 +442,14 @@ class ColorControl(Cluster):
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="rateX", Tag=0, Type=int),
                         ClusterObjectFieldDescriptor(Label="rateY", Tag=1, Type=int),
-                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=2, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=3, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=2, Type=ColorControl.Bitmaps.OptionsBitmap),
+                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=3, Type=ColorControl.Bitmaps.OptionsBitmap),
                     ])
 
             rateX: int = 0
             rateY: int = 0
-            optionsMask: uint = 0
-            optionsOverride: uint = 0
+            optionsMask: ColorControl.Bitmaps.OptionsBitmap = 0
+            optionsOverride: ColorControl.Bitmaps.OptionsBitmap = 0
 
         @dataclass
         class StepColor(ClusterCommand):
@@ -465,15 +465,15 @@ class ColorControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="stepX", Tag=0, Type=int),
                         ClusterObjectFieldDescriptor(Label="stepY", Tag=1, Type=int),
                         ClusterObjectFieldDescriptor(Label="transitionTime", Tag=2, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=3, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=4, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=3, Type=ColorControl.Bitmaps.OptionsBitmap),
+                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=4, Type=ColorControl.Bitmaps.OptionsBitmap),
                     ])
 
             stepX: int = 0
             stepY: int = 0
             transitionTime: uint = 0
-            optionsMask: uint = 0
-            optionsOverride: uint = 0
+            optionsMask: ColorControl.Bitmaps.OptionsBitmap = 0
+            optionsOverride: ColorControl.Bitmaps.OptionsBitmap = 0
 
         @dataclass
         class MoveToColorTemperature(ClusterCommand):
@@ -488,14 +488,14 @@ class ColorControl(Cluster):
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="colorTemperatureMireds", Tag=0, Type=uint),
                         ClusterObjectFieldDescriptor(Label="transitionTime", Tag=1, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=2, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=3, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=2, Type=ColorControl.Bitmaps.OptionsBitmap),
+                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=3, Type=ColorControl.Bitmaps.OptionsBitmap),
                     ])
 
             colorTemperatureMireds: uint = 0
             transitionTime: uint = 0
-            optionsMask: uint = 0
-            optionsOverride: uint = 0
+            optionsMask: ColorControl.Bitmaps.OptionsBitmap = 0
+            optionsOverride: ColorControl.Bitmaps.OptionsBitmap = 0
 
         @dataclass
         class EnhancedMoveToHue(ClusterCommand):
@@ -511,15 +511,15 @@ class ColorControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="enhancedHue", Tag=0, Type=uint),
                         ClusterObjectFieldDescriptor(Label="direction", Tag=1, Type=ColorControl.Enums.DirectionEnum),
                         ClusterObjectFieldDescriptor(Label="transitionTime", Tag=2, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=3, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=4, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=3, Type=ColorControl.Bitmaps.OptionsBitmap),
+                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=4, Type=ColorControl.Bitmaps.OptionsBitmap),
                     ])
 
             enhancedHue: uint = 0
             direction: ColorControl.Enums.DirectionEnum = 0
             transitionTime: uint = 0
-            optionsMask: uint = 0
-            optionsOverride: uint = 0
+            optionsMask: ColorControl.Bitmaps.OptionsBitmap = 0
+            optionsOverride: ColorControl.Bitmaps.OptionsBitmap = 0
 
         @dataclass
         class EnhancedMoveHue(ClusterCommand):
@@ -534,14 +534,14 @@ class ColorControl(Cluster):
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="moveMode", Tag=0, Type=ColorControl.Enums.MoveModeEnum),
                         ClusterObjectFieldDescriptor(Label="rate", Tag=1, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=2, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=3, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=2, Type=ColorControl.Bitmaps.OptionsBitmap),
+                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=3, Type=ColorControl.Bitmaps.OptionsBitmap),
                     ])
 
             moveMode: ColorControl.Enums.MoveModeEnum = 0
             rate: uint = 0
-            optionsMask: uint = 0
-            optionsOverride: uint = 0
+            optionsMask: ColorControl.Bitmaps.OptionsBitmap = 0
+            optionsOverride: ColorControl.Bitmaps.OptionsBitmap = 0
 
         @dataclass
         class EnhancedStepHue(ClusterCommand):
@@ -557,15 +557,15 @@ class ColorControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="stepMode", Tag=0, Type=ColorControl.Enums.StepModeEnum),
                         ClusterObjectFieldDescriptor(Label="stepSize", Tag=1, Type=uint),
                         ClusterObjectFieldDescriptor(Label="transitionTime", Tag=2, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=3, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=4, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=3, Type=ColorControl.Bitmaps.OptionsBitmap),
+                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=4, Type=ColorControl.Bitmaps.OptionsBitmap),
                     ])
 
             stepMode: ColorControl.Enums.StepModeEnum = 0
             stepSize: uint = 0
             transitionTime: uint = 0
-            optionsMask: uint = 0
-            optionsOverride: uint = 0
+            optionsMask: ColorControl.Bitmaps.OptionsBitmap = 0
+            optionsOverride: ColorControl.Bitmaps.OptionsBitmap = 0
 
         @dataclass
         class EnhancedMoveToHueAndSaturation(ClusterCommand):
@@ -581,15 +581,15 @@ class ColorControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="enhancedHue", Tag=0, Type=uint),
                         ClusterObjectFieldDescriptor(Label="saturation", Tag=1, Type=uint),
                         ClusterObjectFieldDescriptor(Label="transitionTime", Tag=2, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=3, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=4, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=3, Type=ColorControl.Bitmaps.OptionsBitmap),
+                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=4, Type=ColorControl.Bitmaps.OptionsBitmap),
                     ])
 
             enhancedHue: uint = 0
             saturation: uint = 0
             transitionTime: uint = 0
-            optionsMask: uint = 0
-            optionsOverride: uint = 0
+            optionsMask: ColorControl.Bitmaps.OptionsBitmap = 0
+            optionsOverride: ColorControl.Bitmaps.OptionsBitmap = 0
 
         @dataclass
         class ColorLoopSet(ClusterCommand):
@@ -602,22 +602,22 @@ class ColorControl(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="updateFlags", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="updateFlags", Tag=0, Type=ColorControl.Bitmaps.UpdateFlagsBitmap),
                         ClusterObjectFieldDescriptor(Label="action", Tag=1, Type=ColorControl.Enums.ColorLoopActionEnum),
                         ClusterObjectFieldDescriptor(Label="direction", Tag=2, Type=ColorControl.Enums.ColorLoopDirectionEnum),
                         ClusterObjectFieldDescriptor(Label="time", Tag=3, Type=uint),
                         ClusterObjectFieldDescriptor(Label="startHue", Tag=4, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=5, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=6, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=5, Type=ColorControl.Bitmaps.OptionsBitmap),
+                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=6, Type=ColorControl.Bitmaps.OptionsBitmap),
                     ])
 
-            updateFlags: uint = 0
+            updateFlags: ColorControl.Bitmaps.UpdateFlagsBitmap = 0
             action: ColorControl.Enums.ColorLoopActionEnum = 0
             direction: ColorControl.Enums.ColorLoopDirectionEnum = 0
             time: uint = 0
             startHue: uint = 0
-            optionsMask: uint = 0
-            optionsOverride: uint = 0
+            optionsMask: ColorControl.Bitmaps.OptionsBitmap = 0
+            optionsOverride: ColorControl.Bitmaps.OptionsBitmap = 0
 
         @dataclass
         class StopMoveStep(ClusterCommand):
@@ -630,12 +630,12 @@ class ColorControl(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=0, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=1, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=0, Type=ColorControl.Bitmaps.OptionsBitmap),
+                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=1, Type=ColorControl.Bitmaps.OptionsBitmap),
                     ])
 
-            optionsMask: uint = 0
-            optionsOverride: uint = 0
+            optionsMask: ColorControl.Bitmaps.OptionsBitmap = 0
+            optionsOverride: ColorControl.Bitmaps.OptionsBitmap = 0
 
         @dataclass
         class MoveColorTemperature(ClusterCommand):
@@ -652,16 +652,16 @@ class ColorControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="rate", Tag=1, Type=uint),
                         ClusterObjectFieldDescriptor(Label="colorTemperatureMinimumMireds", Tag=2, Type=uint),
                         ClusterObjectFieldDescriptor(Label="colorTemperatureMaximumMireds", Tag=3, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=4, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=5, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=4, Type=ColorControl.Bitmaps.OptionsBitmap),
+                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=5, Type=ColorControl.Bitmaps.OptionsBitmap),
                     ])
 
             moveMode: ColorControl.Enums.MoveModeEnum = 0
             rate: uint = 0
             colorTemperatureMinimumMireds: uint = 0
             colorTemperatureMaximumMireds: uint = 0
-            optionsMask: uint = 0
-            optionsOverride: uint = 0
+            optionsMask: ColorControl.Bitmaps.OptionsBitmap = 0
+            optionsOverride: ColorControl.Bitmaps.OptionsBitmap = 0
 
         @dataclass
         class StepColorTemperature(ClusterCommand):
@@ -679,8 +679,8 @@ class ColorControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="transitionTime", Tag=2, Type=uint),
                         ClusterObjectFieldDescriptor(Label="colorTemperatureMinimumMireds", Tag=3, Type=uint),
                         ClusterObjectFieldDescriptor(Label="colorTemperatureMaximumMireds", Tag=4, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=5, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=6, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=5, Type=ColorControl.Bitmaps.OptionsBitmap),
+                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=6, Type=ColorControl.Bitmaps.OptionsBitmap),
                     ])
 
             stepMode: ColorControl.Enums.StepModeEnum = 0
@@ -688,8 +688,8 @@ class ColorControl(Cluster):
             transitionTime: uint = 0
             colorTemperatureMinimumMireds: uint = 0
             colorTemperatureMaximumMireds: uint = 0
-            optionsMask: uint = 0
-            optionsOverride: uint = 0
+            optionsMask: ColorControl.Bitmaps.OptionsBitmap = 0
+            optionsOverride: ColorControl.Bitmaps.OptionsBitmap = 0
 
     class Attributes:
         @dataclass
@@ -848,9 +848,9 @@ class ColorControl(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=uint)
+                return ClusterObjectFieldDescriptor(Type=ColorControl.Bitmaps.OptionsBitmap)
 
-            value: uint = 0
+            value: ColorControl.Bitmaps.OptionsBitmap = 0
 
         @dataclass
         class NumberOfPrimaries(ClusterAttributeDescriptor):
@@ -1456,9 +1456,9 @@ class ColorControl(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=uint)
+                return ClusterObjectFieldDescriptor(Type=Globals.Bitmaps.map16)
 
-            value: uint = 0
+            value: Globals.Bitmaps.map16 = 0
 
         @dataclass
         class ColorTempPhysicalMinMireds(ClusterAttributeDescriptor):

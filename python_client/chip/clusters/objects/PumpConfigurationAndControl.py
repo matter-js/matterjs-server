@@ -35,7 +35,7 @@ class PumpConfigurationAndControl(Cluster):
                 ClusterObjectFieldDescriptor(Label="maxConstFlow", Tag=0x0000000A, Type=typing.Union[None, Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="minConstTemp", Tag=0x0000000B, Type=typing.Union[None, Nullable, int]),
                 ClusterObjectFieldDescriptor(Label="maxConstTemp", Tag=0x0000000C, Type=typing.Union[None, Nullable, int]),
-                ClusterObjectFieldDescriptor(Label="pumpStatus", Tag=0x00000010, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="pumpStatus", Tag=0x00000010, Type=typing.Optional[PumpConfigurationAndControl.Bitmaps.PumpStatusBitmap]),
                 ClusterObjectFieldDescriptor(Label="effectiveOperationMode", Tag=0x00000011, Type=PumpConfigurationAndControl.Enums.OperationModeEnum),
                 ClusterObjectFieldDescriptor(Label="effectiveControlMode", Tag=0x00000012, Type=PumpConfigurationAndControl.Enums.ControlModeEnum),
                 ClusterObjectFieldDescriptor(Label="capacity", Tag=0x00000013, Type=typing.Union[Nullable, int]),
@@ -67,7 +67,7 @@ class PumpConfigurationAndControl(Cluster):
     maxConstFlow: typing.Union[None, Nullable, uint] = None
     minConstTemp: typing.Union[None, Nullable, int] = None
     maxConstTemp: typing.Union[None, Nullable, int] = None
-    pumpStatus: typing.Optional[uint] = None
+    pumpStatus: typing.Optional[PumpConfigurationAndControl.Bitmaps.PumpStatusBitmap] = None
     effectiveOperationMode: PumpConfigurationAndControl.Enums.OperationModeEnum = 0
     effectiveControlMode: PumpConfigurationAndControl.Enums.ControlModeEnum = 0
     capacity: typing.Union[Nullable, int] = NullValue
@@ -352,9 +352,9 @@ class PumpConfigurationAndControl(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[PumpConfigurationAndControl.Bitmaps.PumpStatusBitmap])
 
-            value: typing.Optional[uint] = None
+            value: typing.Optional[PumpConfigurationAndControl.Bitmaps.PumpStatusBitmap] = None
 
         @dataclass
         class EffectiveOperationMode(ClusterAttributeDescriptor):

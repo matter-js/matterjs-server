@@ -40,20 +40,20 @@ class DoorLock(Cluster):
                 ClusterObjectFieldDescriptor(Label="minPINCodeLength", Tag=0x00000018, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="maxRFIDCodeLength", Tag=0x00000019, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="minRFIDCodeLength", Tag=0x0000001A, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="credentialRulesSupport", Tag=0x0000001B, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="credentialRulesSupport", Tag=0x0000001B, Type=typing.Optional[DoorLock.Bitmaps.CredentialRulesBitmap]),
                 ClusterObjectFieldDescriptor(Label="numberOfCredentialsSupportedPerUser", Tag=0x0000001C, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="language", Tag=0x00000021, Type=typing.Optional[str]),
                 ClusterObjectFieldDescriptor(Label="LEDSettings", Tag=0x00000022, Type=typing.Optional[DoorLock.Enums.LEDSettingEnum]),
                 ClusterObjectFieldDescriptor(Label="autoRelockTime", Tag=0x00000023, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="soundVolume", Tag=0x00000024, Type=typing.Optional[DoorLock.Enums.SoundVolumeEnum]),
                 ClusterObjectFieldDescriptor(Label="operatingMode", Tag=0x00000025, Type=DoorLock.Enums.OperatingModeEnum),
-                ClusterObjectFieldDescriptor(Label="supportedOperatingModes", Tag=0x00000026, Type=uint),
-                ClusterObjectFieldDescriptor(Label="defaultConfigurationRegister", Tag=0x00000027, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="supportedOperatingModes", Tag=0x00000026, Type=DoorLock.Bitmaps.OperatingModesBitmap),
+                ClusterObjectFieldDescriptor(Label="defaultConfigurationRegister", Tag=0x00000027, Type=typing.Optional[DoorLock.Bitmaps.ConfigurationRegisterBitmap]),
                 ClusterObjectFieldDescriptor(Label="enableLocalProgramming", Tag=0x00000028, Type=typing.Optional[bool]),
                 ClusterObjectFieldDescriptor(Label="enableOneTouchLocking", Tag=0x00000029, Type=typing.Optional[bool]),
                 ClusterObjectFieldDescriptor(Label="enableInsideStatusLED", Tag=0x0000002A, Type=typing.Optional[bool]),
                 ClusterObjectFieldDescriptor(Label="enablePrivacyModeButton", Tag=0x0000002B, Type=typing.Optional[bool]),
-                ClusterObjectFieldDescriptor(Label="localProgrammingFeatures", Tag=0x0000002C, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="localProgrammingFeatures", Tag=0x0000002C, Type=typing.Optional[DoorLock.Bitmaps.LocalProgrammingFeaturesBitmap]),
                 ClusterObjectFieldDescriptor(Label="wrongCodeEntryLimit", Tag=0x00000030, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="userCodeTemporaryDisableTime", Tag=0x00000031, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="sendPINOverTheAir", Tag=0x00000032, Type=typing.Optional[bool]),
@@ -94,20 +94,20 @@ class DoorLock(Cluster):
     minPINCodeLength: typing.Optional[uint] = None
     maxRFIDCodeLength: typing.Optional[uint] = None
     minRFIDCodeLength: typing.Optional[uint] = None
-    credentialRulesSupport: typing.Optional[uint] = None
+    credentialRulesSupport: typing.Optional[DoorLock.Bitmaps.CredentialRulesBitmap] = None
     numberOfCredentialsSupportedPerUser: typing.Optional[uint] = None
     language: typing.Optional[str] = None
     LEDSettings: typing.Optional[DoorLock.Enums.LEDSettingEnum] = None
     autoRelockTime: typing.Optional[uint] = None
     soundVolume: typing.Optional[DoorLock.Enums.SoundVolumeEnum] = None
     operatingMode: DoorLock.Enums.OperatingModeEnum = 0
-    supportedOperatingModes: uint = 0
-    defaultConfigurationRegister: typing.Optional[uint] = None
+    supportedOperatingModes: DoorLock.Bitmaps.OperatingModesBitmap = 0
+    defaultConfigurationRegister: typing.Optional[DoorLock.Bitmaps.ConfigurationRegisterBitmap] = None
     enableLocalProgramming: typing.Optional[bool] = None
     enableOneTouchLocking: typing.Optional[bool] = None
     enableInsideStatusLED: typing.Optional[bool] = None
     enablePrivacyModeButton: typing.Optional[bool] = None
-    localProgrammingFeatures: typing.Optional[uint] = None
+    localProgrammingFeatures: typing.Optional[DoorLock.Bitmaps.LocalProgrammingFeaturesBitmap] = None
     wrongCodeEntryLimit: typing.Optional[uint] = None
     userCodeTemporaryDisableTime: typing.Optional[uint] = None
     sendPINOverTheAir: typing.Optional[bool] = None
@@ -649,7 +649,7 @@ class DoorLock(Cluster):
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="weekDayIndex", Tag=0, Type=uint),
                         ClusterObjectFieldDescriptor(Label="userIndex", Tag=1, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="daysMask", Tag=2, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="daysMask", Tag=2, Type=DoorLock.Bitmaps.DaysMaskBitmap),
                         ClusterObjectFieldDescriptor(Label="startHour", Tag=3, Type=uint),
                         ClusterObjectFieldDescriptor(Label="startMinute", Tag=4, Type=uint),
                         ClusterObjectFieldDescriptor(Label="endHour", Tag=5, Type=uint),
@@ -658,7 +658,7 @@ class DoorLock(Cluster):
 
             weekDayIndex: uint = 0
             userIndex: uint = 0
-            daysMask: uint = 0
+            daysMask: DoorLock.Bitmaps.DaysMaskBitmap = 0
             startHour: uint = 0
             startMinute: uint = 0
             endHour: uint = 0
@@ -1178,7 +1178,7 @@ class DoorLock(Cluster):
                         ClusterObjectFieldDescriptor(Label="weekDayIndex", Tag=0, Type=uint),
                         ClusterObjectFieldDescriptor(Label="userIndex", Tag=1, Type=uint),
                         ClusterObjectFieldDescriptor(Label="status", Tag=2, Type=Globals.Enums.status),
-                        ClusterObjectFieldDescriptor(Label="daysMask", Tag=3, Type=typing.Optional[uint]),
+                        ClusterObjectFieldDescriptor(Label="daysMask", Tag=3, Type=typing.Optional[DoorLock.Bitmaps.DaysMaskBitmap]),
                         ClusterObjectFieldDescriptor(Label="startHour", Tag=4, Type=typing.Optional[uint]),
                         ClusterObjectFieldDescriptor(Label="startMinute", Tag=5, Type=typing.Optional[uint]),
                         ClusterObjectFieldDescriptor(Label="endHour", Tag=6, Type=typing.Optional[uint]),
@@ -1188,7 +1188,7 @@ class DoorLock(Cluster):
             weekDayIndex: uint = 0
             userIndex: uint = 0
             status: Globals.Enums.status = 0
-            daysMask: typing.Optional[uint] = None
+            daysMask: typing.Optional[DoorLock.Bitmaps.DaysMaskBitmap] = None
             startHour: typing.Optional[uint] = None
             startMinute: typing.Optional[uint] = None
             endHour: typing.Optional[uint] = None
@@ -1647,9 +1647,9 @@ class DoorLock(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[DoorLock.Bitmaps.CredentialRulesBitmap])
 
-            value: typing.Optional[uint] = None
+            value: typing.Optional[DoorLock.Bitmaps.CredentialRulesBitmap] = None
 
         @dataclass
         class NumberOfCredentialsSupportedPerUser(ClusterAttributeDescriptor):
@@ -1759,9 +1759,9 @@ class DoorLock(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=uint)
+                return ClusterObjectFieldDescriptor(Type=DoorLock.Bitmaps.OperatingModesBitmap)
 
-            value: uint = 0
+            value: DoorLock.Bitmaps.OperatingModesBitmap = 0
 
         @dataclass
         class DefaultConfigurationRegister(ClusterAttributeDescriptor):
@@ -1775,9 +1775,9 @@ class DoorLock(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[DoorLock.Bitmaps.ConfigurationRegisterBitmap])
 
-            value: typing.Optional[uint] = None
+            value: typing.Optional[DoorLock.Bitmaps.ConfigurationRegisterBitmap] = None
 
         @dataclass
         class EnableLocalProgramming(ClusterAttributeDescriptor):
@@ -1855,9 +1855,9 @@ class DoorLock(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[DoorLock.Bitmaps.LocalProgrammingFeaturesBitmap])
 
-            value: typing.Optional[uint] = None
+            value: typing.Optional[DoorLock.Bitmaps.LocalProgrammingFeaturesBitmap] = None
 
         @dataclass
         class WrongCodeEntryLimit(ClusterAttributeDescriptor):

@@ -274,14 +274,14 @@ class ScenesManagement(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="mode", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="mode", Tag=0, Type=ScenesManagement.Bitmaps.CopyModeBitmap),
                         ClusterObjectFieldDescriptor(Label="groupIdentifierFrom", Tag=1, Type=uint),
                         ClusterObjectFieldDescriptor(Label="sceneIdentifierFrom", Tag=2, Type=uint),
                         ClusterObjectFieldDescriptor(Label="groupIdentifierTo", Tag=3, Type=uint),
                         ClusterObjectFieldDescriptor(Label="sceneIdentifierTo", Tag=4, Type=uint),
                     ])
 
-            mode: uint = 0
+            mode: ScenesManagement.Bitmaps.CopyModeBitmap = 0
             groupIdentifierFrom: uint = 0
             sceneIdentifierFrom: uint = 0
             groupIdentifierTo: uint = 0

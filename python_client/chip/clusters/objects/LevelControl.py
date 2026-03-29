@@ -29,7 +29,7 @@ class LevelControl(Cluster):
                 ClusterObjectFieldDescriptor(Label="currentFrequency", Tag=0x00000004, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="minFrequency", Tag=0x00000005, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="maxFrequency", Tag=0x00000006, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="options", Tag=0x0000000F, Type=uint),
+                ClusterObjectFieldDescriptor(Label="options", Tag=0x0000000F, Type=LevelControl.Bitmaps.OptionsBitmap),
                 ClusterObjectFieldDescriptor(Label="onOffTransitionTime", Tag=0x00000010, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="onLevel", Tag=0x00000011, Type=typing.Union[Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="onTransitionTime", Tag=0x00000012, Type=typing.Union[None, Nullable, uint]),
@@ -51,7 +51,7 @@ class LevelControl(Cluster):
     currentFrequency: typing.Optional[uint] = None
     minFrequency: typing.Optional[uint] = None
     maxFrequency: typing.Optional[uint] = None
-    options: uint = 0
+    options: LevelControl.Bitmaps.OptionsBitmap = 0
     onOffTransitionTime: typing.Optional[uint] = None
     onLevel: typing.Union[Nullable, uint] = NullValue
     onTransitionTime: typing.Union[None, Nullable, uint] = None
@@ -108,14 +108,14 @@ class LevelControl(Cluster):
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="level", Tag=0, Type=uint),
                         ClusterObjectFieldDescriptor(Label="transitionTime", Tag=1, Type=typing.Union[Nullable, uint]),
-                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=2, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=3, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=2, Type=LevelControl.Bitmaps.OptionsBitmap),
+                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=3, Type=LevelControl.Bitmaps.OptionsBitmap),
                     ])
 
             level: uint = 0
             transitionTime: typing.Union[Nullable, uint] = NullValue
-            optionsMask: uint = 0
-            optionsOverride: uint = 0
+            optionsMask: LevelControl.Bitmaps.OptionsBitmap = 0
+            optionsOverride: LevelControl.Bitmaps.OptionsBitmap = 0
 
         @dataclass
         class Move(ClusterCommand):
@@ -130,14 +130,14 @@ class LevelControl(Cluster):
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="moveMode", Tag=0, Type=LevelControl.Enums.MoveModeEnum),
                         ClusterObjectFieldDescriptor(Label="rate", Tag=1, Type=typing.Union[Nullable, uint]),
-                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=2, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=3, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=2, Type=LevelControl.Bitmaps.OptionsBitmap),
+                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=3, Type=LevelControl.Bitmaps.OptionsBitmap),
                     ])
 
             moveMode: LevelControl.Enums.MoveModeEnum = 0
             rate: typing.Union[Nullable, uint] = NullValue
-            optionsMask: uint = 0
-            optionsOverride: uint = 0
+            optionsMask: LevelControl.Bitmaps.OptionsBitmap = 0
+            optionsOverride: LevelControl.Bitmaps.OptionsBitmap = 0
 
         @dataclass
         class Step(ClusterCommand):
@@ -153,15 +153,15 @@ class LevelControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="stepMode", Tag=0, Type=LevelControl.Enums.StepModeEnum),
                         ClusterObjectFieldDescriptor(Label="stepSize", Tag=1, Type=uint),
                         ClusterObjectFieldDescriptor(Label="transitionTime", Tag=2, Type=typing.Union[Nullable, uint]),
-                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=3, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=4, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=3, Type=LevelControl.Bitmaps.OptionsBitmap),
+                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=4, Type=LevelControl.Bitmaps.OptionsBitmap),
                     ])
 
             stepMode: LevelControl.Enums.StepModeEnum = 0
             stepSize: uint = 0
             transitionTime: typing.Union[Nullable, uint] = NullValue
-            optionsMask: uint = 0
-            optionsOverride: uint = 0
+            optionsMask: LevelControl.Bitmaps.OptionsBitmap = 0
+            optionsOverride: LevelControl.Bitmaps.OptionsBitmap = 0
 
         @dataclass
         class Stop(ClusterCommand):
@@ -174,12 +174,12 @@ class LevelControl(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=0, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=1, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=0, Type=LevelControl.Bitmaps.OptionsBitmap),
+                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=1, Type=LevelControl.Bitmaps.OptionsBitmap),
                     ])
 
-            optionsMask: uint = 0
-            optionsOverride: uint = 0
+            optionsMask: LevelControl.Bitmaps.OptionsBitmap = 0
+            optionsOverride: LevelControl.Bitmaps.OptionsBitmap = 0
 
         @dataclass
         class MoveToLevelWithOnOff(ClusterCommand):
@@ -194,14 +194,14 @@ class LevelControl(Cluster):
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="level", Tag=0, Type=uint),
                         ClusterObjectFieldDescriptor(Label="transitionTime", Tag=1, Type=typing.Union[Nullable, uint]),
-                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=2, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=3, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=2, Type=LevelControl.Bitmaps.OptionsBitmap),
+                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=3, Type=LevelControl.Bitmaps.OptionsBitmap),
                     ])
 
             level: uint = 0
             transitionTime: typing.Union[Nullable, uint] = NullValue
-            optionsMask: uint = 0
-            optionsOverride: uint = 0
+            optionsMask: LevelControl.Bitmaps.OptionsBitmap = 0
+            optionsOverride: LevelControl.Bitmaps.OptionsBitmap = 0
 
         @dataclass
         class MoveWithOnOff(ClusterCommand):
@@ -216,14 +216,14 @@ class LevelControl(Cluster):
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="moveMode", Tag=0, Type=LevelControl.Enums.MoveModeEnum),
                         ClusterObjectFieldDescriptor(Label="rate", Tag=1, Type=typing.Union[Nullable, uint]),
-                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=2, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=3, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=2, Type=LevelControl.Bitmaps.OptionsBitmap),
+                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=3, Type=LevelControl.Bitmaps.OptionsBitmap),
                     ])
 
             moveMode: LevelControl.Enums.MoveModeEnum = 0
             rate: typing.Union[Nullable, uint] = NullValue
-            optionsMask: uint = 0
-            optionsOverride: uint = 0
+            optionsMask: LevelControl.Bitmaps.OptionsBitmap = 0
+            optionsOverride: LevelControl.Bitmaps.OptionsBitmap = 0
 
         @dataclass
         class StepWithOnOff(ClusterCommand):
@@ -239,15 +239,15 @@ class LevelControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="stepMode", Tag=0, Type=LevelControl.Enums.StepModeEnum),
                         ClusterObjectFieldDescriptor(Label="stepSize", Tag=1, Type=uint),
                         ClusterObjectFieldDescriptor(Label="transitionTime", Tag=2, Type=typing.Union[Nullable, uint]),
-                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=3, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=4, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=3, Type=LevelControl.Bitmaps.OptionsBitmap),
+                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=4, Type=LevelControl.Bitmaps.OptionsBitmap),
                     ])
 
             stepMode: LevelControl.Enums.StepModeEnum = 0
             stepSize: uint = 0
             transitionTime: typing.Union[Nullable, uint] = NullValue
-            optionsMask: uint = 0
-            optionsOverride: uint = 0
+            optionsMask: LevelControl.Bitmaps.OptionsBitmap = 0
+            optionsOverride: LevelControl.Bitmaps.OptionsBitmap = 0
 
         @dataclass
         class StopWithOnOff(ClusterCommand):
@@ -260,12 +260,12 @@ class LevelControl(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=0, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=1, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="optionsMask", Tag=0, Type=LevelControl.Bitmaps.OptionsBitmap),
+                        ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=1, Type=LevelControl.Bitmaps.OptionsBitmap),
                     ])
 
-            optionsMask: uint = 0
-            optionsOverride: uint = 0
+            optionsMask: LevelControl.Bitmaps.OptionsBitmap = 0
+            optionsOverride: LevelControl.Bitmaps.OptionsBitmap = 0
 
         @dataclass
         class MoveToClosestFrequency(ClusterCommand):
@@ -408,9 +408,9 @@ class LevelControl(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=uint)
+                return ClusterObjectFieldDescriptor(Type=LevelControl.Bitmaps.OptionsBitmap)
 
-            value: uint = 0
+            value: LevelControl.Bitmaps.OptionsBitmap = 0
 
         @dataclass
         class OnOffTransitionTime(ClusterAttributeDescriptor):
