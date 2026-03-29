@@ -1711,6 +1711,43 @@ function generateDeviceTypes(): string {
         }
     }
 
+    // Append extra device types that exist in the original hand-maintained
+    // device_types.py but are not in the Matter.js model.
+    const extraDeviceTypes: Array<{ name: string; id: number; clusters: string[] }> = [
+        {
+            name: "HeatingCoolingUnit",
+            id: 0x0300,
+            clusters: [
+                "all_clusters.Identify",
+                "all_clusters.Descriptor",
+                "all_clusters.Binding",
+                "all_clusters.Groups",
+                "all_clusters.ScenesManagement",
+                "all_clusters.FanControl",
+                "all_clusters.LevelControl",
+                "all_clusters.OnOff",
+            ],
+        },
+    ];
+
+    for (const extra of extraDeviceTypes) {
+        // Skip if already generated from the Matter.js model
+        if (deviceTypesList.some(dt => dt.id === extra.id)) continue;
+        w.blankLine();
+        w.blankLine();
+        w.line(`class ${extra.name}(DeviceType):`);
+        w.pushIndent();
+        w.line(`device_type: int = 0x${extra.id.toString(16).toUpperCase().padStart(4, "0")}`);
+        w.line("clusters: set[type[Cluster]] = {");
+        w.pushIndent();
+        for (const ref of extra.clusters.sort()) {
+            w.line(`${ref},`);
+        }
+        w.popIndent();
+        w.line("}");
+        w.popIndent();
+    }
+
     return w.toString();
 }
 

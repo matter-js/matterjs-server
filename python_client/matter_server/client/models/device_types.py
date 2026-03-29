@@ -806,3 +806,17 @@ class WindowCovering(DeviceType):
         all_clusters.Identify,
         all_clusters.WindowCovering,
     }
+
+
+class HeatingCoolingUnit(DeviceType):
+    device_type: int = 0x0300
+    clusters: set[type[Cluster]] = {
+        all_clusters.Binding,
+        all_clusters.Descriptor,
+        all_clusters.FanControl,
+        all_clusters.Groups,
+        all_clusters.Identify,
+        all_clusters.LevelControl,
+        all_clusters.OnOff,
+        all_clusters.ScenesManagement,
+    }
