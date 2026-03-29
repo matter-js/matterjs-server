@@ -573,8 +573,7 @@ function typeForCategory(metatype: string, qualifiedName: string): PythonType {
         case "enum":
             return { annotation: qualifiedName, defaultValue: "0", needsFactory: false };
         case "bitmap":
-            // CHIP SDK uses plain uint for bitmap-typed fields (not the bitmap class name)
-            return { annotation: "uint", defaultValue: "0", needsFactory: false };
+            return { annotation: qualifiedName, defaultValue: "0", needsFactory: false };
         case "object":
             return { annotation: qualifiedName, defaultValue: `field(default_factory=lambda: ${qualifiedName}())`, needsFactory: true };
         default:
