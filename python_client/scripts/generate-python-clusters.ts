@@ -328,9 +328,11 @@ const CLASS_NAME_OVERRIDES: Record<string, string> = {
     SafetyStatusBitmap:          "SafetyStatus",
 
     // --- DoorLock: CHIP SDK uses legacy "Dl" prefixed names for some enums ---
+    // Note: DoorLock.StatusCodeEnum is NOT renamed to DlStatus because the Matter.js model
+    // only has 2 members (Duplicate, Occupied) while the CHIP SDK's DlStatus has 7
+    // (including kSuccess, kFailure, etc.). Renaming would expose an incomplete enum.
     "DoorLock.LockStateEnum":    "DlLockState",
     "DoorLock.LockTypeEnum":     "DlLockType",
-    "DoorLock.StatusCodeEnum":   "DlStatus",
 
     // --- Cluster-specific overrides (key format: "ClusterName.ClassName") ---
     // StatusCodeEnum: stripped in some clusters, kept in others
