@@ -327,6 +327,11 @@ const CLASS_NAME_OVERRIDES: Record<string, string> = {
     OperationalStatusBitmap:     "OperationalStatus",
     SafetyStatusBitmap:          "SafetyStatus",
 
+    // --- DoorLock: CHIP SDK uses legacy "Dl" prefixed names for some enums ---
+    "DoorLock.LockStateEnum":    "DlLockState",
+    "DoorLock.LockTypeEnum":     "DlLockType",
+    "DoorLock.StatusCodeEnum":   "DlStatus",
+
     // --- Cluster-specific overrides (key format: "ClusterName.ClassName") ---
     // StatusCodeEnum: stripped in some clusters, kept in others
     "AdministratorCommissioning.StatusCodeEnum": "StatusCode",
