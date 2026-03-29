@@ -7,20 +7,24 @@
 # Re-export all cluster classes from per-cluster files
 from chip.clusters.objects import *  # noqa: F401,F403
 
-# Also re-export base classes for backward compatibility
-from chip.clusters.ClusterObjects import (  # noqa: F401
-    Cluster,
-    ClusterAttributeDescriptor,
-    ClusterCommand,
-    ClusterEvent,
-    ClusterObject,
-    ClusterObjectDescriptor,
-    ClusterObjectFieldDescriptor,
-)
+# Explicit assignments for base classes and primitive types so that
+# pylint can resolve them as module-level names (pylint cannot follow
+# re-exports via 'from ... import' for E0611 no-name-in-module).
+import chip.clusters.ClusterObjects as _co  # noqa: E402
+import chip.clusters.Types as _types  # noqa: E402
+import chip.tlv as _tlv  # noqa: E402
 
-# Re-export primitive types that HA imports from this module
-from chip.clusters.Types import NullValue, Nullable  # noqa: F401
-from chip.tlv import float32, uint  # noqa: F401
+Cluster = _co.Cluster
+ClusterAttributeDescriptor = _co.ClusterAttributeDescriptor
+ClusterCommand = _co.ClusterCommand
+ClusterEvent = _co.ClusterEvent
+ClusterObject = _co.ClusterObject
+ClusterObjectDescriptor = _co.ClusterObjectDescriptor
+ClusterObjectFieldDescriptor = _co.ClusterObjectFieldDescriptor
+NullValue = _types.NullValue
+Nullable = _types.Nullable
+float32 = _tlv.float32
+uint = _tlv.uint
 
 # Export list for type checkers
 __all__ = [
