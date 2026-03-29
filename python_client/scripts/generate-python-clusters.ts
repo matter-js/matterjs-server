@@ -241,13 +241,15 @@ const FIELD_NAME_OVERRIDES: Record<string, string> = {
     // --- NOCSR: not a standalone acronym in ACRONYMS ---
     NocsrElements:               "NOCSRElements",
 
-    // --- DraftElectricalMeasurementCluster: custom cluster uses "ac" not "AC" in field names ---
+    // --- DraftElectricalMeasurementCluster: custom cluster uses "ac"/"rms" not "AC"/"RMS" ---
     AcVoltageMultiplier:         "acVoltageMultiplier",
     AcVoltageDivisor:            "acVoltageDivisor",
     AcCurrentMultiplier:         "acCurrentMultiplier",
     AcCurrentDivisor:            "acCurrentDivisor",
     AcPowerMultiplier:           "acPowerMultiplier",
     AcPowerDivisor:              "acPowerDivisor",
+    RmsVoltage:                  "rmsVoltage",
+    RmsCurrent:                  "rmsCurrent",
 
     // --- DoorLock quirks ---
     // Note: chip SDK lowercases "for" here (requirePINforRemoteOperation — not a typo)
@@ -335,13 +337,15 @@ const CLASS_NAME_OVERRIDES: Record<string, string> = {
     OperationalStatusBitmap:     "OperationalStatus",
     SafetyStatusBitmap:          "SafetyStatus",
 
-    // --- DraftElectricalMeasurementCluster: custom cluster uses "Ac" not "AC" ---
+    // --- DraftElectricalMeasurementCluster: custom cluster keeps "Ac"/"Rms" not "AC"/"RMS" ---
     AcVoltageMultiplier:         "AcVoltageMultiplier",
     AcVoltageDivisor:            "AcVoltageDivisor",
     AcCurrentMultiplier:         "AcCurrentMultiplier",
     AcCurrentDivisor:            "AcCurrentDivisor",
     AcPowerMultiplier:           "AcPowerMultiplier",
     AcPowerDivisor:              "AcPowerDivisor",
+    RmsVoltage:                  "RmsVoltage",
+    RmsCurrent:                  "RmsCurrent",
 
     // --- DoorLock: CHIP SDK uses legacy "Dl" prefixed names for some enums ---
     // Missing members for DlStatus are injected via EXTRA_ENUM_MEMBERS.
