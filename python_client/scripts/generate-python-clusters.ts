@@ -867,17 +867,17 @@ function generateClusterFile(
         const pyType = resolveType(attr);
         const label = toCamelCase(attr.name);
         if (pyType.needsFactory) {
-            w.line(`${label}: '${pyType.annotation}' = ${pyType.defaultValue}`);
+            w.line(`${label}: ${pyType.annotation} = ${pyType.defaultValue}`);
         } else {
-            w.line(`${label}: '${pyType.annotation}' = ${pyType.defaultValue}`);
+            w.line(`${label}: ${pyType.annotation} = ${pyType.defaultValue}`);
         }
     }
     // Global attribute fields
-    w.line(`generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])`);
-    w.line(`acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])`);
-    w.line(`attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])`);
-    w.line(`featureMap: 'uint' = 0`);
-    w.line(`clusterRevision: 'uint' = 0`);
+    w.line(`generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])`);
+    w.line(`acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])`);
+    w.line(`attributeList: typing.List[uint] = field(default_factory=lambda: [])`);
+    w.line(`featureMap: uint = 0`);
+    w.line(`clusterRevision: uint = 0`);
 
     // ---- Enums section ----
     if (enums.length > 0) {
@@ -1125,7 +1125,7 @@ function generateStruct(
         const vm = m as ValueModel;
         const pyType = resolveType(vm);
         const label = toCamelCase(m.name);
-        w.line(`${label}: '${pyType.annotation}' = ${pyType.defaultValue}`);
+        w.line(`${label}: ${pyType.annotation} = ${pyType.defaultValue}`);
     }
 
     // No need for pass - the descriptor classproperty is always present
@@ -1201,7 +1201,7 @@ function generateCommand(
     for (const f of fields) {
         const vm = f as ValueModel;
         const pyType = resolveType(vm);
-        w.line(`${toCamelCase(f.name)}: '${pyType.annotation}' = ${pyType.defaultValue}`);
+        w.line(`${toCamelCase(f.name)}: ${pyType.annotation} = ${pyType.defaultValue}`);
     }
 
     // No need for pass - the descriptor method is already present
@@ -1253,7 +1253,7 @@ function generateAttribute(
     w.popIndent();
     w.blankLine();
 
-    w.line(`value: '${pyType.annotation}' = ${pyType.defaultValue}`);
+    w.line(`value: ${pyType.annotation} = ${pyType.defaultValue}`);
 
     w.popIndent();
 }
@@ -1293,7 +1293,7 @@ function generateGlobalAttribute(
     w.popIndent();
     w.blankLine();
 
-    w.line(`value: '${typeStr}' = ${defaultValue}`);
+    w.line(`value: ${typeStr} = ${defaultValue}`);
 
     w.popIndent();
 }
@@ -1357,7 +1357,7 @@ function generateEvent(
     for (const f of fields) {
         const vm = f as ValueModel;
         const pyType = resolveType(vm);
-        w.line(`${toCamelCase(f.name)}: '${pyType.annotation}' = ${pyType.defaultValue}`);
+        w.line(`${toCamelCase(f.name)}: ${pyType.annotation} = ${pyType.defaultValue}`);
     }
 
     // No need for pass - cluster_id, event_id, and descriptor classpropertys are always present
