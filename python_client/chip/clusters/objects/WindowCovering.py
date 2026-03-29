@@ -22,7 +22,7 @@ class WindowCovering(Cluster):
     def descriptor(cls) -> ClusterObjectDescriptor:
         return ClusterObjectDescriptor(
             Fields=[
-                ClusterObjectFieldDescriptor(Label="type", Tag=0x00000000, Type=WindowCovering.Enums.TypeEnum),
+                ClusterObjectFieldDescriptor(Label="type", Tag=0x00000000, Type=WindowCovering.Enums.Type),
                 ClusterObjectFieldDescriptor(Label="physicalClosedLimitLift", Tag=0x00000001, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="physicalClosedLimitTilt", Tag=0x00000002, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="currentPositionLift", Tag=0x00000003, Type=typing.Union[None, Nullable, uint]),
@@ -35,7 +35,7 @@ class WindowCovering(Cluster):
                 ClusterObjectFieldDescriptor(Label="operationalStatus", Tag=0x0000000A, Type=WindowCovering.Bitmaps.OperationalStatusBitmap),
                 ClusterObjectFieldDescriptor(Label="targetPositionLiftPercent100ths", Tag=0x0000000B, Type=typing.Union[None, Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="targetPositionTiltPercent100ths", Tag=0x0000000C, Type=typing.Union[None, Nullable, uint]),
-                ClusterObjectFieldDescriptor(Label="endProductType", Tag=0x0000000D, Type=WindowCovering.Enums.EndProductTypeEnum),
+                ClusterObjectFieldDescriptor(Label="endProductType", Tag=0x0000000D, Type=WindowCovering.Enums.EndProductType),
                 ClusterObjectFieldDescriptor(Label="currentPositionLiftPercent100ths", Tag=0x0000000E, Type=typing.Union[None, Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="currentPositionTiltPercent100ths", Tag=0x0000000F, Type=typing.Union[None, Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="installedOpenLimitLift", Tag=0x00000010, Type=typing.Optional[uint]),
@@ -57,7 +57,7 @@ class WindowCovering(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    type: WindowCovering.Enums.TypeEnum = 0
+    type: WindowCovering.Enums.Type = 0
     physicalClosedLimitLift: typing.Optional[uint] = None
     physicalClosedLimitTilt: typing.Optional[uint] = None
     currentPositionLift: typing.Union[None, Nullable, uint] = None
@@ -70,7 +70,7 @@ class WindowCovering(Cluster):
     operationalStatus: WindowCovering.Bitmaps.OperationalStatusBitmap = 0
     targetPositionLiftPercent100ths: typing.Union[None, Nullable, uint] = None
     targetPositionTiltPercent100ths: typing.Union[None, Nullable, uint] = None
-    endProductType: WindowCovering.Enums.EndProductTypeEnum = 0
+    endProductType: WindowCovering.Enums.EndProductType = 0
     currentPositionLiftPercent100ths: typing.Union[None, Nullable, uint] = None
     currentPositionTiltPercent100ths: typing.Union[None, Nullable, uint] = None
     installedOpenLimitLift: typing.Optional[uint] = None
@@ -92,7 +92,7 @@ class WindowCovering(Cluster):
     clusterRevision: uint = 0
 
     class Enums:
-        class TypeEnum(MatterIntEnum):
+        class Type(MatterIntEnum):
             kRollerShade = 0x00
             kRollerShade2Motor = 0x01
             kRollerShadeExterior = 0x02
@@ -110,7 +110,7 @@ class WindowCovering(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 256
 
-        class EndProductTypeEnum(MatterIntEnum):
+        class EndProductType(MatterIntEnum):
             kRollerShade = 0x00
             kRomanShade = 0x01
             kBalloonShade = 0x02
@@ -318,9 +318,9 @@ class WindowCovering(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=WindowCovering.Enums.TypeEnum)
+                return ClusterObjectFieldDescriptor(Type=WindowCovering.Enums.Type)
 
-            value: WindowCovering.Enums.TypeEnum = 0
+            value: WindowCovering.Enums.Type = 0
 
         @dataclass
         class PhysicalClosedLimitLift(ClusterAttributeDescriptor):
@@ -526,9 +526,9 @@ class WindowCovering(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=WindowCovering.Enums.EndProductTypeEnum)
+                return ClusterObjectFieldDescriptor(Type=WindowCovering.Enums.EndProductType)
 
-            value: WindowCovering.Enums.EndProductTypeEnum = 0
+            value: WindowCovering.Enums.EndProductType = 0
 
         @dataclass
         class CurrentPositionLiftPercent100ths(ClusterAttributeDescriptor):
