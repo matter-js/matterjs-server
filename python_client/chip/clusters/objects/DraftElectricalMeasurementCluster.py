@@ -105,7 +105,7 @@ class DraftElectricalMeasurementCluster(Cluster):
             value: typing.Optional[uint] = None
 
         @dataclass
-        class ACVoltageMultiplier(ClusterAttributeDescriptor):
+        class AcVoltageMultiplier(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000B04
@@ -121,7 +121,7 @@ class DraftElectricalMeasurementCluster(Cluster):
             value: typing.Optional[uint] = None
 
         @dataclass
-        class ACVoltageDivisor(ClusterAttributeDescriptor):
+        class AcVoltageDivisor(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000B04
@@ -137,7 +137,7 @@ class DraftElectricalMeasurementCluster(Cluster):
             value: typing.Optional[uint] = None
 
         @dataclass
-        class ACCurrentMultiplier(ClusterAttributeDescriptor):
+        class AcCurrentMultiplier(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000B04
@@ -153,7 +153,7 @@ class DraftElectricalMeasurementCluster(Cluster):
             value: typing.Optional[uint] = None
 
         @dataclass
-        class ACCurrentDivisor(ClusterAttributeDescriptor):
+        class AcCurrentDivisor(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000B04
@@ -169,7 +169,7 @@ class DraftElectricalMeasurementCluster(Cluster):
             value: typing.Optional[uint] = None
 
         @dataclass
-        class ACPowerMultiplier(ClusterAttributeDescriptor):
+        class AcPowerMultiplier(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000B04
@@ -185,7 +185,7 @@ class DraftElectricalMeasurementCluster(Cluster):
             value: typing.Optional[uint] = None
 
         @dataclass
-        class ACPowerDivisor(ClusterAttributeDescriptor):
+        class AcPowerDivisor(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000B04
