@@ -310,14 +310,26 @@ const CLASS_NAME_OVERRIDES: Record<string, string> = {
     PartitionIdChangeCount:      "PartitionIdChangeCount",
 
     // --- Enum suffix stripping: CHIP SDK omits "Enum" suffix for some enum class names ---
-    StatusCodeEnum:              "StatusCode",
+    // Note: StatusCodeEnum is cluster-dependent (some keep suffix, some strip it).
+    // Use "ClusterName.ClassName" keys for cluster-specific overrides below.
     ModeTagEnum:                 "ModeTag",
     SelectAreasStatusEnum:       "SelectAreasStatus",
     SkipAreaStatusEnum:          "SkipAreaStatus",
 
-    // --- WindowCovering: CHIP SDK uses "Type" and "EndProductType" (no Enum suffix) ---
+    // --- WindowCovering: CHIP SDK strips Enum/Bitmap suffixes ---
     TypeEnum:                    "Type",
     EndProductTypeEnum:          "EndProductType",
+    ModeBitmap:                  "Mode",
+    ConfigStatusBitmap:          "ConfigStatus",
+    OperationalStatusBitmap:     "OperationalStatus",
+    SafetyStatusBitmap:          "SafetyStatus",
+
+    // --- Cluster-specific overrides (key format: "ClusterName.ClassName") ---
+    // StatusCodeEnum: stripped in some clusters, kept in others
+    "AdministratorCommissioning.StatusCodeEnum": "StatusCode",
+    "RvcCleanMode.StatusCodeEnum":               "StatusCode",
+    "RvcRunMode.StatusCodeEnum":                  "StatusCode",
+    "TimeSynchronization.StatusCodeEnum":         "StatusCode",
 };
 
 /**
@@ -378,8 +390,17 @@ function toCamelCase(name: string): string {
     return chipName.charAt(0).toLowerCase() + chipName.slice(1);
 }
 
-/** Convert a PascalCase name to chip-SDK class name, checking CLASS_NAME_OVERRIDES first. */
-function toChipClassName(name: string): string {
+/** Convert a PascalCase name to chip-SDK class name, checking CLASS_NAME_OVERRIDES first.
+ *  If clusterName is provided, checks for cluster-qualified overrides ("Cluster.Name") first. */
+function toChipClassName(name: string, clusterName?: string): string {
+    // Check cluster-qualified override first (e.g., "AdministratorCommissioning.StatusCodeEnum")
+    if (clusterName) {
+        const qualifiedKey = `${clusterName}.${name}`;
+        if (qualifiedKey in CLASS_NAME_OVERRIDES) {
+            return CLASS_NAME_OVERRIDES[qualifiedKey];
+        }
+    }
+    // Then check unqualified override
     if (name in CLASS_NAME_OVERRIDES) {
         return CLASS_NAME_OVERRIDES[name];
     }
@@ -497,24 +518,24 @@ function resolveScalarType(
         const key = `${otherCluster}.${dtName}`;
         const info = knownDatatypes.get(key);
         if (info) {
-            const qualifiedName = `${otherCluster}.${getCategoryForMetatype(info.metatype)}.${toChipClassName(dtName)}`;
+            const qualifiedName = `${otherCluster}.${getCategoryForMetatype(info.metatype)}.${toChipClassName(dtName, otherCluster)}`;
             return typeForCategory(info.metatype, qualifiedName);
         }
         // Fallback - assume enum
-        return { annotation: `${otherCluster}.Enums.${toChipClassName(dtName)}`, defaultValue: "0", needsFactory: false };
+        return { annotation: `${otherCluster}.Enums.${toChipClassName(dtName, otherCluster)}`, defaultValue: "0", needsFactory: false };
     }
 
     // Check if it's a local datatype reference
     const localInfo = knownDatatypes.get(`${clusterName}.${type}`);
     if (localInfo) {
-        const qualifiedName = `${clusterName}.${getCategoryForMetatype(localInfo.metatype)}.${toChipClassName(type)}`;
+        const qualifiedName = `${clusterName}.${getCategoryForMetatype(localInfo.metatype)}.${toChipClassName(type, clusterName)}`;
         return typeForCategory(localInfo.metatype, qualifiedName);
     }
 
     // Check global datatypes
     const globalInfo = knownDatatypes.get(`Globals.${type}`);
     if (globalInfo) {
-        const qualifiedName = `Globals.${getCategoryForMetatype(globalInfo.metatype)}.${toChipClassName(type)}`;
+        const qualifiedName = `Globals.${getCategoryForMetatype(globalInfo.metatype)}.${toChipClassName(type, "Globals")}`;
         return typeForCategory(globalInfo.metatype, qualifiedName);
     }
 
@@ -893,7 +914,7 @@ function generateClusterFile(
         w.line("class Enums:");
         w.pushIndent();
         for (let i = 0; i < enums.length; i++) {
-            generateEnum(w, enums[i]);
+            generateEnum(w, enums[i], clusterName);
             if (i < enums.length - 1) {
                 w.blankLine();
             }
@@ -1029,8 +1050,8 @@ function generateClusterFile(
 // Enum generation
 // ============================================================================
 
-function generateEnum(w: PythonWriter, model: ValueModel): void {
-    w.line(`class ${toChipClassName(model.name)}(MatterIntEnum):`);
+function generateEnum(w: PythonWriter, model: ValueModel, clusterName?: string): void {
+    w.line(`class ${toChipClassName(model.name, clusterName)}(MatterIntEnum):`);
     w.pushIndent();
 
     const members = model.children || [];

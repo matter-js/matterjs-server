@@ -161,7 +161,13 @@ def main():
                 # Check if there's a close match in gen
                 for g_name in gen_names - chip_names:
                     if c_name.lower() == g_name.lower():
-                        name_mismatches.append(f"{cluster_name}.{cat}: CHIP={c_name} Gen={g_name}")
+                        name_mismatches.append(f"{cluster_name}.{cat}: CHIP={c_name} Gen={g_name} (case)")
+                    # Check for Enum suffix mismatch (e.g., CHIP=Type, Gen=TypeEnum)
+                    elif c_name + "Enum" == g_name or g_name + "Enum" == c_name:
+                        name_mismatches.append(f"{cluster_name}.{cat}: CHIP={c_name} Gen={g_name} (Enum suffix)")
+                    # Check for Bitmap suffix mismatch
+                    elif c_name + "Bitmap" == g_name or g_name + "Bitmap" == c_name:
+                        name_mismatches.append(f"{cluster_name}.{cat}: CHIP={c_name} Gen={g_name} (Bitmap suffix)")
 
             if chip_names - gen_names:
                 issue_counts[f'{cat}_only_in_chip'] += len(chip_names - gen_names)
