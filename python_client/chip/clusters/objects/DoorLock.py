@@ -384,7 +384,7 @@ class DoorLock(Cluster):
             kUser = 0x100
             kYearDayAccessSchedules = 0x400
             kHolidaySchedules = 0x800
-            kUnbolting = 0x1000
+            kUnbolt = 0x1000
             kAliroProvisioning = 0x2000
             kAliroBLEUWB = 0x4000
 
