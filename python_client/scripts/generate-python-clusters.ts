@@ -309,8 +309,15 @@ const CLASS_NAME_OVERRIDES: Record<string, string> = {
     PartitionId:                 "PartitionId",
     PartitionIdChangeCount:      "PartitionIdChangeCount",
 
-    // --- AdministratorCommissioning: CHIP SDK uses "StatusCode" not "StatusCodeEnum" ---
+    // --- Enum suffix stripping: CHIP SDK omits "Enum" suffix for some enum class names ---
     StatusCodeEnum:              "StatusCode",
+    ModeTagEnum:                 "ModeTag",
+    SelectAreasStatusEnum:       "SelectAreasStatus",
+    SkipAreaStatusEnum:          "SkipAreaStatus",
+
+    // --- WindowCovering: CHIP SDK uses "Type" and "EndProductType" (no Enum suffix) ---
+    TypeEnum:                    "Type",
+    EndProductTypeEnum:          "EndProductType",
 };
 
 /**
