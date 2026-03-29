@@ -22,7 +22,7 @@ class WaterHeaterMode(Cluster):
     def descriptor(cls) -> ClusterObjectDescriptor:
         return ClusterObjectDescriptor(
             Fields=[
-                ClusterObjectFieldDescriptor(Label="supportedModes", Tag=0x00000000, Type=typing.List[uint]),
+                ClusterObjectFieldDescriptor(Label="supportedModes", Tag=0x00000000, Type=typing.List[WaterHeaterMode.Structs.ModeOptionStruct]),
                 ClusterObjectFieldDescriptor(Label="currentMode", Tag=0x00000001, Type=uint),
                 ClusterObjectFieldDescriptor(Label="startUpMode", Tag=0x00000002, Type=typing.Union[None, Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="onMode", Tag=0x00000003, Type=typing.Union[None, Nullable, uint]),
@@ -34,7 +34,7 @@ class WaterHeaterMode(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    supportedModes: typing.List[uint] = field(default_factory=lambda: [])
+    supportedModes: typing.List[WaterHeaterMode.Structs.ModeOptionStruct] = field(default_factory=lambda: [])
     currentMode: uint = 0
     startUpMode: typing.Union[None, Nullable, uint] = None
     onMode: typing.Union[None, Nullable, uint] = None
@@ -158,9 +158,9 @@ class WaterHeaterMode(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.List[uint])
+                return ClusterObjectFieldDescriptor(Type=typing.List[WaterHeaterMode.Structs.ModeOptionStruct])
 
-            value: typing.List[uint] = field(default_factory=lambda: [])
+            value: typing.List[WaterHeaterMode.Structs.ModeOptionStruct] = field(default_factory=lambda: [])
 
         @dataclass
         class CurrentMode(ClusterAttributeDescriptor):
