@@ -328,11 +328,10 @@ const CLASS_NAME_OVERRIDES: Record<string, string> = {
     SafetyStatusBitmap:          "SafetyStatus",
 
     // --- DoorLock: CHIP SDK uses legacy "Dl" prefixed names for some enums ---
-    // Note: DoorLock.StatusCodeEnum is NOT renamed to DlStatus because the Matter.js model
-    // only has 2 members (Duplicate, Occupied) while the CHIP SDK's DlStatus has 7
-    // (including kSuccess, kFailure, etc.). Renaming would expose an incomplete enum.
+    // Missing members for DlStatus are injected via EXTRA_ENUM_MEMBERS.
     "DoorLock.LockStateEnum":    "DlLockState",
     "DoorLock.LockTypeEnum":     "DlLockType",
+    "DoorLock.StatusCodeEnum":   "DlStatus",
 
     // --- Cluster-specific overrides (key format: "ClusterName.ClassName") ---
     // StatusCodeEnum: stripped in some clusters, kept in others
@@ -340,6 +339,23 @@ const CLASS_NAME_OVERRIDES: Record<string, string> = {
     "RvcCleanMode.StatusCodeEnum":               "StatusCode",
     "RvcRunMode.StatusCodeEnum":                  "StatusCode",
     "TimeSynchronization.StatusCodeEnum":         "StatusCode",
+};
+
+/**
+ * Extra enum members to inject that are present in the CHIP SDK but missing from the
+ * Matter.js model. Key: "ClusterName.EnumModelName" (using Matter.js model name).
+ * Value: array of { kName, value } entries to add.
+ */
+const EXTRA_ENUM_MEMBERS: Record<string, Array<{ kName: string; value: number }>> = {
+    // DoorLock.StatusCodeEnum (DlStatus in CHIP SDK) — Matter.js only has Duplicate(2)
+    // and Occupied(3), but the CHIP SDK includes general status codes.
+    "DoorLock.StatusCodeEnum": [
+        { kName: "kSuccess", value: 0x00 },
+        { kName: "kFailure", value: 0x01 },
+        { kName: "kInvalidField", value: 0x85 },
+        { kName: "kResourceExhausted", value: 0x89 },
+        { kName: "kNotFound", value: 0x8B },
+    ],
 };
 
 /**
@@ -1073,6 +1089,19 @@ function generateEnum(w: PythonWriter, model: ValueModel, clusterName?: string):
         usedValues.add(value);
         if (value > maxValue) maxValue = value;
         w.line(`${toKName(m.name)} = ${hex2(value)}`);
+    }
+
+    // Inject extra members from EXTRA_ENUM_MEMBERS (for CHIP SDK compat)
+    const extraKey = clusterName ? `${clusterName}.${model.name}` : undefined;
+    const extras = extraKey ? EXTRA_ENUM_MEMBERS[extraKey] : undefined;
+    if (extras) {
+        for (const extra of extras) {
+            if (!usedValues.has(extra.value)) {
+                usedValues.add(extra.value);
+                if (extra.value > maxValue) maxValue = extra.value;
+                w.line(`${extra.kName} = ${hex2(extra.value)}`);
+            }
+        }
     }
 
     // Find the kUnknownEnumValue - first unused value after the last defined value
