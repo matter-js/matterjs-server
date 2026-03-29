@@ -31,13 +31,13 @@ class LocalizationConfiguration(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    activeLocale: 'str' = ""
-    supportedLocales: 'typing.List[str]' = field(default_factory=lambda: [])
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    activeLocale: str = ""
+    supportedLocales: typing.List[str] = field(default_factory=lambda: [])
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Attributes:
         @dataclass
@@ -54,7 +54,7 @@ class LocalizationConfiguration(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=str)
 
-            value: 'str' = ""
+            value: str = ""
 
         @dataclass
         class SupportedLocales(ClusterAttributeDescriptor):
@@ -70,7 +70,7 @@ class LocalizationConfiguration(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[str])
 
-            value: 'typing.List[str]' = field(default_factory=lambda: [])
+            value: typing.List[str] = field(default_factory=lambda: [])
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -86,7 +86,7 @@ class LocalizationConfiguration(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -102,7 +102,7 @@ class LocalizationConfiguration(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -118,7 +118,7 @@ class LocalizationConfiguration(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -134,7 +134,7 @@ class LocalizationConfiguration(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -150,4 +150,4 @@ class LocalizationConfiguration(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0

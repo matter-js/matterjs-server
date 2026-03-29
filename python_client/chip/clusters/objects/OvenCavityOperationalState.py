@@ -36,17 +36,17 @@ class OvenCavityOperationalState(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    phaseList: 'typing.Union[Nullable, typing.List[str]]' = NullValue
-    currentPhase: 'typing.Union[Nullable, uint]' = NullValue
-    countdownTime: 'typing.Union[None, Nullable, uint]' = None
-    operationalStateList: 'typing.List[OvenCavityOperationalState.Structs.OperationalStateStruct]' = field(default_factory=lambda: [])
-    operationalState: 'OvenCavityOperationalState.Enums.OperationalStateEnum' = 0
-    operationalError: 'OvenCavityOperationalState.Structs.ErrorStateStruct' = field(default_factory=lambda: OvenCavityOperationalState.Structs.ErrorStateStruct())
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    phaseList: typing.Union[Nullable, typing.List[str]] = NullValue
+    currentPhase: typing.Union[Nullable, uint] = NullValue
+    countdownTime: typing.Union[None, Nullable, uint] = None
+    operationalStateList: typing.List[OvenCavityOperationalState.Structs.OperationalStateStruct] = field(default_factory=lambda: [])
+    operationalState: OvenCavityOperationalState.Enums.OperationalStateEnum = 0
+    operationalError: OvenCavityOperationalState.Structs.ErrorStateStruct = field(default_factory=lambda: OvenCavityOperationalState.Structs.ErrorStateStruct())
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Enums:
         class OperationalStateEnum(MatterIntEnum):
@@ -82,8 +82,8 @@ class OvenCavityOperationalState(Cluster):
                         ClusterObjectFieldDescriptor(Label="operationalStateLabel", Tag=1, Type=typing.Optional[str]),
                     ])
 
-            operationalStateID: 'OvenCavityOperationalState.Enums.OperationalStateEnum' = 0
-            operationalStateLabel: 'typing.Optional[str]' = None
+            operationalStateID: OvenCavityOperationalState.Enums.OperationalStateEnum = 0
+            operationalStateLabel: typing.Optional[str] = None
 
         @dataclass
         class ErrorStateStruct(ClusterObject):
@@ -96,9 +96,9 @@ class OvenCavityOperationalState(Cluster):
                         ClusterObjectFieldDescriptor(Label="errorStateDetails", Tag=2, Type=typing.Optional[str]),
                     ])
 
-            errorStateID: 'OvenCavityOperationalState.Enums.ErrorStateEnum' = 0
-            errorStateLabel: 'typing.Optional[str]' = None
-            errorStateDetails: 'typing.Optional[str]' = None
+            errorStateID: OvenCavityOperationalState.Enums.ErrorStateEnum = 0
+            errorStateLabel: typing.Optional[str] = None
+            errorStateDetails: typing.Optional[str] = None
 
     class Commands:
         @dataclass
@@ -171,7 +171,7 @@ class OvenCavityOperationalState(Cluster):
                         ClusterObjectFieldDescriptor(Label="commandResponseState", Tag=0, Type=OvenCavityOperationalState.Structs.ErrorStateStruct),
                     ])
 
-            commandResponseState: 'OvenCavityOperationalState.Structs.ErrorStateStruct' = field(default_factory=lambda: OvenCavityOperationalState.Structs.ErrorStateStruct())
+            commandResponseState: OvenCavityOperationalState.Structs.ErrorStateStruct = field(default_factory=lambda: OvenCavityOperationalState.Structs.ErrorStateStruct())
 
     class Attributes:
         @dataclass
@@ -188,7 +188,7 @@ class OvenCavityOperationalState(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[Nullable, typing.List[str]])
 
-            value: 'typing.Union[Nullable, typing.List[str]]' = NullValue
+            value: typing.Union[Nullable, typing.List[str]] = NullValue
 
         @dataclass
         class CurrentPhase(ClusterAttributeDescriptor):
@@ -204,7 +204,7 @@ class OvenCavityOperationalState(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[Nullable, uint])
 
-            value: 'typing.Union[Nullable, uint]' = NullValue
+            value: typing.Union[Nullable, uint] = NullValue
 
         @dataclass
         class CountdownTime(ClusterAttributeDescriptor):
@@ -220,7 +220,7 @@ class OvenCavityOperationalState(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class OperationalStateList(ClusterAttributeDescriptor):
@@ -236,7 +236,7 @@ class OvenCavityOperationalState(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[OvenCavityOperationalState.Structs.OperationalStateStruct])
 
-            value: 'typing.List[OvenCavityOperationalState.Structs.OperationalStateStruct]' = field(default_factory=lambda: [])
+            value: typing.List[OvenCavityOperationalState.Structs.OperationalStateStruct] = field(default_factory=lambda: [])
 
         @dataclass
         class OperationalState(ClusterAttributeDescriptor):
@@ -252,7 +252,7 @@ class OvenCavityOperationalState(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=OvenCavityOperationalState.Enums.OperationalStateEnum)
 
-            value: 'OvenCavityOperationalState.Enums.OperationalStateEnum' = 0
+            value: OvenCavityOperationalState.Enums.OperationalStateEnum = 0
 
         @dataclass
         class OperationalError(ClusterAttributeDescriptor):
@@ -268,7 +268,7 @@ class OvenCavityOperationalState(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=OvenCavityOperationalState.Structs.ErrorStateStruct)
 
-            value: 'OvenCavityOperationalState.Structs.ErrorStateStruct' = field(default_factory=lambda: OvenCavityOperationalState.Structs.ErrorStateStruct())
+            value: OvenCavityOperationalState.Structs.ErrorStateStruct = field(default_factory=lambda: OvenCavityOperationalState.Structs.ErrorStateStruct())
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -284,7 +284,7 @@ class OvenCavityOperationalState(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -300,7 +300,7 @@ class OvenCavityOperationalState(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -316,7 +316,7 @@ class OvenCavityOperationalState(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -332,7 +332,7 @@ class OvenCavityOperationalState(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -348,7 +348,7 @@ class OvenCavityOperationalState(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
     class Events:
         @dataclass
@@ -368,7 +368,7 @@ class OvenCavityOperationalState(Cluster):
                         ClusterObjectFieldDescriptor(Label="errorState", Tag=0, Type=OvenCavityOperationalState.Structs.ErrorStateStruct),
                     ])
 
-            errorState: 'OvenCavityOperationalState.Structs.ErrorStateStruct' = field(default_factory=lambda: OvenCavityOperationalState.Structs.ErrorStateStruct())
+            errorState: OvenCavityOperationalState.Structs.ErrorStateStruct = field(default_factory=lambda: OvenCavityOperationalState.Structs.ErrorStateStruct())
 
         @dataclass
         class OperationCompletion(ClusterEvent):
@@ -389,6 +389,6 @@ class OvenCavityOperationalState(Cluster):
                         ClusterObjectFieldDescriptor(Label="pausedTime", Tag=2, Type=typing.Union[None, Nullable, uint]),
                     ])
 
-            completionErrorCode: 'Globals.Enums.enum8' = 0
-            totalOperationalTime: 'typing.Union[None, Nullable, uint]' = None
-            pausedTime: 'typing.Union[None, Nullable, uint]' = None
+            completionErrorCode: Globals.Enums.enum8 = 0
+            totalOperationalTime: typing.Union[None, Nullable, uint] = None
+            pausedTime: typing.Union[None, Nullable, uint] = None

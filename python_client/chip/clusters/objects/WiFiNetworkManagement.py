@@ -31,13 +31,13 @@ class WiFiNetworkManagement(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    ssid: 'typing.Union[Nullable, bytes]' = NullValue
-    passphraseSurrogate: 'typing.Union[Nullable, uint]' = NullValue
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    ssid: typing.Union[Nullable, bytes] = NullValue
+    passphraseSurrogate: typing.Union[Nullable, uint] = NullValue
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Commands:
         @dataclass
@@ -68,7 +68,7 @@ class WiFiNetworkManagement(Cluster):
                         ClusterObjectFieldDescriptor(Label="passphrase", Tag=0, Type=bytes),
                     ])
 
-            passphrase: 'bytes' = b""
+            passphrase: bytes = b""
 
     class Attributes:
         @dataclass
@@ -85,7 +85,7 @@ class WiFiNetworkManagement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[Nullable, bytes])
 
-            value: 'typing.Union[Nullable, bytes]' = NullValue
+            value: typing.Union[Nullable, bytes] = NullValue
 
         @dataclass
         class PassphraseSurrogate(ClusterAttributeDescriptor):
@@ -101,7 +101,7 @@ class WiFiNetworkManagement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[Nullable, uint])
 
-            value: 'typing.Union[Nullable, uint]' = NullValue
+            value: typing.Union[Nullable, uint] = NullValue
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -117,7 +117,7 @@ class WiFiNetworkManagement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -133,7 +133,7 @@ class WiFiNetworkManagement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -149,7 +149,7 @@ class WiFiNetworkManagement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -165,7 +165,7 @@ class WiFiNetworkManagement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -181,4 +181,4 @@ class WiFiNetworkManagement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0

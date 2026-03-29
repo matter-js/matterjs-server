@@ -32,14 +32,14 @@ class InovelliCluster(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    ledIndicatorIntensityOn: 'typing.Optional[uint]' = None
-    ledIndicatorIntensityOff: 'typing.Optional[uint]' = None
-    clearNotificationWithConfigDoubleTap: 'typing.Optional[uint]' = None
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    ledIndicatorIntensityOn: typing.Optional[uint] = None
+    ledIndicatorIntensityOff: typing.Optional[uint] = None
+    clearNotificationWithConfigDoubleTap: typing.Optional[uint] = None
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Attributes:
         @dataclass
@@ -56,7 +56,7 @@ class InovelliCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class LEDIndicatorIntensityOff(ClusterAttributeDescriptor):
@@ -72,7 +72,7 @@ class InovelliCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class ClearNotificationWithConfigDoubleTap(ClusterAttributeDescriptor):
@@ -88,7 +88,7 @@ class InovelliCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -104,7 +104,7 @@ class InovelliCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -120,7 +120,7 @@ class InovelliCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -136,7 +136,7 @@ class InovelliCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -152,7 +152,7 @@ class InovelliCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -168,4 +168,4 @@ class InovelliCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0

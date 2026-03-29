@@ -34,16 +34,16 @@ class EnergyPreference(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    energyBalances: 'typing.Optional[typing.List[EnergyPreference.Structs.BalanceStruct]]' = None
-    currentEnergyBalance: 'typing.Optional[uint]' = None
-    energyPriorities: 'typing.Optional[typing.List[EnergyPreference.Enums.EnergyPriorityEnum]]' = None
-    lowPowerModeSensitivities: 'typing.Optional[typing.List[EnergyPreference.Structs.BalanceStruct]]' = None
-    currentLowPowerModeSensitivity: 'typing.Optional[uint]' = None
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    energyBalances: typing.Optional[typing.List[EnergyPreference.Structs.BalanceStruct]] = None
+    currentEnergyBalance: typing.Optional[uint] = None
+    energyPriorities: typing.Optional[typing.List[EnergyPreference.Enums.EnergyPriorityEnum]] = None
+    lowPowerModeSensitivities: typing.Optional[typing.List[EnergyPreference.Structs.BalanceStruct]] = None
+    currentLowPowerModeSensitivity: typing.Optional[uint] = None
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Enums:
         class EnergyPriorityEnum(MatterIntEnum):
@@ -73,8 +73,8 @@ class EnergyPreference(Cluster):
                         ClusterObjectFieldDescriptor(Label="label", Tag=1, Type=typing.Optional[str]),
                     ])
 
-            step: 'uint' = 0
-            label: 'typing.Optional[str]' = None
+            step: uint = 0
+            label: typing.Optional[str] = None
 
     class Attributes:
         @dataclass
@@ -91,7 +91,7 @@ class EnergyPreference(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[EnergyPreference.Structs.BalanceStruct]])
 
-            value: 'typing.Optional[typing.List[EnergyPreference.Structs.BalanceStruct]]' = None
+            value: typing.Optional[typing.List[EnergyPreference.Structs.BalanceStruct]] = None
 
         @dataclass
         class CurrentEnergyBalance(ClusterAttributeDescriptor):
@@ -107,7 +107,7 @@ class EnergyPreference(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class EnergyPriorities(ClusterAttributeDescriptor):
@@ -123,7 +123,7 @@ class EnergyPreference(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[EnergyPreference.Enums.EnergyPriorityEnum]])
 
-            value: 'typing.Optional[typing.List[EnergyPreference.Enums.EnergyPriorityEnum]]' = None
+            value: typing.Optional[typing.List[EnergyPreference.Enums.EnergyPriorityEnum]] = None
 
         @dataclass
         class LowPowerModeSensitivities(ClusterAttributeDescriptor):
@@ -139,7 +139,7 @@ class EnergyPreference(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[EnergyPreference.Structs.BalanceStruct]])
 
-            value: 'typing.Optional[typing.List[EnergyPreference.Structs.BalanceStruct]]' = None
+            value: typing.Optional[typing.List[EnergyPreference.Structs.BalanceStruct]] = None
 
         @dataclass
         class CurrentLowPowerModeSensitivity(ClusterAttributeDescriptor):
@@ -155,7 +155,7 @@ class EnergyPreference(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -171,7 +171,7 @@ class EnergyPreference(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -187,7 +187,7 @@ class EnergyPreference(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -203,7 +203,7 @@ class EnergyPreference(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -219,7 +219,7 @@ class EnergyPreference(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -235,4 +235,4 @@ class EnergyPreference(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0

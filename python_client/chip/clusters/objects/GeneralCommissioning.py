@@ -39,21 +39,21 @@ class GeneralCommissioning(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    breadcrumb: 'uint' = 0
-    basicCommissioningInfo: 'GeneralCommissioning.Structs.BasicCommissioningInfo' = field(default_factory=lambda: GeneralCommissioning.Structs.BasicCommissioningInfo())
-    regulatoryConfig: 'GeneralCommissioning.Enums.RegulatoryLocationTypeEnum' = 0
-    locationCapability: 'GeneralCommissioning.Enums.RegulatoryLocationTypeEnum' = 0
-    supportsConcurrentConnection: 'bool' = False
-    TCAcceptedVersion: 'typing.Optional[uint]' = None
-    TCMinRequiredVersion: 'typing.Optional[uint]' = None
-    TCAcknowledgements: 'typing.Optional[uint]' = None
-    TCAcknowledgementsRequired: 'typing.Optional[bool]' = None
-    TCUpdateDeadline: 'typing.Union[None, Nullable, uint]' = None
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    breadcrumb: uint = 0
+    basicCommissioningInfo: GeneralCommissioning.Structs.BasicCommissioningInfo = field(default_factory=lambda: GeneralCommissioning.Structs.BasicCommissioningInfo())
+    regulatoryConfig: GeneralCommissioning.Enums.RegulatoryLocationTypeEnum = 0
+    locationCapability: GeneralCommissioning.Enums.RegulatoryLocationTypeEnum = 0
+    supportsConcurrentConnection: bool = False
+    TCAcceptedVersion: typing.Optional[uint] = None
+    TCMinRequiredVersion: typing.Optional[uint] = None
+    TCAcknowledgements: typing.Optional[uint] = None
+    TCAcknowledgementsRequired: typing.Optional[bool] = None
+    TCUpdateDeadline: typing.Union[None, Nullable, uint] = None
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Enums:
         class CommissioningErrorEnum(MatterIntEnum):
@@ -96,8 +96,8 @@ class GeneralCommissioning(Cluster):
                         ClusterObjectFieldDescriptor(Label="maxCumulativeFailsafeSeconds", Tag=1, Type=uint),
                     ])
 
-            failSafeExpiryLengthSeconds: 'uint' = 0
-            maxCumulativeFailsafeSeconds: 'uint' = 0
+            failSafeExpiryLengthSeconds: uint = 0
+            maxCumulativeFailsafeSeconds: uint = 0
 
     class Commands:
         @dataclass
@@ -115,8 +115,8 @@ class GeneralCommissioning(Cluster):
                         ClusterObjectFieldDescriptor(Label="breadcrumb", Tag=1, Type=uint),
                     ])
 
-            expiryLengthSeconds: 'uint' = 0
-            breadcrumb: 'uint' = 0
+            expiryLengthSeconds: uint = 0
+            breadcrumb: uint = 0
 
         @dataclass
         class SetRegulatoryConfig(ClusterCommand):
@@ -134,9 +134,9 @@ class GeneralCommissioning(Cluster):
                         ClusterObjectFieldDescriptor(Label="breadcrumb", Tag=2, Type=uint),
                     ])
 
-            newRegulatoryConfig: 'GeneralCommissioning.Enums.RegulatoryLocationTypeEnum' = 0
-            countryCode: 'str' = ""
-            breadcrumb: 'uint' = 0
+            newRegulatoryConfig: GeneralCommissioning.Enums.RegulatoryLocationTypeEnum = 0
+            countryCode: str = ""
+            breadcrumb: uint = 0
 
         @dataclass
         class CommissioningComplete(ClusterCommand):
@@ -167,8 +167,8 @@ class GeneralCommissioning(Cluster):
                         ClusterObjectFieldDescriptor(Label="TCUserResponse", Tag=1, Type=uint),
                     ])
 
-            TCVersion: 'uint' = 0
-            TCUserResponse: 'uint' = 0
+            TCVersion: uint = 0
+            TCUserResponse: uint = 0
 
         @dataclass
         class ArmFailSafeResponse(ClusterCommand):
@@ -185,8 +185,8 @@ class GeneralCommissioning(Cluster):
                         ClusterObjectFieldDescriptor(Label="debugText", Tag=1, Type=str),
                     ])
 
-            errorCode: 'GeneralCommissioning.Enums.CommissioningErrorEnum' = 0
-            debugText: 'str' = ""
+            errorCode: GeneralCommissioning.Enums.CommissioningErrorEnum = 0
+            debugText: str = ""
 
         @dataclass
         class SetRegulatoryConfigResponse(ClusterCommand):
@@ -203,8 +203,8 @@ class GeneralCommissioning(Cluster):
                         ClusterObjectFieldDescriptor(Label="debugText", Tag=1, Type=str),
                     ])
 
-            errorCode: 'GeneralCommissioning.Enums.CommissioningErrorEnum' = 0
-            debugText: 'str' = ""
+            errorCode: GeneralCommissioning.Enums.CommissioningErrorEnum = 0
+            debugText: str = ""
 
         @dataclass
         class CommissioningCompleteResponse(ClusterCommand):
@@ -221,8 +221,8 @@ class GeneralCommissioning(Cluster):
                         ClusterObjectFieldDescriptor(Label="debugText", Tag=1, Type=str),
                     ])
 
-            errorCode: 'GeneralCommissioning.Enums.CommissioningErrorEnum' = 0
-            debugText: 'str' = ""
+            errorCode: GeneralCommissioning.Enums.CommissioningErrorEnum = 0
+            debugText: str = ""
 
         @dataclass
         class SetTCAcknowledgementsResponse(ClusterCommand):
@@ -238,7 +238,7 @@ class GeneralCommissioning(Cluster):
                         ClusterObjectFieldDescriptor(Label="errorCode", Tag=0, Type=GeneralCommissioning.Enums.CommissioningErrorEnum),
                     ])
 
-            errorCode: 'GeneralCommissioning.Enums.CommissioningErrorEnum' = 0
+            errorCode: GeneralCommissioning.Enums.CommissioningErrorEnum = 0
 
     class Attributes:
         @dataclass
@@ -255,7 +255,7 @@ class GeneralCommissioning(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class BasicCommissioningInfo(ClusterAttributeDescriptor):
@@ -271,7 +271,7 @@ class GeneralCommissioning(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=GeneralCommissioning.Structs.BasicCommissioningInfo)
 
-            value: 'GeneralCommissioning.Structs.BasicCommissioningInfo' = field(default_factory=lambda: GeneralCommissioning.Structs.BasicCommissioningInfo())
+            value: GeneralCommissioning.Structs.BasicCommissioningInfo = field(default_factory=lambda: GeneralCommissioning.Structs.BasicCommissioningInfo())
 
         @dataclass
         class RegulatoryConfig(ClusterAttributeDescriptor):
@@ -287,7 +287,7 @@ class GeneralCommissioning(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=GeneralCommissioning.Enums.RegulatoryLocationTypeEnum)
 
-            value: 'GeneralCommissioning.Enums.RegulatoryLocationTypeEnum' = 0
+            value: GeneralCommissioning.Enums.RegulatoryLocationTypeEnum = 0
 
         @dataclass
         class LocationCapability(ClusterAttributeDescriptor):
@@ -303,7 +303,7 @@ class GeneralCommissioning(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=GeneralCommissioning.Enums.RegulatoryLocationTypeEnum)
 
-            value: 'GeneralCommissioning.Enums.RegulatoryLocationTypeEnum' = 0
+            value: GeneralCommissioning.Enums.RegulatoryLocationTypeEnum = 0
 
         @dataclass
         class SupportsConcurrentConnection(ClusterAttributeDescriptor):
@@ -319,7 +319,7 @@ class GeneralCommissioning(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=bool)
 
-            value: 'bool' = False
+            value: bool = False
 
         @dataclass
         class TCAcceptedVersion(ClusterAttributeDescriptor):
@@ -335,7 +335,7 @@ class GeneralCommissioning(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class TCMinRequiredVersion(ClusterAttributeDescriptor):
@@ -351,7 +351,7 @@ class GeneralCommissioning(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class TCAcknowledgements(ClusterAttributeDescriptor):
@@ -367,7 +367,7 @@ class GeneralCommissioning(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class TCAcknowledgementsRequired(ClusterAttributeDescriptor):
@@ -383,7 +383,7 @@ class GeneralCommissioning(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[bool])
 
-            value: 'typing.Optional[bool]' = None
+            value: typing.Optional[bool] = None
 
         @dataclass
         class TCUpdateDeadline(ClusterAttributeDescriptor):
@@ -399,7 +399,7 @@ class GeneralCommissioning(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -415,7 +415,7 @@ class GeneralCommissioning(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -431,7 +431,7 @@ class GeneralCommissioning(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -447,7 +447,7 @@ class GeneralCommissioning(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -463,7 +463,7 @@ class GeneralCommissioning(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -479,4 +479,4 @@ class GeneralCommissioning(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0

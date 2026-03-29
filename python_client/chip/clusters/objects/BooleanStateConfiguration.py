@@ -37,19 +37,19 @@ class BooleanStateConfiguration(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    currentSensitivityLevel: 'typing.Optional[uint]' = None
-    supportedSensitivityLevels: 'typing.Optional[uint]' = None
-    defaultSensitivityLevel: 'typing.Optional[uint]' = None
-    alarmsActive: 'typing.Optional[uint]' = None
-    alarmsSuppressed: 'typing.Optional[uint]' = None
-    alarmsEnabled: 'typing.Optional[uint]' = None
-    alarmsSupported: 'typing.Optional[uint]' = None
-    sensorFault: 'typing.Optional[uint]' = None
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    currentSensitivityLevel: typing.Optional[uint] = None
+    supportedSensitivityLevels: typing.Optional[uint] = None
+    defaultSensitivityLevel: typing.Optional[uint] = None
+    alarmsActive: typing.Optional[uint] = None
+    alarmsSuppressed: typing.Optional[uint] = None
+    alarmsEnabled: typing.Optional[uint] = None
+    alarmsSupported: typing.Optional[uint] = None
+    sensorFault: typing.Optional[uint] = None
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Bitmaps:
         class Feature(IntFlag):
@@ -80,7 +80,7 @@ class BooleanStateConfiguration(Cluster):
                         ClusterObjectFieldDescriptor(Label="alarmsToSuppress", Tag=0, Type=uint),
                     ])
 
-            alarmsToSuppress: 'uint' = 0
+            alarmsToSuppress: uint = 0
 
         @dataclass
         class EnableDisableAlarm(ClusterCommand):
@@ -96,7 +96,7 @@ class BooleanStateConfiguration(Cluster):
                         ClusterObjectFieldDescriptor(Label="alarmsToEnableDisable", Tag=0, Type=uint),
                     ])
 
-            alarmsToEnableDisable: 'uint' = 0
+            alarmsToEnableDisable: uint = 0
 
     class Attributes:
         @dataclass
@@ -113,7 +113,7 @@ class BooleanStateConfiguration(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class SupportedSensitivityLevels(ClusterAttributeDescriptor):
@@ -129,7 +129,7 @@ class BooleanStateConfiguration(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class DefaultSensitivityLevel(ClusterAttributeDescriptor):
@@ -145,7 +145,7 @@ class BooleanStateConfiguration(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class AlarmsActive(ClusterAttributeDescriptor):
@@ -161,7 +161,7 @@ class BooleanStateConfiguration(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class AlarmsSuppressed(ClusterAttributeDescriptor):
@@ -177,7 +177,7 @@ class BooleanStateConfiguration(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class AlarmsEnabled(ClusterAttributeDescriptor):
@@ -193,7 +193,7 @@ class BooleanStateConfiguration(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class AlarmsSupported(ClusterAttributeDescriptor):
@@ -209,7 +209,7 @@ class BooleanStateConfiguration(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class SensorFault(ClusterAttributeDescriptor):
@@ -225,7 +225,7 @@ class BooleanStateConfiguration(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -241,7 +241,7 @@ class BooleanStateConfiguration(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -257,7 +257,7 @@ class BooleanStateConfiguration(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -273,7 +273,7 @@ class BooleanStateConfiguration(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -289,7 +289,7 @@ class BooleanStateConfiguration(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -305,7 +305,7 @@ class BooleanStateConfiguration(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
     class Events:
         @dataclass
@@ -326,8 +326,8 @@ class BooleanStateConfiguration(Cluster):
                         ClusterObjectFieldDescriptor(Label="alarmsSuppressed", Tag=1, Type=typing.Optional[uint]),
                     ])
 
-            alarmsActive: 'uint' = 0
-            alarmsSuppressed: 'typing.Optional[uint]' = None
+            alarmsActive: uint = 0
+            alarmsSuppressed: typing.Optional[uint] = None
 
         @dataclass
         class SensorFault(ClusterEvent):
@@ -346,4 +346,4 @@ class BooleanStateConfiguration(Cluster):
                         ClusterObjectFieldDescriptor(Label="sensorFault", Tag=0, Type=uint),
                     ])
 
-            sensorFault: 'uint' = 0
+            sensorFault: uint = 0

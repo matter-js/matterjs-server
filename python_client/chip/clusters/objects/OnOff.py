@@ -35,16 +35,16 @@ class OnOff(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    onOff: 'bool' = False
-    globalSceneControl: 'typing.Optional[bool]' = None
-    onTime: 'typing.Optional[uint]' = None
-    offWaitTime: 'typing.Optional[uint]' = None
-    startUpOnOff: 'typing.Union[None, Nullable, OnOff.Enums.StartUpOnOffEnum]' = None
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    onOff: bool = False
+    globalSceneControl: typing.Optional[bool] = None
+    onTime: typing.Optional[uint] = None
+    offWaitTime: typing.Optional[uint] = None
+    startUpOnOff: typing.Union[None, Nullable, OnOff.Enums.StartUpOnOffEnum] = None
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Enums:
         class StartUpOnOffEnum(MatterIntEnum):
@@ -151,8 +151,8 @@ class OnOff(Cluster):
                         ClusterObjectFieldDescriptor(Label="effectVariant", Tag=1, Type=Globals.Enums.enum8),
                     ])
 
-            effectIdentifier: 'OnOff.Enums.EffectIdentifierEnum' = 0
-            effectVariant: 'Globals.Enums.enum8' = 0
+            effectIdentifier: OnOff.Enums.EffectIdentifierEnum = 0
+            effectVariant: Globals.Enums.enum8 = 0
 
         @dataclass
         class OnWithRecallGlobalScene(ClusterCommand):
@@ -184,9 +184,9 @@ class OnOff(Cluster):
                         ClusterObjectFieldDescriptor(Label="offWaitTime", Tag=2, Type=uint),
                     ])
 
-            onOffControl: 'uint' = 0
-            onTime: 'uint' = 0
-            offWaitTime: 'uint' = 0
+            onOffControl: uint = 0
+            onTime: uint = 0
+            offWaitTime: uint = 0
 
     class Attributes:
         @dataclass
@@ -203,7 +203,7 @@ class OnOff(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=bool)
 
-            value: 'bool' = False
+            value: bool = False
 
         @dataclass
         class GlobalSceneControl(ClusterAttributeDescriptor):
@@ -219,7 +219,7 @@ class OnOff(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[bool])
 
-            value: 'typing.Optional[bool]' = None
+            value: typing.Optional[bool] = None
 
         @dataclass
         class OnTime(ClusterAttributeDescriptor):
@@ -235,7 +235,7 @@ class OnOff(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class OffWaitTime(ClusterAttributeDescriptor):
@@ -251,7 +251,7 @@ class OnOff(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class StartUpOnOff(ClusterAttributeDescriptor):
@@ -267,7 +267,7 @@ class OnOff(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, OnOff.Enums.StartUpOnOffEnum])
 
-            value: 'typing.Union[None, Nullable, OnOff.Enums.StartUpOnOffEnum]' = None
+            value: typing.Union[None, Nullable, OnOff.Enums.StartUpOnOffEnum] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -283,7 +283,7 @@ class OnOff(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -299,7 +299,7 @@ class OnOff(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -315,7 +315,7 @@ class OnOff(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -331,7 +331,7 @@ class OnOff(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -347,4 +347,4 @@ class OnOff(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0

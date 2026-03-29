@@ -31,12 +31,12 @@ class CommissionerControl(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    supportedDeviceCategories: 'uint' = 0
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    supportedDeviceCategories: uint = 0
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Bitmaps:
         class SupportedDeviceCategoryBitmap(IntFlag):
@@ -60,10 +60,10 @@ class CommissionerControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="label", Tag=3, Type=typing.Optional[str]),
                     ])
 
-            requestID: 'uint' = 0
-            vendorID: 'uint' = 0
-            productID: 'uint' = 0
-            label: 'typing.Optional[str]' = None
+            requestID: uint = 0
+            vendorID: uint = 0
+            productID: uint = 0
+            label: typing.Optional[str] = None
 
         @dataclass
         class CommissionNode(ClusterCommand):
@@ -80,8 +80,8 @@ class CommissionerControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="responseTimeoutSeconds", Tag=1, Type=uint),
                     ])
 
-            requestID: 'uint' = 0
-            responseTimeoutSeconds: 'uint' = 0
+            requestID: uint = 0
+            responseTimeoutSeconds: uint = 0
 
         @dataclass
         class ReverseOpenCommissioningWindow(ClusterCommand):
@@ -101,11 +101,11 @@ class CommissionerControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="salt", Tag=4, Type=bytes),
                     ])
 
-            commissioningTimeout: 'uint' = 0
-            PAKEPasscodeVerifier: 'bytes' = b""
-            discriminator: 'uint' = 0
-            iterations: 'uint' = 0
-            salt: 'bytes' = b""
+            commissioningTimeout: uint = 0
+            PAKEPasscodeVerifier: bytes = b""
+            discriminator: uint = 0
+            iterations: uint = 0
+            salt: bytes = b""
 
     class Attributes:
         @dataclass
@@ -122,7 +122,7 @@ class CommissionerControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -138,7 +138,7 @@ class CommissionerControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -154,7 +154,7 @@ class CommissionerControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -170,7 +170,7 @@ class CommissionerControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -186,7 +186,7 @@ class CommissionerControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -202,7 +202,7 @@ class CommissionerControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
     class Events:
         @dataclass
@@ -225,7 +225,7 @@ class CommissionerControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=254, Type=uint),
                     ])
 
-            requestID: 'uint' = 0
-            clientNodeID: 'uint' = 0
-            statusCode: 'Globals.Enums.status' = 0
-            fabricIndex: 'uint' = 0
+            requestID: uint = 0
+            clientNodeID: uint = 0
+            statusCode: Globals.Enums.status = 0
+            fabricIndex: uint = 0

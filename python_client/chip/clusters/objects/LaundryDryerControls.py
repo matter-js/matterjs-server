@@ -31,13 +31,13 @@ class LaundryDryerControls(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    supportedDrynessLevels: 'typing.List[LaundryDryerControls.Enums.DrynessLevelEnum]' = field(default_factory=lambda: [])
-    selectedDrynessLevel: 'typing.Union[Nullable, LaundryDryerControls.Enums.DrynessLevelEnum]' = NullValue
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    supportedDrynessLevels: typing.List[LaundryDryerControls.Enums.DrynessLevelEnum] = field(default_factory=lambda: [])
+    selectedDrynessLevel: typing.Union[Nullable, LaundryDryerControls.Enums.DrynessLevelEnum] = NullValue
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Enums:
         class DrynessLevelEnum(MatterIntEnum):
@@ -66,7 +66,7 @@ class LaundryDryerControls(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[LaundryDryerControls.Enums.DrynessLevelEnum])
 
-            value: 'typing.List[LaundryDryerControls.Enums.DrynessLevelEnum]' = field(default_factory=lambda: [])
+            value: typing.List[LaundryDryerControls.Enums.DrynessLevelEnum] = field(default_factory=lambda: [])
 
         @dataclass
         class SelectedDrynessLevel(ClusterAttributeDescriptor):
@@ -82,7 +82,7 @@ class LaundryDryerControls(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[Nullable, LaundryDryerControls.Enums.DrynessLevelEnum])
 
-            value: 'typing.Union[Nullable, LaundryDryerControls.Enums.DrynessLevelEnum]' = NullValue
+            value: typing.Union[Nullable, LaundryDryerControls.Enums.DrynessLevelEnum] = NullValue
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -98,7 +98,7 @@ class LaundryDryerControls(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -114,7 +114,7 @@ class LaundryDryerControls(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -130,7 +130,7 @@ class LaundryDryerControls(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -146,7 +146,7 @@ class LaundryDryerControls(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -162,4 +162,4 @@ class LaundryDryerControls(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0

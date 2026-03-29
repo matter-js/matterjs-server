@@ -35,17 +35,17 @@ class WaterHeaterManagement(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    heaterTypes: 'uint' = 0
-    heatDemand: 'uint' = 0
-    tankVolume: 'typing.Optional[uint]' = None
-    estimatedHeatRequired: 'typing.Optional[uint]' = None
-    tankPercentage: 'typing.Optional[uint]' = None
-    boostState: 'WaterHeaterManagement.Enums.BoostStateEnum' = 0
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    heaterTypes: uint = 0
+    heatDemand: uint = 0
+    tankVolume: typing.Optional[uint] = None
+    estimatedHeatRequired: typing.Optional[uint] = None
+    tankPercentage: typing.Optional[uint] = None
+    boostState: WaterHeaterManagement.Enums.BoostStateEnum = 0
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Enums:
         class BoostStateEnum(MatterIntEnum):
@@ -84,12 +84,12 @@ class WaterHeaterManagement(Cluster):
                         ClusterObjectFieldDescriptor(Label="targetReheat", Tag=5, Type=typing.Optional[uint]),
                     ])
 
-            duration: 'uint' = 0
-            oneShot: 'typing.Optional[bool]' = None
-            emergencyBoost: 'typing.Optional[bool]' = None
-            temporarySetpoint: 'typing.Optional[uint]' = None
-            targetPercentage: 'typing.Optional[uint]' = None
-            targetReheat: 'typing.Optional[uint]' = None
+            duration: uint = 0
+            oneShot: typing.Optional[bool] = None
+            emergencyBoost: typing.Optional[bool] = None
+            temporarySetpoint: typing.Optional[uint] = None
+            targetPercentage: typing.Optional[uint] = None
+            targetReheat: typing.Optional[uint] = None
 
     class Commands:
         @dataclass
@@ -106,7 +106,7 @@ class WaterHeaterManagement(Cluster):
                         ClusterObjectFieldDescriptor(Label="boostInfo", Tag=0, Type=WaterHeaterManagement.Structs.WaterHeaterBoostInfoStruct),
                     ])
 
-            boostInfo: 'WaterHeaterManagement.Structs.WaterHeaterBoostInfoStruct' = field(default_factory=lambda: WaterHeaterManagement.Structs.WaterHeaterBoostInfoStruct())
+            boostInfo: WaterHeaterManagement.Structs.WaterHeaterBoostInfoStruct = field(default_factory=lambda: WaterHeaterManagement.Structs.WaterHeaterBoostInfoStruct())
 
         @dataclass
         class CancelBoost(ClusterCommand):
@@ -137,7 +137,7 @@ class WaterHeaterManagement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class HeatDemand(ClusterAttributeDescriptor):
@@ -153,7 +153,7 @@ class WaterHeaterManagement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class TankVolume(ClusterAttributeDescriptor):
@@ -169,7 +169,7 @@ class WaterHeaterManagement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class EstimatedHeatRequired(ClusterAttributeDescriptor):
@@ -185,7 +185,7 @@ class WaterHeaterManagement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class TankPercentage(ClusterAttributeDescriptor):
@@ -201,7 +201,7 @@ class WaterHeaterManagement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class BoostState(ClusterAttributeDescriptor):
@@ -217,7 +217,7 @@ class WaterHeaterManagement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=WaterHeaterManagement.Enums.BoostStateEnum)
 
-            value: 'WaterHeaterManagement.Enums.BoostStateEnum' = 0
+            value: WaterHeaterManagement.Enums.BoostStateEnum = 0
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -233,7 +233,7 @@ class WaterHeaterManagement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -249,7 +249,7 @@ class WaterHeaterManagement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -265,7 +265,7 @@ class WaterHeaterManagement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -281,7 +281,7 @@ class WaterHeaterManagement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -297,7 +297,7 @@ class WaterHeaterManagement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
     class Events:
         @dataclass
@@ -317,7 +317,7 @@ class WaterHeaterManagement(Cluster):
                         ClusterObjectFieldDescriptor(Label="boostInfo", Tag=0, Type=WaterHeaterManagement.Structs.WaterHeaterBoostInfoStruct),
                     ])
 
-            boostInfo: 'WaterHeaterManagement.Structs.WaterHeaterBoostInfoStruct' = field(default_factory=lambda: WaterHeaterManagement.Structs.WaterHeaterBoostInfoStruct())
+            boostInfo: WaterHeaterManagement.Structs.WaterHeaterBoostInfoStruct = field(default_factory=lambda: WaterHeaterManagement.Structs.WaterHeaterBoostInfoStruct())
 
         @dataclass
         class BoostEnded(ClusterEvent):

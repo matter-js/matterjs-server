@@ -35,17 +35,17 @@ class OperationalCredentials(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    NOCs: 'typing.List[OperationalCredentials.Structs.NOCStruct]' = field(default_factory=lambda: [])
-    fabrics: 'typing.List[OperationalCredentials.Structs.FabricDescriptorStruct]' = field(default_factory=lambda: [])
-    supportedFabrics: 'uint' = 0
-    commissionedFabrics: 'uint' = 0
-    trustedRootCertificates: 'typing.List[bytes]' = field(default_factory=lambda: [])
-    currentFabricIndex: 'uint' = 0
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    NOCs: typing.List[OperationalCredentials.Structs.NOCStruct] = field(default_factory=lambda: [])
+    fabrics: typing.List[OperationalCredentials.Structs.FabricDescriptorStruct] = field(default_factory=lambda: [])
+    supportedFabrics: uint = 0
+    commissionedFabrics: uint = 0
+    trustedRootCertificates: typing.List[bytes] = field(default_factory=lambda: [])
+    currentFabricIndex: uint = 0
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Enums:
         class CertificateChainTypeEnum(MatterIntEnum):
@@ -87,10 +87,10 @@ class OperationalCredentials(Cluster):
                         ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=254, Type=uint),
                     ])
 
-            noc: 'bytes' = b""
-            icac: 'typing.Union[Nullable, bytes]' = NullValue
-            vvsc: 'typing.Optional[bytes]' = None
-            fabricIndex: 'uint' = 0
+            noc: bytes = b""
+            icac: typing.Union[Nullable, bytes] = NullValue
+            vvsc: typing.Optional[bytes] = None
+            fabricIndex: uint = 0
 
         @dataclass
         class FabricDescriptorStruct(ClusterObject):
@@ -107,13 +107,13 @@ class OperationalCredentials(Cluster):
                         ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=254, Type=uint),
                     ])
 
-            rootPublicKey: 'bytes' = b""
-            vendorID: 'uint' = 0
-            fabricID: 'uint' = 0
-            nodeID: 'uint' = 0
-            label: 'str' = ""
-            VIDVerificationStatement: 'typing.Optional[bytes]' = None
-            fabricIndex: 'uint' = 0
+            rootPublicKey: bytes = b""
+            vendorID: uint = 0
+            fabricID: uint = 0
+            nodeID: uint = 0
+            label: str = ""
+            VIDVerificationStatement: typing.Optional[bytes] = None
+            fabricIndex: uint = 0
 
     class Commands:
         @dataclass
@@ -130,7 +130,7 @@ class OperationalCredentials(Cluster):
                         ClusterObjectFieldDescriptor(Label="attestationNonce", Tag=0, Type=bytes),
                     ])
 
-            attestationNonce: 'bytes' = b""
+            attestationNonce: bytes = b""
 
         @dataclass
         class CertificateChainRequest(ClusterCommand):
@@ -146,7 +146,7 @@ class OperationalCredentials(Cluster):
                         ClusterObjectFieldDescriptor(Label="certificateType", Tag=0, Type=OperationalCredentials.Enums.CertificateChainTypeEnum),
                     ])
 
-            certificateType: 'OperationalCredentials.Enums.CertificateChainTypeEnum' = 0
+            certificateType: OperationalCredentials.Enums.CertificateChainTypeEnum = 0
 
         @dataclass
         class CSRRequest(ClusterCommand):
@@ -163,8 +163,8 @@ class OperationalCredentials(Cluster):
                         ClusterObjectFieldDescriptor(Label="isForUpdateNOC", Tag=1, Type=typing.Optional[bool]),
                     ])
 
-            CSRNonce: 'bytes' = b""
-            isForUpdateNOC: 'typing.Optional[bool]' = None
+            CSRNonce: bytes = b""
+            isForUpdateNOC: typing.Optional[bool] = None
 
         @dataclass
         class AddNOC(ClusterCommand):
@@ -184,11 +184,11 @@ class OperationalCredentials(Cluster):
                         ClusterObjectFieldDescriptor(Label="adminVendorId", Tag=4, Type=uint),
                     ])
 
-            NOCValue: 'bytes' = b""
-            ICACValue: 'typing.Optional[bytes]' = None
-            IPKValue: 'bytes' = b""
-            caseAdminSubject: 'uint' = 0
-            adminVendorId: 'uint' = 0
+            NOCValue: bytes = b""
+            ICACValue: typing.Optional[bytes] = None
+            IPKValue: bytes = b""
+            caseAdminSubject: uint = 0
+            adminVendorId: uint = 0
 
         @dataclass
         class UpdateNOC(ClusterCommand):
@@ -206,9 +206,9 @@ class OperationalCredentials(Cluster):
                         ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=254, Type=uint),
                     ])
 
-            NOCValue: 'bytes' = b""
-            ICACValue: 'typing.Optional[bytes]' = None
-            fabricIndex: 'uint' = 0
+            NOCValue: bytes = b""
+            ICACValue: typing.Optional[bytes] = None
+            fabricIndex: uint = 0
 
         @dataclass
         class UpdateFabricLabel(ClusterCommand):
@@ -225,8 +225,8 @@ class OperationalCredentials(Cluster):
                         ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=254, Type=uint),
                     ])
 
-            label: 'str' = ""
-            fabricIndex: 'uint' = 0
+            label: str = ""
+            fabricIndex: uint = 0
 
         @dataclass
         class RemoveFabric(ClusterCommand):
@@ -242,7 +242,7 @@ class OperationalCredentials(Cluster):
                         ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=0, Type=uint),
                     ])
 
-            fabricIndex: 'uint' = 0
+            fabricIndex: uint = 0
 
         @dataclass
         class AddTrustedRootCertificate(ClusterCommand):
@@ -258,7 +258,7 @@ class OperationalCredentials(Cluster):
                         ClusterObjectFieldDescriptor(Label="rootCACertificate", Tag=0, Type=bytes),
                     ])
 
-            rootCACertificate: 'bytes' = b""
+            rootCACertificate: bytes = b""
 
         @dataclass
         class SetVIDVerificationStatement(ClusterCommand):
@@ -276,9 +276,9 @@ class OperationalCredentials(Cluster):
                         ClusterObjectFieldDescriptor(Label="vvsc", Tag=2, Type=typing.Optional[bytes]),
                     ])
 
-            vendorID: 'typing.Optional[uint]' = None
-            VIDVerificationStatement: 'typing.Optional[bytes]' = None
-            vvsc: 'typing.Optional[bytes]' = None
+            vendorID: typing.Optional[uint] = None
+            VIDVerificationStatement: typing.Optional[bytes] = None
+            vvsc: typing.Optional[bytes] = None
 
         @dataclass
         class SignVIDVerificationRequest(ClusterCommand):
@@ -295,8 +295,8 @@ class OperationalCredentials(Cluster):
                         ClusterObjectFieldDescriptor(Label="clientChallenge", Tag=1, Type=bytes),
                     ])
 
-            fabricIndex: 'uint' = 0
-            clientChallenge: 'bytes' = b""
+            fabricIndex: uint = 0
+            clientChallenge: bytes = b""
 
         @dataclass
         class AttestationResponse(ClusterCommand):
@@ -313,8 +313,8 @@ class OperationalCredentials(Cluster):
                         ClusterObjectFieldDescriptor(Label="attestationSignature", Tag=1, Type=bytes),
                     ])
 
-            attestationElements: 'bytes' = b""
-            attestationSignature: 'bytes' = b""
+            attestationElements: bytes = b""
+            attestationSignature: bytes = b""
 
         @dataclass
         class CertificateChainResponse(ClusterCommand):
@@ -330,7 +330,7 @@ class OperationalCredentials(Cluster):
                         ClusterObjectFieldDescriptor(Label="certificate", Tag=0, Type=bytes),
                     ])
 
-            certificate: 'bytes' = b""
+            certificate: bytes = b""
 
         @dataclass
         class CSRResponse(ClusterCommand):
@@ -347,8 +347,8 @@ class OperationalCredentials(Cluster):
                         ClusterObjectFieldDescriptor(Label="attestationSignature", Tag=1, Type=bytes),
                     ])
 
-            NOCSRElements: 'bytes' = b""
-            attestationSignature: 'bytes' = b""
+            NOCSRElements: bytes = b""
+            attestationSignature: bytes = b""
 
         @dataclass
         class NOCResponse(ClusterCommand):
@@ -366,9 +366,9 @@ class OperationalCredentials(Cluster):
                         ClusterObjectFieldDescriptor(Label="debugText", Tag=2, Type=typing.Optional[str]),
                     ])
 
-            statusCode: 'OperationalCredentials.Enums.NodeOperationalCertStatusEnum' = 0
-            fabricIndex: 'typing.Optional[uint]' = None
-            debugText: 'typing.Optional[str]' = None
+            statusCode: OperationalCredentials.Enums.NodeOperationalCertStatusEnum = 0
+            fabricIndex: typing.Optional[uint] = None
+            debugText: typing.Optional[str] = None
 
         @dataclass
         class SignVIDVerificationResponse(ClusterCommand):
@@ -386,9 +386,9 @@ class OperationalCredentials(Cluster):
                         ClusterObjectFieldDescriptor(Label="signature", Tag=2, Type=bytes),
                     ])
 
-            fabricIndex: 'uint' = 0
-            fabricBindingVersion: 'uint' = 0
-            signature: 'bytes' = b""
+            fabricIndex: uint = 0
+            fabricBindingVersion: uint = 0
+            signature: bytes = b""
 
     class Attributes:
         @dataclass
@@ -405,7 +405,7 @@ class OperationalCredentials(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[OperationalCredentials.Structs.NOCStruct])
 
-            value: 'typing.List[OperationalCredentials.Structs.NOCStruct]' = field(default_factory=lambda: [])
+            value: typing.List[OperationalCredentials.Structs.NOCStruct] = field(default_factory=lambda: [])
 
         @dataclass
         class Fabrics(ClusterAttributeDescriptor):
@@ -421,7 +421,7 @@ class OperationalCredentials(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[OperationalCredentials.Structs.FabricDescriptorStruct])
 
-            value: 'typing.List[OperationalCredentials.Structs.FabricDescriptorStruct]' = field(default_factory=lambda: [])
+            value: typing.List[OperationalCredentials.Structs.FabricDescriptorStruct] = field(default_factory=lambda: [])
 
         @dataclass
         class SupportedFabrics(ClusterAttributeDescriptor):
@@ -437,7 +437,7 @@ class OperationalCredentials(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class CommissionedFabrics(ClusterAttributeDescriptor):
@@ -453,7 +453,7 @@ class OperationalCredentials(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class TrustedRootCertificates(ClusterAttributeDescriptor):
@@ -469,7 +469,7 @@ class OperationalCredentials(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[bytes])
 
-            value: 'typing.List[bytes]' = field(default_factory=lambda: [])
+            value: typing.List[bytes] = field(default_factory=lambda: [])
 
         @dataclass
         class CurrentFabricIndex(ClusterAttributeDescriptor):
@@ -485,7 +485,7 @@ class OperationalCredentials(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -501,7 +501,7 @@ class OperationalCredentials(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -517,7 +517,7 @@ class OperationalCredentials(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -533,7 +533,7 @@ class OperationalCredentials(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -549,7 +549,7 @@ class OperationalCredentials(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -565,4 +565,4 @@ class OperationalCredentials(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0

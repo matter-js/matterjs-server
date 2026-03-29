@@ -38,20 +38,20 @@ class PressureMeasurement(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    measuredValue: 'typing.Union[Nullable, int]' = NullValue
-    minMeasuredValue: 'typing.Union[Nullable, int]' = NullValue
-    maxMeasuredValue: 'typing.Union[Nullable, int]' = NullValue
-    tolerance: 'typing.Optional[uint]' = None
-    scaledValue: 'typing.Union[None, Nullable, int]' = None
-    minScaledValue: 'typing.Union[None, Nullable, int]' = None
-    maxScaledValue: 'typing.Union[None, Nullable, int]' = None
-    scaledTolerance: 'typing.Optional[uint]' = None
-    scale: 'typing.Optional[int]' = None
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    measuredValue: typing.Union[Nullable, int] = NullValue
+    minMeasuredValue: typing.Union[Nullable, int] = NullValue
+    maxMeasuredValue: typing.Union[Nullable, int] = NullValue
+    tolerance: typing.Optional[uint] = None
+    scaledValue: typing.Union[None, Nullable, int] = None
+    minScaledValue: typing.Union[None, Nullable, int] = None
+    maxScaledValue: typing.Union[None, Nullable, int] = None
+    scaledTolerance: typing.Optional[uint] = None
+    scale: typing.Optional[int] = None
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Bitmaps:
         class Feature(IntFlag):
@@ -72,7 +72,7 @@ class PressureMeasurement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[Nullable, int])
 
-            value: 'typing.Union[Nullable, int]' = NullValue
+            value: typing.Union[Nullable, int] = NullValue
 
         @dataclass
         class MinMeasuredValue(ClusterAttributeDescriptor):
@@ -88,7 +88,7 @@ class PressureMeasurement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[Nullable, int])
 
-            value: 'typing.Union[Nullable, int]' = NullValue
+            value: typing.Union[Nullable, int] = NullValue
 
         @dataclass
         class MaxMeasuredValue(ClusterAttributeDescriptor):
@@ -104,7 +104,7 @@ class PressureMeasurement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[Nullable, int])
 
-            value: 'typing.Union[Nullable, int]' = NullValue
+            value: typing.Union[Nullable, int] = NullValue
 
         @dataclass
         class Tolerance(ClusterAttributeDescriptor):
@@ -120,7 +120,7 @@ class PressureMeasurement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class ScaledValue(ClusterAttributeDescriptor):
@@ -136,7 +136,7 @@ class PressureMeasurement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, int])
 
-            value: 'typing.Union[None, Nullable, int]' = None
+            value: typing.Union[None, Nullable, int] = None
 
         @dataclass
         class MinScaledValue(ClusterAttributeDescriptor):
@@ -152,7 +152,7 @@ class PressureMeasurement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, int])
 
-            value: 'typing.Union[None, Nullable, int]' = None
+            value: typing.Union[None, Nullable, int] = None
 
         @dataclass
         class MaxScaledValue(ClusterAttributeDescriptor):
@@ -168,7 +168,7 @@ class PressureMeasurement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, int])
 
-            value: 'typing.Union[None, Nullable, int]' = None
+            value: typing.Union[None, Nullable, int] = None
 
         @dataclass
         class ScaledTolerance(ClusterAttributeDescriptor):
@@ -184,7 +184,7 @@ class PressureMeasurement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class Scale(ClusterAttributeDescriptor):
@@ -200,7 +200,7 @@ class PressureMeasurement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[int])
 
-            value: 'typing.Optional[int]' = None
+            value: typing.Optional[int] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -216,7 +216,7 @@ class PressureMeasurement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -232,7 +232,7 @@ class PressureMeasurement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -248,7 +248,7 @@ class PressureMeasurement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -264,7 +264,7 @@ class PressureMeasurement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -280,4 +280,4 @@ class PressureMeasurement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0

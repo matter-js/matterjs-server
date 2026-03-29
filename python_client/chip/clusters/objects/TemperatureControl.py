@@ -35,17 +35,17 @@ class TemperatureControl(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    temperatureSetpoint: 'typing.Optional[uint]' = None
-    minTemperature: 'typing.Optional[uint]' = None
-    maxTemperature: 'typing.Optional[uint]' = None
-    step: 'typing.Optional[uint]' = None
-    selectedTemperatureLevel: 'typing.Optional[uint]' = None
-    supportedTemperatureLevels: 'typing.Optional[typing.List[str]]' = None
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    temperatureSetpoint: typing.Optional[uint] = None
+    minTemperature: typing.Optional[uint] = None
+    maxTemperature: typing.Optional[uint] = None
+    step: typing.Optional[uint] = None
+    selectedTemperatureLevel: typing.Optional[uint] = None
+    supportedTemperatureLevels: typing.Optional[typing.List[str]] = None
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Bitmaps:
         class Feature(IntFlag):
@@ -69,8 +69,8 @@ class TemperatureControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="targetTemperatureLevel", Tag=1, Type=typing.Optional[uint]),
                     ])
 
-            targetTemperature: 'typing.Optional[uint]' = None
-            targetTemperatureLevel: 'typing.Optional[uint]' = None
+            targetTemperature: typing.Optional[uint] = None
+            targetTemperatureLevel: typing.Optional[uint] = None
 
     class Attributes:
         @dataclass
@@ -87,7 +87,7 @@ class TemperatureControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class MinTemperature(ClusterAttributeDescriptor):
@@ -103,7 +103,7 @@ class TemperatureControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class MaxTemperature(ClusterAttributeDescriptor):
@@ -119,7 +119,7 @@ class TemperatureControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class Step(ClusterAttributeDescriptor):
@@ -135,7 +135,7 @@ class TemperatureControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class SelectedTemperatureLevel(ClusterAttributeDescriptor):
@@ -151,7 +151,7 @@ class TemperatureControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class SupportedTemperatureLevels(ClusterAttributeDescriptor):
@@ -167,7 +167,7 @@ class TemperatureControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[str]])
 
-            value: 'typing.Optional[typing.List[str]]' = None
+            value: typing.Optional[typing.List[str]] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -183,7 +183,7 @@ class TemperatureControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -199,7 +199,7 @@ class TemperatureControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -215,7 +215,7 @@ class TemperatureControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -231,7 +231,7 @@ class TemperatureControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -247,4 +247,4 @@ class TemperatureControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0

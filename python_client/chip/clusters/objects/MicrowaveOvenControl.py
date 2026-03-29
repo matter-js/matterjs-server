@@ -38,20 +38,20 @@ class MicrowaveOvenControl(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    cookTime: 'uint' = 0
-    maxCookTime: 'uint' = 0
-    powerSetting: 'typing.Optional[uint]' = None
-    minPower: 'typing.Optional[uint]' = None
-    maxPower: 'typing.Optional[uint]' = None
-    powerStep: 'typing.Optional[uint]' = None
-    supportedWatts: 'typing.Optional[typing.List[uint]]' = None
-    selectedWattIndex: 'typing.Optional[uint]' = None
-    wattRating: 'typing.Optional[uint]' = None
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    cookTime: uint = 0
+    maxCookTime: uint = 0
+    powerSetting: typing.Optional[uint] = None
+    minPower: typing.Optional[uint] = None
+    maxPower: typing.Optional[uint] = None
+    powerStep: typing.Optional[uint] = None
+    supportedWatts: typing.Optional[typing.List[uint]] = None
+    selectedWattIndex: typing.Optional[uint] = None
+    wattRating: typing.Optional[uint] = None
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Bitmaps:
         class Feature(IntFlag):
@@ -78,11 +78,11 @@ class MicrowaveOvenControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="startAfterSetting", Tag=4, Type=typing.Optional[bool]),
                     ])
 
-            cookMode: 'typing.Optional[uint]' = None
-            cookTime: 'typing.Optional[uint]' = None
-            powerSetting: 'typing.Optional[uint]' = None
-            wattSettingIndex: 'typing.Optional[uint]' = None
-            startAfterSetting: 'typing.Optional[bool]' = None
+            cookMode: typing.Optional[uint] = None
+            cookTime: typing.Optional[uint] = None
+            powerSetting: typing.Optional[uint] = None
+            wattSettingIndex: typing.Optional[uint] = None
+            startAfterSetting: typing.Optional[bool] = None
 
         @dataclass
         class AddMoreTime(ClusterCommand):
@@ -98,7 +98,7 @@ class MicrowaveOvenControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="timeToAdd", Tag=0, Type=uint),
                     ])
 
-            timeToAdd: 'uint' = 0
+            timeToAdd: uint = 0
 
     class Attributes:
         @dataclass
@@ -115,7 +115,7 @@ class MicrowaveOvenControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class MaxCookTime(ClusterAttributeDescriptor):
@@ -131,7 +131,7 @@ class MicrowaveOvenControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class PowerSetting(ClusterAttributeDescriptor):
@@ -147,7 +147,7 @@ class MicrowaveOvenControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class MinPower(ClusterAttributeDescriptor):
@@ -163,7 +163,7 @@ class MicrowaveOvenControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class MaxPower(ClusterAttributeDescriptor):
@@ -179,7 +179,7 @@ class MicrowaveOvenControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class PowerStep(ClusterAttributeDescriptor):
@@ -195,7 +195,7 @@ class MicrowaveOvenControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class SupportedWatts(ClusterAttributeDescriptor):
@@ -211,7 +211,7 @@ class MicrowaveOvenControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[uint]])
 
-            value: 'typing.Optional[typing.List[uint]]' = None
+            value: typing.Optional[typing.List[uint]] = None
 
         @dataclass
         class SelectedWattIndex(ClusterAttributeDescriptor):
@@ -227,7 +227,7 @@ class MicrowaveOvenControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class WattRating(ClusterAttributeDescriptor):
@@ -243,7 +243,7 @@ class MicrowaveOvenControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -259,7 +259,7 @@ class MicrowaveOvenControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -275,7 +275,7 @@ class MicrowaveOvenControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -291,7 +291,7 @@ class MicrowaveOvenControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -307,7 +307,7 @@ class MicrowaveOvenControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -323,4 +323,4 @@ class MicrowaveOvenControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0

@@ -29,11 +29,11 @@ class OtaSoftwareUpdateProvider(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Enums:
         class StatusEnum(MatterIntEnum):
@@ -90,14 +90,14 @@ class OtaSoftwareUpdateProvider(Cluster):
                         ClusterObjectFieldDescriptor(Label="metadataForProvider", Tag=7, Type=typing.Optional[bytes]),
                     ])
 
-            vendorID: 'uint' = 0
-            productID: 'uint' = 0
-            softwareVersion: 'uint' = 0
-            protocolsSupported: 'typing.List[OtaSoftwareUpdateProvider.Enums.DownloadProtocolEnum]' = field(default_factory=lambda: [])
-            hardwareVersion: 'typing.Optional[uint]' = None
-            location: 'typing.Optional[str]' = None
-            requestorCanConsent: 'typing.Optional[bool]' = None
-            metadataForProvider: 'typing.Optional[bytes]' = None
+            vendorID: uint = 0
+            productID: uint = 0
+            softwareVersion: uint = 0
+            protocolsSupported: typing.List[OtaSoftwareUpdateProvider.Enums.DownloadProtocolEnum] = field(default_factory=lambda: [])
+            hardwareVersion: typing.Optional[uint] = None
+            location: typing.Optional[str] = None
+            requestorCanConsent: typing.Optional[bool] = None
+            metadataForProvider: typing.Optional[bytes] = None
 
         @dataclass
         class ApplyUpdateRequest(ClusterCommand):
@@ -114,8 +114,8 @@ class OtaSoftwareUpdateProvider(Cluster):
                         ClusterObjectFieldDescriptor(Label="newVersion", Tag=1, Type=uint),
                     ])
 
-            updateToken: 'bytes' = b""
-            newVersion: 'uint' = 0
+            updateToken: bytes = b""
+            newVersion: uint = 0
 
         @dataclass
         class NotifyUpdateApplied(ClusterCommand):
@@ -132,8 +132,8 @@ class OtaSoftwareUpdateProvider(Cluster):
                         ClusterObjectFieldDescriptor(Label="softwareVersion", Tag=1, Type=uint),
                     ])
 
-            updateToken: 'bytes' = b""
-            softwareVersion: 'uint' = 0
+            updateToken: bytes = b""
+            softwareVersion: uint = 0
 
         @dataclass
         class QueryImageResponse(ClusterCommand):
@@ -156,14 +156,14 @@ class OtaSoftwareUpdateProvider(Cluster):
                         ClusterObjectFieldDescriptor(Label="metadataForRequestor", Tag=7, Type=typing.Optional[bytes]),
                     ])
 
-            status: 'OtaSoftwareUpdateProvider.Enums.StatusEnum' = 0
-            delayedActionTime: 'typing.Optional[uint]' = None
-            imageURI: 'typing.Optional[str]' = None
-            softwareVersion: 'typing.Optional[uint]' = None
-            softwareVersionString: 'typing.Optional[str]' = None
-            updateToken: 'typing.Optional[bytes]' = None
-            userConsentNeeded: 'typing.Optional[bool]' = None
-            metadataForRequestor: 'typing.Optional[bytes]' = None
+            status: OtaSoftwareUpdateProvider.Enums.StatusEnum = 0
+            delayedActionTime: typing.Optional[uint] = None
+            imageURI: typing.Optional[str] = None
+            softwareVersion: typing.Optional[uint] = None
+            softwareVersionString: typing.Optional[str] = None
+            updateToken: typing.Optional[bytes] = None
+            userConsentNeeded: typing.Optional[bool] = None
+            metadataForRequestor: typing.Optional[bytes] = None
 
         @dataclass
         class ApplyUpdateResponse(ClusterCommand):
@@ -180,8 +180,8 @@ class OtaSoftwareUpdateProvider(Cluster):
                         ClusterObjectFieldDescriptor(Label="delayedActionTime", Tag=1, Type=uint),
                     ])
 
-            action: 'OtaSoftwareUpdateProvider.Enums.ApplyUpdateActionEnum' = 0
-            delayedActionTime: 'uint' = 0
+            action: OtaSoftwareUpdateProvider.Enums.ApplyUpdateActionEnum = 0
+            delayedActionTime: uint = 0
 
     class Attributes:
         @dataclass
@@ -198,7 +198,7 @@ class OtaSoftwareUpdateProvider(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -214,7 +214,7 @@ class OtaSoftwareUpdateProvider(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -230,7 +230,7 @@ class OtaSoftwareUpdateProvider(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -246,7 +246,7 @@ class OtaSoftwareUpdateProvider(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -262,4 +262,4 @@ class OtaSoftwareUpdateProvider(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0

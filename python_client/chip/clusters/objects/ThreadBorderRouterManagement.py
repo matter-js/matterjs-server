@@ -35,17 +35,17 @@ class ThreadBorderRouterManagement(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    borderRouterName: 'str' = ""
-    borderAgentID: 'bytes' = b""
-    threadVersion: 'uint' = 0
-    interfaceEnabled: 'bool' = False
-    activeDatasetTimestamp: 'typing.Union[Nullable, uint]' = NullValue
-    pendingDatasetTimestamp: 'typing.Union[Nullable, uint]' = NullValue
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    borderRouterName: str = ""
+    borderAgentID: bytes = b""
+    threadVersion: uint = 0
+    interfaceEnabled: bool = False
+    activeDatasetTimestamp: typing.Union[Nullable, uint] = NullValue
+    pendingDatasetTimestamp: typing.Union[Nullable, uint] = NullValue
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Bitmaps:
         class Feature(IntFlag):
@@ -99,8 +99,8 @@ class ThreadBorderRouterManagement(Cluster):
                         ClusterObjectFieldDescriptor(Label="breadcrumb", Tag=1, Type=typing.Optional[uint]),
                     ])
 
-            activeDataset: 'bytes' = b""
-            breadcrumb: 'typing.Optional[uint]' = None
+            activeDataset: bytes = b""
+            breadcrumb: typing.Optional[uint] = None
 
         @dataclass
         class SetPendingDatasetRequest(ClusterCommand):
@@ -120,7 +120,7 @@ class ThreadBorderRouterManagement(Cluster):
                         ClusterObjectFieldDescriptor(Label="pendingDataset", Tag=0, Type=bytes),
                     ])
 
-            pendingDataset: 'bytes' = b""
+            pendingDataset: bytes = b""
 
         @dataclass
         class DatasetResponse(ClusterCommand):
@@ -136,7 +136,7 @@ class ThreadBorderRouterManagement(Cluster):
                         ClusterObjectFieldDescriptor(Label="dataset", Tag=0, Type=bytes),
                     ])
 
-            dataset: 'bytes' = b""
+            dataset: bytes = b""
 
     class Attributes:
         @dataclass
@@ -153,7 +153,7 @@ class ThreadBorderRouterManagement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=str)
 
-            value: 'str' = ""
+            value: str = ""
 
         @dataclass
         class BorderAgentID(ClusterAttributeDescriptor):
@@ -169,7 +169,7 @@ class ThreadBorderRouterManagement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=bytes)
 
-            value: 'bytes' = b""
+            value: bytes = b""
 
         @dataclass
         class ThreadVersion(ClusterAttributeDescriptor):
@@ -185,7 +185,7 @@ class ThreadBorderRouterManagement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class InterfaceEnabled(ClusterAttributeDescriptor):
@@ -201,7 +201,7 @@ class ThreadBorderRouterManagement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=bool)
 
-            value: 'bool' = False
+            value: bool = False
 
         @dataclass
         class ActiveDatasetTimestamp(ClusterAttributeDescriptor):
@@ -217,7 +217,7 @@ class ThreadBorderRouterManagement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[Nullable, uint])
 
-            value: 'typing.Union[Nullable, uint]' = NullValue
+            value: typing.Union[Nullable, uint] = NullValue
 
         @dataclass
         class PendingDatasetTimestamp(ClusterAttributeDescriptor):
@@ -233,7 +233,7 @@ class ThreadBorderRouterManagement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[Nullable, uint])
 
-            value: 'typing.Union[Nullable, uint]' = NullValue
+            value: typing.Union[Nullable, uint] = NullValue
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -249,7 +249,7 @@ class ThreadBorderRouterManagement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -265,7 +265,7 @@ class ThreadBorderRouterManagement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -281,7 +281,7 @@ class ThreadBorderRouterManagement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -297,7 +297,7 @@ class ThreadBorderRouterManagement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -313,4 +313,4 @@ class ThreadBorderRouterManagement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0

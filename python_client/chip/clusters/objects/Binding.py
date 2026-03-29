@@ -30,12 +30,12 @@ class Binding(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    binding: 'typing.List[Binding.Structs.TargetStruct]' = field(default_factory=lambda: [])
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    binding: typing.List[Binding.Structs.TargetStruct] = field(default_factory=lambda: [])
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Structs:
         @dataclass
@@ -51,11 +51,11 @@ class Binding(Cluster):
                         ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=254, Type=uint),
                     ])
 
-            node: 'typing.Optional[uint]' = None
-            group: 'typing.Optional[uint]' = None
-            endpoint: 'typing.Optional[uint]' = None
-            cluster: 'typing.Optional[uint]' = None
-            fabricIndex: 'uint' = 0
+            node: typing.Optional[uint] = None
+            group: typing.Optional[uint] = None
+            endpoint: typing.Optional[uint] = None
+            cluster: typing.Optional[uint] = None
+            fabricIndex: uint = 0
 
     class Attributes:
         @dataclass
@@ -72,7 +72,7 @@ class Binding(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[Binding.Structs.TargetStruct])
 
-            value: 'typing.List[Binding.Structs.TargetStruct]' = field(default_factory=lambda: [])
+            value: typing.List[Binding.Structs.TargetStruct] = field(default_factory=lambda: [])
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -88,7 +88,7 @@ class Binding(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -104,7 +104,7 @@ class Binding(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -120,7 +120,7 @@ class Binding(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -136,7 +136,7 @@ class Binding(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -152,4 +152,4 @@ class Binding(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0

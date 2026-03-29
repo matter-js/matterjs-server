@@ -32,13 +32,13 @@ class EcosystemInformation(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    deviceDirectory: 'typing.List[EcosystemInformation.Structs.EcosystemDeviceStruct]' = field(default_factory=lambda: [])
-    locationDirectory: 'typing.List[EcosystemInformation.Structs.EcosystemLocationStruct]' = field(default_factory=lambda: [])
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    deviceDirectory: typing.List[EcosystemInformation.Structs.EcosystemDeviceStruct] = field(default_factory=lambda: [])
+    locationDirectory: typing.List[EcosystemInformation.Structs.EcosystemLocationStruct] = field(default_factory=lambda: [])
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Structs:
         @dataclass
@@ -51,8 +51,8 @@ class EcosystemInformation(Cluster):
                         ClusterObjectFieldDescriptor(Label="revision", Tag=1, Type=uint),
                     ])
 
-            deviceType: 'uint' = 0
-            revision: 'uint' = 0
+            deviceType: uint = 0
+            revision: uint = 0
 
         @dataclass
         class EcosystemDeviceStruct(ClusterObject):
@@ -70,14 +70,14 @@ class EcosystemInformation(Cluster):
                         ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=254, Type=uint),
                     ])
 
-            deviceName: 'typing.Optional[str]' = None
-            deviceNameLastEdit: 'typing.Optional[uint]' = None
-            bridgedEndpoint: 'typing.Optional[uint]' = None
-            originalEndpoint: 'typing.Optional[uint]' = None
-            deviceTypes: 'typing.List[EcosystemInformation.Structs.DeviceTypeStruct]' = field(default_factory=lambda: [])
-            uniqueLocationIDs: 'typing.List[str]' = field(default_factory=lambda: [])
-            uniqueLocationIDsLastEdit: 'uint' = 0
-            fabricIndex: 'uint' = 0
+            deviceName: typing.Optional[str] = None
+            deviceNameLastEdit: typing.Optional[uint] = None
+            bridgedEndpoint: typing.Optional[uint] = None
+            originalEndpoint: typing.Optional[uint] = None
+            deviceTypes: typing.List[EcosystemInformation.Structs.DeviceTypeStruct] = field(default_factory=lambda: [])
+            uniqueLocationIDs: typing.List[str] = field(default_factory=lambda: [])
+            uniqueLocationIDsLastEdit: uint = 0
+            fabricIndex: uint = 0
 
         @dataclass
         class EcosystemLocationStruct(ClusterObject):
@@ -91,10 +91,10 @@ class EcosystemInformation(Cluster):
                         ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=254, Type=uint),
                     ])
 
-            uniqueLocationID: 'str' = ""
-            locationDescriptor: 'Globals.Structs.locationdesc' = field(default_factory=lambda: Globals.Structs.locationdesc())
-            locationDescriptorLastEdit: 'uint' = 0
-            fabricIndex: 'uint' = 0
+            uniqueLocationID: str = ""
+            locationDescriptor: Globals.Structs.locationdesc = field(default_factory=lambda: Globals.Structs.locationdesc())
+            locationDescriptorLastEdit: uint = 0
+            fabricIndex: uint = 0
 
     class Attributes:
         @dataclass
@@ -111,7 +111,7 @@ class EcosystemInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[EcosystemInformation.Structs.EcosystemDeviceStruct])
 
-            value: 'typing.List[EcosystemInformation.Structs.EcosystemDeviceStruct]' = field(default_factory=lambda: [])
+            value: typing.List[EcosystemInformation.Structs.EcosystemDeviceStruct] = field(default_factory=lambda: [])
 
         @dataclass
         class LocationDirectory(ClusterAttributeDescriptor):
@@ -127,7 +127,7 @@ class EcosystemInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[EcosystemInformation.Structs.EcosystemLocationStruct])
 
-            value: 'typing.List[EcosystemInformation.Structs.EcosystemLocationStruct]' = field(default_factory=lambda: [])
+            value: typing.List[EcosystemInformation.Structs.EcosystemLocationStruct] = field(default_factory=lambda: [])
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -143,7 +143,7 @@ class EcosystemInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -159,7 +159,7 @@ class EcosystemInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -175,7 +175,7 @@ class EcosystemInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -191,7 +191,7 @@ class EcosystemInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -207,4 +207,4 @@ class EcosystemInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0

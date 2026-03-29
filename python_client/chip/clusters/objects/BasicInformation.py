@@ -53,35 +53,35 @@ class BasicInformation(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    dataModelRevision: 'uint' = 0
-    vendorName: 'str' = ""
-    vendorID: 'uint' = 0
-    productName: 'str' = ""
-    productID: 'uint' = 0
-    nodeLabel: 'str' = ""
-    location: 'str' = ""
-    hardwareVersion: 'uint' = 0
-    hardwareVersionString: 'str' = ""
-    softwareVersion: 'uint' = 0
-    softwareVersionString: 'str' = ""
-    manufacturingDate: 'typing.Optional[str]' = None
-    partNumber: 'typing.Optional[str]' = None
-    productURL: 'typing.Optional[str]' = None
-    productLabel: 'typing.Optional[str]' = None
-    serialNumber: 'typing.Optional[str]' = None
-    localConfigDisabled: 'typing.Optional[bool]' = None
-    reachable: 'typing.Optional[bool]' = None
-    uniqueID: 'str' = ""
-    capabilityMinima: 'BasicInformation.Structs.CapabilityMinimaStruct' = field(default_factory=lambda: BasicInformation.Structs.CapabilityMinimaStruct())
-    productAppearance: 'typing.Optional[BasicInformation.Structs.ProductAppearanceStruct]' = None
-    specificationVersion: 'uint' = 0
-    maxPathsPerInvoke: 'uint' = 0
-    configurationVersion: 'typing.Optional[uint]' = None
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    dataModelRevision: uint = 0
+    vendorName: str = ""
+    vendorID: uint = 0
+    productName: str = ""
+    productID: uint = 0
+    nodeLabel: str = ""
+    location: str = ""
+    hardwareVersion: uint = 0
+    hardwareVersionString: str = ""
+    softwareVersion: uint = 0
+    softwareVersionString: str = ""
+    manufacturingDate: typing.Optional[str] = None
+    partNumber: typing.Optional[str] = None
+    productURL: typing.Optional[str] = None
+    productLabel: typing.Optional[str] = None
+    serialNumber: typing.Optional[str] = None
+    localConfigDisabled: typing.Optional[bool] = None
+    reachable: typing.Optional[bool] = None
+    uniqueID: str = ""
+    capabilityMinima: BasicInformation.Structs.CapabilityMinimaStruct = field(default_factory=lambda: BasicInformation.Structs.CapabilityMinimaStruct())
+    productAppearance: typing.Optional[BasicInformation.Structs.ProductAppearanceStruct] = None
+    specificationVersion: uint = 0
+    maxPathsPerInvoke: uint = 0
+    configurationVersion: typing.Optional[uint] = None
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Enums:
         class ProductFinishEnum(MatterIntEnum):
@@ -136,8 +136,8 @@ class BasicInformation(Cluster):
                         ClusterObjectFieldDescriptor(Label="primaryColor", Tag=1, Type=typing.Union[Nullable, BasicInformation.Enums.ColorEnum]),
                     ])
 
-            finish: 'BasicInformation.Enums.ProductFinishEnum' = 0
-            primaryColor: 'typing.Union[Nullable, BasicInformation.Enums.ColorEnum]' = NullValue
+            finish: BasicInformation.Enums.ProductFinishEnum = 0
+            primaryColor: typing.Union[Nullable, BasicInformation.Enums.ColorEnum] = NullValue
 
         @dataclass
         class CapabilityMinimaStruct(ClusterObject):
@@ -149,8 +149,8 @@ class BasicInformation(Cluster):
                         ClusterObjectFieldDescriptor(Label="subscriptionsPerFabric", Tag=1, Type=uint),
                     ])
 
-            caseSessionsPerFabric: 'uint' = 0
-            subscriptionsPerFabric: 'uint' = 0
+            caseSessionsPerFabric: uint = 0
+            subscriptionsPerFabric: uint = 0
 
     class Attributes:
         @dataclass
@@ -167,7 +167,7 @@ class BasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class VendorName(ClusterAttributeDescriptor):
@@ -183,7 +183,7 @@ class BasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=str)
 
-            value: 'str' = ""
+            value: str = ""
 
         @dataclass
         class VendorID(ClusterAttributeDescriptor):
@@ -199,7 +199,7 @@ class BasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ProductName(ClusterAttributeDescriptor):
@@ -215,7 +215,7 @@ class BasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=str)
 
-            value: 'str' = ""
+            value: str = ""
 
         @dataclass
         class ProductID(ClusterAttributeDescriptor):
@@ -231,7 +231,7 @@ class BasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class NodeLabel(ClusterAttributeDescriptor):
@@ -247,7 +247,7 @@ class BasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=str)
 
-            value: 'str' = ""
+            value: str = ""
 
         @dataclass
         class Location(ClusterAttributeDescriptor):
@@ -263,7 +263,7 @@ class BasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=str)
 
-            value: 'str' = ""
+            value: str = ""
 
         @dataclass
         class HardwareVersion(ClusterAttributeDescriptor):
@@ -279,7 +279,7 @@ class BasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class HardwareVersionString(ClusterAttributeDescriptor):
@@ -295,7 +295,7 @@ class BasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=str)
 
-            value: 'str' = ""
+            value: str = ""
 
         @dataclass
         class SoftwareVersion(ClusterAttributeDescriptor):
@@ -311,7 +311,7 @@ class BasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class SoftwareVersionString(ClusterAttributeDescriptor):
@@ -327,7 +327,7 @@ class BasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=str)
 
-            value: 'str' = ""
+            value: str = ""
 
         @dataclass
         class ManufacturingDate(ClusterAttributeDescriptor):
@@ -343,7 +343,7 @@ class BasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[str])
 
-            value: 'typing.Optional[str]' = None
+            value: typing.Optional[str] = None
 
         @dataclass
         class PartNumber(ClusterAttributeDescriptor):
@@ -359,7 +359,7 @@ class BasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[str])
 
-            value: 'typing.Optional[str]' = None
+            value: typing.Optional[str] = None
 
         @dataclass
         class ProductURL(ClusterAttributeDescriptor):
@@ -375,7 +375,7 @@ class BasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[str])
 
-            value: 'typing.Optional[str]' = None
+            value: typing.Optional[str] = None
 
         @dataclass
         class ProductLabel(ClusterAttributeDescriptor):
@@ -391,7 +391,7 @@ class BasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[str])
 
-            value: 'typing.Optional[str]' = None
+            value: typing.Optional[str] = None
 
         @dataclass
         class SerialNumber(ClusterAttributeDescriptor):
@@ -407,7 +407,7 @@ class BasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[str])
 
-            value: 'typing.Optional[str]' = None
+            value: typing.Optional[str] = None
 
         @dataclass
         class LocalConfigDisabled(ClusterAttributeDescriptor):
@@ -423,7 +423,7 @@ class BasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[bool])
 
-            value: 'typing.Optional[bool]' = None
+            value: typing.Optional[bool] = None
 
         @dataclass
         class Reachable(ClusterAttributeDescriptor):
@@ -439,7 +439,7 @@ class BasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[bool])
 
-            value: 'typing.Optional[bool]' = None
+            value: typing.Optional[bool] = None
 
         @dataclass
         class UniqueID(ClusterAttributeDescriptor):
@@ -455,7 +455,7 @@ class BasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=str)
 
-            value: 'str' = ""
+            value: str = ""
 
         @dataclass
         class CapabilityMinima(ClusterAttributeDescriptor):
@@ -471,7 +471,7 @@ class BasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=BasicInformation.Structs.CapabilityMinimaStruct)
 
-            value: 'BasicInformation.Structs.CapabilityMinimaStruct' = field(default_factory=lambda: BasicInformation.Structs.CapabilityMinimaStruct())
+            value: BasicInformation.Structs.CapabilityMinimaStruct = field(default_factory=lambda: BasicInformation.Structs.CapabilityMinimaStruct())
 
         @dataclass
         class ProductAppearance(ClusterAttributeDescriptor):
@@ -487,7 +487,7 @@ class BasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[BasicInformation.Structs.ProductAppearanceStruct])
 
-            value: 'typing.Optional[BasicInformation.Structs.ProductAppearanceStruct]' = None
+            value: typing.Optional[BasicInformation.Structs.ProductAppearanceStruct] = None
 
         @dataclass
         class SpecificationVersion(ClusterAttributeDescriptor):
@@ -503,7 +503,7 @@ class BasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class MaxPathsPerInvoke(ClusterAttributeDescriptor):
@@ -519,7 +519,7 @@ class BasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ConfigurationVersion(ClusterAttributeDescriptor):
@@ -535,7 +535,7 @@ class BasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -551,7 +551,7 @@ class BasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -567,7 +567,7 @@ class BasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -583,7 +583,7 @@ class BasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -599,7 +599,7 @@ class BasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -615,7 +615,7 @@ class BasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
     class Events:
         @dataclass
@@ -635,7 +635,7 @@ class BasicInformation(Cluster):
                         ClusterObjectFieldDescriptor(Label="softwareVersion", Tag=0, Type=uint),
                     ])
 
-            softwareVersion: 'uint' = 0
+            softwareVersion: uint = 0
 
         @dataclass
         class ShutDown(ClusterEvent):
@@ -671,7 +671,7 @@ class BasicInformation(Cluster):
                         ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=0, Type=uint),
                     ])
 
-            fabricIndex: 'uint' = 0
+            fabricIndex: uint = 0
 
         @dataclass
         class ReachableChanged(ClusterEvent):
@@ -690,4 +690,4 @@ class BasicInformation(Cluster):
                         ClusterObjectFieldDescriptor(Label="reachableNewValue", Tag=0, Type=bool),
                     ])
 
-            reachableNewValue: 'bool' = False
+            reachableNewValue: bool = False

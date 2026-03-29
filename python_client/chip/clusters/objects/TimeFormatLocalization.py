@@ -32,14 +32,14 @@ class TimeFormatLocalization(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    hourFormat: 'TimeFormatLocalization.Enums.HourFormatEnum' = 0
-    activeCalendarType: 'typing.Optional[TimeFormatLocalization.Enums.CalendarTypeEnum]' = None
-    supportedCalendarTypes: 'typing.Optional[typing.List[TimeFormatLocalization.Enums.CalendarTypeEnum]]' = None
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    hourFormat: TimeFormatLocalization.Enums.HourFormatEnum = 0
+    activeCalendarType: typing.Optional[TimeFormatLocalization.Enums.CalendarTypeEnum] = None
+    supportedCalendarTypes: typing.Optional[typing.List[TimeFormatLocalization.Enums.CalendarTypeEnum]] = None
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Enums:
         class HourFormatEnum(MatterIntEnum):
@@ -91,7 +91,7 @@ class TimeFormatLocalization(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=TimeFormatLocalization.Enums.HourFormatEnum)
 
-            value: 'TimeFormatLocalization.Enums.HourFormatEnum' = 0
+            value: TimeFormatLocalization.Enums.HourFormatEnum = 0
 
         @dataclass
         class ActiveCalendarType(ClusterAttributeDescriptor):
@@ -107,7 +107,7 @@ class TimeFormatLocalization(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[TimeFormatLocalization.Enums.CalendarTypeEnum])
 
-            value: 'typing.Optional[TimeFormatLocalization.Enums.CalendarTypeEnum]' = None
+            value: typing.Optional[TimeFormatLocalization.Enums.CalendarTypeEnum] = None
 
         @dataclass
         class SupportedCalendarTypes(ClusterAttributeDescriptor):
@@ -123,7 +123,7 @@ class TimeFormatLocalization(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[TimeFormatLocalization.Enums.CalendarTypeEnum]])
 
-            value: 'typing.Optional[typing.List[TimeFormatLocalization.Enums.CalendarTypeEnum]]' = None
+            value: typing.Optional[typing.List[TimeFormatLocalization.Enums.CalendarTypeEnum]] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -139,7 +139,7 @@ class TimeFormatLocalization(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -155,7 +155,7 @@ class TimeFormatLocalization(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -171,7 +171,7 @@ class TimeFormatLocalization(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -187,7 +187,7 @@ class TimeFormatLocalization(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -203,4 +203,4 @@ class TimeFormatLocalization(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0

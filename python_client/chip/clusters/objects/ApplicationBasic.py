@@ -37,19 +37,19 @@ class ApplicationBasic(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    vendorName: 'typing.Optional[str]' = None
-    vendorID: 'typing.Optional[uint]' = None
-    applicationName: 'str' = ""
-    productID: 'typing.Optional[uint]' = None
-    application: 'ApplicationBasic.Structs.ApplicationStruct' = field(default_factory=lambda: ApplicationBasic.Structs.ApplicationStruct())
-    status: 'ApplicationBasic.Enums.ApplicationStatusEnum' = 0
-    applicationVersion: 'str' = ""
-    allowedVendorList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    vendorName: typing.Optional[str] = None
+    vendorID: typing.Optional[uint] = None
+    applicationName: str = ""
+    productID: typing.Optional[uint] = None
+    application: ApplicationBasic.Structs.ApplicationStruct = field(default_factory=lambda: ApplicationBasic.Structs.ApplicationStruct())
+    status: ApplicationBasic.Enums.ApplicationStatusEnum = 0
+    applicationVersion: str = ""
+    allowedVendorList: typing.List[uint] = field(default_factory=lambda: [])
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Enums:
         class ApplicationStatusEnum(MatterIntEnum):
@@ -74,8 +74,8 @@ class ApplicationBasic(Cluster):
                         ClusterObjectFieldDescriptor(Label="applicationID", Tag=1, Type=str),
                     ])
 
-            catalogVendorID: 'uint' = 0
-            applicationID: 'str' = ""
+            catalogVendorID: uint = 0
+            applicationID: str = ""
 
     class Attributes:
         @dataclass
@@ -92,7 +92,7 @@ class ApplicationBasic(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[str])
 
-            value: 'typing.Optional[str]' = None
+            value: typing.Optional[str] = None
 
         @dataclass
         class VendorID(ClusterAttributeDescriptor):
@@ -108,7 +108,7 @@ class ApplicationBasic(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class ApplicationName(ClusterAttributeDescriptor):
@@ -124,7 +124,7 @@ class ApplicationBasic(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=str)
 
-            value: 'str' = ""
+            value: str = ""
 
         @dataclass
         class ProductID(ClusterAttributeDescriptor):
@@ -140,7 +140,7 @@ class ApplicationBasic(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class Application(ClusterAttributeDescriptor):
@@ -156,7 +156,7 @@ class ApplicationBasic(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=ApplicationBasic.Structs.ApplicationStruct)
 
-            value: 'ApplicationBasic.Structs.ApplicationStruct' = field(default_factory=lambda: ApplicationBasic.Structs.ApplicationStruct())
+            value: ApplicationBasic.Structs.ApplicationStruct = field(default_factory=lambda: ApplicationBasic.Structs.ApplicationStruct())
 
         @dataclass
         class Status(ClusterAttributeDescriptor):
@@ -172,7 +172,7 @@ class ApplicationBasic(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=ApplicationBasic.Enums.ApplicationStatusEnum)
 
-            value: 'ApplicationBasic.Enums.ApplicationStatusEnum' = 0
+            value: ApplicationBasic.Enums.ApplicationStatusEnum = 0
 
         @dataclass
         class ApplicationVersion(ClusterAttributeDescriptor):
@@ -188,7 +188,7 @@ class ApplicationBasic(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=str)
 
-            value: 'str' = ""
+            value: str = ""
 
         @dataclass
         class AllowedVendorList(ClusterAttributeDescriptor):
@@ -204,7 +204,7 @@ class ApplicationBasic(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -220,7 +220,7 @@ class ApplicationBasic(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -236,7 +236,7 @@ class ApplicationBasic(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -252,7 +252,7 @@ class ApplicationBasic(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -268,7 +268,7 @@ class ApplicationBasic(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -284,4 +284,4 @@ class ApplicationBasic(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0

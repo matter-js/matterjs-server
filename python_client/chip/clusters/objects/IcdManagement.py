@@ -39,21 +39,21 @@ class IcdManagement(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    idleModeDuration: 'uint' = 0
-    activeModeDuration: 'uint' = 0
-    activeModeThreshold: 'uint' = 0
-    registeredClients: 'typing.Optional[typing.List[IcdManagement.Structs.MonitoringRegistrationStruct]]' = None
-    ICDCounter: 'typing.Optional[uint]' = None
-    clientsSupportedPerFabric: 'typing.Optional[uint]' = None
-    userActiveModeTriggerHint: 'typing.Optional[uint]' = None
-    userActiveModeTriggerInstruction: 'typing.Optional[str]' = None
-    operatingMode: 'typing.Optional[IcdManagement.Enums.OperatingModeEnum]' = None
-    maximumCheckInBackoff: 'typing.Optional[uint]' = None
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    idleModeDuration: uint = 0
+    activeModeDuration: uint = 0
+    activeModeThreshold: uint = 0
+    registeredClients: typing.Optional[typing.List[IcdManagement.Structs.MonitoringRegistrationStruct]] = None
+    ICDCounter: typing.Optional[uint] = None
+    clientsSupportedPerFabric: typing.Optional[uint] = None
+    userActiveModeTriggerHint: typing.Optional[uint] = None
+    userActiveModeTriggerInstruction: typing.Optional[str] = None
+    operatingMode: typing.Optional[IcdManagement.Enums.OperatingModeEnum] = None
+    maximumCheckInBackoff: typing.Optional[uint] = None
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Enums:
         class ClientTypeEnum(MatterIntEnum):
@@ -114,11 +114,11 @@ class IcdManagement(Cluster):
                         ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=254, Type=uint),
                     ])
 
-            checkInNodeID: 'uint' = 0
-            monitoredSubject: 'uint' = 0
-            key: 'typing.Optional[uint]' = None
-            clientType: 'IcdManagement.Enums.ClientTypeEnum' = 0
-            fabricIndex: 'uint' = 0
+            checkInNodeID: uint = 0
+            monitoredSubject: uint = 0
+            key: typing.Optional[uint] = None
+            clientType: IcdManagement.Enums.ClientTypeEnum = 0
+            fabricIndex: uint = 0
 
     class Commands:
         @dataclass
@@ -139,11 +139,11 @@ class IcdManagement(Cluster):
                         ClusterObjectFieldDescriptor(Label="clientType", Tag=4, Type=IcdManagement.Enums.ClientTypeEnum),
                     ])
 
-            checkInNodeID: 'uint' = 0
-            monitoredSubject: 'uint' = 0
-            key: 'bytes' = b""
-            verificationKey: 'typing.Optional[bytes]' = None
-            clientType: 'IcdManagement.Enums.ClientTypeEnum' = 0
+            checkInNodeID: uint = 0
+            monitoredSubject: uint = 0
+            key: bytes = b""
+            verificationKey: typing.Optional[bytes] = None
+            clientType: IcdManagement.Enums.ClientTypeEnum = 0
 
         @dataclass
         class UnregisterClient(ClusterCommand):
@@ -160,8 +160,8 @@ class IcdManagement(Cluster):
                         ClusterObjectFieldDescriptor(Label="verificationKey", Tag=1, Type=typing.Optional[bytes]),
                     ])
 
-            checkInNodeID: 'uint' = 0
-            verificationKey: 'typing.Optional[bytes]' = None
+            checkInNodeID: uint = 0
+            verificationKey: typing.Optional[bytes] = None
 
         @dataclass
         class StayActiveRequest(ClusterCommand):
@@ -177,7 +177,7 @@ class IcdManagement(Cluster):
                         ClusterObjectFieldDescriptor(Label="stayActiveDuration", Tag=0, Type=uint),
                     ])
 
-            stayActiveDuration: 'uint' = 0
+            stayActiveDuration: uint = 0
 
         @dataclass
         class RegisterClientResponse(ClusterCommand):
@@ -193,7 +193,7 @@ class IcdManagement(Cluster):
                         ClusterObjectFieldDescriptor(Label="ICDCounter", Tag=0, Type=uint),
                     ])
 
-            ICDCounter: 'uint' = 0
+            ICDCounter: uint = 0
 
         @dataclass
         class StayActiveResponse(ClusterCommand):
@@ -209,7 +209,7 @@ class IcdManagement(Cluster):
                         ClusterObjectFieldDescriptor(Label="promisedActiveDuration", Tag=0, Type=uint),
                     ])
 
-            promisedActiveDuration: 'uint' = 0
+            promisedActiveDuration: uint = 0
 
     class Attributes:
         @dataclass
@@ -226,7 +226,7 @@ class IcdManagement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ActiveModeDuration(ClusterAttributeDescriptor):
@@ -242,7 +242,7 @@ class IcdManagement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ActiveModeThreshold(ClusterAttributeDescriptor):
@@ -258,7 +258,7 @@ class IcdManagement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class RegisteredClients(ClusterAttributeDescriptor):
@@ -274,7 +274,7 @@ class IcdManagement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[IcdManagement.Structs.MonitoringRegistrationStruct]])
 
-            value: 'typing.Optional[typing.List[IcdManagement.Structs.MonitoringRegistrationStruct]]' = None
+            value: typing.Optional[typing.List[IcdManagement.Structs.MonitoringRegistrationStruct]] = None
 
         @dataclass
         class ICDCounter(ClusterAttributeDescriptor):
@@ -290,7 +290,7 @@ class IcdManagement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class ClientsSupportedPerFabric(ClusterAttributeDescriptor):
@@ -306,7 +306,7 @@ class IcdManagement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class UserActiveModeTriggerHint(ClusterAttributeDescriptor):
@@ -322,7 +322,7 @@ class IcdManagement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class UserActiveModeTriggerInstruction(ClusterAttributeDescriptor):
@@ -338,7 +338,7 @@ class IcdManagement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[str])
 
-            value: 'typing.Optional[str]' = None
+            value: typing.Optional[str] = None
 
         @dataclass
         class OperatingMode(ClusterAttributeDescriptor):
@@ -354,7 +354,7 @@ class IcdManagement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[IcdManagement.Enums.OperatingModeEnum])
 
-            value: 'typing.Optional[IcdManagement.Enums.OperatingModeEnum]' = None
+            value: typing.Optional[IcdManagement.Enums.OperatingModeEnum] = None
 
         @dataclass
         class MaximumCheckInBackOff(ClusterAttributeDescriptor):
@@ -370,7 +370,7 @@ class IcdManagement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -386,7 +386,7 @@ class IcdManagement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -402,7 +402,7 @@ class IcdManagement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -418,7 +418,7 @@ class IcdManagement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -434,7 +434,7 @@ class IcdManagement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -450,4 +450,4 @@ class IcdManagement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0

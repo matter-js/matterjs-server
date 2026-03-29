@@ -40,22 +40,22 @@ class ContentControl(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    enabled: 'bool' = False
-    onDemandRatings: 'typing.Optional[typing.List[ContentControl.Structs.RatingNameStruct]]' = None
-    onDemandRatingThreshold: 'typing.Optional[str]' = None
-    scheduledContentRatings: 'typing.Optional[typing.List[ContentControl.Structs.RatingNameStruct]]' = None
-    scheduledContentRatingThreshold: 'typing.Optional[str]' = None
-    screenDailyTime: 'typing.Optional[uint]' = None
-    remainingScreenTime: 'typing.Optional[uint]' = None
-    blockUnrated: 'typing.Optional[bool]' = None
-    blockChannelList: 'typing.Optional[typing.List[ContentControl.Structs.BlockChannelStruct]]' = None
-    blockApplicationList: 'typing.Optional[typing.List[ContentControl.Structs.AppInfoStruct]]' = None
-    blockContentTimeWindow: 'typing.Optional[typing.List[ContentControl.Structs.TimeWindowStruct]]' = None
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    enabled: bool = False
+    onDemandRatings: typing.Optional[typing.List[ContentControl.Structs.RatingNameStruct]] = None
+    onDemandRatingThreshold: typing.Optional[str] = None
+    scheduledContentRatings: typing.Optional[typing.List[ContentControl.Structs.RatingNameStruct]] = None
+    scheduledContentRatingThreshold: typing.Optional[str] = None
+    screenDailyTime: typing.Optional[uint] = None
+    remainingScreenTime: typing.Optional[uint] = None
+    blockUnrated: typing.Optional[bool] = None
+    blockChannelList: typing.Optional[typing.List[ContentControl.Structs.BlockChannelStruct]] = None
+    blockApplicationList: typing.Optional[typing.List[ContentControl.Structs.AppInfoStruct]] = None
+    blockContentTimeWindow: typing.Optional[typing.List[ContentControl.Structs.TimeWindowStruct]] = None
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Enums:
         class StatusCode(MatterIntEnum):
@@ -106,8 +106,8 @@ class ContentControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="ratingNameDesc", Tag=1, Type=typing.Optional[str]),
                     ])
 
-            ratingName: 'str' = ""
-            ratingNameDesc: 'typing.Optional[str]' = None
+            ratingName: str = ""
+            ratingNameDesc: typing.Optional[str] = None
 
         @dataclass
         class BlockChannelStruct(ClusterObject):
@@ -121,10 +121,10 @@ class ContentControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="identifier", Tag=3, Type=typing.Optional[str]),
                     ])
 
-            blockChannelIndex: 'typing.Union[Nullable, uint]' = NullValue
-            majorNumber: 'uint' = 0
-            minorNumber: 'uint' = 0
-            identifier: 'typing.Optional[str]' = None
+            blockChannelIndex: typing.Union[Nullable, uint] = NullValue
+            majorNumber: uint = 0
+            minorNumber: uint = 0
+            identifier: typing.Optional[str] = None
 
         @dataclass
         class AppInfoStruct(ClusterObject):
@@ -136,8 +136,8 @@ class ContentControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="applicationID", Tag=1, Type=str),
                     ])
 
-            catalogVendorID: 'uint' = 0
-            applicationID: 'str' = ""
+            catalogVendorID: uint = 0
+            applicationID: str = ""
 
         @dataclass
         class TimeWindowStruct(ClusterObject):
@@ -150,9 +150,9 @@ class ContentControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="timePeriod", Tag=2, Type=typing.List[ContentControl.Structs.TimePeriodStruct]),
                     ])
 
-            timeWindowIndex: 'typing.Union[Nullable, uint]' = NullValue
-            dayOfWeek: 'uint' = 0
-            timePeriod: 'typing.List[ContentControl.Structs.TimePeriodStruct]' = field(default_factory=lambda: [])
+            timeWindowIndex: typing.Union[Nullable, uint] = NullValue
+            dayOfWeek: uint = 0
+            timePeriod: typing.List[ContentControl.Structs.TimePeriodStruct] = field(default_factory=lambda: [])
 
         @dataclass
         class TimePeriodStruct(ClusterObject):
@@ -166,10 +166,10 @@ class ContentControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="endMinute", Tag=3, Type=uint),
                     ])
 
-            startHour: 'uint' = 0
-            startMinute: 'uint' = 0
-            endHour: 'uint' = 0
-            endMinute: 'uint' = 0
+            startHour: uint = 0
+            startMinute: uint = 0
+            endHour: uint = 0
+            endMinute: uint = 0
 
     class Commands:
         @dataclass
@@ -191,8 +191,8 @@ class ContentControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="newPIN", Tag=1, Type=str),
                     ])
 
-            oldPIN: 'str' = ""
-            newPIN: 'str' = ""
+            oldPIN: str = ""
+            newPIN: str = ""
 
         @dataclass
         class ResetPIN(ClusterCommand):
@@ -263,8 +263,8 @@ class ContentControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="bonusTime", Tag=1, Type=uint),
                     ])
 
-            PINCode: 'typing.Optional[str]' = None
-            bonusTime: 'uint' = 0
+            PINCode: typing.Optional[str] = None
+            bonusTime: uint = 0
 
         @dataclass
         class SetScreenDailyTime(ClusterCommand):
@@ -280,7 +280,7 @@ class ContentControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="screenTime", Tag=0, Type=uint),
                     ])
 
-            screenTime: 'uint' = 0
+            screenTime: uint = 0
 
         @dataclass
         class BlockUnratedContent(ClusterCommand):
@@ -324,7 +324,7 @@ class ContentControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="rating", Tag=0, Type=str),
                     ])
 
-            rating: 'str' = ""
+            rating: str = ""
 
         @dataclass
         class SetScheduledContentRatingThreshold(ClusterCommand):
@@ -340,7 +340,7 @@ class ContentControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="rating", Tag=0, Type=str),
                     ])
 
-            rating: 'str' = ""
+            rating: str = ""
 
         @dataclass
         class AddBlockChannels(ClusterCommand):
@@ -356,7 +356,7 @@ class ContentControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="channels", Tag=0, Type=typing.List[ContentControl.Structs.BlockChannelStruct]),
                     ])
 
-            channels: 'typing.List[ContentControl.Structs.BlockChannelStruct]' = field(default_factory=lambda: [])
+            channels: typing.List[ContentControl.Structs.BlockChannelStruct] = field(default_factory=lambda: [])
 
         @dataclass
         class RemoveBlockChannels(ClusterCommand):
@@ -372,7 +372,7 @@ class ContentControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="channelIndexes", Tag=0, Type=typing.List[uint]),
                     ])
 
-            channelIndexes: 'typing.List[uint]' = field(default_factory=lambda: [])
+            channelIndexes: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AddBlockApplications(ClusterCommand):
@@ -388,7 +388,7 @@ class ContentControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="applications", Tag=0, Type=typing.List[ContentControl.Structs.AppInfoStruct]),
                     ])
 
-            applications: 'typing.List[ContentControl.Structs.AppInfoStruct]' = field(default_factory=lambda: [])
+            applications: typing.List[ContentControl.Structs.AppInfoStruct] = field(default_factory=lambda: [])
 
         @dataclass
         class RemoveBlockApplications(ClusterCommand):
@@ -404,7 +404,7 @@ class ContentControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="applications", Tag=0, Type=typing.List[ContentControl.Structs.AppInfoStruct]),
                     ])
 
-            applications: 'typing.List[ContentControl.Structs.AppInfoStruct]' = field(default_factory=lambda: [])
+            applications: typing.List[ContentControl.Structs.AppInfoStruct] = field(default_factory=lambda: [])
 
         @dataclass
         class SetBlockContentTimeWindow(ClusterCommand):
@@ -420,7 +420,7 @@ class ContentControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="timeWindow", Tag=0, Type=ContentControl.Structs.TimeWindowStruct),
                     ])
 
-            timeWindow: 'ContentControl.Structs.TimeWindowStruct' = field(default_factory=lambda: ContentControl.Structs.TimeWindowStruct())
+            timeWindow: ContentControl.Structs.TimeWindowStruct = field(default_factory=lambda: ContentControl.Structs.TimeWindowStruct())
 
         @dataclass
         class RemoveBlockContentTimeWindow(ClusterCommand):
@@ -436,7 +436,7 @@ class ContentControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="timeWindowIndexes", Tag=0, Type=typing.List[uint]),
                     ])
 
-            timeWindowIndexes: 'typing.List[uint]' = field(default_factory=lambda: [])
+            timeWindowIndexes: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class ResetPINResponse(ClusterCommand):
@@ -452,7 +452,7 @@ class ContentControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="PINCode", Tag=0, Type=str),
                     ])
 
-            PINCode: 'str' = ""
+            PINCode: str = ""
 
     class Attributes:
         @dataclass
@@ -469,7 +469,7 @@ class ContentControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=bool)
 
-            value: 'bool' = False
+            value: bool = False
 
         @dataclass
         class OnDemandRatings(ClusterAttributeDescriptor):
@@ -485,7 +485,7 @@ class ContentControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[ContentControl.Structs.RatingNameStruct]])
 
-            value: 'typing.Optional[typing.List[ContentControl.Structs.RatingNameStruct]]' = None
+            value: typing.Optional[typing.List[ContentControl.Structs.RatingNameStruct]] = None
 
         @dataclass
         class OnDemandRatingThreshold(ClusterAttributeDescriptor):
@@ -501,7 +501,7 @@ class ContentControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[str])
 
-            value: 'typing.Optional[str]' = None
+            value: typing.Optional[str] = None
 
         @dataclass
         class ScheduledContentRatings(ClusterAttributeDescriptor):
@@ -517,7 +517,7 @@ class ContentControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[ContentControl.Structs.RatingNameStruct]])
 
-            value: 'typing.Optional[typing.List[ContentControl.Structs.RatingNameStruct]]' = None
+            value: typing.Optional[typing.List[ContentControl.Structs.RatingNameStruct]] = None
 
         @dataclass
         class ScheduledContentRatingThreshold(ClusterAttributeDescriptor):
@@ -533,7 +533,7 @@ class ContentControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[str])
 
-            value: 'typing.Optional[str]' = None
+            value: typing.Optional[str] = None
 
         @dataclass
         class ScreenDailyTime(ClusterAttributeDescriptor):
@@ -549,7 +549,7 @@ class ContentControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class RemainingScreenTime(ClusterAttributeDescriptor):
@@ -565,7 +565,7 @@ class ContentControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class BlockUnrated(ClusterAttributeDescriptor):
@@ -581,7 +581,7 @@ class ContentControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[bool])
 
-            value: 'typing.Optional[bool]' = None
+            value: typing.Optional[bool] = None
 
         @dataclass
         class BlockChannelList(ClusterAttributeDescriptor):
@@ -597,7 +597,7 @@ class ContentControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[ContentControl.Structs.BlockChannelStruct]])
 
-            value: 'typing.Optional[typing.List[ContentControl.Structs.BlockChannelStruct]]' = None
+            value: typing.Optional[typing.List[ContentControl.Structs.BlockChannelStruct]] = None
 
         @dataclass
         class BlockApplicationList(ClusterAttributeDescriptor):
@@ -613,7 +613,7 @@ class ContentControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[ContentControl.Structs.AppInfoStruct]])
 
-            value: 'typing.Optional[typing.List[ContentControl.Structs.AppInfoStruct]]' = None
+            value: typing.Optional[typing.List[ContentControl.Structs.AppInfoStruct]] = None
 
         @dataclass
         class BlockContentTimeWindow(ClusterAttributeDescriptor):
@@ -629,7 +629,7 @@ class ContentControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[ContentControl.Structs.TimeWindowStruct]])
 
-            value: 'typing.Optional[typing.List[ContentControl.Structs.TimeWindowStruct]]' = None
+            value: typing.Optional[typing.List[ContentControl.Structs.TimeWindowStruct]] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -645,7 +645,7 @@ class ContentControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -661,7 +661,7 @@ class ContentControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -677,7 +677,7 @@ class ContentControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -693,7 +693,7 @@ class ContentControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -709,7 +709,7 @@ class ContentControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
     class Events:
         @dataclass

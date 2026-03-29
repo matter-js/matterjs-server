@@ -32,14 +32,14 @@ class ThreadNetworkDirectory(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    preferredExtendedPanID: 'typing.Union[Nullable, bytes]' = NullValue
-    threadNetworks: 'typing.List[ThreadNetworkDirectory.Structs.ThreadNetworkStruct]' = field(default_factory=lambda: [])
-    threadNetworkTableSize: 'uint' = 0
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    preferredExtendedPanID: typing.Union[Nullable, bytes] = NullValue
+    threadNetworks: typing.List[ThreadNetworkDirectory.Structs.ThreadNetworkStruct] = field(default_factory=lambda: [])
+    threadNetworkTableSize: uint = 0
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Structs:
         @dataclass
@@ -54,10 +54,10 @@ class ThreadNetworkDirectory(Cluster):
                         ClusterObjectFieldDescriptor(Label="activeTimestamp", Tag=3, Type=uint),
                     ])
 
-            extendedPanId: 'bytes' = b""
-            networkName: 'str' = ""
-            channel: 'uint' = 0
-            activeTimestamp: 'uint' = 0
+            extendedPanId: bytes = b""
+            networkName: str = ""
+            channel: uint = 0
+            activeTimestamp: uint = 0
 
     class Commands:
         @dataclass
@@ -78,7 +78,7 @@ class ThreadNetworkDirectory(Cluster):
                         ClusterObjectFieldDescriptor(Label="operationalDataset", Tag=0, Type=bytes),
                     ])
 
-            operationalDataset: 'bytes' = b""
+            operationalDataset: bytes = b""
 
         @dataclass
         class RemoveNetwork(ClusterCommand):
@@ -98,7 +98,7 @@ class ThreadNetworkDirectory(Cluster):
                         ClusterObjectFieldDescriptor(Label="extendedPanId", Tag=0, Type=bytes),
                     ])
 
-            extendedPanId: 'bytes' = b""
+            extendedPanId: bytes = b""
 
         @dataclass
         class GetOperationalDataset(ClusterCommand):
@@ -114,7 +114,7 @@ class ThreadNetworkDirectory(Cluster):
                         ClusterObjectFieldDescriptor(Label="extendedPanId", Tag=0, Type=bytes),
                     ])
 
-            extendedPanId: 'bytes' = b""
+            extendedPanId: bytes = b""
 
         @dataclass
         class OperationalDatasetResponse(ClusterCommand):
@@ -130,7 +130,7 @@ class ThreadNetworkDirectory(Cluster):
                         ClusterObjectFieldDescriptor(Label="operationalDataset", Tag=0, Type=bytes),
                     ])
 
-            operationalDataset: 'bytes' = b""
+            operationalDataset: bytes = b""
 
     class Attributes:
         @dataclass
@@ -147,7 +147,7 @@ class ThreadNetworkDirectory(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[Nullable, bytes])
 
-            value: 'typing.Union[Nullable, bytes]' = NullValue
+            value: typing.Union[Nullable, bytes] = NullValue
 
         @dataclass
         class ThreadNetworks(ClusterAttributeDescriptor):
@@ -163,7 +163,7 @@ class ThreadNetworkDirectory(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[ThreadNetworkDirectory.Structs.ThreadNetworkStruct])
 
-            value: 'typing.List[ThreadNetworkDirectory.Structs.ThreadNetworkStruct]' = field(default_factory=lambda: [])
+            value: typing.List[ThreadNetworkDirectory.Structs.ThreadNetworkStruct] = field(default_factory=lambda: [])
 
         @dataclass
         class ThreadNetworkTableSize(ClusterAttributeDescriptor):
@@ -179,7 +179,7 @@ class ThreadNetworkDirectory(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -195,7 +195,7 @@ class ThreadNetworkDirectory(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -211,7 +211,7 @@ class ThreadNetworkDirectory(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -227,7 +227,7 @@ class ThreadNetworkDirectory(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -243,7 +243,7 @@ class ThreadNetworkDirectory(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -259,4 +259,4 @@ class ThreadNetworkDirectory(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0

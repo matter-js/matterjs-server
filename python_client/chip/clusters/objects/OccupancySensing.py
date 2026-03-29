@@ -43,25 +43,25 @@ class OccupancySensing(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    occupancy: 'uint' = 0
-    occupancySensorType: 'OccupancySensing.Enums.OccupancySensorTypeEnum' = 0
-    occupancySensorTypeBitmap: 'uint' = 0
-    holdTime: 'typing.Optional[uint]' = None
-    holdTimeLimits: 'typing.Optional[OccupancySensing.Structs.HoldTimeLimitsStruct]' = None
-    PIROccupiedToUnoccupiedDelay: 'typing.Optional[uint]' = None
-    PIRUnoccupiedToOccupiedDelay: 'typing.Optional[uint]' = None
-    PIRUnoccupiedToOccupiedThreshold: 'typing.Optional[uint]' = None
-    ultrasonicOccupiedToUnoccupiedDelay: 'typing.Optional[uint]' = None
-    ultrasonicUnoccupiedToOccupiedDelay: 'typing.Optional[uint]' = None
-    ultrasonicUnoccupiedToOccupiedThreshold: 'typing.Optional[uint]' = None
-    physicalContactOccupiedToUnoccupiedDelay: 'typing.Optional[uint]' = None
-    physicalContactUnoccupiedToOccupiedDelay: 'typing.Optional[uint]' = None
-    physicalContactUnoccupiedToOccupiedThreshold: 'typing.Optional[uint]' = None
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    occupancy: uint = 0
+    occupancySensorType: OccupancySensing.Enums.OccupancySensorTypeEnum = 0
+    occupancySensorTypeBitmap: uint = 0
+    holdTime: typing.Optional[uint] = None
+    holdTimeLimits: typing.Optional[OccupancySensing.Structs.HoldTimeLimitsStruct] = None
+    PIROccupiedToUnoccupiedDelay: typing.Optional[uint] = None
+    PIRUnoccupiedToOccupiedDelay: typing.Optional[uint] = None
+    PIRUnoccupiedToOccupiedThreshold: typing.Optional[uint] = None
+    ultrasonicOccupiedToUnoccupiedDelay: typing.Optional[uint] = None
+    ultrasonicUnoccupiedToOccupiedDelay: typing.Optional[uint] = None
+    ultrasonicUnoccupiedToOccupiedThreshold: typing.Optional[uint] = None
+    physicalContactOccupiedToUnoccupiedDelay: typing.Optional[uint] = None
+    physicalContactUnoccupiedToOccupiedDelay: typing.Optional[uint] = None
+    physicalContactUnoccupiedToOccupiedThreshold: typing.Optional[uint] = None
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Enums:
         class OccupancySensorTypeEnum(MatterIntEnum):
@@ -106,9 +106,9 @@ class OccupancySensing(Cluster):
                         ClusterObjectFieldDescriptor(Label="holdTimeDefault", Tag=2, Type=uint),
                     ])
 
-            holdTimeMin: 'uint' = 0
-            holdTimeMax: 'uint' = 0
-            holdTimeDefault: 'uint' = 0
+            holdTimeMin: uint = 0
+            holdTimeMax: uint = 0
+            holdTimeDefault: uint = 0
 
     class Attributes:
         @dataclass
@@ -125,7 +125,7 @@ class OccupancySensing(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class OccupancySensorType(ClusterAttributeDescriptor):
@@ -141,7 +141,7 @@ class OccupancySensing(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=OccupancySensing.Enums.OccupancySensorTypeEnum)
 
-            value: 'OccupancySensing.Enums.OccupancySensorTypeEnum' = 0
+            value: OccupancySensing.Enums.OccupancySensorTypeEnum = 0
 
         @dataclass
         class OccupancySensorTypeBitmap(ClusterAttributeDescriptor):
@@ -157,7 +157,7 @@ class OccupancySensing(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class HoldTime(ClusterAttributeDescriptor):
@@ -173,7 +173,7 @@ class OccupancySensing(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class HoldTimeLimits(ClusterAttributeDescriptor):
@@ -189,7 +189,7 @@ class OccupancySensing(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[OccupancySensing.Structs.HoldTimeLimitsStruct])
 
-            value: 'typing.Optional[OccupancySensing.Structs.HoldTimeLimitsStruct]' = None
+            value: typing.Optional[OccupancySensing.Structs.HoldTimeLimitsStruct] = None
 
         @dataclass
         class PIROccupiedToUnoccupiedDelay(ClusterAttributeDescriptor):
@@ -205,7 +205,7 @@ class OccupancySensing(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class PIRUnoccupiedToOccupiedDelay(ClusterAttributeDescriptor):
@@ -221,7 +221,7 @@ class OccupancySensing(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class PIRUnoccupiedToOccupiedThreshold(ClusterAttributeDescriptor):
@@ -237,7 +237,7 @@ class OccupancySensing(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class UltrasonicOccupiedToUnoccupiedDelay(ClusterAttributeDescriptor):
@@ -253,7 +253,7 @@ class OccupancySensing(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class UltrasonicUnoccupiedToOccupiedDelay(ClusterAttributeDescriptor):
@@ -269,7 +269,7 @@ class OccupancySensing(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class UltrasonicUnoccupiedToOccupiedThreshold(ClusterAttributeDescriptor):
@@ -285,7 +285,7 @@ class OccupancySensing(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class PhysicalContactOccupiedToUnoccupiedDelay(ClusterAttributeDescriptor):
@@ -301,7 +301,7 @@ class OccupancySensing(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class PhysicalContactUnoccupiedToOccupiedDelay(ClusterAttributeDescriptor):
@@ -317,7 +317,7 @@ class OccupancySensing(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class PhysicalContactUnoccupiedToOccupiedThreshold(ClusterAttributeDescriptor):
@@ -333,7 +333,7 @@ class OccupancySensing(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -349,7 +349,7 @@ class OccupancySensing(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -365,7 +365,7 @@ class OccupancySensing(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -381,7 +381,7 @@ class OccupancySensing(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -397,7 +397,7 @@ class OccupancySensing(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -413,7 +413,7 @@ class OccupancySensing(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
     class Events:
         @dataclass
@@ -433,4 +433,4 @@ class OccupancySensing(Cluster):
                         ClusterObjectFieldDescriptor(Label="occupancy", Tag=0, Type=uint),
                     ])
 
-            occupancy: 'uint' = 0
+            occupancy: uint = 0

@@ -40,22 +40,22 @@ class ValveConfigurationAndControl(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    openDuration: 'typing.Union[Nullable, uint]' = NullValue
-    defaultOpenDuration: 'typing.Union[Nullable, uint]' = NullValue
-    autoCloseTime: 'typing.Union[None, Nullable, uint]' = None
-    remainingDuration: 'typing.Union[Nullable, uint]' = NullValue
-    currentState: 'typing.Union[Nullable, ValveConfigurationAndControl.Enums.ValveStateEnum]' = NullValue
-    targetState: 'typing.Union[Nullable, ValveConfigurationAndControl.Enums.ValveStateEnum]' = NullValue
-    currentLevel: 'typing.Union[None, Nullable, uint]' = None
-    targetLevel: 'typing.Union[None, Nullable, uint]' = None
-    defaultOpenLevel: 'typing.Optional[uint]' = None
-    valveFault: 'typing.Optional[uint]' = None
-    levelStep: 'typing.Optional[uint]' = None
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    openDuration: typing.Union[Nullable, uint] = NullValue
+    defaultOpenDuration: typing.Union[Nullable, uint] = NullValue
+    autoCloseTime: typing.Union[None, Nullable, uint] = None
+    remainingDuration: typing.Union[Nullable, uint] = NullValue
+    currentState: typing.Union[Nullable, ValveConfigurationAndControl.Enums.ValveStateEnum] = NullValue
+    targetState: typing.Union[Nullable, ValveConfigurationAndControl.Enums.ValveStateEnum] = NullValue
+    currentLevel: typing.Union[None, Nullable, uint] = None
+    targetLevel: typing.Union[None, Nullable, uint] = None
+    defaultOpenLevel: typing.Optional[uint] = None
+    valveFault: typing.Optional[uint] = None
+    levelStep: typing.Optional[uint] = None
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Enums:
         class ValveStateEnum(MatterIntEnum):
@@ -105,8 +105,8 @@ class ValveConfigurationAndControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="targetLevel", Tag=1, Type=typing.Optional[uint]),
                     ])
 
-            openDuration: 'typing.Union[None, Nullable, uint]' = None
-            targetLevel: 'typing.Optional[uint]' = None
+            openDuration: typing.Union[None, Nullable, uint] = None
+            targetLevel: typing.Optional[uint] = None
 
         @dataclass
         class Close(ClusterCommand):
@@ -137,7 +137,7 @@ class ValveConfigurationAndControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[Nullable, uint])
 
-            value: 'typing.Union[Nullable, uint]' = NullValue
+            value: typing.Union[Nullable, uint] = NullValue
 
         @dataclass
         class DefaultOpenDuration(ClusterAttributeDescriptor):
@@ -153,7 +153,7 @@ class ValveConfigurationAndControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[Nullable, uint])
 
-            value: 'typing.Union[Nullable, uint]' = NullValue
+            value: typing.Union[Nullable, uint] = NullValue
 
         @dataclass
         class AutoCloseTime(ClusterAttributeDescriptor):
@@ -169,7 +169,7 @@ class ValveConfigurationAndControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class RemainingDuration(ClusterAttributeDescriptor):
@@ -185,7 +185,7 @@ class ValveConfigurationAndControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[Nullable, uint])
 
-            value: 'typing.Union[Nullable, uint]' = NullValue
+            value: typing.Union[Nullable, uint] = NullValue
 
         @dataclass
         class CurrentState(ClusterAttributeDescriptor):
@@ -201,7 +201,7 @@ class ValveConfigurationAndControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[Nullable, ValveConfigurationAndControl.Enums.ValveStateEnum])
 
-            value: 'typing.Union[Nullable, ValveConfigurationAndControl.Enums.ValveStateEnum]' = NullValue
+            value: typing.Union[Nullable, ValveConfigurationAndControl.Enums.ValveStateEnum] = NullValue
 
         @dataclass
         class TargetState(ClusterAttributeDescriptor):
@@ -217,7 +217,7 @@ class ValveConfigurationAndControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[Nullable, ValveConfigurationAndControl.Enums.ValveStateEnum])
 
-            value: 'typing.Union[Nullable, ValveConfigurationAndControl.Enums.ValveStateEnum]' = NullValue
+            value: typing.Union[Nullable, ValveConfigurationAndControl.Enums.ValveStateEnum] = NullValue
 
         @dataclass
         class CurrentLevel(ClusterAttributeDescriptor):
@@ -233,7 +233,7 @@ class ValveConfigurationAndControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class TargetLevel(ClusterAttributeDescriptor):
@@ -249,7 +249,7 @@ class ValveConfigurationAndControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class DefaultOpenLevel(ClusterAttributeDescriptor):
@@ -265,7 +265,7 @@ class ValveConfigurationAndControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class ValveFault(ClusterAttributeDescriptor):
@@ -281,7 +281,7 @@ class ValveConfigurationAndControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class LevelStep(ClusterAttributeDescriptor):
@@ -297,7 +297,7 @@ class ValveConfigurationAndControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -313,7 +313,7 @@ class ValveConfigurationAndControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -329,7 +329,7 @@ class ValveConfigurationAndControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -345,7 +345,7 @@ class ValveConfigurationAndControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -361,7 +361,7 @@ class ValveConfigurationAndControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -377,7 +377,7 @@ class ValveConfigurationAndControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
     class Events:
         @dataclass
@@ -398,8 +398,8 @@ class ValveConfigurationAndControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="valveLevel", Tag=1, Type=typing.Optional[uint]),
                     ])
 
-            valveState: 'ValveConfigurationAndControl.Enums.ValveStateEnum' = 0
-            valveLevel: 'typing.Optional[uint]' = None
+            valveState: ValveConfigurationAndControl.Enums.ValveStateEnum = 0
+            valveLevel: typing.Optional[uint] = None
 
         @dataclass
         class ValveFault(ClusterEvent):
@@ -418,4 +418,4 @@ class ValveConfigurationAndControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="valveFault", Tag=0, Type=uint),
                     ])
 
-            valveFault: 'uint' = 0
+            valveFault: uint = 0

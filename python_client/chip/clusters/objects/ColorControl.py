@@ -82,63 +82,63 @@ class ColorControl(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    currentHue: 'typing.Optional[uint]' = None
-    currentSaturation: 'typing.Optional[uint]' = None
-    remainingTime: 'typing.Optional[uint]' = None
-    currentX: 'typing.Optional[uint]' = None
-    currentY: 'typing.Optional[uint]' = None
-    driftCompensation: 'typing.Optional[ColorControl.Enums.DriftCompensationEnum]' = None
-    compensationText: 'typing.Optional[str]' = None
-    colorTemperatureMireds: 'typing.Optional[uint]' = None
-    colorMode: 'ColorControl.Enums.ColorModeEnum' = 0
-    options: 'uint' = 0
-    numberOfPrimaries: 'typing.Union[Nullable, uint]' = NullValue
-    primary1X: 'typing.Optional[uint]' = None
-    primary1Y: 'typing.Optional[uint]' = None
-    primary1Intensity: 'typing.Union[None, Nullable, uint]' = None
-    primary2X: 'typing.Optional[uint]' = None
-    primary2Y: 'typing.Optional[uint]' = None
-    primary2Intensity: 'typing.Union[None, Nullable, uint]' = None
-    primary3X: 'typing.Optional[uint]' = None
-    primary3Y: 'typing.Optional[uint]' = None
-    primary3Intensity: 'typing.Union[None, Nullable, uint]' = None
-    primary4X: 'typing.Optional[uint]' = None
-    primary4Y: 'typing.Optional[uint]' = None
-    primary4Intensity: 'typing.Union[None, Nullable, uint]' = None
-    primary5X: 'typing.Optional[uint]' = None
-    primary5Y: 'typing.Optional[uint]' = None
-    primary5Intensity: 'typing.Union[None, Nullable, uint]' = None
-    primary6X: 'typing.Optional[uint]' = None
-    primary6Y: 'typing.Optional[uint]' = None
-    primary6Intensity: 'typing.Union[None, Nullable, uint]' = None
-    whitePointX: 'typing.Optional[uint]' = None
-    whitePointY: 'typing.Optional[uint]' = None
-    colorPointRX: 'typing.Optional[uint]' = None
-    colorPointRY: 'typing.Optional[uint]' = None
-    colorPointRIntensity: 'typing.Union[None, Nullable, uint]' = None
-    colorPointGX: 'typing.Optional[uint]' = None
-    colorPointGY: 'typing.Optional[uint]' = None
-    colorPointGIntensity: 'typing.Union[None, Nullable, uint]' = None
-    colorPointBX: 'typing.Optional[uint]' = None
-    colorPointBY: 'typing.Optional[uint]' = None
-    colorPointBIntensity: 'typing.Union[None, Nullable, uint]' = None
-    enhancedCurrentHue: 'typing.Optional[uint]' = None
-    enhancedColorMode: 'ColorControl.Enums.EnhancedColorModeEnum' = 0
-    colorLoopActive: 'typing.Optional[Globals.Enums.enum8]' = None
-    colorLoopDirection: 'typing.Optional[ColorControl.Enums.ColorLoopDirectionEnum]' = None
-    colorLoopTime: 'typing.Optional[uint]' = None
-    colorLoopStartEnhancedHue: 'typing.Optional[uint]' = None
-    colorLoopStoredEnhancedHue: 'typing.Optional[uint]' = None
-    colorCapabilities: 'uint' = 0
-    colorTempPhysicalMinMireds: 'typing.Optional[uint]' = None
-    colorTempPhysicalMaxMireds: 'typing.Optional[uint]' = None
-    coupleColorTempToLevelMinMireds: 'typing.Optional[uint]' = None
-    startUpColorTemperatureMireds: 'typing.Union[None, Nullable, uint]' = None
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    currentHue: typing.Optional[uint] = None
+    currentSaturation: typing.Optional[uint] = None
+    remainingTime: typing.Optional[uint] = None
+    currentX: typing.Optional[uint] = None
+    currentY: typing.Optional[uint] = None
+    driftCompensation: typing.Optional[ColorControl.Enums.DriftCompensationEnum] = None
+    compensationText: typing.Optional[str] = None
+    colorTemperatureMireds: typing.Optional[uint] = None
+    colorMode: ColorControl.Enums.ColorModeEnum = 0
+    options: uint = 0
+    numberOfPrimaries: typing.Union[Nullable, uint] = NullValue
+    primary1X: typing.Optional[uint] = None
+    primary1Y: typing.Optional[uint] = None
+    primary1Intensity: typing.Union[None, Nullable, uint] = None
+    primary2X: typing.Optional[uint] = None
+    primary2Y: typing.Optional[uint] = None
+    primary2Intensity: typing.Union[None, Nullable, uint] = None
+    primary3X: typing.Optional[uint] = None
+    primary3Y: typing.Optional[uint] = None
+    primary3Intensity: typing.Union[None, Nullable, uint] = None
+    primary4X: typing.Optional[uint] = None
+    primary4Y: typing.Optional[uint] = None
+    primary4Intensity: typing.Union[None, Nullable, uint] = None
+    primary5X: typing.Optional[uint] = None
+    primary5Y: typing.Optional[uint] = None
+    primary5Intensity: typing.Union[None, Nullable, uint] = None
+    primary6X: typing.Optional[uint] = None
+    primary6Y: typing.Optional[uint] = None
+    primary6Intensity: typing.Union[None, Nullable, uint] = None
+    whitePointX: typing.Optional[uint] = None
+    whitePointY: typing.Optional[uint] = None
+    colorPointRX: typing.Optional[uint] = None
+    colorPointRY: typing.Optional[uint] = None
+    colorPointRIntensity: typing.Union[None, Nullable, uint] = None
+    colorPointGX: typing.Optional[uint] = None
+    colorPointGY: typing.Optional[uint] = None
+    colorPointGIntensity: typing.Union[None, Nullable, uint] = None
+    colorPointBX: typing.Optional[uint] = None
+    colorPointBY: typing.Optional[uint] = None
+    colorPointBIntensity: typing.Union[None, Nullable, uint] = None
+    enhancedCurrentHue: typing.Optional[uint] = None
+    enhancedColorMode: ColorControl.Enums.EnhancedColorModeEnum = 0
+    colorLoopActive: typing.Optional[Globals.Enums.enum8] = None
+    colorLoopDirection: typing.Optional[ColorControl.Enums.ColorLoopDirectionEnum] = None
+    colorLoopTime: typing.Optional[uint] = None
+    colorLoopStartEnhancedHue: typing.Optional[uint] = None
+    colorLoopStoredEnhancedHue: typing.Optional[uint] = None
+    colorCapabilities: uint = 0
+    colorTempPhysicalMinMireds: typing.Optional[uint] = None
+    colorTempPhysicalMaxMireds: typing.Optional[uint] = None
+    coupleColorTempToLevelMinMireds: typing.Optional[uint] = None
+    startUpColorTemperatureMireds: typing.Union[None, Nullable, uint] = None
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Enums:
         class DriftCompensationEnum(MatterIntEnum):
@@ -259,11 +259,11 @@ class ColorControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=4, Type=uint),
                     ])
 
-            hue: 'uint' = 0
-            direction: 'ColorControl.Enums.DirectionEnum' = 0
-            transitionTime: 'uint' = 0
-            optionsMask: 'uint' = 0
-            optionsOverride: 'uint' = 0
+            hue: uint = 0
+            direction: ColorControl.Enums.DirectionEnum = 0
+            transitionTime: uint = 0
+            optionsMask: uint = 0
+            optionsOverride: uint = 0
 
         @dataclass
         class MoveHue(ClusterCommand):
@@ -282,10 +282,10 @@ class ColorControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=3, Type=uint),
                     ])
 
-            moveMode: 'ColorControl.Enums.MoveModeEnum' = 0
-            rate: 'uint' = 0
-            optionsMask: 'uint' = 0
-            optionsOverride: 'uint' = 0
+            moveMode: ColorControl.Enums.MoveModeEnum = 0
+            rate: uint = 0
+            optionsMask: uint = 0
+            optionsOverride: uint = 0
 
         @dataclass
         class StepHue(ClusterCommand):
@@ -305,11 +305,11 @@ class ColorControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=4, Type=uint),
                     ])
 
-            stepMode: 'ColorControl.Enums.StepModeEnum' = 0
-            stepSize: 'uint' = 0
-            transitionTime: 'uint' = 0
-            optionsMask: 'uint' = 0
-            optionsOverride: 'uint' = 0
+            stepMode: ColorControl.Enums.StepModeEnum = 0
+            stepSize: uint = 0
+            transitionTime: uint = 0
+            optionsMask: uint = 0
+            optionsOverride: uint = 0
 
         @dataclass
         class MoveToSaturation(ClusterCommand):
@@ -328,10 +328,10 @@ class ColorControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=3, Type=uint),
                     ])
 
-            saturation: 'uint' = 0
-            transitionTime: 'uint' = 0
-            optionsMask: 'uint' = 0
-            optionsOverride: 'uint' = 0
+            saturation: uint = 0
+            transitionTime: uint = 0
+            optionsMask: uint = 0
+            optionsOverride: uint = 0
 
         @dataclass
         class MoveSaturation(ClusterCommand):
@@ -350,10 +350,10 @@ class ColorControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=3, Type=uint),
                     ])
 
-            moveMode: 'ColorControl.Enums.MoveModeEnum' = 0
-            rate: 'uint' = 0
-            optionsMask: 'uint' = 0
-            optionsOverride: 'uint' = 0
+            moveMode: ColorControl.Enums.MoveModeEnum = 0
+            rate: uint = 0
+            optionsMask: uint = 0
+            optionsOverride: uint = 0
 
         @dataclass
         class StepSaturation(ClusterCommand):
@@ -373,11 +373,11 @@ class ColorControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=4, Type=uint),
                     ])
 
-            stepMode: 'ColorControl.Enums.StepModeEnum' = 0
-            stepSize: 'uint' = 0
-            transitionTime: 'uint' = 0
-            optionsMask: 'uint' = 0
-            optionsOverride: 'uint' = 0
+            stepMode: ColorControl.Enums.StepModeEnum = 0
+            stepSize: uint = 0
+            transitionTime: uint = 0
+            optionsMask: uint = 0
+            optionsOverride: uint = 0
 
         @dataclass
         class MoveToHueAndSaturation(ClusterCommand):
@@ -397,11 +397,11 @@ class ColorControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=4, Type=uint),
                     ])
 
-            hue: 'uint' = 0
-            saturation: 'uint' = 0
-            transitionTime: 'uint' = 0
-            optionsMask: 'uint' = 0
-            optionsOverride: 'uint' = 0
+            hue: uint = 0
+            saturation: uint = 0
+            transitionTime: uint = 0
+            optionsMask: uint = 0
+            optionsOverride: uint = 0
 
         @dataclass
         class MoveToColor(ClusterCommand):
@@ -421,11 +421,11 @@ class ColorControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=4, Type=uint),
                     ])
 
-            colorX: 'uint' = 0
-            colorY: 'uint' = 0
-            transitionTime: 'uint' = 0
-            optionsMask: 'uint' = 0
-            optionsOverride: 'uint' = 0
+            colorX: uint = 0
+            colorY: uint = 0
+            transitionTime: uint = 0
+            optionsMask: uint = 0
+            optionsOverride: uint = 0
 
         @dataclass
         class MoveColor(ClusterCommand):
@@ -444,10 +444,10 @@ class ColorControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=3, Type=uint),
                     ])
 
-            rateX: 'int' = 0
-            rateY: 'int' = 0
-            optionsMask: 'uint' = 0
-            optionsOverride: 'uint' = 0
+            rateX: int = 0
+            rateY: int = 0
+            optionsMask: uint = 0
+            optionsOverride: uint = 0
 
         @dataclass
         class StepColor(ClusterCommand):
@@ -467,11 +467,11 @@ class ColorControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=4, Type=uint),
                     ])
 
-            stepX: 'int' = 0
-            stepY: 'int' = 0
-            transitionTime: 'uint' = 0
-            optionsMask: 'uint' = 0
-            optionsOverride: 'uint' = 0
+            stepX: int = 0
+            stepY: int = 0
+            transitionTime: uint = 0
+            optionsMask: uint = 0
+            optionsOverride: uint = 0
 
         @dataclass
         class MoveToColorTemperature(ClusterCommand):
@@ -490,10 +490,10 @@ class ColorControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=3, Type=uint),
                     ])
 
-            colorTemperatureMireds: 'uint' = 0
-            transitionTime: 'uint' = 0
-            optionsMask: 'uint' = 0
-            optionsOverride: 'uint' = 0
+            colorTemperatureMireds: uint = 0
+            transitionTime: uint = 0
+            optionsMask: uint = 0
+            optionsOverride: uint = 0
 
         @dataclass
         class EnhancedMoveToHue(ClusterCommand):
@@ -513,11 +513,11 @@ class ColorControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=4, Type=uint),
                     ])
 
-            enhancedHue: 'uint' = 0
-            direction: 'ColorControl.Enums.DirectionEnum' = 0
-            transitionTime: 'uint' = 0
-            optionsMask: 'uint' = 0
-            optionsOverride: 'uint' = 0
+            enhancedHue: uint = 0
+            direction: ColorControl.Enums.DirectionEnum = 0
+            transitionTime: uint = 0
+            optionsMask: uint = 0
+            optionsOverride: uint = 0
 
         @dataclass
         class EnhancedMoveHue(ClusterCommand):
@@ -536,10 +536,10 @@ class ColorControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=3, Type=uint),
                     ])
 
-            moveMode: 'ColorControl.Enums.MoveModeEnum' = 0
-            rate: 'uint' = 0
-            optionsMask: 'uint' = 0
-            optionsOverride: 'uint' = 0
+            moveMode: ColorControl.Enums.MoveModeEnum = 0
+            rate: uint = 0
+            optionsMask: uint = 0
+            optionsOverride: uint = 0
 
         @dataclass
         class EnhancedStepHue(ClusterCommand):
@@ -559,11 +559,11 @@ class ColorControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=4, Type=uint),
                     ])
 
-            stepMode: 'ColorControl.Enums.StepModeEnum' = 0
-            stepSize: 'uint' = 0
-            transitionTime: 'uint' = 0
-            optionsMask: 'uint' = 0
-            optionsOverride: 'uint' = 0
+            stepMode: ColorControl.Enums.StepModeEnum = 0
+            stepSize: uint = 0
+            transitionTime: uint = 0
+            optionsMask: uint = 0
+            optionsOverride: uint = 0
 
         @dataclass
         class EnhancedMoveToHueAndSaturation(ClusterCommand):
@@ -583,11 +583,11 @@ class ColorControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=4, Type=uint),
                     ])
 
-            enhancedHue: 'uint' = 0
-            saturation: 'uint' = 0
-            transitionTime: 'uint' = 0
-            optionsMask: 'uint' = 0
-            optionsOverride: 'uint' = 0
+            enhancedHue: uint = 0
+            saturation: uint = 0
+            transitionTime: uint = 0
+            optionsMask: uint = 0
+            optionsOverride: uint = 0
 
         @dataclass
         class ColorLoopSet(ClusterCommand):
@@ -609,13 +609,13 @@ class ColorControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=6, Type=uint),
                     ])
 
-            updateFlags: 'uint' = 0
-            action: 'ColorControl.Enums.ColorLoopActionEnum' = 0
-            direction: 'ColorControl.Enums.ColorLoopDirectionEnum' = 0
-            time: 'uint' = 0
-            startHue: 'uint' = 0
-            optionsMask: 'uint' = 0
-            optionsOverride: 'uint' = 0
+            updateFlags: uint = 0
+            action: ColorControl.Enums.ColorLoopActionEnum = 0
+            direction: ColorControl.Enums.ColorLoopDirectionEnum = 0
+            time: uint = 0
+            startHue: uint = 0
+            optionsMask: uint = 0
+            optionsOverride: uint = 0
 
         @dataclass
         class StopMoveStep(ClusterCommand):
@@ -632,8 +632,8 @@ class ColorControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=1, Type=uint),
                     ])
 
-            optionsMask: 'uint' = 0
-            optionsOverride: 'uint' = 0
+            optionsMask: uint = 0
+            optionsOverride: uint = 0
 
         @dataclass
         class MoveColorTemperature(ClusterCommand):
@@ -654,12 +654,12 @@ class ColorControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=5, Type=uint),
                     ])
 
-            moveMode: 'ColorControl.Enums.MoveModeEnum' = 0
-            rate: 'uint' = 0
-            colorTemperatureMinimumMireds: 'uint' = 0
-            colorTemperatureMaximumMireds: 'uint' = 0
-            optionsMask: 'uint' = 0
-            optionsOverride: 'uint' = 0
+            moveMode: ColorControl.Enums.MoveModeEnum = 0
+            rate: uint = 0
+            colorTemperatureMinimumMireds: uint = 0
+            colorTemperatureMaximumMireds: uint = 0
+            optionsMask: uint = 0
+            optionsOverride: uint = 0
 
         @dataclass
         class StepColorTemperature(ClusterCommand):
@@ -681,13 +681,13 @@ class ColorControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=6, Type=uint),
                     ])
 
-            stepMode: 'ColorControl.Enums.StepModeEnum' = 0
-            stepSize: 'uint' = 0
-            transitionTime: 'uint' = 0
-            colorTemperatureMinimumMireds: 'uint' = 0
-            colorTemperatureMaximumMireds: 'uint' = 0
-            optionsMask: 'uint' = 0
-            optionsOverride: 'uint' = 0
+            stepMode: ColorControl.Enums.StepModeEnum = 0
+            stepSize: uint = 0
+            transitionTime: uint = 0
+            colorTemperatureMinimumMireds: uint = 0
+            colorTemperatureMaximumMireds: uint = 0
+            optionsMask: uint = 0
+            optionsOverride: uint = 0
 
     class Attributes:
         @dataclass
@@ -704,7 +704,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class CurrentSaturation(ClusterAttributeDescriptor):
@@ -720,7 +720,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class RemainingTime(ClusterAttributeDescriptor):
@@ -736,7 +736,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class CurrentX(ClusterAttributeDescriptor):
@@ -752,7 +752,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class CurrentY(ClusterAttributeDescriptor):
@@ -768,7 +768,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class DriftCompensation(ClusterAttributeDescriptor):
@@ -784,7 +784,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[ColorControl.Enums.DriftCompensationEnum])
 
-            value: 'typing.Optional[ColorControl.Enums.DriftCompensationEnum]' = None
+            value: typing.Optional[ColorControl.Enums.DriftCompensationEnum] = None
 
         @dataclass
         class CompensationText(ClusterAttributeDescriptor):
@@ -800,7 +800,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[str])
 
-            value: 'typing.Optional[str]' = None
+            value: typing.Optional[str] = None
 
         @dataclass
         class ColorTemperatureMireds(ClusterAttributeDescriptor):
@@ -816,7 +816,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class ColorMode(ClusterAttributeDescriptor):
@@ -832,7 +832,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=ColorControl.Enums.ColorModeEnum)
 
-            value: 'ColorControl.Enums.ColorModeEnum' = 0
+            value: ColorControl.Enums.ColorModeEnum = 0
 
         @dataclass
         class Options(ClusterAttributeDescriptor):
@@ -848,7 +848,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class NumberOfPrimaries(ClusterAttributeDescriptor):
@@ -864,7 +864,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[Nullable, uint])
 
-            value: 'typing.Union[Nullable, uint]' = NullValue
+            value: typing.Union[Nullable, uint] = NullValue
 
         @dataclass
         class Primary1X(ClusterAttributeDescriptor):
@@ -880,7 +880,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class Primary1Y(ClusterAttributeDescriptor):
@@ -896,7 +896,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class Primary1Intensity(ClusterAttributeDescriptor):
@@ -912,7 +912,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class Primary2X(ClusterAttributeDescriptor):
@@ -928,7 +928,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class Primary2Y(ClusterAttributeDescriptor):
@@ -944,7 +944,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class Primary2Intensity(ClusterAttributeDescriptor):
@@ -960,7 +960,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class Primary3X(ClusterAttributeDescriptor):
@@ -976,7 +976,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class Primary3Y(ClusterAttributeDescriptor):
@@ -992,7 +992,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class Primary3Intensity(ClusterAttributeDescriptor):
@@ -1008,7 +1008,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class Primary4X(ClusterAttributeDescriptor):
@@ -1024,7 +1024,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class Primary4Y(ClusterAttributeDescriptor):
@@ -1040,7 +1040,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class Primary4Intensity(ClusterAttributeDescriptor):
@@ -1056,7 +1056,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class Primary5X(ClusterAttributeDescriptor):
@@ -1072,7 +1072,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class Primary5Y(ClusterAttributeDescriptor):
@@ -1088,7 +1088,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class Primary5Intensity(ClusterAttributeDescriptor):
@@ -1104,7 +1104,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class Primary6X(ClusterAttributeDescriptor):
@@ -1120,7 +1120,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class Primary6Y(ClusterAttributeDescriptor):
@@ -1136,7 +1136,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class Primary6Intensity(ClusterAttributeDescriptor):
@@ -1152,7 +1152,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class WhitePointX(ClusterAttributeDescriptor):
@@ -1168,7 +1168,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class WhitePointY(ClusterAttributeDescriptor):
@@ -1184,7 +1184,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class ColorPointRX(ClusterAttributeDescriptor):
@@ -1200,7 +1200,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class ColorPointRY(ClusterAttributeDescriptor):
@@ -1216,7 +1216,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class ColorPointRIntensity(ClusterAttributeDescriptor):
@@ -1232,7 +1232,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class ColorPointGX(ClusterAttributeDescriptor):
@@ -1248,7 +1248,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class ColorPointGY(ClusterAttributeDescriptor):
@@ -1264,7 +1264,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class ColorPointGIntensity(ClusterAttributeDescriptor):
@@ -1280,7 +1280,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class ColorPointBX(ClusterAttributeDescriptor):
@@ -1296,7 +1296,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class ColorPointBY(ClusterAttributeDescriptor):
@@ -1312,7 +1312,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class ColorPointBIntensity(ClusterAttributeDescriptor):
@@ -1328,7 +1328,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class EnhancedCurrentHue(ClusterAttributeDescriptor):
@@ -1344,7 +1344,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class EnhancedColorMode(ClusterAttributeDescriptor):
@@ -1360,7 +1360,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=ColorControl.Enums.EnhancedColorModeEnum)
 
-            value: 'ColorControl.Enums.EnhancedColorModeEnum' = 0
+            value: ColorControl.Enums.EnhancedColorModeEnum = 0
 
         @dataclass
         class ColorLoopActive(ClusterAttributeDescriptor):
@@ -1376,7 +1376,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[Globals.Enums.enum8])
 
-            value: 'typing.Optional[Globals.Enums.enum8]' = None
+            value: typing.Optional[Globals.Enums.enum8] = None
 
         @dataclass
         class ColorLoopDirection(ClusterAttributeDescriptor):
@@ -1392,7 +1392,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[ColorControl.Enums.ColorLoopDirectionEnum])
 
-            value: 'typing.Optional[ColorControl.Enums.ColorLoopDirectionEnum]' = None
+            value: typing.Optional[ColorControl.Enums.ColorLoopDirectionEnum] = None
 
         @dataclass
         class ColorLoopTime(ClusterAttributeDescriptor):
@@ -1408,7 +1408,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class ColorLoopStartEnhancedHue(ClusterAttributeDescriptor):
@@ -1424,7 +1424,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class ColorLoopStoredEnhancedHue(ClusterAttributeDescriptor):
@@ -1440,7 +1440,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class ColorCapabilities(ClusterAttributeDescriptor):
@@ -1456,7 +1456,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ColorTempPhysicalMinMireds(ClusterAttributeDescriptor):
@@ -1472,7 +1472,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class ColorTempPhysicalMaxMireds(ClusterAttributeDescriptor):
@@ -1488,7 +1488,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class CoupleColorTempToLevelMinMireds(ClusterAttributeDescriptor):
@@ -1504,7 +1504,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class StartUpColorTemperatureMireds(ClusterAttributeDescriptor):
@@ -1520,7 +1520,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -1536,7 +1536,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -1552,7 +1552,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -1568,7 +1568,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -1584,7 +1584,7 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -1600,4 +1600,4 @@ class ColorControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0

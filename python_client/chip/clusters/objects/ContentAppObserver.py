@@ -29,11 +29,11 @@ class ContentAppObserver(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Enums:
         class StatusEnum(MatterIntEnum):
@@ -61,8 +61,8 @@ class ContentAppObserver(Cluster):
                         ClusterObjectFieldDescriptor(Label="encodingHint", Tag=1, Type=typing.Optional[str]),
                     ])
 
-            data: 'str' = ""
-            encodingHint: 'typing.Optional[str]' = None
+            data: str = ""
+            encodingHint: typing.Optional[str] = None
 
         @dataclass
         class ContentAppMessageResponse(ClusterCommand):
@@ -80,9 +80,9 @@ class ContentAppObserver(Cluster):
                         ClusterObjectFieldDescriptor(Label="encodingHint", Tag=2, Type=typing.Optional[str]),
                     ])
 
-            status: 'ContentAppObserver.Enums.StatusEnum' = 0
-            data: 'typing.Optional[str]' = None
-            encodingHint: 'typing.Optional[str]' = None
+            status: ContentAppObserver.Enums.StatusEnum = 0
+            data: typing.Optional[str] = None
+            encodingHint: typing.Optional[str] = None
 
     class Attributes:
         @dataclass
@@ -99,7 +99,7 @@ class ContentAppObserver(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -115,7 +115,7 @@ class ContentAppObserver(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -131,7 +131,7 @@ class ContentAppObserver(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -147,7 +147,7 @@ class ContentAppObserver(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -163,4 +163,4 @@ class ContentAppObserver(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0

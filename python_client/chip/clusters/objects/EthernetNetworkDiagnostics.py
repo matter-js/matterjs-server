@@ -38,20 +38,20 @@ class EthernetNetworkDiagnostics(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    PHYRate: 'typing.Union[None, Nullable, EthernetNetworkDiagnostics.Enums.PHYRateEnum]' = None
-    fullDuplex: 'typing.Union[None, Nullable, bool]' = None
-    packetRxCount: 'typing.Optional[uint]' = None
-    packetTxCount: 'typing.Optional[uint]' = None
-    txErrCount: 'typing.Optional[uint]' = None
-    collisionCount: 'typing.Optional[uint]' = None
-    overrunCount: 'typing.Optional[uint]' = None
-    carrierDetect: 'typing.Union[None, Nullable, bool]' = None
-    timeSinceReset: 'typing.Optional[uint]' = None
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    PHYRate: typing.Union[None, Nullable, EthernetNetworkDiagnostics.Enums.PHYRateEnum] = None
+    fullDuplex: typing.Union[None, Nullable, bool] = None
+    packetRxCount: typing.Optional[uint] = None
+    packetTxCount: typing.Optional[uint] = None
+    txErrCount: typing.Optional[uint] = None
+    collisionCount: typing.Optional[uint] = None
+    overrunCount: typing.Optional[uint] = None
+    carrierDetect: typing.Union[None, Nullable, bool] = None
+    timeSinceReset: typing.Optional[uint] = None
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Enums:
         class PHYRateEnum(MatterIntEnum):
@@ -106,7 +106,7 @@ class EthernetNetworkDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, EthernetNetworkDiagnostics.Enums.PHYRateEnum])
 
-            value: 'typing.Union[None, Nullable, EthernetNetworkDiagnostics.Enums.PHYRateEnum]' = None
+            value: typing.Union[None, Nullable, EthernetNetworkDiagnostics.Enums.PHYRateEnum] = None
 
         @dataclass
         class FullDuplex(ClusterAttributeDescriptor):
@@ -122,7 +122,7 @@ class EthernetNetworkDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, bool])
 
-            value: 'typing.Union[None, Nullable, bool]' = None
+            value: typing.Union[None, Nullable, bool] = None
 
         @dataclass
         class PacketRxCount(ClusterAttributeDescriptor):
@@ -138,7 +138,7 @@ class EthernetNetworkDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class PacketTxCount(ClusterAttributeDescriptor):
@@ -154,7 +154,7 @@ class EthernetNetworkDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class TxErrCount(ClusterAttributeDescriptor):
@@ -170,7 +170,7 @@ class EthernetNetworkDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class CollisionCount(ClusterAttributeDescriptor):
@@ -186,7 +186,7 @@ class EthernetNetworkDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class OverrunCount(ClusterAttributeDescriptor):
@@ -202,7 +202,7 @@ class EthernetNetworkDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class CarrierDetect(ClusterAttributeDescriptor):
@@ -218,7 +218,7 @@ class EthernetNetworkDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, bool])
 
-            value: 'typing.Union[None, Nullable, bool]' = None
+            value: typing.Union[None, Nullable, bool] = None
 
         @dataclass
         class TimeSinceReset(ClusterAttributeDescriptor):
@@ -234,7 +234,7 @@ class EthernetNetworkDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -250,7 +250,7 @@ class EthernetNetworkDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -266,7 +266,7 @@ class EthernetNetworkDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -282,7 +282,7 @@ class EthernetNetworkDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -298,7 +298,7 @@ class EthernetNetworkDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -314,4 +314,4 @@ class EthernetNetworkDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0

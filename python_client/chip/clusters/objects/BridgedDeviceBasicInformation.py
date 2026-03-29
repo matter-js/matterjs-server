@@ -53,35 +53,35 @@ class BridgedDeviceBasicInformation(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    dataModelRevision: 'typing.Optional[uint]' = None
-    vendorName: 'typing.Optional[uint]' = None
-    vendorID: 'typing.Optional[uint]' = None
-    productName: 'typing.Optional[uint]' = None
-    productID: 'typing.Optional[uint]' = None
-    nodeLabel: 'typing.Optional[uint]' = None
-    location: 'typing.Optional[uint]' = None
-    hardwareVersion: 'typing.Optional[uint]' = None
-    hardwareVersionString: 'typing.Optional[uint]' = None
-    softwareVersion: 'typing.Optional[uint]' = None
-    softwareVersionString: 'typing.Optional[uint]' = None
-    manufacturingDate: 'typing.Optional[uint]' = None
-    partNumber: 'typing.Optional[uint]' = None
-    productURL: 'typing.Optional[uint]' = None
-    productLabel: 'typing.Optional[uint]' = None
-    serialNumber: 'typing.Optional[uint]' = None
-    localConfigDisabled: 'typing.Optional[uint]' = None
-    reachable: 'uint' = 0
-    uniqueID: 'uint' = 0
-    capabilityMinima: 'typing.Optional[uint]' = None
-    productAppearance: 'typing.Optional[uint]' = None
-    specificationVersion: 'typing.Optional[uint]' = None
-    maxPathsPerInvoke: 'typing.Optional[uint]' = None
-    configurationVersion: 'typing.Optional[uint]' = None
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    dataModelRevision: typing.Optional[uint] = None
+    vendorName: typing.Optional[uint] = None
+    vendorID: typing.Optional[uint] = None
+    productName: typing.Optional[uint] = None
+    productID: typing.Optional[uint] = None
+    nodeLabel: typing.Optional[uint] = None
+    location: typing.Optional[uint] = None
+    hardwareVersion: typing.Optional[uint] = None
+    hardwareVersionString: typing.Optional[uint] = None
+    softwareVersion: typing.Optional[uint] = None
+    softwareVersionString: typing.Optional[uint] = None
+    manufacturingDate: typing.Optional[uint] = None
+    partNumber: typing.Optional[uint] = None
+    productURL: typing.Optional[uint] = None
+    productLabel: typing.Optional[uint] = None
+    serialNumber: typing.Optional[uint] = None
+    localConfigDisabled: typing.Optional[uint] = None
+    reachable: uint = 0
+    uniqueID: uint = 0
+    capabilityMinima: typing.Optional[uint] = None
+    productAppearance: typing.Optional[uint] = None
+    specificationVersion: typing.Optional[uint] = None
+    maxPathsPerInvoke: typing.Optional[uint] = None
+    configurationVersion: typing.Optional[uint] = None
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Enums:
         class ProductFinishEnum(MatterIntEnum):
@@ -140,8 +140,8 @@ class BridgedDeviceBasicInformation(Cluster):
                         ClusterObjectFieldDescriptor(Label="primaryColor", Tag=1, Type=typing.Union[Nullable, BridgedDeviceBasicInformation.Enums.ColorEnum]),
                     ])
 
-            finish: 'BridgedDeviceBasicInformation.Enums.ProductFinishEnum' = 0
-            primaryColor: 'typing.Union[Nullable, BridgedDeviceBasicInformation.Enums.ColorEnum]' = NullValue
+            finish: BridgedDeviceBasicInformation.Enums.ProductFinishEnum = 0
+            primaryColor: typing.Union[Nullable, BridgedDeviceBasicInformation.Enums.ColorEnum] = NullValue
 
         @dataclass
         class CapabilityMinimaStruct(ClusterObject):
@@ -153,8 +153,8 @@ class BridgedDeviceBasicInformation(Cluster):
                         ClusterObjectFieldDescriptor(Label="subscriptionsPerFabric", Tag=1, Type=uint),
                     ])
 
-            caseSessionsPerFabric: 'uint' = 0
-            subscriptionsPerFabric: 'uint' = 0
+            caseSessionsPerFabric: uint = 0
+            subscriptionsPerFabric: uint = 0
 
     class Commands:
         @dataclass
@@ -172,8 +172,8 @@ class BridgedDeviceBasicInformation(Cluster):
                         ClusterObjectFieldDescriptor(Label="timeoutMs", Tag=1, Type=uint),
                     ])
 
-            stayActiveDuration: 'uint' = 0
-            timeoutMs: 'uint' = 0
+            stayActiveDuration: uint = 0
+            timeoutMs: uint = 0
 
     class Attributes:
         @dataclass
@@ -190,7 +190,7 @@ class BridgedDeviceBasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class VendorName(ClusterAttributeDescriptor):
@@ -206,7 +206,7 @@ class BridgedDeviceBasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class VendorID(ClusterAttributeDescriptor):
@@ -222,7 +222,7 @@ class BridgedDeviceBasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class ProductName(ClusterAttributeDescriptor):
@@ -238,7 +238,7 @@ class BridgedDeviceBasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class ProductID(ClusterAttributeDescriptor):
@@ -254,7 +254,7 @@ class BridgedDeviceBasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class NodeLabel(ClusterAttributeDescriptor):
@@ -270,7 +270,7 @@ class BridgedDeviceBasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class Location(ClusterAttributeDescriptor):
@@ -286,7 +286,7 @@ class BridgedDeviceBasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class HardwareVersion(ClusterAttributeDescriptor):
@@ -302,7 +302,7 @@ class BridgedDeviceBasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class HardwareVersionString(ClusterAttributeDescriptor):
@@ -318,7 +318,7 @@ class BridgedDeviceBasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class SoftwareVersion(ClusterAttributeDescriptor):
@@ -334,7 +334,7 @@ class BridgedDeviceBasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class SoftwareVersionString(ClusterAttributeDescriptor):
@@ -350,7 +350,7 @@ class BridgedDeviceBasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class ManufacturingDate(ClusterAttributeDescriptor):
@@ -366,7 +366,7 @@ class BridgedDeviceBasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class PartNumber(ClusterAttributeDescriptor):
@@ -382,7 +382,7 @@ class BridgedDeviceBasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class ProductURL(ClusterAttributeDescriptor):
@@ -398,7 +398,7 @@ class BridgedDeviceBasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class ProductLabel(ClusterAttributeDescriptor):
@@ -414,7 +414,7 @@ class BridgedDeviceBasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class SerialNumber(ClusterAttributeDescriptor):
@@ -430,7 +430,7 @@ class BridgedDeviceBasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class LocalConfigDisabled(ClusterAttributeDescriptor):
@@ -446,7 +446,7 @@ class BridgedDeviceBasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class Reachable(ClusterAttributeDescriptor):
@@ -462,7 +462,7 @@ class BridgedDeviceBasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class UniqueID(ClusterAttributeDescriptor):
@@ -478,7 +478,7 @@ class BridgedDeviceBasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class CapabilityMinima(ClusterAttributeDescriptor):
@@ -494,7 +494,7 @@ class BridgedDeviceBasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class ProductAppearance(ClusterAttributeDescriptor):
@@ -510,7 +510,7 @@ class BridgedDeviceBasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class SpecificationVersion(ClusterAttributeDescriptor):
@@ -526,7 +526,7 @@ class BridgedDeviceBasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class MaxPathsPerInvoke(ClusterAttributeDescriptor):
@@ -542,7 +542,7 @@ class BridgedDeviceBasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class ConfigurationVersion(ClusterAttributeDescriptor):
@@ -558,7 +558,7 @@ class BridgedDeviceBasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -574,7 +574,7 @@ class BridgedDeviceBasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -590,7 +590,7 @@ class BridgedDeviceBasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -606,7 +606,7 @@ class BridgedDeviceBasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -622,7 +622,7 @@ class BridgedDeviceBasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -638,7 +638,7 @@ class BridgedDeviceBasicInformation(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
     class Events:
         @dataclass
@@ -658,7 +658,7 @@ class BridgedDeviceBasicInformation(Cluster):
                         ClusterObjectFieldDescriptor(Label="softwareVersion", Tag=0, Type=uint),
                     ])
 
-            softwareVersion: 'uint' = 0
+            softwareVersion: uint = 0
 
         @dataclass
         class ShutDown(ClusterEvent):
@@ -694,7 +694,7 @@ class BridgedDeviceBasicInformation(Cluster):
                         ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=0, Type=typing.Optional[uint]),
                     ])
 
-            fabricIndex: 'typing.Optional[uint]' = None
+            fabricIndex: typing.Optional[uint] = None
 
         @dataclass
         class ReachableChanged(ClusterEvent):
@@ -713,7 +713,7 @@ class BridgedDeviceBasicInformation(Cluster):
                         ClusterObjectFieldDescriptor(Label="reachableNewValue", Tag=0, Type=bool),
                     ])
 
-            reachableNewValue: 'bool' = False
+            reachableNewValue: bool = False
 
         @dataclass
         class ActiveChanged(ClusterEvent):
@@ -732,4 +732,4 @@ class BridgedDeviceBasicInformation(Cluster):
                         ClusterObjectFieldDescriptor(Label="promisedActiveDuration", Tag=0, Type=uint),
                     ])
 
-            promisedActiveDuration: 'uint' = 0
+            promisedActiveDuration: uint = 0

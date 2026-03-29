@@ -31,13 +31,13 @@ class Messages(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    messages: 'typing.List[Messages.Structs.MessageStruct]' = field(default_factory=lambda: [])
-    activeMessageIDs: 'typing.List[bytes]' = field(default_factory=lambda: [])
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    messages: typing.List[Messages.Structs.MessageStruct] = field(default_factory=lambda: [])
+    activeMessageIDs: typing.List[bytes] = field(default_factory=lambda: [])
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Enums:
         class FutureMessagePreferenceEnum(MatterIntEnum):
@@ -94,14 +94,14 @@ class Messages(Cluster):
                         ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=254, Type=uint),
                     ])
 
-            messageID: 'bytes' = b""
-            priority: 'Messages.Enums.MessagePriorityEnum' = 0
-            messageControl: 'uint' = 0
-            startTime: 'typing.Union[Nullable, uint]' = NullValue
-            duration: 'typing.Union[Nullable, uint]' = NullValue
-            messageText: 'str' = ""
-            responses: 'typing.Optional[typing.List[Messages.Structs.MessageResponseOptionStruct]]' = None
-            fabricIndex: 'uint' = 0
+            messageID: bytes = b""
+            priority: Messages.Enums.MessagePriorityEnum = 0
+            messageControl: uint = 0
+            startTime: typing.Union[Nullable, uint] = NullValue
+            duration: typing.Union[Nullable, uint] = NullValue
+            messageText: str = ""
+            responses: typing.Optional[typing.List[Messages.Structs.MessageResponseOptionStruct]] = None
+            fabricIndex: uint = 0
 
         @dataclass
         class MessageResponseOptionStruct(ClusterObject):
@@ -113,8 +113,8 @@ class Messages(Cluster):
                         ClusterObjectFieldDescriptor(Label="label", Tag=1, Type=str),
                     ])
 
-            messageResponseID: 'uint' = 0
-            label: 'str' = ""
+            messageResponseID: uint = 0
+            label: str = ""
 
     class Commands:
         @dataclass
@@ -137,13 +137,13 @@ class Messages(Cluster):
                         ClusterObjectFieldDescriptor(Label="responses", Tag=6, Type=typing.Optional[typing.List[Messages.Structs.MessageResponseOptionStruct]]),
                     ])
 
-            messageID: 'bytes' = b""
-            priority: 'Messages.Enums.MessagePriorityEnum' = 0
-            messageControl: 'uint' = 0
-            startTime: 'typing.Union[Nullable, uint]' = NullValue
-            duration: 'typing.Union[Nullable, uint]' = NullValue
-            messageText: 'str' = ""
-            responses: 'typing.Optional[typing.List[Messages.Structs.MessageResponseOptionStruct]]' = None
+            messageID: bytes = b""
+            priority: Messages.Enums.MessagePriorityEnum = 0
+            messageControl: uint = 0
+            startTime: typing.Union[Nullable, uint] = NullValue
+            duration: typing.Union[Nullable, uint] = NullValue
+            messageText: str = ""
+            responses: typing.Optional[typing.List[Messages.Structs.MessageResponseOptionStruct]] = None
 
         @dataclass
         class CancelMessagesRequest(ClusterCommand):
@@ -159,7 +159,7 @@ class Messages(Cluster):
                         ClusterObjectFieldDescriptor(Label="messageIDs", Tag=0, Type=typing.List[bytes]),
                     ])
 
-            messageIDs: 'typing.List[bytes]' = field(default_factory=lambda: [])
+            messageIDs: typing.List[bytes] = field(default_factory=lambda: [])
 
     class Attributes:
         @dataclass
@@ -176,7 +176,7 @@ class Messages(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[Messages.Structs.MessageStruct])
 
-            value: 'typing.List[Messages.Structs.MessageStruct]' = field(default_factory=lambda: [])
+            value: typing.List[Messages.Structs.MessageStruct] = field(default_factory=lambda: [])
 
         @dataclass
         class ActiveMessageIDs(ClusterAttributeDescriptor):
@@ -192,7 +192,7 @@ class Messages(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[bytes])
 
-            value: 'typing.List[bytes]' = field(default_factory=lambda: [])
+            value: typing.List[bytes] = field(default_factory=lambda: [])
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -208,7 +208,7 @@ class Messages(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -224,7 +224,7 @@ class Messages(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -240,7 +240,7 @@ class Messages(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -256,7 +256,7 @@ class Messages(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -272,7 +272,7 @@ class Messages(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
     class Events:
         @dataclass
@@ -293,8 +293,8 @@ class Messages(Cluster):
                         ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=254, Type=uint),
                     ])
 
-            messageID: 'bytes' = b""
-            fabricIndex: 'uint' = 0
+            messageID: bytes = b""
+            fabricIndex: uint = 0
 
         @dataclass
         class MessagePresented(ClusterEvent):
@@ -314,8 +314,8 @@ class Messages(Cluster):
                         ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=254, Type=uint),
                     ])
 
-            messageID: 'bytes' = b""
-            fabricIndex: 'uint' = 0
+            messageID: bytes = b""
+            fabricIndex: uint = 0
 
         @dataclass
         class MessageComplete(ClusterEvent):
@@ -338,8 +338,8 @@ class Messages(Cluster):
                         ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=254, Type=uint),
                     ])
 
-            messageID: 'bytes' = b""
-            responseID: 'typing.Union[None, Nullable, uint]' = None
-            reply: 'typing.Union[None, Nullable, str]' = None
-            futureMessagesPreference: 'typing.Union[Nullable, Messages.Enums.FutureMessagePreferenceEnum]' = NullValue
-            fabricIndex: 'uint' = 0
+            messageID: bytes = b""
+            responseID: typing.Union[None, Nullable, uint] = None
+            reply: typing.Union[None, Nullable, str] = None
+            futureMessagesPreference: typing.Union[Nullable, Messages.Enums.FutureMessagePreferenceEnum] = NullValue
+            fabricIndex: uint = 0

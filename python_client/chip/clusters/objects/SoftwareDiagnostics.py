@@ -33,15 +33,15 @@ class SoftwareDiagnostics(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    threadMetrics: 'typing.Optional[typing.List[SoftwareDiagnostics.Structs.ThreadMetricsStruct]]' = None
-    currentHeapFree: 'typing.Optional[uint]' = None
-    currentHeapUsed: 'typing.Optional[uint]' = None
-    currentHeapHighWatermark: 'typing.Optional[uint]' = None
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    threadMetrics: typing.Optional[typing.List[SoftwareDiagnostics.Structs.ThreadMetricsStruct]] = None
+    currentHeapFree: typing.Optional[uint] = None
+    currentHeapUsed: typing.Optional[uint] = None
+    currentHeapHighWatermark: typing.Optional[uint] = None
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Bitmaps:
         class Feature(IntFlag):
@@ -61,11 +61,11 @@ class SoftwareDiagnostics(Cluster):
                         ClusterObjectFieldDescriptor(Label="stackSize", Tag=4, Type=typing.Optional[uint]),
                     ])
 
-            id: 'uint' = 0
-            name: 'typing.Optional[str]' = None
-            stackFreeCurrent: 'typing.Optional[uint]' = None
-            stackFreeMinimum: 'typing.Optional[uint]' = None
-            stackSize: 'typing.Optional[uint]' = None
+            id: uint = 0
+            name: typing.Optional[str] = None
+            stackFreeCurrent: typing.Optional[uint] = None
+            stackFreeMinimum: typing.Optional[uint] = None
+            stackSize: typing.Optional[uint] = None
 
     class Commands:
         @dataclass
@@ -97,7 +97,7 @@ class SoftwareDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[SoftwareDiagnostics.Structs.ThreadMetricsStruct]])
 
-            value: 'typing.Optional[typing.List[SoftwareDiagnostics.Structs.ThreadMetricsStruct]]' = None
+            value: typing.Optional[typing.List[SoftwareDiagnostics.Structs.ThreadMetricsStruct]] = None
 
         @dataclass
         class CurrentHeapFree(ClusterAttributeDescriptor):
@@ -113,7 +113,7 @@ class SoftwareDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class CurrentHeapUsed(ClusterAttributeDescriptor):
@@ -129,7 +129,7 @@ class SoftwareDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class CurrentHeapHighWatermark(ClusterAttributeDescriptor):
@@ -145,7 +145,7 @@ class SoftwareDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -161,7 +161,7 @@ class SoftwareDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -177,7 +177,7 @@ class SoftwareDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -193,7 +193,7 @@ class SoftwareDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -209,7 +209,7 @@ class SoftwareDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -225,7 +225,7 @@ class SoftwareDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
     class Events:
         @dataclass
@@ -247,6 +247,6 @@ class SoftwareDiagnostics(Cluster):
                         ClusterObjectFieldDescriptor(Label="faultRecording", Tag=2, Type=typing.Optional[bytes]),
                     ])
 
-            id: 'uint' = 0
-            name: 'typing.Optional[str]' = None
-            faultRecording: 'typing.Optional[bytes]' = None
+            id: uint = 0
+            name: typing.Optional[str] = None
+            faultRecording: typing.Optional[bytes] = None

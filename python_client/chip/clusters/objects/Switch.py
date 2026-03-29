@@ -32,14 +32,14 @@ class Switch(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    numberOfPositions: 'uint' = 0
-    currentPosition: 'uint' = 0
-    multiPressMax: 'typing.Optional[uint]' = None
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    numberOfPositions: uint = 0
+    currentPosition: uint = 0
+    multiPressMax: typing.Optional[uint] = None
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Bitmaps:
         class Feature(IntFlag):
@@ -65,7 +65,7 @@ class Switch(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class CurrentPosition(ClusterAttributeDescriptor):
@@ -81,7 +81,7 @@ class Switch(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class MultiPressMax(ClusterAttributeDescriptor):
@@ -97,7 +97,7 @@ class Switch(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -113,7 +113,7 @@ class Switch(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -129,7 +129,7 @@ class Switch(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -145,7 +145,7 @@ class Switch(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -161,7 +161,7 @@ class Switch(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -177,7 +177,7 @@ class Switch(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
     class Events:
         @dataclass
@@ -197,7 +197,7 @@ class Switch(Cluster):
                         ClusterObjectFieldDescriptor(Label="newPosition", Tag=0, Type=uint),
                     ])
 
-            newPosition: 'uint' = 0
+            newPosition: uint = 0
 
         @dataclass
         class InitialPress(ClusterEvent):
@@ -216,7 +216,7 @@ class Switch(Cluster):
                         ClusterObjectFieldDescriptor(Label="newPosition", Tag=0, Type=uint),
                     ])
 
-            newPosition: 'uint' = 0
+            newPosition: uint = 0
 
         @dataclass
         class LongPress(ClusterEvent):
@@ -235,7 +235,7 @@ class Switch(Cluster):
                         ClusterObjectFieldDescriptor(Label="newPosition", Tag=0, Type=uint),
                     ])
 
-            newPosition: 'uint' = 0
+            newPosition: uint = 0
 
         @dataclass
         class ShortRelease(ClusterEvent):
@@ -254,7 +254,7 @@ class Switch(Cluster):
                         ClusterObjectFieldDescriptor(Label="previousPosition", Tag=0, Type=uint),
                     ])
 
-            previousPosition: 'uint' = 0
+            previousPosition: uint = 0
 
         @dataclass
         class LongRelease(ClusterEvent):
@@ -273,7 +273,7 @@ class Switch(Cluster):
                         ClusterObjectFieldDescriptor(Label="previousPosition", Tag=0, Type=uint),
                     ])
 
-            previousPosition: 'uint' = 0
+            previousPosition: uint = 0
 
         @dataclass
         class MultiPressOngoing(ClusterEvent):
@@ -293,8 +293,8 @@ class Switch(Cluster):
                         ClusterObjectFieldDescriptor(Label="currentNumberOfPressesCounted", Tag=1, Type=uint),
                     ])
 
-            newPosition: 'uint' = 0
-            currentNumberOfPressesCounted: 'uint' = 0
+            newPosition: uint = 0
+            currentNumberOfPressesCounted: uint = 0
 
         @dataclass
         class MultiPressComplete(ClusterEvent):
@@ -314,5 +314,5 @@ class Switch(Cluster):
                         ClusterObjectFieldDescriptor(Label="totalNumberOfPressesCounted", Tag=1, Type=uint),
                     ])
 
-            previousPosition: 'uint' = 0
-            totalNumberOfPressesCounted: 'uint' = 0
+            previousPosition: uint = 0
+            totalNumberOfPressesCounted: uint = 0

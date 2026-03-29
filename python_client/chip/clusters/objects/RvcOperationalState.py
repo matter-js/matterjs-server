@@ -36,17 +36,17 @@ class RvcOperationalState(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    phaseList: 'typing.Union[Nullable, typing.List[str]]' = NullValue
-    currentPhase: 'typing.Union[Nullable, uint]' = NullValue
-    countdownTime: 'typing.Union[None, Nullable, uint]' = None
-    operationalStateList: 'typing.List[RvcOperationalState.Structs.OperationalStateStruct]' = field(default_factory=lambda: [])
-    operationalState: 'RvcOperationalState.Enums.OperationalStateEnum' = 0
-    operationalError: 'RvcOperationalState.Structs.ErrorStateStruct' = field(default_factory=lambda: RvcOperationalState.Structs.ErrorStateStruct())
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    phaseList: typing.Union[Nullable, typing.List[str]] = NullValue
+    currentPhase: typing.Union[Nullable, uint] = NullValue
+    countdownTime: typing.Union[None, Nullable, uint] = None
+    operationalStateList: typing.List[RvcOperationalState.Structs.OperationalStateStruct] = field(default_factory=lambda: [])
+    operationalState: RvcOperationalState.Enums.OperationalStateEnum = 0
+    operationalError: RvcOperationalState.Structs.ErrorStateStruct = field(default_factory=lambda: RvcOperationalState.Structs.ErrorStateStruct())
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Enums:
         class OperationalStateEnum(MatterIntEnum):
@@ -104,8 +104,8 @@ class RvcOperationalState(Cluster):
                         ClusterObjectFieldDescriptor(Label="operationalStateLabel", Tag=1, Type=typing.Optional[str]),
                     ])
 
-            operationalStateID: 'RvcOperationalState.Enums.OperationalStateEnum' = 0
-            operationalStateLabel: 'typing.Optional[str]' = None
+            operationalStateID: RvcOperationalState.Enums.OperationalStateEnum = 0
+            operationalStateLabel: typing.Optional[str] = None
 
         @dataclass
         class ErrorStateStruct(ClusterObject):
@@ -118,9 +118,9 @@ class RvcOperationalState(Cluster):
                         ClusterObjectFieldDescriptor(Label="errorStateDetails", Tag=2, Type=typing.Optional[str]),
                     ])
 
-            errorStateID: 'RvcOperationalState.Enums.ErrorStateEnum' = 0
-            errorStateLabel: 'typing.Optional[str]' = None
-            errorStateDetails: 'typing.Optional[str]' = None
+            errorStateID: RvcOperationalState.Enums.ErrorStateEnum = 0
+            errorStateLabel: typing.Optional[str] = None
+            errorStateDetails: typing.Optional[str] = None
 
     class Commands:
         @dataclass
@@ -207,7 +207,7 @@ class RvcOperationalState(Cluster):
                         ClusterObjectFieldDescriptor(Label="commandResponseState", Tag=0, Type=RvcOperationalState.Structs.ErrorStateStruct),
                     ])
 
-            commandResponseState: 'RvcOperationalState.Structs.ErrorStateStruct' = field(default_factory=lambda: RvcOperationalState.Structs.ErrorStateStruct())
+            commandResponseState: RvcOperationalState.Structs.ErrorStateStruct = field(default_factory=lambda: RvcOperationalState.Structs.ErrorStateStruct())
 
     class Attributes:
         @dataclass
@@ -224,7 +224,7 @@ class RvcOperationalState(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[Nullable, typing.List[str]])
 
-            value: 'typing.Union[Nullable, typing.List[str]]' = NullValue
+            value: typing.Union[Nullable, typing.List[str]] = NullValue
 
         @dataclass
         class CurrentPhase(ClusterAttributeDescriptor):
@@ -240,7 +240,7 @@ class RvcOperationalState(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[Nullable, uint])
 
-            value: 'typing.Union[Nullable, uint]' = NullValue
+            value: typing.Union[Nullable, uint] = NullValue
 
         @dataclass
         class CountdownTime(ClusterAttributeDescriptor):
@@ -256,7 +256,7 @@ class RvcOperationalState(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class OperationalStateList(ClusterAttributeDescriptor):
@@ -272,7 +272,7 @@ class RvcOperationalState(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[RvcOperationalState.Structs.OperationalStateStruct])
 
-            value: 'typing.List[RvcOperationalState.Structs.OperationalStateStruct]' = field(default_factory=lambda: [])
+            value: typing.List[RvcOperationalState.Structs.OperationalStateStruct] = field(default_factory=lambda: [])
 
         @dataclass
         class OperationalState(ClusterAttributeDescriptor):
@@ -288,7 +288,7 @@ class RvcOperationalState(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=RvcOperationalState.Enums.OperationalStateEnum)
 
-            value: 'RvcOperationalState.Enums.OperationalStateEnum' = 0
+            value: RvcOperationalState.Enums.OperationalStateEnum = 0
 
         @dataclass
         class OperationalError(ClusterAttributeDescriptor):
@@ -304,7 +304,7 @@ class RvcOperationalState(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=RvcOperationalState.Structs.ErrorStateStruct)
 
-            value: 'RvcOperationalState.Structs.ErrorStateStruct' = field(default_factory=lambda: RvcOperationalState.Structs.ErrorStateStruct())
+            value: RvcOperationalState.Structs.ErrorStateStruct = field(default_factory=lambda: RvcOperationalState.Structs.ErrorStateStruct())
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -320,7 +320,7 @@ class RvcOperationalState(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -336,7 +336,7 @@ class RvcOperationalState(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -352,7 +352,7 @@ class RvcOperationalState(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -368,7 +368,7 @@ class RvcOperationalState(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -384,7 +384,7 @@ class RvcOperationalState(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
     class Events:
         @dataclass
@@ -404,7 +404,7 @@ class RvcOperationalState(Cluster):
                         ClusterObjectFieldDescriptor(Label="errorState", Tag=0, Type=RvcOperationalState.Structs.ErrorStateStruct),
                     ])
 
-            errorState: 'RvcOperationalState.Structs.ErrorStateStruct' = field(default_factory=lambda: RvcOperationalState.Structs.ErrorStateStruct())
+            errorState: RvcOperationalState.Structs.ErrorStateStruct = field(default_factory=lambda: RvcOperationalState.Structs.ErrorStateStruct())
 
         @dataclass
         class OperationCompletion(ClusterEvent):
@@ -425,6 +425,6 @@ class RvcOperationalState(Cluster):
                         ClusterObjectFieldDescriptor(Label="pausedTime", Tag=2, Type=typing.Union[None, Nullable, uint]),
                     ])
 
-            completionErrorCode: 'Globals.Enums.enum8' = 0
-            totalOperationalTime: 'typing.Union[None, Nullable, uint]' = None
-            pausedTime: 'typing.Union[None, Nullable, uint]' = None
+            completionErrorCode: Globals.Enums.enum8 = 0
+            totalOperationalTime: typing.Union[None, Nullable, uint] = None
+            pausedTime: typing.Union[None, Nullable, uint] = None

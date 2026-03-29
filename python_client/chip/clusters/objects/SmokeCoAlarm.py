@@ -42,24 +42,24 @@ class SmokeCoAlarm(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    expressedState: 'SmokeCoAlarm.Enums.ExpressedStateEnum' = 0
-    smokeState: 'typing.Optional[SmokeCoAlarm.Enums.AlarmStateEnum]' = None
-    COState: 'typing.Optional[SmokeCoAlarm.Enums.AlarmStateEnum]' = None
-    batteryAlert: 'SmokeCoAlarm.Enums.AlarmStateEnum' = 0
-    deviceMuted: 'typing.Optional[SmokeCoAlarm.Enums.MuteStateEnum]' = None
-    testInProgress: 'bool' = False
-    hardwareFaultAlert: 'bool' = False
-    endOfServiceAlert: 'SmokeCoAlarm.Enums.EndOfServiceEnum' = 0
-    interconnectSmokeAlarm: 'typing.Optional[SmokeCoAlarm.Enums.AlarmStateEnum]' = None
-    interconnectCOAlarm: 'typing.Optional[SmokeCoAlarm.Enums.AlarmStateEnum]' = None
-    contaminationState: 'typing.Optional[SmokeCoAlarm.Enums.ContaminationStateEnum]' = None
-    smokeSensitivityLevel: 'typing.Optional[SmokeCoAlarm.Enums.SensitivityEnum]' = None
-    expiryDate: 'typing.Optional[uint]' = None
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    expressedState: SmokeCoAlarm.Enums.ExpressedStateEnum = 0
+    smokeState: typing.Optional[SmokeCoAlarm.Enums.AlarmStateEnum] = None
+    COState: typing.Optional[SmokeCoAlarm.Enums.AlarmStateEnum] = None
+    batteryAlert: SmokeCoAlarm.Enums.AlarmStateEnum = 0
+    deviceMuted: typing.Optional[SmokeCoAlarm.Enums.MuteStateEnum] = None
+    testInProgress: bool = False
+    hardwareFaultAlert: bool = False
+    endOfServiceAlert: SmokeCoAlarm.Enums.EndOfServiceEnum = 0
+    interconnectSmokeAlarm: typing.Optional[SmokeCoAlarm.Enums.AlarmStateEnum] = None
+    interconnectCOAlarm: typing.Optional[SmokeCoAlarm.Enums.AlarmStateEnum] = None
+    contaminationState: typing.Optional[SmokeCoAlarm.Enums.ContaminationStateEnum] = None
+    smokeSensitivityLevel: typing.Optional[SmokeCoAlarm.Enums.SensitivityEnum] = None
+    expiryDate: typing.Optional[uint] = None
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Enums:
         class AlarmStateEnum(MatterIntEnum):
@@ -162,7 +162,7 @@ class SmokeCoAlarm(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=SmokeCoAlarm.Enums.ExpressedStateEnum)
 
-            value: 'SmokeCoAlarm.Enums.ExpressedStateEnum' = 0
+            value: SmokeCoAlarm.Enums.ExpressedStateEnum = 0
 
         @dataclass
         class SmokeState(ClusterAttributeDescriptor):
@@ -178,7 +178,7 @@ class SmokeCoAlarm(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[SmokeCoAlarm.Enums.AlarmStateEnum])
 
-            value: 'typing.Optional[SmokeCoAlarm.Enums.AlarmStateEnum]' = None
+            value: typing.Optional[SmokeCoAlarm.Enums.AlarmStateEnum] = None
 
         @dataclass
         class COState(ClusterAttributeDescriptor):
@@ -194,7 +194,7 @@ class SmokeCoAlarm(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[SmokeCoAlarm.Enums.AlarmStateEnum])
 
-            value: 'typing.Optional[SmokeCoAlarm.Enums.AlarmStateEnum]' = None
+            value: typing.Optional[SmokeCoAlarm.Enums.AlarmStateEnum] = None
 
         @dataclass
         class BatteryAlert(ClusterAttributeDescriptor):
@@ -210,7 +210,7 @@ class SmokeCoAlarm(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=SmokeCoAlarm.Enums.AlarmStateEnum)
 
-            value: 'SmokeCoAlarm.Enums.AlarmStateEnum' = 0
+            value: SmokeCoAlarm.Enums.AlarmStateEnum = 0
 
         @dataclass
         class DeviceMuted(ClusterAttributeDescriptor):
@@ -226,7 +226,7 @@ class SmokeCoAlarm(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[SmokeCoAlarm.Enums.MuteStateEnum])
 
-            value: 'typing.Optional[SmokeCoAlarm.Enums.MuteStateEnum]' = None
+            value: typing.Optional[SmokeCoAlarm.Enums.MuteStateEnum] = None
 
         @dataclass
         class TestInProgress(ClusterAttributeDescriptor):
@@ -242,7 +242,7 @@ class SmokeCoAlarm(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=bool)
 
-            value: 'bool' = False
+            value: bool = False
 
         @dataclass
         class HardwareFaultAlert(ClusterAttributeDescriptor):
@@ -258,7 +258,7 @@ class SmokeCoAlarm(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=bool)
 
-            value: 'bool' = False
+            value: bool = False
 
         @dataclass
         class EndOfServiceAlert(ClusterAttributeDescriptor):
@@ -274,7 +274,7 @@ class SmokeCoAlarm(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=SmokeCoAlarm.Enums.EndOfServiceEnum)
 
-            value: 'SmokeCoAlarm.Enums.EndOfServiceEnum' = 0
+            value: SmokeCoAlarm.Enums.EndOfServiceEnum = 0
 
         @dataclass
         class InterconnectSmokeAlarm(ClusterAttributeDescriptor):
@@ -290,7 +290,7 @@ class SmokeCoAlarm(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[SmokeCoAlarm.Enums.AlarmStateEnum])
 
-            value: 'typing.Optional[SmokeCoAlarm.Enums.AlarmStateEnum]' = None
+            value: typing.Optional[SmokeCoAlarm.Enums.AlarmStateEnum] = None
 
         @dataclass
         class InterconnectCOAlarm(ClusterAttributeDescriptor):
@@ -306,7 +306,7 @@ class SmokeCoAlarm(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[SmokeCoAlarm.Enums.AlarmStateEnum])
 
-            value: 'typing.Optional[SmokeCoAlarm.Enums.AlarmStateEnum]' = None
+            value: typing.Optional[SmokeCoAlarm.Enums.AlarmStateEnum] = None
 
         @dataclass
         class ContaminationState(ClusterAttributeDescriptor):
@@ -322,7 +322,7 @@ class SmokeCoAlarm(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[SmokeCoAlarm.Enums.ContaminationStateEnum])
 
-            value: 'typing.Optional[SmokeCoAlarm.Enums.ContaminationStateEnum]' = None
+            value: typing.Optional[SmokeCoAlarm.Enums.ContaminationStateEnum] = None
 
         @dataclass
         class SmokeSensitivityLevel(ClusterAttributeDescriptor):
@@ -338,7 +338,7 @@ class SmokeCoAlarm(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[SmokeCoAlarm.Enums.SensitivityEnum])
 
-            value: 'typing.Optional[SmokeCoAlarm.Enums.SensitivityEnum]' = None
+            value: typing.Optional[SmokeCoAlarm.Enums.SensitivityEnum] = None
 
         @dataclass
         class ExpiryDate(ClusterAttributeDescriptor):
@@ -354,7 +354,7 @@ class SmokeCoAlarm(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -370,7 +370,7 @@ class SmokeCoAlarm(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -386,7 +386,7 @@ class SmokeCoAlarm(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -402,7 +402,7 @@ class SmokeCoAlarm(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -418,7 +418,7 @@ class SmokeCoAlarm(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -434,7 +434,7 @@ class SmokeCoAlarm(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
     class Events:
         @dataclass
@@ -454,7 +454,7 @@ class SmokeCoAlarm(Cluster):
                         ClusterObjectFieldDescriptor(Label="alarmSeverityLevel", Tag=0, Type=SmokeCoAlarm.Enums.AlarmStateEnum),
                     ])
 
-            alarmSeverityLevel: 'SmokeCoAlarm.Enums.AlarmStateEnum' = 0
+            alarmSeverityLevel: SmokeCoAlarm.Enums.AlarmStateEnum = 0
 
         @dataclass
         class COAlarm(ClusterEvent):
@@ -473,7 +473,7 @@ class SmokeCoAlarm(Cluster):
                         ClusterObjectFieldDescriptor(Label="alarmSeverityLevel", Tag=0, Type=SmokeCoAlarm.Enums.AlarmStateEnum),
                     ])
 
-            alarmSeverityLevel: 'SmokeCoAlarm.Enums.AlarmStateEnum' = 0
+            alarmSeverityLevel: SmokeCoAlarm.Enums.AlarmStateEnum = 0
 
         @dataclass
         class LowBattery(ClusterEvent):
@@ -492,7 +492,7 @@ class SmokeCoAlarm(Cluster):
                         ClusterObjectFieldDescriptor(Label="alarmSeverityLevel", Tag=0, Type=SmokeCoAlarm.Enums.AlarmStateEnum),
                     ])
 
-            alarmSeverityLevel: 'SmokeCoAlarm.Enums.AlarmStateEnum' = 0
+            alarmSeverityLevel: SmokeCoAlarm.Enums.AlarmStateEnum = 0
 
         @dataclass
         class HardwareFault(ClusterEvent):
@@ -596,7 +596,7 @@ class SmokeCoAlarm(Cluster):
                         ClusterObjectFieldDescriptor(Label="alarmSeverityLevel", Tag=0, Type=SmokeCoAlarm.Enums.AlarmStateEnum),
                     ])
 
-            alarmSeverityLevel: 'SmokeCoAlarm.Enums.AlarmStateEnum' = 0
+            alarmSeverityLevel: SmokeCoAlarm.Enums.AlarmStateEnum = 0
 
         @dataclass
         class InterconnectCOAlarm(ClusterEvent):
@@ -615,7 +615,7 @@ class SmokeCoAlarm(Cluster):
                         ClusterObjectFieldDescriptor(Label="alarmSeverityLevel", Tag=0, Type=SmokeCoAlarm.Enums.AlarmStateEnum),
                     ])
 
-            alarmSeverityLevel: 'SmokeCoAlarm.Enums.AlarmStateEnum' = 0
+            alarmSeverityLevel: SmokeCoAlarm.Enums.AlarmStateEnum = 0
 
         @dataclass
         class AllClear(ClusterEvent):

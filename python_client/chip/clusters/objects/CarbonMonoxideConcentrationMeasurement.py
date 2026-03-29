@@ -40,22 +40,22 @@ class CarbonMonoxideConcentrationMeasurement(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    measuredValue: 'typing.Union[None, Nullable, float32]' = None
-    minMeasuredValue: 'typing.Union[None, Nullable, float32]' = None
-    maxMeasuredValue: 'typing.Union[None, Nullable, float32]' = None
-    peakMeasuredValue: 'typing.Union[None, Nullable, float32]' = None
-    peakMeasuredValueWindow: 'typing.Optional[uint]' = None
-    averageMeasuredValue: 'typing.Union[None, Nullable, float32]' = None
-    averageMeasuredValueWindow: 'typing.Optional[uint]' = None
-    uncertainty: 'typing.Optional[float32]' = None
-    measurementUnit: 'typing.Optional[CarbonMonoxideConcentrationMeasurement.Enums.MeasurementUnitEnum]' = None
-    measurementMedium: 'CarbonMonoxideConcentrationMeasurement.Enums.MeasurementMediumEnum' = 0
-    levelValue: 'typing.Optional[CarbonMonoxideConcentrationMeasurement.Enums.LevelValueEnum]' = None
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    measuredValue: typing.Union[None, Nullable, float32] = None
+    minMeasuredValue: typing.Union[None, Nullable, float32] = None
+    maxMeasuredValue: typing.Union[None, Nullable, float32] = None
+    peakMeasuredValue: typing.Union[None, Nullable, float32] = None
+    peakMeasuredValueWindow: typing.Optional[uint] = None
+    averageMeasuredValue: typing.Union[None, Nullable, float32] = None
+    averageMeasuredValueWindow: typing.Optional[uint] = None
+    uncertainty: typing.Optional[float32] = None
+    measurementUnit: typing.Optional[CarbonMonoxideConcentrationMeasurement.Enums.MeasurementUnitEnum] = None
+    measurementMedium: CarbonMonoxideConcentrationMeasurement.Enums.MeasurementMediumEnum = 0
+    levelValue: typing.Optional[CarbonMonoxideConcentrationMeasurement.Enums.LevelValueEnum] = None
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Enums:
         class MeasurementUnitEnum(MatterIntEnum):
@@ -119,7 +119,7 @@ class CarbonMonoxideConcentrationMeasurement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, float32])
 
-            value: 'typing.Union[None, Nullable, float32]' = None
+            value: typing.Union[None, Nullable, float32] = None
 
         @dataclass
         class MinMeasuredValue(ClusterAttributeDescriptor):
@@ -135,7 +135,7 @@ class CarbonMonoxideConcentrationMeasurement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, float32])
 
-            value: 'typing.Union[None, Nullable, float32]' = None
+            value: typing.Union[None, Nullable, float32] = None
 
         @dataclass
         class MaxMeasuredValue(ClusterAttributeDescriptor):
@@ -151,7 +151,7 @@ class CarbonMonoxideConcentrationMeasurement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, float32])
 
-            value: 'typing.Union[None, Nullable, float32]' = None
+            value: typing.Union[None, Nullable, float32] = None
 
         @dataclass
         class PeakMeasuredValue(ClusterAttributeDescriptor):
@@ -167,7 +167,7 @@ class CarbonMonoxideConcentrationMeasurement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, float32])
 
-            value: 'typing.Union[None, Nullable, float32]' = None
+            value: typing.Union[None, Nullable, float32] = None
 
         @dataclass
         class PeakMeasuredValueWindow(ClusterAttributeDescriptor):
@@ -183,7 +183,7 @@ class CarbonMonoxideConcentrationMeasurement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class AverageMeasuredValue(ClusterAttributeDescriptor):
@@ -199,7 +199,7 @@ class CarbonMonoxideConcentrationMeasurement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, float32])
 
-            value: 'typing.Union[None, Nullable, float32]' = None
+            value: typing.Union[None, Nullable, float32] = None
 
         @dataclass
         class AverageMeasuredValueWindow(ClusterAttributeDescriptor):
@@ -215,7 +215,7 @@ class CarbonMonoxideConcentrationMeasurement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class Uncertainty(ClusterAttributeDescriptor):
@@ -231,7 +231,7 @@ class CarbonMonoxideConcentrationMeasurement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[float32])
 
-            value: 'typing.Optional[float32]' = None
+            value: typing.Optional[float32] = None
 
         @dataclass
         class MeasurementUnit(ClusterAttributeDescriptor):
@@ -247,7 +247,7 @@ class CarbonMonoxideConcentrationMeasurement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[CarbonMonoxideConcentrationMeasurement.Enums.MeasurementUnitEnum])
 
-            value: 'typing.Optional[CarbonMonoxideConcentrationMeasurement.Enums.MeasurementUnitEnum]' = None
+            value: typing.Optional[CarbonMonoxideConcentrationMeasurement.Enums.MeasurementUnitEnum] = None
 
         @dataclass
         class MeasurementMedium(ClusterAttributeDescriptor):
@@ -263,7 +263,7 @@ class CarbonMonoxideConcentrationMeasurement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=CarbonMonoxideConcentrationMeasurement.Enums.MeasurementMediumEnum)
 
-            value: 'CarbonMonoxideConcentrationMeasurement.Enums.MeasurementMediumEnum' = 0
+            value: CarbonMonoxideConcentrationMeasurement.Enums.MeasurementMediumEnum = 0
 
         @dataclass
         class LevelValue(ClusterAttributeDescriptor):
@@ -279,7 +279,7 @@ class CarbonMonoxideConcentrationMeasurement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[CarbonMonoxideConcentrationMeasurement.Enums.LevelValueEnum])
 
-            value: 'typing.Optional[CarbonMonoxideConcentrationMeasurement.Enums.LevelValueEnum]' = None
+            value: typing.Optional[CarbonMonoxideConcentrationMeasurement.Enums.LevelValueEnum] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -295,7 +295,7 @@ class CarbonMonoxideConcentrationMeasurement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -311,7 +311,7 @@ class CarbonMonoxideConcentrationMeasurement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -327,7 +327,7 @@ class CarbonMonoxideConcentrationMeasurement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -343,7 +343,7 @@ class CarbonMonoxideConcentrationMeasurement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -359,4 +359,4 @@ class CarbonMonoxideConcentrationMeasurement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0

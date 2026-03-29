@@ -31,12 +31,12 @@ class Groups(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    nameSupport: 'uint' = 0
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    nameSupport: uint = 0
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Bitmaps:
         class Feature(IntFlag):
@@ -61,8 +61,8 @@ class Groups(Cluster):
                         ClusterObjectFieldDescriptor(Label="groupName", Tag=1, Type=str),
                     ])
 
-            groupID: 'uint' = 0
-            groupName: 'str' = ""
+            groupID: uint = 0
+            groupName: str = ""
 
         @dataclass
         class ViewGroup(ClusterCommand):
@@ -78,7 +78,7 @@ class Groups(Cluster):
                         ClusterObjectFieldDescriptor(Label="groupID", Tag=0, Type=uint),
                     ])
 
-            groupID: 'uint' = 0
+            groupID: uint = 0
 
         @dataclass
         class GetGroupMembership(ClusterCommand):
@@ -94,7 +94,7 @@ class Groups(Cluster):
                         ClusterObjectFieldDescriptor(Label="groupList", Tag=0, Type=typing.List[uint]),
                     ])
 
-            groupList: 'typing.List[uint]' = field(default_factory=lambda: [])
+            groupList: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class RemoveGroup(ClusterCommand):
@@ -110,7 +110,7 @@ class Groups(Cluster):
                         ClusterObjectFieldDescriptor(Label="groupID", Tag=0, Type=uint),
                     ])
 
-            groupID: 'uint' = 0
+            groupID: uint = 0
 
         @dataclass
         class RemoveAllGroups(ClusterCommand):
@@ -141,8 +141,8 @@ class Groups(Cluster):
                         ClusterObjectFieldDescriptor(Label="groupName", Tag=1, Type=str),
                     ])
 
-            groupID: 'uint' = 0
-            groupName: 'str' = ""
+            groupID: uint = 0
+            groupName: str = ""
 
         @dataclass
         class AddGroupResponse(ClusterCommand):
@@ -159,8 +159,8 @@ class Groups(Cluster):
                         ClusterObjectFieldDescriptor(Label="groupID", Tag=1, Type=uint),
                     ])
 
-            status: 'Globals.Enums.status' = 0
-            groupID: 'uint' = 0
+            status: Globals.Enums.status = 0
+            groupID: uint = 0
 
         @dataclass
         class ViewGroupResponse(ClusterCommand):
@@ -178,9 +178,9 @@ class Groups(Cluster):
                         ClusterObjectFieldDescriptor(Label="groupName", Tag=2, Type=str),
                     ])
 
-            status: 'Globals.Enums.status' = 0
-            groupID: 'uint' = 0
-            groupName: 'str' = ""
+            status: Globals.Enums.status = 0
+            groupID: uint = 0
+            groupName: str = ""
 
         @dataclass
         class GetGroupMembershipResponse(ClusterCommand):
@@ -197,8 +197,8 @@ class Groups(Cluster):
                         ClusterObjectFieldDescriptor(Label="groupList", Tag=1, Type=typing.List[uint]),
                     ])
 
-            capacity: 'typing.Union[Nullable, uint]' = NullValue
-            groupList: 'typing.List[uint]' = field(default_factory=lambda: [])
+            capacity: typing.Union[Nullable, uint] = NullValue
+            groupList: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class RemoveGroupResponse(ClusterCommand):
@@ -215,8 +215,8 @@ class Groups(Cluster):
                         ClusterObjectFieldDescriptor(Label="groupID", Tag=1, Type=uint),
                     ])
 
-            status: 'Globals.Enums.status' = 0
-            groupID: 'uint' = 0
+            status: Globals.Enums.status = 0
+            groupID: uint = 0
 
     class Attributes:
         @dataclass
@@ -233,7 +233,7 @@ class Groups(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -249,7 +249,7 @@ class Groups(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -265,7 +265,7 @@ class Groups(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -281,7 +281,7 @@ class Groups(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -297,7 +297,7 @@ class Groups(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -313,4 +313,4 @@ class Groups(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0

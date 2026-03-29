@@ -35,17 +35,17 @@ class HepaFilterMonitoring(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    condition: 'typing.Optional[uint]' = None
-    degradationDirection: 'typing.Optional[HepaFilterMonitoring.Enums.DegradationDirectionEnum]' = None
-    changeIndication: 'HepaFilterMonitoring.Enums.ChangeIndicationEnum' = 0
-    inPlaceIndicator: 'typing.Optional[bool]' = None
-    lastChangedTime: 'typing.Union[None, Nullable, uint]' = None
-    replacementProductList: 'typing.Optional[typing.List[HepaFilterMonitoring.Structs.ReplacementProductStruct]]' = None
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    condition: typing.Optional[uint] = None
+    degradationDirection: typing.Optional[HepaFilterMonitoring.Enums.DegradationDirectionEnum] = None
+    changeIndication: HepaFilterMonitoring.Enums.ChangeIndicationEnum = 0
+    inPlaceIndicator: typing.Optional[bool] = None
+    lastChangedTime: typing.Union[None, Nullable, uint] = None
+    replacementProductList: typing.Optional[typing.List[HepaFilterMonitoring.Structs.ReplacementProductStruct]] = None
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Enums:
         class DegradationDirectionEnum(MatterIntEnum):
@@ -96,8 +96,8 @@ class HepaFilterMonitoring(Cluster):
                         ClusterObjectFieldDescriptor(Label="productIdentifierValue", Tag=1, Type=str),
                     ])
 
-            productIdentifierType: 'HepaFilterMonitoring.Enums.ProductIdentifierTypeEnum' = 0
-            productIdentifierValue: 'str' = ""
+            productIdentifierType: HepaFilterMonitoring.Enums.ProductIdentifierTypeEnum = 0
+            productIdentifierValue: str = ""
 
     class Commands:
         @dataclass
@@ -129,7 +129,7 @@ class HepaFilterMonitoring(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class DegradationDirection(ClusterAttributeDescriptor):
@@ -145,7 +145,7 @@ class HepaFilterMonitoring(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[HepaFilterMonitoring.Enums.DegradationDirectionEnum])
 
-            value: 'typing.Optional[HepaFilterMonitoring.Enums.DegradationDirectionEnum]' = None
+            value: typing.Optional[HepaFilterMonitoring.Enums.DegradationDirectionEnum] = None
 
         @dataclass
         class ChangeIndication(ClusterAttributeDescriptor):
@@ -161,7 +161,7 @@ class HepaFilterMonitoring(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=HepaFilterMonitoring.Enums.ChangeIndicationEnum)
 
-            value: 'HepaFilterMonitoring.Enums.ChangeIndicationEnum' = 0
+            value: HepaFilterMonitoring.Enums.ChangeIndicationEnum = 0
 
         @dataclass
         class InPlaceIndicator(ClusterAttributeDescriptor):
@@ -177,7 +177,7 @@ class HepaFilterMonitoring(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[bool])
 
-            value: 'typing.Optional[bool]' = None
+            value: typing.Optional[bool] = None
 
         @dataclass
         class LastChangedTime(ClusterAttributeDescriptor):
@@ -193,7 +193,7 @@ class HepaFilterMonitoring(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class ReplacementProductList(ClusterAttributeDescriptor):
@@ -209,7 +209,7 @@ class HepaFilterMonitoring(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[HepaFilterMonitoring.Structs.ReplacementProductStruct]])
 
-            value: 'typing.Optional[typing.List[HepaFilterMonitoring.Structs.ReplacementProductStruct]]' = None
+            value: typing.Optional[typing.List[HepaFilterMonitoring.Structs.ReplacementProductStruct]] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -225,7 +225,7 @@ class HepaFilterMonitoring(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -241,7 +241,7 @@ class HepaFilterMonitoring(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -257,7 +257,7 @@ class HepaFilterMonitoring(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -273,7 +273,7 @@ class HepaFilterMonitoring(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -289,4 +289,4 @@ class HepaFilterMonitoring(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0

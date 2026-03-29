@@ -33,15 +33,15 @@ class RefrigeratorAndTemperatureControlledCabinetMode(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    supportedModes: 'typing.List[uint]' = field(default_factory=lambda: [])
-    currentMode: 'uint' = 0
-    startUpMode: 'typing.Union[None, Nullable, uint]' = None
-    onMode: 'typing.Union[None, Nullable, uint]' = None
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    supportedModes: typing.List[uint] = field(default_factory=lambda: [])
+    currentMode: uint = 0
+    startUpMode: typing.Union[None, Nullable, uint] = None
+    onMode: typing.Union[None, Nullable, uint] = None
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Enums:
         class ModeTag(MatterIntEnum):
@@ -90,9 +90,9 @@ class RefrigeratorAndTemperatureControlledCabinetMode(Cluster):
                         ClusterObjectFieldDescriptor(Label="modeTags", Tag=2, Type=typing.List[RefrigeratorAndTemperatureControlledCabinetMode.Structs.ModeTagStruct]),
                     ])
 
-            label: 'str' = ""
-            mode: 'uint' = 0
-            modeTags: 'typing.List[RefrigeratorAndTemperatureControlledCabinetMode.Structs.ModeTagStruct]' = field(default_factory=lambda: [])
+            label: str = ""
+            mode: uint = 0
+            modeTags: typing.List[RefrigeratorAndTemperatureControlledCabinetMode.Structs.ModeTagStruct] = field(default_factory=lambda: [])
 
         @dataclass
         class ModeTagStruct(ClusterObject):
@@ -104,8 +104,8 @@ class RefrigeratorAndTemperatureControlledCabinetMode(Cluster):
                         ClusterObjectFieldDescriptor(Label="value", Tag=1, Type=RefrigeratorAndTemperatureControlledCabinetMode.Enums.ModeTag),
                     ])
 
-            mfgCode: 'typing.Optional[uint]' = None
-            value: 'RefrigeratorAndTemperatureControlledCabinetMode.Enums.ModeTag' = 0
+            mfgCode: typing.Optional[uint] = None
+            value: RefrigeratorAndTemperatureControlledCabinetMode.Enums.ModeTag = 0
 
     class Commands:
         @dataclass
@@ -122,7 +122,7 @@ class RefrigeratorAndTemperatureControlledCabinetMode(Cluster):
                         ClusterObjectFieldDescriptor(Label="newMode", Tag=0, Type=uint),
                     ])
 
-            newMode: 'uint' = 0
+            newMode: uint = 0
 
         @dataclass
         class ChangeToModeResponse(ClusterCommand):
@@ -139,8 +139,8 @@ class RefrigeratorAndTemperatureControlledCabinetMode(Cluster):
                         ClusterObjectFieldDescriptor(Label="statusText", Tag=1, Type=str),
                     ])
 
-            status: 'RefrigeratorAndTemperatureControlledCabinetMode.Enums.ModeChangeStatus' = 0
-            statusText: 'str' = ""
+            status: RefrigeratorAndTemperatureControlledCabinetMode.Enums.ModeChangeStatus = 0
+            statusText: str = ""
 
     class Attributes:
         @dataclass
@@ -157,7 +157,7 @@ class RefrigeratorAndTemperatureControlledCabinetMode(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class CurrentMode(ClusterAttributeDescriptor):
@@ -173,7 +173,7 @@ class RefrigeratorAndTemperatureControlledCabinetMode(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class StartUpMode(ClusterAttributeDescriptor):
@@ -189,7 +189,7 @@ class RefrigeratorAndTemperatureControlledCabinetMode(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class OnMode(ClusterAttributeDescriptor):
@@ -205,7 +205,7 @@ class RefrigeratorAndTemperatureControlledCabinetMode(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -221,7 +221,7 @@ class RefrigeratorAndTemperatureControlledCabinetMode(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -237,7 +237,7 @@ class RefrigeratorAndTemperatureControlledCabinetMode(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -253,7 +253,7 @@ class RefrigeratorAndTemperatureControlledCabinetMode(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -269,7 +269,7 @@ class RefrigeratorAndTemperatureControlledCabinetMode(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -285,4 +285,4 @@ class RefrigeratorAndTemperatureControlledCabinetMode(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0

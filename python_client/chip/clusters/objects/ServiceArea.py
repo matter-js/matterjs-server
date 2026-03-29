@@ -36,17 +36,17 @@ class ServiceArea(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    supportedAreas: 'typing.List[ServiceArea.Structs.AreaStruct]' = field(default_factory=lambda: [])
-    supportedMaps: 'typing.Optional[typing.List[ServiceArea.Structs.MapStruct]]' = None
-    selectedAreas: 'typing.List[uint]' = field(default_factory=lambda: [])
-    currentArea: 'typing.Union[None, Nullable, uint]' = None
-    estimatedEndTime: 'typing.Union[None, Nullable, uint]' = None
-    progress: 'typing.Optional[typing.List[ServiceArea.Structs.ProgressStruct]]' = None
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    supportedAreas: typing.List[ServiceArea.Structs.AreaStruct] = field(default_factory=lambda: [])
+    supportedMaps: typing.Optional[typing.List[ServiceArea.Structs.MapStruct]] = None
+    selectedAreas: typing.List[uint] = field(default_factory=lambda: [])
+    currentArea: typing.Union[None, Nullable, uint] = None
+    estimatedEndTime: typing.Union[None, Nullable, uint] = None
+    progress: typing.Optional[typing.List[ServiceArea.Structs.ProgressStruct]] = None
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Enums:
         class OperationalStatusEnum(MatterIntEnum):
@@ -99,8 +99,8 @@ class ServiceArea(Cluster):
                         ClusterObjectFieldDescriptor(Label="relativePositionTag", Tag=1, Type=typing.Union[Nullable, uint]),
                     ])
 
-            landmarkTag: 'uint' = 0
-            relativePositionTag: 'typing.Union[Nullable, uint]' = NullValue
+            landmarkTag: uint = 0
+            relativePositionTag: typing.Union[Nullable, uint] = NullValue
 
         @dataclass
         class AreaInfoStruct(ClusterObject):
@@ -112,8 +112,8 @@ class ServiceArea(Cluster):
                         ClusterObjectFieldDescriptor(Label="landmarkInfo", Tag=1, Type=typing.Union[Nullable, ServiceArea.Structs.LandmarkInfoStruct]),
                     ])
 
-            locationInfo: 'typing.Union[Nullable, Globals.Structs.locationdesc]' = NullValue
-            landmarkInfo: 'typing.Union[Nullable, ServiceArea.Structs.LandmarkInfoStruct]' = NullValue
+            locationInfo: typing.Union[Nullable, Globals.Structs.locationdesc] = NullValue
+            landmarkInfo: typing.Union[Nullable, ServiceArea.Structs.LandmarkInfoStruct] = NullValue
 
         @dataclass
         class MapStruct(ClusterObject):
@@ -125,8 +125,8 @@ class ServiceArea(Cluster):
                         ClusterObjectFieldDescriptor(Label="name", Tag=1, Type=str),
                     ])
 
-            mapID: 'uint' = 0
-            name: 'str' = ""
+            mapID: uint = 0
+            name: str = ""
 
         @dataclass
         class AreaStruct(ClusterObject):
@@ -139,9 +139,9 @@ class ServiceArea(Cluster):
                         ClusterObjectFieldDescriptor(Label="areaInfo", Tag=2, Type=ServiceArea.Structs.AreaInfoStruct),
                     ])
 
-            areaID: 'uint' = 0
-            mapID: 'typing.Union[Nullable, uint]' = NullValue
-            areaInfo: 'ServiceArea.Structs.AreaInfoStruct' = field(default_factory=lambda: ServiceArea.Structs.AreaInfoStruct())
+            areaID: uint = 0
+            mapID: typing.Union[Nullable, uint] = NullValue
+            areaInfo: ServiceArea.Structs.AreaInfoStruct = field(default_factory=lambda: ServiceArea.Structs.AreaInfoStruct())
 
         @dataclass
         class ProgressStruct(ClusterObject):
@@ -155,10 +155,10 @@ class ServiceArea(Cluster):
                         ClusterObjectFieldDescriptor(Label="estimatedTime", Tag=3, Type=typing.Union[None, Nullable, uint]),
                     ])
 
-            areaID: 'uint' = 0
-            status: 'ServiceArea.Enums.OperationalStatusEnum' = 0
-            totalOperationalTime: 'typing.Union[None, Nullable, uint]' = None
-            estimatedTime: 'typing.Union[None, Nullable, uint]' = None
+            areaID: uint = 0
+            status: ServiceArea.Enums.OperationalStatusEnum = 0
+            totalOperationalTime: typing.Union[None, Nullable, uint] = None
+            estimatedTime: typing.Union[None, Nullable, uint] = None
 
     class Commands:
         @dataclass
@@ -175,7 +175,7 @@ class ServiceArea(Cluster):
                         ClusterObjectFieldDescriptor(Label="newAreas", Tag=0, Type=typing.List[uint]),
                     ])
 
-            newAreas: 'typing.List[uint]' = field(default_factory=lambda: [])
+            newAreas: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class SkipArea(ClusterCommand):
@@ -191,7 +191,7 @@ class ServiceArea(Cluster):
                         ClusterObjectFieldDescriptor(Label="skippedArea", Tag=0, Type=uint),
                     ])
 
-            skippedArea: 'uint' = 0
+            skippedArea: uint = 0
 
         @dataclass
         class SelectAreasResponse(ClusterCommand):
@@ -208,8 +208,8 @@ class ServiceArea(Cluster):
                         ClusterObjectFieldDescriptor(Label="statusText", Tag=1, Type=str),
                     ])
 
-            status: 'ServiceArea.Enums.SelectAreasStatus' = 0
-            statusText: 'str' = ""
+            status: ServiceArea.Enums.SelectAreasStatus = 0
+            statusText: str = ""
 
         @dataclass
         class SkipAreaResponse(ClusterCommand):
@@ -226,8 +226,8 @@ class ServiceArea(Cluster):
                         ClusterObjectFieldDescriptor(Label="statusText", Tag=1, Type=str),
                     ])
 
-            status: 'ServiceArea.Enums.SkipAreaStatus' = 0
-            statusText: 'str' = ""
+            status: ServiceArea.Enums.SkipAreaStatus = 0
+            statusText: str = ""
 
     class Attributes:
         @dataclass
@@ -244,7 +244,7 @@ class ServiceArea(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[ServiceArea.Structs.AreaStruct])
 
-            value: 'typing.List[ServiceArea.Structs.AreaStruct]' = field(default_factory=lambda: [])
+            value: typing.List[ServiceArea.Structs.AreaStruct] = field(default_factory=lambda: [])
 
         @dataclass
         class SupportedMaps(ClusterAttributeDescriptor):
@@ -260,7 +260,7 @@ class ServiceArea(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[ServiceArea.Structs.MapStruct]])
 
-            value: 'typing.Optional[typing.List[ServiceArea.Structs.MapStruct]]' = None
+            value: typing.Optional[typing.List[ServiceArea.Structs.MapStruct]] = None
 
         @dataclass
         class SelectedAreas(ClusterAttributeDescriptor):
@@ -276,7 +276,7 @@ class ServiceArea(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class CurrentArea(ClusterAttributeDescriptor):
@@ -292,7 +292,7 @@ class ServiceArea(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class EstimatedEndTime(ClusterAttributeDescriptor):
@@ -308,7 +308,7 @@ class ServiceArea(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class Progress(ClusterAttributeDescriptor):
@@ -324,7 +324,7 @@ class ServiceArea(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[ServiceArea.Structs.ProgressStruct]])
 
-            value: 'typing.Optional[typing.List[ServiceArea.Structs.ProgressStruct]]' = None
+            value: typing.Optional[typing.List[ServiceArea.Structs.ProgressStruct]] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -340,7 +340,7 @@ class ServiceArea(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -356,7 +356,7 @@ class ServiceArea(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -372,7 +372,7 @@ class ServiceArea(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -388,7 +388,7 @@ class ServiceArea(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -404,4 +404,4 @@ class ServiceArea(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0

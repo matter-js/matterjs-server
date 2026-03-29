@@ -49,31 +49,31 @@ class EveCluster(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    getConfig: 'typing.Optional[uint]' = None
-    setConfig: 'typing.Optional[uint]' = None
-    loggingMetadata: 'typing.Optional[uint]' = None
-    loggingData: 'typing.Optional[uint]' = None
-    timesOpened: 'typing.Optional[uint]' = None
-    lastEventTime: 'typing.Optional[uint]' = None
-    voltage: 'typing.Optional[uint]' = None
-    current: 'typing.Optional[uint]' = None
-    watt: 'typing.Optional[uint]' = None
-    wattAccumulated: 'typing.Optional[uint]' = None
-    statusFault: 'typing.Optional[uint]' = None
-    motionSensitivity: 'typing.Optional[uint]' = None
-    wattAccumulatedControlPoint: 'typing.Optional[uint]' = None
-    obstructionDetected: 'typing.Optional[uint]' = None
-    childLock: 'typing.Optional[uint]' = None
-    rloc16: 'typing.Optional[uint]' = None
-    altitude: 'typing.Optional[uint]' = None
-    pressure: 'typing.Optional[uint]' = None
-    weatherTrend: 'typing.Optional[uint]' = None
-    valvePosition: 'typing.Optional[uint]' = None
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    getConfig: typing.Optional[uint] = None
+    setConfig: typing.Optional[uint] = None
+    loggingMetadata: typing.Optional[uint] = None
+    loggingData: typing.Optional[uint] = None
+    timesOpened: typing.Optional[uint] = None
+    lastEventTime: typing.Optional[uint] = None
+    voltage: typing.Optional[uint] = None
+    current: typing.Optional[uint] = None
+    watt: typing.Optional[uint] = None
+    wattAccumulated: typing.Optional[uint] = None
+    statusFault: typing.Optional[uint] = None
+    motionSensitivity: typing.Optional[uint] = None
+    wattAccumulatedControlPoint: typing.Optional[uint] = None
+    obstructionDetected: typing.Optional[uint] = None
+    childLock: typing.Optional[uint] = None
+    rloc16: typing.Optional[uint] = None
+    altitude: typing.Optional[uint] = None
+    pressure: typing.Optional[uint] = None
+    weatherTrend: typing.Optional[uint] = None
+    valvePosition: typing.Optional[uint] = None
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Attributes:
         @dataclass
@@ -90,7 +90,7 @@ class EveCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class SetConfig(ClusterAttributeDescriptor):
@@ -106,7 +106,7 @@ class EveCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class LoggingMetadata(ClusterAttributeDescriptor):
@@ -122,7 +122,7 @@ class EveCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class LoggingData(ClusterAttributeDescriptor):
@@ -138,7 +138,7 @@ class EveCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class TimesOpened(ClusterAttributeDescriptor):
@@ -154,7 +154,7 @@ class EveCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class LastEventTime(ClusterAttributeDescriptor):
@@ -170,7 +170,7 @@ class EveCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class Voltage(ClusterAttributeDescriptor):
@@ -186,7 +186,7 @@ class EveCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class Current(ClusterAttributeDescriptor):
@@ -202,7 +202,7 @@ class EveCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class Watt(ClusterAttributeDescriptor):
@@ -218,7 +218,7 @@ class EveCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class WattAccumulated(ClusterAttributeDescriptor):
@@ -234,7 +234,7 @@ class EveCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class StatusFault(ClusterAttributeDescriptor):
@@ -250,7 +250,7 @@ class EveCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class MotionSensitivity(ClusterAttributeDescriptor):
@@ -266,7 +266,7 @@ class EveCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class WattAccumulatedControlPoint(ClusterAttributeDescriptor):
@@ -282,7 +282,7 @@ class EveCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class ObstructionDetected(ClusterAttributeDescriptor):
@@ -298,7 +298,7 @@ class EveCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class ChildLock(ClusterAttributeDescriptor):
@@ -314,7 +314,7 @@ class EveCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class Rloc16(ClusterAttributeDescriptor):
@@ -330,7 +330,7 @@ class EveCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class Altitude(ClusterAttributeDescriptor):
@@ -346,7 +346,7 @@ class EveCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class Pressure(ClusterAttributeDescriptor):
@@ -362,7 +362,7 @@ class EveCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class WeatherTrend(ClusterAttributeDescriptor):
@@ -378,7 +378,7 @@ class EveCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class ValvePosition(ClusterAttributeDescriptor):
@@ -394,7 +394,7 @@ class EveCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -410,7 +410,7 @@ class EveCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -426,7 +426,7 @@ class EveCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -442,7 +442,7 @@ class EveCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -458,7 +458,7 @@ class EveCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -474,4 +474,4 @@ class EveCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0

@@ -31,13 +31,13 @@ class TargetNavigator(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    targetList: 'typing.List[TargetNavigator.Structs.TargetInfoStruct]' = field(default_factory=lambda: [])
-    currentTarget: 'typing.Optional[uint]' = None
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    targetList: typing.List[TargetNavigator.Structs.TargetInfoStruct] = field(default_factory=lambda: [])
+    currentTarget: typing.Optional[uint] = None
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Enums:
         class StatusEnum(MatterIntEnum):
@@ -61,8 +61,8 @@ class TargetNavigator(Cluster):
                         ClusterObjectFieldDescriptor(Label="name", Tag=1, Type=str),
                     ])
 
-            identifier: 'uint' = 0
-            name: 'str' = ""
+            identifier: uint = 0
+            name: str = ""
 
     class Commands:
         @dataclass
@@ -80,8 +80,8 @@ class TargetNavigator(Cluster):
                         ClusterObjectFieldDescriptor(Label="data", Tag=1, Type=typing.Optional[str]),
                     ])
 
-            target: 'uint' = 0
-            data: 'typing.Optional[str]' = None
+            target: uint = 0
+            data: typing.Optional[str] = None
 
         @dataclass
         class NavigateTargetResponse(ClusterCommand):
@@ -98,8 +98,8 @@ class TargetNavigator(Cluster):
                         ClusterObjectFieldDescriptor(Label="data", Tag=1, Type=typing.Optional[str]),
                     ])
 
-            status: 'TargetNavigator.Enums.StatusEnum' = 0
-            data: 'typing.Optional[str]' = None
+            status: TargetNavigator.Enums.StatusEnum = 0
+            data: typing.Optional[str] = None
 
     class Attributes:
         @dataclass
@@ -116,7 +116,7 @@ class TargetNavigator(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[TargetNavigator.Structs.TargetInfoStruct])
 
-            value: 'typing.List[TargetNavigator.Structs.TargetInfoStruct]' = field(default_factory=lambda: [])
+            value: typing.List[TargetNavigator.Structs.TargetInfoStruct] = field(default_factory=lambda: [])
 
         @dataclass
         class CurrentTarget(ClusterAttributeDescriptor):
@@ -132,7 +132,7 @@ class TargetNavigator(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -148,7 +148,7 @@ class TargetNavigator(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -164,7 +164,7 @@ class TargetNavigator(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -180,7 +180,7 @@ class TargetNavigator(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -196,7 +196,7 @@ class TargetNavigator(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -212,7 +212,7 @@ class TargetNavigator(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
     class Events:
         @dataclass
@@ -234,6 +234,6 @@ class TargetNavigator(Cluster):
                         ClusterObjectFieldDescriptor(Label="data", Tag=2, Type=typing.Optional[bytes]),
                     ])
 
-            targetList: 'typing.Optional[typing.List[TargetNavigator.Structs.TargetInfoStruct]]' = None
-            currentTarget: 'typing.Optional[uint]' = None
-            data: 'typing.Optional[bytes]' = None
+            targetList: typing.Optional[typing.List[TargetNavigator.Structs.TargetInfoStruct]] = None
+            currentTarget: typing.Optional[uint] = None
+            data: typing.Optional[bytes] = None

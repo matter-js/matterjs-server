@@ -31,13 +31,13 @@ class Identify(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    identifyTime: 'uint' = 0
-    identifyType: 'Identify.Enums.IdentifyTypeEnum' = 0
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    identifyTime: uint = 0
+    identifyType: Identify.Enums.IdentifyTypeEnum = 0
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Enums:
         class IdentifyTypeEnum(MatterIntEnum):
@@ -89,7 +89,7 @@ class Identify(Cluster):
                         ClusterObjectFieldDescriptor(Label="identifyTime", Tag=0, Type=uint),
                     ])
 
-            identifyTime: 'uint' = 0
+            identifyTime: uint = 0
 
         @dataclass
         class TriggerEffect(ClusterCommand):
@@ -106,8 +106,8 @@ class Identify(Cluster):
                         ClusterObjectFieldDescriptor(Label="effectVariant", Tag=1, Type=Identify.Enums.EffectVariantEnum),
                     ])
 
-            effectIdentifier: 'Identify.Enums.EffectIdentifierEnum' = 0
-            effectVariant: 'Identify.Enums.EffectVariantEnum' = 0
+            effectIdentifier: Identify.Enums.EffectIdentifierEnum = 0
+            effectVariant: Identify.Enums.EffectVariantEnum = 0
 
     class Attributes:
         @dataclass
@@ -124,7 +124,7 @@ class Identify(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class IdentifyType(ClusterAttributeDescriptor):
@@ -140,7 +140,7 @@ class Identify(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=Identify.Enums.IdentifyTypeEnum)
 
-            value: 'Identify.Enums.IdentifyTypeEnum' = 0
+            value: Identify.Enums.IdentifyTypeEnum = 0
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -156,7 +156,7 @@ class Identify(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -172,7 +172,7 @@ class Identify(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -188,7 +188,7 @@ class Identify(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -204,7 +204,7 @@ class Identify(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -220,4 +220,4 @@ class Identify(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0

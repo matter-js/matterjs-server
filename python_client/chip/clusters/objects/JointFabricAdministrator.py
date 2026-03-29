@@ -30,12 +30,12 @@ class JointFabricAdministrator(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    administratorFabricIndex: 'typing.Union[None, Nullable, uint]' = None
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    administratorFabricIndex: typing.Union[None, Nullable, uint] = None
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Enums:
         class ICACResponseStatusEnum(MatterIntEnum):
@@ -99,7 +99,7 @@ class JointFabricAdministrator(Cluster):
                         ClusterObjectFieldDescriptor(Label="ICACValue", Tag=1, Type=bytes),
                     ])
 
-            ICACValue: 'bytes' = b""
+            ICACValue: bytes = b""
 
         @dataclass
         class OpenJointCommissioningWindow(ClusterCommand):
@@ -119,11 +119,11 @@ class JointFabricAdministrator(Cluster):
                         ClusterObjectFieldDescriptor(Label="salt", Tag=4, Type=bytes),
                     ])
 
-            commissioningTimeout: 'uint' = 0
-            PAKEPasscodeVerifier: 'bytes' = b""
-            discriminator: 'uint' = 0
-            iterations: 'uint' = 0
-            salt: 'bytes' = b""
+            commissioningTimeout: uint = 0
+            PAKEPasscodeVerifier: bytes = b""
+            discriminator: uint = 0
+            iterations: uint = 0
+            salt: bytes = b""
 
         @dataclass
         class TransferAnchorRequest(ClusterCommand):
@@ -167,7 +167,7 @@ class JointFabricAdministrator(Cluster):
                         ClusterObjectFieldDescriptor(Label="endpointID", Tag=0, Type=uint),
                     ])
 
-            endpointID: 'uint' = 0
+            endpointID: uint = 0
 
         @dataclass
         class ICACCSRResponse(ClusterCommand):
@@ -183,7 +183,7 @@ class JointFabricAdministrator(Cluster):
                         ClusterObjectFieldDescriptor(Label="icaccsr", Tag=0, Type=bytes),
                     ])
 
-            icaccsr: 'bytes' = b""
+            icaccsr: bytes = b""
 
         @dataclass
         class ICACResponse(ClusterCommand):
@@ -199,7 +199,7 @@ class JointFabricAdministrator(Cluster):
                         ClusterObjectFieldDescriptor(Label="statusCode", Tag=0, Type=JointFabricAdministrator.Enums.ICACResponseStatusEnum),
                     ])
 
-            statusCode: 'JointFabricAdministrator.Enums.ICACResponseStatusEnum' = 0
+            statusCode: JointFabricAdministrator.Enums.ICACResponseStatusEnum = 0
 
         @dataclass
         class TransferAnchorResponse(ClusterCommand):
@@ -215,7 +215,7 @@ class JointFabricAdministrator(Cluster):
                         ClusterObjectFieldDescriptor(Label="statusCode", Tag=0, Type=JointFabricAdministrator.Enums.TransferAnchorResponseStatusEnum),
                     ])
 
-            statusCode: 'JointFabricAdministrator.Enums.TransferAnchorResponseStatusEnum' = 0
+            statusCode: JointFabricAdministrator.Enums.TransferAnchorResponseStatusEnum = 0
 
     class Attributes:
         @dataclass
@@ -232,7 +232,7 @@ class JointFabricAdministrator(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -248,7 +248,7 @@ class JointFabricAdministrator(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -264,7 +264,7 @@ class JointFabricAdministrator(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -280,7 +280,7 @@ class JointFabricAdministrator(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -296,7 +296,7 @@ class JointFabricAdministrator(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -312,4 +312,4 @@ class JointFabricAdministrator(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0

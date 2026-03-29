@@ -41,23 +41,23 @@ class FanControl(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    fanMode: 'FanControl.Enums.FanModeEnum' = 0
-    fanModeSequence: 'FanControl.Enums.FanModeSequenceEnum' = 0
-    percentSetting: 'typing.Union[Nullable, uint]' = NullValue
-    percentCurrent: 'uint' = 0
-    speedMax: 'typing.Optional[uint]' = None
-    speedSetting: 'typing.Union[None, Nullable, uint]' = None
-    speedCurrent: 'typing.Optional[uint]' = None
-    rockSupport: 'typing.Optional[uint]' = None
-    rockSetting: 'typing.Optional[uint]' = None
-    windSupport: 'typing.Optional[uint]' = None
-    windSetting: 'typing.Optional[uint]' = None
-    airflowDirection: 'typing.Optional[FanControl.Enums.AirflowDirectionEnum]' = None
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    fanMode: FanControl.Enums.FanModeEnum = 0
+    fanModeSequence: FanControl.Enums.FanModeSequenceEnum = 0
+    percentSetting: typing.Union[Nullable, uint] = NullValue
+    percentCurrent: uint = 0
+    speedMax: typing.Optional[uint] = None
+    speedSetting: typing.Union[None, Nullable, uint] = None
+    speedCurrent: typing.Optional[uint] = None
+    rockSupport: typing.Optional[uint] = None
+    rockSetting: typing.Optional[uint] = None
+    windSupport: typing.Optional[uint] = None
+    windSetting: typing.Optional[uint] = None
+    airflowDirection: typing.Optional[FanControl.Enums.AirflowDirectionEnum] = None
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Enums:
         class StepDirectionEnum(MatterIntEnum):
@@ -140,9 +140,9 @@ class FanControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="lowestOff", Tag=2, Type=typing.Optional[bool]),
                     ])
 
-            direction: 'FanControl.Enums.StepDirectionEnum' = 0
-            wrap: 'typing.Optional[bool]' = None
-            lowestOff: 'typing.Optional[bool]' = None
+            direction: FanControl.Enums.StepDirectionEnum = 0
+            wrap: typing.Optional[bool] = None
+            lowestOff: typing.Optional[bool] = None
 
     class Attributes:
         @dataclass
@@ -159,7 +159,7 @@ class FanControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=FanControl.Enums.FanModeEnum)
 
-            value: 'FanControl.Enums.FanModeEnum' = 0
+            value: FanControl.Enums.FanModeEnum = 0
 
         @dataclass
         class FanModeSequence(ClusterAttributeDescriptor):
@@ -175,7 +175,7 @@ class FanControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=FanControl.Enums.FanModeSequenceEnum)
 
-            value: 'FanControl.Enums.FanModeSequenceEnum' = 0
+            value: FanControl.Enums.FanModeSequenceEnum = 0
 
         @dataclass
         class PercentSetting(ClusterAttributeDescriptor):
@@ -191,7 +191,7 @@ class FanControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[Nullable, uint])
 
-            value: 'typing.Union[Nullable, uint]' = NullValue
+            value: typing.Union[Nullable, uint] = NullValue
 
         @dataclass
         class PercentCurrent(ClusterAttributeDescriptor):
@@ -207,7 +207,7 @@ class FanControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class SpeedMax(ClusterAttributeDescriptor):
@@ -223,7 +223,7 @@ class FanControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class SpeedSetting(ClusterAttributeDescriptor):
@@ -239,7 +239,7 @@ class FanControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class SpeedCurrent(ClusterAttributeDescriptor):
@@ -255,7 +255,7 @@ class FanControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class RockSupport(ClusterAttributeDescriptor):
@@ -271,7 +271,7 @@ class FanControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class RockSetting(ClusterAttributeDescriptor):
@@ -287,7 +287,7 @@ class FanControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class WindSupport(ClusterAttributeDescriptor):
@@ -303,7 +303,7 @@ class FanControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class WindSetting(ClusterAttributeDescriptor):
@@ -319,7 +319,7 @@ class FanControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class AirflowDirection(ClusterAttributeDescriptor):
@@ -335,7 +335,7 @@ class FanControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[FanControl.Enums.AirflowDirectionEnum])
 
-            value: 'typing.Optional[FanControl.Enums.AirflowDirectionEnum]' = None
+            value: typing.Optional[FanControl.Enums.AirflowDirectionEnum] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -351,7 +351,7 @@ class FanControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -367,7 +367,7 @@ class FanControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -383,7 +383,7 @@ class FanControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -399,7 +399,7 @@ class FanControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -415,4 +415,4 @@ class FanControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0

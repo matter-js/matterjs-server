@@ -90,71 +90,71 @@ class Thermostat(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    localTemperature: 'typing.Union[Nullable, uint]' = NullValue
-    outdoorTemperature: 'typing.Union[None, Nullable, uint]' = None
-    occupancy: 'typing.Optional[uint]' = None
-    absMinHeatSetpointLimit: 'typing.Optional[uint]' = None
-    absMaxHeatSetpointLimit: 'typing.Optional[uint]' = None
-    absMinCoolSetpointLimit: 'typing.Optional[uint]' = None
-    absMaxCoolSetpointLimit: 'typing.Optional[uint]' = None
-    PICoolingDemand: 'typing.Optional[uint]' = None
-    PIHeatingDemand: 'typing.Optional[uint]' = None
-    HVACSystemTypeConfiguration: 'typing.Optional[uint]' = None
-    localTemperatureCalibration: 'typing.Optional[uint]' = None
-    occupiedCoolingSetpoint: 'typing.Optional[uint]' = None
-    occupiedHeatingSetpoint: 'typing.Optional[uint]' = None
-    unoccupiedCoolingSetpoint: 'typing.Optional[uint]' = None
-    unoccupiedHeatingSetpoint: 'typing.Optional[uint]' = None
-    minHeatSetpointLimit: 'typing.Optional[uint]' = None
-    maxHeatSetpointLimit: 'typing.Optional[uint]' = None
-    minCoolSetpointLimit: 'typing.Optional[uint]' = None
-    maxCoolSetpointLimit: 'typing.Optional[uint]' = None
-    minSetpointDeadBand: 'typing.Optional[uint]' = None
-    remoteSensing: 'typing.Optional[uint]' = None
-    controlSequenceOfOperation: 'Thermostat.Enums.ControlSequenceOfOperationEnum' = 0
-    systemMode: 'Thermostat.Enums.SystemModeEnum' = 0
-    thermostatRunningMode: 'typing.Optional[Thermostat.Enums.ThermostatRunningModeEnum]' = None
-    startOfWeek: 'typing.Optional[Thermostat.Enums.StartOfWeekEnum]' = None
-    numberOfWeeklyTransitions: 'typing.Optional[uint]' = None
-    numberOfDailyTransitions: 'typing.Optional[uint]' = None
-    temperatureSetpointHold: 'typing.Optional[Thermostat.Enums.TemperatureSetpointHoldEnum]' = None
-    temperatureSetpointHoldDuration: 'typing.Union[None, Nullable, uint]' = None
-    thermostatProgrammingOperationMode: 'typing.Optional[uint]' = None
-    thermostatRunningState: 'typing.Optional[uint]' = None
-    setpointChangeSource: 'typing.Optional[Thermostat.Enums.SetpointChangeSourceEnum]' = None
-    setpointChangeAmount: 'typing.Union[None, Nullable, uint]' = None
-    setpointChangeSourceTimestamp: 'typing.Optional[uint]' = None
-    occupiedSetback: 'typing.Union[None, Nullable, uint]' = None
-    occupiedSetbackMin: 'typing.Union[None, Nullable, uint]' = None
-    occupiedSetbackMax: 'typing.Union[None, Nullable, uint]' = None
-    unoccupiedSetback: 'typing.Union[None, Nullable, uint]' = None
-    unoccupiedSetbackMin: 'typing.Union[None, Nullable, uint]' = None
-    unoccupiedSetbackMax: 'typing.Union[None, Nullable, uint]' = None
-    emergencyHeatDelta: 'typing.Optional[uint]' = None
-    ACType: 'typing.Optional[Thermostat.Enums.ACTypeEnum]' = None
-    ACCapacity: 'typing.Optional[uint]' = None
-    ACRefrigerantType: 'typing.Optional[Thermostat.Enums.ACRefrigerantTypeEnum]' = None
-    ACCompressorType: 'typing.Optional[Thermostat.Enums.ACCompressorTypeEnum]' = None
-    ACErrorCode: 'typing.Optional[uint]' = None
-    ACLouverPosition: 'typing.Optional[Thermostat.Enums.ACLouverPositionEnum]' = None
-    ACCoilTemperature: 'typing.Union[None, Nullable, uint]' = None
-    ACCapacityformat: 'typing.Optional[Thermostat.Enums.ACCapacityFormatEnum]' = None
-    presetTypes: 'typing.Optional[typing.List[Thermostat.Structs.PresetTypeStruct]]' = None
-    scheduleTypes: 'typing.Optional[typing.List[Thermostat.Structs.ScheduleTypeStruct]]' = None
-    numberOfPresets: 'typing.Optional[uint]' = None
-    numberOfSchedules: 'typing.Optional[uint]' = None
-    numberOfScheduleTransitions: 'typing.Optional[uint]' = None
-    numberOfScheduleTransitionPerDay: 'typing.Union[None, Nullable, uint]' = None
-    activePresetHandle: 'typing.Union[None, Nullable, bytes]' = None
-    activeScheduleHandle: 'typing.Union[None, Nullable, bytes]' = None
-    presets: 'typing.Optional[typing.List[Thermostat.Structs.PresetStruct]]' = None
-    schedules: 'typing.Optional[typing.List[Thermostat.Structs.ScheduleStruct]]' = None
-    setpointHoldExpiryTimestamp: 'typing.Union[None, Nullable, uint]' = None
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    localTemperature: typing.Union[Nullable, uint] = NullValue
+    outdoorTemperature: typing.Union[None, Nullable, uint] = None
+    occupancy: typing.Optional[uint] = None
+    absMinHeatSetpointLimit: typing.Optional[uint] = None
+    absMaxHeatSetpointLimit: typing.Optional[uint] = None
+    absMinCoolSetpointLimit: typing.Optional[uint] = None
+    absMaxCoolSetpointLimit: typing.Optional[uint] = None
+    PICoolingDemand: typing.Optional[uint] = None
+    PIHeatingDemand: typing.Optional[uint] = None
+    HVACSystemTypeConfiguration: typing.Optional[uint] = None
+    localTemperatureCalibration: typing.Optional[uint] = None
+    occupiedCoolingSetpoint: typing.Optional[uint] = None
+    occupiedHeatingSetpoint: typing.Optional[uint] = None
+    unoccupiedCoolingSetpoint: typing.Optional[uint] = None
+    unoccupiedHeatingSetpoint: typing.Optional[uint] = None
+    minHeatSetpointLimit: typing.Optional[uint] = None
+    maxHeatSetpointLimit: typing.Optional[uint] = None
+    minCoolSetpointLimit: typing.Optional[uint] = None
+    maxCoolSetpointLimit: typing.Optional[uint] = None
+    minSetpointDeadBand: typing.Optional[uint] = None
+    remoteSensing: typing.Optional[uint] = None
+    controlSequenceOfOperation: Thermostat.Enums.ControlSequenceOfOperationEnum = 0
+    systemMode: Thermostat.Enums.SystemModeEnum = 0
+    thermostatRunningMode: typing.Optional[Thermostat.Enums.ThermostatRunningModeEnum] = None
+    startOfWeek: typing.Optional[Thermostat.Enums.StartOfWeekEnum] = None
+    numberOfWeeklyTransitions: typing.Optional[uint] = None
+    numberOfDailyTransitions: typing.Optional[uint] = None
+    temperatureSetpointHold: typing.Optional[Thermostat.Enums.TemperatureSetpointHoldEnum] = None
+    temperatureSetpointHoldDuration: typing.Union[None, Nullable, uint] = None
+    thermostatProgrammingOperationMode: typing.Optional[uint] = None
+    thermostatRunningState: typing.Optional[uint] = None
+    setpointChangeSource: typing.Optional[Thermostat.Enums.SetpointChangeSourceEnum] = None
+    setpointChangeAmount: typing.Union[None, Nullable, uint] = None
+    setpointChangeSourceTimestamp: typing.Optional[uint] = None
+    occupiedSetback: typing.Union[None, Nullable, uint] = None
+    occupiedSetbackMin: typing.Union[None, Nullable, uint] = None
+    occupiedSetbackMax: typing.Union[None, Nullable, uint] = None
+    unoccupiedSetback: typing.Union[None, Nullable, uint] = None
+    unoccupiedSetbackMin: typing.Union[None, Nullable, uint] = None
+    unoccupiedSetbackMax: typing.Union[None, Nullable, uint] = None
+    emergencyHeatDelta: typing.Optional[uint] = None
+    ACType: typing.Optional[Thermostat.Enums.ACTypeEnum] = None
+    ACCapacity: typing.Optional[uint] = None
+    ACRefrigerantType: typing.Optional[Thermostat.Enums.ACRefrigerantTypeEnum] = None
+    ACCompressorType: typing.Optional[Thermostat.Enums.ACCompressorTypeEnum] = None
+    ACErrorCode: typing.Optional[uint] = None
+    ACLouverPosition: typing.Optional[Thermostat.Enums.ACLouverPositionEnum] = None
+    ACCoilTemperature: typing.Union[None, Nullable, uint] = None
+    ACCapacityformat: typing.Optional[Thermostat.Enums.ACCapacityFormatEnum] = None
+    presetTypes: typing.Optional[typing.List[Thermostat.Structs.PresetTypeStruct]] = None
+    scheduleTypes: typing.Optional[typing.List[Thermostat.Structs.ScheduleTypeStruct]] = None
+    numberOfPresets: typing.Optional[uint] = None
+    numberOfSchedules: typing.Optional[uint] = None
+    numberOfScheduleTransitions: typing.Optional[uint] = None
+    numberOfScheduleTransitionPerDay: typing.Union[None, Nullable, uint] = None
+    activePresetHandle: typing.Union[None, Nullable, bytes] = None
+    activeScheduleHandle: typing.Union[None, Nullable, bytes] = None
+    presets: typing.Optional[typing.List[Thermostat.Structs.PresetStruct]] = None
+    schedules: typing.Optional[typing.List[Thermostat.Structs.ScheduleStruct]] = None
+    setpointHoldExpiryTimestamp: typing.Union[None, Nullable, uint] = None
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Enums:
         class ACCapacityFormatEnum(MatterIntEnum):
@@ -393,12 +393,12 @@ class Thermostat(Cluster):
                         ClusterObjectFieldDescriptor(Label="builtIn", Tag=5, Type=typing.Union[Nullable, bool]),
                     ])
 
-            presetHandle: 'typing.Union[Nullable, bytes]' = NullValue
-            presetScenario: 'Thermostat.Enums.PresetScenarioEnum' = 0
-            name: 'typing.Union[None, Nullable, str]' = None
-            coolingSetpoint: 'typing.Optional[uint]' = None
-            heatingSetpoint: 'typing.Optional[uint]' = None
-            builtIn: 'typing.Union[Nullable, bool]' = NullValue
+            presetHandle: typing.Union[Nullable, bytes] = NullValue
+            presetScenario: Thermostat.Enums.PresetScenarioEnum = 0
+            name: typing.Union[None, Nullable, str] = None
+            coolingSetpoint: typing.Optional[uint] = None
+            heatingSetpoint: typing.Optional[uint] = None
+            builtIn: typing.Union[Nullable, bool] = NullValue
 
         @dataclass
         class PresetTypeStruct(ClusterObject):
@@ -411,9 +411,9 @@ class Thermostat(Cluster):
                         ClusterObjectFieldDescriptor(Label="presetTypeFeatures", Tag=2, Type=uint),
                     ])
 
-            presetScenario: 'Thermostat.Enums.PresetScenarioEnum' = 0
-            numberOfPresets: 'uint' = 0
-            presetTypeFeatures: 'uint' = 0
+            presetScenario: Thermostat.Enums.PresetScenarioEnum = 0
+            numberOfPresets: uint = 0
+            presetTypeFeatures: uint = 0
 
         @dataclass
         class WeeklyScheduleTransitionStruct(ClusterObject):
@@ -426,9 +426,9 @@ class Thermostat(Cluster):
                         ClusterObjectFieldDescriptor(Label="coolSetpoint", Tag=2, Type=typing.Union[Nullable, uint]),
                     ])
 
-            transitionTime: 'uint' = 0
-            heatSetpoint: 'typing.Union[Nullable, uint]' = NullValue
-            coolSetpoint: 'typing.Union[Nullable, uint]' = NullValue
+            transitionTime: uint = 0
+            heatSetpoint: typing.Union[Nullable, uint] = NullValue
+            coolSetpoint: typing.Union[Nullable, uint] = NullValue
 
         @dataclass
         class ScheduleStruct(ClusterObject):
@@ -444,12 +444,12 @@ class Thermostat(Cluster):
                         ClusterObjectFieldDescriptor(Label="builtIn", Tag=5, Type=typing.Union[Nullable, bool]),
                     ])
 
-            scheduleHandle: 'typing.Union[Nullable, bytes]' = NullValue
-            systemMode: 'Thermostat.Enums.SystemModeEnum' = 0
-            name: 'typing.Optional[str]' = None
-            presetHandle: 'typing.Optional[bytes]' = None
-            transitions: 'typing.List[Thermostat.Structs.ScheduleTransitionStruct]' = field(default_factory=lambda: [])
-            builtIn: 'typing.Union[Nullable, bool]' = NullValue
+            scheduleHandle: typing.Union[Nullable, bytes] = NullValue
+            systemMode: Thermostat.Enums.SystemModeEnum = 0
+            name: typing.Optional[str] = None
+            presetHandle: typing.Optional[bytes] = None
+            transitions: typing.List[Thermostat.Structs.ScheduleTransitionStruct] = field(default_factory=lambda: [])
+            builtIn: typing.Union[Nullable, bool] = NullValue
 
         @dataclass
         class ScheduleTransitionStruct(ClusterObject):
@@ -465,12 +465,12 @@ class Thermostat(Cluster):
                         ClusterObjectFieldDescriptor(Label="heatingSetpoint", Tag=5, Type=typing.Optional[uint]),
                     ])
 
-            dayOfWeek: 'uint' = 0
-            transitionTime: 'uint' = 0
-            presetHandle: 'typing.Optional[bytes]' = None
-            systemMode: 'typing.Optional[Thermostat.Enums.SystemModeEnum]' = None
-            coolingSetpoint: 'typing.Optional[uint]' = None
-            heatingSetpoint: 'typing.Optional[uint]' = None
+            dayOfWeek: uint = 0
+            transitionTime: uint = 0
+            presetHandle: typing.Optional[bytes] = None
+            systemMode: typing.Optional[Thermostat.Enums.SystemModeEnum] = None
+            coolingSetpoint: typing.Optional[uint] = None
+            heatingSetpoint: typing.Optional[uint] = None
 
         @dataclass
         class ScheduleTypeStruct(ClusterObject):
@@ -483,9 +483,9 @@ class Thermostat(Cluster):
                         ClusterObjectFieldDescriptor(Label="scheduleTypeFeatures", Tag=2, Type=uint),
                     ])
 
-            systemMode: 'Thermostat.Enums.SystemModeEnum' = 0
-            numberOfSchedules: 'uint' = 0
-            scheduleTypeFeatures: 'uint' = 0
+            systemMode: Thermostat.Enums.SystemModeEnum = 0
+            numberOfSchedules: uint = 0
+            scheduleTypeFeatures: uint = 0
 
     class Commands:
         @dataclass
@@ -503,8 +503,8 @@ class Thermostat(Cluster):
                         ClusterObjectFieldDescriptor(Label="amount", Tag=1, Type=int),
                     ])
 
-            mode: 'Thermostat.Enums.SetpointRaiseLowerModeEnum' = 0
-            amount: 'int' = 0
+            mode: Thermostat.Enums.SetpointRaiseLowerModeEnum = 0
+            amount: int = 0
 
         @dataclass
         class SetWeeklySchedule(ClusterCommand):
@@ -523,10 +523,10 @@ class Thermostat(Cluster):
                         ClusterObjectFieldDescriptor(Label="transitions", Tag=3, Type=typing.List[Thermostat.Structs.WeeklyScheduleTransitionStruct]),
                     ])
 
-            numberOfTransitionsForSequence: 'uint' = 0
-            dayOfWeekForSequence: 'uint' = 0
-            modeForSequence: 'uint' = 0
-            transitions: 'typing.List[Thermostat.Structs.WeeklyScheduleTransitionStruct]' = field(default_factory=lambda: [])
+            numberOfTransitionsForSequence: uint = 0
+            dayOfWeekForSequence: uint = 0
+            modeForSequence: uint = 0
+            transitions: typing.List[Thermostat.Structs.WeeklyScheduleTransitionStruct] = field(default_factory=lambda: [])
 
         @dataclass
         class GetWeeklySchedule(ClusterCommand):
@@ -543,8 +543,8 @@ class Thermostat(Cluster):
                         ClusterObjectFieldDescriptor(Label="modeToReturn", Tag=1, Type=uint),
                     ])
 
-            daysToReturn: 'uint' = 0
-            modeToReturn: 'uint' = 0
+            daysToReturn: uint = 0
+            modeToReturn: uint = 0
 
         @dataclass
         class ClearWeeklySchedule(ClusterCommand):
@@ -574,7 +574,7 @@ class Thermostat(Cluster):
                         ClusterObjectFieldDescriptor(Label="scheduleHandle", Tag=0, Type=bytes),
                     ])
 
-            scheduleHandle: 'bytes' = b""
+            scheduleHandle: bytes = b""
 
         @dataclass
         class SetActivePresetRequest(ClusterCommand):
@@ -590,7 +590,7 @@ class Thermostat(Cluster):
                         ClusterObjectFieldDescriptor(Label="presetHandle", Tag=0, Type=typing.Union[Nullable, bytes]),
                     ])
 
-            presetHandle: 'typing.Union[Nullable, bytes]' = NullValue
+            presetHandle: typing.Union[Nullable, bytes] = NullValue
 
         @dataclass
         class AtomicRequest(ClusterCommand):
@@ -608,9 +608,9 @@ class Thermostat(Cluster):
                         ClusterObjectFieldDescriptor(Label="timeout", Tag=2, Type=typing.Optional[uint]),
                     ])
 
-            requestType: 'Globals.Enums.enum8' = 0
-            attributeRequests: 'typing.List[uint]' = field(default_factory=lambda: [])
-            timeout: 'typing.Optional[uint]' = None
+            requestType: Globals.Enums.enum8 = 0
+            attributeRequests: typing.List[uint] = field(default_factory=lambda: [])
+            timeout: typing.Optional[uint] = None
 
         @dataclass
         class GetWeeklyScheduleResponse(ClusterCommand):
@@ -629,10 +629,10 @@ class Thermostat(Cluster):
                         ClusterObjectFieldDescriptor(Label="transitions", Tag=3, Type=typing.List[Thermostat.Structs.WeeklyScheduleTransitionStruct]),
                     ])
 
-            numberOfTransitionsForSequence: 'uint' = 0
-            dayOfWeekForSequence: 'uint' = 0
-            modeForSequence: 'uint' = 0
-            transitions: 'typing.List[Thermostat.Structs.WeeklyScheduleTransitionStruct]' = field(default_factory=lambda: [])
+            numberOfTransitionsForSequence: uint = 0
+            dayOfWeekForSequence: uint = 0
+            modeForSequence: uint = 0
+            transitions: typing.List[Thermostat.Structs.WeeklyScheduleTransitionStruct] = field(default_factory=lambda: [])
 
         @dataclass
         class GetRelayStatusLogResponse(ClusterCommand):
@@ -653,12 +653,12 @@ class Thermostat(Cluster):
                         ClusterObjectFieldDescriptor(Label="unreadEntries", Tag=5, Type=uint),
                     ])
 
-            timeOfDay: 'uint' = 0
-            relayStatus: 'uint' = 0
-            localTemperature: 'typing.Union[Nullable, uint]' = NullValue
-            humidityInPercentage: 'typing.Union[Nullable, uint]' = NullValue
-            setpoint: 'uint' = 0
-            unreadEntries: 'uint' = 0
+            timeOfDay: uint = 0
+            relayStatus: uint = 0
+            localTemperature: typing.Union[Nullable, uint] = NullValue
+            humidityInPercentage: typing.Union[Nullable, uint] = NullValue
+            setpoint: uint = 0
+            unreadEntries: uint = 0
 
         @dataclass
         class AtomicResponse(ClusterCommand):
@@ -676,9 +676,9 @@ class Thermostat(Cluster):
                         ClusterObjectFieldDescriptor(Label="timeout", Tag=2, Type=typing.Optional[uint]),
                     ])
 
-            statusCode: 'Globals.Enums.status' = 0
-            attributeStatus: 'typing.List[Globals.Structs.struct]' = field(default_factory=lambda: [])
-            timeout: 'typing.Optional[uint]' = None
+            statusCode: Globals.Enums.status = 0
+            attributeStatus: typing.List[Globals.Structs.struct] = field(default_factory=lambda: [])
+            timeout: typing.Optional[uint] = None
 
     class Attributes:
         @dataclass
@@ -695,7 +695,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[Nullable, uint])
 
-            value: 'typing.Union[Nullable, uint]' = NullValue
+            value: typing.Union[Nullable, uint] = NullValue
 
         @dataclass
         class OutdoorTemperature(ClusterAttributeDescriptor):
@@ -711,7 +711,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class Occupancy(ClusterAttributeDescriptor):
@@ -727,7 +727,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class AbsMinHeatSetpointLimit(ClusterAttributeDescriptor):
@@ -743,7 +743,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class AbsMaxHeatSetpointLimit(ClusterAttributeDescriptor):
@@ -759,7 +759,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class AbsMinCoolSetpointLimit(ClusterAttributeDescriptor):
@@ -775,7 +775,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class AbsMaxCoolSetpointLimit(ClusterAttributeDescriptor):
@@ -791,7 +791,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class PICoolingDemand(ClusterAttributeDescriptor):
@@ -807,7 +807,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class PIHeatingDemand(ClusterAttributeDescriptor):
@@ -823,7 +823,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class HVACSystemTypeConfiguration(ClusterAttributeDescriptor):
@@ -839,7 +839,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class LocalTemperatureCalibration(ClusterAttributeDescriptor):
@@ -855,7 +855,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class OccupiedCoolingSetpoint(ClusterAttributeDescriptor):
@@ -871,7 +871,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class OccupiedHeatingSetpoint(ClusterAttributeDescriptor):
@@ -887,7 +887,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class UnoccupiedCoolingSetpoint(ClusterAttributeDescriptor):
@@ -903,7 +903,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class UnoccupiedHeatingSetpoint(ClusterAttributeDescriptor):
@@ -919,7 +919,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class MinHeatSetpointLimit(ClusterAttributeDescriptor):
@@ -935,7 +935,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class MaxHeatSetpointLimit(ClusterAttributeDescriptor):
@@ -951,7 +951,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class MinCoolSetpointLimit(ClusterAttributeDescriptor):
@@ -967,7 +967,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class MaxCoolSetpointLimit(ClusterAttributeDescriptor):
@@ -983,7 +983,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class MinSetpointDeadBand(ClusterAttributeDescriptor):
@@ -999,7 +999,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class RemoteSensing(ClusterAttributeDescriptor):
@@ -1015,7 +1015,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class ControlSequenceOfOperation(ClusterAttributeDescriptor):
@@ -1031,7 +1031,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=Thermostat.Enums.ControlSequenceOfOperationEnum)
 
-            value: 'Thermostat.Enums.ControlSequenceOfOperationEnum' = 0
+            value: Thermostat.Enums.ControlSequenceOfOperationEnum = 0
 
         @dataclass
         class SystemMode(ClusterAttributeDescriptor):
@@ -1047,7 +1047,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=Thermostat.Enums.SystemModeEnum)
 
-            value: 'Thermostat.Enums.SystemModeEnum' = 0
+            value: Thermostat.Enums.SystemModeEnum = 0
 
         @dataclass
         class ThermostatRunningMode(ClusterAttributeDescriptor):
@@ -1063,7 +1063,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[Thermostat.Enums.ThermostatRunningModeEnum])
 
-            value: 'typing.Optional[Thermostat.Enums.ThermostatRunningModeEnum]' = None
+            value: typing.Optional[Thermostat.Enums.ThermostatRunningModeEnum] = None
 
         @dataclass
         class StartOfWeek(ClusterAttributeDescriptor):
@@ -1079,7 +1079,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[Thermostat.Enums.StartOfWeekEnum])
 
-            value: 'typing.Optional[Thermostat.Enums.StartOfWeekEnum]' = None
+            value: typing.Optional[Thermostat.Enums.StartOfWeekEnum] = None
 
         @dataclass
         class NumberOfWeeklyTransitions(ClusterAttributeDescriptor):
@@ -1095,7 +1095,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class NumberOfDailyTransitions(ClusterAttributeDescriptor):
@@ -1111,7 +1111,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class TemperatureSetpointHold(ClusterAttributeDescriptor):
@@ -1127,7 +1127,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[Thermostat.Enums.TemperatureSetpointHoldEnum])
 
-            value: 'typing.Optional[Thermostat.Enums.TemperatureSetpointHoldEnum]' = None
+            value: typing.Optional[Thermostat.Enums.TemperatureSetpointHoldEnum] = None
 
         @dataclass
         class TemperatureSetpointHoldDuration(ClusterAttributeDescriptor):
@@ -1143,7 +1143,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class ThermostatProgrammingOperationMode(ClusterAttributeDescriptor):
@@ -1159,7 +1159,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class ThermostatRunningState(ClusterAttributeDescriptor):
@@ -1175,7 +1175,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class SetpointChangeSource(ClusterAttributeDescriptor):
@@ -1191,7 +1191,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[Thermostat.Enums.SetpointChangeSourceEnum])
 
-            value: 'typing.Optional[Thermostat.Enums.SetpointChangeSourceEnum]' = None
+            value: typing.Optional[Thermostat.Enums.SetpointChangeSourceEnum] = None
 
         @dataclass
         class SetpointChangeAmount(ClusterAttributeDescriptor):
@@ -1207,7 +1207,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class SetpointChangeSourceTimestamp(ClusterAttributeDescriptor):
@@ -1223,7 +1223,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class OccupiedSetback(ClusterAttributeDescriptor):
@@ -1239,7 +1239,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class OccupiedSetbackMin(ClusterAttributeDescriptor):
@@ -1255,7 +1255,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class OccupiedSetbackMax(ClusterAttributeDescriptor):
@@ -1271,7 +1271,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class UnoccupiedSetback(ClusterAttributeDescriptor):
@@ -1287,7 +1287,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class UnoccupiedSetbackMin(ClusterAttributeDescriptor):
@@ -1303,7 +1303,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class UnoccupiedSetbackMax(ClusterAttributeDescriptor):
@@ -1319,7 +1319,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class EmergencyHeatDelta(ClusterAttributeDescriptor):
@@ -1335,7 +1335,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class ACType(ClusterAttributeDescriptor):
@@ -1351,7 +1351,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[Thermostat.Enums.ACTypeEnum])
 
-            value: 'typing.Optional[Thermostat.Enums.ACTypeEnum]' = None
+            value: typing.Optional[Thermostat.Enums.ACTypeEnum] = None
 
         @dataclass
         class ACCapacity(ClusterAttributeDescriptor):
@@ -1367,7 +1367,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class ACRefrigerantType(ClusterAttributeDescriptor):
@@ -1383,7 +1383,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[Thermostat.Enums.ACRefrigerantTypeEnum])
 
-            value: 'typing.Optional[Thermostat.Enums.ACRefrigerantTypeEnum]' = None
+            value: typing.Optional[Thermostat.Enums.ACRefrigerantTypeEnum] = None
 
         @dataclass
         class ACCompressorType(ClusterAttributeDescriptor):
@@ -1399,7 +1399,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[Thermostat.Enums.ACCompressorTypeEnum])
 
-            value: 'typing.Optional[Thermostat.Enums.ACCompressorTypeEnum]' = None
+            value: typing.Optional[Thermostat.Enums.ACCompressorTypeEnum] = None
 
         @dataclass
         class ACErrorCode(ClusterAttributeDescriptor):
@@ -1415,7 +1415,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class ACLouverPosition(ClusterAttributeDescriptor):
@@ -1431,7 +1431,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[Thermostat.Enums.ACLouverPositionEnum])
 
-            value: 'typing.Optional[Thermostat.Enums.ACLouverPositionEnum]' = None
+            value: typing.Optional[Thermostat.Enums.ACLouverPositionEnum] = None
 
         @dataclass
         class ACCoilTemperature(ClusterAttributeDescriptor):
@@ -1447,7 +1447,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class ACCapacityformat(ClusterAttributeDescriptor):
@@ -1463,7 +1463,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[Thermostat.Enums.ACCapacityFormatEnum])
 
-            value: 'typing.Optional[Thermostat.Enums.ACCapacityFormatEnum]' = None
+            value: typing.Optional[Thermostat.Enums.ACCapacityFormatEnum] = None
 
         @dataclass
         class PresetTypes(ClusterAttributeDescriptor):
@@ -1479,7 +1479,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[Thermostat.Structs.PresetTypeStruct]])
 
-            value: 'typing.Optional[typing.List[Thermostat.Structs.PresetTypeStruct]]' = None
+            value: typing.Optional[typing.List[Thermostat.Structs.PresetTypeStruct]] = None
 
         @dataclass
         class ScheduleTypes(ClusterAttributeDescriptor):
@@ -1495,7 +1495,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[Thermostat.Structs.ScheduleTypeStruct]])
 
-            value: 'typing.Optional[typing.List[Thermostat.Structs.ScheduleTypeStruct]]' = None
+            value: typing.Optional[typing.List[Thermostat.Structs.ScheduleTypeStruct]] = None
 
         @dataclass
         class NumberOfPresets(ClusterAttributeDescriptor):
@@ -1511,7 +1511,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class NumberOfSchedules(ClusterAttributeDescriptor):
@@ -1527,7 +1527,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class NumberOfScheduleTransitions(ClusterAttributeDescriptor):
@@ -1543,7 +1543,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class NumberOfScheduleTransitionPerDay(ClusterAttributeDescriptor):
@@ -1559,7 +1559,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class ActivePresetHandle(ClusterAttributeDescriptor):
@@ -1575,7 +1575,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, bytes])
 
-            value: 'typing.Union[None, Nullable, bytes]' = None
+            value: typing.Union[None, Nullable, bytes] = None
 
         @dataclass
         class ActiveScheduleHandle(ClusterAttributeDescriptor):
@@ -1591,7 +1591,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, bytes])
 
-            value: 'typing.Union[None, Nullable, bytes]' = None
+            value: typing.Union[None, Nullable, bytes] = None
 
         @dataclass
         class Presets(ClusterAttributeDescriptor):
@@ -1607,7 +1607,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[Thermostat.Structs.PresetStruct]])
 
-            value: 'typing.Optional[typing.List[Thermostat.Structs.PresetStruct]]' = None
+            value: typing.Optional[typing.List[Thermostat.Structs.PresetStruct]] = None
 
         @dataclass
         class Schedules(ClusterAttributeDescriptor):
@@ -1623,7 +1623,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[Thermostat.Structs.ScheduleStruct]])
 
-            value: 'typing.Optional[typing.List[Thermostat.Structs.ScheduleStruct]]' = None
+            value: typing.Optional[typing.List[Thermostat.Structs.ScheduleStruct]] = None
 
         @dataclass
         class SetpointHoldExpiryTimestamp(ClusterAttributeDescriptor):
@@ -1639,7 +1639,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -1655,7 +1655,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -1671,7 +1671,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -1687,7 +1687,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -1703,7 +1703,7 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -1719,4 +1719,4 @@ class Thermostat(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0

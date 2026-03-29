@@ -32,14 +32,14 @@ class AdministratorCommissioning(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    windowStatus: 'AdministratorCommissioning.Enums.CommissioningWindowStatusEnum' = 0
-    adminFabricIndex: 'typing.Union[Nullable, uint]' = NullValue
-    adminVendorId: 'typing.Union[Nullable, uint]' = NullValue
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    windowStatus: AdministratorCommissioning.Enums.CommissioningWindowStatusEnum = 0
+    adminFabricIndex: typing.Union[Nullable, uint] = NullValue
+    adminVendorId: typing.Union[Nullable, uint] = NullValue
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Enums:
         class CommissioningWindowStatusEnum(MatterIntEnum):
@@ -89,11 +89,11 @@ class AdministratorCommissioning(Cluster):
                         ClusterObjectFieldDescriptor(Label="salt", Tag=4, Type=bytes),
                     ])
 
-            commissioningTimeout: 'uint' = 0
-            PAKEPasscodeVerifier: 'bytes' = b""
-            discriminator: 'uint' = 0
-            iterations: 'uint' = 0
-            salt: 'bytes' = b""
+            commissioningTimeout: uint = 0
+            PAKEPasscodeVerifier: bytes = b""
+            discriminator: uint = 0
+            iterations: uint = 0
+            salt: bytes = b""
 
         @dataclass
         class OpenBasicCommissioningWindow(ClusterCommand):
@@ -113,7 +113,7 @@ class AdministratorCommissioning(Cluster):
                         ClusterObjectFieldDescriptor(Label="commissioningTimeout", Tag=0, Type=uint),
                     ])
 
-            commissioningTimeout: 'uint' = 0
+            commissioningTimeout: uint = 0
 
         @dataclass
         class RevokeCommissioning(ClusterCommand):
@@ -148,7 +148,7 @@ class AdministratorCommissioning(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=AdministratorCommissioning.Enums.CommissioningWindowStatusEnum)
 
-            value: 'AdministratorCommissioning.Enums.CommissioningWindowStatusEnum' = 0
+            value: AdministratorCommissioning.Enums.CommissioningWindowStatusEnum = 0
 
         @dataclass
         class AdminFabricIndex(ClusterAttributeDescriptor):
@@ -164,7 +164,7 @@ class AdministratorCommissioning(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[Nullable, uint])
 
-            value: 'typing.Union[Nullable, uint]' = NullValue
+            value: typing.Union[Nullable, uint] = NullValue
 
         @dataclass
         class AdminVendorId(ClusterAttributeDescriptor):
@@ -180,7 +180,7 @@ class AdministratorCommissioning(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[Nullable, uint])
 
-            value: 'typing.Union[Nullable, uint]' = NullValue
+            value: typing.Union[Nullable, uint] = NullValue
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -196,7 +196,7 @@ class AdministratorCommissioning(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -212,7 +212,7 @@ class AdministratorCommissioning(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -228,7 +228,7 @@ class AdministratorCommissioning(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -244,7 +244,7 @@ class AdministratorCommissioning(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -260,4 +260,4 @@ class AdministratorCommissioning(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0

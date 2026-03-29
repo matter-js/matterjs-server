@@ -33,14 +33,14 @@ class Channel(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    channelList: 'typing.Optional[typing.List[Channel.Structs.ChannelInfoStruct]]' = None
-    lineup: 'typing.Union[None, Nullable, Channel.Structs.LineupInfoStruct]' = None
-    currentChannel: 'typing.Union[None, Nullable, Channel.Structs.ChannelInfoStruct]' = None
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    channelList: typing.Optional[typing.List[Channel.Structs.ChannelInfoStruct]] = None
+    lineup: typing.Union[None, Nullable, Channel.Structs.LineupInfoStruct] = None
+    currentChannel: typing.Union[None, Nullable, Channel.Structs.ChannelInfoStruct] = None
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Enums:
         class LineupInfoTypeEnum(MatterIntEnum):
@@ -100,13 +100,13 @@ class Channel(Cluster):
                         ClusterObjectFieldDescriptor(Label="type", Tag=6, Type=typing.Optional[Channel.Enums.ChannelTypeEnum]),
                     ])
 
-            majorNumber: 'uint' = 0
-            minorNumber: 'uint' = 0
-            name: 'typing.Optional[str]' = None
-            callSign: 'typing.Optional[str]' = None
-            affiliateCallSign: 'typing.Optional[str]' = None
-            identifier: 'typing.Optional[str]' = None
-            type: 'typing.Optional[Channel.Enums.ChannelTypeEnum]' = None
+            majorNumber: uint = 0
+            minorNumber: uint = 0
+            name: typing.Optional[str] = None
+            callSign: typing.Optional[str] = None
+            affiliateCallSign: typing.Optional[str] = None
+            identifier: typing.Optional[str] = None
+            type: typing.Optional[Channel.Enums.ChannelTypeEnum] = None
 
         @dataclass
         class LineupInfoStruct(ClusterObject):
@@ -120,10 +120,10 @@ class Channel(Cluster):
                         ClusterObjectFieldDescriptor(Label="lineupInfoType", Tag=3, Type=Channel.Enums.LineupInfoTypeEnum),
                     ])
 
-            operatorName: 'str' = ""
-            lineupName: 'typing.Optional[str]' = None
-            postalCode: 'typing.Optional[str]' = None
-            lineupInfoType: 'Channel.Enums.LineupInfoTypeEnum' = 0
+            operatorName: str = ""
+            lineupName: typing.Optional[str] = None
+            postalCode: typing.Optional[str] = None
+            lineupInfoType: Channel.Enums.LineupInfoTypeEnum = 0
 
         @dataclass
         class ProgramStruct(ClusterObject):
@@ -152,25 +152,25 @@ class Channel(Cluster):
                         ClusterObjectFieldDescriptor(Label="externalIDList", Tag=18, Type=typing.Optional[typing.List[ContentLauncher.Structs.AdditionalInfoStruct]]),
                     ])
 
-            identifier: 'str' = ""
-            channel: 'Channel.Structs.ChannelInfoStruct' = field(default_factory=lambda: Channel.Structs.ChannelInfoStruct())
-            startTime: 'uint' = 0
-            endTime: 'uint' = 0
-            title: 'str' = ""
-            subtitle: 'typing.Optional[str]' = None
-            description: 'typing.Optional[str]' = None
-            audioLanguages: 'typing.Optional[typing.List[str]]' = None
-            ratings: 'typing.Optional[typing.List[str]]' = None
-            thumbnailUrl: 'typing.Optional[str]' = None
-            posterArtUrl: 'typing.Optional[str]' = None
-            dvbiUrl: 'typing.Optional[str]' = None
-            releaseDate: 'typing.Optional[str]' = None
-            parentalGuidanceText: 'typing.Optional[str]' = None
-            recordingFlag: 'typing.Optional[uint]' = None
-            seriesInfo: 'typing.Union[None, Nullable, Channel.Structs.SeriesInfoStruct]' = None
-            categoryList: 'typing.Optional[typing.List[Channel.Structs.ProgramCategoryStruct]]' = None
-            castList: 'typing.Optional[typing.List[Channel.Structs.ProgramCastStruct]]' = None
-            externalIDList: 'typing.Optional[typing.List[ContentLauncher.Structs.AdditionalInfoStruct]]' = None
+            identifier: str = ""
+            channel: Channel.Structs.ChannelInfoStruct = field(default_factory=lambda: Channel.Structs.ChannelInfoStruct())
+            startTime: uint = 0
+            endTime: uint = 0
+            title: str = ""
+            subtitle: typing.Optional[str] = None
+            description: typing.Optional[str] = None
+            audioLanguages: typing.Optional[typing.List[str]] = None
+            ratings: typing.Optional[typing.List[str]] = None
+            thumbnailUrl: typing.Optional[str] = None
+            posterArtUrl: typing.Optional[str] = None
+            dvbiUrl: typing.Optional[str] = None
+            releaseDate: typing.Optional[str] = None
+            parentalGuidanceText: typing.Optional[str] = None
+            recordingFlag: typing.Optional[uint] = None
+            seriesInfo: typing.Union[None, Nullable, Channel.Structs.SeriesInfoStruct] = None
+            categoryList: typing.Optional[typing.List[Channel.Structs.ProgramCategoryStruct]] = None
+            castList: typing.Optional[typing.List[Channel.Structs.ProgramCastStruct]] = None
+            externalIDList: typing.Optional[typing.List[ContentLauncher.Structs.AdditionalInfoStruct]] = None
 
         @dataclass
         class ProgramCategoryStruct(ClusterObject):
@@ -182,8 +182,8 @@ class Channel(Cluster):
                         ClusterObjectFieldDescriptor(Label="subCategory", Tag=1, Type=typing.Optional[str]),
                     ])
 
-            category: 'str' = ""
-            subCategory: 'typing.Optional[str]' = None
+            category: str = ""
+            subCategory: typing.Optional[str] = None
 
         @dataclass
         class SeriesInfoStruct(ClusterObject):
@@ -195,8 +195,8 @@ class Channel(Cluster):
                         ClusterObjectFieldDescriptor(Label="episode", Tag=1, Type=str),
                     ])
 
-            season: 'str' = ""
-            episode: 'str' = ""
+            season: str = ""
+            episode: str = ""
 
         @dataclass
         class ProgramCastStruct(ClusterObject):
@@ -208,8 +208,8 @@ class Channel(Cluster):
                         ClusterObjectFieldDescriptor(Label="role", Tag=1, Type=str),
                     ])
 
-            name: 'str' = ""
-            role: 'str' = ""
+            name: str = ""
+            role: str = ""
 
         @dataclass
         class PageTokenStruct(ClusterObject):
@@ -222,9 +222,9 @@ class Channel(Cluster):
                         ClusterObjectFieldDescriptor(Label="before", Tag=2, Type=typing.Optional[str]),
                     ])
 
-            limit: 'typing.Optional[uint]' = None
-            after: 'typing.Optional[str]' = None
-            before: 'typing.Optional[str]' = None
+            limit: typing.Optional[uint] = None
+            after: typing.Optional[str] = None
+            before: typing.Optional[str] = None
 
         @dataclass
         class ChannelPagingStruct(ClusterObject):
@@ -236,8 +236,8 @@ class Channel(Cluster):
                         ClusterObjectFieldDescriptor(Label="nextToken", Tag=1, Type=typing.Union[None, Nullable, Channel.Structs.PageTokenStruct]),
                     ])
 
-            previousToken: 'typing.Union[None, Nullable, Channel.Structs.PageTokenStruct]' = None
-            nextToken: 'typing.Union[None, Nullable, Channel.Structs.PageTokenStruct]' = None
+            previousToken: typing.Union[None, Nullable, Channel.Structs.PageTokenStruct] = None
+            nextToken: typing.Union[None, Nullable, Channel.Structs.PageTokenStruct] = None
 
     class Commands:
         @dataclass
@@ -254,7 +254,7 @@ class Channel(Cluster):
                         ClusterObjectFieldDescriptor(Label="match", Tag=0, Type=str),
                     ])
 
-            match: 'str' = ""
+            match: str = ""
 
         @dataclass
         class ChangeChannelByNumber(ClusterCommand):
@@ -271,8 +271,8 @@ class Channel(Cluster):
                         ClusterObjectFieldDescriptor(Label="minorNumber", Tag=1, Type=uint),
                     ])
 
-            majorNumber: 'uint' = 0
-            minorNumber: 'uint' = 0
+            majorNumber: uint = 0
+            minorNumber: uint = 0
 
         @dataclass
         class SkipChannel(ClusterCommand):
@@ -288,7 +288,7 @@ class Channel(Cluster):
                         ClusterObjectFieldDescriptor(Label="count", Tag=0, Type=int),
                     ])
 
-            count: 'int' = 0
+            count: int = 0
 
         @dataclass
         class GetProgramGuide(ClusterCommand):
@@ -310,13 +310,13 @@ class Channel(Cluster):
                         ClusterObjectFieldDescriptor(Label="data", Tag=7, Type=typing.Optional[bytes]),
                     ])
 
-            startTime: 'uint' = 0
-            endTime: 'uint' = 0
-            channelList: 'typing.Optional[typing.List[Channel.Structs.ChannelInfoStruct]]' = None
-            pageToken: 'typing.Union[None, Nullable, Channel.Structs.PageTokenStruct]' = None
-            recordingFlag: 'typing.Union[None, Nullable, uint]' = None
-            externalIDList: 'typing.Optional[typing.List[ContentLauncher.Structs.AdditionalInfoStruct]]' = None
-            data: 'typing.Optional[bytes]' = None
+            startTime: uint = 0
+            endTime: uint = 0
+            channelList: typing.Optional[typing.List[Channel.Structs.ChannelInfoStruct]] = None
+            pageToken: typing.Union[None, Nullable, Channel.Structs.PageTokenStruct] = None
+            recordingFlag: typing.Union[None, Nullable, uint] = None
+            externalIDList: typing.Optional[typing.List[ContentLauncher.Structs.AdditionalInfoStruct]] = None
+            data: typing.Optional[bytes] = None
 
         @dataclass
         class RecordProgram(ClusterCommand):
@@ -335,10 +335,10 @@ class Channel(Cluster):
                         ClusterObjectFieldDescriptor(Label="data", Tag=3, Type=typing.Optional[bytes]),
                     ])
 
-            programIdentifier: 'str' = ""
-            shouldRecordSeries: 'bool' = False
-            externalIDList: 'typing.Optional[typing.List[ContentLauncher.Structs.AdditionalInfoStruct]]' = None
-            data: 'typing.Optional[bytes]' = None
+            programIdentifier: str = ""
+            shouldRecordSeries: bool = False
+            externalIDList: typing.Optional[typing.List[ContentLauncher.Structs.AdditionalInfoStruct]] = None
+            data: typing.Optional[bytes] = None
 
         @dataclass
         class CancelRecordProgram(ClusterCommand):
@@ -357,10 +357,10 @@ class Channel(Cluster):
                         ClusterObjectFieldDescriptor(Label="data", Tag=3, Type=typing.Optional[bytes]),
                     ])
 
-            programIdentifier: 'str' = ""
-            shouldRecordSeries: 'bool' = False
-            externalIDList: 'typing.Optional[typing.List[ContentLauncher.Structs.AdditionalInfoStruct]]' = None
-            data: 'typing.Optional[bytes]' = None
+            programIdentifier: str = ""
+            shouldRecordSeries: bool = False
+            externalIDList: typing.Optional[typing.List[ContentLauncher.Structs.AdditionalInfoStruct]] = None
+            data: typing.Optional[bytes] = None
 
         @dataclass
         class ChangeChannelResponse(ClusterCommand):
@@ -377,8 +377,8 @@ class Channel(Cluster):
                         ClusterObjectFieldDescriptor(Label="data", Tag=1, Type=typing.Optional[str]),
                     ])
 
-            status: 'Channel.Enums.StatusEnum' = 0
-            data: 'typing.Optional[str]' = None
+            status: Channel.Enums.StatusEnum = 0
+            data: typing.Optional[str] = None
 
         @dataclass
         class ProgramGuideResponse(ClusterCommand):
@@ -395,8 +395,8 @@ class Channel(Cluster):
                         ClusterObjectFieldDescriptor(Label="programList", Tag=1, Type=typing.List[Channel.Structs.ProgramStruct]),
                     ])
 
-            paging: 'Channel.Structs.ChannelPagingStruct' = field(default_factory=lambda: Channel.Structs.ChannelPagingStruct())
-            programList: 'typing.List[Channel.Structs.ProgramStruct]' = field(default_factory=lambda: [])
+            paging: Channel.Structs.ChannelPagingStruct = field(default_factory=lambda: Channel.Structs.ChannelPagingStruct())
+            programList: typing.List[Channel.Structs.ProgramStruct] = field(default_factory=lambda: [])
 
     class Attributes:
         @dataclass
@@ -413,7 +413,7 @@ class Channel(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[Channel.Structs.ChannelInfoStruct]])
 
-            value: 'typing.Optional[typing.List[Channel.Structs.ChannelInfoStruct]]' = None
+            value: typing.Optional[typing.List[Channel.Structs.ChannelInfoStruct]] = None
 
         @dataclass
         class Lineup(ClusterAttributeDescriptor):
@@ -429,7 +429,7 @@ class Channel(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, Channel.Structs.LineupInfoStruct])
 
-            value: 'typing.Union[None, Nullable, Channel.Structs.LineupInfoStruct]' = None
+            value: typing.Union[None, Nullable, Channel.Structs.LineupInfoStruct] = None
 
         @dataclass
         class CurrentChannel(ClusterAttributeDescriptor):
@@ -445,7 +445,7 @@ class Channel(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, Channel.Structs.ChannelInfoStruct])
 
-            value: 'typing.Union[None, Nullable, Channel.Structs.ChannelInfoStruct]' = None
+            value: typing.Union[None, Nullable, Channel.Structs.ChannelInfoStruct] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -461,7 +461,7 @@ class Channel(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -477,7 +477,7 @@ class Channel(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -493,7 +493,7 @@ class Channel(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -509,7 +509,7 @@ class Channel(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -525,4 +525,4 @@ class Channel(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0

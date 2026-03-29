@@ -31,13 +31,13 @@ class UnitLocalization(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    temperatureUnit: 'typing.Optional[UnitLocalization.Enums.TempUnitEnum]' = None
-    supportedTemperatureUnits: 'typing.Optional[typing.List[UnitLocalization.Enums.TempUnitEnum]]' = None
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    temperatureUnit: typing.Optional[UnitLocalization.Enums.TempUnitEnum] = None
+    supportedTemperatureUnits: typing.Optional[typing.List[UnitLocalization.Enums.TempUnitEnum]] = None
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Enums:
         class TempUnitEnum(MatterIntEnum):
@@ -69,7 +69,7 @@ class UnitLocalization(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[UnitLocalization.Enums.TempUnitEnum])
 
-            value: 'typing.Optional[UnitLocalization.Enums.TempUnitEnum]' = None
+            value: typing.Optional[UnitLocalization.Enums.TempUnitEnum] = None
 
         @dataclass
         class SupportedTemperatureUnits(ClusterAttributeDescriptor):
@@ -85,7 +85,7 @@ class UnitLocalization(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[UnitLocalization.Enums.TempUnitEnum]])
 
-            value: 'typing.Optional[typing.List[UnitLocalization.Enums.TempUnitEnum]]' = None
+            value: typing.Optional[typing.List[UnitLocalization.Enums.TempUnitEnum]] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -101,7 +101,7 @@ class UnitLocalization(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -117,7 +117,7 @@ class UnitLocalization(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -133,7 +133,7 @@ class UnitLocalization(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -149,7 +149,7 @@ class UnitLocalization(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -165,4 +165,4 @@ class UnitLocalization(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0

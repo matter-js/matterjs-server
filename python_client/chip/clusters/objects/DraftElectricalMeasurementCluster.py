@@ -38,20 +38,20 @@ class DraftElectricalMeasurementCluster(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    rmsVoltage: 'typing.Optional[uint]' = None
-    rmsCurrent: 'typing.Optional[uint]' = None
-    activePower: 'typing.Optional[uint]' = None
-    acVoltageMultiplier: 'typing.Optional[uint]' = None
-    acVoltageDivisor: 'typing.Optional[uint]' = None
-    acCurrentMultiplier: 'typing.Optional[uint]' = None
-    acCurrentDivisor: 'typing.Optional[uint]' = None
-    acPowerMultiplier: 'typing.Optional[uint]' = None
-    acPowerDivisor: 'typing.Optional[uint]' = None
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    rmsVoltage: typing.Optional[uint] = None
+    rmsCurrent: typing.Optional[uint] = None
+    activePower: typing.Optional[uint] = None
+    acVoltageMultiplier: typing.Optional[uint] = None
+    acVoltageDivisor: typing.Optional[uint] = None
+    acCurrentMultiplier: typing.Optional[uint] = None
+    acCurrentDivisor: typing.Optional[uint] = None
+    acPowerMultiplier: typing.Optional[uint] = None
+    acPowerDivisor: typing.Optional[uint] = None
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Attributes:
         @dataclass
@@ -68,7 +68,7 @@ class DraftElectricalMeasurementCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class RMSCurrent(ClusterAttributeDescriptor):
@@ -84,7 +84,7 @@ class DraftElectricalMeasurementCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class ActivePower(ClusterAttributeDescriptor):
@@ -100,7 +100,7 @@ class DraftElectricalMeasurementCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class ACVoltageMultiplier(ClusterAttributeDescriptor):
@@ -116,7 +116,7 @@ class DraftElectricalMeasurementCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class ACVoltageDivisor(ClusterAttributeDescriptor):
@@ -132,7 +132,7 @@ class DraftElectricalMeasurementCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class ACCurrentMultiplier(ClusterAttributeDescriptor):
@@ -148,7 +148,7 @@ class DraftElectricalMeasurementCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class ACCurrentDivisor(ClusterAttributeDescriptor):
@@ -164,7 +164,7 @@ class DraftElectricalMeasurementCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class ACPowerMultiplier(ClusterAttributeDescriptor):
@@ -180,7 +180,7 @@ class DraftElectricalMeasurementCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class ACPowerDivisor(ClusterAttributeDescriptor):
@@ -196,7 +196,7 @@ class DraftElectricalMeasurementCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -212,7 +212,7 @@ class DraftElectricalMeasurementCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -228,7 +228,7 @@ class DraftElectricalMeasurementCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -244,7 +244,7 @@ class DraftElectricalMeasurementCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -260,7 +260,7 @@ class DraftElectricalMeasurementCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -276,4 +276,4 @@ class DraftElectricalMeasurementCluster(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0

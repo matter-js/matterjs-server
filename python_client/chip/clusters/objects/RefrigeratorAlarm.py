@@ -33,15 +33,15 @@ class RefrigeratorAlarm(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    mask: 'uint' = 0
-    latch: 'typing.Optional[uint]' = None
-    state: 'uint' = 0
-    supported: 'uint' = 0
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    mask: uint = 0
+    latch: typing.Optional[uint] = None
+    state: uint = 0
+    supported: uint = 0
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Bitmaps:
         class Feature(IntFlag):
@@ -65,7 +65,7 @@ class RefrigeratorAlarm(Cluster):
                         ClusterObjectFieldDescriptor(Label="mask", Tag=0, Type=uint),
                     ])
 
-            mask: 'uint' = 0
+            mask: uint = 0
 
         @dataclass
         class Reset(ClusterCommand):
@@ -81,7 +81,7 @@ class RefrigeratorAlarm(Cluster):
                         ClusterObjectFieldDescriptor(Label="alarms", Tag=0, Type=uint),
                     ])
 
-            alarms: 'uint' = 0
+            alarms: uint = 0
 
     class Attributes:
         @dataclass
@@ -98,7 +98,7 @@ class RefrigeratorAlarm(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class Latch(ClusterAttributeDescriptor):
@@ -114,7 +114,7 @@ class RefrigeratorAlarm(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class State(ClusterAttributeDescriptor):
@@ -130,7 +130,7 @@ class RefrigeratorAlarm(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class Supported(ClusterAttributeDescriptor):
@@ -146,7 +146,7 @@ class RefrigeratorAlarm(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -162,7 +162,7 @@ class RefrigeratorAlarm(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -178,7 +178,7 @@ class RefrigeratorAlarm(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -194,7 +194,7 @@ class RefrigeratorAlarm(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -210,7 +210,7 @@ class RefrigeratorAlarm(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -226,7 +226,7 @@ class RefrigeratorAlarm(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
     class Events:
         @dataclass
@@ -249,7 +249,7 @@ class RefrigeratorAlarm(Cluster):
                         ClusterObjectFieldDescriptor(Label="mask", Tag=3, Type=uint),
                     ])
 
-            active: 'uint' = 0
-            inactive: 'uint' = 0
-            state: 'uint' = 0
-            mask: 'uint' = 0
+            active: uint = 0
+            inactive: uint = 0
+            state: uint = 0
+            mask: uint = 0

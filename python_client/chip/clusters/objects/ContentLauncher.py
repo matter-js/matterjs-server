@@ -32,13 +32,13 @@ class ContentLauncher(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    acceptHeader: 'typing.Optional[typing.List[str]]' = None
-    supportedStreamingProtocols: 'typing.Optional[uint]' = None
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    acceptHeader: typing.Optional[typing.List[str]] = None
+    supportedStreamingProtocols: typing.Optional[uint] = None
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Enums:
         class StatusEnum(MatterIntEnum):
@@ -109,8 +109,8 @@ class ContentLauncher(Cluster):
                         ClusterObjectFieldDescriptor(Label="value", Tag=1, Type=str),
                     ])
 
-            name: 'str' = ""
-            value: 'str' = ""
+            name: str = ""
+            value: str = ""
 
         @dataclass
         class ParameterStruct(ClusterObject):
@@ -123,9 +123,9 @@ class ContentLauncher(Cluster):
                         ClusterObjectFieldDescriptor(Label="externalIDList", Tag=2, Type=typing.Optional[typing.List[ContentLauncher.Structs.AdditionalInfoStruct]]),
                     ])
 
-            type: 'ContentLauncher.Enums.ParameterEnum' = 0
-            value: 'str' = ""
-            externalIDList: 'typing.Optional[typing.List[ContentLauncher.Structs.AdditionalInfoStruct]]' = None
+            type: ContentLauncher.Enums.ParameterEnum = 0
+            value: str = ""
+            externalIDList: typing.Optional[typing.List[ContentLauncher.Structs.AdditionalInfoStruct]] = None
 
         @dataclass
         class ContentSearchStruct(ClusterObject):
@@ -136,7 +136,7 @@ class ContentLauncher(Cluster):
                         ClusterObjectFieldDescriptor(Label="parameterList", Tag=0, Type=typing.List[ContentLauncher.Structs.ParameterStruct]),
                     ])
 
-            parameterList: 'typing.List[ContentLauncher.Structs.ParameterStruct]' = field(default_factory=lambda: [])
+            parameterList: typing.List[ContentLauncher.Structs.ParameterStruct] = field(default_factory=lambda: [])
 
         @dataclass
         class DimensionStruct(ClusterObject):
@@ -149,9 +149,9 @@ class ContentLauncher(Cluster):
                         ClusterObjectFieldDescriptor(Label="metric", Tag=2, Type=ContentLauncher.Enums.MetricTypeEnum),
                     ])
 
-            width: 'float' = 0.0
-            height: 'float' = 0.0
-            metric: 'ContentLauncher.Enums.MetricTypeEnum' = 0
+            width: float = 0.0
+            height: float = 0.0
+            metric: ContentLauncher.Enums.MetricTypeEnum = 0
 
         @dataclass
         class StyleInformationStruct(ClusterObject):
@@ -164,9 +164,9 @@ class ContentLauncher(Cluster):
                         ClusterObjectFieldDescriptor(Label="size", Tag=2, Type=typing.Optional[ContentLauncher.Structs.DimensionStruct]),
                     ])
 
-            imageURL: 'typing.Optional[str]' = None
-            color: 'typing.Optional[str]' = None
-            size: 'typing.Optional[ContentLauncher.Structs.DimensionStruct]' = None
+            imageURL: typing.Optional[str] = None
+            color: typing.Optional[str] = None
+            size: typing.Optional[ContentLauncher.Structs.DimensionStruct] = None
 
         @dataclass
         class BrandingInformationStruct(ClusterObject):
@@ -182,12 +182,12 @@ class ContentLauncher(Cluster):
                         ClusterObjectFieldDescriptor(Label="waterMark", Tag=5, Type=typing.Optional[ContentLauncher.Structs.StyleInformationStruct]),
                     ])
 
-            providerName: 'str' = ""
-            background: 'typing.Optional[ContentLauncher.Structs.StyleInformationStruct]' = None
-            logo: 'typing.Optional[ContentLauncher.Structs.StyleInformationStruct]' = None
-            progressBar: 'typing.Optional[ContentLauncher.Structs.StyleInformationStruct]' = None
-            splash: 'typing.Optional[ContentLauncher.Structs.StyleInformationStruct]' = None
-            waterMark: 'typing.Optional[ContentLauncher.Structs.StyleInformationStruct]' = None
+            providerName: str = ""
+            background: typing.Optional[ContentLauncher.Structs.StyleInformationStruct] = None
+            logo: typing.Optional[ContentLauncher.Structs.StyleInformationStruct] = None
+            progressBar: typing.Optional[ContentLauncher.Structs.StyleInformationStruct] = None
+            splash: typing.Optional[ContentLauncher.Structs.StyleInformationStruct] = None
+            waterMark: typing.Optional[ContentLauncher.Structs.StyleInformationStruct] = None
 
         @dataclass
         class PlaybackPreferencesStruct(ClusterObject):
@@ -200,9 +200,9 @@ class ContentLauncher(Cluster):
                         ClusterObjectFieldDescriptor(Label="audioTracks", Tag=2, Type=typing.Union[None, Nullable, typing.List[ContentLauncher.Structs.TrackPreferenceStruct]]),
                     ])
 
-            playbackPosition: 'typing.Union[None, Nullable, uint]' = None
-            textTrack: 'typing.Union[None, Nullable, ContentLauncher.Structs.TrackPreferenceStruct]' = None
-            audioTracks: 'typing.Union[None, Nullable, typing.List[ContentLauncher.Structs.TrackPreferenceStruct]]' = None
+            playbackPosition: typing.Union[None, Nullable, uint] = None
+            textTrack: typing.Union[None, Nullable, ContentLauncher.Structs.TrackPreferenceStruct] = None
+            audioTracks: typing.Union[None, Nullable, typing.List[ContentLauncher.Structs.TrackPreferenceStruct]] = None
 
         @dataclass
         class TrackPreferenceStruct(ClusterObject):
@@ -215,9 +215,9 @@ class ContentLauncher(Cluster):
                         ClusterObjectFieldDescriptor(Label="audioOutputIndex", Tag=2, Type=typing.Union[None, Nullable, uint]),
                     ])
 
-            languageCode: 'str' = ""
-            characteristics: 'typing.Union[None, Nullable, typing.List[MediaPlayback.Enums.CharacteristicEnum]]' = None
-            audioOutputIndex: 'typing.Union[None, Nullable, uint]' = None
+            languageCode: str = ""
+            characteristics: typing.Union[None, Nullable, typing.List[MediaPlayback.Enums.CharacteristicEnum]] = None
+            audioOutputIndex: typing.Union[None, Nullable, uint] = None
 
     class Commands:
         @dataclass
@@ -238,11 +238,11 @@ class ContentLauncher(Cluster):
                         ClusterObjectFieldDescriptor(Label="useCurrentContext", Tag=4, Type=typing.Optional[bool]),
                     ])
 
-            search: 'ContentLauncher.Structs.ContentSearchStruct' = field(default_factory=lambda: ContentLauncher.Structs.ContentSearchStruct())
-            autoPlay: 'bool' = False
-            data: 'typing.Optional[str]' = None
-            playbackPreferences: 'typing.Optional[ContentLauncher.Structs.PlaybackPreferencesStruct]' = None
-            useCurrentContext: 'typing.Optional[bool]' = None
+            search: ContentLauncher.Structs.ContentSearchStruct = field(default_factory=lambda: ContentLauncher.Structs.ContentSearchStruct())
+            autoPlay: bool = False
+            data: typing.Optional[str] = None
+            playbackPreferences: typing.Optional[ContentLauncher.Structs.PlaybackPreferencesStruct] = None
+            useCurrentContext: typing.Optional[bool] = None
 
         @dataclass
         class LaunchURL(ClusterCommand):
@@ -261,10 +261,10 @@ class ContentLauncher(Cluster):
                         ClusterObjectFieldDescriptor(Label="playbackPreferences", Tag=3, Type=typing.Optional[ContentLauncher.Structs.PlaybackPreferencesStruct]),
                     ])
 
-            contentURL: 'str' = ""
-            displayString: 'typing.Optional[str]' = None
-            brandingInformation: 'typing.Optional[ContentLauncher.Structs.BrandingInformationStruct]' = None
-            playbackPreferences: 'typing.Optional[ContentLauncher.Structs.PlaybackPreferencesStruct]' = None
+            contentURL: str = ""
+            displayString: typing.Optional[str] = None
+            brandingInformation: typing.Optional[ContentLauncher.Structs.BrandingInformationStruct] = None
+            playbackPreferences: typing.Optional[ContentLauncher.Structs.PlaybackPreferencesStruct] = None
 
         @dataclass
         class LauncherResponse(ClusterCommand):
@@ -281,8 +281,8 @@ class ContentLauncher(Cluster):
                         ClusterObjectFieldDescriptor(Label="data", Tag=1, Type=typing.Optional[str]),
                     ])
 
-            status: 'ContentLauncher.Enums.StatusEnum' = 0
-            data: 'typing.Optional[str]' = None
+            status: ContentLauncher.Enums.StatusEnum = 0
+            data: typing.Optional[str] = None
 
     class Attributes:
         @dataclass
@@ -299,7 +299,7 @@ class ContentLauncher(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[str]])
 
-            value: 'typing.Optional[typing.List[str]]' = None
+            value: typing.Optional[typing.List[str]] = None
 
         @dataclass
         class SupportedStreamingProtocols(ClusterAttributeDescriptor):
@@ -315,7 +315,7 @@ class ContentLauncher(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -331,7 +331,7 @@ class ContentLauncher(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -347,7 +347,7 @@ class ContentLauncher(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -363,7 +363,7 @@ class ContentLauncher(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -379,7 +379,7 @@ class ContentLauncher(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -395,4 +395,4 @@ class ContentLauncher(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0

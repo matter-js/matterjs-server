@@ -43,25 +43,25 @@ class LevelControl(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    currentLevel: 'typing.Union[Nullable, uint]' = NullValue
-    remainingTime: 'typing.Optional[uint]' = None
-    minLevel: 'typing.Optional[uint]' = None
-    maxLevel: 'typing.Optional[uint]' = None
-    currentFrequency: 'typing.Optional[uint]' = None
-    minFrequency: 'typing.Optional[uint]' = None
-    maxFrequency: 'typing.Optional[uint]' = None
-    options: 'uint' = 0
-    onOffTransitionTime: 'typing.Optional[uint]' = None
-    onLevel: 'typing.Union[Nullable, uint]' = NullValue
-    onTransitionTime: 'typing.Union[None, Nullable, uint]' = None
-    offTransitionTime: 'typing.Union[None, Nullable, uint]' = None
-    defaultMoveRate: 'typing.Union[None, Nullable, uint]' = None
-    startUpCurrentLevel: 'typing.Union[None, Nullable, uint]' = None
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    currentLevel: typing.Union[Nullable, uint] = NullValue
+    remainingTime: typing.Optional[uint] = None
+    minLevel: typing.Optional[uint] = None
+    maxLevel: typing.Optional[uint] = None
+    currentFrequency: typing.Optional[uint] = None
+    minFrequency: typing.Optional[uint] = None
+    maxFrequency: typing.Optional[uint] = None
+    options: uint = 0
+    onOffTransitionTime: typing.Optional[uint] = None
+    onLevel: typing.Union[Nullable, uint] = NullValue
+    onTransitionTime: typing.Union[None, Nullable, uint] = None
+    offTransitionTime: typing.Union[None, Nullable, uint] = None
+    defaultMoveRate: typing.Union[None, Nullable, uint] = None
+    startUpCurrentLevel: typing.Union[None, Nullable, uint] = None
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Enums:
         class MoveModeEnum(MatterIntEnum):
@@ -110,10 +110,10 @@ class LevelControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=3, Type=uint),
                     ])
 
-            level: 'uint' = 0
-            transitionTime: 'typing.Union[Nullable, uint]' = NullValue
-            optionsMask: 'uint' = 0
-            optionsOverride: 'uint' = 0
+            level: uint = 0
+            transitionTime: typing.Union[Nullable, uint] = NullValue
+            optionsMask: uint = 0
+            optionsOverride: uint = 0
 
         @dataclass
         class Move(ClusterCommand):
@@ -132,10 +132,10 @@ class LevelControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=3, Type=uint),
                     ])
 
-            moveMode: 'LevelControl.Enums.MoveModeEnum' = 0
-            rate: 'typing.Union[Nullable, uint]' = NullValue
-            optionsMask: 'uint' = 0
-            optionsOverride: 'uint' = 0
+            moveMode: LevelControl.Enums.MoveModeEnum = 0
+            rate: typing.Union[Nullable, uint] = NullValue
+            optionsMask: uint = 0
+            optionsOverride: uint = 0
 
         @dataclass
         class Step(ClusterCommand):
@@ -155,11 +155,11 @@ class LevelControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=4, Type=uint),
                     ])
 
-            stepMode: 'LevelControl.Enums.StepModeEnum' = 0
-            stepSize: 'uint' = 0
-            transitionTime: 'typing.Union[Nullable, uint]' = NullValue
-            optionsMask: 'uint' = 0
-            optionsOverride: 'uint' = 0
+            stepMode: LevelControl.Enums.StepModeEnum = 0
+            stepSize: uint = 0
+            transitionTime: typing.Union[Nullable, uint] = NullValue
+            optionsMask: uint = 0
+            optionsOverride: uint = 0
 
         @dataclass
         class Stop(ClusterCommand):
@@ -176,8 +176,8 @@ class LevelControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=1, Type=uint),
                     ])
 
-            optionsMask: 'uint' = 0
-            optionsOverride: 'uint' = 0
+            optionsMask: uint = 0
+            optionsOverride: uint = 0
 
         @dataclass
         class MoveToLevelWithOnOff(ClusterCommand):
@@ -196,10 +196,10 @@ class LevelControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=3, Type=uint),
                     ])
 
-            level: 'uint' = 0
-            transitionTime: 'typing.Union[Nullable, uint]' = NullValue
-            optionsMask: 'uint' = 0
-            optionsOverride: 'uint' = 0
+            level: uint = 0
+            transitionTime: typing.Union[Nullable, uint] = NullValue
+            optionsMask: uint = 0
+            optionsOverride: uint = 0
 
         @dataclass
         class MoveWithOnOff(ClusterCommand):
@@ -218,10 +218,10 @@ class LevelControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=3, Type=uint),
                     ])
 
-            moveMode: 'LevelControl.Enums.MoveModeEnum' = 0
-            rate: 'typing.Union[Nullable, uint]' = NullValue
-            optionsMask: 'uint' = 0
-            optionsOverride: 'uint' = 0
+            moveMode: LevelControl.Enums.MoveModeEnum = 0
+            rate: typing.Union[Nullable, uint] = NullValue
+            optionsMask: uint = 0
+            optionsOverride: uint = 0
 
         @dataclass
         class StepWithOnOff(ClusterCommand):
@@ -241,11 +241,11 @@ class LevelControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=4, Type=uint),
                     ])
 
-            stepMode: 'LevelControl.Enums.StepModeEnum' = 0
-            stepSize: 'uint' = 0
-            transitionTime: 'typing.Union[Nullable, uint]' = NullValue
-            optionsMask: 'uint' = 0
-            optionsOverride: 'uint' = 0
+            stepMode: LevelControl.Enums.StepModeEnum = 0
+            stepSize: uint = 0
+            transitionTime: typing.Union[Nullable, uint] = NullValue
+            optionsMask: uint = 0
+            optionsOverride: uint = 0
 
         @dataclass
         class StopWithOnOff(ClusterCommand):
@@ -262,8 +262,8 @@ class LevelControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="optionsOverride", Tag=1, Type=uint),
                     ])
 
-            optionsMask: 'uint' = 0
-            optionsOverride: 'uint' = 0
+            optionsMask: uint = 0
+            optionsOverride: uint = 0
 
         @dataclass
         class MoveToClosestFrequency(ClusterCommand):
@@ -279,7 +279,7 @@ class LevelControl(Cluster):
                         ClusterObjectFieldDescriptor(Label="frequency", Tag=0, Type=uint),
                     ])
 
-            frequency: 'uint' = 0
+            frequency: uint = 0
 
     class Attributes:
         @dataclass
@@ -296,7 +296,7 @@ class LevelControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[Nullable, uint])
 
-            value: 'typing.Union[Nullable, uint]' = NullValue
+            value: typing.Union[Nullable, uint] = NullValue
 
         @dataclass
         class RemainingTime(ClusterAttributeDescriptor):
@@ -312,7 +312,7 @@ class LevelControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class MinLevel(ClusterAttributeDescriptor):
@@ -328,7 +328,7 @@ class LevelControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class MaxLevel(ClusterAttributeDescriptor):
@@ -344,7 +344,7 @@ class LevelControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class CurrentFrequency(ClusterAttributeDescriptor):
@@ -360,7 +360,7 @@ class LevelControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class MinFrequency(ClusterAttributeDescriptor):
@@ -376,7 +376,7 @@ class LevelControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class MaxFrequency(ClusterAttributeDescriptor):
@@ -392,7 +392,7 @@ class LevelControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class Options(ClusterAttributeDescriptor):
@@ -408,7 +408,7 @@ class LevelControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class OnOffTransitionTime(ClusterAttributeDescriptor):
@@ -424,7 +424,7 @@ class LevelControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class OnLevel(ClusterAttributeDescriptor):
@@ -440,7 +440,7 @@ class LevelControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[Nullable, uint])
 
-            value: 'typing.Union[Nullable, uint]' = NullValue
+            value: typing.Union[Nullable, uint] = NullValue
 
         @dataclass
         class OnTransitionTime(ClusterAttributeDescriptor):
@@ -456,7 +456,7 @@ class LevelControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class OffTransitionTime(ClusterAttributeDescriptor):
@@ -472,7 +472,7 @@ class LevelControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class DefaultMoveRate(ClusterAttributeDescriptor):
@@ -488,7 +488,7 @@ class LevelControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class StartUpCurrentLevel(ClusterAttributeDescriptor):
@@ -504,7 +504,7 @@ class LevelControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -520,7 +520,7 @@ class LevelControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -536,7 +536,7 @@ class LevelControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -552,7 +552,7 @@ class LevelControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -568,7 +568,7 @@ class LevelControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -584,4 +584,4 @@ class LevelControl(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0

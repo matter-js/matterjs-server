@@ -33,15 +33,15 @@ class OtaSoftwareUpdateRequestor(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    defaultOTAProviders: 'typing.List[OtaSoftwareUpdateRequestor.Structs.ProviderLocation]' = field(default_factory=lambda: [])
-    updatePossible: 'bool' = False
-    updateState: 'OtaSoftwareUpdateRequestor.Enums.UpdateStateEnum' = 0
-    updateStateProgress: 'typing.Union[Nullable, uint]' = NullValue
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    defaultOTAProviders: typing.List[OtaSoftwareUpdateRequestor.Structs.ProviderLocation] = field(default_factory=lambda: [])
+    updatePossible: bool = False
+    updateState: OtaSoftwareUpdateRequestor.Enums.UpdateStateEnum = 0
+    updateStateProgress: typing.Union[Nullable, uint] = NullValue
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Enums:
         class AnnouncementReasonEnum(MatterIntEnum):
@@ -94,9 +94,9 @@ class OtaSoftwareUpdateRequestor(Cluster):
                         ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=254, Type=uint),
                     ])
 
-            providerNodeID: 'uint' = 0
-            endpoint: 'uint' = 0
-            fabricIndex: 'uint' = 0
+            providerNodeID: uint = 0
+            endpoint: uint = 0
+            fabricIndex: uint = 0
 
     class Commands:
         @dataclass
@@ -118,12 +118,12 @@ class OtaSoftwareUpdateRequestor(Cluster):
                         ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=254, Type=uint),
                     ])
 
-            providerNodeID: 'uint' = 0
-            vendorID: 'uint' = 0
-            announcementReason: 'OtaSoftwareUpdateRequestor.Enums.AnnouncementReasonEnum' = 0
-            metadataForNode: 'typing.Optional[bytes]' = None
-            endpoint: 'uint' = 0
-            fabricIndex: 'uint' = 0
+            providerNodeID: uint = 0
+            vendorID: uint = 0
+            announcementReason: OtaSoftwareUpdateRequestor.Enums.AnnouncementReasonEnum = 0
+            metadataForNode: typing.Optional[bytes] = None
+            endpoint: uint = 0
+            fabricIndex: uint = 0
 
     class Attributes:
         @dataclass
@@ -140,7 +140,7 @@ class OtaSoftwareUpdateRequestor(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[OtaSoftwareUpdateRequestor.Structs.ProviderLocation])
 
-            value: 'typing.List[OtaSoftwareUpdateRequestor.Structs.ProviderLocation]' = field(default_factory=lambda: [])
+            value: typing.List[OtaSoftwareUpdateRequestor.Structs.ProviderLocation] = field(default_factory=lambda: [])
 
         @dataclass
         class UpdatePossible(ClusterAttributeDescriptor):
@@ -156,7 +156,7 @@ class OtaSoftwareUpdateRequestor(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=bool)
 
-            value: 'bool' = False
+            value: bool = False
 
         @dataclass
         class UpdateState(ClusterAttributeDescriptor):
@@ -172,7 +172,7 @@ class OtaSoftwareUpdateRequestor(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=OtaSoftwareUpdateRequestor.Enums.UpdateStateEnum)
 
-            value: 'OtaSoftwareUpdateRequestor.Enums.UpdateStateEnum' = 0
+            value: OtaSoftwareUpdateRequestor.Enums.UpdateStateEnum = 0
 
         @dataclass
         class UpdateStateProgress(ClusterAttributeDescriptor):
@@ -188,7 +188,7 @@ class OtaSoftwareUpdateRequestor(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[Nullable, uint])
 
-            value: 'typing.Union[Nullable, uint]' = NullValue
+            value: typing.Union[Nullable, uint] = NullValue
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -204,7 +204,7 @@ class OtaSoftwareUpdateRequestor(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -220,7 +220,7 @@ class OtaSoftwareUpdateRequestor(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -236,7 +236,7 @@ class OtaSoftwareUpdateRequestor(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -252,7 +252,7 @@ class OtaSoftwareUpdateRequestor(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -268,7 +268,7 @@ class OtaSoftwareUpdateRequestor(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
     class Events:
         @dataclass
@@ -291,10 +291,10 @@ class OtaSoftwareUpdateRequestor(Cluster):
                         ClusterObjectFieldDescriptor(Label="targetSoftwareVersion", Tag=3, Type=typing.Union[Nullable, uint]),
                     ])
 
-            previousState: 'OtaSoftwareUpdateRequestor.Enums.UpdateStateEnum' = 0
-            newState: 'OtaSoftwareUpdateRequestor.Enums.UpdateStateEnum' = 0
-            reason: 'OtaSoftwareUpdateRequestor.Enums.ChangeReasonEnum' = 0
-            targetSoftwareVersion: 'typing.Union[Nullable, uint]' = NullValue
+            previousState: OtaSoftwareUpdateRequestor.Enums.UpdateStateEnum = 0
+            newState: OtaSoftwareUpdateRequestor.Enums.UpdateStateEnum = 0
+            reason: OtaSoftwareUpdateRequestor.Enums.ChangeReasonEnum = 0
+            targetSoftwareVersion: typing.Union[Nullable, uint] = NullValue
 
         @dataclass
         class VersionApplied(ClusterEvent):
@@ -314,8 +314,8 @@ class OtaSoftwareUpdateRequestor(Cluster):
                         ClusterObjectFieldDescriptor(Label="productID", Tag=1, Type=uint),
                     ])
 
-            softwareVersion: 'uint' = 0
-            productID: 'uint' = 0
+            softwareVersion: uint = 0
+            productID: uint = 0
 
         @dataclass
         class DownloadError(ClusterEvent):
@@ -337,7 +337,7 @@ class OtaSoftwareUpdateRequestor(Cluster):
                         ClusterObjectFieldDescriptor(Label="platformCode", Tag=3, Type=typing.Union[Nullable, int]),
                     ])
 
-            softwareVersion: 'uint' = 0
-            bytesDownloaded: 'uint' = 0
-            progressPercent: 'typing.Union[Nullable, uint]' = NullValue
-            platformCode: 'typing.Union[Nullable, int]' = NullValue
+            softwareVersion: uint = 0
+            bytesDownloaded: uint = 0
+            progressPercent: typing.Union[Nullable, uint] = NullValue
+            platformCode: typing.Union[Nullable, int] = NullValue

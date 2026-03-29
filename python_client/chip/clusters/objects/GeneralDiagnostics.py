@@ -39,21 +39,21 @@ class GeneralDiagnostics(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    networkInterfaces: 'typing.List[GeneralDiagnostics.Structs.NetworkInterface]' = field(default_factory=lambda: [])
-    rebootCount: 'uint' = 0
-    upTime: 'uint' = 0
-    totalOperationalHours: 'typing.Optional[uint]' = None
-    bootReason: 'typing.Optional[GeneralDiagnostics.Enums.BootReasonEnum]' = None
-    activeHardwareFaults: 'typing.Optional[typing.List[GeneralDiagnostics.Enums.HardwareFaultEnum]]' = None
-    activeRadioFaults: 'typing.Optional[typing.List[GeneralDiagnostics.Enums.RadioFaultEnum]]' = None
-    activeNetworkFaults: 'typing.Optional[typing.List[GeneralDiagnostics.Enums.NetworkFaultEnum]]' = None
-    testEventTriggersEnabled: 'bool' = False
-    doNotUse: 'typing.Optional[uint]' = None
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    networkInterfaces: typing.List[GeneralDiagnostics.Structs.NetworkInterface] = field(default_factory=lambda: [])
+    rebootCount: uint = 0
+    upTime: uint = 0
+    totalOperationalHours: typing.Optional[uint] = None
+    bootReason: typing.Optional[GeneralDiagnostics.Enums.BootReasonEnum] = None
+    activeHardwareFaults: typing.Optional[typing.List[GeneralDiagnostics.Enums.HardwareFaultEnum]] = None
+    activeRadioFaults: typing.Optional[typing.List[GeneralDiagnostics.Enums.RadioFaultEnum]] = None
+    activeNetworkFaults: typing.Optional[typing.List[GeneralDiagnostics.Enums.NetworkFaultEnum]] = None
+    testEventTriggersEnabled: bool = False
+    doNotUse: typing.Optional[uint] = None
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Enums:
         class HardwareFaultEnum(MatterIntEnum):
@@ -146,14 +146,14 @@ class GeneralDiagnostics(Cluster):
                         ClusterObjectFieldDescriptor(Label="type", Tag=7, Type=GeneralDiagnostics.Enums.InterfaceTypeEnum),
                     ])
 
-            name: 'str' = ""
-            isOperational: 'bool' = False
-            offPremiseServicesReachableIPV4: 'typing.Union[Nullable, bool]' = NullValue
-            offPremiseServicesReachableIPV6: 'typing.Union[Nullable, bool]' = NullValue
-            hardwareAddress: 'bytes' = b""
-            IPV4Addresses: 'typing.List[bytes]' = field(default_factory=lambda: [])
-            IPV6Addresses: 'typing.List[bytes]' = field(default_factory=lambda: [])
-            type: 'GeneralDiagnostics.Enums.InterfaceTypeEnum' = 0
+            name: str = ""
+            isOperational: bool = False
+            offPremiseServicesReachableIPV4: typing.Union[Nullable, bool] = NullValue
+            offPremiseServicesReachableIPV6: typing.Union[Nullable, bool] = NullValue
+            hardwareAddress: bytes = b""
+            IPV4Addresses: typing.List[bytes] = field(default_factory=lambda: [])
+            IPV6Addresses: typing.List[bytes] = field(default_factory=lambda: [])
+            type: GeneralDiagnostics.Enums.InterfaceTypeEnum = 0
 
     class Commands:
         @dataclass
@@ -171,8 +171,8 @@ class GeneralDiagnostics(Cluster):
                         ClusterObjectFieldDescriptor(Label="eventTrigger", Tag=1, Type=uint),
                     ])
 
-            enableKey: 'bytes' = b""
-            eventTrigger: 'uint' = 0
+            enableKey: bytes = b""
+            eventTrigger: uint = 0
 
         @dataclass
         class TimeSnapshot(ClusterCommand):
@@ -204,9 +204,9 @@ class GeneralDiagnostics(Cluster):
                         ClusterObjectFieldDescriptor(Label="count", Tag=2, Type=uint),
                     ])
 
-            enableKey: 'bytes' = b""
-            value: 'uint' = 0
-            count: 'uint' = 0
+            enableKey: bytes = b""
+            value: uint = 0
+            count: uint = 0
 
         @dataclass
         class TimeSnapshotResponse(ClusterCommand):
@@ -223,8 +223,8 @@ class GeneralDiagnostics(Cluster):
                         ClusterObjectFieldDescriptor(Label="posixTimeMs", Tag=1, Type=typing.Union[Nullable, uint]),
                     ])
 
-            systemTimeMs: 'uint' = 0
-            posixTimeMs: 'typing.Union[Nullable, uint]' = NullValue
+            systemTimeMs: uint = 0
+            posixTimeMs: typing.Union[Nullable, uint] = NullValue
 
         @dataclass
         class PayloadTestResponse(ClusterCommand):
@@ -240,7 +240,7 @@ class GeneralDiagnostics(Cluster):
                         ClusterObjectFieldDescriptor(Label="payload", Tag=0, Type=bytes),
                     ])
 
-            payload: 'bytes' = b""
+            payload: bytes = b""
 
     class Attributes:
         @dataclass
@@ -257,7 +257,7 @@ class GeneralDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[GeneralDiagnostics.Structs.NetworkInterface])
 
-            value: 'typing.List[GeneralDiagnostics.Structs.NetworkInterface]' = field(default_factory=lambda: [])
+            value: typing.List[GeneralDiagnostics.Structs.NetworkInterface] = field(default_factory=lambda: [])
 
         @dataclass
         class RebootCount(ClusterAttributeDescriptor):
@@ -273,7 +273,7 @@ class GeneralDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class UpTime(ClusterAttributeDescriptor):
@@ -289,7 +289,7 @@ class GeneralDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class TotalOperationalHours(ClusterAttributeDescriptor):
@@ -305,7 +305,7 @@ class GeneralDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class BootReason(ClusterAttributeDescriptor):
@@ -321,7 +321,7 @@ class GeneralDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[GeneralDiagnostics.Enums.BootReasonEnum])
 
-            value: 'typing.Optional[GeneralDiagnostics.Enums.BootReasonEnum]' = None
+            value: typing.Optional[GeneralDiagnostics.Enums.BootReasonEnum] = None
 
         @dataclass
         class ActiveHardwareFaults(ClusterAttributeDescriptor):
@@ -337,7 +337,7 @@ class GeneralDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[GeneralDiagnostics.Enums.HardwareFaultEnum]])
 
-            value: 'typing.Optional[typing.List[GeneralDiagnostics.Enums.HardwareFaultEnum]]' = None
+            value: typing.Optional[typing.List[GeneralDiagnostics.Enums.HardwareFaultEnum]] = None
 
         @dataclass
         class ActiveRadioFaults(ClusterAttributeDescriptor):
@@ -353,7 +353,7 @@ class GeneralDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[GeneralDiagnostics.Enums.RadioFaultEnum]])
 
-            value: 'typing.Optional[typing.List[GeneralDiagnostics.Enums.RadioFaultEnum]]' = None
+            value: typing.Optional[typing.List[GeneralDiagnostics.Enums.RadioFaultEnum]] = None
 
         @dataclass
         class ActiveNetworkFaults(ClusterAttributeDescriptor):
@@ -369,7 +369,7 @@ class GeneralDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[GeneralDiagnostics.Enums.NetworkFaultEnum]])
 
-            value: 'typing.Optional[typing.List[GeneralDiagnostics.Enums.NetworkFaultEnum]]' = None
+            value: typing.Optional[typing.List[GeneralDiagnostics.Enums.NetworkFaultEnum]] = None
 
         @dataclass
         class TestEventTriggersEnabled(ClusterAttributeDescriptor):
@@ -385,7 +385,7 @@ class GeneralDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=bool)
 
-            value: 'bool' = False
+            value: bool = False
 
         @dataclass
         class DoNotUse(ClusterAttributeDescriptor):
@@ -401,7 +401,7 @@ class GeneralDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[uint]' = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -417,7 +417,7 @@ class GeneralDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -433,7 +433,7 @@ class GeneralDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -449,7 +449,7 @@ class GeneralDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -465,7 +465,7 @@ class GeneralDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -481,7 +481,7 @@ class GeneralDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
     class Events:
         @dataclass
@@ -502,8 +502,8 @@ class GeneralDiagnostics(Cluster):
                         ClusterObjectFieldDescriptor(Label="previous", Tag=1, Type=typing.List[GeneralDiagnostics.Enums.HardwareFaultEnum]),
                     ])
 
-            current: 'typing.List[GeneralDiagnostics.Enums.HardwareFaultEnum]' = field(default_factory=lambda: [])
-            previous: 'typing.List[GeneralDiagnostics.Enums.HardwareFaultEnum]' = field(default_factory=lambda: [])
+            current: typing.List[GeneralDiagnostics.Enums.HardwareFaultEnum] = field(default_factory=lambda: [])
+            previous: typing.List[GeneralDiagnostics.Enums.HardwareFaultEnum] = field(default_factory=lambda: [])
 
         @dataclass
         class RadioFaultChange(ClusterEvent):
@@ -523,8 +523,8 @@ class GeneralDiagnostics(Cluster):
                         ClusterObjectFieldDescriptor(Label="previous", Tag=1, Type=typing.List[GeneralDiagnostics.Enums.RadioFaultEnum]),
                     ])
 
-            current: 'typing.List[GeneralDiagnostics.Enums.RadioFaultEnum]' = field(default_factory=lambda: [])
-            previous: 'typing.List[GeneralDiagnostics.Enums.RadioFaultEnum]' = field(default_factory=lambda: [])
+            current: typing.List[GeneralDiagnostics.Enums.RadioFaultEnum] = field(default_factory=lambda: [])
+            previous: typing.List[GeneralDiagnostics.Enums.RadioFaultEnum] = field(default_factory=lambda: [])
 
         @dataclass
         class NetworkFaultChange(ClusterEvent):
@@ -544,8 +544,8 @@ class GeneralDiagnostics(Cluster):
                         ClusterObjectFieldDescriptor(Label="previous", Tag=1, Type=typing.List[GeneralDiagnostics.Enums.NetworkFaultEnum]),
                     ])
 
-            current: 'typing.List[GeneralDiagnostics.Enums.NetworkFaultEnum]' = field(default_factory=lambda: [])
-            previous: 'typing.List[GeneralDiagnostics.Enums.NetworkFaultEnum]' = field(default_factory=lambda: [])
+            current: typing.List[GeneralDiagnostics.Enums.NetworkFaultEnum] = field(default_factory=lambda: [])
+            previous: typing.List[GeneralDiagnostics.Enums.NetworkFaultEnum] = field(default_factory=lambda: [])
 
         @dataclass
         class BootReason(ClusterEvent):
@@ -564,4 +564,4 @@ class GeneralDiagnostics(Cluster):
                         ClusterObjectFieldDescriptor(Label="bootReason", Tag=0, Type=GeneralDiagnostics.Enums.BootReasonEnum),
                     ])
 
-            bootReason: 'GeneralDiagnostics.Enums.BootReasonEnum' = 0
+            bootReason: GeneralDiagnostics.Enums.BootReasonEnum = 0

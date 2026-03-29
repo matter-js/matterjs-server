@@ -29,11 +29,11 @@ class AccountLogin(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Commands:
         @dataclass
@@ -54,7 +54,7 @@ class AccountLogin(Cluster):
                         ClusterObjectFieldDescriptor(Label="tempAccountIdentifier", Tag=0, Type=str),
                     ])
 
-            tempAccountIdentifier: 'str' = ""
+            tempAccountIdentifier: str = ""
 
         @dataclass
         class Login(ClusterCommand):
@@ -76,9 +76,9 @@ class AccountLogin(Cluster):
                         ClusterObjectFieldDescriptor(Label="node", Tag=2, Type=typing.Optional[uint]),
                     ])
 
-            tempAccountIdentifier: 'str' = ""
-            setupPIN: 'str' = ""
-            node: 'typing.Optional[uint]' = None
+            tempAccountIdentifier: str = ""
+            setupPIN: str = ""
+            node: typing.Optional[uint] = None
 
         @dataclass
         class Logout(ClusterCommand):
@@ -98,7 +98,7 @@ class AccountLogin(Cluster):
                         ClusterObjectFieldDescriptor(Label="node", Tag=0, Type=typing.Optional[uint]),
                     ])
 
-            node: 'typing.Optional[uint]' = None
+            node: typing.Optional[uint] = None
 
         @dataclass
         class GetSetupPINResponse(ClusterCommand):
@@ -114,7 +114,7 @@ class AccountLogin(Cluster):
                         ClusterObjectFieldDescriptor(Label="setupPIN", Tag=0, Type=str),
                     ])
 
-            setupPIN: 'str' = ""
+            setupPIN: str = ""
 
     class Attributes:
         @dataclass
@@ -131,7 +131,7 @@ class AccountLogin(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -147,7 +147,7 @@ class AccountLogin(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -163,7 +163,7 @@ class AccountLogin(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -179,7 +179,7 @@ class AccountLogin(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -195,7 +195,7 @@ class AccountLogin(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
     class Events:
         @dataclass
@@ -215,4 +215,4 @@ class AccountLogin(Cluster):
                         ClusterObjectFieldDescriptor(Label="node", Tag=0, Type=typing.Optional[uint]),
                     ])
 
-            node: 'typing.Optional[uint]' = None
+            node: typing.Optional[uint] = None

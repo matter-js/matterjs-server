@@ -36,17 +36,17 @@ class ElectricalEnergyMeasurement(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    accuracy: 'Globals.Structs.MeasurementAccuracyStruct' = field(default_factory=lambda: Globals.Structs.MeasurementAccuracyStruct())
-    cumulativeEnergyImported: 'typing.Union[None, Nullable, ElectricalEnergyMeasurement.Structs.EnergyMeasurementStruct]' = None
-    cumulativeEnergyExported: 'typing.Union[None, Nullable, ElectricalEnergyMeasurement.Structs.EnergyMeasurementStruct]' = None
-    periodicEnergyImported: 'typing.Union[None, Nullable, ElectricalEnergyMeasurement.Structs.EnergyMeasurementStruct]' = None
-    periodicEnergyExported: 'typing.Union[None, Nullable, ElectricalEnergyMeasurement.Structs.EnergyMeasurementStruct]' = None
-    cumulativeEnergyReset: 'typing.Union[None, Nullable, ElectricalEnergyMeasurement.Structs.CumulativeEnergyResetStruct]' = None
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    accuracy: Globals.Structs.MeasurementAccuracyStruct = field(default_factory=lambda: Globals.Structs.MeasurementAccuracyStruct())
+    cumulativeEnergyImported: typing.Union[None, Nullable, ElectricalEnergyMeasurement.Structs.EnergyMeasurementStruct] = None
+    cumulativeEnergyExported: typing.Union[None, Nullable, ElectricalEnergyMeasurement.Structs.EnergyMeasurementStruct] = None
+    periodicEnergyImported: typing.Union[None, Nullable, ElectricalEnergyMeasurement.Structs.EnergyMeasurementStruct] = None
+    periodicEnergyExported: typing.Union[None, Nullable, ElectricalEnergyMeasurement.Structs.EnergyMeasurementStruct] = None
+    cumulativeEnergyReset: typing.Union[None, Nullable, ElectricalEnergyMeasurement.Structs.CumulativeEnergyResetStruct] = None
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Enums:
         class MeasurementTypeEnum(MatterIntEnum):
@@ -94,11 +94,11 @@ class ElectricalEnergyMeasurement(Cluster):
                         ClusterObjectFieldDescriptor(Label="endSystime", Tag=4, Type=typing.Optional[uint]),
                     ])
 
-            energy: 'uint' = 0
-            startTimestamp: 'typing.Optional[uint]' = None
-            endTimestamp: 'typing.Optional[uint]' = None
-            startSystime: 'typing.Optional[uint]' = None
-            endSystime: 'typing.Optional[uint]' = None
+            energy: uint = 0
+            startTimestamp: typing.Optional[uint] = None
+            endTimestamp: typing.Optional[uint] = None
+            startSystime: typing.Optional[uint] = None
+            endSystime: typing.Optional[uint] = None
 
         @dataclass
         class CumulativeEnergyResetStruct(ClusterObject):
@@ -112,10 +112,10 @@ class ElectricalEnergyMeasurement(Cluster):
                         ClusterObjectFieldDescriptor(Label="exportedResetSystime", Tag=3, Type=typing.Union[None, Nullable, uint]),
                     ])
 
-            importedResetTimestamp: 'typing.Union[None, Nullable, uint]' = None
-            exportedResetTimestamp: 'typing.Union[None, Nullable, uint]' = None
-            importedResetSystime: 'typing.Union[None, Nullable, uint]' = None
-            exportedResetSystime: 'typing.Union[None, Nullable, uint]' = None
+            importedResetTimestamp: typing.Union[None, Nullable, uint] = None
+            exportedResetTimestamp: typing.Union[None, Nullable, uint] = None
+            importedResetSystime: typing.Union[None, Nullable, uint] = None
+            exportedResetSystime: typing.Union[None, Nullable, uint] = None
 
     class Attributes:
         @dataclass
@@ -132,7 +132,7 @@ class ElectricalEnergyMeasurement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=Globals.Structs.MeasurementAccuracyStruct)
 
-            value: 'Globals.Structs.MeasurementAccuracyStruct' = field(default_factory=lambda: Globals.Structs.MeasurementAccuracyStruct())
+            value: Globals.Structs.MeasurementAccuracyStruct = field(default_factory=lambda: Globals.Structs.MeasurementAccuracyStruct())
 
         @dataclass
         class CumulativeEnergyImported(ClusterAttributeDescriptor):
@@ -148,7 +148,7 @@ class ElectricalEnergyMeasurement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, ElectricalEnergyMeasurement.Structs.EnergyMeasurementStruct])
 
-            value: 'typing.Union[None, Nullable, ElectricalEnergyMeasurement.Structs.EnergyMeasurementStruct]' = None
+            value: typing.Union[None, Nullable, ElectricalEnergyMeasurement.Structs.EnergyMeasurementStruct] = None
 
         @dataclass
         class CumulativeEnergyExported(ClusterAttributeDescriptor):
@@ -164,7 +164,7 @@ class ElectricalEnergyMeasurement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, ElectricalEnergyMeasurement.Structs.EnergyMeasurementStruct])
 
-            value: 'typing.Union[None, Nullable, ElectricalEnergyMeasurement.Structs.EnergyMeasurementStruct]' = None
+            value: typing.Union[None, Nullable, ElectricalEnergyMeasurement.Structs.EnergyMeasurementStruct] = None
 
         @dataclass
         class PeriodicEnergyImported(ClusterAttributeDescriptor):
@@ -180,7 +180,7 @@ class ElectricalEnergyMeasurement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, ElectricalEnergyMeasurement.Structs.EnergyMeasurementStruct])
 
-            value: 'typing.Union[None, Nullable, ElectricalEnergyMeasurement.Structs.EnergyMeasurementStruct]' = None
+            value: typing.Union[None, Nullable, ElectricalEnergyMeasurement.Structs.EnergyMeasurementStruct] = None
 
         @dataclass
         class PeriodicEnergyExported(ClusterAttributeDescriptor):
@@ -196,7 +196,7 @@ class ElectricalEnergyMeasurement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, ElectricalEnergyMeasurement.Structs.EnergyMeasurementStruct])
 
-            value: 'typing.Union[None, Nullable, ElectricalEnergyMeasurement.Structs.EnergyMeasurementStruct]' = None
+            value: typing.Union[None, Nullable, ElectricalEnergyMeasurement.Structs.EnergyMeasurementStruct] = None
 
         @dataclass
         class CumulativeEnergyReset(ClusterAttributeDescriptor):
@@ -212,7 +212,7 @@ class ElectricalEnergyMeasurement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, ElectricalEnergyMeasurement.Structs.CumulativeEnergyResetStruct])
 
-            value: 'typing.Union[None, Nullable, ElectricalEnergyMeasurement.Structs.CumulativeEnergyResetStruct]' = None
+            value: typing.Union[None, Nullable, ElectricalEnergyMeasurement.Structs.CumulativeEnergyResetStruct] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -228,7 +228,7 @@ class ElectricalEnergyMeasurement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -244,7 +244,7 @@ class ElectricalEnergyMeasurement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -260,7 +260,7 @@ class ElectricalEnergyMeasurement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -276,7 +276,7 @@ class ElectricalEnergyMeasurement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -292,7 +292,7 @@ class ElectricalEnergyMeasurement(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
     class Events:
         @dataclass
@@ -313,8 +313,8 @@ class ElectricalEnergyMeasurement(Cluster):
                         ClusterObjectFieldDescriptor(Label="energyExported", Tag=1, Type=typing.Optional[ElectricalEnergyMeasurement.Structs.EnergyMeasurementStruct]),
                     ])
 
-            energyImported: 'typing.Optional[ElectricalEnergyMeasurement.Structs.EnergyMeasurementStruct]' = None
-            energyExported: 'typing.Optional[ElectricalEnergyMeasurement.Structs.EnergyMeasurementStruct]' = None
+            energyImported: typing.Optional[ElectricalEnergyMeasurement.Structs.EnergyMeasurementStruct] = None
+            energyExported: typing.Optional[ElectricalEnergyMeasurement.Structs.EnergyMeasurementStruct] = None
 
         @dataclass
         class PeriodicEnergyMeasured(ClusterEvent):
@@ -334,5 +334,5 @@ class ElectricalEnergyMeasurement(Cluster):
                         ClusterObjectFieldDescriptor(Label="energyExported", Tag=1, Type=typing.Optional[ElectricalEnergyMeasurement.Structs.EnergyMeasurementStruct]),
                     ])
 
-            energyImported: 'typing.Optional[ElectricalEnergyMeasurement.Structs.EnergyMeasurementStruct]' = None
-            energyExported: 'typing.Optional[ElectricalEnergyMeasurement.Structs.EnergyMeasurementStruct]' = None
+            energyImported: typing.Optional[ElectricalEnergyMeasurement.Structs.EnergyMeasurementStruct] = None
+            energyExported: typing.Optional[ElectricalEnergyMeasurement.Structs.EnergyMeasurementStruct] = None

@@ -42,24 +42,24 @@ class WiFiNetworkDiagnostics(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    bssid: 'typing.Union[Nullable, bytes]' = NullValue
-    securityType: 'typing.Union[Nullable, WiFiNetworkDiagnostics.Enums.SecurityTypeEnum]' = NullValue
-    wiFiVersion: 'typing.Union[Nullable, WiFiNetworkDiagnostics.Enums.WiFiVersionEnum]' = NullValue
-    channelNumber: 'typing.Union[Nullable, uint]' = NullValue
-    rssi: 'typing.Union[Nullable, int]' = NullValue
-    beaconLostCount: 'typing.Union[None, Nullable, uint]' = None
-    beaconRxCount: 'typing.Union[None, Nullable, uint]' = None
-    packetMulticastRxCount: 'typing.Union[None, Nullable, uint]' = None
-    packetMulticastTxCount: 'typing.Union[None, Nullable, uint]' = None
-    packetUnicastRxCount: 'typing.Union[None, Nullable, uint]' = None
-    packetUnicastTxCount: 'typing.Union[None, Nullable, uint]' = None
-    currentMaxRate: 'typing.Union[None, Nullable, uint]' = None
-    overrunCount: 'typing.Union[None, Nullable, uint]' = None
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    bssid: typing.Union[Nullable, bytes] = NullValue
+    securityType: typing.Union[Nullable, WiFiNetworkDiagnostics.Enums.SecurityTypeEnum] = NullValue
+    wiFiVersion: typing.Union[Nullable, WiFiNetworkDiagnostics.Enums.WiFiVersionEnum] = NullValue
+    channelNumber: typing.Union[Nullable, uint] = NullValue
+    rssi: typing.Union[Nullable, int] = NullValue
+    beaconLostCount: typing.Union[None, Nullable, uint] = None
+    beaconRxCount: typing.Union[None, Nullable, uint] = None
+    packetMulticastRxCount: typing.Union[None, Nullable, uint] = None
+    packetMulticastTxCount: typing.Union[None, Nullable, uint] = None
+    packetUnicastRxCount: typing.Union[None, Nullable, uint] = None
+    packetUnicastTxCount: typing.Union[None, Nullable, uint] = None
+    currentMaxRate: typing.Union[None, Nullable, uint] = None
+    overrunCount: typing.Union[None, Nullable, uint] = None
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Enums:
         class SecurityTypeEnum(MatterIntEnum):
@@ -144,7 +144,7 @@ class WiFiNetworkDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[Nullable, bytes])
 
-            value: 'typing.Union[Nullable, bytes]' = NullValue
+            value: typing.Union[Nullable, bytes] = NullValue
 
         @dataclass
         class SecurityType(ClusterAttributeDescriptor):
@@ -160,7 +160,7 @@ class WiFiNetworkDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[Nullable, WiFiNetworkDiagnostics.Enums.SecurityTypeEnum])
 
-            value: 'typing.Union[Nullable, WiFiNetworkDiagnostics.Enums.SecurityTypeEnum]' = NullValue
+            value: typing.Union[Nullable, WiFiNetworkDiagnostics.Enums.SecurityTypeEnum] = NullValue
 
         @dataclass
         class WiFiVersion(ClusterAttributeDescriptor):
@@ -176,7 +176,7 @@ class WiFiNetworkDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[Nullable, WiFiNetworkDiagnostics.Enums.WiFiVersionEnum])
 
-            value: 'typing.Union[Nullable, WiFiNetworkDiagnostics.Enums.WiFiVersionEnum]' = NullValue
+            value: typing.Union[Nullable, WiFiNetworkDiagnostics.Enums.WiFiVersionEnum] = NullValue
 
         @dataclass
         class ChannelNumber(ClusterAttributeDescriptor):
@@ -192,7 +192,7 @@ class WiFiNetworkDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[Nullable, uint])
 
-            value: 'typing.Union[Nullable, uint]' = NullValue
+            value: typing.Union[Nullable, uint] = NullValue
 
         @dataclass
         class Rssi(ClusterAttributeDescriptor):
@@ -208,7 +208,7 @@ class WiFiNetworkDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[Nullable, int])
 
-            value: 'typing.Union[Nullable, int]' = NullValue
+            value: typing.Union[Nullable, int] = NullValue
 
         @dataclass
         class BeaconLostCount(ClusterAttributeDescriptor):
@@ -224,7 +224,7 @@ class WiFiNetworkDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class BeaconRxCount(ClusterAttributeDescriptor):
@@ -240,7 +240,7 @@ class WiFiNetworkDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class PacketMulticastRxCount(ClusterAttributeDescriptor):
@@ -256,7 +256,7 @@ class WiFiNetworkDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class PacketMulticastTxCount(ClusterAttributeDescriptor):
@@ -272,7 +272,7 @@ class WiFiNetworkDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class PacketUnicastRxCount(ClusterAttributeDescriptor):
@@ -288,7 +288,7 @@ class WiFiNetworkDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class PacketUnicastTxCount(ClusterAttributeDescriptor):
@@ -304,7 +304,7 @@ class WiFiNetworkDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class CurrentMaxRate(ClusterAttributeDescriptor):
@@ -320,7 +320,7 @@ class WiFiNetworkDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class OverrunCount(ClusterAttributeDescriptor):
@@ -336,7 +336,7 @@ class WiFiNetworkDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -352,7 +352,7 @@ class WiFiNetworkDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -368,7 +368,7 @@ class WiFiNetworkDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -384,7 +384,7 @@ class WiFiNetworkDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -400,7 +400,7 @@ class WiFiNetworkDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -416,7 +416,7 @@ class WiFiNetworkDiagnostics(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
     class Events:
         @dataclass
@@ -436,7 +436,7 @@ class WiFiNetworkDiagnostics(Cluster):
                         ClusterObjectFieldDescriptor(Label="reasonCode", Tag=0, Type=uint),
                     ])
 
-            reasonCode: 'uint' = 0
+            reasonCode: uint = 0
 
         @dataclass
         class AssociationFailure(ClusterEvent):
@@ -456,8 +456,8 @@ class WiFiNetworkDiagnostics(Cluster):
                         ClusterObjectFieldDescriptor(Label="status", Tag=1, Type=uint),
                     ])
 
-            associationFailureCause: 'WiFiNetworkDiagnostics.Enums.AssociationFailureCauseEnum' = 0
-            status: 'uint' = 0
+            associationFailureCause: WiFiNetworkDiagnostics.Enums.AssociationFailureCauseEnum = 0
+            status: uint = 0
 
         @dataclass
         class ConnectionStatus(ClusterEvent):
@@ -476,4 +476,4 @@ class WiFiNetworkDiagnostics(Cluster):
                         ClusterObjectFieldDescriptor(Label="connectionStatus", Tag=0, Type=WiFiNetworkDiagnostics.Enums.ConnectionStatusEnum),
                     ])
 
-            connectionStatus: 'WiFiNetworkDiagnostics.Enums.ConnectionStatusEnum' = 0
+            connectionStatus: WiFiNetworkDiagnostics.Enums.ConnectionStatusEnum = 0

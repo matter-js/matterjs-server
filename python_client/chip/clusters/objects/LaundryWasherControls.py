@@ -33,15 +33,15 @@ class LaundryWasherControls(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    spinSpeeds: 'typing.Optional[typing.List[str]]' = None
-    spinSpeedCurrent: 'typing.Union[None, Nullable, uint]' = None
-    numberOfRinses: 'typing.Optional[LaundryWasherControls.Enums.NumberOfRinsesEnum]' = None
-    supportedRinses: 'typing.Optional[typing.List[LaundryWasherControls.Enums.NumberOfRinsesEnum]]' = None
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    spinSpeeds: typing.Optional[typing.List[str]] = None
+    spinSpeedCurrent: typing.Union[None, Nullable, uint] = None
+    numberOfRinses: typing.Optional[LaundryWasherControls.Enums.NumberOfRinsesEnum] = None
+    supportedRinses: typing.Optional[typing.List[LaundryWasherControls.Enums.NumberOfRinsesEnum]] = None
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Enums:
         class NumberOfRinsesEnum(MatterIntEnum):
@@ -75,7 +75,7 @@ class LaundryWasherControls(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[str]])
 
-            value: 'typing.Optional[typing.List[str]]' = None
+            value: typing.Optional[typing.List[str]] = None
 
         @dataclass
         class SpinSpeedCurrent(ClusterAttributeDescriptor):
@@ -91,7 +91,7 @@ class LaundryWasherControls(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class NumberOfRinses(ClusterAttributeDescriptor):
@@ -107,7 +107,7 @@ class LaundryWasherControls(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[LaundryWasherControls.Enums.NumberOfRinsesEnum])
 
-            value: 'typing.Optional[LaundryWasherControls.Enums.NumberOfRinsesEnum]' = None
+            value: typing.Optional[LaundryWasherControls.Enums.NumberOfRinsesEnum] = None
 
         @dataclass
         class SupportedRinses(ClusterAttributeDescriptor):
@@ -123,7 +123,7 @@ class LaundryWasherControls(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[LaundryWasherControls.Enums.NumberOfRinsesEnum]])
 
-            value: 'typing.Optional[typing.List[LaundryWasherControls.Enums.NumberOfRinsesEnum]]' = None
+            value: typing.Optional[typing.List[LaundryWasherControls.Enums.NumberOfRinsesEnum]] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -139,7 +139,7 @@ class LaundryWasherControls(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -155,7 +155,7 @@ class LaundryWasherControls(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -171,7 +171,7 @@ class LaundryWasherControls(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -187,7 +187,7 @@ class LaundryWasherControls(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -203,4 +203,4 @@ class LaundryWasherControls(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0

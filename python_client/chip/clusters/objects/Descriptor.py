@@ -36,17 +36,17 @@ class Descriptor(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    deviceTypeList: 'typing.List[Descriptor.Structs.DeviceTypeStruct]' = field(default_factory=lambda: [])
-    serverList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    clientList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    partsList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    tagList: 'typing.Optional[typing.List[Globals.Structs.semtag]]' = None
-    endpointUniqueID: 'typing.Optional[str]' = None
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    deviceTypeList: typing.List[Descriptor.Structs.DeviceTypeStruct] = field(default_factory=lambda: [])
+    serverList: typing.List[uint] = field(default_factory=lambda: [])
+    clientList: typing.List[uint] = field(default_factory=lambda: [])
+    partsList: typing.List[uint] = field(default_factory=lambda: [])
+    tagList: typing.Optional[typing.List[Globals.Structs.semtag]] = None
+    endpointUniqueID: typing.Optional[str] = None
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Bitmaps:
         class Feature(IntFlag):
@@ -63,8 +63,8 @@ class Descriptor(Cluster):
                         ClusterObjectFieldDescriptor(Label="revision", Tag=1, Type=uint),
                     ])
 
-            deviceType: 'uint' = 0
-            revision: 'uint' = 0
+            deviceType: uint = 0
+            revision: uint = 0
 
     class Attributes:
         @dataclass
@@ -81,7 +81,7 @@ class Descriptor(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[Descriptor.Structs.DeviceTypeStruct])
 
-            value: 'typing.List[Descriptor.Structs.DeviceTypeStruct]' = field(default_factory=lambda: [])
+            value: typing.List[Descriptor.Structs.DeviceTypeStruct] = field(default_factory=lambda: [])
 
         @dataclass
         class ServerList(ClusterAttributeDescriptor):
@@ -97,7 +97,7 @@ class Descriptor(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class ClientList(ClusterAttributeDescriptor):
@@ -113,7 +113,7 @@ class Descriptor(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class PartsList(ClusterAttributeDescriptor):
@@ -129,7 +129,7 @@ class Descriptor(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class TagList(ClusterAttributeDescriptor):
@@ -145,7 +145,7 @@ class Descriptor(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[Globals.Structs.semtag]])
 
-            value: 'typing.Optional[typing.List[Globals.Structs.semtag]]' = None
+            value: typing.Optional[typing.List[Globals.Structs.semtag]] = None
 
         @dataclass
         class EndpointUniqueID(ClusterAttributeDescriptor):
@@ -161,7 +161,7 @@ class Descriptor(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[str])
 
-            value: 'typing.Optional[str]' = None
+            value: typing.Optional[str] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -177,7 +177,7 @@ class Descriptor(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -193,7 +193,7 @@ class Descriptor(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -209,7 +209,7 @@ class Descriptor(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -225,7 +225,7 @@ class Descriptor(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -241,4 +241,4 @@ class Descriptor(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0

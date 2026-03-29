@@ -200,8 +200,8 @@ class Globals:
                         ClusterObjectFieldDescriptor(Label="statusCode", Tag=1, Type=Globals.Enums.status),
                     ])
 
-            attributeID: 'uint' = 0
-            statusCode: 'Globals.Enums.status' = 0
+            attributeID: uint = 0
+            statusCode: Globals.Enums.status = 0
 
         @dataclass
         class MeasurementAccuracyRangeStruct(ClusterObject):
@@ -219,14 +219,14 @@ class Globals:
                         ClusterObjectFieldDescriptor(Label="fixedTypical", Tag=7, Type=typing.Optional[uint]),
                     ])
 
-            rangeMin: 'int' = 0
-            rangeMax: 'int' = 0
-            percentMax: 'typing.Optional[uint]' = None
-            percentMin: 'typing.Optional[uint]' = None
-            percentTypical: 'typing.Optional[uint]' = None
-            fixedMax: 'typing.Optional[uint]' = None
-            fixedMin: 'typing.Optional[uint]' = None
-            fixedTypical: 'typing.Optional[uint]' = None
+            rangeMin: int = 0
+            rangeMax: int = 0
+            percentMax: typing.Optional[uint] = None
+            percentMin: typing.Optional[uint] = None
+            percentTypical: typing.Optional[uint] = None
+            fixedMax: typing.Optional[uint] = None
+            fixedMin: typing.Optional[uint] = None
+            fixedTypical: typing.Optional[uint] = None
 
         @dataclass
         class MeasurementAccuracyStruct(ClusterObject):
@@ -241,11 +241,11 @@ class Globals:
                         ClusterObjectFieldDescriptor(Label="accuracyRanges", Tag=4, Type=typing.List[Globals.Structs.MeasurementAccuracyRangeStruct]),
                     ])
 
-            measurementType: 'Globals.Enums.MeasurementTypeEnum' = 0
-            measured: 'bool' = False
-            minMeasuredValue: 'int' = 0
-            maxMeasuredValue: 'int' = 0
-            accuracyRanges: 'typing.List[Globals.Structs.MeasurementAccuracyRangeStruct]' = field(default_factory=lambda: [])
+            measurementType: Globals.Enums.MeasurementTypeEnum = 0
+            measured: bool = False
+            minMeasuredValue: int = 0
+            maxMeasuredValue: int = 0
+            accuracyRanges: typing.List[Globals.Structs.MeasurementAccuracyRangeStruct] = field(default_factory=lambda: [])
 
         @dataclass
         class currency(ClusterObject):
@@ -257,8 +257,8 @@ class Globals:
                         ClusterObjectFieldDescriptor(Label="decimalPoints", Tag=1, Type=uint),
                     ])
 
-            currency: 'uint' = 0
-            decimalPoints: 'uint' = 0
+            currency: uint = 0
+            decimalPoints: uint = 0
 
         @dataclass
         class locationdesc(ClusterObject):
@@ -271,9 +271,9 @@ class Globals:
                         ClusterObjectFieldDescriptor(Label="areaType", Tag=2, Type=typing.Union[Nullable, uint]),
                     ])
 
-            locationName: 'str' = ""
-            floorNumber: 'typing.Union[Nullable, int]' = NullValue
-            areaType: 'typing.Union[Nullable, uint]' = NullValue
+            locationName: str = ""
+            floorNumber: typing.Union[Nullable, int] = NullValue
+            areaType: typing.Union[Nullable, uint] = NullValue
 
         @dataclass
         class price(ClusterObject):
@@ -285,8 +285,8 @@ class Globals:
                         ClusterObjectFieldDescriptor(Label="currency", Tag=1, Type=Globals.Structs.currency),
                     ])
 
-            amount: 'uint' = 0
-            currency: 'Globals.Structs.currency' = field(default_factory=lambda: Globals.Structs.currency())
+            amount: uint = 0
+            currency: Globals.Structs.currency = field(default_factory=lambda: Globals.Structs.currency())
 
         @dataclass
         class semtag(ClusterObject):
@@ -300,10 +300,10 @@ class Globals:
                         ClusterObjectFieldDescriptor(Label="label", Tag=3, Type=typing.Union[None, Nullable, str]),
                     ])
 
-            mfgCode: 'typing.Union[Nullable, uint]' = NullValue
-            namespaceID: 'Globals.Enums.namespace' = 0
-            tag: 'uint' = 0
-            label: 'typing.Union[None, Nullable, str]' = None
+            mfgCode: typing.Union[Nullable, uint] = NullValue
+            namespaceID: Globals.Enums.namespace = 0
+            tag: uint = 0
+            label: typing.Union[None, Nullable, str] = None
 
         @dataclass
         class struct(ClusterObject):

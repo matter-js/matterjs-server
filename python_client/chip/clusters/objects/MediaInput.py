@@ -31,13 +31,13 @@ class MediaInput(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    inputList: 'typing.List[MediaInput.Structs.InputInfoStruct]' = field(default_factory=lambda: [])
-    currentInput: 'uint' = 0
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    inputList: typing.List[MediaInput.Structs.InputInfoStruct] = field(default_factory=lambda: [])
+    currentInput: uint = 0
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Enums:
         class InputTypeEnum(MatterIntEnum):
@@ -76,10 +76,10 @@ class MediaInput(Cluster):
                         ClusterObjectFieldDescriptor(Label="description", Tag=3, Type=str),
                     ])
 
-            index: 'uint' = 0
-            inputType: 'MediaInput.Enums.InputTypeEnum' = 0
-            name: 'str' = ""
-            description: 'str' = ""
+            index: uint = 0
+            inputType: MediaInput.Enums.InputTypeEnum = 0
+            name: str = ""
+            description: str = ""
 
     class Commands:
         @dataclass
@@ -96,7 +96,7 @@ class MediaInput(Cluster):
                         ClusterObjectFieldDescriptor(Label="index", Tag=0, Type=uint),
                     ])
 
-            index: 'uint' = 0
+            index: uint = 0
 
         @dataclass
         class ShowInputStatus(ClusterCommand):
@@ -141,8 +141,8 @@ class MediaInput(Cluster):
                         ClusterObjectFieldDescriptor(Label="name", Tag=1, Type=str),
                     ])
 
-            index: 'uint' = 0
-            name: 'str' = ""
+            index: uint = 0
+            name: str = ""
 
     class Attributes:
         @dataclass
@@ -159,7 +159,7 @@ class MediaInput(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[MediaInput.Structs.InputInfoStruct])
 
-            value: 'typing.List[MediaInput.Structs.InputInfoStruct]' = field(default_factory=lambda: [])
+            value: typing.List[MediaInput.Structs.InputInfoStruct] = field(default_factory=lambda: [])
 
         @dataclass
         class CurrentInput(ClusterAttributeDescriptor):
@@ -175,7 +175,7 @@ class MediaInput(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -191,7 +191,7 @@ class MediaInput(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -207,7 +207,7 @@ class MediaInput(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -223,7 +223,7 @@ class MediaInput(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -239,7 +239,7 @@ class MediaInput(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -255,4 +255,4 @@ class MediaInput(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0

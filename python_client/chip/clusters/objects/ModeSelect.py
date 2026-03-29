@@ -36,17 +36,17 @@ class ModeSelect(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    description: 'str' = ""
-    standardNamespace: 'typing.Union[Nullable, Globals.Enums.namespace]' = NullValue
-    supportedModes: 'typing.List[ModeSelect.Structs.ModeOptionStruct]' = field(default_factory=lambda: [])
-    currentMode: 'uint' = 0
-    startUpMode: 'typing.Union[None, Nullable, uint]' = None
-    onMode: 'typing.Union[None, Nullable, uint]' = None
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    description: str = ""
+    standardNamespace: typing.Union[Nullable, Globals.Enums.namespace] = NullValue
+    supportedModes: typing.List[ModeSelect.Structs.ModeOptionStruct] = field(default_factory=lambda: [])
+    currentMode: uint = 0
+    startUpMode: typing.Union[None, Nullable, uint] = None
+    onMode: typing.Union[None, Nullable, uint] = None
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Bitmaps:
         class Feature(IntFlag):
@@ -63,8 +63,8 @@ class ModeSelect(Cluster):
                         ClusterObjectFieldDescriptor(Label="value", Tag=1, Type=uint),
                     ])
 
-            mfgCode: 'uint' = 0
-            value: 'uint' = 0
+            mfgCode: uint = 0
+            value: uint = 0
 
         @dataclass
         class ModeOptionStruct(ClusterObject):
@@ -77,9 +77,9 @@ class ModeSelect(Cluster):
                         ClusterObjectFieldDescriptor(Label="semanticTags", Tag=2, Type=typing.List[ModeSelect.Structs.SemanticTagStruct]),
                     ])
 
-            label: 'str' = ""
-            mode: 'uint' = 0
-            semanticTags: 'typing.List[ModeSelect.Structs.SemanticTagStruct]' = field(default_factory=lambda: [])
+            label: str = ""
+            mode: uint = 0
+            semanticTags: typing.List[ModeSelect.Structs.SemanticTagStruct] = field(default_factory=lambda: [])
 
     class Commands:
         @dataclass
@@ -96,7 +96,7 @@ class ModeSelect(Cluster):
                         ClusterObjectFieldDescriptor(Label="newMode", Tag=0, Type=uint),
                     ])
 
-            newMode: 'uint' = 0
+            newMode: uint = 0
 
     class Attributes:
         @dataclass
@@ -113,7 +113,7 @@ class ModeSelect(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=str)
 
-            value: 'str' = ""
+            value: str = ""
 
         @dataclass
         class StandardNamespace(ClusterAttributeDescriptor):
@@ -129,7 +129,7 @@ class ModeSelect(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[Nullable, Globals.Enums.namespace])
 
-            value: 'typing.Union[Nullable, Globals.Enums.namespace]' = NullValue
+            value: typing.Union[Nullable, Globals.Enums.namespace] = NullValue
 
         @dataclass
         class SupportedModes(ClusterAttributeDescriptor):
@@ -145,7 +145,7 @@ class ModeSelect(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[ModeSelect.Structs.ModeOptionStruct])
 
-            value: 'typing.List[ModeSelect.Structs.ModeOptionStruct]' = field(default_factory=lambda: [])
+            value: typing.List[ModeSelect.Structs.ModeOptionStruct] = field(default_factory=lambda: [])
 
         @dataclass
         class CurrentMode(ClusterAttributeDescriptor):
@@ -161,7 +161,7 @@ class ModeSelect(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class StartUpMode(ClusterAttributeDescriptor):
@@ -177,7 +177,7 @@ class ModeSelect(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class OnMode(ClusterAttributeDescriptor):
@@ -193,7 +193,7 @@ class ModeSelect(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
 
-            value: 'typing.Union[None, Nullable, uint]' = None
+            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -209,7 +209,7 @@ class ModeSelect(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -225,7 +225,7 @@ class ModeSelect(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -241,7 +241,7 @@ class ModeSelect(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -257,7 +257,7 @@ class ModeSelect(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -273,4 +273,4 @@ class ModeSelect(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0

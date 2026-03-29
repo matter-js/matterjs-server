@@ -29,11 +29,11 @@ class DiagnosticLogs(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    featureMap: 'uint' = 0
-    clusterRevision: 'uint' = 0
+    generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
+    attributeList: typing.List[uint] = field(default_factory=lambda: [])
+    featureMap: uint = 0
+    clusterRevision: uint = 0
 
     class Enums:
         class IntentEnum(MatterIntEnum):
@@ -84,9 +84,9 @@ class DiagnosticLogs(Cluster):
                         ClusterObjectFieldDescriptor(Label="transferFileDesignator", Tag=2, Type=typing.Optional[str]),
                     ])
 
-            intent: 'DiagnosticLogs.Enums.IntentEnum' = 0
-            requestedProtocol: 'DiagnosticLogs.Enums.TransferProtocolEnum' = 0
-            transferFileDesignator: 'typing.Optional[str]' = None
+            intent: DiagnosticLogs.Enums.IntentEnum = 0
+            requestedProtocol: DiagnosticLogs.Enums.TransferProtocolEnum = 0
+            transferFileDesignator: typing.Optional[str] = None
 
         @dataclass
         class RetrieveLogsResponse(ClusterCommand):
@@ -105,10 +105,10 @@ class DiagnosticLogs(Cluster):
                         ClusterObjectFieldDescriptor(Label="timeSinceBoot", Tag=3, Type=typing.Optional[uint]),
                     ])
 
-            status: 'DiagnosticLogs.Enums.StatusEnum' = 0
-            logContent: 'bytes' = b""
-            UTCTimeStamp: 'typing.Optional[uint]' = None
-            timeSinceBoot: 'typing.Optional[uint]' = None
+            status: DiagnosticLogs.Enums.StatusEnum = 0
+            logContent: bytes = b""
+            UTCTimeStamp: typing.Optional[uint] = None
+            timeSinceBoot: typing.Optional[uint] = None
 
     class Attributes:
         @dataclass
@@ -125,7 +125,7 @@ class DiagnosticLogs(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AcceptedCommandList(ClusterAttributeDescriptor):
@@ -141,7 +141,7 @@ class DiagnosticLogs(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class AttributeList(ClusterAttributeDescriptor):
@@ -157,7 +157,7 @@ class DiagnosticLogs(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=typing.List[uint])
 
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
+            value: typing.List[uint] = field(default_factory=lambda: [])
 
         @dataclass
         class FeatureMap(ClusterAttributeDescriptor):
@@ -173,7 +173,7 @@ class DiagnosticLogs(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
 
         @dataclass
         class ClusterRevision(ClusterAttributeDescriptor):
@@ -189,4 +189,4 @@ class DiagnosticLogs(Cluster):
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
                 return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'uint' = 0
+            value: uint = 0
