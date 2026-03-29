@@ -1,4 +1,28 @@
-"""Auto-generated cluster imports (DO NOT edit)."""
+"""
+ Cluster object definitions.
+ This file is auto-generated, DO NOT edit.
+
+ This package serves as the canonical module for chip.clusters.Objects.
+ On macOS (case-insensitive FS), 'objects' and 'Objects' resolve to the
+ same path, so this __init__.py must contain everything that Objects.py
+ would provide — cluster classes, base classes, and primitive types.
+"""
+
+import chip.clusters.ClusterObjects as _co
+import chip.clusters.Types as _types
+import chip.tlv as _tlv
+
+Cluster = _co.Cluster
+ClusterAttributeDescriptor = _co.ClusterAttributeDescriptor
+ClusterCommand = _co.ClusterCommand
+ClusterEvent = _co.ClusterEvent
+ClusterObject = _co.ClusterObject
+ClusterObjectDescriptor = _co.ClusterObjectDescriptor
+ClusterObjectFieldDescriptor = _co.ClusterObjectFieldDescriptor
+NullValue = _types.NullValue
+Nullable = _types.Nullable
+float32 = _tlv.float32
+uint = _tlv.uint
 
 from .Globals import Globals
 from .AccessControl import AccessControl
@@ -124,6 +148,17 @@ from .WiFiNetworkManagement import WiFiNetworkManagement
 from .WindowCovering import WindowCovering
 
 __all__ = [
+    "Cluster",
+    "ClusterAttributeDescriptor",
+    "ClusterCommand",
+    "ClusterEvent",
+    "ClusterObject",
+    "ClusterObjectDescriptor",
+    "ClusterObjectFieldDescriptor",
+    "NullValue",
+    "Nullable",
+    "float32",
+    "uint",
     "Globals",
     "AccessControl",
     "AccountLogin",

@@ -1608,17 +1608,42 @@ function generateObjectsReexport(_clusterNames: string[]): string {
     w.line(" Cluster object definitions.");
     w.line(" This file is auto-generated, DO NOT edit.");
     w.line(' Users can import chip.clusters.Objects to get all cluster definitions.');
+    w.line("");
+    w.line(" On case-sensitive filesystems (Linux), this file is the entry point.");
+    w.line(" On case-insensitive filesystems (macOS), chip/clusters/objects/__init__.py");
+    w.line(" is used instead (Objects and objects resolve to the same path).");
+    w.line(" Both files provide the same exports.");
     w.line('"""');
     w.blankLine();
-    w.line("# Re-export all cluster classes from per-cluster files");
     w.line("from chip.clusters.objects import *  # noqa: F401,F403");
+    w.line("from chip.clusters.objects import __all__  # noqa: F401");
+
+    return w.toString();
+}
+
+// ============================================================================
+// objects/__init__.py
+// ============================================================================
+
+function generateObjectsInit(clusterNames: string[]): string {
+    const w = new PythonWriter();
+
+    w.line('"""');
+    w.line(" Cluster object definitions.");
+    w.line(" This file is auto-generated, DO NOT edit.");
+    w.line("");
+    w.line(" This package serves as the canonical module for chip.clusters.Objects.");
+    w.line(" On macOS (case-insensitive FS), 'objects' and 'Objects' resolve to the");
+    w.line(" same path, so this __init__.py must contain everything that Objects.py");
+    w.line(" would provide — cluster classes, base classes, and primitive types.");
+    w.line('"""');
     w.blankLine();
-    w.line("# Explicit assignments for base classes and primitive types so that");
-    w.line("# pylint can resolve them as module-level names (pylint cannot follow");
-    w.line("# re-exports via 'from ... import' for E0611 no-name-in-module).");
-    w.line("import chip.clusters.ClusterObjects as _co  # noqa: E402");
-    w.line("import chip.clusters.Types as _types  # noqa: E402");
-    w.line("import chip.tlv as _tlv  # noqa: E402");
+
+    // Base class and primitive type assignments (before cluster imports so
+    // pylint/astroid sees them even if cluster imports are slow to resolve)
+    w.line("import chip.clusters.ClusterObjects as _co");
+    w.line("import chip.clusters.Types as _types");
+    w.line("import chip.tlv as _tlv");
     w.blankLine();
     w.line("Cluster = _co.Cluster");
     w.line("ClusterAttributeDescriptor = _co.ClusterAttributeDescriptor");
@@ -1632,7 +1657,13 @@ function generateObjectsReexport(_clusterNames: string[]): string {
     w.line("float32 = _tlv.float32");
     w.line("uint = _tlv.uint");
     w.blankLine();
-    w.line("# Export list for type checkers");
+
+    // Cluster imports
+    for (const name of clusterNames) {
+        w.line(`from .${name} import ${name}`);
+    }
+
+    w.blankLine();
     w.line("__all__ = [");
     w.pushIndent();
     w.line('"Cluster",');
@@ -1646,31 +1677,6 @@ function generateObjectsReexport(_clusterNames: string[]): string {
     w.line('"Nullable",');
     w.line('"float32",');
     w.line('"uint",');
-    w.line("# Clusters from objects module are exported via *");
-    w.popIndent();
-    w.line("]");
-    w.blankLine();
-
-    return w.toString();
-}
-
-// ============================================================================
-// objects/__init__.py
-// ============================================================================
-
-function generateObjectsInit(clusterNames: string[]): string {
-    const w = new PythonWriter();
-
-    w.line('"""Auto-generated cluster imports (DO NOT edit)."""');
-    w.blankLine();
-
-    for (const name of clusterNames) {
-        w.line(`from .${name} import ${name}`);
-    }
-
-    w.blankLine();
-    w.line("__all__ = [");
-    w.pushIndent();
     for (const name of clusterNames) {
         w.line(`"${name}",`);
     }
