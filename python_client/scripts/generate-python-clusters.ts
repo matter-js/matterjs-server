@@ -852,6 +852,7 @@ function generateClusterFile(
     // Global attributes (always present)
     w.line(`ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),`);
     w.line(`ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),`);
+    w.line(`ClusterObjectFieldDescriptor(Label="eventList", Tag=0x0000FFFA, Type=typing.List[uint]),`);
     w.line(`ClusterObjectFieldDescriptor(Label="attributeList", Tag=0x0000FFFB, Type=typing.List[uint]),`);
     w.line(`ClusterObjectFieldDescriptor(Label="featureMap", Tag=0x0000FFFC, Type=uint),`);
     w.line(`ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),`);
@@ -875,6 +876,7 @@ function generateClusterFile(
     // Global attribute fields
     w.line(`generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])`);
     w.line(`acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])`);
+    w.line(`eventList: typing.List[uint] = field(default_factory=lambda: [])`);
     w.line(`attributeList: typing.List[uint] = field(default_factory=lambda: [])`);
     w.line(`featureMap: uint = 0`);
     w.line(`clusterRevision: uint = 0`);
@@ -972,6 +974,8 @@ function generateClusterFile(
     w.blankLine();
     generateGlobalAttribute(w, "AcceptedCommandList", 0xFFF9, "typing.List[uint]", clusterId);
     w.blankLine();
+    generateGlobalAttribute(w, "EventList", 0xFFFA, "typing.List[uint]", clusterId);
+    w.blankLine();
     generateGlobalAttribute(w, "AttributeList", 0xFFFB, "typing.List[uint]", clusterId);
     w.blankLine();
     generateGlobalAttribute(w, "FeatureMap", 0xFFFC, "uint", clusterId);
@@ -1024,17 +1028,18 @@ function generateEnum(w: PythonWriter, model: ValueModel): void {
     w.pushIndent();
 
     const members = model.children || [];
+    let maxValue = -1;
     const usedValues = new Set<number>();
 
     for (const m of members) {
         const value = m.id ?? 0;
         usedValues.add(value);
+        if (value > maxValue) maxValue = value;
         w.line(`${toKName(m.name)} = ${hex2(value)}`);
     }
 
-    // Find the kUnknownEnumValue - first unused value starting from 0
-    // (matches CHIP SDK behavior: prefers 0 when available)
-    let unknownValue = 0;
+    // Find the kUnknownEnumValue - first unused value after the last defined value
+    let unknownValue = maxValue + 1;
     while (usedValues.has(unknownValue)) unknownValue++;
 
     w.line("# All received enum values that are not listed above will be mapped");
