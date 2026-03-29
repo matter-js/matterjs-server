@@ -242,14 +242,16 @@ const FIELD_NAME_OVERRIDES: Record<string, string> = {
     NocsrElements:               "NOCSRElements",
 
     // --- DraftElectricalMeasurementCluster: custom cluster uses "ac"/"rms" not "AC"/"RMS" ---
+    // Ac* are safe as global overrides (only this cluster has them).
+    // Rms* must be cluster-qualified because standard clusters use "RMS" (uppercase).
     AcVoltageMultiplier:         "acVoltageMultiplier",
     AcVoltageDivisor:            "acVoltageDivisor",
     AcCurrentMultiplier:         "acCurrentMultiplier",
     AcCurrentDivisor:            "acCurrentDivisor",
     AcPowerMultiplier:           "acPowerMultiplier",
     AcPowerDivisor:              "acPowerDivisor",
-    RmsVoltage:                  "rmsVoltage",
-    RmsCurrent:                  "rmsCurrent",
+    "DraftElectricalMeasurementCluster.RmsVoltage":  "rmsVoltage",
+    "DraftElectricalMeasurementCluster.RmsCurrent":  "rmsCurrent",
 
     // --- DoorLock quirks ---
     // Note: chip SDK lowercases "for" here (requirePINforRemoteOperation — not a typo)
@@ -338,14 +340,16 @@ const CLASS_NAME_OVERRIDES: Record<string, string> = {
     SafetyStatusBitmap:          "SafetyStatus",
 
     // --- DraftElectricalMeasurementCluster: custom cluster keeps "Ac"/"Rms" not "AC"/"RMS" ---
+    // Ac* are safe as global overrides (only this cluster has them).
+    // Rms* must be cluster-qualified because standard clusters use "RMS" (uppercase).
     AcVoltageMultiplier:         "AcVoltageMultiplier",
     AcVoltageDivisor:            "AcVoltageDivisor",
     AcCurrentMultiplier:         "AcCurrentMultiplier",
     AcCurrentDivisor:            "AcCurrentDivisor",
     AcPowerMultiplier:           "AcPowerMultiplier",
     AcPowerDivisor:              "AcPowerDivisor",
-    RmsVoltage:                  "RmsVoltage",
-    RmsCurrent:                  "RmsCurrent",
+    "DraftElectricalMeasurementCluster.RmsVoltage":  "RmsVoltage",
+    "DraftElectricalMeasurementCluster.RmsCurrent":  "RmsCurrent",
 
     // --- DoorLock: CHIP SDK uses legacy "Dl" prefixed names for some enums ---
     // Missing members for DlStatus are injected via EXTRA_ENUM_MEMBERS.
@@ -419,9 +423,17 @@ function toKName(name: string): string {
     return "k" + toChipName(pascal);
 }
 
-/** Convert PascalCase name to camelCase (for attribute/field labels). */
-function toCamelCase(name: string): string {
-    // Check per-name overrides first (covers chip SDK inconsistencies)
+/** Convert PascalCase name to camelCase (for attribute/field labels).
+ *  If clusterName is provided, checks for cluster-qualified overrides first. */
+function toCamelCase(name: string, clusterName?: string): string {
+    // Check cluster-qualified override first (e.g., "DraftElectricalMeasurementCluster.RmsVoltage")
+    if (clusterName) {
+        const qualifiedKey = `${clusterName}.${name}`;
+        if (qualifiedKey in FIELD_NAME_OVERRIDES) {
+            return FIELD_NAME_OVERRIDES[qualifiedKey];
+        }
+    }
+    // Check per-name overrides (covers chip SDK inconsistencies)
     if (name in FIELD_NAME_OVERRIDES) {
         return FIELD_NAME_OVERRIDES[name];
     }
@@ -920,7 +932,7 @@ function generateClusterFile(
     // Cluster-specific attributes
     for (const attr of clusterSpecificAttrs) {
         const pyType = resolveType(attr);
-        w.line(`ClusterObjectFieldDescriptor(Label="${toCamelCase(attr.name)}", Tag=${hex8(attr.id!)}, Type=${pyType.annotation}),`);
+        w.line(`ClusterObjectFieldDescriptor(Label="${toCamelCase(attr.name, clusterName)}", Tag=${hex8(attr.id!)}, Type=${pyType.annotation}),`);
     }
     // Global attributes (always present)
     w.line(`ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),`);
@@ -939,7 +951,7 @@ function generateClusterFile(
     // Top-level attribute fields
     for (const attr of clusterSpecificAttrs) {
         const pyType = resolveType(attr);
-        const label = toCamelCase(attr.name);
+        const label = toCamelCase(attr.name, clusterName);
         if (pyType.needsFactory) {
             w.line(`${label}: ${pyType.annotation} = ${pyType.defaultValue}`);
         } else {
@@ -1307,7 +1319,7 @@ function generateCommand(
 function generateAttribute(
     w: PythonWriter,
     model: AttributeModel,
-    _clusterName: string,
+    clusterName: string,
     clusterId: number,
     _datatypeRegistry: Map<string, { metatype: string; clusterName: string }>,
     resolveType: (m: ValueModel) => PythonType,
@@ -1317,7 +1329,7 @@ function generateAttribute(
     // Attribute class names must be PascalCase (chip SDK convention).
     // Standard clusters already have PascalCase model names; custom clusters use
     // camelCase TypeScript field names that need to be capitalized.
-    const attrClassName = toChipClassName(model.name.charAt(0).toUpperCase() + model.name.slice(1));
+    const attrClassName = toChipClassName(model.name.charAt(0).toUpperCase() + model.name.slice(1), clusterName);
 
     w.line("@dataclass");
     w.line(`class ${attrClassName}(ClusterAttributeDescriptor):`);
