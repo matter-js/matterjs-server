@@ -242,6 +242,13 @@ class ColorControl(Cluster):
             kUpdateTime = 0x4
             kUpdateStartHue = 0x8
 
+        class ColorCapabilitiesBitmap(IntFlag):
+            kHueSaturation = 0x1
+            kEnhancedHue = 0x2
+            kColorLoop = 0x4
+            kXy = 0x8
+            kColorTemperature = 0x10
+
     class Commands:
         @dataclass
         class MoveToHue(ClusterCommand):
