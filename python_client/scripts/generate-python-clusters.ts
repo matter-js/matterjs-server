@@ -386,6 +386,25 @@ const EXTRA_ENUM_MEMBERS: Record<string, Array<{ kName: string; value: number }>
 };
 
 /**
+ * Extra bitmaps to inject that are present in the CHIP SDK but missing from the
+ * Matter.js model. Key: cluster name. Value: array of bitmap definitions.
+ */
+const EXTRA_BITMAPS: Record<string, Array<{ name: string; members: Array<{ kName: string; value: number }> }>> = {
+    ColorControl: [
+        {
+            name: "ColorCapabilitiesBitmap",
+            members: [
+                { kName: "kHueSaturation", value: 0x1 },
+                { kName: "kEnhancedHue", value: 0x2 },
+                { kName: "kColorLoop", value: 0x4 },
+                { kName: "kXy", value: 0x8 },
+                { kName: "kColorTemperature", value: 0x10 },
+            ],
+        },
+    ],
+};
+
+/**
  * Convert a PascalCase name from Matter.js to chip-clusters-compatible PascalCase.
  * Matter.js uses standard PascalCase (e.g., "AnnounceOtaProvider"),
  * chip-clusters preserves known acronyms (e.g., "AnnounceOTAProvider").
@@ -991,7 +1010,8 @@ function generateClusterFile(
     }
 
     // ---- Bitmaps section ----
-    const hasBitmaps = bitmaps.length > 0 || features.length > 0;
+    const extraBitmaps = EXTRA_BITMAPS[clusterName] || [];
+    const hasBitmaps = bitmaps.length > 0 || features.length > 0 || extraBitmaps.length > 0;
     if (hasBitmaps) {
         w.blankLine();
         w.line("class Bitmaps:");
@@ -1014,7 +1034,21 @@ function generateClusterFile(
 
         for (let i = 0; i < bitmaps.length; i++) {
             generateBitmap(w, bitmaps[i]);
-            if (i < bitmaps.length - 1) {
+            if (i < bitmaps.length - 1 || extraBitmaps.length > 0) {
+                w.blankLine();
+            }
+        }
+
+        // Inject extra bitmaps not in the Matter.js model
+        for (let i = 0; i < extraBitmaps.length; i++) {
+            const eb = extraBitmaps[i];
+            w.line(`class ${eb.name}(IntFlag):`);
+            w.pushIndent();
+            for (const m of eb.members) {
+                w.line(`${m.kName} = 0x${m.value.toString(16).toUpperCase()}`);
+            }
+            w.popIndent();
+            if (i < extraBitmaps.length - 1) {
                 w.blankLine();
             }
         }
