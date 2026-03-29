@@ -109,7 +109,7 @@ class Globals:
             # to kUnknownEnumValue. This is a helper enum value that should only
             # be used by code to process how it handles receiving an unknown
             # enum value. This specific value should never be transmitted.
-            kUnknownEnumValue = 0
+            kUnknownEnumValue = 68
 
         class priority(MatterIntEnum):
             kDebug = 0x00
@@ -161,7 +161,7 @@ class Globals:
             # to kUnknownEnumValue. This is a helper enum value that should only
             # be used by code to process how it handles receiving an unknown
             # enum value. This specific value should never be transmitted.
-            kUnknownEnumValue = 2
+            kUnknownEnumValue = 210
 
 
     class Bitmaps:
