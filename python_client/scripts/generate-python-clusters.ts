@@ -189,6 +189,9 @@ const K_VALUE_OVERRIDES: Record<string, string> = {
     // --- DoorLock Feature bitmap: chip SDK uses "CredentialsOverTheAirAccess" (with s) ---
     CredentialOverTheAirAccess: "CredentialsOverTheAirAccess",
 
+    // --- DoorLock Feature bitmap: chip SDK uses "Unbolt" not "Unbolting" ---
+    Unbolting: "Unbolt",
+
     // --- WindowCovering TypeEnum: chip SDK uses "TiltBlindLiftAndTilt" not "TiltBlindLift" ---
     TiltBlindLift: "TiltBlindLiftAndTilt",
 };
