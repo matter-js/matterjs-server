@@ -12,7 +12,6 @@ from ...tlv import float32, uint
 from ..ClusterObjects import (Cluster, ClusterAttributeDescriptor, ClusterCommand, ClusterEvent, ClusterObject,
                               ClusterObjectDescriptor, ClusterObjectFieldDescriptor)
 from ..Types import Nullable, NullValue
-from .Globals import Globals
 
 
 @dataclass
@@ -30,12 +29,11 @@ class GeneralCommissioning(Cluster):
                 ClusterObjectFieldDescriptor(Label="supportsConcurrentConnection", Tag=0x00000004, Type=bool),
                 ClusterObjectFieldDescriptor(Label="TCAcceptedVersion", Tag=0x00000005, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="TCMinRequiredVersion", Tag=0x00000006, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="TCAcknowledgements", Tag=0x00000007, Type=typing.Optional[Globals.Bitmaps.map16]),
+                ClusterObjectFieldDescriptor(Label="TCAcknowledgements", Tag=0x00000007, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="TCAcknowledgementsRequired", Tag=0x00000008, Type=typing.Optional[bool]),
                 ClusterObjectFieldDescriptor(Label="TCUpdateDeadline", Tag=0x00000009, Type=typing.Union[None, Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
-                ClusterObjectFieldDescriptor(Label="eventList", Tag=0x0000FFFA, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="attributeList", Tag=0x0000FFFB, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="featureMap", Tag=0x0000FFFC, Type=uint),
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
@@ -48,12 +46,11 @@ class GeneralCommissioning(Cluster):
     supportsConcurrentConnection: 'bool' = False
     TCAcceptedVersion: 'typing.Optional[uint]' = None
     TCMinRequiredVersion: 'typing.Optional[uint]' = None
-    TCAcknowledgements: 'typing.Optional[Globals.Bitmaps.map16]' = None
+    TCAcknowledgements: 'typing.Optional[uint]' = None
     TCAcknowledgementsRequired: 'typing.Optional[bool]' = None
     TCUpdateDeadline: 'typing.Union[None, Nullable, uint]' = None
     generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
     acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    eventList: 'typing.List[uint]' = field(default_factory=lambda: [])
     attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
     featureMap: 'uint' = 0
     clusterRevision: 'uint' = 0
@@ -167,11 +164,11 @@ class GeneralCommissioning(Cluster):
                 return ClusterObjectDescriptor(
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="TCVersion", Tag=0, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="TCUserResponse", Tag=1, Type=Globals.Bitmaps.map16),
+                        ClusterObjectFieldDescriptor(Label="TCUserResponse", Tag=1, Type=uint),
                     ])
 
             TCVersion: 'uint' = 0
-            TCUserResponse: 'Globals.Bitmaps.map16' = 0
+            TCUserResponse: 'uint' = 0
 
         @dataclass
         class ArmFailSafeResponse(ClusterCommand):
@@ -368,9 +365,9 @@ class GeneralCommissioning(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[Globals.Bitmaps.map16])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[Globals.Bitmaps.map16]' = None
+            value: 'typing.Optional[uint]' = None
 
         @dataclass
         class TCAcknowledgementsRequired(ClusterAttributeDescriptor):
@@ -429,22 +426,6 @@ class GeneralCommissioning(Cluster):
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
                 return 0x0000FFF9
-
-            @ChipUtility.classproperty
-            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.List[uint])
-
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
-
-        @dataclass
-        class EventList(ClusterAttributeDescriptor):
-            @ChipUtility.classproperty
-            def cluster_id(cls) -> int:
-                return 0x00000030
-
-            @ChipUtility.classproperty
-            def attribute_id(cls) -> int:
-                return 0x0000FFFA
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:

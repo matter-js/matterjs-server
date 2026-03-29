@@ -27,10 +27,9 @@ class WaterTankLevelMonitoring(Cluster):
                 ClusterObjectFieldDescriptor(Label="changeIndication", Tag=0x00000002, Type=WaterTankLevelMonitoring.Enums.ChangeIndicationEnum),
                 ClusterObjectFieldDescriptor(Label="inPlaceIndicator", Tag=0x00000003, Type=typing.Optional[bool]),
                 ClusterObjectFieldDescriptor(Label="lastChangedTime", Tag=0x00000004, Type=typing.Union[None, Nullable, uint]),
-                ClusterObjectFieldDescriptor(Label="replacementProductList", Tag=0x00000005, Type=typing.Optional[typing.List[typing.Optional[WaterTankLevelMonitoring.Structs.ReplacementProductStruct]]]),
+                ClusterObjectFieldDescriptor(Label="replacementProductList", Tag=0x00000005, Type=typing.Optional[typing.List[WaterTankLevelMonitoring.Structs.ReplacementProductStruct]]),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
-                ClusterObjectFieldDescriptor(Label="eventList", Tag=0x0000FFFA, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="attributeList", Tag=0x0000FFFB, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="featureMap", Tag=0x0000FFFC, Type=uint),
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
@@ -41,10 +40,9 @@ class WaterTankLevelMonitoring(Cluster):
     changeIndication: 'WaterTankLevelMonitoring.Enums.ChangeIndicationEnum' = 0
     inPlaceIndicator: 'typing.Optional[bool]' = None
     lastChangedTime: 'typing.Union[None, Nullable, uint]' = None
-    replacementProductList: 'typing.Optional[typing.List[typing.Optional[WaterTankLevelMonitoring.Structs.ReplacementProductStruct]]]' = None
+    replacementProductList: 'typing.Optional[typing.List[WaterTankLevelMonitoring.Structs.ReplacementProductStruct]]' = None
     generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
     acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    eventList: 'typing.List[uint]' = field(default_factory=lambda: [])
     attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
     featureMap: 'uint' = 0
     clusterRevision: 'uint' = 0
@@ -209,9 +207,9 @@ class WaterTankLevelMonitoring(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[typing.Optional[WaterTankLevelMonitoring.Structs.ReplacementProductStruct]]])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[WaterTankLevelMonitoring.Structs.ReplacementProductStruct]])
 
-            value: 'typing.Optional[typing.List[typing.Optional[WaterTankLevelMonitoring.Structs.ReplacementProductStruct]]]' = None
+            value: 'typing.Optional[typing.List[WaterTankLevelMonitoring.Structs.ReplacementProductStruct]]' = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -238,22 +236,6 @@ class WaterTankLevelMonitoring(Cluster):
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
                 return 0x0000FFF9
-
-            @ChipUtility.classproperty
-            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.List[uint])
-
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
-
-        @dataclass
-        class EventList(ClusterAttributeDescriptor):
-            @ChipUtility.classproperty
-            def cluster_id(cls) -> int:
-                return 0x00000079
-
-            @ChipUtility.classproperty
-            def attribute_id(cls) -> int:
-                return 0x0000FFFA
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:

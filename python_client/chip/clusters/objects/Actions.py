@@ -22,23 +22,21 @@ class Actions(Cluster):
     def descriptor(cls) -> ClusterObjectDescriptor:
         return ClusterObjectDescriptor(
             Fields=[
-                ClusterObjectFieldDescriptor(Label="actionList", Tag=0x00000000, Type=typing.List[typing.Optional[Actions.Structs.ActionStruct]]),
-                ClusterObjectFieldDescriptor(Label="endpointLists", Tag=0x00000001, Type=typing.List[typing.Optional[Actions.Structs.EndpointListStruct]]),
+                ClusterObjectFieldDescriptor(Label="actionList", Tag=0x00000000, Type=typing.List[Actions.Structs.ActionStruct]),
+                ClusterObjectFieldDescriptor(Label="endpointLists", Tag=0x00000001, Type=typing.List[Actions.Structs.EndpointListStruct]),
                 ClusterObjectFieldDescriptor(Label="setupURL", Tag=0x00000002, Type=typing.Optional[str]),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
-                ClusterObjectFieldDescriptor(Label="eventList", Tag=0x0000FFFA, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="attributeList", Tag=0x0000FFFB, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="featureMap", Tag=0x0000FFFC, Type=uint),
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    actionList: 'typing.List[typing.Optional[Actions.Structs.ActionStruct]]' = field(default_factory=lambda: [])
-    endpointLists: 'typing.List[typing.Optional[Actions.Structs.EndpointListStruct]]' = field(default_factory=lambda: [])
+    actionList: 'typing.List[Actions.Structs.ActionStruct]' = field(default_factory=lambda: [])
+    endpointLists: 'typing.List[Actions.Structs.EndpointListStruct]' = field(default_factory=lambda: [])
     setupURL: 'typing.Optional[str]' = None
     generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
     acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    eventList: 'typing.List[uint]' = field(default_factory=lambda: [])
     attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
     featureMap: 'uint' = 0
     clusterRevision: 'uint' = 0
@@ -114,7 +112,7 @@ class Actions(Cluster):
                         ClusterObjectFieldDescriptor(Label="name", Tag=1, Type=str),
                         ClusterObjectFieldDescriptor(Label="type", Tag=2, Type=Actions.Enums.ActionTypeEnum),
                         ClusterObjectFieldDescriptor(Label="endpointListID", Tag=3, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="supportedCommands", Tag=4, Type=Actions.Bitmaps.CommandBits),
+                        ClusterObjectFieldDescriptor(Label="supportedCommands", Tag=4, Type=uint),
                         ClusterObjectFieldDescriptor(Label="state", Tag=5, Type=Actions.Enums.ActionStateEnum),
                     ])
 
@@ -122,7 +120,7 @@ class Actions(Cluster):
             name: 'str' = ""
             type: 'Actions.Enums.ActionTypeEnum' = 0
             endpointListID: 'uint' = 0
-            supportedCommands: 'Actions.Bitmaps.CommandBits' = 0
+            supportedCommands: 'uint' = 0
             state: 'Actions.Enums.ActionStateEnum' = 0
 
         @dataclass
@@ -134,13 +132,13 @@ class Actions(Cluster):
                         ClusterObjectFieldDescriptor(Label="endpointListID", Tag=0, Type=uint),
                         ClusterObjectFieldDescriptor(Label="name", Tag=1, Type=str),
                         ClusterObjectFieldDescriptor(Label="type", Tag=2, Type=Actions.Enums.EndpointListTypeEnum),
-                        ClusterObjectFieldDescriptor(Label="endpoints", Tag=3, Type=typing.List[typing.Optional[uint]]),
+                        ClusterObjectFieldDescriptor(Label="endpoints", Tag=3, Type=typing.List[uint]),
                     ])
 
             endpointListID: 'uint' = 0
             name: 'str' = ""
             type: 'Actions.Enums.EndpointListTypeEnum' = 0
-            endpoints: 'typing.List[typing.Optional[uint]]' = field(default_factory=lambda: [])
+            endpoints: 'typing.List[uint]' = field(default_factory=lambda: [])
 
     class Commands:
         @dataclass
@@ -382,9 +380,9 @@ class Actions(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.List[typing.Optional[Actions.Structs.ActionStruct]])
+                return ClusterObjectFieldDescriptor(Type=typing.List[Actions.Structs.ActionStruct])
 
-            value: 'typing.List[typing.Optional[Actions.Structs.ActionStruct]]' = field(default_factory=lambda: [])
+            value: 'typing.List[Actions.Structs.ActionStruct]' = field(default_factory=lambda: [])
 
         @dataclass
         class EndpointLists(ClusterAttributeDescriptor):
@@ -398,9 +396,9 @@ class Actions(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.List[typing.Optional[Actions.Structs.EndpointListStruct]])
+                return ClusterObjectFieldDescriptor(Type=typing.List[Actions.Structs.EndpointListStruct])
 
-            value: 'typing.List[typing.Optional[Actions.Structs.EndpointListStruct]]' = field(default_factory=lambda: [])
+            value: 'typing.List[Actions.Structs.EndpointListStruct]' = field(default_factory=lambda: [])
 
         @dataclass
         class SetupURL(ClusterAttributeDescriptor):
@@ -443,22 +441,6 @@ class Actions(Cluster):
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
                 return 0x0000FFF9
-
-            @ChipUtility.classproperty
-            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.List[uint])
-
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
-
-        @dataclass
-        class EventList(ClusterAttributeDescriptor):
-            @ChipUtility.classproperty
-            def cluster_id(cls) -> int:
-                return 0x00000025
-
-            @ChipUtility.classproperty
-            def attribute_id(cls) -> int:
-                return 0x0000FFFA
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:

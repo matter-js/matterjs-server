@@ -22,31 +22,29 @@ class AccessControl(Cluster):
     def descriptor(cls) -> ClusterObjectDescriptor:
         return ClusterObjectDescriptor(
             Fields=[
-                ClusterObjectFieldDescriptor(Label="acl", Tag=0x00000000, Type=typing.List[typing.Optional[AccessControl.Structs.AccessControlEntryStruct]]),
-                ClusterObjectFieldDescriptor(Label="extension", Tag=0x00000001, Type=typing.Optional[typing.List[typing.Optional[AccessControl.Structs.AccessControlExtensionStruct]]]),
+                ClusterObjectFieldDescriptor(Label="acl", Tag=0x00000000, Type=typing.List[AccessControl.Structs.AccessControlEntryStruct]),
+                ClusterObjectFieldDescriptor(Label="extension", Tag=0x00000001, Type=typing.Optional[typing.List[AccessControl.Structs.AccessControlExtensionStruct]]),
                 ClusterObjectFieldDescriptor(Label="subjectsPerAccessControlEntry", Tag=0x00000002, Type=uint),
                 ClusterObjectFieldDescriptor(Label="targetsPerAccessControlEntry", Tag=0x00000003, Type=uint),
                 ClusterObjectFieldDescriptor(Label="accessControlEntriesPerFabric", Tag=0x00000004, Type=uint),
-                ClusterObjectFieldDescriptor(Label="commissioningARL", Tag=0x00000005, Type=typing.Optional[typing.List[typing.Optional[AccessControl.Structs.CommissioningAccessRestrictionEntryStruct]]]),
-                ClusterObjectFieldDescriptor(Label="arl", Tag=0x00000006, Type=typing.Optional[typing.List[typing.Optional[AccessControl.Structs.AccessRestrictionEntryStruct]]]),
+                ClusterObjectFieldDescriptor(Label="commissioningARL", Tag=0x00000005, Type=typing.Optional[typing.List[AccessControl.Structs.CommissioningAccessRestrictionEntryStruct]]),
+                ClusterObjectFieldDescriptor(Label="arl", Tag=0x00000006, Type=typing.Optional[typing.List[AccessControl.Structs.AccessRestrictionEntryStruct]]),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
-                ClusterObjectFieldDescriptor(Label="eventList", Tag=0x0000FFFA, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="attributeList", Tag=0x0000FFFB, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="featureMap", Tag=0x0000FFFC, Type=uint),
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    acl: 'typing.List[typing.Optional[AccessControl.Structs.AccessControlEntryStruct]]' = field(default_factory=lambda: [])
-    extension: 'typing.Optional[typing.List[typing.Optional[AccessControl.Structs.AccessControlExtensionStruct]]]' = None
+    acl: 'typing.List[AccessControl.Structs.AccessControlEntryStruct]' = field(default_factory=lambda: [])
+    extension: 'typing.Optional[typing.List[AccessControl.Structs.AccessControlExtensionStruct]]' = None
     subjectsPerAccessControlEntry: 'uint' = 0
     targetsPerAccessControlEntry: 'uint' = 0
     accessControlEntriesPerFabric: 'uint' = 0
-    commissioningARL: 'typing.Optional[typing.List[typing.Optional[AccessControl.Structs.CommissioningAccessRestrictionEntryStruct]]]' = None
-    arl: 'typing.Optional[typing.List[typing.Optional[AccessControl.Structs.AccessRestrictionEntryStruct]]]' = None
+    commissioningARL: 'typing.Optional[typing.List[AccessControl.Structs.CommissioningAccessRestrictionEntryStruct]]' = None
+    arl: 'typing.Optional[typing.List[AccessControl.Structs.AccessRestrictionEntryStruct]]' = None
     generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
     acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    eventList: 'typing.List[uint]' = field(default_factory=lambda: [])
     attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
     featureMap: 'uint' = 0
     clusterRevision: 'uint' = 0
@@ -72,7 +70,7 @@ class AccessControl(Cluster):
             # to kUnknownEnumValue. This is a helper enum value that should only
             # be used by code to process how it handles receiving an unknown
             # enum value. This specific value should never be transmitted.
-            kUnknownEnumValue = 6
+            kUnknownEnumValue = 0
 
         class AccessRestrictionTypeEnum(MatterIntEnum):
             kAttributeAccessForbidden = 0x00
@@ -93,7 +91,7 @@ class AccessControl(Cluster):
             # to kUnknownEnumValue. This is a helper enum value that should only
             # be used by code to process how it handles receiving an unknown
             # enum value. This specific value should never be transmitted.
-            kUnknownEnumValue = 4
+            kUnknownEnumValue = 0
 
     class Bitmaps:
         class Feature(IntFlag):
@@ -124,15 +122,15 @@ class AccessControl(Cluster):
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="privilege", Tag=1, Type=AccessControl.Enums.AccessControlEntryPrivilegeEnum),
                         ClusterObjectFieldDescriptor(Label="authMode", Tag=2, Type=AccessControl.Enums.AccessControlEntryAuthModeEnum),
-                        ClusterObjectFieldDescriptor(Label="subjects", Tag=3, Type=typing.Union[Nullable, typing.List[typing.Optional[uint]]]),
-                        ClusterObjectFieldDescriptor(Label="targets", Tag=4, Type=typing.Union[Nullable, typing.List[typing.Optional[AccessControl.Structs.AccessControlTargetStruct]]]),
+                        ClusterObjectFieldDescriptor(Label="subjects", Tag=3, Type=typing.Union[Nullable, typing.List[uint]]),
+                        ClusterObjectFieldDescriptor(Label="targets", Tag=4, Type=typing.Union[Nullable, typing.List[AccessControl.Structs.AccessControlTargetStruct]]),
                         ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=254, Type=uint),
                     ])
 
             privilege: 'AccessControl.Enums.AccessControlEntryPrivilegeEnum' = 0
             authMode: 'AccessControl.Enums.AccessControlEntryAuthModeEnum' = 0
-            subjects: 'typing.Union[Nullable, typing.List[typing.Optional[uint]]]' = NullValue
-            targets: 'typing.Union[Nullable, typing.List[typing.Optional[AccessControl.Structs.AccessControlTargetStruct]]]' = NullValue
+            subjects: 'typing.Union[Nullable, typing.List[uint]]' = NullValue
+            targets: 'typing.Union[Nullable, typing.List[AccessControl.Structs.AccessControlTargetStruct]]' = NullValue
             fabricIndex: 'uint' = 0
 
         @dataclass
@@ -169,13 +167,13 @@ class AccessControl(Cluster):
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="endpoint", Tag=0, Type=uint),
                         ClusterObjectFieldDescriptor(Label="cluster", Tag=1, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="restrictions", Tag=2, Type=typing.List[typing.Optional[AccessControl.Structs.AccessRestrictionStruct]]),
+                        ClusterObjectFieldDescriptor(Label="restrictions", Tag=2, Type=typing.List[AccessControl.Structs.AccessRestrictionStruct]),
                         ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=254, Type=uint),
                     ])
 
             endpoint: 'uint' = 0
             cluster: 'uint' = 0
-            restrictions: 'typing.List[typing.Optional[AccessControl.Structs.AccessRestrictionStruct]]' = field(default_factory=lambda: [])
+            restrictions: 'typing.List[AccessControl.Structs.AccessRestrictionStruct]' = field(default_factory=lambda: [])
             fabricIndex: 'uint' = 0
 
         @dataclass
@@ -186,12 +184,12 @@ class AccessControl(Cluster):
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="endpoint", Tag=0, Type=uint),
                         ClusterObjectFieldDescriptor(Label="cluster", Tag=1, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="restrictions", Tag=2, Type=typing.List[typing.Optional[AccessControl.Structs.AccessRestrictionStruct]]),
+                        ClusterObjectFieldDescriptor(Label="restrictions", Tag=2, Type=typing.List[AccessControl.Structs.AccessRestrictionStruct]),
                     ])
 
             endpoint: 'uint' = 0
             cluster: 'uint' = 0
-            restrictions: 'typing.List[typing.Optional[AccessControl.Structs.AccessRestrictionStruct]]' = field(default_factory=lambda: [])
+            restrictions: 'typing.List[AccessControl.Structs.AccessRestrictionStruct]' = field(default_factory=lambda: [])
 
     class Commands:
         @dataclass
@@ -205,10 +203,10 @@ class AccessControl(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="arl", Tag=0, Type=typing.List[typing.Optional[AccessControl.Structs.CommissioningAccessRestrictionEntryStruct]]),
+                        ClusterObjectFieldDescriptor(Label="arl", Tag=0, Type=typing.List[AccessControl.Structs.CommissioningAccessRestrictionEntryStruct]),
                     ])
 
-            arl: 'typing.List[typing.Optional[AccessControl.Structs.CommissioningAccessRestrictionEntryStruct]]' = field(default_factory=lambda: [])
+            arl: 'typing.List[AccessControl.Structs.CommissioningAccessRestrictionEntryStruct]' = field(default_factory=lambda: [])
 
         @dataclass
         class ReviewFabricRestrictionsResponse(ClusterCommand):
@@ -239,9 +237,9 @@ class AccessControl(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.List[typing.Optional[AccessControl.Structs.AccessControlEntryStruct]])
+                return ClusterObjectFieldDescriptor(Type=typing.List[AccessControl.Structs.AccessControlEntryStruct])
 
-            value: 'typing.List[typing.Optional[AccessControl.Structs.AccessControlEntryStruct]]' = field(default_factory=lambda: [])
+            value: 'typing.List[AccessControl.Structs.AccessControlEntryStruct]' = field(default_factory=lambda: [])
 
         @dataclass
         class Extension(ClusterAttributeDescriptor):
@@ -255,9 +253,9 @@ class AccessControl(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[typing.Optional[AccessControl.Structs.AccessControlExtensionStruct]]])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[AccessControl.Structs.AccessControlExtensionStruct]])
 
-            value: 'typing.Optional[typing.List[typing.Optional[AccessControl.Structs.AccessControlExtensionStruct]]]' = None
+            value: 'typing.Optional[typing.List[AccessControl.Structs.AccessControlExtensionStruct]]' = None
 
         @dataclass
         class SubjectsPerAccessControlEntry(ClusterAttributeDescriptor):
@@ -308,7 +306,7 @@ class AccessControl(Cluster):
             value: 'uint' = 0
 
         @dataclass
-        class CommissioningArl(ClusterAttributeDescriptor):
+        class CommissioningARL(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x0000001F
@@ -319,9 +317,9 @@ class AccessControl(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[typing.Optional[AccessControl.Structs.CommissioningAccessRestrictionEntryStruct]]])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[AccessControl.Structs.CommissioningAccessRestrictionEntryStruct]])
 
-            value: 'typing.Optional[typing.List[typing.Optional[AccessControl.Structs.CommissioningAccessRestrictionEntryStruct]]]' = None
+            value: 'typing.Optional[typing.List[AccessControl.Structs.CommissioningAccessRestrictionEntryStruct]]' = None
 
         @dataclass
         class Arl(ClusterAttributeDescriptor):
@@ -335,9 +333,9 @@ class AccessControl(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[typing.Optional[AccessControl.Structs.AccessRestrictionEntryStruct]]])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[AccessControl.Structs.AccessRestrictionEntryStruct]])
 
-            value: 'typing.Optional[typing.List[typing.Optional[AccessControl.Structs.AccessRestrictionEntryStruct]]]' = None
+            value: 'typing.Optional[typing.List[AccessControl.Structs.AccessRestrictionEntryStruct]]' = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -364,22 +362,6 @@ class AccessControl(Cluster):
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
                 return 0x0000FFF9
-
-            @ChipUtility.classproperty
-            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.List[uint])
-
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
-
-        @dataclass
-        class EventList(ClusterAttributeDescriptor):
-            @ChipUtility.classproperty
-            def cluster_id(cls) -> int:
-                return 0x0000001F
-
-            @ChipUtility.classproperty
-            def attribute_id(cls) -> int:
-                return 0x0000FFFA
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:

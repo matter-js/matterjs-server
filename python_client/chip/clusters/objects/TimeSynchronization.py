@@ -27,8 +27,8 @@ class TimeSynchronization(Cluster):
                 ClusterObjectFieldDescriptor(Label="timeSource", Tag=0x00000002, Type=typing.Optional[TimeSynchronization.Enums.TimeSourceEnum]),
                 ClusterObjectFieldDescriptor(Label="trustedTimeSource", Tag=0x00000003, Type=typing.Union[None, Nullable, TimeSynchronization.Structs.TrustedTimeSourceStruct]),
                 ClusterObjectFieldDescriptor(Label="defaultNTP", Tag=0x00000004, Type=typing.Union[None, Nullable, str]),
-                ClusterObjectFieldDescriptor(Label="timeZone", Tag=0x00000005, Type=typing.Optional[typing.List[typing.Optional[TimeSynchronization.Structs.TimeZoneStruct]]]),
-                ClusterObjectFieldDescriptor(Label="DSTOffset", Tag=0x00000006, Type=typing.Optional[typing.List[typing.Optional[TimeSynchronization.Structs.DSTOffsetStruct]]]),
+                ClusterObjectFieldDescriptor(Label="timeZone", Tag=0x00000005, Type=typing.Optional[typing.List[TimeSynchronization.Structs.TimeZoneStruct]]),
+                ClusterObjectFieldDescriptor(Label="DSTOffset", Tag=0x00000006, Type=typing.Optional[typing.List[TimeSynchronization.Structs.DSTOffsetStruct]]),
                 ClusterObjectFieldDescriptor(Label="localTime", Tag=0x00000007, Type=typing.Union[None, Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="timeZoneDatabase", Tag=0x00000008, Type=typing.Optional[TimeSynchronization.Enums.TimeZoneDatabaseEnum]),
                 ClusterObjectFieldDescriptor(Label="NTPServerAvailable", Tag=0x00000009, Type=typing.Optional[bool]),
@@ -37,7 +37,6 @@ class TimeSynchronization(Cluster):
                 ClusterObjectFieldDescriptor(Label="supportsDNSResolve", Tag=0x0000000C, Type=typing.Optional[bool]),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
-                ClusterObjectFieldDescriptor(Label="eventList", Tag=0x0000FFFA, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="attributeList", Tag=0x0000FFFB, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="featureMap", Tag=0x0000FFFC, Type=uint),
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
@@ -48,8 +47,8 @@ class TimeSynchronization(Cluster):
     timeSource: 'typing.Optional[TimeSynchronization.Enums.TimeSourceEnum]' = None
     trustedTimeSource: 'typing.Union[None, Nullable, TimeSynchronization.Structs.TrustedTimeSourceStruct]' = None
     defaultNTP: 'typing.Union[None, Nullable, str]' = None
-    timeZone: 'typing.Optional[typing.List[typing.Optional[TimeSynchronization.Structs.TimeZoneStruct]]]' = None
-    DSTOffset: 'typing.Optional[typing.List[typing.Optional[TimeSynchronization.Structs.DSTOffsetStruct]]]' = None
+    timeZone: 'typing.Optional[typing.List[TimeSynchronization.Structs.TimeZoneStruct]]' = None
+    DSTOffset: 'typing.Optional[typing.List[TimeSynchronization.Structs.DSTOffsetStruct]]' = None
     localTime: 'typing.Union[None, Nullable, uint]' = None
     timeZoneDatabase: 'typing.Optional[TimeSynchronization.Enums.TimeZoneDatabaseEnum]' = None
     NTPServerAvailable: 'typing.Optional[bool]' = None
@@ -58,7 +57,6 @@ class TimeSynchronization(Cluster):
     supportsDNSResolve: 'typing.Optional[bool]' = None
     generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
     acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    eventList: 'typing.List[uint]' = field(default_factory=lambda: [])
     attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
     featureMap: 'uint' = 0
     clusterRevision: 'uint' = 0
@@ -110,13 +108,13 @@ class TimeSynchronization(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 3
 
-        class StatusCodeEnum(MatterIntEnum):
+        class StatusCode(MatterIntEnum):
             kTimeNotAccepted = 0x02
             # All received enum values that are not listed above will be mapped
             # to kUnknownEnumValue. This is a helper enum value that should only
             # be used by code to process how it handles receiving an unknown
             # enum value. This specific value should never be transmitted.
-            kUnknownEnumValue = 3
+            kUnknownEnumValue = 0
 
     class Bitmaps:
         class Feature(IntFlag):
@@ -234,10 +232,10 @@ class TimeSynchronization(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="timeZone", Tag=0, Type=typing.List[typing.Optional[TimeSynchronization.Structs.TimeZoneStruct]]),
+                        ClusterObjectFieldDescriptor(Label="timeZone", Tag=0, Type=typing.List[TimeSynchronization.Structs.TimeZoneStruct]),
                     ])
 
-            timeZone: 'typing.List[typing.Optional[TimeSynchronization.Structs.TimeZoneStruct]]' = field(default_factory=lambda: [])
+            timeZone: 'typing.List[TimeSynchronization.Structs.TimeZoneStruct]' = field(default_factory=lambda: [])
 
         @dataclass
         class SetDSTOffset(ClusterCommand):
@@ -250,10 +248,10 @@ class TimeSynchronization(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="DSTOffset", Tag=0, Type=typing.List[typing.Optional[TimeSynchronization.Structs.DSTOffsetStruct]]),
+                        ClusterObjectFieldDescriptor(Label="DSTOffset", Tag=0, Type=typing.List[TimeSynchronization.Structs.DSTOffsetStruct]),
                     ])
 
-            DSTOffset: 'typing.List[typing.Optional[TimeSynchronization.Structs.DSTOffsetStruct]]' = field(default_factory=lambda: [])
+            DSTOffset: 'typing.List[TimeSynchronization.Structs.DSTOffsetStruct]' = field(default_factory=lambda: [])
 
         @dataclass
         class SetDefaultNTP(ClusterCommand):
@@ -380,9 +378,9 @@ class TimeSynchronization(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[typing.Optional[TimeSynchronization.Structs.TimeZoneStruct]]])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[TimeSynchronization.Structs.TimeZoneStruct]])
 
-            value: 'typing.Optional[typing.List[typing.Optional[TimeSynchronization.Structs.TimeZoneStruct]]]' = None
+            value: 'typing.Optional[typing.List[TimeSynchronization.Structs.TimeZoneStruct]]' = None
 
         @dataclass
         class DSTOffset(ClusterAttributeDescriptor):
@@ -396,9 +394,9 @@ class TimeSynchronization(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[typing.Optional[TimeSynchronization.Structs.DSTOffsetStruct]]])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[TimeSynchronization.Structs.DSTOffsetStruct]])
 
-            value: 'typing.Optional[typing.List[typing.Optional[TimeSynchronization.Structs.DSTOffsetStruct]]]' = None
+            value: 'typing.Optional[typing.List[TimeSynchronization.Structs.DSTOffsetStruct]]' = None
 
         @dataclass
         class LocalTime(ClusterAttributeDescriptor):
@@ -521,22 +519,6 @@ class TimeSynchronization(Cluster):
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
                 return 0x0000FFF9
-
-            @ChipUtility.classproperty
-            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.List[uint])
-
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
-
-        @dataclass
-        class EventList(ClusterAttributeDescriptor):
-            @ChipUtility.classproperty
-            def cluster_id(cls) -> int:
-                return 0x00000038
-
-            @ChipUtility.classproperty
-            def attribute_id(cls) -> int:
-                return 0x0000FFFA
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:

@@ -40,20 +40,20 @@ class DoorLock(Cluster):
                 ClusterObjectFieldDescriptor(Label="minPINCodeLength", Tag=0x00000018, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="maxRFIDCodeLength", Tag=0x00000019, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="minRFIDCodeLength", Tag=0x0000001A, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="credentialRulesSupport", Tag=0x0000001B, Type=typing.Optional[DoorLock.Bitmaps.CredentialRulesBitmap]),
+                ClusterObjectFieldDescriptor(Label="credentialRulesSupport", Tag=0x0000001B, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="numberOfCredentialsSupportedPerUser", Tag=0x0000001C, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="language", Tag=0x00000021, Type=typing.Optional[str]),
                 ClusterObjectFieldDescriptor(Label="LEDSettings", Tag=0x00000022, Type=typing.Optional[DoorLock.Enums.LEDSettingEnum]),
                 ClusterObjectFieldDescriptor(Label="autoRelockTime", Tag=0x00000023, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="soundVolume", Tag=0x00000024, Type=typing.Optional[DoorLock.Enums.SoundVolumeEnum]),
                 ClusterObjectFieldDescriptor(Label="operatingMode", Tag=0x00000025, Type=DoorLock.Enums.OperatingModeEnum),
-                ClusterObjectFieldDescriptor(Label="supportedOperatingModes", Tag=0x00000026, Type=DoorLock.Bitmaps.OperatingModesBitmap),
-                ClusterObjectFieldDescriptor(Label="defaultConfigurationRegister", Tag=0x00000027, Type=typing.Optional[DoorLock.Bitmaps.ConfigurationRegisterBitmap]),
+                ClusterObjectFieldDescriptor(Label="supportedOperatingModes", Tag=0x00000026, Type=uint),
+                ClusterObjectFieldDescriptor(Label="defaultConfigurationRegister", Tag=0x00000027, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="enableLocalProgramming", Tag=0x00000028, Type=typing.Optional[bool]),
                 ClusterObjectFieldDescriptor(Label="enableOneTouchLocking", Tag=0x00000029, Type=typing.Optional[bool]),
                 ClusterObjectFieldDescriptor(Label="enableInsideStatusLED", Tag=0x0000002A, Type=typing.Optional[bool]),
                 ClusterObjectFieldDescriptor(Label="enablePrivacyModeButton", Tag=0x0000002B, Type=typing.Optional[bool]),
-                ClusterObjectFieldDescriptor(Label="localProgrammingFeatures", Tag=0x0000002C, Type=typing.Optional[DoorLock.Bitmaps.LocalProgrammingFeaturesBitmap]),
+                ClusterObjectFieldDescriptor(Label="localProgrammingFeatures", Tag=0x0000002C, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="wrongCodeEntryLimit", Tag=0x00000030, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="userCodeTemporaryDisableTime", Tag=0x00000031, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="sendPINOverTheAir", Tag=0x00000032, Type=typing.Optional[bool]),
@@ -63,15 +63,14 @@ class DoorLock(Cluster):
                 ClusterObjectFieldDescriptor(Label="aliroReaderVerificationKey", Tag=0x00000080, Type=typing.Union[None, Nullable, bytes]),
                 ClusterObjectFieldDescriptor(Label="aliroReaderGroupIdentifier", Tag=0x00000081, Type=typing.Union[None, Nullable, bytes]),
                 ClusterObjectFieldDescriptor(Label="aliroReaderGroupSubIdentifier", Tag=0x00000082, Type=typing.Optional[bytes]),
-                ClusterObjectFieldDescriptor(Label="aliroExpeditedTransactionSupportedProtocolVersions", Tag=0x00000083, Type=typing.Optional[typing.List[typing.Optional[bytes]]]),
+                ClusterObjectFieldDescriptor(Label="aliroExpeditedTransactionSupportedProtocolVersions", Tag=0x00000083, Type=typing.Optional[typing.List[bytes]]),
                 ClusterObjectFieldDescriptor(Label="aliroGroupResolvingKey", Tag=0x00000084, Type=typing.Union[None, Nullable, bytes]),
-                ClusterObjectFieldDescriptor(Label="aliroSupportedBLEUWBProtocolVersions", Tag=0x00000085, Type=typing.Optional[typing.List[typing.Optional[bytes]]]),
+                ClusterObjectFieldDescriptor(Label="aliroSupportedBLEUWBProtocolVersions", Tag=0x00000085, Type=typing.Optional[typing.List[bytes]]),
                 ClusterObjectFieldDescriptor(Label="aliroBLEAdvertisingVersion", Tag=0x00000086, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="numberOfAliroCredentialIssuerKeysSupported", Tag=0x00000087, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="numberOfAliroEndpointKeysSupported", Tag=0x00000088, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
-                ClusterObjectFieldDescriptor(Label="eventList", Tag=0x0000FFFA, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="attributeList", Tag=0x0000FFFB, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="featureMap", Tag=0x0000FFFC, Type=uint),
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
@@ -94,20 +93,20 @@ class DoorLock(Cluster):
     minPINCodeLength: 'typing.Optional[uint]' = None
     maxRFIDCodeLength: 'typing.Optional[uint]' = None
     minRFIDCodeLength: 'typing.Optional[uint]' = None
-    credentialRulesSupport: 'typing.Optional[DoorLock.Bitmaps.CredentialRulesBitmap]' = None
+    credentialRulesSupport: 'typing.Optional[uint]' = None
     numberOfCredentialsSupportedPerUser: 'typing.Optional[uint]' = None
     language: 'typing.Optional[str]' = None
     LEDSettings: 'typing.Optional[DoorLock.Enums.LEDSettingEnum]' = None
     autoRelockTime: 'typing.Optional[uint]' = None
     soundVolume: 'typing.Optional[DoorLock.Enums.SoundVolumeEnum]' = None
     operatingMode: 'DoorLock.Enums.OperatingModeEnum' = 0
-    supportedOperatingModes: 'DoorLock.Bitmaps.OperatingModesBitmap' = 0
-    defaultConfigurationRegister: 'typing.Optional[DoorLock.Bitmaps.ConfigurationRegisterBitmap]' = None
+    supportedOperatingModes: 'uint' = 0
+    defaultConfigurationRegister: 'typing.Optional[uint]' = None
     enableLocalProgramming: 'typing.Optional[bool]' = None
     enableOneTouchLocking: 'typing.Optional[bool]' = None
     enableInsideStatusLED: 'typing.Optional[bool]' = None
     enablePrivacyModeButton: 'typing.Optional[bool]' = None
-    localProgrammingFeatures: 'typing.Optional[DoorLock.Bitmaps.LocalProgrammingFeaturesBitmap]' = None
+    localProgrammingFeatures: 'typing.Optional[uint]' = None
     wrongCodeEntryLimit: 'typing.Optional[uint]' = None
     userCodeTemporaryDisableTime: 'typing.Optional[uint]' = None
     sendPINOverTheAir: 'typing.Optional[bool]' = None
@@ -117,15 +116,14 @@ class DoorLock(Cluster):
     aliroReaderVerificationKey: 'typing.Union[None, Nullable, bytes]' = None
     aliroReaderGroupIdentifier: 'typing.Union[None, Nullable, bytes]' = None
     aliroReaderGroupSubIdentifier: 'typing.Optional[bytes]' = None
-    aliroExpeditedTransactionSupportedProtocolVersions: 'typing.Optional[typing.List[typing.Optional[bytes]]]' = None
+    aliroExpeditedTransactionSupportedProtocolVersions: 'typing.Optional[typing.List[bytes]]' = None
     aliroGroupResolvingKey: 'typing.Union[None, Nullable, bytes]' = None
-    aliroSupportedBLEUWBProtocolVersions: 'typing.Optional[typing.List[typing.Optional[bytes]]]' = None
+    aliroSupportedBLEUWBProtocolVersions: 'typing.Optional[typing.List[bytes]]' = None
     aliroBLEAdvertisingVersion: 'typing.Optional[uint]' = None
     numberOfAliroCredentialIssuerKeysSupported: 'typing.Optional[uint]' = None
     numberOfAliroEndpointKeysSupported: 'typing.Optional[uint]' = None
     generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
     acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    eventList: 'typing.List[uint]' = field(default_factory=lambda: [])
     attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
     featureMap: 'uint' = 0
     clusterRevision: 'uint' = 0
@@ -144,7 +142,7 @@ class DoorLock(Cluster):
             # to kUnknownEnumValue. This is a helper enum value that should only
             # be used by code to process how it handles receiving an unknown
             # enum value. This specific value should never be transmitted.
-            kUnknownEnumValue = 9
+            kUnknownEnumValue = 2
 
         class CredentialRuleEnum(MatterIntEnum):
             kSingle = 0x00
@@ -278,7 +276,7 @@ class DoorLock(Cluster):
             # to kUnknownEnumValue. This is a helper enum value that should only
             # be used by code to process how it handles receiving an unknown
             # enum value. This specific value should never be transmitted.
-            kUnknownEnumValue = 4
+            kUnknownEnumValue = 2
 
         class UserTypeEnum(MatterIntEnum):
             kUnrestrictedUser = 0x00
@@ -358,14 +356,14 @@ class DoorLock(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 3
 
-        class StatusCodeEnum(MatterIntEnum):
+        class StatusCode(MatterIntEnum):
             kDuplicate = 0x02
             kOccupied = 0x03
             # All received enum values that are not listed above will be mapped
             # to kUnknownEnumValue. This is a helper enum value that should only
             # be used by code to process how it handles receiving an unknown
             # enum value. This specific value should never be transmitted.
-            kUnknownEnumValue = 4
+            kUnknownEnumValue = 0
 
     class Bitmaps:
         class Feature(IntFlag):
@@ -375,7 +373,7 @@ class DoorLock(Cluster):
             kWeekDayAccessSchedules = 0x10
             kDoorPositionSensor = 0x20
             kFaceCredentials = 0x40
-            kCredentialOverTheAirAccess = 0x80
+            kCredentialsOverTheAirAccess = 0x80
             kUser = 0x100
             kYearDayAccessSchedules = 0x400
             kHolidaySchedules = 0x800
@@ -403,7 +401,7 @@ class DoorLock(Cluster):
             kPrivacy = 0x4
             kNoRemoteLockUnlock = 0x8
             kPassage = 0x10
-            kAlwaysSet = 0x1
+            kAlwaysSet = 0xFFE0
 
         class ConfigurationRegisterBitmap(IntFlag):
             kLocalProgramming = 0x1
@@ -649,7 +647,7 @@ class DoorLock(Cluster):
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="weekDayIndex", Tag=0, Type=uint),
                         ClusterObjectFieldDescriptor(Label="userIndex", Tag=1, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="daysMask", Tag=2, Type=DoorLock.Bitmaps.DaysMaskBitmap),
+                        ClusterObjectFieldDescriptor(Label="daysMask", Tag=2, Type=uint),
                         ClusterObjectFieldDescriptor(Label="startHour", Tag=3, Type=uint),
                         ClusterObjectFieldDescriptor(Label="startMinute", Tag=4, Type=uint),
                         ClusterObjectFieldDescriptor(Label="endHour", Tag=5, Type=uint),
@@ -658,7 +656,7 @@ class DoorLock(Cluster):
 
             weekDayIndex: 'uint' = 0
             userIndex: 'uint' = 0
-            daysMask: 'DoorLock.Bitmaps.DaysMaskBitmap' = 0
+            daysMask: 'uint' = 0
             startHour: 'uint' = 0
             startMinute: 'uint' = 0
             endHour: 'uint' = 0
@@ -1178,7 +1176,7 @@ class DoorLock(Cluster):
                         ClusterObjectFieldDescriptor(Label="weekDayIndex", Tag=0, Type=uint),
                         ClusterObjectFieldDescriptor(Label="userIndex", Tag=1, Type=uint),
                         ClusterObjectFieldDescriptor(Label="status", Tag=2, Type=Globals.Enums.status),
-                        ClusterObjectFieldDescriptor(Label="daysMask", Tag=3, Type=typing.Optional[DoorLock.Bitmaps.DaysMaskBitmap]),
+                        ClusterObjectFieldDescriptor(Label="daysMask", Tag=3, Type=typing.Optional[uint]),
                         ClusterObjectFieldDescriptor(Label="startHour", Tag=4, Type=typing.Optional[uint]),
                         ClusterObjectFieldDescriptor(Label="startMinute", Tag=5, Type=typing.Optional[uint]),
                         ClusterObjectFieldDescriptor(Label="endHour", Tag=6, Type=typing.Optional[uint]),
@@ -1188,7 +1186,7 @@ class DoorLock(Cluster):
             weekDayIndex: 'uint' = 0
             userIndex: 'uint' = 0
             status: 'Globals.Enums.status' = 0
-            daysMask: 'typing.Optional[DoorLock.Bitmaps.DaysMaskBitmap]' = None
+            daysMask: 'typing.Optional[uint]' = None
             startHour: 'typing.Optional[uint]' = None
             startMinute: 'typing.Optional[uint]' = None
             endHour: 'typing.Optional[uint]' = None
@@ -1299,7 +1297,7 @@ class DoorLock(Cluster):
                         ClusterObjectFieldDescriptor(Label="userStatus", Tag=3, Type=typing.Union[Nullable, DoorLock.Enums.UserStatusEnum]),
                         ClusterObjectFieldDescriptor(Label="userType", Tag=4, Type=typing.Union[Nullable, DoorLock.Enums.UserTypeEnum]),
                         ClusterObjectFieldDescriptor(Label="credentialRule", Tag=5, Type=typing.Union[Nullable, DoorLock.Enums.CredentialRuleEnum]),
-                        ClusterObjectFieldDescriptor(Label="credentials", Tag=6, Type=typing.Union[Nullable, typing.List[typing.Optional[DoorLock.Structs.CredentialStruct]]]),
+                        ClusterObjectFieldDescriptor(Label="credentials", Tag=6, Type=typing.Union[Nullable, typing.List[DoorLock.Structs.CredentialStruct]]),
                         ClusterObjectFieldDescriptor(Label="creatorFabricIndex", Tag=7, Type=typing.Union[Nullable, uint]),
                         ClusterObjectFieldDescriptor(Label="lastModifiedFabricIndex", Tag=8, Type=typing.Union[Nullable, uint]),
                         ClusterObjectFieldDescriptor(Label="nextUserIndex", Tag=9, Type=typing.Union[Nullable, uint]),
@@ -1311,7 +1309,7 @@ class DoorLock(Cluster):
             userStatus: 'typing.Union[Nullable, DoorLock.Enums.UserStatusEnum]' = NullValue
             userType: 'typing.Union[Nullable, DoorLock.Enums.UserTypeEnum]' = NullValue
             credentialRule: 'typing.Union[Nullable, DoorLock.Enums.CredentialRuleEnum]' = NullValue
-            credentials: 'typing.Union[Nullable, typing.List[typing.Optional[DoorLock.Structs.CredentialStruct]]]' = NullValue
+            credentials: 'typing.Union[Nullable, typing.List[DoorLock.Structs.CredentialStruct]]' = NullValue
             creatorFabricIndex: 'typing.Union[Nullable, uint]' = NullValue
             lastModifiedFabricIndex: 'typing.Union[Nullable, uint]' = NullValue
             nextUserIndex: 'typing.Union[Nullable, uint]' = NullValue
@@ -1647,9 +1645,9 @@ class DoorLock(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[DoorLock.Bitmaps.CredentialRulesBitmap])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[DoorLock.Bitmaps.CredentialRulesBitmap]' = None
+            value: 'typing.Optional[uint]' = None
 
         @dataclass
         class NumberOfCredentialsSupportedPerUser(ClusterAttributeDescriptor):
@@ -1759,9 +1757,9 @@ class DoorLock(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=DoorLock.Bitmaps.OperatingModesBitmap)
+                return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'DoorLock.Bitmaps.OperatingModesBitmap' = 0
+            value: 'uint' = 0
 
         @dataclass
         class DefaultConfigurationRegister(ClusterAttributeDescriptor):
@@ -1775,9 +1773,9 @@ class DoorLock(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[DoorLock.Bitmaps.ConfigurationRegisterBitmap])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[DoorLock.Bitmaps.ConfigurationRegisterBitmap]' = None
+            value: 'typing.Optional[uint]' = None
 
         @dataclass
         class EnableLocalProgramming(ClusterAttributeDescriptor):
@@ -1855,9 +1853,9 @@ class DoorLock(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[DoorLock.Bitmaps.LocalProgrammingFeaturesBitmap])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[DoorLock.Bitmaps.LocalProgrammingFeaturesBitmap]' = None
+            value: 'typing.Optional[uint]' = None
 
         @dataclass
         class WrongCodeEntryLimit(ClusterAttributeDescriptor):
@@ -1908,7 +1906,7 @@ class DoorLock(Cluster):
             value: 'typing.Optional[bool]' = None
 
         @dataclass
-        class RequirePINForRemoteOperation(ClusterAttributeDescriptor):
+        class RequirePINforRemoteOperation(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000101
@@ -2015,9 +2013,9 @@ class DoorLock(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[typing.Optional[bytes]]])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[bytes]])
 
-            value: 'typing.Optional[typing.List[typing.Optional[bytes]]]' = None
+            value: 'typing.Optional[typing.List[bytes]]' = None
 
         @dataclass
         class AliroGroupResolvingKey(ClusterAttributeDescriptor):
@@ -2047,9 +2045,9 @@ class DoorLock(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[typing.Optional[bytes]]])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[bytes]])
 
-            value: 'typing.Optional[typing.List[typing.Optional[bytes]]]' = None
+            value: 'typing.Optional[typing.List[bytes]]' = None
 
         @dataclass
         class AliroBLEAdvertisingVersion(ClusterAttributeDescriptor):
@@ -2124,22 +2122,6 @@ class DoorLock(Cluster):
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
                 return 0x0000FFF9
-
-            @ChipUtility.classproperty
-            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.List[uint])
-
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
-
-        @dataclass
-        class EventList(ClusterAttributeDescriptor):
-            @ChipUtility.classproperty
-            def cluster_id(cls) -> int:
-                return 0x00000101
-
-            @ChipUtility.classproperty
-            def attribute_id(cls) -> int:
-                return 0x0000FFFA
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
@@ -2253,7 +2235,7 @@ class DoorLock(Cluster):
                         ClusterObjectFieldDescriptor(Label="userIndex", Tag=2, Type=typing.Union[Nullable, uint]),
                         ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=3, Type=typing.Union[Nullable, uint]),
                         ClusterObjectFieldDescriptor(Label="sourceNode", Tag=4, Type=typing.Union[Nullable, uint]),
-                        ClusterObjectFieldDescriptor(Label="credentials", Tag=5, Type=typing.Union[None, Nullable, typing.List[typing.Optional[DoorLock.Structs.CredentialStruct]]]),
+                        ClusterObjectFieldDescriptor(Label="credentials", Tag=5, Type=typing.Union[None, Nullable, typing.List[DoorLock.Structs.CredentialStruct]]),
                     ])
 
             lockOperationType: 'DoorLock.Enums.LockOperationTypeEnum' = 0
@@ -2261,7 +2243,7 @@ class DoorLock(Cluster):
             userIndex: 'typing.Union[Nullable, uint]' = NullValue
             fabricIndex: 'typing.Union[Nullable, uint]' = NullValue
             sourceNode: 'typing.Union[Nullable, uint]' = NullValue
-            credentials: 'typing.Union[None, Nullable, typing.List[typing.Optional[DoorLock.Structs.CredentialStruct]]]' = None
+            credentials: 'typing.Union[None, Nullable, typing.List[DoorLock.Structs.CredentialStruct]]' = None
 
         @dataclass
         class LockOperationError(ClusterEvent):
@@ -2283,7 +2265,7 @@ class DoorLock(Cluster):
                         ClusterObjectFieldDescriptor(Label="userIndex", Tag=3, Type=typing.Union[Nullable, uint]),
                         ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=4, Type=typing.Union[Nullable, uint]),
                         ClusterObjectFieldDescriptor(Label="sourceNode", Tag=5, Type=typing.Union[Nullable, uint]),
-                        ClusterObjectFieldDescriptor(Label="credentials", Tag=6, Type=typing.Union[None, Nullable, typing.List[typing.Optional[DoorLock.Structs.CredentialStruct]]]),
+                        ClusterObjectFieldDescriptor(Label="credentials", Tag=6, Type=typing.Union[None, Nullable, typing.List[DoorLock.Structs.CredentialStruct]]),
                     ])
 
             lockOperationType: 'DoorLock.Enums.LockOperationTypeEnum' = 0
@@ -2292,7 +2274,7 @@ class DoorLock(Cluster):
             userIndex: 'typing.Union[Nullable, uint]' = NullValue
             fabricIndex: 'typing.Union[Nullable, uint]' = NullValue
             sourceNode: 'typing.Union[Nullable, uint]' = NullValue
-            credentials: 'typing.Union[None, Nullable, typing.List[typing.Optional[DoorLock.Structs.CredentialStruct]]]' = None
+            credentials: 'typing.Union[None, Nullable, typing.List[DoorLock.Structs.CredentialStruct]]' = None
 
         @dataclass
         class LockUserChange(ClusterEvent):

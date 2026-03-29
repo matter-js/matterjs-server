@@ -32,7 +32,6 @@ class DeviceEnergyManagement(Cluster):
                 ClusterObjectFieldDescriptor(Label="optOutState", Tag=0x00000007, Type=typing.Optional[DeviceEnergyManagement.Enums.OptOutStateEnum]),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
-                ClusterObjectFieldDescriptor(Label="eventList", Tag=0x0000FFFA, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="attributeList", Tag=0x0000FFFB, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="featureMap", Tag=0x0000FFFC, Type=uint),
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
@@ -48,7 +47,6 @@ class DeviceEnergyManagement(Cluster):
     optOutState: 'typing.Optional[DeviceEnergyManagement.Enums.OptOutStateEnum]' = None
     generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
     acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    eventList: 'typing.List[uint]' = field(default_factory=lambda: [])
     attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
     featureMap: 'uint' = 0
     clusterRevision: 'uint' = 0
@@ -85,7 +83,7 @@ class DeviceEnergyManagement(Cluster):
             # to kUnknownEnumValue. This is a helper enum value that should only
             # be used by code to process how it handles receiving an unknown
             # enum value. This specific value should never be transmitted.
-            kUnknownEnumValue = 256
+            kUnknownEnumValue = 14
 
         class ESAStateEnum(MatterIntEnum):
             kOffline = 0x00
@@ -202,11 +200,11 @@ class DeviceEnergyManagement(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="powerAdjustCapability", Tag=0, Type=typing.Union[Nullable, typing.List[typing.Optional[DeviceEnergyManagement.Structs.PowerAdjustStruct]]]),
+                        ClusterObjectFieldDescriptor(Label="powerAdjustCapability", Tag=0, Type=typing.Union[Nullable, typing.List[DeviceEnergyManagement.Structs.PowerAdjustStruct]]),
                         ClusterObjectFieldDescriptor(Label="cause", Tag=1, Type=DeviceEnergyManagement.Enums.PowerAdjustReasonEnum),
                     ])
 
-            powerAdjustCapability: 'typing.Union[Nullable, typing.List[typing.Optional[DeviceEnergyManagement.Structs.PowerAdjustStruct]]]' = NullValue
+            powerAdjustCapability: 'typing.Union[Nullable, typing.List[DeviceEnergyManagement.Structs.PowerAdjustStruct]]' = NullValue
             cause: 'DeviceEnergyManagement.Enums.PowerAdjustReasonEnum' = 0
 
         @dataclass
@@ -222,7 +220,7 @@ class DeviceEnergyManagement(Cluster):
                         ClusterObjectFieldDescriptor(Label="earliestStartTime", Tag=4, Type=typing.Union[None, Nullable, uint]),
                         ClusterObjectFieldDescriptor(Label="latestEndTime", Tag=5, Type=typing.Optional[uint]),
                         ClusterObjectFieldDescriptor(Label="isPausable", Tag=6, Type=bool),
-                        ClusterObjectFieldDescriptor(Label="slots", Tag=7, Type=typing.List[typing.Optional[DeviceEnergyManagement.Structs.SlotStruct]]),
+                        ClusterObjectFieldDescriptor(Label="slots", Tag=7, Type=typing.List[DeviceEnergyManagement.Structs.SlotStruct]),
                         ClusterObjectFieldDescriptor(Label="forecastUpdateReason", Tag=8, Type=DeviceEnergyManagement.Enums.ForecastUpdateReasonEnum),
                     ])
 
@@ -233,7 +231,7 @@ class DeviceEnergyManagement(Cluster):
             earliestStartTime: 'typing.Union[None, Nullable, uint]' = None
             latestEndTime: 'typing.Optional[uint]' = None
             isPausable: 'bool' = False
-            slots: 'typing.List[typing.Optional[DeviceEnergyManagement.Structs.SlotStruct]]' = field(default_factory=lambda: [])
+            slots: 'typing.List[DeviceEnergyManagement.Structs.SlotStruct]' = field(default_factory=lambda: [])
             forecastUpdateReason: 'DeviceEnergyManagement.Enums.ForecastUpdateReasonEnum' = 0
 
         @dataclass
@@ -255,7 +253,7 @@ class DeviceEnergyManagement(Cluster):
                         ClusterObjectFieldDescriptor(Label="minPower", Tag=10, Type=typing.Optional[uint]),
                         ClusterObjectFieldDescriptor(Label="maxPower", Tag=11, Type=typing.Optional[uint]),
                         ClusterObjectFieldDescriptor(Label="nominalEnergy", Tag=12, Type=typing.Optional[uint]),
-                        ClusterObjectFieldDescriptor(Label="costs", Tag=13, Type=typing.Optional[typing.List[typing.Optional[DeviceEnergyManagement.Structs.CostStruct]]]),
+                        ClusterObjectFieldDescriptor(Label="costs", Tag=13, Type=typing.Optional[typing.List[DeviceEnergyManagement.Structs.CostStruct]]),
                         ClusterObjectFieldDescriptor(Label="minPowerAdjustment", Tag=14, Type=typing.Optional[uint]),
                         ClusterObjectFieldDescriptor(Label="maxPowerAdjustment", Tag=15, Type=typing.Optional[uint]),
                         ClusterObjectFieldDescriptor(Label="minDurationAdjustment", Tag=16, Type=typing.Optional[uint]),
@@ -275,7 +273,7 @@ class DeviceEnergyManagement(Cluster):
             minPower: 'typing.Optional[uint]' = None
             maxPower: 'typing.Optional[uint]' = None
             nominalEnergy: 'typing.Optional[uint]' = None
-            costs: 'typing.Optional[typing.List[typing.Optional[DeviceEnergyManagement.Structs.CostStruct]]]' = None
+            costs: 'typing.Optional[typing.List[DeviceEnergyManagement.Structs.CostStruct]]' = None
             minPowerAdjustment: 'typing.Optional[uint]' = None
             maxPowerAdjustment: 'typing.Optional[uint]' = None
             minDurationAdjustment: 'typing.Optional[uint]' = None
@@ -412,12 +410,12 @@ class DeviceEnergyManagement(Cluster):
                 return ClusterObjectDescriptor(
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="forecastID", Tag=0, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="slotAdjustments", Tag=1, Type=typing.List[typing.Optional[DeviceEnergyManagement.Structs.SlotAdjustmentStruct]]),
+                        ClusterObjectFieldDescriptor(Label="slotAdjustments", Tag=1, Type=typing.List[DeviceEnergyManagement.Structs.SlotAdjustmentStruct]),
                         ClusterObjectFieldDescriptor(Label="cause", Tag=2, Type=DeviceEnergyManagement.Enums.AdjustmentCauseEnum),
                     ])
 
             forecastID: 'uint' = 0
-            slotAdjustments: 'typing.List[typing.Optional[DeviceEnergyManagement.Structs.SlotAdjustmentStruct]]' = field(default_factory=lambda: [])
+            slotAdjustments: 'typing.List[DeviceEnergyManagement.Structs.SlotAdjustmentStruct]' = field(default_factory=lambda: [])
             cause: 'DeviceEnergyManagement.Enums.AdjustmentCauseEnum' = 0
 
         @dataclass
@@ -431,11 +429,11 @@ class DeviceEnergyManagement(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="constraints", Tag=0, Type=typing.List[typing.Optional[DeviceEnergyManagement.Structs.ConstraintsStruct]]),
+                        ClusterObjectFieldDescriptor(Label="constraints", Tag=0, Type=typing.List[DeviceEnergyManagement.Structs.ConstraintsStruct]),
                         ClusterObjectFieldDescriptor(Label="cause", Tag=1, Type=DeviceEnergyManagement.Enums.AdjustmentCauseEnum),
                     ])
 
-            constraints: 'typing.List[typing.Optional[DeviceEnergyManagement.Structs.ConstraintsStruct]]' = field(default_factory=lambda: [])
+            constraints: 'typing.List[DeviceEnergyManagement.Structs.ConstraintsStruct]' = field(default_factory=lambda: [])
             cause: 'DeviceEnergyManagement.Enums.AdjustmentCauseEnum' = 0
 
         @dataclass
@@ -606,22 +604,6 @@ class DeviceEnergyManagement(Cluster):
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
                 return 0x0000FFF9
-
-            @ChipUtility.classproperty
-            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.List[uint])
-
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
-
-        @dataclass
-        class EventList(ClusterAttributeDescriptor):
-            @ChipUtility.classproperty
-            def cluster_id(cls) -> int:
-                return 0x00000098
-
-            @ChipUtility.classproperty
-            def attribute_id(cls) -> int:
-                return 0x0000FFFA
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:

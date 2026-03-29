@@ -25,16 +25,15 @@ class IcdManagement(Cluster):
                 ClusterObjectFieldDescriptor(Label="idleModeDuration", Tag=0x00000000, Type=uint),
                 ClusterObjectFieldDescriptor(Label="activeModeDuration", Tag=0x00000001, Type=uint),
                 ClusterObjectFieldDescriptor(Label="activeModeThreshold", Tag=0x00000002, Type=uint),
-                ClusterObjectFieldDescriptor(Label="registeredClients", Tag=0x00000003, Type=typing.Optional[typing.List[typing.Optional[IcdManagement.Structs.MonitoringRegistrationStruct]]]),
+                ClusterObjectFieldDescriptor(Label="registeredClients", Tag=0x00000003, Type=typing.Optional[typing.List[IcdManagement.Structs.MonitoringRegistrationStruct]]),
                 ClusterObjectFieldDescriptor(Label="ICDCounter", Tag=0x00000004, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="clientsSupportedPerFabric", Tag=0x00000005, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="userActiveModeTriggerHint", Tag=0x00000006, Type=typing.Optional[IcdManagement.Bitmaps.UserActiveModeTriggerBitmap]),
+                ClusterObjectFieldDescriptor(Label="userActiveModeTriggerHint", Tag=0x00000006, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="userActiveModeTriggerInstruction", Tag=0x00000007, Type=typing.Optional[str]),
                 ClusterObjectFieldDescriptor(Label="operatingMode", Tag=0x00000008, Type=typing.Optional[IcdManagement.Enums.OperatingModeEnum]),
                 ClusterObjectFieldDescriptor(Label="maximumCheckInBackoff", Tag=0x00000009, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
-                ClusterObjectFieldDescriptor(Label="eventList", Tag=0x0000FFFA, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="attributeList", Tag=0x0000FFFB, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="featureMap", Tag=0x0000FFFC, Type=uint),
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
@@ -43,16 +42,15 @@ class IcdManagement(Cluster):
     idleModeDuration: 'uint' = 0
     activeModeDuration: 'uint' = 0
     activeModeThreshold: 'uint' = 0
-    registeredClients: 'typing.Optional[typing.List[typing.Optional[IcdManagement.Structs.MonitoringRegistrationStruct]]]' = None
+    registeredClients: 'typing.Optional[typing.List[IcdManagement.Structs.MonitoringRegistrationStruct]]' = None
     ICDCounter: 'typing.Optional[uint]' = None
     clientsSupportedPerFabric: 'typing.Optional[uint]' = None
-    userActiveModeTriggerHint: 'typing.Optional[IcdManagement.Bitmaps.UserActiveModeTriggerBitmap]' = None
+    userActiveModeTriggerHint: 'typing.Optional[uint]' = None
     userActiveModeTriggerInstruction: 'typing.Optional[str]' = None
     operatingMode: 'typing.Optional[IcdManagement.Enums.OperatingModeEnum]' = None
     maximumCheckInBackoff: 'typing.Optional[uint]' = None
     generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
     acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    eventList: 'typing.List[uint]' = field(default_factory=lambda: [])
     attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
     featureMap: 'uint' = 0
     clusterRevision: 'uint' = 0
@@ -274,9 +272,9 @@ class IcdManagement(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[typing.Optional[IcdManagement.Structs.MonitoringRegistrationStruct]]])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[IcdManagement.Structs.MonitoringRegistrationStruct]])
 
-            value: 'typing.Optional[typing.List[typing.Optional[IcdManagement.Structs.MonitoringRegistrationStruct]]]' = None
+            value: 'typing.Optional[typing.List[IcdManagement.Structs.MonitoringRegistrationStruct]]' = None
 
         @dataclass
         class ICDCounter(ClusterAttributeDescriptor):
@@ -322,9 +320,9 @@ class IcdManagement(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[IcdManagement.Bitmaps.UserActiveModeTriggerBitmap])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[IcdManagement.Bitmaps.UserActiveModeTriggerBitmap]' = None
+            value: 'typing.Optional[uint]' = None
 
         @dataclass
         class UserActiveModeTriggerInstruction(ClusterAttributeDescriptor):
@@ -359,7 +357,7 @@ class IcdManagement(Cluster):
             value: 'typing.Optional[IcdManagement.Enums.OperatingModeEnum]' = None
 
         @dataclass
-        class MaximumCheckInBackoff(ClusterAttributeDescriptor):
+        class MaximumCheckInBackOff(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
                 return 0x00000046
@@ -399,22 +397,6 @@ class IcdManagement(Cluster):
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
                 return 0x0000FFF9
-
-            @ChipUtility.classproperty
-            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.List[uint])
-
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
-
-        @dataclass
-        class EventList(ClusterAttributeDescriptor):
-            @ChipUtility.classproperty
-            def cluster_id(cls) -> int:
-                return 0x00000046
-
-            @ChipUtility.classproperty
-            def attribute_id(cls) -> int:
-                return 0x0000FFFA
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:

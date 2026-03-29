@@ -23,21 +23,19 @@ class ContentLauncher(Cluster):
     def descriptor(cls) -> ClusterObjectDescriptor:
         return ClusterObjectDescriptor(
             Fields=[
-                ClusterObjectFieldDescriptor(Label="acceptHeader", Tag=0x00000000, Type=typing.Optional[typing.List[typing.Optional[str]]]),
-                ClusterObjectFieldDescriptor(Label="supportedStreamingProtocols", Tag=0x00000001, Type=typing.Optional[ContentLauncher.Bitmaps.SupportedProtocolsBitmap]),
+                ClusterObjectFieldDescriptor(Label="acceptHeader", Tag=0x00000000, Type=typing.Optional[typing.List[str]]),
+                ClusterObjectFieldDescriptor(Label="supportedStreamingProtocols", Tag=0x00000001, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
-                ClusterObjectFieldDescriptor(Label="eventList", Tag=0x0000FFFA, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="attributeList", Tag=0x0000FFFB, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="featureMap", Tag=0x0000FFFC, Type=uint),
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    acceptHeader: 'typing.Optional[typing.List[typing.Optional[str]]]' = None
-    supportedStreamingProtocols: 'typing.Optional[ContentLauncher.Bitmaps.SupportedProtocolsBitmap]' = None
+    acceptHeader: 'typing.Optional[typing.List[str]]' = None
+    supportedStreamingProtocols: 'typing.Optional[uint]' = None
     generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
     acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    eventList: 'typing.List[uint]' = field(default_factory=lambda: [])
     attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
     featureMap: 'uint' = 0
     clusterRevision: 'uint' = 0
@@ -122,12 +120,12 @@ class ContentLauncher(Cluster):
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="type", Tag=0, Type=ContentLauncher.Enums.ParameterEnum),
                         ClusterObjectFieldDescriptor(Label="value", Tag=1, Type=str),
-                        ClusterObjectFieldDescriptor(Label="externalIDList", Tag=2, Type=typing.Optional[typing.List[typing.Optional[ContentLauncher.Structs.AdditionalInfoStruct]]]),
+                        ClusterObjectFieldDescriptor(Label="externalIDList", Tag=2, Type=typing.Optional[typing.List[ContentLauncher.Structs.AdditionalInfoStruct]]),
                     ])
 
             type: 'ContentLauncher.Enums.ParameterEnum' = 0
             value: 'str' = ""
-            externalIDList: 'typing.Optional[typing.List[typing.Optional[ContentLauncher.Structs.AdditionalInfoStruct]]]' = None
+            externalIDList: 'typing.Optional[typing.List[ContentLauncher.Structs.AdditionalInfoStruct]]' = None
 
         @dataclass
         class ContentSearchStruct(ClusterObject):
@@ -135,10 +133,10 @@ class ContentLauncher(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="parameterList", Tag=0, Type=typing.List[typing.Optional[ContentLauncher.Structs.ParameterStruct]]),
+                        ClusterObjectFieldDescriptor(Label="parameterList", Tag=0, Type=typing.List[ContentLauncher.Structs.ParameterStruct]),
                     ])
 
-            parameterList: 'typing.List[typing.Optional[ContentLauncher.Structs.ParameterStruct]]' = field(default_factory=lambda: [])
+            parameterList: 'typing.List[ContentLauncher.Structs.ParameterStruct]' = field(default_factory=lambda: [])
 
         @dataclass
         class DimensionStruct(ClusterObject):
@@ -199,12 +197,12 @@ class ContentLauncher(Cluster):
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="playbackPosition", Tag=0, Type=typing.Union[None, Nullable, uint]),
                         ClusterObjectFieldDescriptor(Label="textTrack", Tag=1, Type=typing.Union[None, Nullable, ContentLauncher.Structs.TrackPreferenceStruct]),
-                        ClusterObjectFieldDescriptor(Label="audioTracks", Tag=2, Type=typing.Union[None, Nullable, typing.List[typing.Optional[ContentLauncher.Structs.TrackPreferenceStruct]]]),
+                        ClusterObjectFieldDescriptor(Label="audioTracks", Tag=2, Type=typing.Union[None, Nullable, typing.List[ContentLauncher.Structs.TrackPreferenceStruct]]),
                     ])
 
             playbackPosition: 'typing.Union[None, Nullable, uint]' = None
             textTrack: 'typing.Union[None, Nullable, ContentLauncher.Structs.TrackPreferenceStruct]' = None
-            audioTracks: 'typing.Union[None, Nullable, typing.List[typing.Optional[ContentLauncher.Structs.TrackPreferenceStruct]]]' = None
+            audioTracks: 'typing.Union[None, Nullable, typing.List[ContentLauncher.Structs.TrackPreferenceStruct]]' = None
 
         @dataclass
         class TrackPreferenceStruct(ClusterObject):
@@ -213,12 +211,12 @@ class ContentLauncher(Cluster):
                 return ClusterObjectDescriptor(
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="languageCode", Tag=0, Type=str),
-                        ClusterObjectFieldDescriptor(Label="characteristics", Tag=1, Type=typing.Union[None, Nullable, typing.List[typing.Optional[MediaPlayback.Enums.CharacteristicEnum]]]),
+                        ClusterObjectFieldDescriptor(Label="characteristics", Tag=1, Type=typing.Union[None, Nullable, typing.List[MediaPlayback.Enums.CharacteristicEnum]]),
                         ClusterObjectFieldDescriptor(Label="audioOutputIndex", Tag=2, Type=typing.Union[None, Nullable, uint]),
                     ])
 
             languageCode: 'str' = ""
-            characteristics: 'typing.Union[None, Nullable, typing.List[typing.Optional[MediaPlayback.Enums.CharacteristicEnum]]]' = None
+            characteristics: 'typing.Union[None, Nullable, typing.List[MediaPlayback.Enums.CharacteristicEnum]]' = None
             audioOutputIndex: 'typing.Union[None, Nullable, uint]' = None
 
     class Commands:
@@ -299,9 +297,9 @@ class ContentLauncher(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[typing.Optional[str]]])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[str]])
 
-            value: 'typing.Optional[typing.List[typing.Optional[str]]]' = None
+            value: 'typing.Optional[typing.List[str]]' = None
 
         @dataclass
         class SupportedStreamingProtocols(ClusterAttributeDescriptor):
@@ -315,9 +313,9 @@ class ContentLauncher(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[ContentLauncher.Bitmaps.SupportedProtocolsBitmap])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[ContentLauncher.Bitmaps.SupportedProtocolsBitmap]' = None
+            value: 'typing.Optional[uint]' = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -344,22 +342,6 @@ class ContentLauncher(Cluster):
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
                 return 0x0000FFF9
-
-            @ChipUtility.classproperty
-            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.List[uint])
-
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
-
-        @dataclass
-        class EventList(ClusterAttributeDescriptor):
-            @ChipUtility.classproperty
-            def cluster_id(cls) -> int:
-                return 0x0000050A
-
-            @ChipUtility.classproperty
-            def attribute_id(cls) -> int:
-                return 0x0000FFFA
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:

@@ -23,29 +23,27 @@ class OvenCavityOperationalState(Cluster):
     def descriptor(cls) -> ClusterObjectDescriptor:
         return ClusterObjectDescriptor(
             Fields=[
-                ClusterObjectFieldDescriptor(Label="phaseList", Tag=0x00000000, Type=typing.Union[Nullable, typing.List[typing.Optional[str]]]),
+                ClusterObjectFieldDescriptor(Label="phaseList", Tag=0x00000000, Type=typing.Union[Nullable, typing.List[str]]),
                 ClusterObjectFieldDescriptor(Label="currentPhase", Tag=0x00000001, Type=typing.Union[Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="countdownTime", Tag=0x00000002, Type=typing.Union[None, Nullable, uint]),
-                ClusterObjectFieldDescriptor(Label="operationalStateList", Tag=0x00000003, Type=typing.List[typing.Optional[OvenCavityOperationalState.Structs.OperationalStateStruct]]),
+                ClusterObjectFieldDescriptor(Label="operationalStateList", Tag=0x00000003, Type=typing.List[OvenCavityOperationalState.Structs.OperationalStateStruct]),
                 ClusterObjectFieldDescriptor(Label="operationalState", Tag=0x00000004, Type=OvenCavityOperationalState.Enums.OperationalStateEnum),
                 ClusterObjectFieldDescriptor(Label="operationalError", Tag=0x00000005, Type=OvenCavityOperationalState.Structs.ErrorStateStruct),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
-                ClusterObjectFieldDescriptor(Label="eventList", Tag=0x0000FFFA, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="attributeList", Tag=0x0000FFFB, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="featureMap", Tag=0x0000FFFC, Type=uint),
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    phaseList: 'typing.Union[Nullable, typing.List[typing.Optional[str]]]' = NullValue
+    phaseList: 'typing.Union[Nullable, typing.List[str]]' = NullValue
     currentPhase: 'typing.Union[Nullable, uint]' = NullValue
     countdownTime: 'typing.Union[None, Nullable, uint]' = None
-    operationalStateList: 'typing.List[typing.Optional[OvenCavityOperationalState.Structs.OperationalStateStruct]]' = field(default_factory=lambda: [])
+    operationalStateList: 'typing.List[OvenCavityOperationalState.Structs.OperationalStateStruct]' = field(default_factory=lambda: [])
     operationalState: 'OvenCavityOperationalState.Enums.OperationalStateEnum' = 0
     operationalError: 'OvenCavityOperationalState.Structs.ErrorStateStruct' = field(default_factory=lambda: OvenCavityOperationalState.Structs.ErrorStateStruct())
     generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
     acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    eventList: 'typing.List[uint]' = field(default_factory=lambda: [])
     attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
     featureMap: 'uint' = 0
     clusterRevision: 'uint' = 0
@@ -188,9 +186,9 @@ class OvenCavityOperationalState(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Union[Nullable, typing.List[typing.Optional[str]]])
+                return ClusterObjectFieldDescriptor(Type=typing.Union[Nullable, typing.List[str]])
 
-            value: 'typing.Union[Nullable, typing.List[typing.Optional[str]]]' = NullValue
+            value: 'typing.Union[Nullable, typing.List[str]]' = NullValue
 
         @dataclass
         class CurrentPhase(ClusterAttributeDescriptor):
@@ -236,9 +234,9 @@ class OvenCavityOperationalState(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.List[typing.Optional[OvenCavityOperationalState.Structs.OperationalStateStruct]])
+                return ClusterObjectFieldDescriptor(Type=typing.List[OvenCavityOperationalState.Structs.OperationalStateStruct])
 
-            value: 'typing.List[typing.Optional[OvenCavityOperationalState.Structs.OperationalStateStruct]]' = field(default_factory=lambda: [])
+            value: 'typing.List[OvenCavityOperationalState.Structs.OperationalStateStruct]' = field(default_factory=lambda: [])
 
         @dataclass
         class OperationalState(ClusterAttributeDescriptor):
@@ -297,22 +295,6 @@ class OvenCavityOperationalState(Cluster):
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
                 return 0x0000FFF9
-
-            @ChipUtility.classproperty
-            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.List[uint])
-
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
-
-        @dataclass
-        class EventList(ClusterAttributeDescriptor):
-            @ChipUtility.classproperty
-            def cluster_id(cls) -> int:
-                return 0x00000048
-
-            @ChipUtility.classproperty
-            def attribute_id(cls) -> int:
-                return 0x0000FFFA
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:

@@ -22,21 +22,19 @@ class Messages(Cluster):
     def descriptor(cls) -> ClusterObjectDescriptor:
         return ClusterObjectDescriptor(
             Fields=[
-                ClusterObjectFieldDescriptor(Label="messages", Tag=0x00000000, Type=typing.List[typing.Optional[Messages.Structs.MessageStruct]]),
-                ClusterObjectFieldDescriptor(Label="activeMessageIDs", Tag=0x00000001, Type=typing.List[typing.Optional[bytes]]),
+                ClusterObjectFieldDescriptor(Label="messages", Tag=0x00000000, Type=typing.List[Messages.Structs.MessageStruct]),
+                ClusterObjectFieldDescriptor(Label="activeMessageIDs", Tag=0x00000001, Type=typing.List[bytes]),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
-                ClusterObjectFieldDescriptor(Label="eventList", Tag=0x0000FFFA, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="attributeList", Tag=0x0000FFFB, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="featureMap", Tag=0x0000FFFC, Type=uint),
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    messages: 'typing.List[typing.Optional[Messages.Structs.MessageStruct]]' = field(default_factory=lambda: [])
-    activeMessageIDs: 'typing.List[typing.Optional[bytes]]' = field(default_factory=lambda: [])
+    messages: 'typing.List[Messages.Structs.MessageStruct]' = field(default_factory=lambda: [])
+    activeMessageIDs: 'typing.List[bytes]' = field(default_factory=lambda: [])
     generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
     acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    eventList: 'typing.List[uint]' = field(default_factory=lambda: [])
     attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
     featureMap: 'uint' = 0
     clusterRevision: 'uint' = 0
@@ -88,21 +86,21 @@ class Messages(Cluster):
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="messageID", Tag=0, Type=bytes),
                         ClusterObjectFieldDescriptor(Label="priority", Tag=1, Type=Messages.Enums.MessagePriorityEnum),
-                        ClusterObjectFieldDescriptor(Label="messageControl", Tag=2, Type=Messages.Bitmaps.MessageControlBitmap),
+                        ClusterObjectFieldDescriptor(Label="messageControl", Tag=2, Type=uint),
                         ClusterObjectFieldDescriptor(Label="startTime", Tag=3, Type=typing.Union[Nullable, uint]),
                         ClusterObjectFieldDescriptor(Label="duration", Tag=4, Type=typing.Union[Nullable, uint]),
                         ClusterObjectFieldDescriptor(Label="messageText", Tag=5, Type=str),
-                        ClusterObjectFieldDescriptor(Label="responses", Tag=6, Type=typing.Optional[typing.List[typing.Optional[Messages.Structs.MessageResponseOptionStruct]]]),
+                        ClusterObjectFieldDescriptor(Label="responses", Tag=6, Type=typing.Optional[typing.List[Messages.Structs.MessageResponseOptionStruct]]),
                         ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=254, Type=uint),
                     ])
 
             messageID: 'bytes' = b""
             priority: 'Messages.Enums.MessagePriorityEnum' = 0
-            messageControl: 'Messages.Bitmaps.MessageControlBitmap' = 0
+            messageControl: 'uint' = 0
             startTime: 'typing.Union[Nullable, uint]' = NullValue
             duration: 'typing.Union[Nullable, uint]' = NullValue
             messageText: 'str' = ""
-            responses: 'typing.Optional[typing.List[typing.Optional[Messages.Structs.MessageResponseOptionStruct]]]' = None
+            responses: 'typing.Optional[typing.List[Messages.Structs.MessageResponseOptionStruct]]' = None
             fabricIndex: 'uint' = 0
 
         @dataclass
@@ -132,20 +130,20 @@ class Messages(Cluster):
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="messageID", Tag=0, Type=bytes),
                         ClusterObjectFieldDescriptor(Label="priority", Tag=1, Type=Messages.Enums.MessagePriorityEnum),
-                        ClusterObjectFieldDescriptor(Label="messageControl", Tag=2, Type=Messages.Bitmaps.MessageControlBitmap),
+                        ClusterObjectFieldDescriptor(Label="messageControl", Tag=2, Type=uint),
                         ClusterObjectFieldDescriptor(Label="startTime", Tag=3, Type=typing.Union[Nullable, uint]),
                         ClusterObjectFieldDescriptor(Label="duration", Tag=4, Type=typing.Union[Nullable, uint]),
                         ClusterObjectFieldDescriptor(Label="messageText", Tag=5, Type=str),
-                        ClusterObjectFieldDescriptor(Label="responses", Tag=6, Type=typing.Optional[typing.List[typing.Optional[Messages.Structs.MessageResponseOptionStruct]]]),
+                        ClusterObjectFieldDescriptor(Label="responses", Tag=6, Type=typing.Optional[typing.List[Messages.Structs.MessageResponseOptionStruct]]),
                     ])
 
             messageID: 'bytes' = b""
             priority: 'Messages.Enums.MessagePriorityEnum' = 0
-            messageControl: 'Messages.Bitmaps.MessageControlBitmap' = 0
+            messageControl: 'uint' = 0
             startTime: 'typing.Union[Nullable, uint]' = NullValue
             duration: 'typing.Union[Nullable, uint]' = NullValue
             messageText: 'str' = ""
-            responses: 'typing.Optional[typing.List[typing.Optional[Messages.Structs.MessageResponseOptionStruct]]]' = None
+            responses: 'typing.Optional[typing.List[Messages.Structs.MessageResponseOptionStruct]]' = None
 
         @dataclass
         class CancelMessagesRequest(ClusterCommand):
@@ -158,10 +156,10 @@ class Messages(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="messageIDs", Tag=0, Type=typing.List[typing.Optional[bytes]]),
+                        ClusterObjectFieldDescriptor(Label="messageIDs", Tag=0, Type=typing.List[bytes]),
                     ])
 
-            messageIDs: 'typing.List[typing.Optional[bytes]]' = field(default_factory=lambda: [])
+            messageIDs: 'typing.List[bytes]' = field(default_factory=lambda: [])
 
     class Attributes:
         @dataclass
@@ -176,9 +174,9 @@ class Messages(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.List[typing.Optional[Messages.Structs.MessageStruct]])
+                return ClusterObjectFieldDescriptor(Type=typing.List[Messages.Structs.MessageStruct])
 
-            value: 'typing.List[typing.Optional[Messages.Structs.MessageStruct]]' = field(default_factory=lambda: [])
+            value: 'typing.List[Messages.Structs.MessageStruct]' = field(default_factory=lambda: [])
 
         @dataclass
         class ActiveMessageIDs(ClusterAttributeDescriptor):
@@ -192,9 +190,9 @@ class Messages(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.List[typing.Optional[bytes]])
+                return ClusterObjectFieldDescriptor(Type=typing.List[bytes])
 
-            value: 'typing.List[typing.Optional[bytes]]' = field(default_factory=lambda: [])
+            value: 'typing.List[bytes]' = field(default_factory=lambda: [])
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -221,22 +219,6 @@ class Messages(Cluster):
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
                 return 0x0000FFF9
-
-            @ChipUtility.classproperty
-            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.List[uint])
-
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
-
-        @dataclass
-        class EventList(ClusterAttributeDescriptor):
-            @ChipUtility.classproperty
-            def cluster_id(cls) -> int:
-                return 0x00000097
-
-            @ChipUtility.classproperty
-            def attribute_id(cls) -> int:
-                return 0x0000FFFA
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:

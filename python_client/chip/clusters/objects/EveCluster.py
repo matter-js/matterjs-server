@@ -28,12 +28,13 @@ class EveCluster(Cluster):
                 ClusterObjectFieldDescriptor(Label="loggingData", Tag=0x130A0003, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="timesOpened", Tag=0x130A0006, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="lastEventTime", Tag=0x130A0007, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="voltage", Tag=0x130A0008, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="current", Tag=0x130A0009, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="watt", Tag=0x130A000A, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="wattAccumulated", Tag=0x130A000B, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="statusFault", Tag=0x130A000C, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="motionSensitivity", Tag=0x130A000D, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="wattAccumulatedControlPoint", Tag=0x130A000E, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="voltage", Tag=0x130A0008, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="current", Tag=0x130A0009, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="obstructionDetected", Tag=0x130A0010, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="childLock", Tag=0x130A0011, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="rloc16", Tag=0x130A0012, Type=typing.Optional[uint]),
@@ -41,10 +42,8 @@ class EveCluster(Cluster):
                 ClusterObjectFieldDescriptor(Label="pressure", Tag=0x130A0014, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="weatherTrend", Tag=0x130A0015, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="valvePosition", Tag=0x130A0018, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="motionSensitivity", Tag=0x130A000D, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
-                ClusterObjectFieldDescriptor(Label="eventList", Tag=0x0000FFFA, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="attributeList", Tag=0x0000FFFB, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="featureMap", Tag=0x0000FFFC, Type=uint),
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
@@ -56,12 +55,13 @@ class EveCluster(Cluster):
     loggingData: 'typing.Optional[uint]' = None
     timesOpened: 'typing.Optional[uint]' = None
     lastEventTime: 'typing.Optional[uint]' = None
+    voltage: 'typing.Optional[uint]' = None
+    current: 'typing.Optional[uint]' = None
     watt: 'typing.Optional[uint]' = None
     wattAccumulated: 'typing.Optional[uint]' = None
     statusFault: 'typing.Optional[uint]' = None
+    motionSensitivity: 'typing.Optional[uint]' = None
     wattAccumulatedControlPoint: 'typing.Optional[uint]' = None
-    voltage: 'typing.Optional[uint]' = None
-    current: 'typing.Optional[uint]' = None
     obstructionDetected: 'typing.Optional[uint]' = None
     childLock: 'typing.Optional[uint]' = None
     rloc16: 'typing.Optional[uint]' = None
@@ -69,10 +69,8 @@ class EveCluster(Cluster):
     pressure: 'typing.Optional[uint]' = None
     weatherTrend: 'typing.Optional[uint]' = None
     valvePosition: 'typing.Optional[uint]' = None
-    motionSensitivity: 'typing.Optional[uint]' = None
     generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
     acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    eventList: 'typing.List[uint]' = field(default_factory=lambda: [])
     attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
     featureMap: 'uint' = 0
     clusterRevision: 'uint' = 0
@@ -175,6 +173,38 @@ class EveCluster(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
+        class Voltage(ClusterAttributeDescriptor):
+            @ChipUtility.classproperty
+            def cluster_id(cls) -> int:
+                return 0x130AFC01
+
+            @ChipUtility.classproperty
+            def attribute_id(cls) -> int:
+                return 0x130A0008
+
+            @ChipUtility.classproperty
+            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+
+            value: 'typing.Optional[uint]' = None
+
+        @dataclass
+        class Current(ClusterAttributeDescriptor):
+            @ChipUtility.classproperty
+            def cluster_id(cls) -> int:
+                return 0x130AFC01
+
+            @ChipUtility.classproperty
+            def attribute_id(cls) -> int:
+                return 0x130A0009
+
+            @ChipUtility.classproperty
+            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+
+            value: 'typing.Optional[uint]' = None
+
+        @dataclass
         class Watt(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
@@ -223,6 +253,22 @@ class EveCluster(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
+        class MotionSensitivity(ClusterAttributeDescriptor):
+            @ChipUtility.classproperty
+            def cluster_id(cls) -> int:
+                return 0x130AFC01
+
+            @ChipUtility.classproperty
+            def attribute_id(cls) -> int:
+                return 0x130A000D
+
+            @ChipUtility.classproperty
+            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+
+            value: 'typing.Optional[uint]' = None
+
+        @dataclass
         class WattAccumulatedControlPoint(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
@@ -231,38 +277,6 @@ class EveCluster(Cluster):
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
                 return 0x130A000E
-
-            @ChipUtility.classproperty
-            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
-
-            value: 'typing.Optional[uint]' = None
-
-        @dataclass
-        class Voltage(ClusterAttributeDescriptor):
-            @ChipUtility.classproperty
-            def cluster_id(cls) -> int:
-                return 0x130AFC01
-
-            @ChipUtility.classproperty
-            def attribute_id(cls) -> int:
-                return 0x130A0008
-
-            @ChipUtility.classproperty
-            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
-
-            value: 'typing.Optional[uint]' = None
-
-        @dataclass
-        class Current(ClusterAttributeDescriptor):
-            @ChipUtility.classproperty
-            def cluster_id(cls) -> int:
-                return 0x130AFC01
-
-            @ChipUtility.classproperty
-            def attribute_id(cls) -> int:
-                return 0x130A0009
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
@@ -383,22 +397,6 @@ class EveCluster(Cluster):
             value: 'typing.Optional[uint]' = None
 
         @dataclass
-        class MotionSensitivity(ClusterAttributeDescriptor):
-            @ChipUtility.classproperty
-            def cluster_id(cls) -> int:
-                return 0x130AFC01
-
-            @ChipUtility.classproperty
-            def attribute_id(cls) -> int:
-                return 0x130A000D
-
-            @ChipUtility.classproperty
-            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
-
-            value: 'typing.Optional[uint]' = None
-
-        @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
@@ -423,22 +421,6 @@ class EveCluster(Cluster):
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
                 return 0x0000FFF9
-
-            @ChipUtility.classproperty
-            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.List[uint])
-
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
-
-        @dataclass
-        class EventList(ClusterAttributeDescriptor):
-            @ChipUtility.classproperty
-            def cluster_id(cls) -> int:
-                return 0x130AFC01
-
-            @ChipUtility.classproperty
-            def attribute_id(cls) -> int:
-                return 0x0000FFFA
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:

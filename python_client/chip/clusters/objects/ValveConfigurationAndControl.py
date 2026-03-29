@@ -31,11 +31,10 @@ class ValveConfigurationAndControl(Cluster):
                 ClusterObjectFieldDescriptor(Label="currentLevel", Tag=0x00000006, Type=typing.Union[None, Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="targetLevel", Tag=0x00000007, Type=typing.Union[None, Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="defaultOpenLevel", Tag=0x00000008, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="valveFault", Tag=0x00000009, Type=typing.Optional[ValveConfigurationAndControl.Bitmaps.ValveFaultBitmap]),
+                ClusterObjectFieldDescriptor(Label="valveFault", Tag=0x00000009, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="levelStep", Tag=0x0000000A, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
-                ClusterObjectFieldDescriptor(Label="eventList", Tag=0x0000FFFA, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="attributeList", Tag=0x0000FFFB, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="featureMap", Tag=0x0000FFFC, Type=uint),
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
@@ -50,11 +49,10 @@ class ValveConfigurationAndControl(Cluster):
     currentLevel: 'typing.Union[None, Nullable, uint]' = None
     targetLevel: 'typing.Union[None, Nullable, uint]' = None
     defaultOpenLevel: 'typing.Optional[uint]' = None
-    valveFault: 'typing.Optional[ValveConfigurationAndControl.Bitmaps.ValveFaultBitmap]' = None
+    valveFault: 'typing.Optional[uint]' = None
     levelStep: 'typing.Optional[uint]' = None
     generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
     acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    eventList: 'typing.List[uint]' = field(default_factory=lambda: [])
     attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
     featureMap: 'uint' = 0
     clusterRevision: 'uint' = 0
@@ -70,13 +68,13 @@ class ValveConfigurationAndControl(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 3
 
-        class StatusCodeEnum(MatterIntEnum):
+        class StatusCode(MatterIntEnum):
             kFailureDueToFault = 0x02
             # All received enum values that are not listed above will be mapped
             # to kUnknownEnumValue. This is a helper enum value that should only
             # be used by code to process how it handles receiving an unknown
             # enum value. This specific value should never be transmitted.
-            kUnknownEnumValue = 3
+            kUnknownEnumValue = 0
 
     class Bitmaps:
         class Feature(IntFlag):
@@ -281,9 +279,9 @@ class ValveConfigurationAndControl(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[ValveConfigurationAndControl.Bitmaps.ValveFaultBitmap])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[ValveConfigurationAndControl.Bitmaps.ValveFaultBitmap]' = None
+            value: 'typing.Optional[uint]' = None
 
         @dataclass
         class LevelStep(ClusterAttributeDescriptor):
@@ -326,22 +324,6 @@ class ValveConfigurationAndControl(Cluster):
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
                 return 0x0000FFF9
-
-            @ChipUtility.classproperty
-            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.List[uint])
-
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
-
-        @dataclass
-        class EventList(ClusterAttributeDescriptor):
-            @ChipUtility.classproperty
-            def cluster_id(cls) -> int:
-                return 0x00000081
-
-            @ChipUtility.classproperty
-            def attribute_id(cls) -> int:
-                return 0x0000FFFA
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
@@ -433,7 +415,7 @@ class ValveConfigurationAndControl(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="valveFault", Tag=0, Type=ValveConfigurationAndControl.Bitmaps.ValveFaultBitmap),
+                        ClusterObjectFieldDescriptor(Label="valveFault", Tag=0, Type=uint),
                     ])
 
-            valveFault: 'ValveConfigurationAndControl.Bitmaps.ValveFaultBitmap' = 0
+            valveFault: 'uint' = 0

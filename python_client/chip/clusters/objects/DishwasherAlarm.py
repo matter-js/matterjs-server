@@ -22,25 +22,23 @@ class DishwasherAlarm(Cluster):
     def descriptor(cls) -> ClusterObjectDescriptor:
         return ClusterObjectDescriptor(
             Fields=[
-                ClusterObjectFieldDescriptor(Label="mask", Tag=0x00000000, Type=DishwasherAlarm.Bitmaps.AlarmBitmap),
-                ClusterObjectFieldDescriptor(Label="latch", Tag=0x00000001, Type=typing.Optional[DishwasherAlarm.Bitmaps.AlarmBitmap]),
-                ClusterObjectFieldDescriptor(Label="state", Tag=0x00000002, Type=DishwasherAlarm.Bitmaps.AlarmBitmap),
-                ClusterObjectFieldDescriptor(Label="supported", Tag=0x00000003, Type=DishwasherAlarm.Bitmaps.AlarmBitmap),
+                ClusterObjectFieldDescriptor(Label="mask", Tag=0x00000000, Type=uint),
+                ClusterObjectFieldDescriptor(Label="latch", Tag=0x00000001, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="state", Tag=0x00000002, Type=uint),
+                ClusterObjectFieldDescriptor(Label="supported", Tag=0x00000003, Type=uint),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
-                ClusterObjectFieldDescriptor(Label="eventList", Tag=0x0000FFFA, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="attributeList", Tag=0x0000FFFB, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="featureMap", Tag=0x0000FFFC, Type=uint),
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    mask: 'DishwasherAlarm.Bitmaps.AlarmBitmap' = 0
-    latch: 'typing.Optional[DishwasherAlarm.Bitmaps.AlarmBitmap]' = None
-    state: 'DishwasherAlarm.Bitmaps.AlarmBitmap' = 0
-    supported: 'DishwasherAlarm.Bitmaps.AlarmBitmap' = 0
+    mask: 'uint' = 0
+    latch: 'typing.Optional[uint]' = None
+    state: 'uint' = 0
+    supported: 'uint' = 0
     generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
     acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    eventList: 'typing.List[uint]' = field(default_factory=lambda: [])
     attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
     featureMap: 'uint' = 0
     clusterRevision: 'uint' = 0
@@ -69,10 +67,10 @@ class DishwasherAlarm(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="alarms", Tag=0, Type=DishwasherAlarm.Bitmaps.AlarmBitmap),
+                        ClusterObjectFieldDescriptor(Label="alarms", Tag=0, Type=uint),
                     ])
 
-            alarms: 'DishwasherAlarm.Bitmaps.AlarmBitmap' = 0
+            alarms: 'uint' = 0
 
         @dataclass
         class ModifyEnabledAlarms(ClusterCommand):
@@ -85,10 +83,10 @@ class DishwasherAlarm(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="mask", Tag=0, Type=DishwasherAlarm.Bitmaps.AlarmBitmap),
+                        ClusterObjectFieldDescriptor(Label="mask", Tag=0, Type=uint),
                     ])
 
-            mask: 'DishwasherAlarm.Bitmaps.AlarmBitmap' = 0
+            mask: 'uint' = 0
 
     class Attributes:
         @dataclass
@@ -103,9 +101,9 @@ class DishwasherAlarm(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=DishwasherAlarm.Bitmaps.AlarmBitmap)
+                return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'DishwasherAlarm.Bitmaps.AlarmBitmap' = 0
+            value: 'uint' = 0
 
         @dataclass
         class Latch(ClusterAttributeDescriptor):
@@ -119,9 +117,9 @@ class DishwasherAlarm(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[DishwasherAlarm.Bitmaps.AlarmBitmap])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[DishwasherAlarm.Bitmaps.AlarmBitmap]' = None
+            value: 'typing.Optional[uint]' = None
 
         @dataclass
         class State(ClusterAttributeDescriptor):
@@ -135,9 +133,9 @@ class DishwasherAlarm(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=DishwasherAlarm.Bitmaps.AlarmBitmap)
+                return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'DishwasherAlarm.Bitmaps.AlarmBitmap' = 0
+            value: 'uint' = 0
 
         @dataclass
         class Supported(ClusterAttributeDescriptor):
@@ -151,9 +149,9 @@ class DishwasherAlarm(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=DishwasherAlarm.Bitmaps.AlarmBitmap)
+                return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: 'DishwasherAlarm.Bitmaps.AlarmBitmap' = 0
+            value: 'uint' = 0
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -180,22 +178,6 @@ class DishwasherAlarm(Cluster):
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
                 return 0x0000FFF9
-
-            @ChipUtility.classproperty
-            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.List[uint])
-
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
-
-        @dataclass
-        class EventList(ClusterAttributeDescriptor):
-            @ChipUtility.classproperty
-            def cluster_id(cls) -> int:
-                return 0x0000005D
-
-            @ChipUtility.classproperty
-            def attribute_id(cls) -> int:
-                return 0x0000FFFA
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
@@ -266,13 +248,13 @@ class DishwasherAlarm(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="active", Tag=0, Type=DishwasherAlarm.Bitmaps.AlarmBitmap),
-                        ClusterObjectFieldDescriptor(Label="inactive", Tag=1, Type=DishwasherAlarm.Bitmaps.AlarmBitmap),
-                        ClusterObjectFieldDescriptor(Label="state", Tag=2, Type=DishwasherAlarm.Bitmaps.AlarmBitmap),
-                        ClusterObjectFieldDescriptor(Label="mask", Tag=3, Type=DishwasherAlarm.Bitmaps.AlarmBitmap),
+                        ClusterObjectFieldDescriptor(Label="active", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="inactive", Tag=1, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="state", Tag=2, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="mask", Tag=3, Type=uint),
                     ])
 
-            active: 'DishwasherAlarm.Bitmaps.AlarmBitmap' = 0
-            inactive: 'DishwasherAlarm.Bitmaps.AlarmBitmap' = 0
-            state: 'DishwasherAlarm.Bitmaps.AlarmBitmap' = 0
-            mask: 'DishwasherAlarm.Bitmaps.AlarmBitmap' = 0
+            active: 'uint' = 0
+            inactive: 'uint' = 0
+            state: 'uint' = 0
+            mask: 'uint' = 0

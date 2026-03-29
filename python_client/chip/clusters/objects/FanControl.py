@@ -29,14 +29,13 @@ class FanControl(Cluster):
                 ClusterObjectFieldDescriptor(Label="speedMax", Tag=0x00000004, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="speedSetting", Tag=0x00000005, Type=typing.Union[None, Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="speedCurrent", Tag=0x00000006, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="rockSupport", Tag=0x00000007, Type=typing.Optional[FanControl.Bitmaps.RockBitmap]),
-                ClusterObjectFieldDescriptor(Label="rockSetting", Tag=0x00000008, Type=typing.Optional[FanControl.Bitmaps.RockBitmap]),
-                ClusterObjectFieldDescriptor(Label="windSupport", Tag=0x00000009, Type=typing.Optional[FanControl.Bitmaps.WindBitmap]),
-                ClusterObjectFieldDescriptor(Label="windSetting", Tag=0x0000000A, Type=typing.Optional[FanControl.Bitmaps.WindBitmap]),
+                ClusterObjectFieldDescriptor(Label="rockSupport", Tag=0x00000007, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="rockSetting", Tag=0x00000008, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="windSupport", Tag=0x00000009, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="windSetting", Tag=0x0000000A, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="airflowDirection", Tag=0x0000000B, Type=typing.Optional[FanControl.Enums.AirflowDirectionEnum]),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
-                ClusterObjectFieldDescriptor(Label="eventList", Tag=0x0000FFFA, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="attributeList", Tag=0x0000FFFB, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="featureMap", Tag=0x0000FFFC, Type=uint),
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
@@ -49,14 +48,13 @@ class FanControl(Cluster):
     speedMax: 'typing.Optional[uint]' = None
     speedSetting: 'typing.Union[None, Nullable, uint]' = None
     speedCurrent: 'typing.Optional[uint]' = None
-    rockSupport: 'typing.Optional[FanControl.Bitmaps.RockBitmap]' = None
-    rockSetting: 'typing.Optional[FanControl.Bitmaps.RockBitmap]' = None
-    windSupport: 'typing.Optional[FanControl.Bitmaps.WindBitmap]' = None
-    windSetting: 'typing.Optional[FanControl.Bitmaps.WindBitmap]' = None
+    rockSupport: 'typing.Optional[uint]' = None
+    rockSetting: 'typing.Optional[uint]' = None
+    windSupport: 'typing.Optional[uint]' = None
+    windSetting: 'typing.Optional[uint]' = None
     airflowDirection: 'typing.Optional[FanControl.Enums.AirflowDirectionEnum]' = None
     generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
     acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    eventList: 'typing.List[uint]' = field(default_factory=lambda: [])
     attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
     featureMap: 'uint' = 0
     clusterRevision: 'uint' = 0
@@ -271,9 +269,9 @@ class FanControl(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[FanControl.Bitmaps.RockBitmap])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[FanControl.Bitmaps.RockBitmap]' = None
+            value: 'typing.Optional[uint]' = None
 
         @dataclass
         class RockSetting(ClusterAttributeDescriptor):
@@ -287,9 +285,9 @@ class FanControl(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[FanControl.Bitmaps.RockBitmap])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[FanControl.Bitmaps.RockBitmap]' = None
+            value: 'typing.Optional[uint]' = None
 
         @dataclass
         class WindSupport(ClusterAttributeDescriptor):
@@ -303,9 +301,9 @@ class FanControl(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[FanControl.Bitmaps.WindBitmap])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[FanControl.Bitmaps.WindBitmap]' = None
+            value: 'typing.Optional[uint]' = None
 
         @dataclass
         class WindSetting(ClusterAttributeDescriptor):
@@ -319,9 +317,9 @@ class FanControl(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[FanControl.Bitmaps.WindBitmap])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: 'typing.Optional[FanControl.Bitmaps.WindBitmap]' = None
+            value: 'typing.Optional[uint]' = None
 
         @dataclass
         class AirflowDirection(ClusterAttributeDescriptor):
@@ -364,22 +362,6 @@ class FanControl(Cluster):
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
                 return 0x0000FFF9
-
-            @ChipUtility.classproperty
-            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.List[uint])
-
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
-
-        @dataclass
-        class EventList(ClusterAttributeDescriptor):
-            @ChipUtility.classproperty
-            def cluster_id(cls) -> int:
-                return 0x00000202
-
-            @ChipUtility.classproperty
-            def attribute_id(cls) -> int:
-                return 0x0000FFFA
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:

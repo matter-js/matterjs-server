@@ -22,25 +22,23 @@ class GroupKeyManagement(Cluster):
     def descriptor(cls) -> ClusterObjectDescriptor:
         return ClusterObjectDescriptor(
             Fields=[
-                ClusterObjectFieldDescriptor(Label="groupKeyMap", Tag=0x00000000, Type=typing.List[typing.Optional[GroupKeyManagement.Structs.GroupKeyMapStruct]]),
-                ClusterObjectFieldDescriptor(Label="groupTable", Tag=0x00000001, Type=typing.List[typing.Optional[GroupKeyManagement.Structs.GroupInfoMapStruct]]),
+                ClusterObjectFieldDescriptor(Label="groupKeyMap", Tag=0x00000000, Type=typing.List[GroupKeyManagement.Structs.GroupKeyMapStruct]),
+                ClusterObjectFieldDescriptor(Label="groupTable", Tag=0x00000001, Type=typing.List[GroupKeyManagement.Structs.GroupInfoMapStruct]),
                 ClusterObjectFieldDescriptor(Label="maxGroupsPerFabric", Tag=0x00000002, Type=uint),
                 ClusterObjectFieldDescriptor(Label="maxGroupKeysPerFabric", Tag=0x00000003, Type=uint),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
-                ClusterObjectFieldDescriptor(Label="eventList", Tag=0x0000FFFA, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="attributeList", Tag=0x0000FFFB, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="featureMap", Tag=0x0000FFFC, Type=uint),
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    groupKeyMap: 'typing.List[typing.Optional[GroupKeyManagement.Structs.GroupKeyMapStruct]]' = field(default_factory=lambda: [])
-    groupTable: 'typing.List[typing.Optional[GroupKeyManagement.Structs.GroupInfoMapStruct]]' = field(default_factory=lambda: [])
+    groupKeyMap: 'typing.List[GroupKeyManagement.Structs.GroupKeyMapStruct]' = field(default_factory=lambda: [])
+    groupTable: 'typing.List[GroupKeyManagement.Structs.GroupInfoMapStruct]' = field(default_factory=lambda: [])
     maxGroupsPerFabric: 'uint' = 0
     maxGroupKeysPerFabric: 'uint' = 0
     generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
     acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    eventList: 'typing.List[uint]' = field(default_factory=lambda: [])
     attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
     featureMap: 'uint' = 0
     clusterRevision: 'uint' = 0
@@ -75,12 +73,12 @@ class GroupKeyManagement(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="groupId", Tag=1, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="groupID", Tag=1, Type=uint),
                         ClusterObjectFieldDescriptor(Label="groupKeySetID", Tag=2, Type=uint),
                         ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=254, Type=uint),
                     ])
 
-            groupId: 'uint' = 0
+            groupID: 'uint' = 0
             groupKeySetID: 'uint' = 0
             fabricIndex: 'uint' = 0
 
@@ -117,14 +115,14 @@ class GroupKeyManagement(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="groupId", Tag=1, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="endpoints", Tag=2, Type=typing.List[typing.Optional[uint]]),
+                        ClusterObjectFieldDescriptor(Label="groupID", Tag=1, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="endpoints", Tag=2, Type=typing.List[uint]),
                         ClusterObjectFieldDescriptor(Label="groupName", Tag=3, Type=typing.Optional[str]),
                         ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=254, Type=uint),
                     ])
 
-            groupId: 'uint' = 0
-            endpoints: 'typing.List[typing.Optional[uint]]' = field(default_factory=lambda: [])
+            groupID: 'uint' = 0
+            endpoints: 'typing.List[uint]' = field(default_factory=lambda: [])
             groupName: 'typing.Optional[str]' = None
             fabricIndex: 'uint' = 0
 
@@ -220,10 +218,10 @@ class GroupKeyManagement(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="groupKeySetIDs", Tag=0, Type=typing.List[typing.Optional[uint]]),
+                        ClusterObjectFieldDescriptor(Label="groupKeySetIDs", Tag=0, Type=typing.List[uint]),
                     ])
 
-            groupKeySetIDs: 'typing.List[typing.Optional[uint]]' = field(default_factory=lambda: [])
+            groupKeySetIDs: 'typing.List[uint]' = field(default_factory=lambda: [])
 
     class Attributes:
         @dataclass
@@ -238,9 +236,9 @@ class GroupKeyManagement(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.List[typing.Optional[GroupKeyManagement.Structs.GroupKeyMapStruct]])
+                return ClusterObjectFieldDescriptor(Type=typing.List[GroupKeyManagement.Structs.GroupKeyMapStruct])
 
-            value: 'typing.List[typing.Optional[GroupKeyManagement.Structs.GroupKeyMapStruct]]' = field(default_factory=lambda: [])
+            value: 'typing.List[GroupKeyManagement.Structs.GroupKeyMapStruct]' = field(default_factory=lambda: [])
 
         @dataclass
         class GroupTable(ClusterAttributeDescriptor):
@@ -254,9 +252,9 @@ class GroupKeyManagement(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.List[typing.Optional[GroupKeyManagement.Structs.GroupInfoMapStruct]])
+                return ClusterObjectFieldDescriptor(Type=typing.List[GroupKeyManagement.Structs.GroupInfoMapStruct])
 
-            value: 'typing.List[typing.Optional[GroupKeyManagement.Structs.GroupInfoMapStruct]]' = field(default_factory=lambda: [])
+            value: 'typing.List[GroupKeyManagement.Structs.GroupInfoMapStruct]' = field(default_factory=lambda: [])
 
         @dataclass
         class MaxGroupsPerFabric(ClusterAttributeDescriptor):
@@ -315,22 +313,6 @@ class GroupKeyManagement(Cluster):
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
                 return 0x0000FFF9
-
-            @ChipUtility.classproperty
-            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.List[uint])
-
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
-
-        @dataclass
-        class EventList(ClusterAttributeDescriptor):
-            @ChipUtility.classproperty
-            def cluster_id(cls) -> int:
-                return 0x0000003F
-
-            @ChipUtility.classproperty
-            def attribute_id(cls) -> int:
-                return 0x0000FFFA
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:

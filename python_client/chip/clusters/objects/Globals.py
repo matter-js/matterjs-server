@@ -109,7 +109,7 @@ class Globals:
             # to kUnknownEnumValue. This is a helper enum value that should only
             # be used by code to process how it handles receiving an unknown
             # enum value. This specific value should never be transmitted.
-            kUnknownEnumValue = 68
+            kUnknownEnumValue = 0
 
         class priority(MatterIntEnum):
             kDebug = 0x00
@@ -161,7 +161,7 @@ class Globals:
             # to kUnknownEnumValue. This is a helper enum value that should only
             # be used by code to process how it handles receiving an unknown
             # enum value. This specific value should never be transmitted.
-            kUnknownEnumValue = 210
+            kUnknownEnumValue = 2
 
 
     class Bitmaps:
@@ -238,14 +238,14 @@ class Globals:
                         ClusterObjectFieldDescriptor(Label="measured", Tag=1, Type=bool),
                         ClusterObjectFieldDescriptor(Label="minMeasuredValue", Tag=2, Type=int),
                         ClusterObjectFieldDescriptor(Label="maxMeasuredValue", Tag=3, Type=int),
-                        ClusterObjectFieldDescriptor(Label="accuracyRanges", Tag=4, Type=typing.List[typing.Optional[Globals.Structs.MeasurementAccuracyRangeStruct]]),
+                        ClusterObjectFieldDescriptor(Label="accuracyRanges", Tag=4, Type=typing.List[Globals.Structs.MeasurementAccuracyRangeStruct]),
                     ])
 
             measurementType: 'Globals.Enums.MeasurementTypeEnum' = 0
             measured: 'bool' = False
             minMeasuredValue: 'int' = 0
             maxMeasuredValue: 'int' = 0
-            accuracyRanges: 'typing.List[typing.Optional[Globals.Structs.MeasurementAccuracyRangeStruct]]' = field(default_factory=lambda: [])
+            accuracyRanges: 'typing.List[Globals.Structs.MeasurementAccuracyRangeStruct]' = field(default_factory=lambda: [])
 
         @dataclass
         class currency(ClusterObject):

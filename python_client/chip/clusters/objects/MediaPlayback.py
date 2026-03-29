@@ -30,12 +30,11 @@ class MediaPlayback(Cluster):
                 ClusterObjectFieldDescriptor(Label="seekRangeEnd", Tag=0x00000005, Type=typing.Union[None, Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="seekRangeStart", Tag=0x00000006, Type=typing.Union[None, Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="activeAudioTrack", Tag=0x00000007, Type=typing.Union[None, Nullable, MediaPlayback.Structs.TrackStruct]),
-                ClusterObjectFieldDescriptor(Label="availableAudioTracks", Tag=0x00000008, Type=typing.Union[None, Nullable, typing.List[typing.Optional[MediaPlayback.Structs.TrackStruct]]]),
+                ClusterObjectFieldDescriptor(Label="availableAudioTracks", Tag=0x00000008, Type=typing.Union[None, Nullable, typing.List[MediaPlayback.Structs.TrackStruct]]),
                 ClusterObjectFieldDescriptor(Label="activeTextTrack", Tag=0x00000009, Type=typing.Union[None, Nullable, MediaPlayback.Structs.TrackStruct]),
-                ClusterObjectFieldDescriptor(Label="availableTextTracks", Tag=0x0000000A, Type=typing.Union[None, Nullable, typing.List[typing.Optional[MediaPlayback.Structs.TrackStruct]]]),
+                ClusterObjectFieldDescriptor(Label="availableTextTracks", Tag=0x0000000A, Type=typing.Union[None, Nullable, typing.List[MediaPlayback.Structs.TrackStruct]]),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
-                ClusterObjectFieldDescriptor(Label="eventList", Tag=0x0000FFFA, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="attributeList", Tag=0x0000FFFB, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="featureMap", Tag=0x0000FFFC, Type=uint),
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
@@ -49,12 +48,11 @@ class MediaPlayback(Cluster):
     seekRangeEnd: 'typing.Union[None, Nullable, uint]' = None
     seekRangeStart: 'typing.Union[None, Nullable, uint]' = None
     activeAudioTrack: 'typing.Union[None, Nullable, MediaPlayback.Structs.TrackStruct]' = None
-    availableAudioTracks: 'typing.Union[None, Nullable, typing.List[typing.Optional[MediaPlayback.Structs.TrackStruct]]]' = None
+    availableAudioTracks: 'typing.Union[None, Nullable, typing.List[MediaPlayback.Structs.TrackStruct]]' = None
     activeTextTrack: 'typing.Union[None, Nullable, MediaPlayback.Structs.TrackStruct]' = None
-    availableTextTracks: 'typing.Union[None, Nullable, typing.List[typing.Optional[MediaPlayback.Structs.TrackStruct]]]' = None
+    availableTextTracks: 'typing.Union[None, Nullable, typing.List[MediaPlayback.Structs.TrackStruct]]' = None
     generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
     acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    eventList: 'typing.List[uint]' = field(default_factory=lambda: [])
     attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
     featureMap: 'uint' = 0
     clusterRevision: 'uint' = 0
@@ -151,12 +149,12 @@ class MediaPlayback(Cluster):
                 return ClusterObjectDescriptor(
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="languageCode", Tag=0, Type=str),
-                        ClusterObjectFieldDescriptor(Label="characteristics", Tag=1, Type=typing.Union[None, Nullable, typing.List[typing.Optional[MediaPlayback.Enums.CharacteristicEnum]]]),
+                        ClusterObjectFieldDescriptor(Label="characteristics", Tag=1, Type=typing.Union[None, Nullable, typing.List[MediaPlayback.Enums.CharacteristicEnum]]),
                         ClusterObjectFieldDescriptor(Label="displayName", Tag=2, Type=typing.Union[None, Nullable, str]),
                     ])
 
             languageCode: 'str' = ""
-            characteristics: 'typing.Union[None, Nullable, typing.List[typing.Optional[MediaPlayback.Enums.CharacteristicEnum]]]' = None
+            characteristics: 'typing.Union[None, Nullable, typing.List[MediaPlayback.Enums.CharacteristicEnum]]' = None
             displayName: 'typing.Union[None, Nullable, str]' = None
 
     class Commands:
@@ -531,9 +529,9 @@ class MediaPlayback(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, typing.List[typing.Optional[MediaPlayback.Structs.TrackStruct]]])
+                return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, typing.List[MediaPlayback.Structs.TrackStruct]])
 
-            value: 'typing.Union[None, Nullable, typing.List[typing.Optional[MediaPlayback.Structs.TrackStruct]]]' = None
+            value: 'typing.Union[None, Nullable, typing.List[MediaPlayback.Structs.TrackStruct]]' = None
 
         @dataclass
         class ActiveTextTrack(ClusterAttributeDescriptor):
@@ -563,9 +561,9 @@ class MediaPlayback(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, typing.List[typing.Optional[MediaPlayback.Structs.TrackStruct]]])
+                return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, typing.List[MediaPlayback.Structs.TrackStruct]])
 
-            value: 'typing.Union[None, Nullable, typing.List[typing.Optional[MediaPlayback.Structs.TrackStruct]]]' = None
+            value: 'typing.Union[None, Nullable, typing.List[MediaPlayback.Structs.TrackStruct]]' = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -592,22 +590,6 @@ class MediaPlayback(Cluster):
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
                 return 0x0000FFF9
-
-            @ChipUtility.classproperty
-            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.List[uint])
-
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
-
-        @dataclass
-        class EventList(ClusterAttributeDescriptor):
-            @ChipUtility.classproperty
-            def cluster_id(cls) -> int:
-                return 0x00000506
-
-            @ChipUtility.classproperty
-            def attribute_id(cls) -> int:
-                return 0x0000FFFA
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:

@@ -25,8 +25,8 @@ class ElectricalPowerMeasurement(Cluster):
             Fields=[
                 ClusterObjectFieldDescriptor(Label="powerMode", Tag=0x00000000, Type=ElectricalPowerMeasurement.Enums.PowerModeEnum),
                 ClusterObjectFieldDescriptor(Label="numberOfMeasurementTypes", Tag=0x00000001, Type=uint),
-                ClusterObjectFieldDescriptor(Label="accuracy", Tag=0x00000002, Type=typing.List[typing.Optional[Globals.Structs.MeasurementAccuracyStruct]]),
-                ClusterObjectFieldDescriptor(Label="ranges", Tag=0x00000003, Type=typing.Optional[typing.List[typing.Optional[ElectricalPowerMeasurement.Structs.MeasurementRangeStruct]]]),
+                ClusterObjectFieldDescriptor(Label="accuracy", Tag=0x00000002, Type=typing.List[Globals.Structs.MeasurementAccuracyStruct]),
+                ClusterObjectFieldDescriptor(Label="ranges", Tag=0x00000003, Type=typing.Optional[typing.List[ElectricalPowerMeasurement.Structs.MeasurementRangeStruct]]),
                 ClusterObjectFieldDescriptor(Label="voltage", Tag=0x00000004, Type=typing.Union[None, Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="activeCurrent", Tag=0x00000005, Type=typing.Union[None, Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="reactiveCurrent", Tag=0x00000006, Type=typing.Union[None, Nullable, uint]),
@@ -38,13 +38,12 @@ class ElectricalPowerMeasurement(Cluster):
                 ClusterObjectFieldDescriptor(Label="RMSCurrent", Tag=0x0000000C, Type=typing.Union[None, Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="RMSPower", Tag=0x0000000D, Type=typing.Union[None, Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="frequency", Tag=0x0000000E, Type=typing.Union[None, Nullable, int]),
-                ClusterObjectFieldDescriptor(Label="harmonicCurrents", Tag=0x0000000F, Type=typing.Union[None, Nullable, typing.List[typing.Optional[ElectricalPowerMeasurement.Structs.HarmonicMeasurementStruct]]]),
-                ClusterObjectFieldDescriptor(Label="harmonicPhases", Tag=0x00000010, Type=typing.Union[None, Nullable, typing.List[typing.Optional[ElectricalPowerMeasurement.Structs.HarmonicMeasurementStruct]]]),
+                ClusterObjectFieldDescriptor(Label="harmonicCurrents", Tag=0x0000000F, Type=typing.Union[None, Nullable, typing.List[ElectricalPowerMeasurement.Structs.HarmonicMeasurementStruct]]),
+                ClusterObjectFieldDescriptor(Label="harmonicPhases", Tag=0x00000010, Type=typing.Union[None, Nullable, typing.List[ElectricalPowerMeasurement.Structs.HarmonicMeasurementStruct]]),
                 ClusterObjectFieldDescriptor(Label="powerFactor", Tag=0x00000011, Type=typing.Union[None, Nullable, int]),
                 ClusterObjectFieldDescriptor(Label="neutralCurrent", Tag=0x00000012, Type=typing.Union[None, Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
-                ClusterObjectFieldDescriptor(Label="eventList", Tag=0x0000FFFA, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="attributeList", Tag=0x0000FFFB, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="featureMap", Tag=0x0000FFFC, Type=uint),
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
@@ -52,8 +51,8 @@ class ElectricalPowerMeasurement(Cluster):
 
     powerMode: 'ElectricalPowerMeasurement.Enums.PowerModeEnum' = 0
     numberOfMeasurementTypes: 'uint' = 0
-    accuracy: 'typing.List[typing.Optional[Globals.Structs.MeasurementAccuracyStruct]]' = field(default_factory=lambda: [])
-    ranges: 'typing.Optional[typing.List[typing.Optional[ElectricalPowerMeasurement.Structs.MeasurementRangeStruct]]]' = None
+    accuracy: 'typing.List[Globals.Structs.MeasurementAccuracyStruct]' = field(default_factory=lambda: [])
+    ranges: 'typing.Optional[typing.List[ElectricalPowerMeasurement.Structs.MeasurementRangeStruct]]' = None
     voltage: 'typing.Union[None, Nullable, uint]' = None
     activeCurrent: 'typing.Union[None, Nullable, uint]' = None
     reactiveCurrent: 'typing.Union[None, Nullable, uint]' = None
@@ -65,13 +64,12 @@ class ElectricalPowerMeasurement(Cluster):
     RMSCurrent: 'typing.Union[None, Nullable, uint]' = None
     RMSPower: 'typing.Union[None, Nullable, uint]' = None
     frequency: 'typing.Union[None, Nullable, int]' = None
-    harmonicCurrents: 'typing.Union[None, Nullable, typing.List[typing.Optional[ElectricalPowerMeasurement.Structs.HarmonicMeasurementStruct]]]' = None
-    harmonicPhases: 'typing.Union[None, Nullable, typing.List[typing.Optional[ElectricalPowerMeasurement.Structs.HarmonicMeasurementStruct]]]' = None
+    harmonicCurrents: 'typing.Union[None, Nullable, typing.List[ElectricalPowerMeasurement.Structs.HarmonicMeasurementStruct]]' = None
+    harmonicPhases: 'typing.Union[None, Nullable, typing.List[ElectricalPowerMeasurement.Structs.HarmonicMeasurementStruct]]' = None
     powerFactor: 'typing.Union[None, Nullable, int]' = None
     neutralCurrent: 'typing.Union[None, Nullable, uint]' = None
     generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
     acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    eventList: 'typing.List[uint]' = field(default_factory=lambda: [])
     attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
     featureMap: 'uint' = 0
     clusterRevision: 'uint' = 0
@@ -209,9 +207,9 @@ class ElectricalPowerMeasurement(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.List[typing.Optional[Globals.Structs.MeasurementAccuracyStruct]])
+                return ClusterObjectFieldDescriptor(Type=typing.List[Globals.Structs.MeasurementAccuracyStruct])
 
-            value: 'typing.List[typing.Optional[Globals.Structs.MeasurementAccuracyStruct]]' = field(default_factory=lambda: [])
+            value: 'typing.List[Globals.Structs.MeasurementAccuracyStruct]' = field(default_factory=lambda: [])
 
         @dataclass
         class Ranges(ClusterAttributeDescriptor):
@@ -225,9 +223,9 @@ class ElectricalPowerMeasurement(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[typing.Optional[ElectricalPowerMeasurement.Structs.MeasurementRangeStruct]]])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[ElectricalPowerMeasurement.Structs.MeasurementRangeStruct]])
 
-            value: 'typing.Optional[typing.List[typing.Optional[ElectricalPowerMeasurement.Structs.MeasurementRangeStruct]]]' = None
+            value: 'typing.Optional[typing.List[ElectricalPowerMeasurement.Structs.MeasurementRangeStruct]]' = None
 
         @dataclass
         class Voltage(ClusterAttributeDescriptor):
@@ -417,9 +415,9 @@ class ElectricalPowerMeasurement(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, typing.List[typing.Optional[ElectricalPowerMeasurement.Structs.HarmonicMeasurementStruct]]])
+                return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, typing.List[ElectricalPowerMeasurement.Structs.HarmonicMeasurementStruct]])
 
-            value: 'typing.Union[None, Nullable, typing.List[typing.Optional[ElectricalPowerMeasurement.Structs.HarmonicMeasurementStruct]]]' = None
+            value: 'typing.Union[None, Nullable, typing.List[ElectricalPowerMeasurement.Structs.HarmonicMeasurementStruct]]' = None
 
         @dataclass
         class HarmonicPhases(ClusterAttributeDescriptor):
@@ -433,9 +431,9 @@ class ElectricalPowerMeasurement(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, typing.List[typing.Optional[ElectricalPowerMeasurement.Structs.HarmonicMeasurementStruct]]])
+                return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, typing.List[ElectricalPowerMeasurement.Structs.HarmonicMeasurementStruct]])
 
-            value: 'typing.Union[None, Nullable, typing.List[typing.Optional[ElectricalPowerMeasurement.Structs.HarmonicMeasurementStruct]]]' = None
+            value: 'typing.Union[None, Nullable, typing.List[ElectricalPowerMeasurement.Structs.HarmonicMeasurementStruct]]' = None
 
         @dataclass
         class PowerFactor(ClusterAttributeDescriptor):
@@ -494,22 +492,6 @@ class ElectricalPowerMeasurement(Cluster):
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
                 return 0x0000FFF9
-
-            @ChipUtility.classproperty
-            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.List[uint])
-
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
-
-        @dataclass
-        class EventList(ClusterAttributeDescriptor):
-            @ChipUtility.classproperty
-            def cluster_id(cls) -> int:
-                return 0x00000090
-
-            @ChipUtility.classproperty
-            def attribute_id(cls) -> int:
-                return 0x0000FFFA
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
@@ -580,7 +562,7 @@ class ElectricalPowerMeasurement(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="ranges", Tag=0, Type=typing.List[typing.Optional[ElectricalPowerMeasurement.Structs.MeasurementRangeStruct]]),
+                        ClusterObjectFieldDescriptor(Label="ranges", Tag=0, Type=typing.List[ElectricalPowerMeasurement.Structs.MeasurementRangeStruct]),
                     ])
 
-            ranges: 'typing.List[typing.Optional[ElectricalPowerMeasurement.Structs.MeasurementRangeStruct]]' = field(default_factory=lambda: [])
+            ranges: 'typing.List[ElectricalPowerMeasurement.Structs.MeasurementRangeStruct]' = field(default_factory=lambda: [])

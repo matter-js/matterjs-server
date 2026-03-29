@@ -23,21 +23,19 @@ class EcosystemInformation(Cluster):
     def descriptor(cls) -> ClusterObjectDescriptor:
         return ClusterObjectDescriptor(
             Fields=[
-                ClusterObjectFieldDescriptor(Label="deviceDirectory", Tag=0x00000000, Type=typing.List[typing.Optional[EcosystemInformation.Structs.EcosystemDeviceStruct]]),
-                ClusterObjectFieldDescriptor(Label="locationDirectory", Tag=0x00000001, Type=typing.List[typing.Optional[EcosystemInformation.Structs.EcosystemLocationStruct]]),
+                ClusterObjectFieldDescriptor(Label="deviceDirectory", Tag=0x00000000, Type=typing.List[EcosystemInformation.Structs.EcosystemDeviceStruct]),
+                ClusterObjectFieldDescriptor(Label="locationDirectory", Tag=0x00000001, Type=typing.List[EcosystemInformation.Structs.EcosystemLocationStruct]),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
-                ClusterObjectFieldDescriptor(Label="eventList", Tag=0x0000FFFA, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="attributeList", Tag=0x0000FFFB, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="featureMap", Tag=0x0000FFFC, Type=uint),
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    deviceDirectory: 'typing.List[typing.Optional[EcosystemInformation.Structs.EcosystemDeviceStruct]]' = field(default_factory=lambda: [])
-    locationDirectory: 'typing.List[typing.Optional[EcosystemInformation.Structs.EcosystemLocationStruct]]' = field(default_factory=lambda: [])
+    deviceDirectory: 'typing.List[EcosystemInformation.Structs.EcosystemDeviceStruct]' = field(default_factory=lambda: [])
+    locationDirectory: 'typing.List[EcosystemInformation.Structs.EcosystemLocationStruct]' = field(default_factory=lambda: [])
     generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
     acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    eventList: 'typing.List[uint]' = field(default_factory=lambda: [])
     attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
     featureMap: 'uint' = 0
     clusterRevision: 'uint' = 0
@@ -66,8 +64,8 @@ class EcosystemInformation(Cluster):
                         ClusterObjectFieldDescriptor(Label="deviceNameLastEdit", Tag=1, Type=typing.Optional[uint]),
                         ClusterObjectFieldDescriptor(Label="bridgedEndpoint", Tag=2, Type=typing.Optional[uint]),
                         ClusterObjectFieldDescriptor(Label="originalEndpoint", Tag=3, Type=typing.Optional[uint]),
-                        ClusterObjectFieldDescriptor(Label="deviceTypes", Tag=4, Type=typing.List[typing.Optional[EcosystemInformation.Structs.DeviceTypeStruct]]),
-                        ClusterObjectFieldDescriptor(Label="uniqueLocationIDs", Tag=5, Type=typing.List[typing.Optional[str]]),
+                        ClusterObjectFieldDescriptor(Label="deviceTypes", Tag=4, Type=typing.List[EcosystemInformation.Structs.DeviceTypeStruct]),
+                        ClusterObjectFieldDescriptor(Label="uniqueLocationIDs", Tag=5, Type=typing.List[str]),
                         ClusterObjectFieldDescriptor(Label="uniqueLocationIDsLastEdit", Tag=6, Type=uint),
                         ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=254, Type=uint),
                     ])
@@ -76,8 +74,8 @@ class EcosystemInformation(Cluster):
             deviceNameLastEdit: 'typing.Optional[uint]' = None
             bridgedEndpoint: 'typing.Optional[uint]' = None
             originalEndpoint: 'typing.Optional[uint]' = None
-            deviceTypes: 'typing.List[typing.Optional[EcosystemInformation.Structs.DeviceTypeStruct]]' = field(default_factory=lambda: [])
-            uniqueLocationIDs: 'typing.List[typing.Optional[str]]' = field(default_factory=lambda: [])
+            deviceTypes: 'typing.List[EcosystemInformation.Structs.DeviceTypeStruct]' = field(default_factory=lambda: [])
+            uniqueLocationIDs: 'typing.List[str]' = field(default_factory=lambda: [])
             uniqueLocationIDsLastEdit: 'uint' = 0
             fabricIndex: 'uint' = 0
 
@@ -111,9 +109,9 @@ class EcosystemInformation(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.List[typing.Optional[EcosystemInformation.Structs.EcosystemDeviceStruct]])
+                return ClusterObjectFieldDescriptor(Type=typing.List[EcosystemInformation.Structs.EcosystemDeviceStruct])
 
-            value: 'typing.List[typing.Optional[EcosystemInformation.Structs.EcosystemDeviceStruct]]' = field(default_factory=lambda: [])
+            value: 'typing.List[EcosystemInformation.Structs.EcosystemDeviceStruct]' = field(default_factory=lambda: [])
 
         @dataclass
         class LocationDirectory(ClusterAttributeDescriptor):
@@ -127,9 +125,9 @@ class EcosystemInformation(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.List[typing.Optional[EcosystemInformation.Structs.EcosystemLocationStruct]])
+                return ClusterObjectFieldDescriptor(Type=typing.List[EcosystemInformation.Structs.EcosystemLocationStruct])
 
-            value: 'typing.List[typing.Optional[EcosystemInformation.Structs.EcosystemLocationStruct]]' = field(default_factory=lambda: [])
+            value: 'typing.List[EcosystemInformation.Structs.EcosystemLocationStruct]' = field(default_factory=lambda: [])
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
@@ -156,22 +154,6 @@ class EcosystemInformation(Cluster):
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
                 return 0x0000FFF9
-
-            @ChipUtility.classproperty
-            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.List[uint])
-
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
-
-        @dataclass
-        class EventList(ClusterAttributeDescriptor):
-            @ChipUtility.classproperty
-            def cluster_id(cls) -> int:
-                return 0x00000750
-
-            @ChipUtility.classproperty
-            def attribute_id(cls) -> int:
-                return 0x0000FFFA
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:

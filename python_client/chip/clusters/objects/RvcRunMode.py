@@ -28,7 +28,6 @@ class RvcRunMode(Cluster):
                 ClusterObjectFieldDescriptor(Label="onMode", Tag=0x00000003, Type=typing.Union[None, Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
-                ClusterObjectFieldDescriptor(Label="eventList", Tag=0x0000FFFA, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="attributeList", Tag=0x0000FFFB, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="featureMap", Tag=0x0000FFFC, Type=uint),
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
@@ -40,7 +39,6 @@ class RvcRunMode(Cluster):
     onMode: 'typing.Union[None, Nullable, uint]' = None
     generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
     acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])
-    eventList: 'typing.List[uint]' = field(default_factory=lambda: [])
     attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])
     featureMap: 'uint' = 0
     clusterRevision: 'uint' = 0
@@ -59,7 +57,7 @@ class RvcRunMode(Cluster):
             # to kUnknownEnumValue. This is a helper enum value that should only
             # be used by code to process how it handles receiving an unknown
             # enum value. This specific value should never be transmitted.
-            kUnknownEnumValue = 73
+            kUnknownEnumValue = 0
 
         class ModeTag(MatterIntEnum):
             kAuto = 0x00
@@ -79,7 +77,7 @@ class RvcRunMode(Cluster):
             # to kUnknownEnumValue. This is a helper enum value that should only
             # be used by code to process how it handles receiving an unknown
             # enum value. This specific value should never be transmitted.
-            kUnknownEnumValue = 16387
+            kUnknownEnumValue = 10
 
     class Bitmaps:
         class Feature(IntFlag):
@@ -94,12 +92,12 @@ class RvcRunMode(Cluster):
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="label", Tag=0, Type=str),
                         ClusterObjectFieldDescriptor(Label="mode", Tag=1, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="modeTags", Tag=2, Type=typing.List[typing.Optional[RvcRunMode.Structs.ModeTagStruct]]),
+                        ClusterObjectFieldDescriptor(Label="modeTags", Tag=2, Type=typing.List[RvcRunMode.Structs.ModeTagStruct]),
                     ])
 
             label: 'str' = ""
             mode: 'uint' = 0
-            modeTags: 'typing.List[typing.Optional[RvcRunMode.Structs.ModeTagStruct]]' = field(default_factory=lambda: [])
+            modeTags: 'typing.List[RvcRunMode.Structs.ModeTagStruct]' = field(default_factory=lambda: [])
 
         @dataclass
         class ModeTagStruct(ClusterObject):
@@ -239,22 +237,6 @@ class RvcRunMode(Cluster):
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
                 return 0x0000FFF9
-
-            @ChipUtility.classproperty
-            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.List[uint])
-
-            value: 'typing.List[uint]' = field(default_factory=lambda: [])
-
-        @dataclass
-        class EventList(ClusterAttributeDescriptor):
-            @ChipUtility.classproperty
-            def cluster_id(cls) -> int:
-                return 0x00000054
-
-            @ChipUtility.classproperty
-            def attribute_id(cls) -> int:
-                return 0x0000FFFA
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
