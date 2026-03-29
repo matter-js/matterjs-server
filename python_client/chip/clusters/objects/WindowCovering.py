@@ -101,7 +101,7 @@ class WindowCovering(Cluster):
             kAwning = 0x05
             kShutter = 0x06
             kTiltBlindTiltOnly = 0x07
-            kTiltBlindLift = 0x08
+            kTiltBlindLiftAndTilt = 0x08
             kProjectorScreen = 0x09
             kUnknown = 0xFF
             # All received enum values that are not listed above will be mapped
