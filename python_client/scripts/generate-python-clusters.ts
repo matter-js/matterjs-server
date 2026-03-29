@@ -587,7 +587,19 @@ function resolveScalarType(
     knownDatatypes: Map<string, { metatype: string; clusterName: string }>,
 ): PythonType {
     if (!type) {
-        return { annotation: "uint", defaultValue: "0", needsFactory: false };
+        // No explicit type — fall back to metatype if available
+        switch (metatype) {
+            case "boolean":
+                return { annotation: "bool", defaultValue: "False", needsFactory: false };
+            case "string":
+                return { annotation: "str", defaultValue: '""', needsFactory: false };
+            case "bytes":
+                return { annotation: "bytes", defaultValue: 'b""', needsFactory: false };
+            case "float":
+                return { annotation: "float32", defaultValue: "0.0", needsFactory: false };
+            default:
+                return { annotation: "uint", defaultValue: "0", needsFactory: false };
+        }
     }
 
     // Check if it's a reference to a known datatype (enum, bitmap, struct)
