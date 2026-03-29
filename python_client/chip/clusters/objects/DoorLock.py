@@ -23,8 +23,8 @@ class DoorLock(Cluster):
     def descriptor(cls) -> ClusterObjectDescriptor:
         return ClusterObjectDescriptor(
             Fields=[
-                ClusterObjectFieldDescriptor(Label="lockState", Tag=0x00000000, Type=typing.Union[Nullable, DoorLock.Enums.LockStateEnum]),
-                ClusterObjectFieldDescriptor(Label="lockType", Tag=0x00000001, Type=DoorLock.Enums.LockTypeEnum),
+                ClusterObjectFieldDescriptor(Label="lockState", Tag=0x00000000, Type=typing.Union[Nullable, DoorLock.Enums.DlLockState]),
+                ClusterObjectFieldDescriptor(Label="lockType", Tag=0x00000001, Type=DoorLock.Enums.DlLockType),
                 ClusterObjectFieldDescriptor(Label="actuatorEnabled", Tag=0x00000002, Type=bool),
                 ClusterObjectFieldDescriptor(Label="doorState", Tag=0x00000003, Type=typing.Union[None, Nullable, DoorLock.Enums.DoorStateEnum]),
                 ClusterObjectFieldDescriptor(Label="doorOpenEvents", Tag=0x00000004, Type=typing.Optional[uint]),
@@ -77,8 +77,8 @@ class DoorLock(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    lockState: typing.Union[Nullable, DoorLock.Enums.LockStateEnum] = NullValue
-    lockType: DoorLock.Enums.LockTypeEnum = 0
+    lockState: typing.Union[Nullable, DoorLock.Enums.DlLockState] = NullValue
+    lockType: DoorLock.Enums.DlLockType = 0
     actuatorEnabled: bool = False
     doorState: typing.Union[None, Nullable, DoorLock.Enums.DoorStateEnum] = None
     doorOpenEvents: typing.Optional[uint] = None
@@ -297,7 +297,7 @@ class DoorLock(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 10
 
-        class LockStateEnum(MatterIntEnum):
+        class DlLockState(MatterIntEnum):
             kNotFullyLocked = 0x00
             kLocked = 0x01
             kUnlocked = 0x02
@@ -308,7 +308,7 @@ class DoorLock(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 4
 
-        class LockTypeEnum(MatterIntEnum):
+        class DlLockType(MatterIntEnum):
             kDeadBolt = 0x00
             kMagnetic = 0x01
             kOther = 0x02
@@ -358,7 +358,7 @@ class DoorLock(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 3
 
-        class StatusCodeEnum(MatterIntEnum):
+        class DlStatus(MatterIntEnum):
             kDuplicate = 0x02
             kOccupied = 0x03
             # All received enum values that are not listed above will be mapped
@@ -1375,9 +1375,9 @@ class DoorLock(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Union[Nullable, DoorLock.Enums.LockStateEnum])
+                return ClusterObjectFieldDescriptor(Type=typing.Union[Nullable, DoorLock.Enums.DlLockState])
 
-            value: typing.Union[Nullable, DoorLock.Enums.LockStateEnum] = NullValue
+            value: typing.Union[Nullable, DoorLock.Enums.DlLockState] = NullValue
 
         @dataclass
         class LockType(ClusterAttributeDescriptor):
@@ -1391,9 +1391,9 @@ class DoorLock(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=DoorLock.Enums.LockTypeEnum)
+                return ClusterObjectFieldDescriptor(Type=DoorLock.Enums.DlLockType)
 
-            value: DoorLock.Enums.LockTypeEnum = 0
+            value: DoorLock.Enums.DlLockType = 0
 
         @dataclass
         class ActuatorEnabled(ClusterAttributeDescriptor):
