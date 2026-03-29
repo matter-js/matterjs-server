@@ -24,7 +24,7 @@ class InovelliCluster(Cluster):
             Fields=[
                 ClusterObjectFieldDescriptor(Label="ledIndicatorIntensityOn", Tag=0x122F0061, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="ledIndicatorIntensityOff", Tag=0x122F0062, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="clearNotificationWithConfigDoubleTap", Tag=0x122F0106, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="clearNotificationWithConfigDoubleTap", Tag=0x122F0106, Type=typing.Optional[bool]),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="eventList", Tag=0x0000FFFA, Type=typing.List[uint]),
@@ -35,7 +35,7 @@ class InovelliCluster(Cluster):
 
     ledIndicatorIntensityOn: typing.Optional[uint] = None
     ledIndicatorIntensityOff: typing.Optional[uint] = None
-    clearNotificationWithConfigDoubleTap: typing.Optional[uint] = None
+    clearNotificationWithConfigDoubleTap: typing.Optional[bool] = None
     generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
     acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
     eventList: typing.List[uint] = field(default_factory=lambda: [])
@@ -88,9 +88,9 @@ class InovelliCluster(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[bool])
 
-            value: typing.Optional[uint] = None
+            value: typing.Optional[bool] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
