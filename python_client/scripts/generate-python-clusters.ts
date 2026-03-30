@@ -597,6 +597,10 @@ function resolveScalarType(
                 return { annotation: "bytes", defaultValue: 'b""', needsFactory: false };
             case "float":
                 return { annotation: "float32", defaultValue: "0.0", needsFactory: false };
+            case "integer":
+                // Without an explicit type, we can't distinguish signed/unsigned.
+                // Default to uint to match the CHIP SDK convention for most attributes.
+                return { annotation: "uint", defaultValue: "0", needsFactory: false };
             default:
                 return { annotation: "uint", defaultValue: "0", needsFactory: false };
         }
@@ -645,10 +649,9 @@ function resolveScalarType(
             }
             return { annotation: "float", defaultValue: "0.0", needsFactory: false };
         case "integer":
-            if (type.startsWith("int")) {
-                return { annotation: "int", defaultValue: "0", needsFactory: false };
-            }
-            return { annotation: "uint", defaultValue: "0", needsFactory: false };
+            // Check both explicit int types (int8, int16, ...) and semantic type
+            // aliases (temperature → int16, power-mW → int64, etc.)
+            return resolvePrimitiveByName(type);
         default:
             // For base primitive types by name
             return resolvePrimitiveByName(type);
@@ -656,6 +659,18 @@ function resolveScalarType(
 }
 
 function resolvePrimitiveByName(type: string): PythonType {
+    // Check for signed integer type aliases first (global Matter types that
+    // resolve to int16/int64 — temperatures, power, energy, voltage, etc.)
+    if (type.startsWith("int") ||
+        type === "temperature" ||
+        type.startsWith("power-") ||
+        type.startsWith("energy-") ||
+        type.startsWith("amperage-") ||
+        type.startsWith("voltage-") ||
+        type === "money") {
+        return { annotation: "int", defaultValue: "0", needsFactory: false };
+    }
+
     switch (type) {
         case "bool":
             return { annotation: "bool", defaultValue: "False", needsFactory: false };
