@@ -225,8 +225,6 @@ class MatterEndpoint:
         # extract device types from Descriptor Cluster
         if cluster := self.get_cluster(Clusters.Descriptor):
             for dev_info in cluster.deviceTypeList:
-                if dev_info is None:
-                    continue
                 device_type = DEVICE_TYPES.get(dev_info.deviceType)
                 if device_type is None:
                     LOGGER.debug("Found unknown device type %s", dev_info)
