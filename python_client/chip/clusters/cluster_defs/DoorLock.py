@@ -57,7 +57,7 @@ class DoorLock(Cluster):
                 ClusterObjectFieldDescriptor(Label="wrongCodeEntryLimit", Tag=0x00000030, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="userCodeTemporaryDisableTime", Tag=0x00000031, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="sendPINOverTheAir", Tag=0x00000032, Type=typing.Optional[bool]),
-                ClusterObjectFieldDescriptor(Label="requirePINForRemoteOperation", Tag=0x00000033, Type=typing.Optional[bool]),
+                ClusterObjectFieldDescriptor(Label="requirePINforRemoteOperation", Tag=0x00000033, Type=typing.Optional[bool]),
                 ClusterObjectFieldDescriptor(Label="securityLevel", Tag=0x00000034, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="expiringUserTimeout", Tag=0x00000035, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="aliroReaderVerificationKey", Tag=0x00000080, Type=typing.Union[None, Nullable, bytes]),
@@ -111,7 +111,7 @@ class DoorLock(Cluster):
     wrongCodeEntryLimit: typing.Optional[uint] = None
     userCodeTemporaryDisableTime: typing.Optional[uint] = None
     sendPINOverTheAir: typing.Optional[bool] = None
-    requirePINForRemoteOperation: typing.Optional[bool] = None
+    requirePINforRemoteOperation: typing.Optional[bool] = None
     securityLevel: typing.Optional[uint] = None
     expiringUserTimeout: typing.Optional[uint] = None
     aliroReaderVerificationKey: typing.Union[None, Nullable, bytes] = None

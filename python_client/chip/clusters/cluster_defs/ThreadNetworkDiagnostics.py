@@ -299,10 +299,10 @@ class ThreadNetworkDiagnostics(Cluster):
                         ClusterObjectFieldDescriptor(Label="pendingTimestampPresent", Tag=1, Type=bool),
                         ClusterObjectFieldDescriptor(Label="masterKeyPresent", Tag=2, Type=bool),
                         ClusterObjectFieldDescriptor(Label="networkNamePresent", Tag=3, Type=bool),
-                        ClusterObjectFieldDescriptor(Label="extendedPanIDPresent", Tag=4, Type=bool),
+                        ClusterObjectFieldDescriptor(Label="extendedPanIdPresent", Tag=4, Type=bool),
                         ClusterObjectFieldDescriptor(Label="meshLocalPrefixPresent", Tag=5, Type=bool),
                         ClusterObjectFieldDescriptor(Label="delayPresent", Tag=6, Type=bool),
-                        ClusterObjectFieldDescriptor(Label="panIDPresent", Tag=7, Type=bool),
+                        ClusterObjectFieldDescriptor(Label="panIdPresent", Tag=7, Type=bool),
                         ClusterObjectFieldDescriptor(Label="channelPresent", Tag=8, Type=bool),
                         ClusterObjectFieldDescriptor(Label="pskcPresent", Tag=9, Type=bool),
                         ClusterObjectFieldDescriptor(Label="securityPolicyPresent", Tag=10, Type=bool),
@@ -313,10 +313,10 @@ class ThreadNetworkDiagnostics(Cluster):
             pendingTimestampPresent: bool = False
             masterKeyPresent: bool = False
             networkNamePresent: bool = False
-            extendedPanIDPresent: bool = False
+            extendedPanIdPresent: bool = False
             meshLocalPrefixPresent: bool = False
             delayPresent: bool = False
-            panIDPresent: bool = False
+            panIdPresent: bool = False
             channelPresent: bool = False
             pskcPresent: bool = False
             securityPolicyPresent: bool = False

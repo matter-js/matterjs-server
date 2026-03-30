@@ -140,21 +140,21 @@ class GeneralDiagnostics(Cluster):
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="name", Tag=0, Type=str),
                         ClusterObjectFieldDescriptor(Label="isOperational", Tag=1, Type=bool),
-                        ClusterObjectFieldDescriptor(Label="offPremiseServicesReachableIPV4", Tag=2, Type=typing.Union[Nullable, bool]),
-                        ClusterObjectFieldDescriptor(Label="offPremiseServicesReachableIPV6", Tag=3, Type=typing.Union[Nullable, bool]),
+                        ClusterObjectFieldDescriptor(Label="offPremiseServicesReachableIPv4", Tag=2, Type=typing.Union[Nullable, bool]),
+                        ClusterObjectFieldDescriptor(Label="offPremiseServicesReachableIPv6", Tag=3, Type=typing.Union[Nullable, bool]),
                         ClusterObjectFieldDescriptor(Label="hardwareAddress", Tag=4, Type=bytes),
-                        ClusterObjectFieldDescriptor(Label="IPV4Addresses", Tag=5, Type=typing.List[bytes]),
-                        ClusterObjectFieldDescriptor(Label="IPV6Addresses", Tag=6, Type=typing.List[bytes]),
+                        ClusterObjectFieldDescriptor(Label="IPv4Addresses", Tag=5, Type=typing.List[bytes]),
+                        ClusterObjectFieldDescriptor(Label="IPv6Addresses", Tag=6, Type=typing.List[bytes]),
                         ClusterObjectFieldDescriptor(Label="type", Tag=7, Type=GeneralDiagnostics.Enums.InterfaceTypeEnum),
                     ])
 
             name: str = ""
             isOperational: bool = False
-            offPremiseServicesReachableIPV4: typing.Union[Nullable, bool] = NullValue
-            offPremiseServicesReachableIPV6: typing.Union[Nullable, bool] = NullValue
+            offPremiseServicesReachableIPv4: typing.Union[Nullable, bool] = NullValue
+            offPremiseServicesReachableIPv6: typing.Union[Nullable, bool] = NullValue
             hardwareAddress: bytes = b""
-            IPV4Addresses: typing.List[bytes] = field(default_factory=lambda: [])
-            IPV6Addresses: typing.List[bytes] = field(default_factory=lambda: [])
+            IPv4Addresses: typing.List[bytes] = field(default_factory=lambda: [])
+            IPv6Addresses: typing.List[bytes] = field(default_factory=lambda: [])
             type: GeneralDiagnostics.Enums.InterfaceTypeEnum = 0
 
     class Commands:
