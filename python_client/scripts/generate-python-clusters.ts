@@ -1610,8 +1610,21 @@ function generateObjectsReexport(_clusterNames: string[]): string {
     w.line(' Users can import chip.clusters.Objects to get all cluster definitions.');
     w.line('"""');
     w.blankLine();
+    w.line("# Re-export all cluster classes from per-cluster files");
     w.line("from chip.clusters._cluster_defs import *  # noqa: F401,F403");
-    w.line("from chip.clusters._cluster_defs import __all__  # noqa: F401");
+    w.blankLine();
+    w.line("# Also re-export base classes and primitive types for backward compatibility");
+    w.line("from chip.clusters.ClusterObjects import (  # noqa: F401");
+    w.line("    Cluster,");
+    w.line("    ClusterAttributeDescriptor,");
+    w.line("    ClusterCommand,");
+    w.line("    ClusterEvent,");
+    w.line("    ClusterObject,");
+    w.line("    ClusterObjectDescriptor,");
+    w.line("    ClusterObjectFieldDescriptor,");
+    w.line(")");
+    w.line("from chip.clusters.Types import NullValue, Nullable  # noqa: F401");
+    w.line("from chip.tlv import float32, uint  # noqa: F401");
 
     return w.toString();
 }
@@ -1623,34 +1636,9 @@ function generateObjectsReexport(_clusterNames: string[]): string {
 function generateObjectsInit(clusterNames: string[]): string {
     const w = new PythonWriter();
 
-    w.line('"""');
-    w.line(" Cluster object definitions (auto-generated, DO NOT edit).");
-    w.line("");
-    w.line(" Re-exported by chip.clusters.Objects for backward compatibility.");
-    w.line(" Contains cluster classes, base classes, and primitive types.");
-    w.line('"""');
+    w.line('"""Auto-generated cluster imports (DO NOT edit)."""');
     w.blankLine();
 
-    // Base class and primitive type assignments (before cluster imports so
-    // pylint/astroid sees them even if cluster imports are slow to resolve)
-    w.line("import chip.clusters.ClusterObjects as _co");
-    w.line("import chip.clusters.Types as _types");
-    w.line("import chip.tlv as _tlv");
-    w.blankLine();
-    w.line("Cluster = _co.Cluster");
-    w.line("ClusterAttributeDescriptor = _co.ClusterAttributeDescriptor");
-    w.line("ClusterCommand = _co.ClusterCommand");
-    w.line("ClusterEvent = _co.ClusterEvent");
-    w.line("ClusterObject = _co.ClusterObject");
-    w.line("ClusterObjectDescriptor = _co.ClusterObjectDescriptor");
-    w.line("ClusterObjectFieldDescriptor = _co.ClusterObjectFieldDescriptor");
-    w.line("NullValue = _types.NullValue");
-    w.line("Nullable = _types.Nullable");
-    w.line("float32 = _tlv.float32");
-    w.line("uint = _tlv.uint");
-    w.blankLine();
-
-    // Cluster imports
     for (const name of clusterNames) {
         w.line(`from .${name} import ${name}`);
     }
@@ -1658,17 +1646,6 @@ function generateObjectsInit(clusterNames: string[]): string {
     w.blankLine();
     w.line("__all__ = [");
     w.pushIndent();
-    w.line('"Cluster",');
-    w.line('"ClusterAttributeDescriptor",');
-    w.line('"ClusterCommand",');
-    w.line('"ClusterEvent",');
-    w.line('"ClusterObject",');
-    w.line('"ClusterObjectDescriptor",');
-    w.line('"ClusterObjectFieldDescriptor",');
-    w.line('"NullValue",');
-    w.line('"Nullable",');
-    w.line('"float32",');
-    w.line('"uint",');
     for (const name of clusterNames) {
         w.line(`"${name}",`);
     }
