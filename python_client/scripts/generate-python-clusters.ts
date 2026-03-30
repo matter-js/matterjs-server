@@ -1631,7 +1631,7 @@ function generateGlobalsFile(
 // Objects.py re-export file
 // ============================================================================
 
-function generateObjectsReexport(_clusterNames: string[]): string {
+function generateObjectsReexport(clusterNames: string[]): string {
     const w = new PythonWriter();
 
     w.line('"""');
@@ -1655,6 +1655,27 @@ function generateObjectsReexport(_clusterNames: string[]): string {
     w.line(")");
     w.line("from chip.clusters.Types import NullValue, Nullable  # noqa: F401");
     w.line("from chip.tlv import float32, uint  # noqa: F401");
+    w.blankLine();
+
+    // __all__ for mypy: explicitly list all exports so mypy knows what this module provides
+    w.line("__all__ = [");
+    w.pushIndent();
+    w.line('"Cluster",');
+    w.line('"ClusterAttributeDescriptor",');
+    w.line('"ClusterCommand",');
+    w.line('"ClusterEvent",');
+    w.line('"ClusterObject",');
+    w.line('"ClusterObjectDescriptor",');
+    w.line('"ClusterObjectFieldDescriptor",');
+    w.line('"NullValue",');
+    w.line('"Nullable",');
+    w.line('"float32",');
+    w.line('"uint",');
+    for (const name of clusterNames) {
+        w.line(`"${name}",`);
+    }
+    w.popIndent();
+    w.line("]");
 
     return w.toString();
 }
