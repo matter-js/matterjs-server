@@ -25,8 +25,8 @@ class DeviceEnergyManagement(Cluster):
                 ClusterObjectFieldDescriptor(Label="ESAType", Tag=0x00000000, Type=DeviceEnergyManagement.Enums.ESATypeEnum),
                 ClusterObjectFieldDescriptor(Label="ESACanGenerate", Tag=0x00000001, Type=bool),
                 ClusterObjectFieldDescriptor(Label="ESAState", Tag=0x00000002, Type=DeviceEnergyManagement.Enums.ESAStateEnum),
-                ClusterObjectFieldDescriptor(Label="absMinPower", Tag=0x00000003, Type=uint),
-                ClusterObjectFieldDescriptor(Label="absMaxPower", Tag=0x00000004, Type=uint),
+                ClusterObjectFieldDescriptor(Label="absMinPower", Tag=0x00000003, Type=int),
+                ClusterObjectFieldDescriptor(Label="absMaxPower", Tag=0x00000004, Type=int),
                 ClusterObjectFieldDescriptor(Label="powerAdjustmentCapability", Tag=0x00000005, Type=typing.Union[None, Nullable, DeviceEnergyManagement.Structs.PowerAdjustCapabilityStruct]),
                 ClusterObjectFieldDescriptor(Label="forecast", Tag=0x00000006, Type=typing.Union[None, Nullable, DeviceEnergyManagement.Structs.ForecastStruct]),
                 ClusterObjectFieldDescriptor(Label="optOutState", Tag=0x00000007, Type=typing.Optional[DeviceEnergyManagement.Enums.OptOutStateEnum]),
@@ -41,8 +41,8 @@ class DeviceEnergyManagement(Cluster):
     ESAType: DeviceEnergyManagement.Enums.ESATypeEnum = 0
     ESACanGenerate: bool = False
     ESAState: DeviceEnergyManagement.Enums.ESAStateEnum = 0
-    absMinPower: uint = 0
-    absMaxPower: uint = 0
+    absMinPower: int = 0
+    absMaxPower: int = 0
     powerAdjustmentCapability: typing.Union[None, Nullable, DeviceEnergyManagement.Structs.PowerAdjustCapabilityStruct] = None
     forecast: typing.Union[None, Nullable, DeviceEnergyManagement.Structs.ForecastStruct] = None
     optOutState: typing.Optional[DeviceEnergyManagement.Enums.OptOutStateEnum] = None
@@ -185,14 +185,14 @@ class DeviceEnergyManagement(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="minPower", Tag=0, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="maxPower", Tag=1, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="minPower", Tag=0, Type=int),
+                        ClusterObjectFieldDescriptor(Label="maxPower", Tag=1, Type=int),
                         ClusterObjectFieldDescriptor(Label="minDuration", Tag=2, Type=uint),
                         ClusterObjectFieldDescriptor(Label="maxDuration", Tag=3, Type=uint),
                     ])
 
-            minPower: uint = 0
-            maxPower: uint = 0
+            minPower: int = 0
+            maxPower: int = 0
             minDuration: uint = 0
             maxDuration: uint = 0
 
@@ -251,13 +251,13 @@ class DeviceEnergyManagement(Cluster):
                         ClusterObjectFieldDescriptor(Label="minPauseDuration", Tag=6, Type=typing.Optional[uint]),
                         ClusterObjectFieldDescriptor(Label="maxPauseDuration", Tag=7, Type=typing.Optional[uint]),
                         ClusterObjectFieldDescriptor(Label="manufacturerESAState", Tag=8, Type=typing.Optional[uint]),
-                        ClusterObjectFieldDescriptor(Label="nominalPower", Tag=9, Type=typing.Optional[uint]),
-                        ClusterObjectFieldDescriptor(Label="minPower", Tag=10, Type=typing.Optional[uint]),
-                        ClusterObjectFieldDescriptor(Label="maxPower", Tag=11, Type=typing.Optional[uint]),
-                        ClusterObjectFieldDescriptor(Label="nominalEnergy", Tag=12, Type=typing.Optional[uint]),
+                        ClusterObjectFieldDescriptor(Label="nominalPower", Tag=9, Type=typing.Optional[int]),
+                        ClusterObjectFieldDescriptor(Label="minPower", Tag=10, Type=typing.Optional[int]),
+                        ClusterObjectFieldDescriptor(Label="maxPower", Tag=11, Type=typing.Optional[int]),
+                        ClusterObjectFieldDescriptor(Label="nominalEnergy", Tag=12, Type=typing.Optional[int]),
                         ClusterObjectFieldDescriptor(Label="costs", Tag=13, Type=typing.Optional[typing.List[DeviceEnergyManagement.Structs.CostStruct]]),
-                        ClusterObjectFieldDescriptor(Label="minPowerAdjustment", Tag=14, Type=typing.Optional[uint]),
-                        ClusterObjectFieldDescriptor(Label="maxPowerAdjustment", Tag=15, Type=typing.Optional[uint]),
+                        ClusterObjectFieldDescriptor(Label="minPowerAdjustment", Tag=14, Type=typing.Optional[int]),
+                        ClusterObjectFieldDescriptor(Label="maxPowerAdjustment", Tag=15, Type=typing.Optional[int]),
                         ClusterObjectFieldDescriptor(Label="minDurationAdjustment", Tag=16, Type=typing.Optional[uint]),
                         ClusterObjectFieldDescriptor(Label="maxDurationAdjustment", Tag=17, Type=typing.Optional[uint]),
                     ])
@@ -271,13 +271,13 @@ class DeviceEnergyManagement(Cluster):
             minPauseDuration: typing.Optional[uint] = None
             maxPauseDuration: typing.Optional[uint] = None
             manufacturerESAState: typing.Optional[uint] = None
-            nominalPower: typing.Optional[uint] = None
-            minPower: typing.Optional[uint] = None
-            maxPower: typing.Optional[uint] = None
-            nominalEnergy: typing.Optional[uint] = None
+            nominalPower: typing.Optional[int] = None
+            minPower: typing.Optional[int] = None
+            maxPower: typing.Optional[int] = None
+            nominalEnergy: typing.Optional[int] = None
             costs: typing.Optional[typing.List[DeviceEnergyManagement.Structs.CostStruct]] = None
-            minPowerAdjustment: typing.Optional[uint] = None
-            maxPowerAdjustment: typing.Optional[uint] = None
+            minPowerAdjustment: typing.Optional[int] = None
+            maxPowerAdjustment: typing.Optional[int] = None
             minDurationAdjustment: typing.Optional[uint] = None
             maxDurationAdjustment: typing.Optional[uint] = None
 
@@ -288,12 +288,12 @@ class DeviceEnergyManagement(Cluster):
                 return ClusterObjectDescriptor(
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="slotIndex", Tag=0, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="nominalPower", Tag=1, Type=typing.Optional[uint]),
+                        ClusterObjectFieldDescriptor(Label="nominalPower", Tag=1, Type=typing.Optional[int]),
                         ClusterObjectFieldDescriptor(Label="duration", Tag=2, Type=uint),
                     ])
 
             slotIndex: uint = 0
-            nominalPower: typing.Optional[uint] = None
+            nominalPower: typing.Optional[int] = None
             duration: uint = 0
 
         @dataclass
@@ -304,15 +304,15 @@ class DeviceEnergyManagement(Cluster):
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="startTime", Tag=0, Type=uint),
                         ClusterObjectFieldDescriptor(Label="duration", Tag=1, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="nominalPower", Tag=2, Type=typing.Optional[uint]),
-                        ClusterObjectFieldDescriptor(Label="maximumEnergy", Tag=3, Type=typing.Optional[uint]),
+                        ClusterObjectFieldDescriptor(Label="nominalPower", Tag=2, Type=typing.Optional[int]),
+                        ClusterObjectFieldDescriptor(Label="maximumEnergy", Tag=3, Type=typing.Optional[int]),
                         ClusterObjectFieldDescriptor(Label="loadControl", Tag=4, Type=typing.Optional[int]),
                     ])
 
             startTime: uint = 0
             duration: uint = 0
-            nominalPower: typing.Optional[uint] = None
-            maximumEnergy: typing.Optional[uint] = None
+            nominalPower: typing.Optional[int] = None
+            maximumEnergy: typing.Optional[int] = None
             loadControl: typing.Optional[int] = None
 
     class Commands:
@@ -327,12 +327,12 @@ class DeviceEnergyManagement(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="power", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="power", Tag=0, Type=int),
                         ClusterObjectFieldDescriptor(Label="duration", Tag=1, Type=uint),
                         ClusterObjectFieldDescriptor(Label="cause", Tag=2, Type=DeviceEnergyManagement.Enums.AdjustmentCauseEnum),
                     ])
 
-            power: uint = 0
+            power: int = 0
             duration: uint = 0
             cause: DeviceEnergyManagement.Enums.AdjustmentCauseEnum = 0
 
@@ -513,9 +513,9 @@ class DeviceEnergyManagement(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=uint)
+                return ClusterObjectFieldDescriptor(Type=int)
 
-            value: uint = 0
+            value: int = 0
 
         @dataclass
         class AbsMaxPower(ClusterAttributeDescriptor):
@@ -529,9 +529,9 @@ class DeviceEnergyManagement(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=uint)
+                return ClusterObjectFieldDescriptor(Type=int)
 
-            value: uint = 0
+            value: int = 0
 
         @dataclass
         class PowerAdjustmentCapability(ClusterAttributeDescriptor):
@@ -711,12 +711,12 @@ class DeviceEnergyManagement(Cluster):
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="cause", Tag=0, Type=DeviceEnergyManagement.Enums.CauseEnum),
                         ClusterObjectFieldDescriptor(Label="duration", Tag=1, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="energyUse", Tag=2, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="energyUse", Tag=2, Type=int),
                     ])
 
             cause: DeviceEnergyManagement.Enums.CauseEnum = 0
             duration: uint = 0
-            energyUse: uint = 0
+            energyUse: int = 0
 
         @dataclass
         class Paused(ClusterEvent):

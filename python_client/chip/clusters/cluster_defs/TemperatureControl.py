@@ -22,10 +22,10 @@ class TemperatureControl(Cluster):
     def descriptor(cls) -> ClusterObjectDescriptor:
         return ClusterObjectDescriptor(
             Fields=[
-                ClusterObjectFieldDescriptor(Label="temperatureSetpoint", Tag=0x00000000, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="minTemperature", Tag=0x00000001, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="maxTemperature", Tag=0x00000002, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="step", Tag=0x00000003, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="temperatureSetpoint", Tag=0x00000000, Type=typing.Optional[int]),
+                ClusterObjectFieldDescriptor(Label="minTemperature", Tag=0x00000001, Type=typing.Optional[int]),
+                ClusterObjectFieldDescriptor(Label="maxTemperature", Tag=0x00000002, Type=typing.Optional[int]),
+                ClusterObjectFieldDescriptor(Label="step", Tag=0x00000003, Type=typing.Optional[int]),
                 ClusterObjectFieldDescriptor(Label="selectedTemperatureLevel", Tag=0x00000004, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="supportedTemperatureLevels", Tag=0x00000005, Type=typing.Optional[typing.List[str]]),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
@@ -36,10 +36,10 @@ class TemperatureControl(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    temperatureSetpoint: typing.Optional[uint] = None
-    minTemperature: typing.Optional[uint] = None
-    maxTemperature: typing.Optional[uint] = None
-    step: typing.Optional[uint] = None
+    temperatureSetpoint: typing.Optional[int] = None
+    minTemperature: typing.Optional[int] = None
+    maxTemperature: typing.Optional[int] = None
+    step: typing.Optional[int] = None
     selectedTemperatureLevel: typing.Optional[uint] = None
     supportedTemperatureLevels: typing.Optional[typing.List[str]] = None
     generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
@@ -67,11 +67,11 @@ class TemperatureControl(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="targetTemperature", Tag=0, Type=typing.Optional[uint]),
+                        ClusterObjectFieldDescriptor(Label="targetTemperature", Tag=0, Type=typing.Optional[int]),
                         ClusterObjectFieldDescriptor(Label="targetTemperatureLevel", Tag=1, Type=typing.Optional[uint]),
                     ])
 
-            targetTemperature: typing.Optional[uint] = None
+            targetTemperature: typing.Optional[int] = None
             targetTemperatureLevel: typing.Optional[uint] = None
 
     class Attributes:
@@ -87,9 +87,9 @@ class TemperatureControl(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[int])
 
-            value: typing.Optional[uint] = None
+            value: typing.Optional[int] = None
 
         @dataclass
         class MinTemperature(ClusterAttributeDescriptor):
@@ -103,9 +103,9 @@ class TemperatureControl(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[int])
 
-            value: typing.Optional[uint] = None
+            value: typing.Optional[int] = None
 
         @dataclass
         class MaxTemperature(ClusterAttributeDescriptor):
@@ -119,9 +119,9 @@ class TemperatureControl(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[int])
 
-            value: typing.Optional[uint] = None
+            value: typing.Optional[int] = None
 
         @dataclass
         class Step(ClusterAttributeDescriptor):
@@ -135,9 +135,9 @@ class TemperatureControl(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[int])
 
-            value: typing.Optional[uint] = None
+            value: typing.Optional[int] = None
 
         @dataclass
         class SelectedTemperatureLevel(ClusterAttributeDescriptor):

@@ -89,14 +89,14 @@ class ElectricalEnergyMeasurement(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="energy", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="energy", Tag=0, Type=int),
                         ClusterObjectFieldDescriptor(Label="startTimestamp", Tag=1, Type=typing.Optional[uint]),
                         ClusterObjectFieldDescriptor(Label="endTimestamp", Tag=2, Type=typing.Optional[uint]),
                         ClusterObjectFieldDescriptor(Label="startSystime", Tag=3, Type=typing.Optional[uint]),
                         ClusterObjectFieldDescriptor(Label="endSystime", Tag=4, Type=typing.Optional[uint]),
                     ])
 
-            energy: uint = 0
+            energy: int = 0
             startTimestamp: typing.Optional[uint] = None
             endTimestamp: typing.Optional[uint] = None
             startSystime: typing.Optional[uint] = None

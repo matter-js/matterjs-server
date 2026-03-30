@@ -25,7 +25,7 @@ class WaterHeaterManagement(Cluster):
                 ClusterObjectFieldDescriptor(Label="heaterTypes", Tag=0x00000000, Type=WaterHeaterManagement.Bitmaps.WaterHeaterHeatSourceBitmap),
                 ClusterObjectFieldDescriptor(Label="heatDemand", Tag=0x00000001, Type=WaterHeaterManagement.Bitmaps.WaterHeaterHeatSourceBitmap),
                 ClusterObjectFieldDescriptor(Label="tankVolume", Tag=0x00000002, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="estimatedHeatRequired", Tag=0x00000003, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="estimatedHeatRequired", Tag=0x00000003, Type=typing.Optional[int]),
                 ClusterObjectFieldDescriptor(Label="tankPercentage", Tag=0x00000004, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="boostState", Tag=0x00000005, Type=WaterHeaterManagement.Enums.BoostStateEnum),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
@@ -39,7 +39,7 @@ class WaterHeaterManagement(Cluster):
     heaterTypes: WaterHeaterManagement.Bitmaps.WaterHeaterHeatSourceBitmap = 0
     heatDemand: WaterHeaterManagement.Bitmaps.WaterHeaterHeatSourceBitmap = 0
     tankVolume: typing.Optional[uint] = None
-    estimatedHeatRequired: typing.Optional[uint] = None
+    estimatedHeatRequired: typing.Optional[int] = None
     tankPercentage: typing.Optional[uint] = None
     boostState: WaterHeaterManagement.Enums.BoostStateEnum = 0
     generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
@@ -81,7 +81,7 @@ class WaterHeaterManagement(Cluster):
                         ClusterObjectFieldDescriptor(Label="duration", Tag=0, Type=uint),
                         ClusterObjectFieldDescriptor(Label="oneShot", Tag=1, Type=typing.Optional[bool]),
                         ClusterObjectFieldDescriptor(Label="emergencyBoost", Tag=2, Type=typing.Optional[bool]),
-                        ClusterObjectFieldDescriptor(Label="temporarySetpoint", Tag=3, Type=typing.Optional[uint]),
+                        ClusterObjectFieldDescriptor(Label="temporarySetpoint", Tag=3, Type=typing.Optional[int]),
                         ClusterObjectFieldDescriptor(Label="targetPercentage", Tag=4, Type=typing.Optional[uint]),
                         ClusterObjectFieldDescriptor(Label="targetReheat", Tag=5, Type=typing.Optional[uint]),
                     ])
@@ -89,7 +89,7 @@ class WaterHeaterManagement(Cluster):
             duration: uint = 0
             oneShot: typing.Optional[bool] = None
             emergencyBoost: typing.Optional[bool] = None
-            temporarySetpoint: typing.Optional[uint] = None
+            temporarySetpoint: typing.Optional[int] = None
             targetPercentage: typing.Optional[uint] = None
             targetReheat: typing.Optional[uint] = None
 
@@ -185,9 +185,9 @@ class WaterHeaterManagement(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[int])
 
-            value: typing.Optional[uint] = None
+            value: typing.Optional[int] = None
 
         @dataclass
         class TankPercentage(ClusterAttributeDescriptor):

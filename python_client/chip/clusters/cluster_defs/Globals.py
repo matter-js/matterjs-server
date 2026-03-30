@@ -281,11 +281,11 @@ class Globals:
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="amount", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="amount", Tag=0, Type=int),
                         ClusterObjectFieldDescriptor(Label="currency", Tag=1, Type=Globals.Structs.currency),
                     ])
 
-            amount: uint = 0
+            amount: int = 0
             currency: Globals.Structs.currency = field(default_factory=lambda: Globals.Structs.currency())
 
         @dataclass
