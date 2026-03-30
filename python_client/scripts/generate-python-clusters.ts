@@ -1601,7 +1601,7 @@ function generateGlobalsFile(
 // Objects.py re-export file
 // ============================================================================
 
-function generateObjectsReexport(clusterNames: string[]): string {
+function generateObjectsReexport(_clusterNames: string[]): string {
     const w = new PythonWriter();
 
     w.line('"""');
@@ -1610,9 +1610,11 @@ function generateObjectsReexport(clusterNames: string[]): string {
     w.line(' Users can import chip.clusters.Objects to get all cluster definitions.');
     w.line('"""');
     w.blankLine();
-
-    // Base classes and primitive types
-    w.line("from chip.clusters.ClusterObjects import (");
+    w.line("# Re-export all cluster classes from per-cluster files");
+    w.line("from chip.clusters._cluster_defs import *  # noqa: F401,F403");
+    w.blankLine();
+    w.line("# Also re-export base classes and primitive types for backward compatibility");
+    w.line("from chip.clusters.ClusterObjects import (  # noqa: F401");
     w.line("    Cluster,");
     w.line("    ClusterAttributeDescriptor,");
     w.line("    ClusterCommand,");
@@ -1621,15 +1623,8 @@ function generateObjectsReexport(clusterNames: string[]): string {
     w.line("    ClusterObjectDescriptor,");
     w.line("    ClusterObjectFieldDescriptor,");
     w.line(")");
-    w.line("from chip.clusters.Types import NullValue, Nullable");
-    w.line("from chip.tlv import float32, uint");
-    w.blankLine();
-
-    // Explicit cluster imports (no wildcard — better for static analysis)
-    for (const name of clusterNames) {
-        w.line(`from chip.clusters._cluster_defs.${name} import ${name}`);
-    }
-    w.blankLine();
+    w.line("from chip.clusters.Types import NullValue, Nullable  # noqa: F401");
+    w.line("from chip.tlv import float32, uint  # noqa: F401");
 
     return w.toString();
 }
@@ -1638,10 +1633,27 @@ function generateObjectsReexport(clusterNames: string[]): string {
 // _cluster_defs/__init__.py
 // ============================================================================
 
-function generateObjectsInit(_clusterNames: string[]): string {
-    // Empty __init__.py — only needed so per-cluster files' relative imports work.
-    // All public imports go through chip.clusters.Objects instead.
-    return "";
+function generateObjectsInit(clusterNames: string[]): string {
+    const w = new PythonWriter();
+
+    w.line('"""Auto-generated cluster imports (DO NOT edit)."""');
+    w.blankLine();
+
+    for (const name of clusterNames) {
+        w.line(`from .${name} import ${name}`);
+    }
+
+    w.blankLine();
+    w.line("__all__ = [");
+    w.pushIndent();
+    for (const name of clusterNames) {
+        w.line(`"${name}",`);
+    }
+    w.popIndent();
+    w.line("]");
+    w.blankLine();
+
+    return w.toString();
 }
 
 // ============================================================================
