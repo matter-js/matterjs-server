@@ -27,6 +27,31 @@ import "@matter-server/custom-clusters";
 import * as CustomClusterClasses from "../../packages/custom-clusters/dist/esm/clusters/index.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// Build a set of type names that resolve to signed integers by walking
+// the Matter.js datatype hierarchy. This avoids hardcoding type aliases
+// like "temperature", "power-mW", "SignedTemperature", etc.
+const SIGNED_INT_TYPES = new Set<string>();
+// Explicit signed int primitives
+for (const bits of [8, 16, 24, 32, 40, 48, 56, 64]) {
+    SIGNED_INT_TYPES.add(`int${bits}`);
+}
+// Global type aliases (e.g., temperature → int16, power-mW → int64)
+for (const child of Matter.children.filter(c => c.tag === "datatype")) {
+    const baseType = (child as any).type as string | undefined;
+    if (baseType && SIGNED_INT_TYPES.has(baseType)) {
+        SIGNED_INT_TYPES.add(child.name);
+    }
+}
+// Cluster-level type aliases (e.g., Thermostat.SignedTemperature → int8)
+for (const cluster of Matter.clusters) {
+    for (const dt of cluster.children.filter(c => c.tag === "datatype")) {
+        const baseType = (dt as any).type as string | undefined;
+        if (baseType && SIGNED_INT_TYPES.has(baseType)) {
+            SIGNED_INT_TYPES.add(dt.name);
+        }
+    }
+}
 const pythonClientDir = join(__dirname, "..");
 const objectsDir = join(pythonClientDir, "chip", "clusters", "cluster_defs");
 
@@ -607,8 +632,8 @@ function resolveScalarType(
             case "float":
                 return { annotation: "float32", defaultValue: "0.0", needsFactory: false };
             case "integer":
-                // Without an explicit type, we can't distinguish signed/unsigned.
-                // Default to uint to match the CHIP SDK convention for most attributes.
+                // No type name to look up in SIGNED_INT_TYPES, so we can't
+                // distinguish signed/unsigned. Default to uint.
                 return { annotation: "uint", defaultValue: "0", needsFactory: false };
             default:
                 return { annotation: "uint", defaultValue: "0", needsFactory: false };
@@ -668,17 +693,8 @@ function resolveScalarType(
 }
 
 function resolvePrimitiveByName(type: string): PythonType {
-    // Check for signed integer type aliases first (global Matter types that
-    // resolve to int16/int64 — temperatures, power, energy, voltage, etc.)
-    if (type.startsWith("int") ||
-        type === "temperature" ||
-        type === "SignedTemperature" ||
-        type === "TemperatureDifference" ||
-        type.startsWith("power-") ||
-        type.startsWith("energy-") ||
-        type.startsWith("amperage-") ||
-        type.startsWith("voltage-") ||
-        type === "money") {
+    // Check for signed integer types (resolved from Matter.js datatype hierarchy)
+    if (SIGNED_INT_TYPES.has(type)) {
         return { annotation: "int", defaultValue: "0", needsFactory: false };
     }
 
