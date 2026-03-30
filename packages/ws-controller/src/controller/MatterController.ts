@@ -97,43 +97,45 @@ export class MatterController {
         if (legacyData !== undefined) {
             const crypto = environment.get(Crypto);
             const baseStorage = await config.service.open(serverId);
-            if (legacyData.credentials && legacyData.fabricId) {
-                await LegacyDataInjector.injectCredentials(
-                    baseStorage.createContext("credentials"),
-                    baseStorage.createContext("fabrics"),
-                    crypto,
-                    legacyData.credentials,
-                    legacyData.fabric,
-                );
-            }
-            if (
-                (await LegacyDataInjector.injectNodeData(
-                    baseStorage,
-                    legacyData.nodeData,
-                    legacyData.fabric?.fabricIndex,
-                )) &&
-                legacyData.nodeData !== undefined
-            ) {
-                for (const [nodeIdStr, data] of Object.entries(legacyData.nodeData.nodes)) {
-                    const { date_commissioned: commissionedAt } = data;
-                    commissionedDates.set(nodeIdStr, Timestamp(new Date(commissionedAt).getTime()));
-                }
-            }
-
-            // Check if the nextNodeId needs to be updated based on legacy data
-            const lastNodeId = legacyData.nodeData?.last_node_id;
-            if (typeof lastNodeId === "number" || typeof lastNodeId === "bigint") {
-                // Compare as BigInt to safely handle both number and bigint types
-                if (BigInt(config.nextNodeId) <= BigInt(lastNodeId)) {
-                    const newNextNodeId = BigInt(lastNodeId) + 10n;
-                    logger.info(
-                        `Updating nextNodeId from ${config.nextNodeId} to ${newNextNodeId} (legacy last_node_id: ${lastNodeId})`,
+            try {
+                if (legacyData.credentials && legacyData.fabricId) {
+                    await LegacyDataInjector.injectCredentials(
+                        baseStorage.createContext("credentials"),
+                        baseStorage.createContext("fabrics"),
+                        crypto,
+                        legacyData.credentials,
+                        legacyData.fabric,
                     );
-                    await config.set({ nextNodeId: newNextNodeId });
                 }
-            }
+                if (
+                    (await LegacyDataInjector.injectNodeData(
+                        baseStorage,
+                        legacyData.nodeData,
+                        legacyData.fabric?.fabricIndex,
+                    )) &&
+                    legacyData.nodeData !== undefined
+                ) {
+                    for (const [nodeIdStr, data] of Object.entries(legacyData.nodeData.nodes)) {
+                        const { date_commissioned: commissionedAt } = data;
+                        commissionedDates.set(nodeIdStr, Timestamp(new Date(commissionedAt).getTime()));
+                    }
+                }
 
-            await baseStorage.close();
+                // Check if the nextNodeId needs to be updated based on legacy data
+                const lastNodeId = legacyData.nodeData?.last_node_id;
+                if (typeof lastNodeId === "number" || typeof lastNodeId === "bigint") {
+                    // Compare as BigInt to safely handle both number and bigint types
+                    if (BigInt(config.nextNodeId) <= BigInt(lastNodeId)) {
+                        const newNextNodeId = BigInt(lastNodeId) + 10n;
+                        logger.info(
+                            `Updating nextNodeId from ${config.nextNodeId} to ${newNextNodeId} (legacy last_node_id: ${lastNodeId})`,
+                        );
+                        await config.set({ nextNodeId: newNextNodeId });
+                    }
+                }
+            } finally {
+                await baseStorage.close();
+            }
         }
 
         await instance.initialize(legacyData?.vendorId, legacyData?.fabricId, commissionedDates);
