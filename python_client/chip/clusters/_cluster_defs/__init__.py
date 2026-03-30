@@ -1,11 +1,8 @@
 """
- Cluster object definitions.
- This file is auto-generated, DO NOT edit.
+ Cluster object definitions (auto-generated, DO NOT edit).
 
- This package serves as the canonical module for chip.clusters.Objects.
- On macOS (case-insensitive FS), 'objects' and 'Objects' resolve to the
- same path, so this __init__.py must contain everything that Objects.py
- would provide — cluster classes, base classes, and primitive types.
+ Re-exported by chip.clusters.Objects for backward compatibility.
+ Contains cluster classes, base classes, and primitive types.
 """
 
 import chip.clusters.ClusterObjects as _co

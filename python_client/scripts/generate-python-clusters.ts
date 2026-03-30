@@ -8,8 +8,8 @@
  * Generates Python chip cluster definitions from the Matter.js model.
  *
  * Produces:
- *   - python_client/chip/clusters/objects/<ClusterName>.py (one per cluster)
- *   - python_client/chip/clusters/objects/__init__.py
+ *   - python_client/chip/clusters/_cluster_defs/<ClusterName>.py (one per cluster)
+ *   - python_client/chip/clusters/_cluster_defs/__init__.py
  *   - python_client/chip/clusters/Objects.py (re-export)
  *   - python_client/matter_server/client/models/device_types.py
  *
@@ -28,7 +28,7 @@ import * as CustomClusterClasses from "../../packages/custom-clusters/dist/esm/c
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pythonClientDir = join(__dirname, "..");
-const objectsDir = join(pythonClientDir, "chip", "clusters", "objects");
+const objectsDir = join(pythonClientDir, "chip", "clusters", "_cluster_defs");
 
 // ============================================================================
 // Name conversion utilities
@@ -1608,34 +1608,26 @@ function generateObjectsReexport(_clusterNames: string[]): string {
     w.line(" Cluster object definitions.");
     w.line(" This file is auto-generated, DO NOT edit.");
     w.line(' Users can import chip.clusters.Objects to get all cluster definitions.');
-    w.line("");
-    w.line(" On case-sensitive filesystems (Linux), this file is the entry point.");
-    w.line(" On case-insensitive filesystems (macOS), chip/clusters/objects/__init__.py");
-    w.line(" is used instead (Objects and objects resolve to the same path).");
-    w.line(" Both files provide the same exports.");
     w.line('"""');
     w.blankLine();
-    w.line("from chip.clusters.objects import *  # noqa: F401,F403");
-    w.line("from chip.clusters.objects import __all__  # noqa: F401");
+    w.line("from chip.clusters._cluster_defs import *  # noqa: F401,F403");
+    w.line("from chip.clusters._cluster_defs import __all__  # noqa: F401");
 
     return w.toString();
 }
 
 // ============================================================================
-// objects/__init__.py
+// _cluster_defs/__init__.py
 // ============================================================================
 
 function generateObjectsInit(clusterNames: string[]): string {
     const w = new PythonWriter();
 
     w.line('"""');
-    w.line(" Cluster object definitions.");
-    w.line(" This file is auto-generated, DO NOT edit.");
+    w.line(" Cluster object definitions (auto-generated, DO NOT edit).");
     w.line("");
-    w.line(" This package serves as the canonical module for chip.clusters.Objects.");
-    w.line(" On macOS (case-insensitive FS), 'objects' and 'Objects' resolve to the");
-    w.line(" same path, so this __init__.py must contain everything that Objects.py");
-    w.line(" would provide — cluster classes, base classes, and primitive types.");
+    w.line(" Re-exported by chip.clusters.Objects for backward compatibility.");
+    w.line(" Contains cluster classes, base classes, and primitive types.");
     w.line('"""');
     w.blankLine();
 
@@ -1853,7 +1845,7 @@ function main(): void {
         }
     }
 
-    // Generate objects/__init__.py
+    // Generate _cluster_defs/__init__.py
     const allNames = ["Globals", ...results.map(r => r.className).sort()];
     const initContent = generateObjectsInit(allNames);
     writeFileSync(join(objectsDir, "__init__.py"), initContent);
@@ -1889,7 +1881,7 @@ function main(): void {
         "",
     ];
     for (const r of customResults) {
-        customLines.push(`from chip.clusters.objects.${r.className} import ${r.className}`);
+        customLines.push(`from chip.clusters._cluster_defs.${r.className} import ${r.className}`);
     }
     customLines.push("");
     customLines.push("ALL_CUSTOM_CLUSTERS: dict = {");
