@@ -194,6 +194,9 @@ const K_VALUE_OVERRIDES: Record<string, string> = {
 
     // --- WindowCovering TypeEnum: chip SDK uses "TiltBlindLiftAndTilt" not "TiltBlindLift" ---
     TiltBlindLift: "TiltBlindLiftAndTilt",
+
+    // --- WindowCovering ModeBitmap: chip SDK uses "LedFeedback" not "LEDFeedback" ---
+    LedFeedback: "LedFeedback",
 };
 
 /**
@@ -234,6 +237,9 @@ const FIELD_NAME_OVERRIDES: Record<string, string> = {
     CommissioningArl:            "commissioningARL",
     // Note: chip SDK uppercases URL here (unlike dvbiUrl/posterArtUrl which keep "Url")
     ArlRequestFlowUrl:           "ARLRequestFlowUrl",
+
+    // --- LQI: CHIP SDK keeps lowercase "lqi" in struct fields ---
+    Lqi:                         "lqi",
 
     // --- CA: not in ACRONYMS (would conflict with ICAC/DAC/MAC handling) ---
     RootCaCertificate:           "rootCACertificate",
@@ -666,6 +672,8 @@ function resolvePrimitiveByName(type: string): PythonType {
     // resolve to int16/int64 — temperatures, power, energy, voltage, etc.)
     if (type.startsWith("int") ||
         type === "temperature" ||
+        type === "SignedTemperature" ||
+        type === "TemperatureDifference" ||
         type.startsWith("power-") ||
         type.startsWith("energy-") ||
         type.startsWith("amperage-") ||
