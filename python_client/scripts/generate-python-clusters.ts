@@ -214,8 +214,8 @@ const FIELD_NAME_OVERRIDES: Record<string, string> = {
     PartitionId:                 "partitionId",
     PartitionIdChangeCount:      "partitionIdChangeCount",
     RouterId:                    "routerId",
-    ExtendedPanIDPresent:        "extendedPanIdPresent",
-    PanIDPresent:                "panIdPresent",
+    ExtendedPanIdPresent:        "extendedPanIdPresent",
+    PanIdPresent:                "panIdPresent",
     AdminVendorId:               "adminVendorId",
 
     // --- NOC struct: old chip SDK used fully lowercase (no acronym expansion) ---
@@ -258,15 +258,18 @@ const FIELD_NAME_OVERRIDES: Record<string, string> = {
 
     // --- DoorLock quirks ---
     // Note: chip SDK lowercases "for" here (requirePINforRemoteOperation — not a typo)
-    RequirePINForRemoteOperation: "requirePINforRemoteOperation",
+    // Key must match the Matter.js model name (RequirePinForRemoteOperation), not the
+    // post-toChipName version (RequirePINForRemoteOperation).
+    RequirePinForRemoteOperation: "requirePINforRemoteOperation",
     // Note: chip SDK lowercases the "f" in "format" here (ACCapacityformat — chip SDK quirk)
     AcCapacityFormat:            "ACCapacityformat",
 
     // --- IPv4/IPv6: old chip SDK used "IPv4"/"IPv6" (capital I, lowercase v) ---
-    Ipv4Addresses:               "IPv4Addresses",
-    Ipv6Addresses:               "IPv6Addresses",
-    OffPremiseServicesReachableIPV4: "offPremiseServicesReachableIPv4",
-    OffPremiseServicesReachableIPV6: "offPremiseServicesReachableIPv6",
+    // Key must match the Matter.js model name (IPv4Addresses), not post-toChipName
+    IPv4Addresses:               "IPv4Addresses",
+    IPv6Addresses:               "IPv6Addresses",
+    OffPremiseServicesReachableIPv4: "offPremiseServicesReachableIPv4",
+    OffPremiseServicesReachableIPv6: "offPremiseServicesReachableIPv6",
 
     // --- ColorControl chromaticity coordinates: old chip SDK kept uppercase XY suffix ---
     ColorPointBx:                "colorPointBX",
