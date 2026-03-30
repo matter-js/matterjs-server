@@ -226,7 +226,9 @@ export function parseCliArgs(argv?: string[]): CliOptions {
                 );
 
                 if (normalizedInterfaceAddresses.length === 0) {
-                    throw new Error(`No valid IP address found for interface ${interfaceName}`);
+                    throw new InvalidArgumentError(
+                        `No valid IP address found for interface ${interfaceName}`,
+                    );
                 }
 
                 return normalizedInterfaceAddresses;
