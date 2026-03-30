@@ -595,14 +595,6 @@ function resolvePythonType(
             needsFactory: false,
         };
     } else if (isOptional) {
-        if (baseType.needsFactory) {
-            // Optional list
-            return {
-                annotation: `typing.Optional[${baseType.annotation}]`,
-                defaultValue: "None",
-                needsFactory: false,
-            };
-        }
         return {
             annotation: `typing.Optional[${baseType.annotation}]`,
             defaultValue: "None",
@@ -1035,11 +1027,7 @@ function generateClusterFile(
     for (const attr of clusterSpecificAttrs) {
         const pyType = resolveType(attr);
         const label = toCamelCase(attr.name, clusterName);
-        if (pyType.needsFactory) {
-            w.line(`${label}: ${pyType.annotation} = ${pyType.defaultValue}`);
-        } else {
-            w.line(`${label}: ${pyType.annotation} = ${pyType.defaultValue}`);
-        }
+        w.line(`${label}: ${pyType.annotation} = ${pyType.defaultValue}`);
     }
     // Global attribute fields
     w.line(`generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])`);
@@ -1087,7 +1075,7 @@ function generateClusterFile(
         }
 
         for (let i = 0; i < bitmaps.length; i++) {
-            generateBitmap(w, bitmaps[i]);
+            generateBitmap(w, bitmaps[i], clusterName);
             if (i < bitmaps.length - 1 || extraBitmaps.length > 0) {
                 w.blankLine();
             }
@@ -1251,8 +1239,8 @@ function generateEnum(w: PythonWriter, model: ValueModel, clusterName?: string):
 // Bitmap generation
 // ============================================================================
 
-function generateBitmap(w: PythonWriter, model: ValueModel): void {
-    w.line(`class ${toChipClassName(model.name)}(IntFlag):`);
+function generateBitmap(w: PythonWriter, model: ValueModel, clusterName?: string): void {
+    w.line(`class ${toChipClassName(model.name, clusterName)}(IntFlag):`);
     w.pushIndent();
 
     const members = model.children || [];
@@ -1287,12 +1275,12 @@ function generateBitmap(w: PythonWriter, model: ValueModel): void {
 function generateStruct(
     w: PythonWriter,
     model: ValueModel,
-    _clusterName: string,
+    clusterName: string,
     _datatypeRegistry: Map<string, { metatype: string; clusterName: string }>,
     resolveType: (m: ValueModel) => PythonType,
 ): void {
     w.line("@dataclass");
-    w.line(`class ${toChipClassName(model.name)}(ClusterObject):`);
+    w.line(`class ${toChipClassName(model.name, clusterName)}(ClusterObject):`);
     w.pushIndent();
 
     // Descriptor
@@ -1312,7 +1300,7 @@ function generateStruct(
         const vm = m as ValueModel;
         const pyType = resolveType(vm);
         const tag = m.id ?? 0;
-        w.line(`ClusterObjectFieldDescriptor(Label="${toCamelCase(m.name)}", Tag=${tag}, Type=${pyType.annotation}),`);
+        w.line(`ClusterObjectFieldDescriptor(Label="${toCamelCase(m.name, clusterName)}", Tag=${tag}, Type=${pyType.annotation}),`);
     }
 
     w.popIndent();
@@ -1325,7 +1313,7 @@ function generateStruct(
     for (const m of members) {
         const vm = m as ValueModel;
         const pyType = resolveType(vm);
-        const label = toCamelCase(m.name);
+        const label = toCamelCase(m.name, clusterName);
         w.line(`${label}: ${pyType.annotation} = ${pyType.defaultValue}`);
     }
 
@@ -1341,7 +1329,7 @@ function generateStruct(
 function generateCommand(
     w: PythonWriter,
     model: CommandModel,
-    _clusterName: string,
+    clusterName: string,
     clusterId: number,
     _datatypeRegistry: Map<string, { metatype: string; clusterName: string }>,
     resolveType: (m: ValueModel) => PythonType,
@@ -1353,11 +1341,11 @@ function generateCommand(
     // Determine response_type
     let responseType = "None";
     if (isClient && model.response && model.response !== "status") {
-        responseType = `'${toChipClassName(model.response)}'`;
+        responseType = `'${toChipClassName(model.response, clusterName)}'`;
     }
 
     w.line("@dataclass");
-    w.line(`class ${toChipClassName(model.name)}(ClusterCommand):`);
+    w.line(`class ${toChipClassName(model.name, clusterName)}(ClusterCommand):`);
     w.pushIndent();
 
     w.line(`cluster_id: typing.ClassVar[int] = ${hex8(clusterId)}`);
@@ -1389,7 +1377,7 @@ function generateCommand(
     for (const f of fields) {
         const vm = f as ValueModel;
         const pyType = resolveType(vm);
-        w.line(`ClusterObjectFieldDescriptor(Label="${toCamelCase(f.name)}", Tag=${f.id ?? 0}, Type=${pyType.annotation}),`);
+        w.line(`ClusterObjectFieldDescriptor(Label="${toCamelCase(f.name, clusterName)}", Tag=${f.id ?? 0}, Type=${pyType.annotation}),`);
     }
 
     w.popIndent();
@@ -1402,7 +1390,7 @@ function generateCommand(
     for (const f of fields) {
         const vm = f as ValueModel;
         const pyType = resolveType(vm);
-        w.line(`${toCamelCase(f.name)}: ${pyType.annotation} = ${pyType.defaultValue}`);
+        w.line(`${toCamelCase(f.name, clusterName)}: ${pyType.annotation} = ${pyType.defaultValue}`);
     }
 
     // No need for pass - the descriptor method is already present
@@ -1506,7 +1494,7 @@ function generateGlobalAttribute(
 function generateEvent(
     w: PythonWriter,
     model: EventModel,
-    _clusterName: string,
+    clusterName: string,
     clusterId: number,
     _datatypeRegistry: Map<string, { metatype: string; clusterName: string }>,
     resolveType: (m: ValueModel) => PythonType,
@@ -1514,7 +1502,7 @@ function generateEvent(
     const eventId = model.id ?? 0;
 
     w.line("@dataclass");
-    w.line(`class ${toChipClassName(model.name)}(ClusterEvent):`);
+    w.line(`class ${toChipClassName(model.name, clusterName)}(ClusterEvent):`);
     w.pushIndent();
 
     w.line("@ChipUtility.classproperty");
@@ -1545,7 +1533,7 @@ function generateEvent(
     for (const f of fields) {
         const vm = f as ValueModel;
         const pyType = resolveType(vm);
-        w.line(`ClusterObjectFieldDescriptor(Label="${toCamelCase(f.name)}", Tag=${f.id ?? 0}, Type=${pyType.annotation}),`);
+        w.line(`ClusterObjectFieldDescriptor(Label="${toCamelCase(f.name, clusterName)}", Tag=${f.id ?? 0}, Type=${pyType.annotation}),`);
     }
 
     w.popIndent();
@@ -1558,7 +1546,7 @@ function generateEvent(
     for (const f of fields) {
         const vm = f as ValueModel;
         const pyType = resolveType(vm);
-        w.line(`${toCamelCase(f.name)}: ${pyType.annotation} = ${pyType.defaultValue}`);
+        w.line(`${toCamelCase(f.name, clusterName)}: ${pyType.annotation} = ${pyType.defaultValue}`);
     }
 
     // No need for pass - cluster_id, event_id, and descriptor classpropertys are always present
@@ -1601,7 +1589,7 @@ function generateGlobalsFile(
         w.line("class Enums:");
         w.pushIndent();
         for (const e of globalEnums) {
-            generateEnum(w, e as ValueModel);
+            generateEnum(w, e as ValueModel, "Globals");
             w.blankLine();
         }
         w.popIndent();
