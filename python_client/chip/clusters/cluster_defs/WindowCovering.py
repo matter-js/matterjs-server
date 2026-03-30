@@ -173,7 +173,7 @@ class WindowCovering(Cluster):
             kMotorDirectionReversed = 0x1
             kCalibrationMode = 0x2
             kMaintenanceMode = 0x4
-            kLEDFeedback = 0x8
+            kLedFeedback = 0x8
 
         class OperationalStatus(IntFlag):
             kGlobal = 0x3

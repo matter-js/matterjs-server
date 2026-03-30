@@ -221,7 +221,7 @@ class ThreadNetworkDiagnostics(Cluster):
                         ClusterObjectFieldDescriptor(Label="rloc16", Tag=2, Type=uint),
                         ClusterObjectFieldDescriptor(Label="linkFrameCounter", Tag=3, Type=uint),
                         ClusterObjectFieldDescriptor(Label="mleFrameCounter", Tag=4, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="LQI", Tag=5, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="lqi", Tag=5, Type=uint),
                         ClusterObjectFieldDescriptor(Label="averageRssi", Tag=6, Type=typing.Union[Nullable, int]),
                         ClusterObjectFieldDescriptor(Label="lastRssi", Tag=7, Type=typing.Union[Nullable, int]),
                         ClusterObjectFieldDescriptor(Label="frameErrorRate", Tag=8, Type=uint),
@@ -237,7 +237,7 @@ class ThreadNetworkDiagnostics(Cluster):
             rloc16: uint = 0
             linkFrameCounter: uint = 0
             mleFrameCounter: uint = 0
-            LQI: uint = 0
+            lqi: uint = 0
             averageRssi: typing.Union[Nullable, int] = NullValue
             lastRssi: typing.Union[Nullable, int] = NullValue
             frameErrorRate: uint = 0

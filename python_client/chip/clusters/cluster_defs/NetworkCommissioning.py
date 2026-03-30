@@ -161,7 +161,7 @@ class NetworkCommissioning(Cluster):
                         ClusterObjectFieldDescriptor(Label="version", Tag=4, Type=typing.Optional[uint]),
                         ClusterObjectFieldDescriptor(Label="extendedAddress", Tag=5, Type=typing.Optional[bytes]),
                         ClusterObjectFieldDescriptor(Label="rssi", Tag=6, Type=typing.Optional[int]),
-                        ClusterObjectFieldDescriptor(Label="LQI", Tag=7, Type=typing.Optional[uint]),
+                        ClusterObjectFieldDescriptor(Label="lqi", Tag=7, Type=typing.Optional[uint]),
                     ])
 
             panId: typing.Optional[uint] = None
@@ -171,7 +171,7 @@ class NetworkCommissioning(Cluster):
             version: typing.Optional[uint] = None
             extendedAddress: typing.Optional[bytes] = None
             rssi: typing.Optional[int] = None
-            LQI: typing.Optional[uint] = None
+            lqi: typing.Optional[uint] = None
 
     class Commands:
         @dataclass
