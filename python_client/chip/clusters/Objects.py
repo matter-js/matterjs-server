@@ -5,7 +5,7 @@
 """
 
 # Re-export all cluster classes from per-cluster files
-from chip.clusters._cluster_defs import *  # noqa: F401,F403
+from chip.clusters.cluster_defs import *  # noqa: F401,F403
 
 # Also re-export base classes and primitive types for backward compatibility
 from chip.clusters.ClusterObjects import (  # noqa: F401

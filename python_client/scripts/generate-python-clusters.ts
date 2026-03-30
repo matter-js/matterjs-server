@@ -8,8 +8,8 @@
  * Generates Python chip cluster definitions from the Matter.js model.
  *
  * Produces:
- *   - python_client/chip/clusters/_cluster_defs/<ClusterName>.py (one per cluster)
- *   - python_client/chip/clusters/_cluster_defs/__init__.py
+ *   - python_client/chip/clusters/cluster_defs/<ClusterName>.py (one per cluster)
+ *   - python_client/chip/clusters/cluster_defs/__init__.py
  *   - python_client/chip/clusters/Objects.py (re-export)
  *   - python_client/matter_server/client/models/device_types.py
  *
@@ -28,7 +28,7 @@ import * as CustomClusterClasses from "../../packages/custom-clusters/dist/esm/c
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pythonClientDir = join(__dirname, "..");
-const objectsDir = join(pythonClientDir, "chip", "clusters", "_cluster_defs");
+const objectsDir = join(pythonClientDir, "chip", "clusters", "cluster_defs");
 
 // ============================================================================
 // Name conversion utilities
@@ -1611,7 +1611,7 @@ function generateObjectsReexport(_clusterNames: string[]): string {
     w.line('"""');
     w.blankLine();
     w.line("# Re-export all cluster classes from per-cluster files");
-    w.line("from chip.clusters._cluster_defs import *  # noqa: F401,F403");
+    w.line("from chip.clusters.cluster_defs import *  # noqa: F401,F403");
     w.blankLine();
     w.line("# Also re-export base classes and primitive types for backward compatibility");
     w.line("from chip.clusters.ClusterObjects import (  # noqa: F401");
@@ -1630,7 +1630,7 @@ function generateObjectsReexport(_clusterNames: string[]): string {
 }
 
 // ============================================================================
-// _cluster_defs/__init__.py
+// cluster_defs/__init__.py
 // ============================================================================
 
 function generateObjectsInit(clusterNames: string[]): string {
@@ -1822,7 +1822,7 @@ function main(): void {
         }
     }
 
-    // Generate _cluster_defs/__init__.py
+    // Generate cluster_defs/__init__.py
     const allNames = ["Globals", ...results.map(r => r.className).sort()];
     const initContent = generateObjectsInit(allNames);
     writeFileSync(join(objectsDir, "__init__.py"), initContent);
@@ -1858,7 +1858,7 @@ function main(): void {
         "",
     ];
     for (const r of customResults) {
-        customLines.push(`from chip.clusters._cluster_defs.${r.className} import ${r.className}`);
+        customLines.push(`from chip.clusters.cluster_defs.${r.className} import ${r.className}`);
     }
     customLines.push("");
     customLines.push("ALL_CUSTOM_CLUSTERS: dict = {");

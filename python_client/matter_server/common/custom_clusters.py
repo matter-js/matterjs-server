@@ -1,11 +1,11 @@
 """Custom (vendor-specific) cluster re-exports (auto-generated, DO NOT edit)."""
 
-from chip.clusters._cluster_defs.DraftElectricalMeasurementCluster import DraftElectricalMeasurementCluster
-from chip.clusters._cluster_defs.EveCluster import EveCluster
-from chip.clusters._cluster_defs.HeimanCluster import HeimanCluster
-from chip.clusters._cluster_defs.InovelliCluster import InovelliCluster
-from chip.clusters._cluster_defs.NeoCluster import NeoCluster
-from chip.clusters._cluster_defs.ThirdRealityMeteringCluster import ThirdRealityMeteringCluster
+from chip.clusters.cluster_defs.DraftElectricalMeasurementCluster import DraftElectricalMeasurementCluster
+from chip.clusters.cluster_defs.EveCluster import EveCluster
+from chip.clusters.cluster_defs.HeimanCluster import HeimanCluster
+from chip.clusters.cluster_defs.InovelliCluster import InovelliCluster
+from chip.clusters.cluster_defs.NeoCluster import NeoCluster
+from chip.clusters.cluster_defs.ThirdRealityMeteringCluster import ThirdRealityMeteringCluster
 
 ALL_CUSTOM_CLUSTERS: dict = {
     DraftElectricalMeasurementCluster.id: DraftElectricalMeasurementCluster,
