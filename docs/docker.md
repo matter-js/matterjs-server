@@ -92,22 +92,22 @@ For all available options, see the [CLI documentation](cli.md).
 
 All CLI options can be configured via environment variables, making it easy to configure the server without passing command-line arguments.
 
-| Variable              | Description                                          | Default              | Values / Notes                                                                  |
-|-----------------------|------------------------------------------------------|----------------------|---------------------------------------------------------------------------------|
-| `STORAGE_PATH`        | Path to store Matter fabric data                     | `/data`              | Any valid path                                                                  |
-| `PORT`                | WebSocket server port                                | `5580`               | Any valid port number                                                           |
-| `LISTEN_ADDRESS`      | IP address to bind WebSocket server                  | (all interfaces)     | Single IP address (use CLI for multiple)                                        |
-| `LOG_LEVEL`           | Server logging verbosity                             | `info`               | `critical`, `error`, `warning`, `info`, `debug`, `verbose`                      |
-| `LOG_FILE`            | Log file path (must include filename, not just dir)  | (none)               | e.g. `/data/logs/matter-server.log`                                             |
-| `PRIMARY_INTERFACE`   | Primary network interface for mDNS                   | (auto-detect)        | e.g., `eth0`, `en0`                                                             |
-| `ENABLE_TEST_NET_DCL` | Enable test-net DCL certificates                     | `false`              | `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`                                 |
-| `BLUETOOTH_ADAPTER`   | Bluetooth adapter HCI ID                             | (none)               | e.g., `0` for `hci0`, but see [this workaround](#device-discovery-via-host-ble) |
-| `DISABLE_OTA`         | Disable OTA update functionality                     | `false`              | `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`                                 |
-| `OTA_PROVIDER_DIR`    | Directory for OTA Provider files                     | (none)               | Any valid directory path                                                        |
-| `DISABLE_DASHBOARD`   | Disable the web dashboard                            | `false`              | `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`                                 |
-| `PRODUCTION_MODE`     | Force dashboard production mode (reverse proxy)      | `false`              | `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`                                 |
-| `VENDOR_ID`           | Vendor ID for the Fabric                             | `0xfff1`             | Any valid vendor ID                                                             |
-| `FABRIC_ID`           | Fabric ID for the Fabric                             | `1`                  | Any valid fabric ID                                                             |
+| Variable              | Description                                          | Default              | Values / Notes                                                                                                           |
+|-----------------------|------------------------------------------------------|----------------------|--------------------------------------------------------------------------------------------------------------------------|
+| `STORAGE_PATH`        | Path to store Matter fabric data                     | `/data`              | Any valid path                                                                                                           |
+| `PORT`                | WebSocket server port                                | `5580`               | Any valid port number                                                                                                    |
+| `LISTEN_ADDRESS`      | IP address(es) to bind WebSocket server              | (all interfaces)     | Set a specific IP address to bind to a single address. Using `{{ifname}}` expands to all IPs on that interface (v4/v6). |
+| `LOG_LEVEL`           | Server logging verbosity                             | `info`               | `critical`, `error`, `warning`, `info`, `debug`, `verbose`                                                               |
+| `LOG_FILE`            | Log file path (must include filename, not just dir)  | (none)               | e.g. `/data/logs/matter-server.log`                                                             |
+| `PRIMARY_INTERFACE`   | Primary network interface for mDNS                   | (auto-detect)        | e.g., `eth0`, `en0`                                                                             |
+| `ENABLE_TEST_NET_DCL` | Enable test-net DCL certificates                     | `false`              | `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`                                                 |
+| `BLUETOOTH_ADAPTER`   | Bluetooth adapter HCI ID                             | (none)               | e.g., `0` for `hci0`, but see [this workaround](#device-discovery-via-host-ble)                 |
+| `DISABLE_OTA`         | Disable OTA update functionality                     | `false`              | `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`                                                 |
+| `OTA_PROVIDER_DIR`    | Directory for OTA Provider files                     | (none)               | Any valid directory path                                                                        |
+| `DISABLE_DASHBOARD`   | Disable the web dashboard                            | `false`              | `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`                                                 |
+| `PRODUCTION_MODE`     | Force dashboard production mode (reverse proxy)      | `false`              | `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`                                                 |
+| `VENDOR_ID`           | Vendor ID for the Fabric                             | `0xfff1`             | Any valid vendor ID                                                                             |
+| `FABRIC_ID`           | Fabric ID for the Fabric                             | `1`                  | Any valid fabric ID                                                                             |
 
 > [!NOTE]
 > `LOG_FILE` must be a full file path including the filename, not a directory. The log is rotated
