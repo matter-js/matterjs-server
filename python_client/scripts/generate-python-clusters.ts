@@ -8,8 +8,8 @@
  * Generates Python chip cluster definitions from the Matter.js model.
  *
  * Produces:
- *   - python_client/chip/clusters/objects/<ClusterName>.py (one per cluster)
- *   - python_client/chip/clusters/objects/__init__.py
+ *   - python_client/chip/clusters/cluster_defs/<ClusterName>.py (one per cluster)
+ *   - python_client/chip/clusters/cluster_defs/__init__.py
  *   - python_client/chip/clusters/Objects.py (re-export)
  *   - python_client/matter_server/client/models/device_types.py
  *
@@ -27,8 +27,33 @@ import "@matter-server/custom-clusters";
 import * as CustomClusterClasses from "../../packages/custom-clusters/dist/esm/clusters/index.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// Build a set of type names that resolve to signed integers by walking
+// the Matter.js datatype hierarchy. This avoids hardcoding type aliases
+// like "temperature", "power-mW", "SignedTemperature", etc.
+const SIGNED_INT_TYPES = new Set<string>();
+// Explicit signed int primitives
+for (const bits of [8, 16, 24, 32, 40, 48, 56, 64]) {
+    SIGNED_INT_TYPES.add(`int${bits}`);
+}
+// Global type aliases (e.g., temperature → int16, power-mW → int64)
+for (const child of Matter.children.filter(c => c.tag === "datatype")) {
+    const baseType = (child as any).type as string | undefined;
+    if (baseType && SIGNED_INT_TYPES.has(baseType)) {
+        SIGNED_INT_TYPES.add(child.name);
+    }
+}
+// Cluster-level type aliases (e.g., Thermostat.SignedTemperature → int8)
+for (const cluster of Matter.clusters) {
+    for (const dt of cluster.children.filter(c => c.tag === "datatype")) {
+        const baseType = (dt as any).type as string | undefined;
+        if (baseType && SIGNED_INT_TYPES.has(baseType)) {
+            SIGNED_INT_TYPES.add(dt.name);
+        }
+    }
+}
 const pythonClientDir = join(__dirname, "..");
-const objectsDir = join(pythonClientDir, "chip", "clusters", "objects");
+const objectsDir = join(pythonClientDir, "chip", "clusters", "cluster_defs");
 
 // ============================================================================
 // Name conversion utilities
@@ -182,6 +207,21 @@ const K_VALUE_OVERRIDES: Record<string, string> = {
     // PAN intentionally omitted from ACRONYMS (would break PanId in ThreadNetworkDiagnostics)
     // but FeatureMap title "PanChange" must produce kPANChange
     PanChange: "PANChange",
+
+    // --- ColorControl Feature bitmap: chip SDK uses "HueAndSaturation" not "HueSaturation" ---
+    HueSaturation: "HueAndSaturation",
+
+    // --- DoorLock Feature bitmap: chip SDK uses "CredentialsOverTheAirAccess" (with s) ---
+    CredentialOverTheAirAccess: "CredentialsOverTheAirAccess",
+
+    // --- DoorLock Feature bitmap: chip SDK uses "Unbolt" not "Unbolting" ---
+    Unbolting: "Unbolt",
+
+    // --- WindowCovering TypeEnum: chip SDK uses "TiltBlindLiftAndTilt" not "TiltBlindLift" ---
+    TiltBlindLift: "TiltBlindLiftAndTilt",
+
+    // --- WindowCovering ModeBitmap: chip SDK uses "LedFeedback" not "LEDFeedback" ---
+    LedFeedback: "LedFeedback",
 };
 
 /**
@@ -194,15 +234,16 @@ const K_VALUE_OVERRIDES: Record<string, string> = {
 const FIELD_NAME_OVERRIDES: Record<string, string> = {
     // --- ID suffix: old chip SDK kept lowercase "Id" (not "ID") for these ---
     Id:                          "id",
-    GroupId:                     "groupId",
+    // Note: GroupId intentionally NOT overridden — most places use "groupID" (with uppercase ID).
+    // Only GroupKeyManagement structs use "groupId" which is a minor inconsistency.
     PanId:                       "panId",
     ExtendedPanId:               "extendedPanId",
     LeaderRouterId:              "leaderRouterId",
     PartitionId:                 "partitionId",
     PartitionIdChangeCount:      "partitionIdChangeCount",
     RouterId:                    "routerId",
-    ExtendedPanIDPresent:        "extendedPanIdPresent",
-    PanIDPresent:                "panIdPresent",
+    ExtendedPanIdPresent:        "extendedPanIdPresent",
+    PanIdPresent:                "panIdPresent",
     AdminVendorId:               "adminVendorId",
 
     // --- NOC struct: old chip SDK used fully lowercase (no acronym expansion) ---
@@ -222,6 +263,9 @@ const FIELD_NAME_OVERRIDES: Record<string, string> = {
     // Note: chip SDK uppercases URL here (unlike dvbiUrl/posterArtUrl which keep "Url")
     ArlRequestFlowUrl:           "ARLRequestFlowUrl",
 
+    // --- LQI: CHIP SDK keeps lowercase "lqi" in struct fields ---
+    Lqi:                         "lqi",
+
     // --- CA: not in ACRONYMS (would conflict with ICAC/DAC/MAC handling) ---
     RootCaCertificate:           "rootCACertificate",
 
@@ -231,17 +275,32 @@ const FIELD_NAME_OVERRIDES: Record<string, string> = {
     // --- NOCSR: not a standalone acronym in ACRONYMS ---
     NocsrElements:               "NOCSRElements",
 
+    // --- DraftElectricalMeasurementCluster: custom cluster uses "ac"/"rms" not "AC"/"RMS" ---
+    // Ac* are safe as global overrides (only this cluster has them).
+    // Rms* must be cluster-qualified because standard clusters use "RMS" (uppercase).
+    AcVoltageMultiplier:         "acVoltageMultiplier",
+    AcVoltageDivisor:            "acVoltageDivisor",
+    AcCurrentMultiplier:         "acCurrentMultiplier",
+    AcCurrentDivisor:            "acCurrentDivisor",
+    AcPowerMultiplier:           "acPowerMultiplier",
+    AcPowerDivisor:              "acPowerDivisor",
+    "DraftElectricalMeasurementCluster.RmsVoltage":  "rmsVoltage",
+    "DraftElectricalMeasurementCluster.RmsCurrent":  "rmsCurrent",
+
     // --- DoorLock quirks ---
     // Note: chip SDK lowercases "for" here (requirePINforRemoteOperation — not a typo)
-    RequirePINForRemoteOperation: "requirePINforRemoteOperation",
+    // Key must match the Matter.js model name (RequirePinForRemoteOperation), not the
+    // post-toChipName version (RequirePINForRemoteOperation).
+    RequirePinForRemoteOperation: "requirePINforRemoteOperation",
     // Note: chip SDK lowercases the "f" in "format" here (ACCapacityformat — chip SDK quirk)
     AcCapacityFormat:            "ACCapacityformat",
 
     // --- IPv4/IPv6: old chip SDK used "IPv4"/"IPv6" (capital I, lowercase v) ---
-    Ipv4Addresses:               "IPv4Addresses",
-    Ipv6Addresses:               "IPv6Addresses",
-    OffPremiseServicesReachableIPV4: "offPremiseServicesReachableIPv4",
-    OffPremiseServicesReachableIPV6: "offPremiseServicesReachableIPv6",
+    // Key must match the Matter.js model name (IPv4Addresses), not post-toChipName
+    IPv4Addresses:               "IPv4Addresses",
+    IPv6Addresses:               "IPv6Addresses",
+    OffPremiseServicesReachableIPv4: "offPremiseServicesReachableIPv4",
+    OffPremiseServicesReachableIPv6: "offPremiseServicesReachableIPv6",
 
     // --- ColorControl chromaticity coordinates: old chip SDK kept uppercase XY suffix ---
     ColorPointBx:                "colorPointBX",
@@ -250,6 +309,133 @@ const FIELD_NAME_OVERRIDES: Record<string, string> = {
     ColorPointGy:                "colorPointGY",
     ColorPointRx:                "colorPointRX",
     ColorPointRy:                "colorPointRY",
+};
+
+/**
+ * Overrides for class names (attributes, commands, events, enums) where toChipName()
+ * doesn't match the CHIP SDK class name.
+ * Key: matter.js PascalCase model name.
+ * Value: expected PascalCase class name in the CHIP SDK.
+ */
+const CLASS_NAME_OVERRIDES: Record<string, string> = {
+    // --- ARL: not in ACRONYMS (breaks field name), but class name needs uppercase ARL ---
+    CommissioningArl:            "CommissioningARL",
+
+    // --- AdminVendorId: CHIP SDK keeps "Id" (not "ID") in the class name ---
+    AdminVendorId:               "AdminVendorId",
+
+    // --- ColorControl chromaticity coordinates: CHIP SDK keeps uppercase XY suffix ---
+    ColorPointBx:                "ColorPointBX",
+    ColorPointBy:                "ColorPointBY",
+    ColorPointGx:                "ColorPointGX",
+    ColorPointGy:                "ColorPointGY",
+    ColorPointRx:                "ColorPointRX",
+    ColorPointRy:                "ColorPointRY",
+
+    // --- DoorLock: CHIP SDK keeps lowercase "for" in class name ---
+    RequirePinForRemoteOperation: "RequirePINforRemoteOperation",
+
+    // --- EnergyEvse event: CHIP SDK uses "Rfid" not "RFID" ---
+    Rfid:                        "Rfid",
+
+    // --- IcdManagement: CHIP SDK uses "BackOff" (two words) ---
+    MaximumCheckInBackoff:       "MaximumCheckInBackOff",
+
+    // --- JointFabricAdministrator commands: CHIP SDK expands ICAC+CSR ---
+    IcaccsrRequest:              "ICACCSRRequest",
+    IcaccsrResponse:             "ICACCSRResponse",
+
+    // --- JointFabricDatastore: CHIP SDK expands ACL ---
+    AddAclToNode:                "AddACLToNode",
+    RemoveAclFromNode:           "RemoveACLFromNode",
+    AnchorRootCa:                "AnchorRootCA",
+    NodeAclList:                 "NodeACLList",
+
+    // --- Thermostat: CHIP SDK uses lowercase "format" (quirk) ---
+    AcCapacityFormat:            "ACCapacityformat",
+
+    // --- ThreadNetworkDiagnostics: CHIP SDK keeps "Id" (not "ID") for these ---
+    ExtendedPanId:               "ExtendedPanId",
+    LeaderRouterId:              "LeaderRouterId",
+    PanId:                       "PanId",
+    PartitionId:                 "PartitionId",
+    PartitionIdChangeCount:      "PartitionIdChangeCount",
+
+    // --- Enum suffix stripping: CHIP SDK omits "Enum" suffix for some enum class names ---
+    // Note: StatusCodeEnum is cluster-dependent (some keep suffix, some strip it).
+    // Use "ClusterName.ClassName" keys for cluster-specific overrides below.
+    ModeTagEnum:                 "ModeTag",
+    SelectAreasStatusEnum:       "SelectAreasStatus",
+    SkipAreaStatusEnum:          "SkipAreaStatus",
+
+    // --- WindowCovering: CHIP SDK strips Enum/Bitmap suffixes ---
+    TypeEnum:                    "Type",
+    EndProductTypeEnum:          "EndProductType",
+    ModeBitmap:                  "Mode",
+    ConfigStatusBitmap:          "ConfigStatus",
+    OperationalStatusBitmap:     "OperationalStatus",
+    SafetyStatusBitmap:          "SafetyStatus",
+
+    // --- DraftElectricalMeasurementCluster: custom cluster keeps "Ac"/"Rms" not "AC"/"RMS" ---
+    // Ac* are safe as global overrides (only this cluster has them).
+    // Rms* must be cluster-qualified because standard clusters use "RMS" (uppercase).
+    AcVoltageMultiplier:         "AcVoltageMultiplier",
+    AcVoltageDivisor:            "AcVoltageDivisor",
+    AcCurrentMultiplier:         "AcCurrentMultiplier",
+    AcCurrentDivisor:            "AcCurrentDivisor",
+    AcPowerMultiplier:           "AcPowerMultiplier",
+    AcPowerDivisor:              "AcPowerDivisor",
+    "DraftElectricalMeasurementCluster.RmsVoltage":  "RmsVoltage",
+    "DraftElectricalMeasurementCluster.RmsCurrent":  "RmsCurrent",
+
+    // --- DoorLock: CHIP SDK uses legacy "Dl" prefixed names for some enums ---
+    // Missing members for DlStatus are injected via EXTRA_ENUM_MEMBERS.
+    "DoorLock.LockStateEnum":    "DlLockState",
+    "DoorLock.LockTypeEnum":     "DlLockType",
+    "DoorLock.StatusCodeEnum":   "DlStatus",
+
+    // --- Cluster-specific overrides (key format: "ClusterName.ClassName") ---
+    // StatusCodeEnum: stripped in some clusters, kept in others
+    "AdministratorCommissioning.StatusCodeEnum": "StatusCode",
+    "RvcCleanMode.StatusCodeEnum":               "StatusCode",
+    "RvcRunMode.StatusCodeEnum":                  "StatusCode",
+    "TimeSynchronization.StatusCodeEnum":         "StatusCode",
+};
+
+/**
+ * Extra enum members to inject that are present in the CHIP SDK but missing from the
+ * Matter.js model. Key: "ClusterName.EnumModelName" (using Matter.js model name).
+ * Value: array of { kName, value } entries to add.
+ */
+const EXTRA_ENUM_MEMBERS: Record<string, Array<{ kName: string; value: number }>> = {
+    // DoorLock.StatusCodeEnum (DlStatus in CHIP SDK) — Matter.js only has Duplicate(2)
+    // and Occupied(3), but the CHIP SDK includes general status codes.
+    "DoorLock.StatusCodeEnum": [
+        { kName: "kSuccess", value: 0x00 },
+        { kName: "kFailure", value: 0x01 },
+        { kName: "kInvalidField", value: 0x85 },
+        { kName: "kResourceExhausted", value: 0x89 },
+        { kName: "kNotFound", value: 0x8B },
+    ],
+};
+
+/**
+ * Extra bitmaps to inject that are present in the CHIP SDK but missing from the
+ * Matter.js model. Key: cluster name. Value: array of bitmap definitions.
+ */
+const EXTRA_BITMAPS: Record<string, Array<{ name: string; members: Array<{ kName: string; value: number }> }>> = {
+    ColorControl: [
+        {
+            name: "ColorCapabilitiesBitmap",
+            members: [
+                { kName: "kHueSaturation", value: 0x1 },
+                { kName: "kEnhancedHue", value: 0x2 },
+                { kName: "kColorLoop", value: 0x4 },
+                { kName: "kXy", value: 0x8 },
+                { kName: "kColorTemperature", value: 0x10 },
+            ],
+        },
+    ],
 };
 
 /**
@@ -293,9 +479,17 @@ function toKName(name: string): string {
     return "k" + toChipName(pascal);
 }
 
-/** Convert PascalCase name to camelCase (for attribute/field labels). */
-function toCamelCase(name: string): string {
-    // Check per-name overrides first (covers chip SDK inconsistencies)
+/** Convert PascalCase name to camelCase (for attribute/field labels).
+ *  If clusterName is provided, checks for cluster-qualified overrides first. */
+function toCamelCase(name: string, clusterName?: string): string {
+    // Check cluster-qualified override first (e.g., "DraftElectricalMeasurementCluster.RmsVoltage")
+    if (clusterName) {
+        const qualifiedKey = `${clusterName}.${name}`;
+        if (qualifiedKey in FIELD_NAME_OVERRIDES) {
+            return FIELD_NAME_OVERRIDES[qualifiedKey];
+        }
+    }
+    // Check per-name overrides (covers chip SDK inconsistencies)
     if (name in FIELD_NAME_OVERRIDES) {
         return FIELD_NAME_OVERRIDES[name];
     }
@@ -308,6 +502,23 @@ function toCamelCase(name: string): string {
         return chipName;
     }
     return chipName.charAt(0).toLowerCase() + chipName.slice(1);
+}
+
+/** Convert a PascalCase name to chip-SDK class name, checking CLASS_NAME_OVERRIDES first.
+ *  If clusterName is provided, checks for cluster-qualified overrides ("Cluster.Name") first. */
+function toChipClassName(name: string, clusterName?: string): string {
+    // Check cluster-qualified override first (e.g., "AdministratorCommissioning.StatusCodeEnum")
+    if (clusterName) {
+        const qualifiedKey = `${clusterName}.${name}`;
+        if (qualifiedKey in CLASS_NAME_OVERRIDES) {
+            return CLASS_NAME_OVERRIDES[qualifiedKey];
+        }
+    }
+    // Then check unqualified override
+    if (name in CLASS_NAME_OVERRIDES) {
+        return CLASS_NAME_OVERRIDES[name];
+    }
+    return toChipName(name);
 }
 
 /** Pad a hex number to 8 hex digits with 0x prefix. */
@@ -354,7 +565,11 @@ function resolvePythonType(
         const entryModel = model.children?.[0] as ValueModel | undefined;
         let entryType = "uint";
         if (entryModel) {
-            const entryPy = resolvePythonType(entryModel, clusterName, knownDatatypes);
+            // Resolve the base scalar type directly for list entries.
+            // CHIP SDK does NOT wrap list element types in Optional/Nullable.
+            const entryScalarType = (entryModel as any).type as string | undefined;
+            const entryMetatype = entryModel.effectiveMetatype;
+            const entryPy = resolveScalarType(entryScalarType, entryMetatype, clusterName, knownDatatypes);
             entryType = entryPy.annotation;
         }
         baseType = {
@@ -380,14 +595,6 @@ function resolvePythonType(
             needsFactory: false,
         };
     } else if (isOptional) {
-        if (baseType.needsFactory) {
-            // Optional list
-            return {
-                annotation: `typing.Optional[${baseType.annotation}]`,
-                defaultValue: "None",
-                needsFactory: false,
-            };
-        }
         return {
             annotation: `typing.Optional[${baseType.annotation}]`,
             defaultValue: "None",
@@ -406,7 +613,23 @@ function resolveScalarType(
     knownDatatypes: Map<string, { metatype: string; clusterName: string }>,
 ): PythonType {
     if (!type) {
-        return { annotation: "uint", defaultValue: "0", needsFactory: false };
+        // No explicit type — fall back to metatype if available
+        switch (metatype) {
+            case "boolean":
+                return { annotation: "bool", defaultValue: "False", needsFactory: false };
+            case "string":
+                return { annotation: "str", defaultValue: '""', needsFactory: false };
+            case "bytes":
+                return { annotation: "bytes", defaultValue: 'b""', needsFactory: false };
+            case "float":
+                return { annotation: "float32", defaultValue: "0.0", needsFactory: false };
+            case "integer":
+                // No type name to look up in SIGNED_INT_TYPES, so we can't
+                // distinguish signed/unsigned. Default to uint.
+                return { annotation: "uint", defaultValue: "0", needsFactory: false };
+            default:
+                return { annotation: "uint", defaultValue: "0", needsFactory: false };
+        }
     }
 
     // Check if it's a reference to a known datatype (enum, bitmap, struct)
@@ -417,24 +640,24 @@ function resolveScalarType(
         const key = `${otherCluster}.${dtName}`;
         const info = knownDatatypes.get(key);
         if (info) {
-            const qualifiedName = `${otherCluster}.${getCategoryForMetatype(info.metatype)}.${toChipName(dtName)}`;
+            const qualifiedName = `${otherCluster}.${getCategoryForMetatype(info.metatype)}.${toChipClassName(dtName, otherCluster)}`;
             return typeForCategory(info.metatype, qualifiedName);
         }
         // Fallback - assume enum
-        return { annotation: `${otherCluster}.Enums.${toChipName(dtName)}`, defaultValue: "0", needsFactory: false };
+        return { annotation: `${otherCluster}.Enums.${toChipClassName(dtName, otherCluster)}`, defaultValue: "0", needsFactory: false };
     }
 
     // Check if it's a local datatype reference
     const localInfo = knownDatatypes.get(`${clusterName}.${type}`);
     if (localInfo) {
-        const qualifiedName = `${clusterName}.${getCategoryForMetatype(localInfo.metatype)}.${toChipName(type)}`;
+        const qualifiedName = `${clusterName}.${getCategoryForMetatype(localInfo.metatype)}.${toChipClassName(type, clusterName)}`;
         return typeForCategory(localInfo.metatype, qualifiedName);
     }
 
     // Check global datatypes
     const globalInfo = knownDatatypes.get(`Globals.${type}`);
     if (globalInfo) {
-        const qualifiedName = `Globals.${getCategoryForMetatype(globalInfo.metatype)}.${toChipName(type)}`;
+        const qualifiedName = `Globals.${getCategoryForMetatype(globalInfo.metatype)}.${toChipClassName(type, "Globals")}`;
         return typeForCategory(globalInfo.metatype, qualifiedName);
     }
 
@@ -452,10 +675,9 @@ function resolveScalarType(
             }
             return { annotation: "float", defaultValue: "0.0", needsFactory: false };
         case "integer":
-            if (type.startsWith("int")) {
-                return { annotation: "int", defaultValue: "0", needsFactory: false };
-            }
-            return { annotation: "uint", defaultValue: "0", needsFactory: false };
+            // Check both explicit int types (int8, int16, ...) and semantic type
+            // aliases (temperature → int16, power-mW → int64, etc.)
+            return resolvePrimitiveByName(type);
         default:
             // For base primitive types by name
             return resolvePrimitiveByName(type);
@@ -463,6 +685,11 @@ function resolveScalarType(
 }
 
 function resolvePrimitiveByName(type: string): PythonType {
+    // Check for signed integer types (resolved from Matter.js datatype hierarchy)
+    if (SIGNED_INT_TYPES.has(type)) {
+        return { annotation: "int", defaultValue: "0", needsFactory: false };
+    }
+
     switch (type) {
         case "bool":
             return { annotation: "bool", defaultValue: "False", needsFactory: false };
@@ -568,6 +795,13 @@ function resolveClusterChildren(cluster: ClusterModel): {
                     case "attribute":
                         if (!localAttrNames.has(child.name)) {
                             attributes.push(child);
+                        } else {
+                            // Local override exists but may be an empty stub (no type/children).
+                            // Replace it with the base version to get full type info.
+                            const idx = attributes.findIndex(c => c.name === child.name);
+                            if (idx >= 0 && !(attributes[idx] as any).type && (child as any).type) {
+                                attributes[idx] = child;
+                            }
                         }
                         break;
                     case "event":
@@ -691,11 +925,16 @@ function generateClusterFile(
     const responseCommands = resolved.commands.filter(c => c.direction === "response");
     const allCommands = [...requestCommands, ...responseCommands];
 
-    // Collect attributes (excluding global ones that we add ourselves)
+    // Collect attributes (excluding global ones that we add ourselves, deduplicating by id)
+    // Sort by attribute ID to match CHIP SDK ordering.
     const globalAttrIds = new Set([65528, 65529, 65530, 65531, 65532, 65533]);
-    const clusterSpecificAttrs = resolved.attributes.filter(
-        c => c.id !== undefined && !globalAttrIds.has(c.id)
-    );
+    const seenAttrIds = new Set<number>();
+    const clusterSpecificAttrs = resolved.attributes.filter(c => {
+        if (c.id === undefined || globalAttrIds.has(c.id)) return false;
+        if (seenAttrIds.has(c.id)) return false;
+        seenAttrIds.add(c.id);
+        return true;
+    }).sort((a, b) => (a.id ?? 0) - (b.id ?? 0));
 
     // Collect events (from resolved, which includes inherited)
     const events = resolved.events;
@@ -768,7 +1007,7 @@ function generateClusterFile(
     // Cluster-specific attributes
     for (const attr of clusterSpecificAttrs) {
         const pyType = resolveType(attr);
-        w.line(`ClusterObjectFieldDescriptor(Label="${toCamelCase(attr.name)}", Tag=${hex8(attr.id!)}, Type=${pyType.annotation}),`);
+        w.line(`ClusterObjectFieldDescriptor(Label="${toCamelCase(attr.name, clusterName)}", Tag=${hex8(attr.id!)}, Type=${pyType.annotation}),`);
     }
     // Global attributes (always present)
     w.line(`ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),`);
@@ -787,20 +1026,16 @@ function generateClusterFile(
     // Top-level attribute fields
     for (const attr of clusterSpecificAttrs) {
         const pyType = resolveType(attr);
-        const label = toCamelCase(attr.name);
-        if (pyType.needsFactory) {
-            w.line(`${label}: '${pyType.annotation}' = ${pyType.defaultValue}`);
-        } else {
-            w.line(`${label}: '${pyType.annotation}' = ${pyType.defaultValue}`);
-        }
+        const label = toCamelCase(attr.name, clusterName);
+        w.line(`${label}: ${pyType.annotation} = ${pyType.defaultValue}`);
     }
     // Global attribute fields
-    w.line(`generatedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])`);
-    w.line(`acceptedCommandList: 'typing.List[uint]' = field(default_factory=lambda: [])`);
-    w.line(`eventList: 'typing.List[uint]' = field(default_factory=lambda: [])`);
-    w.line(`attributeList: 'typing.List[uint]' = field(default_factory=lambda: [])`);
-    w.line(`featureMap: 'uint' = 0`);
-    w.line(`clusterRevision: 'uint' = 0`);
+    w.line(`generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])`);
+    w.line(`acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])`);
+    w.line(`eventList: typing.List[uint] = field(default_factory=lambda: [])`);
+    w.line(`attributeList: typing.List[uint] = field(default_factory=lambda: [])`);
+    w.line(`featureMap: uint = 0`);
+    w.line(`clusterRevision: uint = 0`);
 
     // ---- Enums section ----
     if (enums.length > 0) {
@@ -808,7 +1043,7 @@ function generateClusterFile(
         w.line("class Enums:");
         w.pushIndent();
         for (let i = 0; i < enums.length; i++) {
-            generateEnum(w, enums[i]);
+            generateEnum(w, enums[i], clusterName);
             if (i < enums.length - 1) {
                 w.blankLine();
             }
@@ -817,7 +1052,8 @@ function generateClusterFile(
     }
 
     // ---- Bitmaps section ----
-    const hasBitmaps = bitmaps.length > 0 || features.length > 0;
+    const extraBitmaps = EXTRA_BITMAPS[clusterName] || [];
+    const hasBitmaps = bitmaps.length > 0 || features.length > 0 || extraBitmaps.length > 0;
     if (hasBitmaps) {
         w.blankLine();
         w.line("class Bitmaps:");
@@ -839,8 +1075,22 @@ function generateClusterFile(
         }
 
         for (let i = 0; i < bitmaps.length; i++) {
-            generateBitmap(w, bitmaps[i]);
-            if (i < bitmaps.length - 1) {
+            generateBitmap(w, bitmaps[i], clusterName);
+            if (i < bitmaps.length - 1 || extraBitmaps.length > 0) {
+                w.blankLine();
+            }
+        }
+
+        // Inject extra bitmaps not in the Matter.js model
+        for (let i = 0; i < extraBitmaps.length; i++) {
+            const eb = extraBitmaps[i];
+            w.line(`class ${eb.name}(IntFlag):`);
+            w.pushIndent();
+            for (const m of eb.members) {
+                w.line(`${m.kName} = 0x${m.value.toString(16).toUpperCase()}`);
+            }
+            w.popIndent();
+            if (i < extraBitmaps.length - 1) {
                 w.blankLine();
             }
         }
@@ -944,8 +1194,8 @@ function generateClusterFile(
 // Enum generation
 // ============================================================================
 
-function generateEnum(w: PythonWriter, model: ValueModel): void {
-    w.line(`class ${toChipName(model.name)}(MatterIntEnum):`);
+function generateEnum(w: PythonWriter, model: ValueModel, clusterName?: string): void {
+    w.line(`class ${toChipClassName(model.name, clusterName)}(MatterIntEnum):`);
     w.pushIndent();
 
     const members = model.children || [];
@@ -957,6 +1207,19 @@ function generateEnum(w: PythonWriter, model: ValueModel): void {
         usedValues.add(value);
         if (value > maxValue) maxValue = value;
         w.line(`${toKName(m.name)} = ${hex2(value)}`);
+    }
+
+    // Inject extra members from EXTRA_ENUM_MEMBERS (for CHIP SDK compat)
+    const extraKey = clusterName ? `${clusterName}.${model.name}` : undefined;
+    const extras = extraKey ? EXTRA_ENUM_MEMBERS[extraKey] : undefined;
+    if (extras) {
+        for (const extra of extras) {
+            if (!usedValues.has(extra.value)) {
+                usedValues.add(extra.value);
+                if (extra.value > maxValue) maxValue = extra.value;
+                w.line(`${extra.kName} = ${hex2(extra.value)}`);
+            }
+        }
     }
 
     // Find the kUnknownEnumValue - first unused value after the last defined value
@@ -976,8 +1239,8 @@ function generateEnum(w: PythonWriter, model: ValueModel): void {
 // Bitmap generation
 // ============================================================================
 
-function generateBitmap(w: PythonWriter, model: ValueModel): void {
-    w.line(`class ${toChipName(model.name)}(IntFlag):`);
+function generateBitmap(w: PythonWriter, model: ValueModel, clusterName?: string): void {
+    w.line(`class ${toChipClassName(model.name, clusterName)}(IntFlag):`);
     w.pushIndent();
 
     const members = model.children || [];
@@ -986,8 +1249,18 @@ function generateBitmap(w: PythonWriter, model: ValueModel): void {
     } else {
         for (const m of members) {
             const constraint = (m as ValueModel).constraint;
-            const bitIndex = Number(constraint?.value ?? constraint?.definition ?? 0);
-            const flagValue = 1 << bitIndex;
+            let flagValue: number;
+            if (constraint && constraint.min !== undefined && constraint.max !== undefined) {
+                // Multi-bit field (range constraint): compute mask covering all bits
+                let mask = 0;
+                for (let bit = Number(constraint.min); bit <= Number(constraint.max); bit++) {
+                    mask |= 1 << bit;
+                }
+                flagValue = mask;
+            } else {
+                const bitIndex = Number(constraint?.value ?? constraint?.definition ?? 0);
+                flagValue = 1 << bitIndex;
+            }
             w.line(`${toKName(m.name)} = 0x${flagValue.toString(16).toUpperCase()}`);
         }
     }
@@ -1002,12 +1275,12 @@ function generateBitmap(w: PythonWriter, model: ValueModel): void {
 function generateStruct(
     w: PythonWriter,
     model: ValueModel,
-    _clusterName: string,
+    clusterName: string,
     _datatypeRegistry: Map<string, { metatype: string; clusterName: string }>,
     resolveType: (m: ValueModel) => PythonType,
 ): void {
     w.line("@dataclass");
-    w.line(`class ${toChipName(model.name)}(ClusterObject):`);
+    w.line(`class ${toChipClassName(model.name, clusterName)}(ClusterObject):`);
     w.pushIndent();
 
     // Descriptor
@@ -1027,7 +1300,7 @@ function generateStruct(
         const vm = m as ValueModel;
         const pyType = resolveType(vm);
         const tag = m.id ?? 0;
-        w.line(`ClusterObjectFieldDescriptor(Label="${toCamelCase(m.name)}", Tag=${tag}, Type=${pyType.annotation}),`);
+        w.line(`ClusterObjectFieldDescriptor(Label="${toCamelCase(m.name, clusterName)}", Tag=${tag}, Type=${pyType.annotation}),`);
     }
 
     w.popIndent();
@@ -1040,8 +1313,8 @@ function generateStruct(
     for (const m of members) {
         const vm = m as ValueModel;
         const pyType = resolveType(vm);
-        const label = toCamelCase(m.name);
-        w.line(`${label}: '${pyType.annotation}' = ${pyType.defaultValue}`);
+        const label = toCamelCase(m.name, clusterName);
+        w.line(`${label}: ${pyType.annotation} = ${pyType.defaultValue}`);
     }
 
     // No need for pass - the descriptor classproperty is always present
@@ -1056,7 +1329,7 @@ function generateStruct(
 function generateCommand(
     w: PythonWriter,
     model: CommandModel,
-    _clusterName: string,
+    clusterName: string,
     clusterId: number,
     _datatypeRegistry: Map<string, { metatype: string; clusterName: string }>,
     resolveType: (m: ValueModel) => PythonType,
@@ -1068,11 +1341,11 @@ function generateCommand(
     // Determine response_type
     let responseType = "None";
     if (isClient && model.response && model.response !== "status") {
-        responseType = `'${toChipName(model.response)}'`;
+        responseType = `'${toChipClassName(model.response, clusterName)}'`;
     }
 
     w.line("@dataclass");
-    w.line(`class ${toChipName(model.name)}(ClusterCommand):`);
+    w.line(`class ${toChipClassName(model.name, clusterName)}(ClusterCommand):`);
     w.pushIndent();
 
     w.line(`cluster_id: typing.ClassVar[int] = ${hex8(clusterId)}`);
@@ -1090,8 +1363,9 @@ function generateCommand(
         w.blankLine();
     }
 
-    // Descriptor
-    const fields = model.children || [];
+    // Descriptor - use model.members (not model.children) so that commands that inherit
+    // their fields from a base command include the inherited fields (like structs do).
+    const fields = [...(model.members as Iterable<any>)];
     w.line("@ChipUtility.classproperty");
     w.line("def descriptor(cls) -> ClusterObjectDescriptor:");
     w.pushIndent();
@@ -1103,7 +1377,7 @@ function generateCommand(
     for (const f of fields) {
         const vm = f as ValueModel;
         const pyType = resolveType(vm);
-        w.line(`ClusterObjectFieldDescriptor(Label="${toCamelCase(f.name)}", Tag=${f.id ?? 0}, Type=${pyType.annotation}),`);
+        w.line(`ClusterObjectFieldDescriptor(Label="${toCamelCase(f.name, clusterName)}", Tag=${f.id ?? 0}, Type=${pyType.annotation}),`);
     }
 
     w.popIndent();
@@ -1116,7 +1390,7 @@ function generateCommand(
     for (const f of fields) {
         const vm = f as ValueModel;
         const pyType = resolveType(vm);
-        w.line(`${toCamelCase(f.name)}: '${pyType.annotation}' = ${pyType.defaultValue}`);
+        w.line(`${toCamelCase(f.name, clusterName)}: ${pyType.annotation} = ${pyType.defaultValue}`);
     }
 
     // No need for pass - the descriptor method is already present
@@ -1131,7 +1405,7 @@ function generateCommand(
 function generateAttribute(
     w: PythonWriter,
     model: AttributeModel,
-    _clusterName: string,
+    clusterName: string,
     clusterId: number,
     _datatypeRegistry: Map<string, { metatype: string; clusterName: string }>,
     resolveType: (m: ValueModel) => PythonType,
@@ -1141,7 +1415,7 @@ function generateAttribute(
     // Attribute class names must be PascalCase (chip SDK convention).
     // Standard clusters already have PascalCase model names; custom clusters use
     // camelCase TypeScript field names that need to be capitalized.
-    const attrClassName = toChipName(model.name.charAt(0).toUpperCase() + model.name.slice(1));
+    const attrClassName = toChipClassName(model.name.charAt(0).toUpperCase() + model.name.slice(1), clusterName);
 
     w.line("@dataclass");
     w.line(`class ${attrClassName}(ClusterAttributeDescriptor):`);
@@ -1168,7 +1442,7 @@ function generateAttribute(
     w.popIndent();
     w.blankLine();
 
-    w.line(`value: '${pyType.annotation}' = ${pyType.defaultValue}`);
+    w.line(`value: ${pyType.annotation} = ${pyType.defaultValue}`);
 
     w.popIndent();
 }
@@ -1208,7 +1482,7 @@ function generateGlobalAttribute(
     w.popIndent();
     w.blankLine();
 
-    w.line(`value: '${typeStr}' = ${defaultValue}`);
+    w.line(`value: ${typeStr} = ${defaultValue}`);
 
     w.popIndent();
 }
@@ -1220,7 +1494,7 @@ function generateGlobalAttribute(
 function generateEvent(
     w: PythonWriter,
     model: EventModel,
-    _clusterName: string,
+    clusterName: string,
     clusterId: number,
     _datatypeRegistry: Map<string, { metatype: string; clusterName: string }>,
     resolveType: (m: ValueModel) => PythonType,
@@ -1228,7 +1502,7 @@ function generateEvent(
     const eventId = model.id ?? 0;
 
     w.line("@dataclass");
-    w.line(`class ${toChipName(model.name)}(ClusterEvent):`);
+    w.line(`class ${toChipClassName(model.name, clusterName)}(ClusterEvent):`);
     w.pushIndent();
 
     w.line("@ChipUtility.classproperty");
@@ -1245,8 +1519,9 @@ function generateEvent(
     w.popIndent();
     w.blankLine();
 
-    // Descriptor
-    const fields = model.children || [];
+    // Descriptor - use model.members (not model.children) so that events that inherit
+    // their fields from a base event include the inherited fields.
+    const fields = [...(model.members as Iterable<any>)];
     w.line("@ChipUtility.classproperty");
     w.line("def descriptor(cls) -> ClusterObjectDescriptor:");
     w.pushIndent();
@@ -1258,7 +1533,7 @@ function generateEvent(
     for (const f of fields) {
         const vm = f as ValueModel;
         const pyType = resolveType(vm);
-        w.line(`ClusterObjectFieldDescriptor(Label="${toCamelCase(f.name)}", Tag=${f.id ?? 0}, Type=${pyType.annotation}),`);
+        w.line(`ClusterObjectFieldDescriptor(Label="${toCamelCase(f.name, clusterName)}", Tag=${f.id ?? 0}, Type=${pyType.annotation}),`);
     }
 
     w.popIndent();
@@ -1271,7 +1546,7 @@ function generateEvent(
     for (const f of fields) {
         const vm = f as ValueModel;
         const pyType = resolveType(vm);
-        w.line(`${toCamelCase(f.name)}: '${pyType.annotation}' = ${pyType.defaultValue}`);
+        w.line(`${toCamelCase(f.name, clusterName)}: ${pyType.annotation} = ${pyType.defaultValue}`);
     }
 
     // No need for pass - cluster_id, event_id, and descriptor classpropertys are always present
@@ -1314,7 +1589,7 @@ function generateGlobalsFile(
         w.line("class Enums:");
         w.pushIndent();
         for (const e of globalEnums) {
-            generateEnum(w, e as ValueModel);
+            generateEnum(w, e as ValueModel, "Globals");
             w.blankLine();
         }
         w.popIndent();
@@ -1356,7 +1631,7 @@ function generateGlobalsFile(
 // Objects.py re-export file
 // ============================================================================
 
-function generateObjectsReexport(_clusterNames: string[]): string {
+function generateObjectsReexport(clusterNames: string[]): string {
     const w = new PythonWriter();
 
     w.line('"""');
@@ -1366,9 +1641,9 @@ function generateObjectsReexport(_clusterNames: string[]): string {
     w.line('"""');
     w.blankLine();
     w.line("# Re-export all cluster classes from per-cluster files");
-    w.line("from chip.clusters.objects import *  # noqa: F401,F403");
+    w.line("from chip.clusters.cluster_defs import *  # noqa: F401,F403");
     w.blankLine();
-    w.line("# Also re-export base classes for backward compatibility");
+    w.line("# Also re-export base classes and primitive types for backward compatibility");
     w.line("from chip.clusters.ClusterObjects import (  # noqa: F401");
     w.line("    Cluster,");
     w.line("    ClusterAttributeDescriptor,");
@@ -1378,12 +1653,11 @@ function generateObjectsReexport(_clusterNames: string[]): string {
     w.line("    ClusterObjectDescriptor,");
     w.line("    ClusterObjectFieldDescriptor,");
     w.line(")");
-    w.blankLine();
-    w.line("# Re-export primitive types that HA imports from this module");
     w.line("from chip.clusters.Types import NullValue, Nullable  # noqa: F401");
     w.line("from chip.tlv import float32, uint  # noqa: F401");
     w.blankLine();
-    w.line("# Export list for type checkers");
+
+    // __all__ for mypy: explicitly list all exports so mypy knows what this module provides
     w.line("__all__ = [");
     w.pushIndent();
     w.line('"Cluster",');
@@ -1397,16 +1671,17 @@ function generateObjectsReexport(_clusterNames: string[]): string {
     w.line('"Nullable",');
     w.line('"float32",');
     w.line('"uint",');
-    w.line("# Clusters from objects module are exported via *");
+    for (const name of clusterNames) {
+        w.line(`"${name}",`);
+    }
     w.popIndent();
     w.line("]");
-    w.blankLine();
 
     return w.toString();
 }
 
 // ============================================================================
-// objects/__init__.py
+// cluster_defs/__init__.py
 // ============================================================================
 
 function generateObjectsInit(clusterNames: string[]): string {
@@ -1561,7 +1836,7 @@ function main(): void {
         }
     }
 
-    // Generate objects/__init__.py
+    // Generate cluster_defs/__init__.py
     const allNames = ["Globals", ...results.map(r => r.className).sort()];
     const initContent = generateObjectsInit(allNames);
     writeFileSync(join(objectsDir, "__init__.py"), initContent);
@@ -1597,7 +1872,7 @@ function main(): void {
         "",
     ];
     for (const r of customResults) {
-        customLines.push(`from chip.clusters.objects.${r.className} import ${r.className}`);
+        customLines.push(`from chip.clusters.cluster_defs.${r.className} import ${r.className}`);
     }
     customLines.push("");
     customLines.push("ALL_CUSTOM_CLUSTERS: dict = {");

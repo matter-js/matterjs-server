@@ -140,7 +140,7 @@ def test_chip_objects_type_exports() -> None:
 
 def test_administrator_commissioning_timed_invoke() -> None:
     """OpenCommissioningWindow must require timed invoke (security requirement)."""
-    from chip.clusters.objects.AdministratorCommissioning import AdministratorCommissioning
+    from chip.clusters.cluster_defs.AdministratorCommissioning import AdministratorCommissioning
 
     cls = AdministratorCommissioning.Commands.OpenCommissioningWindow
     assert hasattr(cls, "must_use_timed_invoke"), "OpenCommissioningWindow must have must_use_timed_invoke"
@@ -158,8 +158,8 @@ def _assert_mode_option_struct_fields(struct: Any, cluster_name: str) -> None:
 
 def test_mode_option_struct_has_fields() -> None:
     """ModeOptionStruct must have label, mode, modeTags fields in all mode clusters."""
-    from chip.clusters.objects.DishwasherMode import DishwasherMode
-    from chip.clusters.objects.OvenMode import OvenMode
+    from chip.clusters.cluster_defs.DishwasherMode import DishwasherMode
+    from chip.clusters.cluster_defs.OvenMode import OvenMode
 
     _assert_mode_option_struct_fields(DishwasherMode.Structs.ModeOptionStruct, "DishwasherMode")
     _assert_mode_option_struct_fields(OvenMode.Structs.ModeOptionStruct, "OvenMode")

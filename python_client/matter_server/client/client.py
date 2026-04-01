@@ -247,7 +247,7 @@ class MatterClient:
                 fabric_id=f.fabricID,
                 vendor_id=f.vendorID,
                 fabric_index=f.fabricIndex,
-                fabric_label=f.label if f.label else None,
+                fabric_label=f.label or None,
                 vendor_name=vendors_map.get(str(f.vendorID)),
             )
             for f in fabrics
@@ -299,10 +299,10 @@ class MatterClient:
             if not network_interface.isOperational:
                 continue
             # enumerate ipv4 and ipv6 addresses
-            for ipv4_address_hex in network_interface.iPv4Addresses:
+            for ipv4_address_hex in network_interface.IPv4Addresses:
                 ipv4_address = convert_ip_address(ipv4_address_hex)
                 ip_addresses.append(ipv4_address)
-            for ipv6_address_hex in network_interface.iPv6Addresses:
+            for ipv6_address_hex in network_interface.IPv6Addresses:
                 ipv6_address = convert_ip_address(ipv6_address_hex, True)
                 ip_addresses.append(ipv6_address)
             break
@@ -388,7 +388,7 @@ class MatterClient:
             last_network_id := node.get_attribute_value(
                 0,
                 cluster=None,
-                attribute=Clusters.NetworkCommissioning.Attributes.LastNetworkId,
+                attribute=Clusters.NetworkCommissioning.Attributes.LastNetworkID,
             )
         ):
             if isinstance(last_network_id, bytes):
@@ -546,8 +546,7 @@ class MatterClient:
         **kwargs: Any,
     ) -> CommandMessage:
         if not self.connection.connected:
-            msg = "Not connected"
-            raise InvalidState(msg)
+            raise InvalidState("Not connected")
 
         if (
             require_schema is not None
@@ -573,8 +572,7 @@ class MatterClient:
     ) -> Any:
         """Send a command and get a response."""
         if not self._loop:
-            msg = "Not connected"
-            raise InvalidState(msg)
+            raise InvalidState("Not connected")
 
         message = self._prepare_message(command, require_schema, **kwargs)
         future: asyncio.Future[Any] = self._loop.create_future()
