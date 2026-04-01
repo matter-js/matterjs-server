@@ -133,8 +133,7 @@ class MatterEndpoint:
         if cluster is None:
             # allow sending None for Cluster to auto resolve it from the Attribute
             if isinstance(attribute, int):
-                msg = "Attribute can not be integer if Cluster is omitted"
-                raise TypeError(msg)
+                raise TypeError("Attribute can not be integer if Cluster is omitted")
             cluster = attribute.cluster_id
         # get cluster first, grab value from cluster instance next
         if cluster_obj := self.get_cluster(cluster):
@@ -166,8 +165,7 @@ class MatterEndpoint:
         """
         if cluster is None:
             if isinstance(attribute, int):
-                msg = "Attribute can not be integer if Cluster is omitted"
-                raise TypeError(msg)
+                raise TypeError("Attribute can not be integer if Cluster is omitted")
             # allow sending None for Cluster to auto resolve it from the Attribute
             cluster = attribute.cluster_id
         cluster_id = cluster if isinstance(cluster, int) else cluster.id
