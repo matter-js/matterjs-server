@@ -148,14 +148,12 @@ async def wait_for_device_ready(process: subprocess.Popen, timeout: float = 30.0
             line = process.stdout.readline()
             if not line:
                 if process.poll() is not None:
-                    msg = "Device process exited unexpectedly"
-                    raise RuntimeError(msg)
+                    raise RuntimeError("Device process exited unexpectedly")
                 time.sleep(0.1)
                 continue
             if "Manual pairing code:" in line or "commissioned" in line.lower():
                 return
-        msg = "Timeout waiting for device to be ready"
-        raise TimeoutError(msg)
+        raise TimeoutError("Timeout waiting for device to be ready")
 
     await loop.run_in_executor(None, _read_until_ready)
     # Give the device's network stack time to fully initialize
