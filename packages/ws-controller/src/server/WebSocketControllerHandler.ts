@@ -887,7 +887,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
     async #handleSetThreadDataset(args: ArgsOf<"set_thread_dataset">): Promise<ResponseOf<"set_thread_dataset">> {
         const { dataset } = args;
         if (!/^[0-9a-fA-F]*$/.test(dataset) || dataset.length % 2 !== 0) {
-            ServerError.invalidArguments(
+            throw ServerError.invalidArguments(
                 "Invalid Thread operational dataset: must be a hex string with even length (each byte is two hex characters)",
             );
         }
@@ -895,7 +895,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             Bytes.fromHex(dataset);
         } catch (error) {
             MatterError.accept(error);
-            ServerError.invalidArguments(
+            throw ServerError.invalidArguments(
                 `Invalid Thread operational dataset: failed to parse hex string: ${Diagnostic.errorMessage(error)}`,
             );
         }
