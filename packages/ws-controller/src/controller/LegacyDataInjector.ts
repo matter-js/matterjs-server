@@ -20,9 +20,8 @@ import {
     SupportedStorageTypes,
     Time,
 } from "@matter/main";
-import { DescriptorCluster } from "@matter/main/clusters";
 import { CertificateAuthority, Fabric, FabricBuilder, Noc, PeerAddress } from "@matter/main/protocol";
-import { VendorId } from "@matter/main/types";
+import { Global, VendorId } from "@matter/main/types";
 import { ClusterMap } from "../model/ModelMapper.js";
 import { convertWebSocketTagBasedToMatter } from "../server/Converters.js";
 
@@ -31,7 +30,7 @@ const logger = Logger.get("LegacyDataInjector");
 /* eslint-disable regexp/no-unused-capturing-group */
 const BASE64_REGEX = /^([0-9a-z+/]{4})*(([0-9a-z+/]{2}==)|([0-9a-z+/]{3}=))?$/i;
 
-const FEATUREMAP_ID = DescriptorCluster.attributes.featureMap.id.toString();
+const FEATUREMAP_ID = Global.attributes.featureMap.id.toString();
 
 /**
  * Fabric configuration data extracted from chip.json.

@@ -60,9 +60,13 @@ export class CommissionNodeThread extends LitElement {
     }
 
     private async _setThreadDataset() {
-        const dataset = this._datasetField.value;
+        const dataset = this._datasetField.value.trim();
         if (!dataset) {
             alert("Dataset is required");
+            return;
+        }
+        if (!/^[0-9a-fA-F]*$/.test(dataset) || dataset.length % 2 !== 0) {
+            alert("Invalid Thread dataset: must be a hex string with even length (each byte is two hex characters)");
             return;
         }
         this._loading = true;

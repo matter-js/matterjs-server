@@ -40,34 +40,22 @@ import {
     Invoke,
     PeerAddress,
     Read,
+    Specifier,
     SupportedTransportsSchema,
     PeerSet,
 } from "@matter/main/protocol";
 import {
-    Attribute,
     AttributeId,
     ClusterId,
     ClusterType,
-    Command,
     DeviceTypeId,
     EndpointNumber,
-    getClusterById,
     GroupId,
     ManualPairingCodeCodec,
     QrPairingCodeCodec,
     SpecificationVersion,
     Status,
     StatusResponseError,
-    TlvAny,
-    TlvBoolean,
-    TlvByteString,
-    TlvInt32,
-    TlvNoResponse,
-    TlvNullable,
-    TlvObject,
-    TlvString,
-    TlvUInt64,
-    TlvVoid,
     VendorId,
 } from "@matter/main/types";
 import { CommissioningController, NodeCommissioningOptions } from "@project-chip/matter.js";
@@ -89,7 +77,6 @@ import {
     CommissioningResponse,
     DiscoveryRequest,
     DiscoveryResponse,
-    InvokeByIdRequest,
     InvokeRequest,
     MatterNodeData,
     OpenCommissioningWindowRequest,
@@ -100,7 +87,6 @@ import {
     SubscribeAttributeResponse,
     SubscribeEventRequest,
     SubscribeEventResponse,
-    WriteAttributeByIdRequest,
     WriteAttributeRequest,
 } from "../types/CommandHandler.js";
 import {
@@ -287,7 +273,9 @@ export class ControllerCommandHandler {
     }
 
     async close() {
-        if (!this.#started) return;
+        if (!this.#started) {
+            return;
+        }
         await this.#customClusterPoller.stop();
         return this.#controller.close();
     }
@@ -754,7 +742,7 @@ export class ControllerCommandHandler {
     }
 
     // TODO improve response typing
-    async #invokeCommand<const C extends ClusterType>(
+    async #invokeCommand<const C extends Specifier.ClusterLike>(
         node: ClientNode,
         request: Invoke.ConcreteCommandRequest<C>,
         options: Omit<Invoke.Definition, "commands"> = {},
@@ -791,22 +779,25 @@ export class ControllerCommandHandler {
         } = data;
         let { data: commandData } = data;
 
-        const cluster = getClusterById(clusterId);
+        const clusterEntry = ClusterMap[clusterId];
+        if (!clusterEntry) {
+            throw ServerError.invalidArguments(`Cluster Id "${clusterId}" unknown`);
+        }
+        const clusterName = clusterEntry.model.propertyName;
         const commandName = camelize(data.commandName);
         const commands = (
             this.#nodes.get(nodeId).node.endpoints.for(endpointId).commands as Record<string, Record<string, unknown>>
-        )[camelize(cluster.name)];
+        )[clusterName];
         if (!commands[commandName]) {
-            throw ServerError.invalidArguments(`Command "${commandName}" does not exist on cluster "${cluster.name}"`);
+            throw ServerError.invalidArguments(`Command "${commandName}" does not exist on cluster "${clusterName}"`);
         }
 
         if (isObject(commandData)) {
             if (Object.keys(commandData).length === 0) {
                 commandData = undefined;
             } else {
-                const clusterEntry = ClusterMap[clusterId];
-                const model = clusterEntry?.commands[commandName.toLowerCase()];
-                if (cluster && model) {
+                const model = clusterEntry.commands[commandName.toLowerCase()];
+                if (model) {
                     commandData = convertCommandDataToMatter(commandData, model, clusterEntry.model);
                 }
             }
@@ -820,10 +811,13 @@ export class ControllerCommandHandler {
         const existing = this.#inFlightInvokes.get(dedupKey);
         if (existing !== undefined) {
             logger.warn(
-                `Duplicate command detected for ${this.formatNode(nodeId)}/${endpointId}/${cluster.name}/${commandName} - coalescing with in-flight request`,
+                `Duplicate command detected for ${this.formatNode(nodeId)}/${endpointId}/${clusterName}/${commandName} - coalescing with in-flight request`,
             );
             return existing;
         }
+
+        // Resolve cluster namespace with command definitions for typed invoke
+        const cluster = ClusterType(clusterEntry.model) as Specifier.ClusterLike;
 
         // Execute and track the command
         const invokePromise = this.#invokeCommand(
@@ -846,65 +840,6 @@ export class ControllerCommandHandler {
         // Ensure cleanup of the in-flight entry once the invoke completes
         return invokePromise.finally(() => {
             this.#inFlightInvokes.delete(dedupKey);
-        });
-    }
-
-    /** InvokeById minimalistic handler because only used for error testing */
-    async handleInvokeById(data: InvokeByIdRequest): Promise<void> {
-        const { nodeId, endpointId, clusterId, commandId, data: commandData, timedInteractionTimeoutMs } = data;
-        const client = this.#nodes.interactionClientFor(nodeId);
-        await client.invoke<Command<any, any, any>>({
-            endpointId,
-            clusterId: clusterId,
-            command: Command(commandId, TlvAny, 0x00, TlvNoResponse, {
-                timed: timedInteractionTimeoutMs !== undefined,
-            }),
-            request: commandData === undefined ? TlvVoid.encodeTlv() : TlvObject({}).encodeTlv(commandData as any),
-            asTimedRequest: timedInteractionTimeoutMs !== undefined,
-            timedRequestTimeout: Millis(timedInteractionTimeoutMs),
-            skipValidation: true,
-        });
-    }
-
-    async handleWriteAttributeById(data: WriteAttributeByIdRequest): Promise<void> {
-        const { nodeId, endpointId, clusterId, attributeId, value } = data;
-
-        const client = this.#nodes.interactionClientFor(nodeId);
-
-        logger.info("Writing attribute", attributeId, "with value", value);
-
-        let tlvValue: any;
-
-        if (value === null) {
-            tlvValue = TlvNullable(TlvBoolean).encodeTlv(value); // Boolean is just a placeholder here
-        } else if (value instanceof Uint8Array) {
-            tlvValue = TlvByteString.encodeTlv(value);
-        } else {
-            switch (typeof value) {
-                case "boolean":
-                    tlvValue = TlvBoolean.encodeTlv(value);
-                    break;
-                case "number":
-                    tlvValue = TlvInt32.encodeTlv(value);
-                    break;
-                case "bigint":
-                    tlvValue = TlvUInt64.encodeTlv(value);
-                    break;
-                case "string":
-                    tlvValue = TlvString.encodeTlv(value);
-                    break;
-                default:
-                    throw ServerError.invalidArguments(`Unsupported value type "${typeof value}" for Any encoding`);
-            }
-        }
-
-        await client.setAttribute({
-            attributeData: {
-                endpointId,
-                clusterId,
-                attribute: Attribute(attributeId, TlvAny),
-                value: tlvValue,
-            },
         });
     }
 
@@ -957,7 +892,7 @@ export class ControllerCommandHandler {
         }
 
         const { onNetworkOnly, wifiCredentials: wifiNetwork, threadCredentials: threadNetwork } = data;
-        return {
+        const options = {
             commissioning: {
                 nodeId: data.nodeId,
                 regulatoryLocation: GeneralCommissioning.RegulatoryLocationType.IndoorOutdoor,
@@ -982,6 +917,8 @@ export class ControllerCommandHandler {
             },
             passcode,
         };
+        logger.debug("Commissioning options:", options);
+        return options;
     }
 
     async commissionNode(data: CommissioningRequest): Promise<CommissioningResponse> {
