@@ -299,10 +299,10 @@ class MatterClient:
             if not network_interface.isOperational:
                 continue
             # enumerate ipv4 and ipv6 addresses
-            for ipv4_address_hex in network_interface.iPv4Addresses:
+            for ipv4_address_hex in network_interface.IPv4Addresses:
                 ipv4_address = convert_ip_address(ipv4_address_hex)
                 ip_addresses.append(ipv4_address)
-            for ipv6_address_hex in network_interface.iPv6Addresses:
+            for ipv6_address_hex in network_interface.IPv6Addresses:
                 ipv6_address = convert_ip_address(ipv6_address_hex, True)
                 ip_addresses.append(ipv6_address)
             break
