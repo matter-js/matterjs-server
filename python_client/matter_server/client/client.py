@@ -388,7 +388,7 @@ class MatterClient:
             last_network_id := node.get_attribute_value(
                 0,
                 cluster=None,
-                attribute=Clusters.NetworkCommissioning.Attributes.LastNetworkId,
+                attribute=Clusters.NetworkCommissioning.Attributes.LastNetworkID,
             )
         ):
             if isinstance(last_network_id, bytes):
@@ -546,8 +546,7 @@ class MatterClient:
         **kwargs: Any,
     ) -> CommandMessage:
         if not self.connection.connected:
-            msg = "Not connected"
-            raise InvalidState(msg)
+            raise InvalidState("Not connected")
 
         if (
             require_schema is not None
@@ -573,8 +572,7 @@ class MatterClient:
     ) -> Any:
         """Send a command and get a response."""
         if not self._loop:
-            msg = "Not connected"
-            raise InvalidState(msg)
+            raise InvalidState("Not connected")
 
         message = self._prepare_message(command, require_schema, **kwargs)
         future: asyncio.Future[Any] = self._loop.create_future()
