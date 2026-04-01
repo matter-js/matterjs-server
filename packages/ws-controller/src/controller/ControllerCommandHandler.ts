@@ -917,7 +917,6 @@ export class ControllerCommandHandler {
             },
             passcode,
         };
-        logger.debug("Commissioning options:", options);
         return options;
     }
 

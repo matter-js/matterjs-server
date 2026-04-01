@@ -997,6 +997,7 @@ class HeimanCluster(Cluster, CustomClusterMixin):
             cluster_id: ClassVar[int] = 0x120BFC01
             command_id: ClassVar[int] = 0x00
             is_client: ClassVar[bool] = True
+            response_type: ClassVar[str | None] = None
 
             @ChipUtility.classproperty
             def descriptor(cls) -> ClusterObjectDescriptor:
