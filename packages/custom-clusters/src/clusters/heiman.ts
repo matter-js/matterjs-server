@@ -7,7 +7,7 @@
 import { attribute, cluster, uint8, writable, command, uint16, field } from "@matter/main/model";
 
 /**
- * Input to the myFancyCommand command.
+ * Input to the {@link HeimanCluster.mutingSensor} command.
  */
 class MutingSensorCommand {
     @field(uint16)
