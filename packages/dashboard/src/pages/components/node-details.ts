@@ -81,13 +81,7 @@ export class NodeDetails extends LitElement {
                     <ha-svg-icon slot="start" class="device-icon" .path=${getDeviceIcon(this.node)}></ha-svg-icon>
                     <div slot="headline">
                         <b>${this.node.nodeLabel || "Node Info"}</b>
-                        ${
-                            this.node.available
-                                ? nothing
-                                : html`
-                                      <span class="status">OFFLINE</span>
-                                  `
-                        }
+                        ${this.node.available ? nothing : html` <span class="status">OFFLINE</span> `}
                     </div>
                 </md-list-item>
                 <md-list-item>
@@ -101,56 +95,48 @@ export class NodeDetails extends LitElement {
                     </div>
                     <div slot="supporting-text"><span class="left">Is bridge: </span>${this.node.is_bridge}</div>
                     <div slot="supporting-text"><span class="left">Serialnumber: </span>${this.node.serialNumber}</div>
-                    ${
-                        this.node.matter_version
-                            ? html`<div slot="supporting-text">
+                    ${this.node.matter_version
+                        ? html`<div slot="supporting-text">
                               <span class="left">Matter version: </span>${this.node.matter_version}
                           </div>`
-                            : nothing
-                    }
-                    ${
-                        this.node.is_bridge
-                            ? ""
-                            : html` <div slot="supporting-text">
+                        : nothing}
+                    ${this.node.is_bridge
+                        ? ""
+                        : html` <div slot="supporting-text">
                               <span class="left">All device types: </span>${getNodeDeviceTypes(this.node)
                                   .map(deviceType => {
                                       return deviceType.label;
                                   })
                                   .join(" / ")}
-                          </div>`
-                    }
+                          </div>`}
                 </md-list-item>
                 <md-list-item>
                     <div class="btn-row">
                         <md-outlined-button @click=${handleAsync(() => this._reinterview())}
                             >Interview<ha-svg-icon slot="icon" .path=${mdiChatProcessing}></ha-svg-icon
                         ></md-outlined-button>
-                        ${
-                            this._updateInitiated
-                                ? html` <md-outlined-button disabled
+                        ${this._updateInitiated
+                            ? html` <md-outlined-button disabled
                                   >Checking for updates<ha-svg-icon slot="icon" .path=${mdiUpdate}></ha-svg-icon
                               ></md-outlined-button>`
-                                : (this.node.updateState ?? 0) > 1
-                                  ? html` <md-outlined-button disabled
+                            : (this.node.updateState ?? 0) > 1
+                              ? html` <md-outlined-button disabled
                                     >${getUpdateStateLabel(
                                         this.node.updateState!,
                                         this.node.updateStateProgress,
                                     )}<ha-svg-icon slot="icon" .path=${mdiUpdate}></ha-svg-icon
                                 ></md-outlined-button>`
-                                  : html`<md-outlined-button @click=${handleAsync(() => this._searchUpdate())}
+                              : html`<md-outlined-button @click=${handleAsync(() => this._searchUpdate())}
                                     >Update<ha-svg-icon slot="icon" .path=${mdiUpdate}></ha-svg-icon
-                                ></md-outlined-button>`
-                        }
-                        ${
-                            bindings
-                                ? html`
+                                ></md-outlined-button>`}
+                        ${bindings
+                            ? html`
                                   <md-outlined-button @click=${handleAsync(() => this._binding())}>
                                       Binding
                                       <ha-svg-icon slot="icon" .path=${mdiLink}></ha-svg-icon>
                                   </md-outlined-button>
                               `
-                                : nothing
-                        }
+                            : nothing}
 
                         <md-outlined-button @click=${handleAsync(() => this._openCommissioningWindow())}
                             >Share<ha-svg-icon slot="icon" .path=${mdiShareVariant}></ha-svg-icon
@@ -232,27 +218,24 @@ export class NodeDetails extends LitElement {
         if (
             !(await showPromptDialog({
                 title: "Firmware update available",
-                text: html`Found a firmware update for this node on
-                    <b>${nodeUpdate.update_source}</b>.
-                    ${
-                        isUnverifiedSource
-                            ? html`
-                                  <p
-                                      style="
+                text: html`Found a firmware update for this node on <b>${nodeUpdate.update_source}</b>.
+                    ${isUnverifiedSource
+                        ? html`
+                              <p
+                                  style="
                                           background: var(--md-sys-color-error, #b3261e);
                                           color: var(--md-sys-color-on-error, #fff);
                                           padding: 8px 12px;
                                           border-radius: 4px;
                                           font-weight: bold;
                                       "
-                                  >
-                                      Warning: This update was found on an unverified source. Updates from test-net or local sources have not been
-                                      certified and may contain untested firmware that could result in non-functional devices. Applying these updates is
-                                      entirely at your own risk.
-                                  </p>
-                              `
-                            : nothing
-                    }
+                              >
+                                  Warning: This update was found on an unverified source. Updates from test-net or local
+                                  sources have not been certified and may contain untested firmware that could result in
+                                  non-functional devices. Applying these updates is entirely at your own risk.
+                              </p>
+                          `
+                        : nothing}
                     <p>
                         Do you want to update this node to version
                         <b>${nodeUpdate.software_version_string}</b>?

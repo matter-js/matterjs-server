@@ -4,7 +4,19 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { camelize, ClusterId, FabricIndex, Logger, LogLevel, Millis, NodeId, ObserverGroup } from "@matter/main";
+import {
+    MatterError,
+    Diagnostic,
+    Bytes,
+    camelize,
+    ClusterId,
+    FabricIndex,
+    Logger,
+    LogLevel,
+    Millis,
+    NodeId,
+    ObserverGroup,
+} from "@matter/main";
 import { ControllerCommissioningFlowOptions } from "@matter/main/protocol";
 import { EndpointNumber, QrPairingCodeCodec } from "@matter/main/types";
 import { NodeStates } from "@project-chip/matter.js/device";
@@ -874,6 +886,19 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
     async #handleSetThreadDataset(args: ArgsOf<"set_thread_dataset">): Promise<ResponseOf<"set_thread_dataset">> {
         const { dataset } = args;
+        if (!/^[0-9a-fA-F]*$/.test(dataset) || dataset.length % 2 !== 0) {
+            throw ServerError.invalidArguments(
+                "Invalid Thread operational dataset: must be a hex string with even length (each byte is two hex characters)",
+            );
+        }
+        try {
+            Bytes.fromHex(dataset);
+        } catch (error) {
+            MatterError.accept(error);
+            throw ServerError.invalidArguments(
+                `Invalid Thread operational dataset: failed to parse hex string: ${Diagnostic.errorMessage(error)}`,
+            );
+        }
         await this.#config.set({ threadDataset: dataset });
         // Broadcast server_info_updated event to notify clients of credential change
         try {

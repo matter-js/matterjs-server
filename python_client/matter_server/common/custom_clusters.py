@@ -7,6 +7,7 @@ from chip import ChipUtility
 from chip.clusters.ClusterObjects import (
     Cluster,
     ClusterAttributeDescriptor,
+    ClusterCommand,
     ClusterObjectDescriptor,
     ClusterObjectFieldDescriptor,
 )
@@ -985,6 +986,31 @@ class HeimanCluster(Cluster, CustomClusterMixin):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: uint = 0
+
+    class Commands:
+        """Commands for the Heiman Cluster."""
+
+        @dataclass
+        class MutingSensor(ClusterCommand):
+            """Command for muting sensor for a specific period if there is an alarm."""
+
+            cluster_id: ClassVar[int] = 0x120BFC01
+            command_id: ClassVar[int] = 0x00
+            is_client: ClassVar[bool] = True
+            response_type: ClassVar[str | None] = None
+
+            @ChipUtility.classproperty
+            def descriptor(cls) -> ClusterObjectDescriptor:
+                """Return descriptor for this command."""
+                return ClusterObjectDescriptor(
+                    Fields=[
+                        ClusterObjectFieldDescriptor(
+                            Label="mutingTime", Tag=0, Type=uint
+                        ),
+                    ]
+                )
+
+            mutingTime: uint = 0
 
 
 @dataclass

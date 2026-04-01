@@ -14,6 +14,8 @@ import {
     LegacyFabricConfigData,
     LegacyServerFile,
     Logger,
+    parseBigIntAwareJson,
+    toBigIntAwareJson,
 } from "@matter-server/ws-controller";
 import { Millis, Time, Timer } from "@matter/main";
 import { access, readFile, rename, unlink, writeFile } from "node:fs/promises";
@@ -284,7 +286,7 @@ export async function loadLegacyData(
         try {
             await access(filePath);
             const content = await readFile(filePath, "utf-8");
-            const serverFile = JSON.parse(content) as LegacyServerFile;
+            const serverFile = parseBigIntAwareJson(content) as LegacyServerFile;
 
             // Warn if the nodes key is missing
             if (!serverFile.nodes) {
@@ -401,7 +403,7 @@ export async function saveLegacyServerFile(
         logger.debug(`Keeping existing backup intact (main file was corrupted)`);
     }
 
-    const content = JSON.stringify(serverFile, null, 2);
+    const content = toBigIntAwareJson(serverFile, 2);
     await writeFile(serverFilePath, content, "utf-8");
 
     const nodeCount = Object.keys(serverFile.nodes).length;
@@ -587,7 +589,7 @@ export class LegacyDataWriter {
         // First, try to load the main file
         try {
             const content = await readFile(serverFilePath, "utf-8");
-            serverFile = JSON.parse(content) as LegacyServerFile;
+            serverFile = parseBigIntAwareJson(content) as LegacyServerFile;
 
             // Warn if the nodes key is missing
             if (!serverFile.nodes) {
@@ -603,7 +605,7 @@ export class LegacyDataWriter {
             // Main file failed, try the backup
             try {
                 const content = await readFile(backupFilePath, "utf-8");
-                serverFile = JSON.parse(content) as LegacyServerFile;
+                serverFile = parseBigIntAwareJson(content) as LegacyServerFile;
 
                 // Warn if the nodes key is missing
                 if (!serverFile.nodes) {

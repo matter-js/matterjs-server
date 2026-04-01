@@ -240,17 +240,13 @@ class MatterNetworkView extends LitElement {
                         </div>
                     </div>
                 </div>
-                ${
-                    this._threadAddressSearchStatus === "idle"
-                        ? ""
-                        : html`<div class="thread-search-status ${this._threadAddressSearchStatus}">
-                              ${
-                                  this._threadAddressSearchStatus === "found"
-                                      ? "Node highlighted."
-                                      : "No matching extended address found."
-                              }
-                          </div>`
-                }
+                ${this._threadAddressSearchStatus === "idle"
+                    ? ""
+                    : html`<div class="thread-search-status ${this._threadAddressSearchStatus}">
+                          ${this._threadAddressSearchStatus === "found"
+                              ? "Node highlighted."
+                              : "No matching extended address found."}
+                      </div>`}
                 <thread-graph
                     .nodes=${this.nodes}
                     @node-selected=${this._handleNodeSelected}

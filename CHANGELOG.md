@@ -7,6 +7,14 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
+## __WORK IN PROGRESS__
+- Feature: (FuNK3Y) Allow network interface name for Websocket binding
+- Enhancement/Fix: Update matter.js to the latest 0.17.0-nightly
+    - RAM usage optimization and other refactorings in the background
+    - Fixes a BLE crash case
+    - Optimizes commissioning edge and error cases
+    - Buffer client cluster writes; persists only every 20 minutes
+
 ## 0.5.10 (2026-03-27)
 - Fix: Ensures correct shutdown flow including releasing all locks
 

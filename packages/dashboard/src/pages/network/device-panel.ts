@@ -96,9 +96,8 @@ export class DevicePanel extends LitElement {
                         class="expand-icon"
                     ></ha-svg-icon>
                 </div>
-                ${
-                    this._isExpanded
-                        ? html`
+                ${this._isExpanded
+                    ? html`
                           <md-list class="device-list">
                               ${this.nodeIds.map(nodeId => {
                                   const node = this.nodes[nodeId.toString()];
@@ -114,8 +113,7 @@ export class DevicePanel extends LitElement {
                               })}
                           </md-list>
                       `
-                        : nothing
-                }
+                    : nothing}
             </div>
         `;
     }
