@@ -37,32 +37,24 @@ export class CommissionNodeThread extends LitElement {
                 <br />
                 <md-outlined-button @click=${handleAsync(() => this._setThreadDataset())} .disabled="${this._loading}"
                     >Set Thread Dataset</md-outlined-button
-                >${
-                    this._loading
-                        ? html`
-                              <md-circular-progress indeterminate></md-circular-progress>
-                          `
-                        : nothing
-                }`;
+                >${this._loading ? html` <md-circular-progress indeterminate></md-circular-progress> ` : nothing}`;
         }
         return html`<md-outlined-text-field label="Pairing code" .disabled="${this._loading}"> </md-outlined-text-field>
             <br />
             <br />
             <md-outlined-button @click=${handleAsync(() => this._commissionNode())} .disabled="${this._loading}"
                 >Commission</md-outlined-button
-            >${
-                this._loading
-                    ? html`
-                          <md-circular-progress indeterminate></md-circular-progress>
-                      `
-                    : nothing
-            }`;
+            >${this._loading ? html` <md-circular-progress indeterminate></md-circular-progress> ` : nothing}`;
     }
 
     private async _setThreadDataset() {
-        const dataset = this._datasetField.value;
+        const dataset = this._datasetField.value.trim();
         if (!dataset) {
             alert("Dataset is required");
+            return;
+        }
+        if (!/^[0-9a-fA-F]*$/.test(dataset) || dataset.length % 2 !== 0) {
+            alert("Invalid Thread dataset: must be a hex string with even length (each byte is two hex characters)");
             return;
         }
         this._loading = true;

@@ -207,9 +207,7 @@ export class ThreadGraph extends BaseNetworkGraph {
             `;
         }
 
-        return html`
-            <div class="graph-container"></div>
-        `;
+        return html` <div class="graph-container"></div> `;
     }
 }
 

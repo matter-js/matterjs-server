@@ -27,7 +27,7 @@ export class DevicePanel extends LitElement {
     public type: PanelType = "wifi";
 
     @property({ type: Array })
-    public nodeIds: number[] = [];
+    public nodeIds: (number | bigint)[] = [];
 
     @property({ type: Object })
     public nodes: Record<string, MatterNode> = {};
@@ -70,7 +70,7 @@ export class DevicePanel extends LitElement {
         this._isExpanded = !this._isExpanded;
     }
 
-    private _handleNodeClick(nodeId: number): void {
+    private _handleNodeClick(nodeId: number | bigint): void {
         this.dispatchEvent(
             new CustomEvent("node-selected", {
                 detail: { nodeId },
@@ -96,9 +96,8 @@ export class DevicePanel extends LitElement {
                         class="expand-icon"
                     ></ha-svg-icon>
                 </div>
-                ${
-                    this._isExpanded
-                        ? html`
+                ${this._isExpanded
+                    ? html`
                           <md-list class="device-list">
                               ${this.nodeIds.map(nodeId => {
                                   const node = this.nodes[nodeId.toString()];
@@ -114,8 +113,7 @@ export class DevicePanel extends LitElement {
                               })}
                           </md-list>
                       `
-                        : nothing
-                }
+                    : nothing}
             </div>
         `;
     }

@@ -4,7 +4,19 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { camelize, ClusterId, FabricIndex, Logger, LogLevel, Millis, NodeId, ObserverGroup } from "@matter/main";
+import {
+    MatterError,
+    Diagnostic,
+    Bytes,
+    camelize,
+    ClusterId,
+    FabricIndex,
+    Logger,
+    LogLevel,
+    Millis,
+    NodeId,
+    ObserverGroup,
+} from "@matter/main";
 import { ControllerCommissioningFlowOptions } from "@matter/main/protocol";
 import { EndpointNumber, QrPairingCodeCodec } from "@matter/main/types";
 import { NodeStates } from "@project-chip/matter.js/device";
@@ -165,7 +177,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
             // Register all event listeners using ObserverGroup for easy cleanup
             observers.on(this.#commandHandler.events.attributeChanged, (nodeId, data) => {
-                if (this.#closed) return;
+                if (this.#closed || !listening) return;
                 const { endpointId, clusterId, attributeId } = data.path;
                 const pathStr = `${endpointId}/${clusterId}/${attributeId}`;
                 const clusterData = ClusterMap[clusterId];
@@ -186,6 +198,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 if (this.#closed || !listening) return;
                 const { path, events } = data;
                 const { endpointId, clusterId, eventId } = path;
+                const clusterData = ClusterMap[clusterId];
 
                 for (const event of events) {
                     let timestamp: number | bigint;
@@ -202,6 +215,12 @@ export class WebSocketControllerHandler implements WebServerHandler {
                         timestampType = 2; // POSIX (fallback)
                     }
 
+                    const eventModel = clusterData?.events[eventId];
+                    const convertedData =
+                        event.data !== undefined
+                            ? convertMatterToWebSocketNameBased(event.data, eventModel, clusterData?.model)
+                            : null;
+
                     const nodeEvent: MatterNodeEvent = {
                         node_id: nodeId,
                         endpoint_id: endpointId,
@@ -211,7 +230,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                         priority: event.priority,
                         timestamp,
                         timestamp_type: timestampType,
-                        data: event.data ?? null,
+                        data: convertedData,
                     };
 
                     // Store event in the history buffer
@@ -354,7 +373,6 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 }
             }
         });
-        console.log("send close to clients");
 
         const wss = this.#wss;
         // Wait for the WebSocket server to close properly
@@ -372,10 +390,10 @@ export class WebSocketControllerHandler implements WebServerHandler {
     async #handleWebSocketRequest(
         connId: string,
         data: string,
-    ): Promise<{ response: ErrorResultMessage | SuccessResultMessage<any>; enableListeners?: boolean }> {
+    ): Promise<{ response: ErrorResultMessage | SuccessResultMessage; enableListeners?: boolean }> {
         let messageId: string | undefined;
         try {
-            logger.debug(`[${connId}] Received WebSocket request`, () => data);
+            logger.debug(`[${connId}] WebSocket request`, () => data);
             const request = parseBigIntAwareJson(data) as { message_id: string; command: string; args: any };
             const { command, args } = request;
             messageId = request.message_id;
@@ -484,9 +502,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 throw ServerError.sdkStackError("Command handler returned no response");
             }
             if (skipMessageContentInLogFor.includes(command)) {
-                logger.debug(`[${connId}] WebSocket request (${command}) handled`, messageId);
+                logger.debug(`[${connId}] WebSocket response (${command})`, messageId);
             } else {
-                logger.debug(`[${connId}] WebSocket request (${command}) handled`, messageId, result);
+                logger.debug(`[${connId}] WebSocket response (${command})`, messageId, result);
             }
             return {
                 response: {
@@ -596,7 +614,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
             }
         }
 
-        await this.#config.set({ nextNodeId: nextNodeId + 1 });
+        await this.#config.set({
+            nextNodeId: typeof nextNodeId === "bigint" ? nextNodeId + 1n : nextNodeId + 1,
+        });
 
         const { nodeId } = await this.#commandHandler.commissionNode({
             nodeId: NodeId(nextNodeId),
@@ -650,7 +670,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 break;
         }
 
-        await this.#config.set({ nextNodeId: nextNodeId + 1 });
+        await this.#config.set({
+            nextNodeId: typeof nextNodeId === "bigint" ? nextNodeId + 1n : nextNodeId + 1,
+        });
 
         const { nodeId } = await this.#commandHandler.commissionNode(commissionRequest);
 
@@ -789,7 +811,6 @@ export class WebSocketControllerHandler implements WebServerHandler {
             cluster_id: clusterId,
             command_name: commandName,
             payload,
-            response_type,
             timed_request_timeout_ms: timedInteractionTimeoutMs,
         } = args;
 
@@ -803,8 +824,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 typeof timedInteractionTimeoutMs === "number" ? Millis(timedInteractionTimeoutMs) : undefined,
         });
 
-        // Test nodes and null response_type return null
-        if (TestNodeCommandHandler.isTestNodeId(nodeId) || response_type === null) {
+        // Test nodes return null
+        if (TestNodeCommandHandler.isTestNodeId(nodeId)) {
             return null;
         }
         const cmdResult = this.#convertCommandDataToWebSocket(ClusterId(clusterId), commandName, result);
@@ -865,6 +886,19 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
     async #handleSetThreadDataset(args: ArgsOf<"set_thread_dataset">): Promise<ResponseOf<"set_thread_dataset">> {
         const { dataset } = args;
+        if (!/^[0-9a-fA-F]*$/.test(dataset) || dataset.length % 2 !== 0) {
+            throw ServerError.invalidArguments(
+                "Invalid Thread operational dataset: must be a hex string with even length (each byte is two hex characters)",
+            );
+        }
+        try {
+            Bytes.fromHex(dataset);
+        } catch (error) {
+            MatterError.accept(error);
+            throw ServerError.invalidArguments(
+                `Invalid Thread operational dataset: failed to parse hex string: ${Diagnostic.errorMessage(error)}`,
+            );
+        }
         await this.#config.set({ threadDataset: dataset });
         // Broadcast server_info_updated event to notify clients of credential change
         try {

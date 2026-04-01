@@ -11,14 +11,16 @@
 
 import { Command, InvalidArgumentError, Option } from "commander";
 import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, networkInterfaces } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // Read the version from package.json using an ESM-native approach
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const packageJsonPath = join(__dirname, "../../package.json");
-const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8")) as { version: string };
+const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8")) as {
+    version: string;
+};
 const VERSION = packageJson.version;
 
 // Default values (exported for use in LegacyDataLoader)
@@ -207,6 +209,31 @@ export function parseCliArgs(argv?: string[]): CliOptions {
         listenAddress = [process.env.LISTEN_ADDRESS];
     }
 
+    // Substitute {{interface}} patterns with all its IP addresses
+    if (listenAddress) {
+        const interfaces = networkInterfaces();
+        listenAddress = listenAddress.flatMap(address => {
+            const match = address.match(/^{{(.+)}}$/);
+            if (match) {
+                const interfaceName = match[1];
+                const interfaceAddresses = interfaces[interfaceName] || [];
+
+                // Add scope to ipv6 link local addresses
+                const normalizedInterfaceAddresses = interfaceAddresses.map(a =>
+                    a.address.toLowerCase().startsWith("fe80:") && !a.address.includes("%")
+                        ? `${a.address}%${interfaceName}`
+                        : a.address,
+                );
+
+                if (normalizedInterfaceAddresses.length === 0) {
+                    throw new InvalidArgumentError(`No valid IP address found for interface ${interfaceName}`);
+                }
+
+                return normalizedInterfaceAddresses;
+            }
+            return [address];
+        });
+    }
     return {
         vendorId: opts.vendorid,
         fabricId: opts.fabricid ?? undefined,

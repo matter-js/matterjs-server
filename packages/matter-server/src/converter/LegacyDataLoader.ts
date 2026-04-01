@@ -14,6 +14,8 @@ import {
     LegacyFabricConfigData,
     LegacyServerFile,
     Logger,
+    parseBigIntAwareJson,
+    toBigIntAwareJson,
 } from "@matter-server/ws-controller";
 import { Millis, Time, Timer } from "@matter/main";
 import { access, readFile, rename, unlink, writeFile } from "node:fs/promises";
@@ -284,7 +286,7 @@ export async function loadLegacyData(
         try {
             await access(filePath);
             const content = await readFile(filePath, "utf-8");
-            const serverFile = JSON.parse(content) as LegacyServerFile;
+            const serverFile = parseBigIntAwareJson(content) as LegacyServerFile;
 
             // Warn if the nodes key is missing
             if (!serverFile.nodes) {
@@ -401,7 +403,7 @@ export async function saveLegacyServerFile(
         logger.debug(`Keeping existing backup intact (main file was corrupted)`);
     }
 
-    const content = JSON.stringify(serverFile, null, 2);
+    const content = toBigIntAwareJson(serverFile, 2);
     await writeFile(serverFilePath, content, "utf-8");
 
     const nodeCount = Object.keys(serverFile.nodes).length;
@@ -587,7 +589,7 @@ export class LegacyDataWriter {
         // First, try to load the main file
         try {
             const content = await readFile(serverFilePath, "utf-8");
-            serverFile = JSON.parse(content) as LegacyServerFile;
+            serverFile = parseBigIntAwareJson(content) as LegacyServerFile;
 
             // Warn if the nodes key is missing
             if (!serverFile.nodes) {
@@ -603,7 +605,7 @@ export class LegacyDataWriter {
             // Main file failed, try the backup
             try {
                 const content = await readFile(backupFilePath, "utf-8");
-                serverFile = JSON.parse(content) as LegacyServerFile;
+                serverFile = parseBigIntAwareJson(content) as LegacyServerFile;
 
                 // Warn if the nodes key is missing
                 if (!serverFile.nodes) {
@@ -637,13 +639,12 @@ export class LegacyDataWriter {
 
         // Apply all tasks in order
         for (const task of tasks) {
-            const nodeIdNum = typeof task.nodeId === "bigint" ? Number(task.nodeId) : task.nodeId;
-            const nodeIdStr = nodeIdNum.toString();
+            const nodeIdStr = String(task.nodeId);
 
             if (task.type === "add") {
                 // Add the node entry
                 serverFile.nodes[nodeIdStr] = {
-                    node_id: nodeIdNum,
+                    node_id: task.nodeId,
                     date_commissioned: task.dateCommissioned,
                     last_interview: task.dateCommissioned,
                     interview_version: 6,
@@ -653,9 +654,9 @@ export class LegacyDataWriter {
                     attribute_subscriptions: [],
                 };
 
-                // Update last_node_id if this node is higher
-                if (nodeIdNum > serverFile.last_node_id) {
-                    serverFile.last_node_id = nodeIdNum;
+                // Update last_node_id if this node is higher (compare as BigInt for safety)
+                if (BigInt(task.nodeId) > BigInt(serverFile.last_node_id)) {
+                    serverFile.last_node_id = task.nodeId;
                 }
 
                 added.push(nodeIdStr);

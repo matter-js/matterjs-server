@@ -7,6 +7,44 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
+## 0.5.12 (2026-04-01)
+- Feature: (FuNK3Y) Allow network interface name for Websocket binding
+- Enhancement/Fix: Update matter.js to the latest 0.17.0-nightly
+    - RAM usage optimization and other refactorings in the background
+    - Fixes a BLE crash case
+    - Optimizes commissioning edge and error cases
+    - Buffer client cluster writes; persists only every 20 minutes
+
+## 0.5.10 (2026-03-27)
+- Fix: Ensures correct shutdown flow including releasing all locks
+
+## 0.5.9 (2026-03-26)
+- Fix: Always return response data for device commands (ignore "response_type")
+
+## 0.5.8 (2026-03-26)
+- Increase Legacy Eve device energy data polling to 60s (was 30s) to reduce traffic on thread network
+- Enhancement/Fix: Update matter.js to the latest 0.17.0-nightly
+    - Optimizes commissioning process and device connections during commissioning
+    - RAM usage reductions and improvements
+    - Optimizes reconnections and how fast we react to new detected IPs to speed up reconnections
+    - Probes discovered addresses and potentially updates the session address when they change even when we have a valid working session
+    - Ensures a proper BDX session teardown when non-bdx errors happened
+    - Fixes crash cases during commissioning (BLE and when multiple IPs were found)
+
+## 0.5.7 (2026-03-13)
+- Fix: Corrects event payload encoding in websocket messages to match the Python server (and fixes bug from 0.5.6)
+- Fix: Only stream attribute updates after start_listening like all other event-style websocket messages
+- Fix: Try to optimize requested IP list for the node
+
+## 0.5.6 (2026-03-12)
+
+- Fix: Corrects event payload encoding in websocket messages to match the Python server
+- Fix: When querying IPs always include the IP of the current session (if any) and/or the fallback IP
+- Fix: Update matter.js to the latest 0.17.0-nightly
+    - Enhances session and OTA management when devices reboot surprisingly and push new sessions
+    - Optimized OTA process for Ikea "multiple reboots" OTA updates
+    - Ensures commands are never queued
+
 ## 0.5.5 (2026-03-11)
 - Enhancement: Adds log file rotation (seven daily backups, rotated on startup and every 24 hours) when --log-file is specified
 - Enhancement: Allows configuration of the DCL location and networking settings

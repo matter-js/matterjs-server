@@ -104,39 +104,49 @@ export async function resolveServerId(
         // Open and verify the fabric configuration matches
         try {
             const baseStorage = await config.service.open(DEFAULT_SERVER_ID);
-            const fabricsContext = baseStorage.createContext("fabrics");
+            let closed = false;
+            try {
+                const fabricsContext = baseStorage.createContext("fabrics");
 
-            // Read fabric entries
-            const fabrics = await fabricsContext.get<{ fabricId: FabricId; rootVendorId: VendorId }[]>("fabrics", []);
-            if (fabrics.length === 1) {
-                // Single fabric - check if it matches
-                const fabricData = fabrics[0];
-                const storedFabricId = fabricData.fabricId;
-                const storedVendorId = fabricData.rootVendorId;
-                if (storedFabricId === FabricId(fabricId) && storedVendorId === vendorId) {
-                    // Matching fabric - rename it to the new format to avoid future checks
-                    await baseStorage.close();
-                    if (storagePath !== undefined) {
-                        const oldPath = join(storagePath, DEFAULT_SERVER_ID);
-                        const newPath = join(storagePath, candidateId);
-                        try {
-                            await rename(oldPath, newPath);
-                            logger.info(`Renamed storage "${DEFAULT_SERVER_ID}" to "${candidateId}"`);
-                            return candidateId;
-                        } catch (renameErr) {
-                            logger.error(
-                                `Failed to rename storage from "${DEFAULT_SERVER_ID}" to "${candidateId}"`,
-                                renameErr,
-                            );
-                            return DEFAULT_SERVER_ID;
+                // Read fabric entries
+                const fabrics = await fabricsContext.get<{ fabricId: FabricId; rootVendorId: VendorId }[]>(
+                    "fabrics",
+                    [],
+                );
+                if (fabrics.length === 1) {
+                    // Single fabric - check if it matches
+                    const fabricData = fabrics[0];
+                    const storedFabricId = fabricData.fabricId;
+                    const storedVendorId = fabricData.rootVendorId;
+                    if (storedFabricId === FabricId(fabricId) && storedVendorId === vendorId) {
+                        // Matching fabric - close before rename to release file handles
+                        await baseStorage.close();
+                        closed = true;
+                        if (storagePath !== undefined) {
+                            const oldPath = join(storagePath, DEFAULT_SERVER_ID);
+                            const newPath = join(storagePath, candidateId);
+                            try {
+                                await rename(oldPath, newPath);
+                                logger.info(`Renamed storage "${DEFAULT_SERVER_ID}" to "${candidateId}"`);
+                                return candidateId;
+                            } catch (renameErr) {
+                                logger.error(
+                                    `Failed to rename storage from "${DEFAULT_SERVER_ID}" to "${candidateId}"`,
+                                    renameErr,
+                                );
+                                return DEFAULT_SERVER_ID;
+                            }
                         }
+                        return DEFAULT_SERVER_ID;
                     }
-                    return DEFAULT_SERVER_ID;
+                } else {
+                    logger.error(`Multiple fabrics found, using new storage`, fabrics);
                 }
-            } else {
-                logger.error(`Multiple fabrics found, using new storage`, fabrics);
+            } finally {
+                if (!closed) {
+                    await baseStorage.close();
+                }
             }
-            await baseStorage.close();
             logger.info(`Existing "server" storage does not match fabric config, using new ID: ${candidateId}`);
         } catch (err) {
             logger.debug(`Could not verify "server" storage: ${err}`);

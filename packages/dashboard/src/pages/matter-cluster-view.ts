@@ -118,27 +118,23 @@ class MatterClusterView extends LitElement {
                         (attribute, index) => html`
                             <md-list-item class=${index % 2 === 1 ? "alternate-row" : ""}>
                                 <div slot="headline">
-                                    ${
-                                        clusters[this.cluster!]?.attributes[attribute.key]?.label ??
-                                        "Custom/Unknown Attribute"
-                                    }
+                                    ${clusters[this.cluster!]?.attributes[attribute.key]?.label ??
+                                    "Custom/Unknown Attribute"}
                                 </div>
                                 <div slot="supporting-text">
                                     AttributeId: ${attribute.key} (${formatHex(attribute.key)}) - Value type:
                                     ${clusters[this.cluster!]?.attributes[attribute.key]?.type ?? "unknown"}
                                 </div>
                                 <div slot="end">
-                                    ${
-                                        toBigIntAwareJson(attribute.value).length > 30
-                                            ? html`<button
+                                    ${toBigIntAwareJson(attribute.value).length > 30
+                                        ? html`<button
                                               @click=${() => {
                                                   this._showAttributeValue(attribute.value);
                                               }}
                                           >
                                               Show value
                                           </button>`
-                                            : html`<code>${toBigIntAwareJson(attribute.value)}</code>`
-                                    }
+                                        : html`<code>${toBigIntAwareJson(attribute.value)}</code>`}
                                 </div>
                             </md-list-item>
                         `,

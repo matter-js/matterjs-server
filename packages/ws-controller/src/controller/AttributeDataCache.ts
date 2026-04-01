@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { ClientNode, ClusterBehavior, Logger, NodeId } from "@matter/main";
+import { ClientNode, ClusterBehavior, Diagnostic, Logger, MatterError, NodeId } from "@matter/main";
 import { DecodedAttributeReportValue } from "@matter/main/protocol";
 import { PairedNode } from "@project-chip/matter.js/device";
 import { ClusterMap } from "../model/ModelMapper.js";
@@ -126,20 +126,24 @@ export class AttributeDataCache {
                 const clusterData = ClusterMap[cluster.id];
                 const clusterState = endpoint.stateOf(behavior) as Record<string, unknown>;
 
-                for (const attributeName in cluster.attributes) {
-                    const attribute = cluster.attributes[attributeName];
-                    if (attribute === undefined) {
-                        continue;
+                for (const attribute of cluster.schema.attributes) {
+                    try {
+                        const convertedValue = convertMatterToWebSocketTagBased(
+                            clusterState[attribute.propertyName],
+                            clusterData?.attributes[attribute.id],
+                            clusterData?.model,
+                        );
+                        if (convertedValue === undefined) {
+                            continue;
+                        }
+                        attributes[buildAttributePath(endpointId, cluster.id, attribute.id)] = convertedValue;
+                    } catch (error) {
+                        MatterError.accept(error);
+                        logger.debug(
+                            `Ignoring Attribute ${attribute.propertyName} because of`,
+                            Diagnostic.errorMessage(error),
+                        );
                     }
-                    const convertedValue = convertMatterToWebSocketTagBased(
-                        clusterState[attributeName],
-                        clusterData?.attributes[attribute.id],
-                        clusterData?.model,
-                    );
-                    if (convertedValue === undefined) {
-                        continue;
-                    }
-                    attributes[buildAttributePath(endpointId, cluster.id, attribute.id)] = convertedValue;
                 }
             }
         }

@@ -20,9 +20,8 @@ import {
     SupportedStorageTypes,
     Time,
 } from "@matter/main";
-import { DescriptorCluster } from "@matter/main/clusters";
 import { CertificateAuthority, Fabric, FabricBuilder, Noc, PeerAddress } from "@matter/main/protocol";
-import { VendorId } from "@matter/main/types";
+import { Global, VendorId } from "@matter/main/types";
 import { ClusterMap } from "../model/ModelMapper.js";
 import { convertWebSocketTagBasedToMatter } from "../server/Converters.js";
 
@@ -31,7 +30,7 @@ const logger = Logger.get("LegacyDataInjector");
 /* eslint-disable regexp/no-unused-capturing-group */
 const BASE64_REGEX = /^([0-9a-z+/]{4})*(([0-9a-z+/]{2}==)|([0-9a-z+/]{3}=))?$/i;
 
-const FEATUREMAP_ID = DescriptorCluster.attributes.featureMap.id.toString();
+const FEATUREMAP_ID = Global.attributes.featureMap.id.toString();
 
 /**
  * Fabric configuration data extracted from chip.json.
@@ -95,20 +94,20 @@ export interface LegacyVendorInfo {
 
 /** Node data from Python Matter Server nodes map */
 export interface LegacyNodeData {
-    node_id: number;
+    node_id: number | bigint;
     date_commissioned: string;
     last_interview: string;
     interview_version: number;
     available: boolean;
     is_bridge: boolean;
     attributes: Record<string, unknown>;
-    attribute_subscriptions: unknown[];
+    attribute_subscriptions: readonly [];
 }
 
 /** Structure of the <compressedFabricId>.json file */
 export interface LegacyServerFile {
     vendor_info: Record<string, LegacyVendorInfo>;
-    last_node_id: number;
+    last_node_id: number | bigint;
     nodes: Record<string, LegacyNodeData>;
 }
 
@@ -279,9 +278,13 @@ export namespace LegacyDataInjector {
             }
             commissionedNodes.push([NodeId(BigInt(nodeId)), {}]);
             let newNode = true;
+            const attributes = Object.entries(nodeDetails.attributes);
+            if (attributes.length === 0) {
+                continue;
+            }
             logger.info(`Injecting node ${nodeId} into storage`);
             const nodeWrites = new Array<MaybePromise<void>>();
-            for (const [attributeKey, value] of Object.entries(nodeDetails.attributes)) {
+            for (const [attributeKey, value] of attributes) {
                 let currentEndpointId: string | undefined;
                 let currentClusterId: string | undefined;
                 let endpointStorage: StorageContext | undefined;

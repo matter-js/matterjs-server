@@ -168,7 +168,7 @@ export class Nodes {
         nodeId: NodeId,
         endpointId: EndpointNumber,
         cluster: T,
-    ): ClusterClientObj<T> {
-        return this.clusterClientByIdFor(nodeId, endpointId, cluster.id) as ClusterClientObj<T>;
+    ): ClusterClientObj<T["Typing"]> {
+        return this.clusterClientByIdFor(nodeId, endpointId, cluster.id!) as ClusterClientObj<T["Typing"]>;
     }
 }

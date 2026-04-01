@@ -59,11 +59,16 @@ export async function cleanupTempStorage(serverStoragePath: string, deviceStorag
 /**
  * Starts the Matter server process, optionally writing logs to a file.
  */
-export function startServer(storagePath: string, logFilePath?: string): ChildProcess {
+export function startServer(
+    storagePath: string,
+    logFilePath?: string,
+    logLevel = process.env.MATTER_LOG_LEVEL ?? "info",
+): ChildProcess {
     const args = [
         "--enable-source-maps",
         "../../packages/matter-server/dist/esm/MatterServer.js",
         `--storage-path=${storagePath}`,
+        `--log-level=${logLevel}`,
     ];
     if (logFilePath !== undefined) {
         args.push(`--log-file=${logFilePath}`);
