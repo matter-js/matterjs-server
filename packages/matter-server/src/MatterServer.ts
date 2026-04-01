@@ -5,7 +5,6 @@
  */
 // Register the custom clusters
 import "@matter-server/custom-clusters";
-
 // Standard imports
 import {
     ConfigStorage,
