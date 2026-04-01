@@ -31,7 +31,7 @@
         "@rollup/plugin-node-resolve": "^16.0.3",
         "@rollup/plugin-terser": "^1.0.0",
         "@rollup/plugin-typescript": "^12.3.0",
-        "rollup": "^4.60.0",
+        "rollup": "^4.60.1",
         "serve": "^14.2.6"
     },
     "dependencies": {
