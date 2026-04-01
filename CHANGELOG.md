@@ -7,7 +7,7 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
-## __WORK IN PROGRESS__
+## 0.5.12 (2026-04-01)
 - Feature: (FuNK3Y) Allow network interface name for Websocket binding
 - Enhancement/Fix: Update matter.js to the latest 0.17.0-nightly
     - RAM usage optimization and other refactorings in the background
