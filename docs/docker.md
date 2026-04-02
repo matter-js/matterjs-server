@@ -14,7 +14,7 @@ If you still prefer a self-managed container installation, you might experience 
 ## Available Docker image Tags
 
 | Tag      | Description                                      |
-|----------|--------------------------------------------------|
+| -------- | ------------------------------------------------ |
 | `stable` | Latest stable release                            |
 | `latest` | Same as `stable`                                 |
 | `dev`    | Latest development/nightly (pre-release) version |
@@ -82,6 +82,7 @@ docker run -d \
 ```
 
 Common options:
+
 - `--storage-path <path>`: Path to store Matter fabric data (default: `/data`)
 - `--port <port>`: WebSocket server port (default: `5580`)
 - `--primary-interface <interface>`: Primary network interface for mDNS and Matter communication
@@ -92,22 +93,22 @@ For all available options, see the [CLI documentation](cli.md).
 
 All CLI options can be configured via environment variables, making it easy to configure the server without passing command-line arguments.
 
-| Variable              | Description                                          | Default              | Values / Notes                                                                                                           |
-|-----------------------|------------------------------------------------------|----------------------|--------------------------------------------------------------------------------------------------------------------------|
-| `STORAGE_PATH`        | Path to store Matter fabric data                     | `/data`              | Any valid path                                                                                                           |
-| `PORT`                | WebSocket server port                                | `5580`               | Any valid port number                                                                                                    |
-| `LISTEN_ADDRESS`      | IP address(es) to bind WebSocket server              | (all interfaces)     | Set a specific IP address to bind to a single address. Using `{{ifname}}` expands to all IPs on that interface (v4/v6). |
-| `LOG_LEVEL`           | Server logging verbosity                             | `info`               | `critical`, `error`, `warning`, `info`, `debug`, `verbose`                                                               |
-| `LOG_FILE`            | Log file path (must include filename, not just dir)  | (none)               | e.g. `/data/logs/matter-server.log`                                                             |
-| `PRIMARY_INTERFACE`   | Primary network interface for mDNS                   | (auto-detect)        | e.g., `eth0`, `en0`                                                                             |
-| `ENABLE_TEST_NET_DCL` | Enable test-net DCL certificates                     | `false`              | `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`                                                 |
-| `BLUETOOTH_ADAPTER`   | Bluetooth adapter HCI ID                             | (none)               | e.g., `0` for `hci0`, but see [this workaround](#device-discovery-via-host-ble)                 |
-| `DISABLE_OTA`         | Disable OTA update functionality                     | `false`              | `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`                                                 |
-| `OTA_PROVIDER_DIR`    | Directory for OTA Provider files                     | (none)               | Any valid directory path                                                                        |
-| `DISABLE_DASHBOARD`   | Disable the web dashboard                            | `false`              | `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`                                                 |
-| `PRODUCTION_MODE`     | Force dashboard production mode (reverse proxy)      | `false`              | `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`                                                 |
-| `VENDOR_ID`           | Vendor ID for the Fabric                             | `0xfff1`             | Any valid vendor ID                                                                             |
-| `FABRIC_ID`           | Fabric ID for the Fabric                             | `1`                  | Any valid fabric ID                                                                             |
+| Variable              | Description                                         | Default          | Values / Notes                                                                                                      |
+| --------------------- | --------------------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `STORAGE_PATH`        | Path to store Matter fabric data                    | `/data`          | Any valid path                                                                                                      |
+| `PORT`                | WebSocket server port                               | `5580`           | Any valid port number                                                                                               |
+| `LISTEN_ADDRESS`      | IP address(es) to bind WebSocket server             | (all interfaces) | Set a specific IP address to bind to a single address. Using `ifname` expands to all IPs on that interface (v4/v6). |
+| `LOG_LEVEL`           | Server logging verbosity                            | `info`           | `critical`, `error`, `warning`, `info`, `debug`, `verbose`                                                          |
+| `LOG_FILE`            | Log file path (must include filename, not just dir) | (none)           | e.g. `/data/logs/matter-server.log`                                                                                 |
+| `PRIMARY_INTERFACE`   | Primary network interface for mDNS                  | (auto-detect)    | e.g., `eth0`, `en0`                                                                                                 |
+| `ENABLE_TEST_NET_DCL` | Enable test-net DCL certificates                    | `false`          | `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`                                                                     |
+| `BLUETOOTH_ADAPTER`   | Bluetooth adapter HCI ID                            | (none)           | e.g., `0` for `hci0`, but see [this workaround](#device-discovery-via-host-ble)                                     |
+| `DISABLE_OTA`         | Disable OTA update functionality                    | `false`          | `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`                                                                     |
+| `OTA_PROVIDER_DIR`    | Directory for OTA Provider files                    | (none)           | Any valid directory path                                                                                            |
+| `DISABLE_DASHBOARD`   | Disable the web dashboard                           | `false`          | `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`                                                                     |
+| `PRODUCTION_MODE`     | Force dashboard production mode (reverse proxy)     | `false`          | `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`                                                                     |
+| `VENDOR_ID`           | Vendor ID for the Fabric                            | `0xfff1`         | Any valid vendor ID                                                                                                 |
+| `FABRIC_ID`           | Fabric ID for the Fabric                            | `1`              | Any valid fabric ID                                                                                                 |
 
 > [!NOTE]
 > `LOG_FILE` must be a full file path including the filename, not a directory. The log is rotated
@@ -116,6 +117,7 @@ All CLI options can be configured via environment variables, making it easy to c
 
 > [!NOTE]
 > The `LISTEN_ADDRESS` environment variable only supports a single address. Use the CLI `--listen-address` option (repeatable) to bind to multiple addresses.
+> The value can either be an ip address or the network interface name (i.e. `192.168.1.10` or `eth0`)
 
 ### Advanced matter.js Configuration
 
@@ -179,6 +181,7 @@ docker run -d \
 ```
 
 This builds the entire monorepo from source, which is useful for:
+
 - Testing local changes in a container environment
 - Debugging container-specific issues
 - Verifying the build process works in a clean environment
@@ -203,6 +206,7 @@ docker inspect --format='{{.State.Health.Status}}' matterjs-server
 ### mDNS/Device Discovery Issues
 
 If devices are not being discovered, ensure:
+
 1. Host networking is enabled (`--network=host`)
 2. mDNS is working on the host system
 3. The correct network interface is specified with `--primary-interface` if needed
@@ -210,6 +214,7 @@ If devices are not being discovered, ensure:
 ### Permission Issues
 
 If you encounter permission issues with the data volume:
+
 ```bash
 # Ensure the data directory is writable
 chmod 755 data
@@ -230,20 +235,21 @@ docker compose logs -f
 For security reasons, by default the matter.js server is run as an unprivileged user in Docker. Unfortunately, up to now we didn't find a way to grant access to a specific HCI device to unprivileged users.
 
 If you need to discover Matter devices via the hosts BLE, you can use this workaround:
+
 1. Stop the docker container
 2. Use `chown -R 0:0 /path-to-data-volume`
 3. Run docker with the root user `docker run --user=0:0 …` (for compose: `user: 0:0`)
 
 However, be aware this workaround effectively disables container isolation. For this reason, using other means of device commissioning (e.g. via the Home Assistant app) are preferred to applying this workaround.
 
-
 ### Pinging device fails
 
 When pinging a Matter device (e.g. via the Home Assistant UI) the matter.js server uses the system `ping` or `ping6` command to send an ICMP echo request to the device and listen for its response.
 
-To allow this, modern Linux distributions use a sysctl `net.ipv4.ping_group_range` with a value of `0 2147483647`, meaning all user groups may send echo requests and responses (but *not* any other ICMP packet, see below).
+To allow this, modern Linux distributions use a sysctl `net.ipv4.ping_group_range` with a value of `0 2147483647`, meaning all user groups may send echo requests and responses (but _not_ any other ICMP packet, see below).
 
 If your host still has the old value of `1 0` (no pings allowed for anyone), it is recommended to either
+
 - update the value to include group id 1000, or to
 - grant the kernel capability `CAP_NET_RAW` instead: `docker run --cap-add NET_RAW` (for compose: `cap_add: NET_RAW`)
 
