@@ -80,6 +80,7 @@ jobs:
           const prevVersion = fs.readFileSync(`${process.env.GITHUB_WORKSPACE}/version.txt`, "utf8");
 
           const parsed = semver.parse(prevVersion);
+          console.log(prevVersion, parsed);
           const prereleaseIdentifier = parsed.prerelease[0] || "alpha";
 
           for (let i = 1; i < parsed.prerelease.length; i++) {

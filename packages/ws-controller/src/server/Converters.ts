@@ -27,7 +27,7 @@ function convertWebSocketGenericToMatter(value: unknown, model: ValueModel, clus
         for (const member of clusterModel.scope.membersOf(model)) {
             const memberName =
                 member.name !== undefined && model.name !== "FeatureMap"
-                    ? camelize(member.name)
+                    ? member.propertyName
                     : member.title !== undefined
                       ? camelize(member.title)
                       : undefined;
@@ -110,7 +110,7 @@ export function convertWebSocketTagBasedToMatter(
             const memberId = parseInt(key);
             if (!isNaN(memberId) && memberById[memberId]) {
                 const member = memberById[memberId];
-                result[camelize(member.name)] = convertWebSocketTagBasedToMatter(value[key], member, clusterModel);
+                result[member.propertyName] = convertWebSocketTagBasedToMatter(value[key], member, clusterModel);
             } else {
                 // Keep unknown keys as-is (fallback for unknown attributes)
                 result[key] = value[key];
@@ -148,7 +148,7 @@ export function convertCommandDataToMatter(
         const memberByName: { [name: string]: ValueModel } = {};
         for (const member of model.members) {
             if (member.name !== undefined) {
-                memberByName[camelize(member.name)] = member;
+                memberByName[member.propertyName] = member;
             }
         }
 
@@ -228,7 +228,7 @@ function getStructMembers(model: ValueModel): StructMemberEntry[] {
     members = [];
     for (const member of model.members) {
         if (member.name !== undefined && member.id !== undefined) {
-            members.push({ name: camelize(member.name), id: member.id, model: member });
+            members.push({ name: member.propertyName, id: member.id, model: member });
         }
     }
     structMemberCache.set(model, members);
@@ -326,11 +326,12 @@ function convertMatterToWebSocket(
             if (!isObject(value) || clusterModel === undefined) return value;
             let numberValue = 0;
             for (const member of clusterModel.scope.membersOf(model)) {
+                const memberTitle = member.title !== undefined ? camelize(member.title) : undefined;
                 const memberValue =
-                    member.name !== undefined && value[camelize(member.name)]
-                        ? value[camelize(member.name)]
-                        : member.title !== undefined && value[camelize(member.title)]
-                          ? value[camelize(member.title)]
+                    member.name !== undefined && value[member.propertyName]
+                        ? value[member.propertyName]
+                        : memberTitle && value[memberTitle]
+                          ? value[memberTitle]
                           : undefined;
 
                 if (!memberValue) {
@@ -550,7 +551,7 @@ export function convertWebsocketDataToMatter(value: any, model: ValueModel): any
             valueKeys.forEach(key => {
                 const member = members[camelize(key).toLowerCase()];
                 if (member !== undefined) {
-                    result[camelize(member.name)] = convertWebsocketDataToMatter(value[key], member);
+                    result[member.propertyName] = convertWebsocketDataToMatter(value[key], member);
                 }
             });
             return result;
@@ -587,7 +588,7 @@ export function convertWebsocketDataToMatter(value: any, model: ValueModel): any
                     member.name !== undefined &&
                     numberValue & (1 << parseInt(member.constraint as unknown as string))
                 ) {
-                    bitmapValue[camelize(member.name)] = true;
+                    bitmapValue[member.propertyName] = true;
                 }
             });
             return bitmapValue;

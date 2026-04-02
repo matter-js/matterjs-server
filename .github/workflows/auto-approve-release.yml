@@ -10,6 +10,8 @@ jobs:
       github.actor == 'Automator77' && github.event.label.name == 'automated-npm-release' 
 
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
     steps:
       - uses: hmarr/auto-approve-action@v4
         with:
