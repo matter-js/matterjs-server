@@ -51,6 +51,23 @@ class HeimanCluster(Cluster):
     featureMap: uint = 0
     clusterRevision: uint = 0
 
+    class Commands:
+        @dataclass
+        class mutingSensor(ClusterCommand):
+            cluster_id: typing.ClassVar[int] = 0x120BFC01
+            command_id: typing.ClassVar[int] = 0x00000000
+            is_client: typing.ClassVar[bool] = True
+            response_type: typing.ClassVar[typing.Optional[str]] = None
+
+            @ChipUtility.classproperty
+            def descriptor(cls) -> ClusterObjectDescriptor:
+                return ClusterObjectDescriptor(
+                    Fields=[
+                        ClusterObjectFieldDescriptor(Label="mutingTime", Tag=0, Type=typing.Optional[uint]),
+                    ])
+
+            mutingTime: typing.Optional[uint] = None
+
     class Attributes:
         @dataclass
         class TamperAlarm(ClusterAttributeDescriptor):

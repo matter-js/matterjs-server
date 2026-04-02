@@ -16,13 +16,15 @@
  * Run with: npx tsx python_client/scripts/generate-python-clusters.ts
  */
 
+// Include custom cluster definitions in the model (registers them in Matter)
+import "@matter-server/custom-clusters";
+
+// Import normal dependencies
 import { AttributeModel, ClusterModel, CommandModel, EventModel, Matter, ValueModel } from "@matter/main/model";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// Include custom cluster definitions in the model (registers them in Matter)
-import "@matter-server/custom-clusters";
 // Also import the class names to identify which clusters are custom
 import * as CustomClusterClasses from "../../packages/custom-clusters/dist/esm/clusters/index.js";
 
@@ -921,7 +923,8 @@ function generateClusterFile(
     const features = (cluster as any).features || [];
 
     // Collect commands (from resolved, which includes inherited)
-    const requestCommands = resolved.commands.filter(c => c.direction === "request");
+    // Custom cluster commands may have direction=undefined; treat as "request"
+    const requestCommands = resolved.commands.filter(c => c.direction === "request" || c.direction === undefined);
     const responseCommands = resolved.commands.filter(c => c.direction === "response");
     const allCommands = [...requestCommands, ...responseCommands];
 
@@ -1335,7 +1338,8 @@ function generateCommand(
     resolveType: (m: ValueModel) => PythonType,
     _responseCommands: CommandModel[],
 ): void {
-    const isClient = model.direction === "request";
+    // Custom cluster commands may have direction=undefined; treat as client request
+    const isClient = model.direction !== "response";
     const commandId = model.id ?? 0;
 
     // Determine response_type
@@ -1354,7 +1358,7 @@ function generateCommand(
     w.line(`response_type: typing.ClassVar[typing.Optional[str]] = ${responseType}`);
     w.blankLine();
 
-    if ((model.access as any)?.timed === true) {
+    if (model.effectiveAccess.timed === true) {
         w.line("@ChipUtility.classproperty");
         w.line("def must_use_timed_invoke(cls) -> bool:");
         w.pushIndent();
