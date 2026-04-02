@@ -222,6 +222,8 @@ class ClusterCommand(ClusterObject):
                     ALL_GENERATED_COMMANDS[cls.cluster_id] = {}
                 ALL_GENERATED_COMMANDS[cls.cluster_id][cls.command_id] = cls
         except NotImplementedError:
+            # handle case where the ClusterAttribute class is not (fully) subclassed
+            # and accessing the id property throws a NotImplementedError.
             pass
 
     @ChipUtility.classproperty
