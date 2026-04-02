@@ -7,7 +7,7 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
-## 0.5.13 (2026-04-02)
+## __WORK IN PROGRESS__
 - Fix: Ignore directories in the OTA update directory
 - Fix: (FuNK3Y) Enhances network interface name logic for Websocket binding
 - Fix: Update matter.js to the latest 0.17.0-nightly
