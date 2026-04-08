@@ -307,10 +307,6 @@ export class ControllerCommandHandler {
         });
         node.events.eventTriggered.on(data => this.events.eventChanged.emit(nodeId, data));
         node.events.stateChanged.on(state => {
-            if (state === NodeStates.Disconnected) {
-                return;
-            }
-
             // Calculate availability before and after state change
             const previousState = this.#nodes.getPreviousState(nodeId);
             const wasAvailable = this.#lastAvailability.get(nodeId) ?? false;
