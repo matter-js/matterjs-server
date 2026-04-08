@@ -27,6 +27,8 @@ export class Nodes {
     #attributeCache = new AttributeDataCache();
     /** Track previous connection state for availability debouncing */
     #previousStates = new Map<NodeId, NodeStates>();
+    /** Track the last known availability for each node to detect changes */
+    #lastAvailability = new Map<NodeId, boolean>();
 
     /**
      * Get the attribute cache instance.
@@ -75,6 +77,7 @@ export class Nodes {
         this.#nodes.delete(nodeId);
         this.#attributeCache.delete(nodeId);
         this.#previousStates.delete(nodeId);
+        this.#lastAvailability.delete(nodeId);
     }
 
     /**
@@ -127,6 +130,42 @@ export class Nodes {
         const currentState = node.connectionState;
         const previousState = this.#previousStates.get(nodeId);
         return this.isNodeAvailable(currentState, previousState);
+    }
+
+    /**
+     * Seed initial state tracking for a newly registered node.
+     * Only marks as available when actually connected; all other states default to unavailable.
+     */
+    seedState(nodeId: NodeId, initialState: NodeStates): void {
+        this.#previousStates.set(nodeId, initialState);
+        if (initialState === NodeStates.Connected) {
+            this.#lastAvailability.set(nodeId, true);
+        }
+    }
+
+    /**
+     * Process a node state change and return whether availability changed.
+     * Updates internal state tracking and returns the availability transition if one occurred.
+     *
+     * @returns Object with `availabilityChanged: true` and `available` value if availability changed,
+     *          or `availabilityChanged: false` if it did not.
+     */
+    processStateChange(
+        nodeId: NodeId,
+        newState: NodeStates,
+    ): { availabilityChanged: true; available: boolean } | { availabilityChanged: false } {
+        const previousState = this.#previousStates.get(nodeId);
+        const wasAvailable = this.#lastAvailability.get(nodeId) ?? false;
+        const isAvailable = this.isNodeAvailable(newState, previousState);
+
+        // Update state tracking for the next transition
+        this.#previousStates.set(nodeId, newState);
+        this.#lastAvailability.set(nodeId, isAvailable);
+
+        if (wasAvailable !== isAvailable) {
+            return { availabilityChanged: true, available: isAvailable };
+        }
+        return { availabilityChanged: false };
     }
 
     /**

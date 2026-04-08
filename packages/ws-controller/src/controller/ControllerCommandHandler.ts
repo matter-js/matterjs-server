@@ -160,8 +160,6 @@ export class ControllerCommandHandler {
     #availableUpdates = new Map<NodeId, SoftwareUpdateInfo>();
     /** Poller for custom cluster attributes (Eve energy, etc.) */
     #customClusterPoller: CustomClusterPoller;
-    /** Track the last known availability for each node to detect changes */
-    #lastAvailability = new Map<NodeId, boolean>();
     /** Track in-flight invoke-commands for deduplication across all WebSocket connections */
     readonly #inFlightInvokes = new Map<string, Promise<unknown>>();
     events = {
@@ -307,11 +305,6 @@ export class ControllerCommandHandler {
         });
         node.events.eventTriggered.on(data => this.events.eventChanged.emit(nodeId, data));
         node.events.stateChanged.on(state => {
-            // Calculate availability before and after state change
-            const previousState = this.#nodes.getPreviousState(nodeId);
-            const wasAvailable = this.#lastAvailability.get(nodeId) ?? false;
-            const isAvailable = this.#nodes.isNodeAvailable(state, previousState);
-
             // Only refresh cache on Connected state (not Reconnecting, WaitingForDiscovery, etc.)
             if (state === NodeStates.Connected) {
                 attributeCache.update(node);
@@ -322,19 +315,18 @@ export class ControllerCommandHandler {
                 }
             }
 
-            // Update state tracking for the next transition
-            this.#nodes.setPreviousState(nodeId, state);
-            this.#lastAvailability.set(nodeId, isAvailable);
+            // Process state change and check if availability changed
+            const result = this.#nodes.processStateChange(nodeId, state);
 
             // Emit state changed event
             this.events.nodeStateChanged.emit(nodeId, state);
 
             // Emit availability changed if it actually changed
-            if (wasAvailable !== isAvailable) {
+            if (result.availabilityChanged) {
                 logger.info(
-                    `Node ${this.formatNode(nodeId)} availability changed: ${wasAvailable} -> ${isAvailable} (state: ${NodeStates[previousState ?? -1]} -> ${NodeStates[state]})`,
+                    `Node ${this.formatNode(nodeId)} availability changed to ${result.available} (state: ${NodeStates[state]})`,
                 );
-                this.events.nodeAvailabilityChanged.emit(nodeId, isAvailable);
+                this.events.nodeAvailabilityChanged.emit(nodeId, result.available);
             }
         });
         node.events.structureChanged.on(() => {
@@ -354,12 +346,7 @@ export class ControllerCommandHandler {
 
         // Seed state tracking from the node's current connection state so the first
         // stateChanged event shows a real previous state instead of "undefined".
-        const initialState = node.connectionState;
-        this.#nodes.setPreviousState(nodeId, initialState);
-        // Only mark as available when actually connected; all other states default to false (unavailable).
-        if (initialState === NodeStates.Connected) {
-            this.#lastAvailability.set(nodeId, true);
-        }
+        this.#nodes.seedState(nodeId, node.connectionState);
 
         // Initialize attribute cache if node is already initialized
         if (node.initialized) {
