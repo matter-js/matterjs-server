@@ -27,6 +27,8 @@ export class Nodes {
     #attributeCache = new AttributeDataCache();
     /** Track previous connection state for availability debouncing */
     #previousStates = new Map<NodeId, NodeStates>();
+    /** Cached availability so serialization and event paths always agree */
+    #lastAvailability = new Map<NodeId, boolean>();
 
     /**
      * Get the attribute cache instance.
@@ -75,21 +77,52 @@ export class Nodes {
         this.#nodes.delete(nodeId);
         this.#attributeCache.delete(nodeId);
         this.#previousStates.delete(nodeId);
+        this.#lastAvailability.delete(nodeId);
     }
 
     /**
-     * Get the previous connection state for a node.
+     * Initialize state tracking for a newly paired/discovered node.
+     * Sets previous state and initial availability so the first stateChanged event
+     * has a real previous state instead of undefined.
      */
-    getPreviousState(nodeId: NodeId): NodeStates | undefined {
-        return this.#previousStates.get(nodeId);
+    seedState(nodeId: NodeId, initialState: NodeStates): void {
+        this.#previousStates.set(nodeId, initialState);
+        this.#lastAvailability.set(nodeId, initialState === NodeStates.Connected);
     }
 
     /**
-     * Update the previous connection state for a node.
-     * Call this after processing a state change to track state transitions.
+     * Process a state change for a node. Reads previous state BEFORE updating,
+     * computes new availability, and updates both tracking maps atomically.
+     * Returns whether availability changed and the new value.
      */
-    setPreviousState(nodeId: NodeId, state: NodeStates): void {
-        this.#previousStates.set(nodeId, state);
+    processStateChange(
+        nodeId: NodeId,
+        newState: NodeStates,
+    ): { availabilityChanged: true; available: boolean } | { availabilityChanged: false } {
+        const previousState = this.#previousStates.get(nodeId);
+        const wasAvailable = this.#lastAvailability.get(nodeId) ?? false;
+        const available = this.isNodeAvailable(newState, previousState);
+
+        this.#previousStates.set(nodeId, newState);
+        this.#lastAvailability.set(nodeId, available);
+
+        if (wasAvailable !== available) {
+            return { availabilityChanged: true, available };
+        }
+        return { availabilityChanged: false };
+    }
+
+    /**
+     * Force a node to unavailable state. Used by reconnect timeout
+     * when debounce period expires without reconnection.
+     * Only updates #lastAvailability — #previousStates is left as-is because
+     * processStateChange() will overwrite it on the next real state transition.
+     * Returns true if the node was previously considered available.
+     */
+    forceUnavailable(nodeId: NodeId): boolean {
+        const wasAvailable = this.#lastAvailability.get(nodeId) ?? false;
+        this.#lastAvailability.set(nodeId, false);
+        return wasAvailable;
     }
 
     /**
@@ -116,17 +149,12 @@ export class Nodes {
     }
 
     /**
-     * Check if a node is available based on its current and previous connection state.
-     * Uses debouncing: Reconnecting from Connected is still considered available.
+     * Check if a node is available. Returns the cached availability value set by
+     * seedState/processStateChange/forceUnavailable, avoiding the race where
+     * recomputing from live state disagrees with the event path's determination.
      */
     isAvailable(nodeId: NodeId): boolean {
-        const node = this.#nodes.get(nodeId);
-        if (node === undefined) {
-            return false;
-        }
-        const currentState = node.connectionState;
-        const previousState = this.#previousStates.get(nodeId);
-        return this.isNodeAvailable(currentState, previousState);
+        return this.#lastAvailability.get(nodeId) ?? false;
     }
 
     /**

@@ -78,6 +78,8 @@ let config: ConfigStorage;
 let legacyData: LegacyData;
 let legacyDataWriter: LegacyDataWriter | undefined;
 let fileLoggerClose: (() => Promise<void>) | undefined;
+let stopping = false;
+let startCompleted: Promise<void> = Promise.resolve();
 
 async function start() {
     // Set up file logging additionally to the console if configured
@@ -190,6 +192,19 @@ async function start() {
 }
 
 async function stop() {
+    if (stopping) {
+        return;
+    }
+    stopping = true;
+
+    // Wait for start() to finish (or fail) before tearing down, so we don't
+    // race against in-flight initialization that could re-create resources.
+    try {
+        await startCompleted;
+    } catch {
+        // start() failed - that's fine, we still need to clean up
+    }
+
     try {
         await server?.stop();
     } catch (err) {
@@ -229,8 +244,10 @@ async function stop() {
     }
 }
 
-start().catch(async err => {
-    console.error(err);
+startCompleted = start().catch(async err => {
+    if (!stopping) {
+        console.error(err);
+    }
     await config?.close();
 });
 

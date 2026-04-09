@@ -20,6 +20,7 @@ import { clientContext } from "../../../client/client-context.js";
 import { handleAsync } from "../../../util/async-handler.js";
 import { analyzeBatchResults, type MatterBatchResult } from "../../../util/matter-status.js";
 import { preventDefault } from "../../../util/prevent_default.js";
+import { showAlertDialog, showPromptDialog } from "../../dialog-box/show-dialog-box.js";
 import {
     AccessControlEntryDataTransformer,
     AccessControlEntryStruct,
@@ -70,9 +71,39 @@ export class NodeBindingDialog extends LitElement {
             const targetNodeId = rawBindings[index].node;
             const endpoint = rawBindings[index].endpoint;
             if (targetNodeId === undefined || endpoint === undefined) return;
-            await this.removeNodeAtACLEntry(this.node!.node_id, endpoint, targetNodeId);
-            const updatedBindings = this.removeBindingAtIndex(rawBindings, index);
-            await this.syncBindingUpdates(updatedBindings, index);
+            let aclCleanedUp = false;
+            try {
+                await this.removeNodeAtACLEntry(this.node!.node_id, endpoint, targetNodeId);
+                aclCleanedUp = true;
+            } catch (aclError) {
+                const errorMessage = aclError instanceof Error ? aclError.message : String(aclError);
+                const proceed = await showPromptDialog({
+                    title: "ACL cleanup failed",
+                    text:
+                        `Could not clean up ACL on target node ${targetNodeId}: ${errorMessage}. ` +
+                        "The target node may no longer exist or be unreachable. " +
+                        "Do you want to remove the binding anyway? " +
+                        "Note: The target device may retain an outdated ACL entry.",
+                    confirmText: "Remove binding",
+                });
+                if (!proceed) return;
+            }
+            try {
+                const updatedBindings = this.removeBindingAtIndex(rawBindings, index);
+                await this.syncBindingUpdates(updatedBindings, index);
+            } catch (bindingError) {
+                const errorMessage = bindingError instanceof Error ? bindingError.message : String(bindingError);
+                await showAlertDialog({
+                    title: "Binding removal failed",
+                    text:
+                        `Failed to remove the binding: ${errorMessage}. ` +
+                        (aclCleanedUp
+                            ? "The ACL on the target device was already updated. " +
+                              "The binding and ACL may now be out of sync."
+                            : "No changes were made."),
+                });
+                return;
+            }
         } catch (error) {
             this.handleBindingDeletionError(error);
         }

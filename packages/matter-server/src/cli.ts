@@ -213,20 +213,18 @@ export function parseCliArgs(argv?: string[]): CliOptions {
     if (listenAddress) {
         const interfaces = networkInterfaces();
         listenAddress = listenAddress.flatMap(address => {
-            const match = address.match(/^{{(.+)}}$/);
-            if (match) {
-                const interfaceName = match[1];
-                const interfaceAddresses = interfaces[interfaceName] || [];
+            if (interfaces[address]) {
+                const interfaceAddresses = interfaces[address];
 
                 // Add scope to ipv6 link local addresses
                 const normalizedInterfaceAddresses = interfaceAddresses.map(a =>
                     a.address.toLowerCase().startsWith("fe80:") && !a.address.includes("%")
-                        ? `${a.address}%${interfaceName}`
+                        ? `${a.address}%${address}`
                         : a.address,
                 );
 
                 if (normalizedInterfaceAddresses.length === 0) {
-                    throw new InvalidArgumentError(`No valid IP address found for interface ${interfaceName}`);
+                    throw new InvalidArgumentError(`No valid IP address found for interface ${address}`);
                 }
 
                 return normalizedInterfaceAddresses;
