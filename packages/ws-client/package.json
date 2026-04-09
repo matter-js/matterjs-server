@@ -24,7 +24,7 @@
     },
     "dependencies": {},
     "devDependencies": {
-        "@types/node": "^25.5.0",
+        "@types/node": "^25.5.2",
         "@types/ws": "^8.18.1",
         "@matter/testing": "0.17.0-alpha.0-20260402-bd064abc8",
         "ws": "^8.20.0"

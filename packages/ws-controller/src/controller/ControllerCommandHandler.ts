@@ -16,6 +16,7 @@ import {
     isObject,
     Logger,
     Millis,
+    Minutes,
     NodeId,
     Observable,
     Seconds,
@@ -23,6 +24,8 @@ import {
     ServerAddressUdp,
     SoftwareUpdateInfo,
     SoftwareUpdateManager,
+    Time,
+    Timer,
     DnsRecordType,
 } from "@matter/main";
 import { OperationalCredentialsClient } from "@matter/main/behaviors";
@@ -106,6 +109,9 @@ import { Nodes } from "./Nodes.js";
 
 const logger = Logger.get("ControllerCommandHandler");
 
+/** After this duration in Reconnecting state, declare the node unavailable */
+const RECONNECT_TIMEOUT = Minutes(5);
+
 /**
  * Cluster IDs whose attribute changes should trigger a full node_updated broadcast.
  * BasicInformation (0x28) covers firmware version, product name, etc.
@@ -160,8 +166,8 @@ export class ControllerCommandHandler {
     #availableUpdates = new Map<NodeId, SoftwareUpdateInfo>();
     /** Poller for custom cluster attributes (Eve energy, etc.) */
     #customClusterPoller: CustomClusterPoller;
-    /** Track the last known availability for each node to detect changes */
-    #lastAvailability = new Map<NodeId, boolean>();
+    /** Per-node timers that fire when Reconnecting state exceeds the timeout */
+    #reconnectTimers = new Map<NodeId, Timer>();
     /** Track in-flight invoke-commands for deduplication across all WebSocket connections */
     readonly #inFlightInvokes = new Map<string, Promise<unknown>>();
     events = {
@@ -273,6 +279,10 @@ export class ControllerCommandHandler {
     }
 
     async close() {
+        for (const timer of this.#reconnectTimers.values()) {
+            timer.stop();
+        }
+        this.#reconnectTimers.clear();
         await this.#customClusterPoller.stop();
         if (!this.#started) {
             return;
@@ -307,38 +317,49 @@ export class ControllerCommandHandler {
         });
         node.events.eventTriggered.on(data => this.events.eventChanged.emit(nodeId, data));
         node.events.stateChanged.on(state => {
-            if (state === NodeStates.Disconnected) {
-                return;
-            }
-
-            // Calculate availability before and after state change
-            const previousState = this.#nodes.getPreviousState(nodeId);
-            const wasAvailable = this.#lastAvailability.get(nodeId) ?? false;
-            const isAvailable = this.#nodes.isNodeAvailable(state, previousState);
-
-            // Only refresh cache on Connected state (not Reconnecting, WaitingForDiscovery, etc.)
+            // Only refresh cache on Connected state
             if (state === NodeStates.Connected) {
                 attributeCache.update(node);
-                // Register for custom cluster polling (e.g., Eve energy) after cache is updated
                 const attributes = attributeCache.get(nodeId);
                 if (attributes) {
                     this.#customClusterPoller.registerNode(nodeId, attributes);
                 }
             }
 
-            // Update state tracking for the next transition
-            this.#nodes.setPreviousState(nodeId, state);
-            this.#lastAvailability.set(nodeId, isAvailable);
+            // Manage reconnect timer
+            if (state === NodeStates.Reconnecting) {
+                if (!this.#reconnectTimers.has(nodeId)) {
+                    const timer = Time.getTimer(`reconnect-timeout-${nodeId}`, RECONNECT_TIMEOUT, () => {
+                        this.#reconnectTimers.delete(nodeId);
+                        if (this.#nodes.forceUnavailable(nodeId)) {
+                            logger.info(
+                                `Node ${this.formatNode(nodeId)} still reconnecting after timeout, marking unavailable`,
+                            );
+                            this.events.nodeAvailabilityChanged.emit(nodeId, false);
+                        }
+                    });
+                    timer.utility = true;
+                    timer.start();
+                    this.#reconnectTimers.set(nodeId, timer);
+                }
+            } else {
+                // Any non-Reconnecting state clears the timer
+                this.#reconnectTimers.get(nodeId)?.stop();
+                this.#reconnectTimers.delete(nodeId);
+            }
+
+            // Process state change and check if availability changed
+            const result = this.#nodes.processStateChange(nodeId, state);
 
             // Emit state changed event
             this.events.nodeStateChanged.emit(nodeId, state);
 
             // Emit availability changed if it actually changed
-            if (wasAvailable !== isAvailable) {
+            if (result.availabilityChanged) {
                 logger.info(
-                    `Node ${this.formatNode(nodeId)} availability changed: ${wasAvailable} -> ${isAvailable} (state: ${NodeStates[previousState ?? -1]} -> ${NodeStates[state]})`,
+                    `Node ${this.formatNode(nodeId)} availability changed to ${result.available} (state: ${NodeStates[state]})`,
                 );
-                this.events.nodeAvailabilityChanged.emit(nodeId, isAvailable);
+                this.events.nodeAvailabilityChanged.emit(nodeId, result.available);
             }
         });
         node.events.structureChanged.on(() => {
@@ -356,14 +377,7 @@ export class ControllerCommandHandler {
         // Store the node for direct access
         this.#nodes.set(nodeId, node);
 
-        // Seed state tracking from the node's current connection state so the first
-        // stateChanged event shows a real previous state instead of "undefined".
-        const initialState = node.connectionState;
-        this.#nodes.setPreviousState(nodeId, initialState);
-        // Only mark as available when actually connected; all other states default to false (unavailable).
-        if (initialState === NodeStates.Connected) {
-            this.#lastAvailability.set(nodeId, true);
-        }
+        this.#nodes.seedState(nodeId, node.connectionState);
 
         // Initialize attribute cache if node is already initialized
         if (node.initialized) {
@@ -1127,6 +1141,8 @@ export class ControllerCommandHandler {
             throw ServerError.nodeNotExists(nodeId);
         }
         await this.#controller.removeNode(nodeId, !!node?.isConnected);
+        this.#reconnectTimers.get(nodeId)?.stop();
+        this.#reconnectTimers.delete(nodeId);
         // Remove node from storage (also clears attribute cache)
         this.#nodes.delete(nodeId);
         // Unregister from custom cluster polling
