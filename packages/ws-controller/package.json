@@ -16,7 +16,8 @@
     "scripts": {
         "clean": "matter-build clean",
         "build": "matter-build",
-        "build-clean": "matter-build --clean"
+        "build-clean": "matter-build --clean",
+        "test": "matter-test --force-exit"
     },
     "engines": {
         "node": ">=20.19.0 <22.0.0 || >=22.13.0"
@@ -31,7 +32,7 @@
         "ws": "^8.20.0"
     },
     "devDependencies": {
-        "@types/node": "^25.5.0",
+        "@types/node": "^25.5.2",
         "@types/ws": "^8.18.1"
     },
     "files": [
