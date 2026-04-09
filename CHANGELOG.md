@@ -7,6 +7,12 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
+## __WORK IN PROGRESS__
+- Fix: Correctly reports Node availabilities via WS events to HA and other consumers (also consider a device offline after five mins in Reconnection state)
+- Fix: Allows binding deletion via the dashboard when the target node no longer exists and other consistency checks
+- Fix: Fixes shutdown hang when SIGINT arrives during the startup phase
+- Fix: Adds global attributes to custom cluster Python classes
+
 ## 0.5.13 (2026-04-02)
 - Fix: Ignore directories in the OTA update directory
 - Fix: (FuNK3Y) Enhances network interface name logic for Websocket binding

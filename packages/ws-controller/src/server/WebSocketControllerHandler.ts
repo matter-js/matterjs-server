@@ -392,11 +392,13 @@ export class WebSocketControllerHandler implements WebServerHandler {
         data: string,
     ): Promise<{ response: ErrorResultMessage | SuccessResultMessage; enableListeners?: boolean }> {
         let messageId: string | undefined;
+        let command: string | undefined;
         try {
             logger.debug(`[${connId}] WebSocket request`, () => data);
             const request = parseBigIntAwareJson(data) as { message_id: string; command: string; args: any };
-            const { command, args } = request;
+            const { args } = request;
             messageId = request.message_id;
+            command = request.command;
             let result: ResponseOf<any>;
             let enableListeners: boolean | undefined = undefined;
             switch (command) {
@@ -514,7 +516,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 enableListeners,
             };
         } catch (err) {
-            logger.error(`[${connId}] Failed to handle websocket request`, err);
+            logger.error(`[${connId}] WebSocket error response (${command})`, messageId, err);
             const errorCode = err instanceof ServerError ? err.code : ServerErrorCode.UnknownError;
             return {
                 response: {
