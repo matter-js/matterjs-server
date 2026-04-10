@@ -1511,7 +1511,7 @@ function generateEvent(
     const eventId = model.id ?? 0;
 
     w.line("@dataclass");
-    w.line(`class ${toChipClassName(model.name, clusterName)}(ClusterEvent):`);
+    w.line(`class ${toChipPythonClassName(model.name, clusterName)}(ClusterEvent):`);
     w.pushIndent();
 
     w.line("@ChipUtility.classproperty");
