@@ -7,11 +7,19 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
-## __WORK IN PROGRESS__
+## 0.5.15 (2026-04-10)
+- No-Change-Re-Release because Python and Docker had publishing issues on GitHub for 0.5.14
+
+## 0.5.14 (2026-04-10)
 - Fix: Correctly reports Node availabilities via WS events to HA and other consumers (also consider a device offline after five mins in Reconnection state)
 - Fix: Allows binding deletion via the dashboard when the target node no longer exists and other consistency checks
 - Fix: Fixes shutdown hang when SIGINT arrives during the startup phase
 - Fix: Adds global attributes to custom cluster Python classes
+- Fix: Update matter.js to the latest 0.17.0-nightly
+    - Fixes and enhances multiple commissioning issues around Discovery, PASE and BLE
+    - More RAM optimizations
+    - Fixes cache flush crash and data race after node deletion
+    - Reintroduces Probe logging
 
 ## 0.5.13 (2026-04-02)
 - Fix: Ignore directories in the OTA update directory
