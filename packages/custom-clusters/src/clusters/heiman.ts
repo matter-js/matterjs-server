@@ -41,5 +41,5 @@ export class HeimanCluster {
      * This command is used for muting sensor for a specific period if there is an alarm, like a fire alarm.
      */
     @command(0x00, MutingSensorCommand)
-    mutingSensor(_request: MutingSensorCommand): void {}
+    MutingSensor(_request: MutingSensorCommand): void {}
 }

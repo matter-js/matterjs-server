@@ -53,7 +53,7 @@ class HeimanCluster(Cluster):
 
     class Commands:
         @dataclass
-        class mutingSensor(ClusterCommand):
+        class MutingSensor(ClusterCommand):
             cluster_id: typing.ClassVar[int] = 0x120BFC01
             command_id: typing.ClassVar[int] = 0x00000000
             is_client: typing.ClassVar[bool] = True
