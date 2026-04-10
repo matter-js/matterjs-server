@@ -26,7 +26,7 @@
     "devDependencies": {
         "@types/node": "^25.5.2",
         "@types/ws": "^8.18.1",
-        "@matter/testing": "0.17.0-alpha.0-20260410-36535f904",
+        "@matter/testing": "0.17.0-alpha.0-20260410-75362b6ea",
         "ws": "^8.20.0"
     },
     "files": [
