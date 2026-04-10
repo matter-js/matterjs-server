@@ -7,7 +7,7 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
-## __WORK IN PROGRESS__
+## 0.5.14 (2026-04-10)
 - Fix: Correctly reports Node availabilities via WS events to HA and other consumers (also consider a device offline after five mins in Reconnection state)
 - Fix: Allows binding deletion via the dashboard when the target node no longer exists and other consistency checks
 - Fix: Fixes shutdown hang when SIGINT arrives during the startup phase
