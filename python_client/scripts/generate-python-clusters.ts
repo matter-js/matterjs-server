@@ -523,6 +523,14 @@ function toChipClassName(name: string, clusterName?: string): string {
     return toChipName(name);
 }
 
+/** Convert a model member name to a Python class name.
+ *  Attribute and command class names must be PascalCase (chip SDK convention).
+ *  Standard clusters already have PascalCase model names; custom clusters use
+ *  camelCase TypeScript field and method names that need to be capitalized. */
+function toChipPythonClassName(name: string, clusterName?: string): string {
+    return toChipClassName(name.charAt(0).toUpperCase() + name.slice(1), clusterName);
+}
+
 /** Pad a hex number to 8 hex digits with 0x prefix. */
 function hex8(n: number): string {
     return "0x" + n.toString(16).toUpperCase().padStart(8, "0");
@@ -1345,11 +1353,11 @@ function generateCommand(
     // Determine response_type
     let responseType = "None";
     if (isClient && model.response && model.response !== "status") {
-        responseType = `'${toChipClassName(model.response, clusterName)}'`;
+        responseType = `'${toChipPythonClassName(model.response, clusterName)}'`;
     }
 
     w.line("@dataclass");
-    w.line(`class ${toChipClassName(model.name, clusterName)}(ClusterCommand):`);
+    w.line(`class ${toChipPythonClassName(model.name, clusterName)}(ClusterCommand):`);
     w.pushIndent();
 
     w.line(`cluster_id: typing.ClassVar[int] = ${hex8(clusterId)}`);
@@ -1416,10 +1424,7 @@ function generateAttribute(
 ): void {
     const attrId = model.id ?? 0;
     const pyType = resolveType(model);
-    // Attribute class names must be PascalCase (chip SDK convention).
-    // Standard clusters already have PascalCase model names; custom clusters use
-    // camelCase TypeScript field names that need to be capitalized.
-    const attrClassName = toChipClassName(model.name.charAt(0).toUpperCase() + model.name.slice(1), clusterName);
+    const attrClassName = toChipPythonClassName(model.name, clusterName);
 
     w.line("@dataclass");
     w.line(`class ${attrClassName}(ClusterAttributeDescriptor):`);
