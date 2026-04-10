@@ -8,7 +8,7 @@ This page shows a detailed overview of the changes between versions without the 
 -->
 
 ## 0.5.15 (2026-04-10)
-- No-Change-Re-Release because Python and Docker had pubslihing issues on GitHub for 0.5.14
+- No-Change-Re-Release because Python and Docker had publishing issues on GitHub for 0.5.14
 
 ## 0.5.14 (2026-04-10)
 - Fix: Correctly reports Node availabilities via WS events to HA and other consumers (also consider a device offline after five mins in Reconnection state)
