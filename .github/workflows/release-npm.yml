@@ -87,22 +87,118 @@ jobs:
           MERGE_RETRIES: "50"
           MERGE_RETRY_SLEEP: "60000"
 
-      - name: Checkout repository
-        if: steps.automerge.outputs.mergeResult == 'merged'
-        uses: actions/checkout@v6
-
       - name: Use Node.js 22.x
-        if: steps.automerge.outputs.mergeResult == 'merged'
         uses: actions/setup-node@v6
         with:
-          node-version: 22.x
+          node-version: 24.x
+
+      - name: Determine publish tasks
+        id: publish_tasks
+        env:
+          MERGE_RESULT: ${{ steps.automerge.outputs.mergeResult }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO_OWNER: ${{ github.repository_owner }}
+          REPO: ${{ github.repository }}
+        run: |
+          # Extract version from PR title: "[...RELEASE] x.y.z..." → "x.y.z..."
+          VERSION=$(echo "$PR_TITLE" | sed 's/.*] //')
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Detected version: ${VERSION}"
+
+          if [[ "$MERGE_RESULT" == "merged" ]]; then
+            echo "PR just merged — all publish steps needed"
+            echo "pr_merged=true" >> "$GITHUB_OUTPUT"
+            echo "npm_needed=true" >> "$GITHUB_OUTPUT"
+            echo "pypi_needed=true" >> "$GITHUB_OUTPUT"
+            echo "docker_needed=true" >> "$GITHUB_OUTPUT"
+            echo "release_needed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ "$MERGE_RESULT" != "skipped" ]]; then
+            echo "Unexpected merge result: ${MERGE_RESULT} — stopping"
+            echo "pr_merged=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # mergeResult is 'skipped' — check if PR was already merged (re-run scenario)
+          PR_STATE=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json state --jq '.state')
+          echo "PR state: ${PR_STATE}"
+
+          if [[ "$PR_STATE" != "MERGED" ]]; then
+            echo "PR is not merged — stopping"
+            echo "pr_merged=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "PR was already merged — checking which publish targets are missing"
+          echo "pr_merged=true" >> "$GITHUB_OUTPUT"
+
+          # Check npm
+          if npm view "matter-server@${VERSION}" version 2>/dev/null; then
+            echo "npm: already published"
+            echo "npm_needed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "npm: NOT published — will publish"
+            echo "npm_needed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+          # Check PyPI (needs semver → PEP 440 conversion)
+          PEP440=$(VERSION="$VERSION" python3 -c "
+          import re, os
+          v = os.environ['VERSION']
+          m = re.match(r'^(\d+\.\d+\.\d+)(?:-(.+))?$', v)
+          base, pre = m.group(1), m.group(2)
+          if pre:
+              pm = re.match(r'(alpha|beta|rc)(?:\.(\d+))?(?:-(\d+))?', pre)
+              t = {'alpha':'a','beta':'b','rc':'rc'}[pm.group(1)]
+              n = pm.group(2) or '0'
+              d = f'.dev{pm.group(3)}' if pm.group(3) else ''
+              print(f'{base}{t}{n}{d}')
+          else:
+              print(base)
+          ")
+          echo "PEP 440 version: ${PEP440}"
+          if curl -sf "https://pypi.org/pypi/matter-python-client/${PEP440}/json" >/dev/null 2>&1; then
+            echo "PyPI: already published"
+            echo "pypi_needed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "PyPI: NOT published — will publish"
+            echo "pypi_needed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+          # Check Docker (ghcr.io) via OCI registry API
+          DOCKER_TOKEN=$(curl -sf "https://ghcr.io/token?service=ghcr.io&scope=repository:${REPO_OWNER}/matterjs-server:pull" | jq -r '.token // empty' || true)
+          if [[ -n "$DOCKER_TOKEN" ]] && curl -sf -H "Authorization: Bearer $DOCKER_TOKEN" \
+            "https://ghcr.io/v2/${REPO_OWNER}/matterjs-server/manifests/${VERSION}" >/dev/null 2>&1; then
+            echo "Docker: already published"
+            echo "docker_needed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Docker: NOT published — will build and push"
+            echo "docker_needed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+          # Check GitHub Release
+          if gh release view "v${VERSION}" --repo "$REPO" >/dev/null 2>&1; then
+            echo "GitHub Release: already exists"
+            echo "release_needed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "GitHub Release: NOT found — will create"
+            echo "release_needed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout repository
+        if: steps.publish_tasks.outputs.pr_merged == 'true'
+        uses: actions/checkout@v6
 
       - name: Install dependencies and build
-        if: steps.automerge.outputs.mergeResult == 'merged'
+        if: steps.publish_tasks.outputs.pr_merged == 'true'
         run: npm ci
 
       - name: Determine version
-        if: steps.automerge.outputs.mergeResult == 'merged'
+        if: steps.publish_tasks.outputs.pr_merged == 'true'
         id: version
         uses: actions/github-script@v8
         with:
@@ -112,15 +208,14 @@ jobs:
             return fs.readFileSync(`${process.env.GITHUB_WORKSPACE}/version.txt`, "utf8");
 
       - name: Apply new version to package files
-        if: steps.automerge.outputs.mergeResult == 'merged'
+        if: steps.publish_tasks.outputs.pr_merged == 'true'
         run: npm run version -- --apply
 
       - name: Publish npm
-        if: steps.automerge.outputs.mergeResult == 'merged'
+        if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.npm_needed == 'true'
         env:
           PRERELEASE: ${{ contains(steps.version.outputs.result, '-') }}
         run: |
-          npm install -g npm@11.11.0
           npm install -g npm@latest
 
           if [[ "$PRERELEASE" == "true" ]]; then
@@ -130,21 +225,21 @@ jobs:
           fi
 
       - name: Wait for npm registry
-        if: steps.automerge.outputs.mergeResult == 'merged'
+        if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.npm_needed == 'true'
         run: sleep 120
 
       - name: Set up Python for PyPI publish
-        if: steps.automerge.outputs.mergeResult == 'merged'
+        if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.pypi_needed == 'true'
         uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
       - name: Install Python build tools
-        if: steps.automerge.outputs.mergeResult == 'merged'
+        if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.pypi_needed == 'true'
         run: pip install build tomli tomli-w
 
       - name: Convert version to PEP 440 and set in pyproject.toml
-        if: steps.automerge.outputs.mergeResult == 'merged'
+        if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.pypi_needed == 'true'
         id: python_version
         shell: python
         env:
@@ -194,17 +289,17 @@ jobs:
               f.write(f"pep440_version={pep440_version}\n")
 
       - name: Build Python client package
-        if: steps.automerge.outputs.mergeResult == 'merged'
+        if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.pypi_needed == 'true'
         run: python3 -m build python_client/
 
       - name: Publish Python client to PyPI
-        if: steps.automerge.outputs.mergeResult == 'merged'
+        if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.pypi_needed == 'true'
         uses: pypa/gh-action-pypi-publish@v1.14.0
         with:
           packages-dir: python_client/dist/
 
       - name: Log in to GitHub Container Registry
-        if: steps.automerge.outputs.mergeResult == 'merged'
+        if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.docker_needed == 'true'
         uses: docker/login-action@v4.1.0
         with:
           registry: ghcr.io
@@ -212,11 +307,11 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
-        if: steps.automerge.outputs.mergeResult == 'merged'
+        if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.docker_needed == 'true'
         uses: docker/setup-buildx-action@v4.0.0
 
       - name: Version number for Docker tags
-        if: steps.automerge.outputs.mergeResult == 'merged'
+        if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.docker_needed == 'true'
         id: docker_tags
         shell: bash
         run: |
@@ -226,7 +321,7 @@ jobs:
           echo "major=${version%.*.*}" >> $GITHUB_OUTPUT
 
       - name: Build and push Docker image (release)
-        if: steps.automerge.outputs.mergeResult == 'merged' && !contains(steps.version.outputs.result, '-')
+        if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.docker_needed == 'true' && !contains(steps.version.outputs.result, '-')
         uses: docker/build-push-action@v7.0.0
         with:
           context: ./docker/matterjs-server
@@ -244,7 +339,7 @@ jobs:
             MATTERJS_SERVER_VERSION=${{ steps.version.outputs.result }}
 
       - name: Build and push Docker image (pre-release)
-        if: steps.automerge.outputs.mergeResult == 'merged' && contains(steps.version.outputs.result, '-')
+        if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.docker_needed == 'true' && contains(steps.version.outputs.result, '-')
         uses: docker/build-push-action@v7.0.0
         with:
           context: ./docker/matterjs-server
@@ -258,7 +353,7 @@ jobs:
             MATTERJS_SERVER_VERSION=${{ steps.version.outputs.result }}
 
       - name: Create Github Release
-        if: steps.automerge.outputs.mergeResult == 'merged'
+        if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.release_needed == 'true'
         uses: ncipollo/release-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
