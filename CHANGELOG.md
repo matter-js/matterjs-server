@@ -12,6 +12,11 @@ This page shows a detailed overview of the changes between versions without the 
 - Fix: Allows binding deletion via the dashboard when the target node no longer exists and other consistency checks
 - Fix: Fixes shutdown hang when SIGINT arrives during the startup phase
 - Fix: Adds global attributes to custom cluster Python classes
+- Fix: Update matter.js to the latest 0.17.0-nightly
+    - Fixes and enhances multiple commissioning issues around Discovery, PASE and BLE
+    - More RAM optimizations
+    - Fixes cache flush crash and data race after node deletion
+    - Reintroduces Probe logging
 
 ## 0.5.13 (2026-04-02)
 - Fix: Ignore directories in the OTA update directory
