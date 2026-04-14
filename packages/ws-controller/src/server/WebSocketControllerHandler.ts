@@ -616,17 +616,28 @@ export class WebSocketControllerHandler implements WebServerHandler {
             }
         }
 
+        // Reserve a single ID upfront; will adjust after commissioning if multiple devices were involved
         await this.#config.set({
             nextNodeId: typeof nextNodeId === "bigint" ? nextNodeId + 1n : nextNodeId + 1,
         });
 
-        const { nodeId } = await this.#commandHandler.commissionNode({
+        const { nodeId, nodeIds } = await this.#commandHandler.commissionNode({
             nodeId: NodeId(nextNodeId),
             onNetworkOnly: network_only,
             ...(isQrCode ? { qrCode: code } : { manualCode: code }),
             wifiCredentials,
             threadCredentials,
         });
+
+        // If multiple devices were commissioned, advance the counter for the additional nodes
+        if (nodeIds.length > 1) {
+            await this.#config.set({
+                nextNodeId:
+                    typeof nextNodeId === "bigint"
+                        ? nextNodeId + BigInt(nodeIds.length)
+                        : nextNodeId + nodeIds.length,
+            });
+        }
 
         return this.#collectNodeDetails(nodeId);
     }
@@ -921,6 +932,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
             timeout,
         });
         const pairingCodeCodec = QrPairingCodeCodec.decode(qrCode);
+        if (pairingCodeCodec.length === 0) {
+            throw new Error("Generated QR code does not contain any device information");
+        }
         return { setup_pin_code: pairingCodeCodec[0].passcode, setup_manual_code: manualCode, setup_qr_code: qrCode };
     }
 

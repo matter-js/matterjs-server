@@ -80,6 +80,7 @@ import {
     CommissioningResponse,
     DiscoveryRequest,
     DiscoveryResponse,
+    InvokeByIdRequest,
     InvokeRequest,
     MatterNodeData,
     OpenCommissioningWindowRequest,
@@ -90,6 +91,7 @@ import {
     SubscribeAttributeResponse,
     SubscribeEventRequest,
     SubscribeEventResponse,
+    WriteAttributeByIdRequest,
     WriteAttributeRequest,
 } from "../types/CommandHandler.js";
 import {
@@ -152,6 +154,96 @@ function determineMatterVersion(attributes: AttributesData): string | undefined 
     }
 
     return undefined;
+}
+
+/**
+ * Build commission options from a commissioning request. Handles single and multi-device
+ * QR codes per Matter spec Section 5.1.3 (*-separated payloads), manual pairing codes,
+ * and passcode-based commissioning.
+ *
+ * Returns one NodeCommissioningOptions per device to commission.
+ */
+export function buildCommissionOptions(data: CommissioningRequest, bleEnabled: boolean): NodeCommissioningOptions[] {
+    const devices: { passcode: number; longDiscriminator?: number; shortDiscriminator?: number }[] = [];
+    let productId: number | undefined = undefined;
+    let vendorId: VendorId | undefined = undefined;
+    let knownAddress: ServerAddress | undefined = undefined;
+
+    if ("manualCode" in data && data.manualCode.length > 0) {
+        const pairingCodeCodec = ManualPairingCodeCodec.decode(data.manualCode);
+        devices.push({
+            passcode: pairingCodeCodec.passcode,
+            shortDiscriminator: pairingCodeCodec.shortDiscriminator,
+        });
+    } else if ("qrCode" in data && data.qrCode.length > 0) {
+        const pairingCodeCodec = QrPairingCodeCodec.decode(data.qrCode);
+        if (pairingCodeCodec.length === 0) {
+            throw ServerError.invalidArguments("QR code does not contain any device information");
+        }
+        for (const entry of pairingCodeCodec) {
+            devices.push({
+                passcode: entry.passcode,
+                longDiscriminator: entry.discriminator,
+            });
+        }
+    } else if ("passcode" in data) {
+        const device: { passcode: number; longDiscriminator?: number; shortDiscriminator?: number } = {
+            passcode: data.passcode,
+        };
+        // Check for discriminator-based discovery
+        if ("shortDiscriminator" in data) {
+            device.shortDiscriminator = data.shortDiscriminator;
+        } else if ("longDiscriminator" in data) {
+            device.longDiscriminator = data.longDiscriminator;
+        } else if ("vendorId" in data && "productId" in data) {
+            vendorId = VendorId(data.vendorId);
+            productId = data.productId;
+        }
+        devices.push(device);
+    } else {
+        throw ServerError.invalidArguments("No pairing code provided");
+    }
+
+    if (data.knownAddress !== undefined) {
+        const { ip, port } = data.knownAddress;
+        knownAddress = {
+            type: "udp",
+            ip,
+            port,
+        };
+    }
+
+    const { onNetworkOnly, wifiCredentials: wifiNetwork, threadCredentials: threadNetwork } = data;
+    const baseNodeId = data.nodeId !== undefined ? BigInt(data.nodeId) : undefined;
+
+    return devices.map((device, index) => {
+        const { passcode, longDiscriminator, shortDiscriminator } = device;
+        return {
+            commissioning: {
+                nodeId: baseNodeId !== undefined ? NodeId(baseNodeId + BigInt(index)) : undefined,
+                regulatoryLocation: GeneralCommissioning.RegulatoryLocationType.IndoorOutdoor,
+                regulatoryCountryCode: "XX",
+                wifiNetwork,
+                threadNetwork,
+            },
+            discovery: {
+                knownAddress,
+                identifierData:
+                    longDiscriminator !== undefined
+                        ? { longDiscriminator }
+                        : shortDiscriminator !== undefined
+                          ? { shortDiscriminator }
+                          : vendorId !== undefined
+                            ? { vendorId, productId }
+                            : {},
+                discoveryCapabilities: {
+                    ble: bleEnabled && !onNetworkOnly,
+                    onIpNetwork: true,
+                },
+            },
+            passcode,
+        };
+    });
 }
 
 export class ControllerCommandHandler {
@@ -857,102 +949,93 @@ export class ControllerCommandHandler {
         });
     }
 
-    #determineCommissionOptions(data: CommissioningRequest): NodeCommissioningOptions {
-        let passcode: number | undefined = undefined;
-        let shortDiscriminator: number | undefined = undefined;
-        let longDiscriminator: number | undefined = undefined;
-        let productId: number | undefined = undefined;
-        let vendorId: VendorId | undefined = undefined;
-        let knownAddress: ServerAddress | undefined = undefined;
+    /** InvokeById minimalistic handler because only used for error testing */
+    async handleInvokeById(data: InvokeByIdRequest): Promise<void> {
+        const { nodeId, endpointId, clusterId, commandId, data: commandData, timedInteractionTimeoutMs } = data;
+        const client = this.#nodes.interactionClientFor(nodeId);
+        await client.invoke<Command<any, any, any>>({
+            endpointId,
+            clusterId: clusterId,
+            command: Command(commandId, TlvAny, 0x00, TlvNoResponse, {
+                timed: timedInteractionTimeoutMs !== undefined,
+            }),
+            request: commandData === undefined ? TlvVoid.encodeTlv() : TlvObject({}).encodeTlv(commandData as any),
+            asTimedRequest: timedInteractionTimeoutMs !== undefined,
+            timedRequestTimeout: Millis(timedInteractionTimeoutMs),
+            skipValidation: true,
+        });
+    }
 
-        if ("manualCode" in data && data.manualCode.length > 0) {
-            const pairingCodeCodec = ManualPairingCodeCodec.decode(data.manualCode);
-            shortDiscriminator = pairingCodeCodec.shortDiscriminator;
-            longDiscriminator = undefined;
-            passcode = pairingCodeCodec.passcode;
-        } else if ("qrCode" in data && data.qrCode.length > 0) {
-            const pairingCodeCodec = QrPairingCodeCodec.decode(data.qrCode);
-            // TODO handle the case where multiple devices are included
-            longDiscriminator = pairingCodeCodec[0].discriminator;
-            shortDiscriminator = undefined;
-            passcode = pairingCodeCodec[0].passcode;
-        } else if ("passcode" in data) {
-            passcode = data.passcode;
-            // Check for discriminator-based discovery
-            if ("shortDiscriminator" in data) {
-                shortDiscriminator = data.shortDiscriminator;
-            } else if ("longDiscriminator" in data) {
-                longDiscriminator = data.longDiscriminator;
-            } else if ("vendorId" in data && "productId" in data) {
-                vendorId = VendorId(data.vendorId);
-                productId = data.productId;
-            }
-            // If none of the above, discovers any commissionable device
+    async handleWriteAttributeById(data: WriteAttributeByIdRequest): Promise<void> {
+        const { nodeId, endpointId, clusterId, attributeId, value } = data;
+
+        const client = this.#nodes.interactionClientFor(nodeId);
+
+        logger.info("Writing attribute", attributeId, "with value", value);
+
+        let tlvValue: any;
+
+        if (value === null) {
+            tlvValue = TlvNullable(TlvBoolean).encodeTlv(value); // Boolean is just a placeholder here
+        } else if (value instanceof Uint8Array) {
+            tlvValue = TlvByteString.encodeTlv(value);
         } else {
-            throw ServerError.invalidArguments("No pairing code provided");
+            switch (typeof value) {
+                case "boolean":
+                    tlvValue = TlvBoolean.encodeTlv(value);
+                    break;
+                case "number":
+                    tlvValue = TlvInt32.encodeTlv(value);
+                    break;
+                case "bigint":
+                    tlvValue = TlvUInt64.encodeTlv(value);
+                    break;
+                case "string":
+                    tlvValue = TlvString.encodeTlv(value);
+                    break;
+                default:
+                    throw ServerError.invalidArguments(`Unsupported value type "${typeof value}" for Any encoding`);
+            }
         }
 
-        if (data.knownAddress !== undefined) {
-            const { ip, port } = data.knownAddress;
-            knownAddress = {
-                type: "udp",
-                ip,
-                port,
-            };
-        }
-
-        if (passcode == undefined) {
-            throw ServerError.invalidArguments("No passcode provided");
-        }
-
-        const { onNetworkOnly, wifiCredentials: wifiNetwork, threadCredentials: threadNetwork } = data;
-        const options = {
-            commissioning: {
-                nodeId: data.nodeId,
-                regulatoryLocation: GeneralCommissioning.RegulatoryLocationType.IndoorOutdoor,
-                regulatoryCountryCode: "XX",
-                wifiNetwork,
-                threadNetwork,
+        await client.setAttribute({
+            attributeData: {
+                endpointId,
+                clusterId,
+                attribute: Attribute(attributeId, TlvAny),
+                value: tlvValue,
             },
-            discovery: {
-                knownAddress,
-                identifierData:
-                    longDiscriminator !== undefined
-                        ? { longDiscriminator }
-                        : shortDiscriminator !== undefined
-                          ? { shortDiscriminator }
-                          : vendorId !== undefined
-                            ? { vendorId, productId }
-                            : {},
-                discoveryCapabilities: {
-                    ble: this.bleEnabled && !onNetworkOnly,
-                    onIpNetwork: true,
-                },
-            },
-            passcode,
-        };
-        return options;
+        });
+    }
+
+    #determineCommissionOptions(data: CommissioningRequest): NodeCommissioningOptions[] {
+        return buildCommissionOptions(data, this.bleEnabled);
     }
 
     async commissionNode(data: CommissioningRequest): Promise<CommissioningResponse> {
-        let nodeId: NodeId;
-        try {
-            nodeId = await this.#controller.commissionNode(this.#determineCommissionOptions(data), {
-                connectNodeAfterCommissioning: true,
-            });
-        } catch (error) {
-            // Preserve the original error message with context
-            const originalMessage = error instanceof Error ? error.message : String(error);
-            throw ServerError.nodeCommissionFailed(
-                `Commission failed: ${originalMessage}`,
-                error instanceof Error ? error : undefined,
-            );
+        const optionsList = this.#determineCommissionOptions(data);
+        const nodeIds: NodeId[] = [];
+
+        for (const options of optionsList) {
+            let nodeId: NodeId;
+            try {
+                nodeId = await this.#controller.commissionNode(options, {
+                    connectNodeAfterCommissioning: true,
+                });
+            } catch (error) {
+                const originalMessage = error instanceof Error ? error.message : String(error);
+                throw ServerError.nodeCommissionFailed(
+                    `Commission failed: ${originalMessage}`,
+                    error instanceof Error ? error : undefined,
+                );
+            }
+
+            await this.#registerNode(nodeId);
+            this.events.nodeAdded.emit(nodeId);
+            nodeIds.push(nodeId);
         }
 
-        await this.#registerNode(nodeId);
-
-        this.events.nodeAdded.emit(nodeId);
-        return { nodeId };
+        return { nodeId: nodeIds[0], nodeIds };
     }
 
     getCommissionerNodeId() {

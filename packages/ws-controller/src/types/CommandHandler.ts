@@ -156,6 +156,7 @@ export type CommissioningRequest = {
 
 export type CommissioningResponse = {
     nodeId: NodeId;
+    nodeIds: NodeId[];
 };
 
 export type DiscoveryRequest = {
