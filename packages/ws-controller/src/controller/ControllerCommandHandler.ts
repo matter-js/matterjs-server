@@ -80,7 +80,6 @@ import {
     CommissioningResponse,
     DiscoveryRequest,
     DiscoveryResponse,
-    InvokeByIdRequest,
     InvokeRequest,
     MatterNodeData,
     OpenCommissioningWindowRequest,
@@ -91,7 +90,6 @@ import {
     SubscribeAttributeResponse,
     SubscribeEventRequest,
     SubscribeEventResponse,
-    WriteAttributeByIdRequest,
     WriteAttributeRequest,
 } from "../types/CommandHandler.js";
 import {
@@ -949,65 +947,6 @@ export class ControllerCommandHandler {
         });
     }
 
-    /** InvokeById minimalistic handler because only used for error testing */
-    async handleInvokeById(data: InvokeByIdRequest): Promise<void> {
-        const { nodeId, endpointId, clusterId, commandId, data: commandData, timedInteractionTimeoutMs } = data;
-        const client = this.#nodes.interactionClientFor(nodeId);
-        await client.invoke<Command<any, any, any>>({
-            endpointId,
-            clusterId: clusterId,
-            command: Command(commandId, TlvAny, 0x00, TlvNoResponse, {
-                timed: timedInteractionTimeoutMs !== undefined,
-            }),
-            request: commandData === undefined ? TlvVoid.encodeTlv() : TlvObject({}).encodeTlv(commandData as any),
-            asTimedRequest: timedInteractionTimeoutMs !== undefined,
-            timedRequestTimeout: Millis(timedInteractionTimeoutMs),
-            skipValidation: true,
-        });
-    }
-
-    async handleWriteAttributeById(data: WriteAttributeByIdRequest): Promise<void> {
-        const { nodeId, endpointId, clusterId, attributeId, value } = data;
-
-        const client = this.#nodes.interactionClientFor(nodeId);
-
-        logger.info("Writing attribute", attributeId, "with value", value);
-
-        let tlvValue: any;
-
-        if (value === null) {
-            tlvValue = TlvNullable(TlvBoolean).encodeTlv(value); // Boolean is just a placeholder here
-        } else if (value instanceof Uint8Array) {
-            tlvValue = TlvByteString.encodeTlv(value);
-        } else {
-            switch (typeof value) {
-                case "boolean":
-                    tlvValue = TlvBoolean.encodeTlv(value);
-                    break;
-                case "number":
-                    tlvValue = TlvInt32.encodeTlv(value);
-                    break;
-                case "bigint":
-                    tlvValue = TlvUInt64.encodeTlv(value);
-                    break;
-                case "string":
-                    tlvValue = TlvString.encodeTlv(value);
-                    break;
-                default:
-                    throw ServerError.invalidArguments(`Unsupported value type "${typeof value}" for Any encoding`);
-            }
-        }
-
-        await client.setAttribute({
-            attributeData: {
-                endpointId,
-                clusterId,
-                attribute: Attribute(attributeId, TlvAny),
-                value: tlvValue,
-            },
-        });
-    }
-
     #determineCommissionOptions(data: CommissioningRequest): NodeCommissioningOptions[] {
         return buildCommissionOptions(data, this.bleEnabled);
     }
@@ -1024,10 +963,13 @@ export class ControllerCommandHandler {
                 });
             } catch (error) {
                 const originalMessage = error instanceof Error ? error.message : String(error);
-                throw ServerError.nodeCommissionFailed(
+                const err = ServerError.nodeCommissionFailed(
                     `Commission failed: ${originalMessage}`,
                     error instanceof Error ? error : undefined,
                 );
+                // Attach partially-commissioned nodeIds so callers can reconcile state
+                (err as any).commissionedNodeIds = nodeIds;
+                throw err;
             }
 
             await this.#registerNode(nodeId);

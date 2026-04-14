@@ -621,21 +621,39 @@ export class WebSocketControllerHandler implements WebServerHandler {
             nextNodeId: typeof nextNodeId === "bigint" ? nextNodeId + 1n : nextNodeId + 1,
         });
 
-        const { nodeId, nodeIds } = await this.#commandHandler.commissionNode({
-            nodeId: NodeId(nextNodeId),
-            onNetworkOnly: network_only,
-            ...(isQrCode ? { qrCode: code } : { manualCode: code }),
-            wifiCredentials,
-            threadCredentials,
-        });
+        let nodeId: NodeId;
+        let commissionedCount: number;
+        try {
+            const result = await this.#commandHandler.commissionNode({
+                nodeId: NodeId(nextNodeId),
+                onNetworkOnly: network_only,
+                ...(isQrCode ? { qrCode: code } : { manualCode: code }),
+                wifiCredentials,
+                threadCredentials,
+            });
+            nodeId = result.nodeId;
+            commissionedCount = result.nodeIds.length;
+        } catch (error) {
+            // On partial failure, reconcile nextNodeId for any nodes that were successfully commissioned
+            const partialIds = (error as any)?.commissionedNodeIds as NodeId[] | undefined;
+            if (partialIds && partialIds.length > 1) {
+                await this.#config.set({
+                    nextNodeId:
+                        typeof nextNodeId === "bigint"
+                            ? nextNodeId + BigInt(partialIds.length)
+                            : nextNodeId + partialIds.length,
+                });
+            }
+            throw error;
+        }
 
-        // If multiple devices were commissioned, advance the counter for the additional nodes
-        if (nodeIds.length > 1) {
+        // Advance the counter past all commissioned nodes
+        if (commissionedCount > 1) {
             await this.#config.set({
                 nextNodeId:
                     typeof nextNodeId === "bigint"
-                        ? nextNodeId + BigInt(nodeIds.length)
-                        : nextNodeId + nodeIds.length,
+                        ? nextNodeId + BigInt(commissionedCount)
+                        : nextNodeId + commissionedCount,
             });
         }
 
@@ -933,7 +951,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         });
         const pairingCodeCodec = QrPairingCodeCodec.decode(qrCode);
         if (pairingCodeCodec.length === 0) {
-            throw new Error("Generated QR code does not contain any device information");
+            throw ServerError.sdkStackError("Generated QR code does not contain any device information");
         }
         return { setup_pin_code: pairingCodeCodec[0].passcode, setup_manual_code: manualCode, setup_qr_code: qrCode };
     }
