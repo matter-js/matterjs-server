@@ -100,9 +100,11 @@ def start_test_device(storage_path: str) -> subprocess.Popen:
 
 
 async def wait_for_port(port: int, timeout: float = 30.0) -> None:
-    """Wait for the WebSocket server to accept connections on the given port.
+    """Wait for the server to be fully ready on the given port.
 
-    Repeatedly attempts a WebSocket connection until successful or timeout.
+    Polls the HTTP /health endpoint until it returns 200 with a valid JSON body.
+    This is stricter than a bare TCP/WebSocket connect because it confirms the
+    server has finished initialising and all request handlers are wired up.
 
     Args:
         port: The port number to connect to.
@@ -112,14 +114,19 @@ async def wait_for_port(port: int, timeout: float = 30.0) -> None:
         TimeoutError: If the server doesn't become available within the timeout.
     """
     start = time.monotonic()
+    url = f"http://localhost:{port}/health"
     while time.monotonic() - start < timeout:
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.ws_connect(f"ws://localhost:{port}/ws", timeout=2):  # type: ignore[arg-type]
-                    return
+            async with aiohttp.ClientSession() as session, asyncio.timeout(2):
+                async with session.get(url) as resp:
+                    if resp.status == 200:
+                        body = await resp.json()
+                        if "version" in body and "node_count" in body:
+                            return
         except (TimeoutError, aiohttp.ClientError, OSError):
-            await asyncio.sleep(0.5)
-    raise TimeoutError(f"Timeout waiting for WebSocket server on port {port}")
+            pass
+        await asyncio.sleep(0.5)
+    raise TimeoutError(f"Timeout waiting for server /health on port {port}")
 
 
 async def wait_for_device_ready(process: subprocess.Popen, timeout: float = 30.0) -> None:
