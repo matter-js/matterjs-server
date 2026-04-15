@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 import select
 import subprocess
-from pathlib import Path
-from typing import Generator
+from typing import TYPE_CHECKING
 
 import pytest
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 REPO_ROOT = Path(__file__).parent.parent.parent
 MOCK_SERVER_SCRIPT = Path(__file__).parent / "mock_server.mjs"

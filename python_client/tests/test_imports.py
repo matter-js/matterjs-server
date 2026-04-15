@@ -1,5 +1,7 @@
 """Smoke tests verifying all HA integration imports resolve."""
 
+from typing import Any
+
 
 def test_client_imports():
     """All client module imports used by HA integration must resolve."""
@@ -26,17 +28,17 @@ def test_client_model_imports():
 
 def test_common_model_imports():
     """All common model imports used by HA integration must resolve."""
-    from matter_server.common.models import (
-        EventType,
-        MatterSoftwareVersion,
-        ServerInfoMessage,
-        UpdateSource,
-    )
     from matter_server.common.errors import (
         MatterError,
         NodeNotExists,
         UpdateCheckError,
         UpdateError,
+    )
+    from matter_server.common.models import (
+        EventType,
+        MatterSoftwareVersion,
+        ServerInfoMessage,
+        UpdateSource,
     )
 
     assert EventType is not None
@@ -123,3 +125,41 @@ def test_polling_removed():
     assert not hasattr(cc, "should_poll_eve_energy")
     assert not hasattr(cc, "check_polled_attributes")
     assert not hasattr(cc, "VENDOR_ID_EVE")
+
+
+def test_chip_objects_type_exports() -> None:
+    """chip.clusters.Objects must export primitive types used by the HA integration."""
+    from chip.clusters.Objects import Nullable, NullValue, float32, uint
+
+    assert issubclass(uint, int), "uint must be a subclass of int"
+    assert issubclass(float32, float), "float32 must be a subclass of float"
+    assert issubclass(Nullable, object), "Nullable must be a class"
+    assert isinstance(NullValue, Nullable), "NullValue must be an instance of Nullable"
+    assert uint(42) == 42, "uint must be constructable from a positive int"
+
+
+def test_administrator_commissioning_timed_invoke() -> None:
+    """OpenCommissioningWindow must require timed invoke (security requirement)."""
+    from chip.clusters.cluster_defs.AdministratorCommissioning import AdministratorCommissioning
+
+    cls = AdministratorCommissioning.Commands.OpenCommissioningWindow
+    assert hasattr(cls, "must_use_timed_invoke"), "OpenCommissioningWindow must have must_use_timed_invoke"
+    assert cls.must_use_timed_invoke is True, "OpenCommissioningWindow.must_use_timed_invoke must return True"
+
+
+def _assert_mode_option_struct_fields(struct: Any, cluster_name: str) -> None:
+    # Use __dataclass_fields__ because modeTags uses default_factory and
+    # therefore has no class-level attribute (hasattr returns False for it).
+    fields = set(struct.__dataclass_fields__.keys())
+    assert "label"    in fields, f"{cluster_name}.Structs.ModeOptionStruct missing 'label'"
+    assert "mode"     in fields, f"{cluster_name}.Structs.ModeOptionStruct missing 'mode'"
+    assert "modeTags" in fields, f"{cluster_name}.Structs.ModeOptionStruct missing 'modeTags'"
+
+
+def test_mode_option_struct_has_fields() -> None:
+    """ModeOptionStruct must have label, mode, modeTags fields in all mode clusters."""
+    from chip.clusters.cluster_defs.DishwasherMode import DishwasherMode
+    from chip.clusters.cluster_defs.OvenMode import OvenMode
+
+    _assert_mode_option_struct_fields(DishwasherMode.Structs.ModeOptionStruct, "DishwasherMode")
+    _assert_mode_option_struct_fields(OvenMode.Structs.ModeOptionStruct, "OvenMode")
