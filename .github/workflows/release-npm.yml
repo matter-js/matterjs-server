@@ -200,7 +200,7 @@ jobs:
       - name: Determine version
         if: steps.publish_tasks.outputs.pr_merged == 'true'
         id: version
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           result-encoding: string
           script: |
