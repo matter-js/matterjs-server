@@ -755,7 +755,6 @@ export class ControllerCommandHandler {
         }
     }
 
-    // TODO improve response typing
     async #invokeCommand<const C extends Specifier.ClusterLike>(
         node: ClientNode,
         request: Invoke.ConcreteCommandRequest<C>,
