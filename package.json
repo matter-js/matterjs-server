@@ -54,7 +54,7 @@
         "@matter/testing": "0.17.0-alpha.0-20260410-75362b6ea",
         "@types/mocha": "^10.0.10",
         "glob": "^13.0.6",
-        "globals": "^17.4.0",
+        "globals": "^17.5.0",
         "oxfmt": "^0.44.0",
         "oxlint": "^1.59.0",
         "oxlint-tsgolint": "^0.20.0",
