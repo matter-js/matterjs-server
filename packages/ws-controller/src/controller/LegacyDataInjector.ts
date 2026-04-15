@@ -284,11 +284,11 @@ export namespace LegacyDataInjector {
                 continue;
             }
             logger.info(`Injecting node ${nodeId} into storage`);
+            let currentEndpointId: string | undefined;
+            let currentClusterId: string | undefined;
+            let endpointStorage: StorageContext | undefined;
+            let clusterStorage: StorageContext | undefined;
             for (const [attributeKey, value] of attributes) {
-                let currentEndpointId: string | undefined;
-                let currentClusterId: string | undefined;
-                let endpointStorage: StorageContext | undefined;
-                let clusterStorage: StorageContext | undefined;
                 const [endpointId, clusterId, attributeId] = attributeKey.split("/");
                 if (currentEndpointId !== endpointId) {
                     endpointStorage = nodeStorage.createContext(endpointId);
@@ -345,7 +345,7 @@ export namespace LegacyDataInjector {
             }
         }
         if (writes.length) {
-            logger.info(`... wait for all ${writes.length} records to be written ... be patent!`);
+            logger.info(`... wait for all ${writes.length} records to be written ... be patient!`);
             await Promise.allSettled(writes);
         }
 
@@ -391,11 +391,11 @@ export namespace LegacyDataInjector {
                     .set("peerAddress", PeerAddress({ fabricIndex, nodeId: NodeId(BigInt(nodeId)) })),
             );
             writes.push(peerStorage.createContext("0").createContext("commissioning").set("discoveredAt", Time.nowMs));
+            let currentEndpointId: string | undefined;
+            let currentClusterId: string | undefined;
+            let endpointStorage: StorageContext | undefined;
+            let clusterStorage: StorageContext | undefined;
             for (const [attributeKey, value] of Object.entries(nodeDetails.attributes)) {
-                let currentEndpointId: string | undefined;
-                let currentClusterId: string | undefined;
-                let endpointStorage: StorageContext | undefined;
-                let clusterStorage: StorageContext | undefined;
                 const [endpointId, clusterId, attributeId] = attributeKey.split("/");
                 if (currentEndpointId !== endpointId) {
                     endpointStorage = peerStorage.createContext(endpointId);
@@ -450,7 +450,7 @@ export namespace LegacyDataInjector {
             }
         }
         if (writes.length) {
-            logger.info(`... wait for all ${writes.length} records to be written ... be patent!`);
+            logger.info(`... wait for all ${writes.length} records to be written ... be patient!`);
             await Promise.allSettled(writes);
         }
 

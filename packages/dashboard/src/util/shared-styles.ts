@@ -5,10 +5,21 @@
  */
 
 import { css } from "lit";
+import { ThemeService } from "./theme-service.js";
+
+// Cache resolved CSS var values — getComputedStyle() is called in graph render loops (per node/edge),
+// so we avoid repeated style lookups and invalidate on theme change.
+const cssVarCache = new Map<string, string>();
+ThemeService.subscribe(() => cssVarCache.clear());
 
 /** Read a CSS custom property value from the document body (for JS-driven rendering like vis-network). */
 export function getCssVar(name: string, fallback: string = ""): string {
-    return getComputedStyle(document.body).getPropertyValue(name).trim() || fallback;
+    let value = cssVarCache.get(name);
+    if (value === undefined) {
+        value = getComputedStyle(document.body).getPropertyValue(name).trim();
+        cssVarCache.set(name, value);
+    }
+    return value || fallback;
 }
 
 export const reducedMotionStyles = css`

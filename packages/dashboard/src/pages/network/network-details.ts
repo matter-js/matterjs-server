@@ -934,7 +934,7 @@ export class NetworkDetails extends LitElement {
             }
 
             .status-online {
-                color: #4caf50;
+                color: var(--signal-color-strong, #4caf50);
             }
 
             .status-offline {
