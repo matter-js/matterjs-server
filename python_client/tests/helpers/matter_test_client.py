@@ -7,14 +7,18 @@ capture and waiting utilities on top of the real Python MatterClient.
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, field
-from typing import Any, Callable
-
-import aiohttp
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
 from matter_server.client import MatterClient
 from matter_server.common.errors import MatterError
-from matter_server.common.models import EventType
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    import aiohttp
+
+    from matter_server.common.models import EventType
 
 
 @dataclass
@@ -101,7 +105,7 @@ class MatterTestClient(MatterClient):
 
         try:
             return await asyncio.wait_for(future, timeout=timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             if waiter in self._waiters:
                 self._waiters.remove(waiter)
             raise TimeoutError(f"Timeout waiting for event: {event_type}") from None
