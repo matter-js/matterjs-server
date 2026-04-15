@@ -31,7 +31,7 @@ async function main() {
                 suggestedUrl ?? "ws://localhost:5580/ws",
             );
             if (!storageUrl) {
-                alert("Unable to connect without URL");
+                document.body.textContent = "Unable to connect: no WebSocket URL provided.";
                 return;
             }
             if (suggestedUrl) {

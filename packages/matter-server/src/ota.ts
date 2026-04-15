@@ -31,7 +31,8 @@ export async function initializeOta(controller: MatterController, cliOptions: Cl
  */
 async function loadOtaFiles(controller: MatterController, directory: string) {
     try {
-        const files = await readdir(directory);
+        const entries = await readdir(directory, { withFileTypes: true });
+        const files = entries.filter(e => e.isFile()).map(e => e.name);
         for (const file of files) {
             // Skip JSON files (metadata files)
             if (file.toLowerCase().endsWith(".json")) {

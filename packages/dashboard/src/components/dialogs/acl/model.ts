@@ -13,7 +13,7 @@ export type AccessControlTargetStruct = {
 export type AccessControlEntryRawInput = {
     "1": number;
     "2": number;
-    "3": number[];
+    "3": (number | bigint)[];
     "4": AccessControlTargetStruct[] | undefined;
     "254": number;
 };

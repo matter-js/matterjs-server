@@ -14,10 +14,12 @@ import {
     EventMessage,
     MatterClient,
     MatterNode,
+    type MatterNodeData,
+    type MatterNodeEvent,
     ServerInfoMessage,
     WebSocketLike,
 } from "@matter-server/ws-client";
-import type { MatterNodeEvent, ServerErrorCode } from "@matter-server/ws-controller";
+import type { ServerErrorCode } from "@matter-server/ws-controller";
 import WebSocket from "ws";
 
 /** Error with error code from server */
@@ -77,7 +79,7 @@ export class MatterTestClient extends MatterClient {
     /**
      * Get diagnostics from the server.
      */
-    async getDiagnostics(): Promise<{ info: ServerInfoMessage; nodes: MatterNode[]; events: MatterNodeEvent[] }> {
+    async getDiagnostics(): Promise<{ info: ServerInfoMessage; nodes: MatterNodeData[]; events: MatterNodeEvent[] }> {
         return this.sendCommand("diagnostics", 0, {});
     }
 
@@ -90,12 +92,13 @@ export class MatterTestClient extends MatterClient {
         filter?: number,
         ipAddr?: string,
     ): Promise<MatterNode> {
-        return this.sendCommand("commission_on_network", 0, {
+        const data = await this.sendCommand("commission_on_network", 0, {
             setup_pin_code: setupPinCode,
             filter_type: filterType,
             filter,
             ip_addr: ipAddr,
         });
+        return new MatterNode(data);
     }
 
     /**

@@ -33,7 +33,7 @@ jobs:
 
       - name: Determine the version bump
         id: version
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         env:
           VERSION_BUMP: ${{ inputs.versionBump }}
         with:
@@ -42,7 +42,7 @@ jobs:
             const semver = require('semver');
             const fs = require("fs");
 
-            const prevVersion = fs.readFileSync(`${process.env.GITHUB_WORKSPACE}/version.txt`, "utf8");
+            const prevVersion = fs.readFileSync(`${process.env.GITHUB_WORKSPACE}/version.txt`, "utf8").trim();
 
             const parsed = semver.parse(prevVersion);
 
@@ -52,7 +52,7 @@ jobs:
       - name: Prepare changelog
         env:
           VERSION: ${{ steps.version.outputs.result }}
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs');

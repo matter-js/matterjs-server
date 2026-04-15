@@ -20,6 +20,7 @@ import { clientContext } from "../../../client/client-context.js";
 import { handleAsync } from "../../../util/async-handler.js";
 import { analyzeBatchResults, type MatterBatchResult } from "../../../util/matter-status.js";
 import { preventDefault } from "../../../util/prevent_default.js";
+import { showAlertDialog, showPromptDialog } from "../../dialog-box/show-dialog-box.js";
 import {
     AccessControlEntryDataTransformer,
     AccessControlEntryStruct,
@@ -54,8 +55,10 @@ export class NodeBindingDialog extends LitElement {
         return Object.values(bindings_raw).map(value => BindingEntryDataTransformer.transform(value));
     }
 
-    private fetchACLEntry(targetNodeId: number): AccessControlEntryStruct[] {
-        const acl_cluster_raw = this.client.nodes[targetNodeId]?.attributes["0/31/0"] as InputType[] | undefined;
+    private fetchACLEntry(targetNodeId: number | bigint): AccessControlEntryStruct[] {
+        const acl_cluster_raw = this.client.nodes[String(targetNodeId)]?.attributes["0/31/0"] as
+            | InputType[]
+            | undefined;
         if (!acl_cluster_raw) return [];
         return Object.values(acl_cluster_raw).map((value: InputType) =>
             AccessControlEntryDataTransformer.transform(value),
@@ -68,24 +71,48 @@ export class NodeBindingDialog extends LitElement {
             const targetNodeId = rawBindings[index].node;
             const endpoint = rawBindings[index].endpoint;
             if (targetNodeId === undefined || endpoint === undefined) return;
-            await this.removeNodeAtACLEntry(this.getNodeIdAsNumber(), endpoint, targetNodeId);
-            const updatedBindings = this.removeBindingAtIndex(rawBindings, index);
-            await this.syncBindingUpdates(updatedBindings, index);
+            let aclCleanedUp = false;
+            try {
+                await this.removeNodeAtACLEntry(this.node!.node_id, endpoint, targetNodeId);
+                aclCleanedUp = true;
+            } catch (aclError) {
+                const errorMessage = aclError instanceof Error ? aclError.message : String(aclError);
+                const proceed = await showPromptDialog({
+                    title: "ACL cleanup failed",
+                    text:
+                        `Could not clean up ACL on target node ${targetNodeId}: ${errorMessage}. ` +
+                        "The target node may no longer exist or be unreachable. " +
+                        "Do you want to remove the binding anyway? " +
+                        "Note: The target device may retain an outdated ACL entry.",
+                    confirmText: "Remove binding",
+                });
+                if (!proceed) return;
+            }
+            try {
+                const updatedBindings = this.removeBindingAtIndex(rawBindings, index);
+                await this.syncBindingUpdates(updatedBindings, index);
+            } catch (bindingError) {
+                const errorMessage = bindingError instanceof Error ? bindingError.message : String(bindingError);
+                await showAlertDialog({
+                    title: "Binding removal failed",
+                    text:
+                        `Failed to remove the binding: ${errorMessage}. ` +
+                        (aclCleanedUp
+                            ? "The ACL on the target device was already updated. " +
+                              "The binding and ACL may now be out of sync."
+                            : "No changes were made."),
+                });
+                return;
+            }
         } catch (error) {
             this.handleBindingDeletionError(error);
         }
     }
 
-    /** Helper to convert node_id (number | bigint) to number for API calls */
-    private getNodeIdAsNumber(): number {
-        const nodeId = this.node!.node_id;
-        return typeof nodeId === "bigint" ? Number(nodeId) : nodeId;
-    }
-
     private async removeNodeAtACLEntry(
-        sourceNodeId: number,
+        sourceNodeId: number | bigint,
         sourceEndpoint: number,
-        targetNodeId: number,
+        targetNodeId: number | bigint,
     ): Promise<void> {
         const aclEntries = this.fetchACLEntry(targetNodeId);
 
@@ -99,7 +126,7 @@ export class NodeBindingDialog extends LitElement {
     }
 
     private removeEntryAtACL(
-        nodeId: number,
+        nodeId: number | bigint,
         sourceEndpoint: number,
         entry: AccessControlEntryStruct,
     ): AccessControlEntryStruct | undefined {
@@ -117,7 +144,7 @@ export class NodeBindingDialog extends LitElement {
     private async syncBindingUpdates(updatedBindings: BindingEntryStruct[], index: number): Promise<void> {
         // Convert to API format (without fabricIndex - server handles it)
         const apiBindings = updatedBindings.map(b => this.toBindingTarget(b));
-        await this.client.setNodeBinding(this.getNodeIdAsNumber(), this.endpoint, apiBindings);
+        await this.client.setNodeBinding(this.node!.node_id, this.endpoint, apiBindings);
 
         const attributePath = `${this.endpoint}/30/0`;
         const currentBindings = this.node!.attributes[attributePath] as BindingEntryStruct[] | undefined;
@@ -135,10 +162,13 @@ export class NodeBindingDialog extends LitElement {
         console.error(`Binding deletion failed: ${errorMessage}`);
     }
 
-    private async add_target_acl(targetNodeId: number, entry: AccessControlEntryStruct): Promise<MatterBatchResult> {
+    private async add_target_acl(
+        targetNodeId: number | bigint,
+        entry: AccessControlEntryStruct,
+    ): Promise<MatterBatchResult> {
         try {
             // Fetch existing ACL entries and transform to local struct format
-            const rawEntries = this.client.nodes[targetNodeId]?.attributes["0/31/0"] as InputType[] | undefined;
+            const rawEntries = this.client.nodes[String(targetNodeId)]?.attributes["0/31/0"] as InputType[] | undefined;
             const entries = rawEntries
                 ? Object.values(rawEntries).map(v => AccessControlEntryDataTransformer.transform(v))
                 : [];
@@ -196,7 +226,7 @@ export class NodeBindingDialog extends LitElement {
         try {
             // Convert to API format (without fabricIndex - server handles it)
             const apiBindings = bindings.map(b => this.toBindingTarget(b));
-            const results = await this.client.setNodeBinding(this.getNodeIdAsNumber(), endpoint, apiBindings);
+            const results = await this.client.setNodeBinding(this.node!.node_id, endpoint, apiBindings);
 
             const batchResult = analyzeBatchResults(results);
             if (batchResult.outcome !== "all_success") {
@@ -216,18 +246,25 @@ export class NodeBindingDialog extends LitElement {
     }
 
     async addBindingHandler() {
-        const targetNodeId = this._targetNodeId.value ? parseInt(this._targetNodeId.value, 10) : undefined;
+        let targetNodeId: bigint | undefined;
+        const rawNodeId = this._targetNodeId.value?.trim();
+        if (rawNodeId) {
+            if (!/^\d+$/.test(rawNodeId)) {
+                showAlertDialog({ title: "Validation error", text: "Please enter a valid target node ID" });
+                return;
+            }
+            targetNodeId = BigInt(rawNodeId);
+        }
         const targetEndpoint = this._targetEndpoint.value ? parseInt(this._targetEndpoint.value, 10) : undefined;
         const targetCluster = this._targetCluster.value ? parseInt(this._targetCluster.value, 10) : undefined;
 
-        // Matter Server does not use random NodeIds, so this is ok for now, but needs to be adjusted later
-        if (targetNodeId === undefined || targetNodeId <= 0 || targetNodeId > 65535) {
-            alert("Please enter a valid target node ID");
+        if (targetNodeId === undefined || targetNodeId <= 0n) {
+            showAlertDialog({ title: "Validation error", text: "Please enter a valid target node ID" });
             return;
         }
 
         if (targetEndpoint === undefined || targetEndpoint <= 0 || targetEndpoint > 0xfffe) {
-            alert("Please enter a valid target endpoint");
+            showAlertDialog({ title: "Validation error", text: "Please enter a valid target endpoint" });
             return;
         }
 
@@ -235,7 +272,7 @@ export class NodeBindingDialog extends LitElement {
         if (targetCluster !== undefined) {
             // We ignore vendor specific clusters for now
             if (targetCluster < 0 || targetCluster > 0x7fff) {
-                alert("Please enter a valid target cluster");
+                showAlertDialog({ title: "Validation error", text: "Please enter a valid target cluster" });
                 return;
             }
         }
@@ -250,18 +287,18 @@ export class NodeBindingDialog extends LitElement {
         const acl_entry: AccessControlEntryStruct = {
             privilege: 5,
             authMode: 2,
-            subjects: [this.getNodeIdAsNumber()],
+            subjects: [this.node!.node_id],
             targets: [targets],
             fabricIndex: 0, // Placeholder - server will use correct fabric index
         };
 
         const aclResult = await this.add_target_acl(targetNodeId, acl_entry);
         if (aclResult.outcome === "all_failed") {
-            alert(`Failed to add ACL entry:\n${aclResult.message}`);
+            showAlertDialog({ title: "Failed to add ACL entry", text: aclResult.message });
             return;
         }
         if (aclResult.outcome === "partial") {
-            alert(`ACL entry partially failed:\n${aclResult.message}`);
+            showAlertDialog({ title: "ACL entry partially failed", text: aclResult.message });
             // Continue with binding attempt since some ACL entries succeeded
         }
 
@@ -283,10 +320,10 @@ export class NodeBindingDialog extends LitElement {
             this._targetCluster.value = "";
             this.requestUpdate();
         } else if (bindingResult.outcome === "partial") {
-            alert(`Binding partially failed:\n${bindingResult.message}`);
+            showAlertDialog({ title: "Binding partially failed", text: bindingResult.message });
             this.requestUpdate(); // Update UI to show what succeeded
         } else {
-            alert(`Failed to add binding:\n${bindingResult.message}`);
+            showAlertDialog({ title: "Failed to add binding", text: bindingResult.message });
         }
     }
 
@@ -300,16 +337,21 @@ export class NodeBindingDialog extends LitElement {
 
     private onChange(e: Event) {
         const textfield = e.target as MdOutlinedTextField;
-        const value = parseInt(textfield.value, 10);
-
-        if (parseInt(textfield.max, 10) < value || value < parseInt(textfield.min, 10)) {
-            textfield.error = true;
-            textfield.errorText = "value error";
+        if (textfield.type === "number" && textfield.max && textfield.min) {
+            const value = parseInt(textfield.value, 10);
+            if (parseInt(textfield.max, 10) < value || value < parseInt(textfield.min, 10)) {
+                textfield.error = true;
+                textfield.errorText = "value error";
+            } else {
+                textfield.error = false;
+            }
         } else {
-            textfield.error = false;
+            // Text field with pattern validation (e.g. node ID)
+            textfield.error = textfield.value !== "" && !/^[0-9]+$/.test(textfield.value);
+            if (textfield.error) {
+                textfield.errorText = "must be a numeric value";
+            }
         }
-
-        // console.log(`value: ${value} error: ${textfield.error}`);
     }
 
     protected override render() {
@@ -325,11 +367,11 @@ export class NodeBindingDialog extends LitElement {
                 </div>
                 <div slot="content">
                     <div>
-                        <md-list style="padding-bottom:18px;">
+                        <md-list style="padding-bottom:16px;">
                             ${Object.values(bindings).map(
                                 (entry, index) => html`
                   <md-list-item class="binding-item">
-                    <div style="display:flex;gap:10px;">
+                    <div style="display:flex;gap:8px;">
                         <div>node:${entry["node"]}</div>
                         <div>endpoint:${entry["endpoint"]}</div>
                         ${entry["cluster"] ? html` <div>cluster:${entry["cluster"]}</div> ` : nothing}
@@ -349,9 +391,8 @@ export class NodeBindingDialog extends LitElement {
                                 <md-outlined-text-field
                                     label="node id"
                                     name="NodeId"
-                                    type="number"
-                                    min="0"
-                                    max="65535"
+                                    type="text"
+                                    pattern="[0-9]+"
                                     class="target-item"
                                     @change=${this.onChange}
                                     supporting-text="required"
@@ -379,13 +420,13 @@ export class NodeBindingDialog extends LitElement {
                             </div>
                         </div>
                         <div style="margin:8px;">
-                            <Text style="font-size: 10px;font-style: italic;font-weight: bold;">
+                            <span style="font-size: 0.75rem;font-style: italic;font-weight: bold;">
                                 Note: The Cluster ID field is optional according to the Matter specification. If you
                                 leave it blank, the binding applies to all eligible clusters on the target endpoint.
                                 However, some devices may require a specific cluster to be set in order for the binding
                                 to function correctly. If you experience unexpected behavior, try specifying the cluster
                                 explicitly.
-                            </Text>
+                            </span>
                         </div>
                     </div>
                 </div>
@@ -418,7 +459,7 @@ export class NodeBindingDialog extends LitElement {
 
         .target-item {
             display: inline-block;
-            padding: 20px 10px 10px 10px;
+            padding: 16px 8px 8px 8px;
             border-radius: 4px;
             vertical-align: middle;
             min-width: 80px;
@@ -428,11 +469,11 @@ export class NodeBindingDialog extends LitElement {
 
         .group-label {
             position: absolute;
-            left: 15px;
+            left: 16px;
             top: -12px;
             background: var(--md-sys-color-primary);
             color: var(--md-sys-color-on-primary);
-            padding: 3px 15px;
+            padding: 4px 16px;
             border-radius: 4px;
         }
     `;

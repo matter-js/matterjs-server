@@ -30,6 +30,7 @@ from chip.tlv import float32, uint
 
 if TYPE_CHECKING:
     from _typeshed import DataclassInstance
+
     from chip.clusters.ClusterObjects import (
         ClusterAttributeDescriptor,
         ClusterObjectDescriptor,
@@ -78,7 +79,6 @@ def parse_attribute_path(
 
 def dataclass_to_dict(obj_in: DataclassInstance) -> dict:
     """Convert dataclass instance to dict."""
-
     return asdict(
         obj_in,
         dict_factory=lambda x: {
@@ -250,7 +250,7 @@ def parse_value(
     if value_type is uint and (
         isinstance(value, int) or (isinstance(value, str) and value.isnumeric())
     ):
-        return uint(value) if allow_sdk_types else int(value)
+        return uint(value) if allow_sdk_types else int(value)  # type: ignore[arg-type]
     if value_type is float32 and (
         isinstance(value, (float, int))
         or (isinstance(value, str) and value.isnumeric())
@@ -266,7 +266,7 @@ def parse_value(
     return value
 
 
-def dataclass_from_dict(
+def dataclass_from_dict[T: DataclassInstance](  # type: ignore[valid-type]
     cls: type[_T],
     dict_obj: dict,
     strict: bool = False,
@@ -283,7 +283,7 @@ def dataclass_from_dict(
         extra_keys = dict_obj.keys() - {f.name for f in dc_fields}
         if extra_keys:
             raise KeyError(
-                f"Extra key(s) {','.join(extra_keys)} not allowed for {str(cls)}"
+                f"Extra key(s) {','.join(extra_keys)} not allowed for {cls!s}"
             )
     type_hints = cached_type_hints(cls)
     return cls(
@@ -348,7 +348,7 @@ def convert_mac_address(hex_mac: str | bytes) -> str:
         # note that the bytes string can be optionally base64 encoded
         hex_mac = base64.b64decode(hex_mac)
 
-    return ":".join("{:02x}".format(byte) for byte in hex_mac)  # pylint: disable=C0209
+    return ":".join(f"{byte:02x}" for byte in hex_mac)  # pylint: disable=C0209
 
 
 def convert_ip_address(hex_ip: str | bytes, ipv6: bool = False) -> str:

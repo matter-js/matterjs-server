@@ -7,7 +7,7 @@
 import "@material/web/button/text-button";
 import "@material/web/dialog/dialog";
 import type { MdDialog } from "@material/web/dialog/dialog.js";
-import { html, LitElement } from "lit";
+import { css, html, LitElement } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { preventDefault } from "../../util/prevent_default.js";
 import type { PromptDialogBoxParams } from "./show-dialog-box.js";
@@ -24,25 +24,19 @@ export class DialogBox extends LitElement {
         return html`
             <md-dialog open @cancel=${preventDefault} @closed=${this._handleClosed}>
                 ${params.title ? html`<div slot="headline">${params.title}</div>` : ""}
-                ${
-                    params.text
-                        ? html`<div slot="content">
-                          ${
-                              params.asCodeBlock && typeof params.text === "string"
-                                  ? html`<code>${params.text}</code>`
-                                  : params.text
-                          }
+                ${params.text
+                    ? html`<div slot="content">
+                          ${params.asCodeBlock && typeof params.text === "string"
+                              ? html`<code>${params.text}</code>`
+                              : params.text}
                       </div>`
-                        : ""
-                }
+                    : ""}
                 <div slot="actions">
-                    ${
-                        this.type === "prompt"
-                            ? html`
+                    ${this.type === "prompt"
+                        ? html`
                               <md-text-button @click=${this._cancel}>${params.cancelText ?? "Cancel"}</md-text-button>
                           `
-                            : ""
-                    }
+                        : ""}
                     <md-text-button @click=${this._confirm}>${params.confirmText ?? "OK"}</md-text-button>
                 </div>
             </md-dialog>
@@ -65,6 +59,21 @@ export class DialogBox extends LitElement {
     private _handleClosed() {
         this.parentElement!.removeChild(this);
     }
+
+    static override styles = css`
+        code {
+            display: block;
+            white-space: pre-wrap;
+            word-break: break-all;
+            overflow-y: auto;
+            max-height: 60vh;
+            font-size: 0.8rem;
+            line-height: 1.4;
+            padding: 8px;
+            background-color: var(--md-sys-color-surface-container-highest);
+            border-radius: 4px;
+        }
+    `;
 }
 
 declare global {

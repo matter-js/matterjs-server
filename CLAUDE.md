@@ -162,3 +162,28 @@ Always verify new colors look correct in both light AND dark themes before commi
 - Material Web components need proper `--md-sys-color-*` variables to render correctly in dark mode
 - When adding status/error pages, include the header component for consistent UX
 - The dashboard is served by the Matter Server, so `location.reload()` fails when server is offline - use WebSocket reconnect instead
+
+## Design Context
+
+### Users
+Two distinct audiences served equally:
+1. **Home Assistant power users** — technically capable smart home enthusiasts managing their Matter network. Need clear device status, easy commissioning, and network health at a glance.
+2. **Developers and testers** — building or debugging Matter integrations. Need raw data, attribute inspection, cluster details, and diagnostic information.
+
+Both audiences benefit from information density. Neither needs hand-holding.
+
+### Brand Personality
+**Utilitarian, dense, reliable.** Tool-first. The dashboard should feel like a well-built instrument panel — everything needed visible, nothing decorative for its own sake.
+
+### Aesthetic Direction
+- Material Design 3 as foundation — refine rather than replace
+- Both light and dark modes, equal quality in each
+- Current design is acceptable baseline — improvements focus on polish, color mode consistency, spacing, and information hierarchy
+- Anti-references: not a "hacker dashboard", not overly decorative, not consumer marketing
+
+### Design Principles
+1. **Density over decoration** — Show more data in less space. Every pixel earns its place.
+2. **State clarity** — Online/offline, connection quality, commissioning status must be instantly readable. Color-code consistently.
+3. **Both modes, equal quality** — Light and dark themes both intentional, not one an afterthought.
+4. **Material as infrastructure** — Use MD components for consistency, override tokens where it improves the tool feel.
+5. **Progressive detail** — Overview first, drill-down on demand.

@@ -13,6 +13,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import { clientContext } from "../../client/client-context.js";
 import "../../components/ha-svg-icon";
 import { formatNodeAddressFromAny, getEffectiveFabricIndex } from "../../util/format_hex.js";
+import { getCssVar, reducedMotionStyles } from "../../util/shared-styles.js";
 import type { ThreadNeighbor } from "./network-types.js";
 import type { NodeConnection } from "./network-utils.js";
 import {
@@ -100,16 +101,15 @@ export class NetworkDetails extends LitElement {
     }
 
     private _getSignalIcon(neighbor: ThreadNeighbor): string {
-        const color = getSignalColor(neighbor);
-        if (color === "#4caf50") return mdiSignalCellular3; // Strong
-        if (color === "#ff9800") return mdiSignalCellular2; // Medium
-        return mdiSignalCellular1; // Weak
+        return this._getSignalIconFromColor(getSignalColor(neighbor));
     }
 
     private _getSignalIconFromColor(color: string): string {
-        if (color === "#4caf50") return mdiSignalCellular3; // Strong
-        if (color === "#ff9800") return mdiSignalCellular2; // Medium
-        return mdiSignalCellular1; // Weak
+        const strongColor = getCssVar("--signal-color-strong", "#4caf50");
+        const mediumColor = getCssVar("--signal-color-medium", "#ff9800");
+        if (color === strongColor) return mdiSignalCellular3;
+        if (color === mediumColor) return mdiSignalCellular2;
+        return mdiSignalCellular1;
     }
 
     /**
@@ -137,56 +137,46 @@ export class NetworkDetails extends LitElement {
         return html`
             <div class="section">
                 <h4>WiFi Network</h4>
-                ${
-                    wifiDiag.bssid
-                        ? html`
+                ${wifiDiag.bssid
+                    ? html`
                           <div class="info-row">
                               <span class="label">BSSID:</span>
                               <span class="value mono">${wifiDiag.bssid}</span>
                           </div>
                       `
-                        : nothing
-                }
-                ${
-                    wifiDiag.rssi !== null
-                        ? html`
+                    : nothing}
+                ${wifiDiag.rssi !== null
+                    ? html`
                           <div class="info-row">
                               <span class="label">Signal:</span>
                               <span class="value" style="color: ${signalColor}">${wifiDiag.rssi} dBm</span>
                           </div>
                       `
-                        : nothing
-                }
-                ${
-                    wifiDiag.channel !== null
-                        ? html`
+                    : nothing}
+                ${wifiDiag.channel !== null
+                    ? html`
                           <div class="info-row">
                               <span class="label">Channel:</span>
                               <span class="value">${wifiDiag.channel}</span>
                           </div>
                       `
-                        : nothing
-                }
-                ${
-                    wifiDiag.securityType !== null
-                        ? html`
+                    : nothing}
+                ${wifiDiag.securityType !== null
+                    ? html`
                           <div class="info-row">
                               <span class="label">Security:</span>
                               <span class="value">${getWiFiSecurityTypeName(wifiDiag.securityType)}</span>
                           </div>
                       `
-                        : nothing
-                }
-                ${
-                    wifiDiag.wifiVersion !== null
-                        ? html`
+                    : nothing}
+                ${wifiDiag.wifiVersion !== null
+                    ? html`
                           <div class="info-row">
                               <span class="label">WiFi Version:</span>
                               <span class="value">${getWiFiVersionName(wifiDiag.wifiVersion)}</span>
                           </div>
                       `
-                        : nothing
-                }
+                    : nothing}
             </div>
         `;
     }
@@ -210,26 +200,22 @@ export class NetworkDetails extends LitElement {
                     <span class="label">Role:</span>
                     <span class="value">${getThreadRoleName(threadRole)}</span>
                 </div>
-                ${
-                    channel !== undefined
-                        ? html`
+                ${channel !== undefined
+                    ? html`
                           <div class="info-row">
                               <span class="label">Channel:</span>
                               <span class="value">${channel}</span>
                           </div>
                       `
-                        : nothing
-                }
-                ${
-                    extAddressHex
-                        ? html`
+                    : nothing}
+                ${extAddressHex
+                    ? html`
                           <div class="info-row">
                               <span class="label">Extended Address:</span>
                               <span class="value mono">${extAddressHex}</span>
                           </div>
                       `
-                        : nothing
-                }
+                    : nothing}
                 <div class="info-row">
                     <span class="label">Direct neighbors:</span>
                     <span class="value">${connections.length}</span>
@@ -247,9 +233,8 @@ export class NetworkDetails extends LitElement {
                 })()}
             </div>
 
-            ${
-                connections.length > 0
-                    ? html`
+            ${connections.length > 0
+                ? html`
                       <md-divider></md-divider>
                       <div class="section">
                           <h4>Connections (${connections.length})</h4>
@@ -269,59 +254,58 @@ export class NetworkDetails extends LitElement {
                                   })
                                   .map((conn: NodeConnection) => {
                                       return html`
-                                      <div
-                                          class="neighbor-item clickable"
-                                          role="button"
-                                          tabindex="0"
-                                          @click=${() => this._handleSelectNode(conn.connectedNodeId)}
-                                          @keydown=${(e: KeyboardEvent) => this._handleKeyDown(e, conn.connectedNodeId)}
-                                      >
-                                          <ha-svg-icon
-                                              .path=${this._getSignalIconFromColor(conn.signalColor)}
-                                              style="--icon-primary-color: ${conn.signalColor}"
-                                          ></ha-svg-icon>
-                                          <div class="neighbor-info">
-                                              <div class="neighbor-name">
-                                                  ${
-                                                      conn.connectedNode
+                                          <div
+                                              class="neighbor-item clickable"
+                                              role="button"
+                                              tabindex="0"
+                                              @click=${() => this._handleSelectNode(conn.connectedNodeId)}
+                                              @keydown=${(e: KeyboardEvent) =>
+                                                  this._handleKeyDown(e, conn.connectedNodeId)}
+                                          >
+                                              <ha-svg-icon
+                                                  .path=${this._getSignalIconFromColor(conn.signalColor)}
+                                                  style="--icon-primary-color: ${conn.signalColor}"
+                                              ></ha-svg-icon>
+                                              <div class="neighbor-info">
+                                                  <div class="neighbor-name">
+                                                      ${conn.connectedNode
                                                           ? html`Node ${conn.connectedNodeId}
-                                                            <span class="node-id-hex"
-                                                                >${this._formatNodeIdHex(conn.connectedNodeId)}</span
-                                                            >: ${getDeviceName(conn.connectedNode)}`
-                                                          : html`External: <span class="mono">${conn.extAddressHex}</span>`
-                                                  }
-                                              </div>
-                                              <div class="neighbor-signal">
-                                                  ${conn.rssi !== null ? html`RSSI: ${conn.rssi} dBm` : nothing}${
-                                                      conn.rssi !== null && conn.lqi !== null ? ", " : nothing
-                                                  }${conn.lqi !== null ? html`LQI: ${conn.lqi}` : nothing}${
-                                                      conn.bidirectionalLqi !== undefined
+                                                                <span class="node-id-hex"
+                                                                    >${this._formatNodeIdHex(
+                                                                        conn.connectedNodeId,
+                                                                    )}</span
+                                                                >: ${getDeviceName(conn.connectedNode)}`
+                                                          : html`External:
+                                                                <span class="mono">${conn.extAddressHex}</span>`}
+                                                  </div>
+                                                  <div class="neighbor-signal">
+                                                      ${conn.rssi !== null
+                                                          ? html`RSSI: ${conn.rssi} dBm`
+                                                          : nothing}${conn.rssi !== null && conn.lqi !== null
+                                                          ? ", "
+                                                          : nothing}${conn.lqi !== null
+                                                          ? html`LQI: ${conn.lqi}`
+                                                          : nothing}${conn.bidirectionalLqi !== undefined
                                                           ? html`<span class="route-info"
-                                                            >, Bidir: ${conn.bidirectionalLqi}</span
-                                                        >`
-                                                          : nothing
-                                                  }${
-                                                      conn.pathCost !== undefined
-                                                          ? html`<span class="route-info">, Cost: ${conn.pathCost}</span>`
-                                                          : nothing
-                                                  }
-                                                  ${
-                                                      !conn.isOutgoing
-                                                          ? html`
-                                                                <span class="direction-hint">(reverse)</span>
-                                                            `
-                                                          : nothing
-                                                  }
+                                                                >, Bidir: ${conn.bidirectionalLqi}</span
+                                                            >`
+                                                          : nothing}${conn.pathCost !== undefined
+                                                          ? html`<span class="route-info"
+                                                                >, Cost: ${conn.pathCost}</span
+                                                            >`
+                                                          : nothing}
+                                                      ${!conn.isOutgoing
+                                                          ? html` <span class="direction-hint">(reverse)</span> `
+                                                          : nothing}
+                                                  </div>
                                               </div>
                                           </div>
-                                      </div>
-                                  `;
+                                      `;
                                   })}
                           </div>
                       </div>
                   `
-                    : nothing
-            }
+                : nothing}
         `;
     }
 
@@ -343,16 +327,14 @@ export class NetworkDetails extends LitElement {
                     <span class="label">Product:</span>
                     <span class="value">${node.productName ?? "Unknown"}</span>
                 </div>
-                ${
-                    node.serialNumber
-                        ? html`
+                ${node.serialNumber
+                    ? html`
                           <div class="info-row">
                               <span class="label">Serial:</span>
                               <span class="value mono">${node.serialNumber}</span>
                           </div>
                       `
-                        : nothing
-                }
+                    : nothing}
                 <div class="info-row">
                     <span class="label">Network:</span>
                     <span class="value">${networkType.charAt(0).toUpperCase() + networkType.slice(1)}</span>
@@ -365,22 +347,18 @@ export class NetworkDetails extends LitElement {
                 </div>
             </div>
 
-            ${
-                networkType === "thread"
-                    ? html`
+            ${networkType === "thread"
+                ? html`
                       <md-divider></md-divider>
                       ${this._renderThreadInfo(node)}
                   `
-                    : nothing
-            }
-            ${
-                networkType === "wifi"
-                    ? html`
+                : nothing}
+            ${networkType === "wifi"
+                ? html`
                       <md-divider></md-divider>
                       ${this._renderWiFiInfo(node)}
                   `
-                    : nothing
-            }
+                : nothing}
         `;
     }
 
@@ -401,9 +379,7 @@ export class NetworkDetails extends LitElement {
     private _renderUnknownDeviceInfo(deviceId: string): TemplateResult | typeof nothing {
         const unknown = this.unknownDevices.get(deviceId);
         if (!unknown) {
-            return html`
-                <p>Unknown device data not available</p>
-            `;
+            return html` <p>Unknown device data not available</p> `;
         }
 
         return html`
@@ -417,21 +393,18 @@ export class NetworkDetails extends LitElement {
                     <span class="label">Extended Address:</span>
                     <span class="value mono">${unknown.extAddressHex}</span>
                 </div>
-                ${
-                    unknown.bestRssi !== null
-                        ? html`
+                ${unknown.bestRssi !== null
+                    ? html`
                           <div class="info-row">
                               <span class="label">Best RSSI:</span>
                               <span class="value">${unknown.bestRssi} dBm</span>
                           </div>
                       `
-                        : nothing
-                }
+                    : nothing}
             </div>
 
-            ${
-                unknown.seenBy.length > 0
-                    ? html`
+            ${unknown.seenBy.length > 0
+                ? html`
                       <md-divider></md-divider>
                       <div class="section">
                           <h4>Neighbors (${unknown.seenBy.length})</h4>
@@ -456,53 +429,50 @@ export class NetworkDetails extends LitElement {
 
                                       // Find the neighbor entry to get RSSI/LQI
                                       const neighborEntry = this._findNeighborEntry(node, unknown.extAddressHex);
-                                      const signalColor = neighborEntry ? getSignalColor(neighborEntry) : "#999";
+                                      const signalColor = neighborEntry
+                                          ? getSignalColor(neighborEntry)
+                                          : getCssVar("--graph-node-fallback", "#999");
                                       const rssi = neighborEntry?.avgRssi ?? neighborEntry?.lastRssi ?? null;
                                       const lqi = neighborEntry?.lqi;
 
                                       return html`
-                                      <div
-                                          class="neighbor-item clickable"
-                                          role="button"
-                                          tabindex="0"
-                                          @click=${() => this._handleSelectNode(nodeId)}
-                                          @keydown=${(e: KeyboardEvent) => this._handleKeyDown(e, nodeId)}
-                                      >
-                                          ${
-                                              neighborEntry
+                                          <div
+                                              class="neighbor-item clickable"
+                                              role="button"
+                                              tabindex="0"
+                                              @click=${() => this._handleSelectNode(nodeId)}
+                                              @keydown=${(e: KeyboardEvent) => this._handleKeyDown(e, nodeId)}
+                                          >
+                                              ${neighborEntry
                                                   ? html`
-                                                    <ha-svg-icon
-                                                        .path=${this._getSignalIcon(neighborEntry)}
-                                                        style="--icon-primary-color: ${signalColor}"
-                                                    ></ha-svg-icon>
-                                                `
-                                                  : nothing
-                                          }
-                                          <div class="neighbor-info">
-                                              <div class="neighbor-name">
-                                                  Node ${nodeId}
-                                                  <span class="node-id-hex">${this._formatNodeIdHex(nodeId)}</span>:
-                                                  ${getDeviceName(node)}
-                                              </div>
-                                              ${
-                                                  neighborEntry
-                                                      ? html`
-                                                        <div class="neighbor-signal">
-                                                            ${rssi !== null ? html`RSSI: ${rssi} dBm, ` : nothing}
-                                                            ${lqi !== undefined ? html`LQI: ${lqi}` : nothing}
-                                                        </div>
+                                                        <ha-svg-icon
+                                                            .path=${this._getSignalIcon(neighborEntry)}
+                                                            style="--icon-primary-color: ${signalColor}"
+                                                        ></ha-svg-icon>
                                                     `
-                                                      : nothing
-                                              }
+                                                  : nothing}
+                                              <div class="neighbor-info">
+                                                  <div class="neighbor-name">
+                                                      Node ${nodeId}
+                                                      <span class="node-id-hex">${this._formatNodeIdHex(nodeId)}</span>:
+                                                      ${getDeviceName(node)}
+                                                  </div>
+                                                  ${neighborEntry
+                                                      ? html`
+                                                            <div class="neighbor-signal">
+                                                                ${rssi !== null ? html`RSSI: ${rssi} dBm, ` : nothing}
+                                                                ${lqi !== undefined ? html`LQI: ${lqi}` : nothing}
+                                                            </div>
+                                                        `
+                                                      : nothing}
+                                              </div>
                                           </div>
-                                      </div>
-                                  `;
+                                      `;
                                   })}
                           </div>
                       </div>
                   `
-                    : nothing
-            }
+                : nothing}
 
             <md-divider></md-divider>
             <div class="section">
@@ -626,9 +596,7 @@ export class NetworkDetails extends LitElement {
     private _renderWiFiAccessPointInfo(apId: string): TemplateResult | typeof nothing {
         const ap = this.wifiAccessPoints.get(apId);
         if (!ap) {
-            return html`
-                <p>Access point data not available</p>
-            `;
+            return html` <p>Access point data not available</p> `;
         }
 
         return html`
@@ -643,9 +611,8 @@ export class NetworkDetails extends LitElement {
                     <span class="value">${ap.connectedNodes.length}</span>
                 </div>
             </div>
-            ${
-                ap.connectedNodes.length > 0
-                    ? html`
+            ${ap.connectedNodes.length > 0
+                ? html`
                       <md-divider></md-divider>
                       <div class="section">
                           <h4>Connected Nodes</h4>
@@ -665,33 +632,30 @@ export class NetworkDetails extends LitElement {
                                       const signalColor = getSignalColorFromRssi(wifiDiag.rssi);
 
                                       return html`
-                                      <div
-                                          class="connected-node-item clickable"
-                                          role="button"
-                                          tabindex="0"
-                                          @click=${() => this._handleSelectNode(nodeId)}
-                                          @keydown=${(e: KeyboardEvent) => this._handleKeyDown(e, nodeId)}
-                                      >
-                                          <div class="node-name">
-                                              Node ${nodeId}
-                                              <span class="node-id-hex">${this._formatNodeIdHex(nodeId)}</span>:
-                                              ${getDeviceName(node)}
-                                          </div>
-                                          ${
-                                              wifiDiag.rssi !== null
+                                          <div
+                                              class="connected-node-item clickable"
+                                              role="button"
+                                              tabindex="0"
+                                              @click=${() => this._handleSelectNode(nodeId)}
+                                              @keydown=${(e: KeyboardEvent) => this._handleKeyDown(e, nodeId)}
+                                          >
+                                              <div class="node-name">
+                                                  Node ${nodeId}
+                                                  <span class="node-id-hex">${this._formatNodeIdHex(nodeId)}</span>:
+                                                  ${getDeviceName(node)}
+                                              </div>
+                                              ${wifiDiag.rssi !== null
                                                   ? html`<div class="node-signal" style="color: ${signalColor}">
-                                                    ${wifiDiag.rssi} dBm
-                                                </div>`
-                                                  : nothing
-                                          }
-                                      </div>
-                                  `;
+                                                        ${wifiDiag.rssi} dBm
+                                                    </div>`
+                                                  : nothing}
+                                          </div>
+                                      `;
                                   })}
                           </div>
                       </div>
                   `
-                    : nothing
-            }
+                : nothing}
             <md-divider></md-divider>
             <div class="section">
                 <p class="hint-text">
@@ -720,9 +684,8 @@ export class NetworkDetails extends LitElement {
                     <div class="header">
                         <h3>External Device</h3>
                         <div class="header-actions">
-                            ${
-                                onlineSeenByNodes.length > 0
-                                    ? html`
+                            ${onlineSeenByNodes.length > 0
+                                ? html`
                                       <button
                                           class="action-button"
                                           @click=${this._handleUpdateConnections}
@@ -732,8 +695,7 @@ export class NetworkDetails extends LitElement {
                                           <ha-svg-icon .path=${mdiRefresh}></ha-svg-icon>
                                       </button>
                                   `
-                                    : nothing
-                            }
+                                : nothing}
                             <button class="close-button" @click=${this._handleClose} aria-label="Close details panel">
                                 <ha-svg-icon .path=${mdiClose}></ha-svg-icon>
                             </button>
@@ -741,9 +703,8 @@ export class NetworkDetails extends LitElement {
                     </div>
                     <div class="content">${this._renderUnknownDeviceInfo(this.selectedNodeId as string)}</div>
                 </div>
-                ${
-                    this._showUpdateDialog
-                        ? html`
+                ${this._showUpdateDialog
+                    ? html`
                           <update-connections-dialog
                               .client=${this.client}
                               .nodes=${this.nodes}
@@ -754,8 +715,7 @@ export class NetworkDetails extends LitElement {
                               @dialog-closed=${this._handleDialogClose}
                           ></update-connections-dialog>
                       `
-                        : nothing
-                }
+                    : nothing}
             `;
         }
 
@@ -797,9 +757,8 @@ export class NetworkDetails extends LitElement {
                         <span class="node-id-hex">${this._formatNodeIdHex(this.selectedNodeId)}</span>
                     </h3>
                     <div class="header-actions">
-                        ${
-                            canUpdate
-                                ? html`
+                        ${canUpdate
+                            ? html`
                                   <button
                                       class="action-button"
                                       @click=${this._handleUpdateConnections}
@@ -809,8 +768,7 @@ export class NetworkDetails extends LitElement {
                                       <ha-svg-icon .path=${mdiRefresh}></ha-svg-icon>
                                   </button>
                               `
-                                : nothing
-                        }
+                            : nothing}
                         <button class="close-button" @click=${this._handleClose} aria-label="Close details panel">
                             <ha-svg-icon .path=${mdiClose}></ha-svg-icon>
                         </button>
@@ -821,9 +779,8 @@ export class NetworkDetails extends LitElement {
                     <a href="#node/${this.selectedNodeId}" class="view-link">View node details</a>
                 </div>
             </div>
-            ${
-                this._showUpdateDialog
-                    ? html`
+            ${this._showUpdateDialog
+                ? html`
                       <update-connections-dialog
                           .client=${this.client}
                           .nodes=${this.nodes}
@@ -834,274 +791,276 @@ export class NetworkDetails extends LitElement {
                           @dialog-closed=${this._handleDialogClose}
                       ></update-connections-dialog>
                   `
-                    : nothing
-            }
+                : nothing}
         `;
     }
 
-    static override styles = css`
-        :host {
-            display: block;
-            height: 100%;
-        }
+    static override styles = [
+        reducedMotionStyles,
+        css`
+            :host {
+                display: block;
+                height: 100%;
+            }
 
-        .empty-state {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            height: 100%;
-            color: var(--md-sys-color-on-surface-variant, #666);
-            text-align: center;
-            padding: 24px;
-        }
+            .empty-state {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                height: 100%;
+                color: var(--md-sys-color-on-surface-variant, #666);
+                text-align: center;
+                padding: 24px;
+            }
 
-        .details-panel {
-            display: flex;
-            flex-direction: column;
-            height: 100%;
-            background-color: var(--md-sys-color-surface, #fff);
-            border-radius: 8px;
-            border: 1px solid var(--md-sys-color-outline-variant, #ccc);
-            overflow: hidden;
-        }
+            .details-panel {
+                display: flex;
+                flex-direction: column;
+                height: 100%;
+                background-color: var(--md-sys-color-surface, #fff);
+                border-radius: 8px;
+                border: 1px solid var(--md-sys-color-outline-variant, #ccc);
+                overflow: hidden;
+            }
 
-        .header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 12px 16px;
-            background-color: var(--md-sys-color-surface-container, #f5f5f5);
-            border-bottom: 1px solid var(--md-sys-color-outline-variant, #ccc);
-        }
+            .header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 12px 16px;
+                background-color: var(--md-sys-color-surface-container, #f5f5f5);
+                border-bottom: 1px solid var(--md-sys-color-outline-variant, #ccc);
+            }
 
-        .header h3 {
-            margin: 0;
-            font-size: 1rem;
-            font-weight: 500;
-            color: var(--md-sys-color-on-surface, #333);
-        }
+            .header h3 {
+                margin: 0;
+                font-size: 1rem;
+                font-weight: 500;
+                color: var(--md-sys-color-on-surface, #333);
+            }
 
-        .node-id-hex {
-            font-size: 0.75em;
-            font-weight: 400;
-            color: var(--md-sys-color-on-surface-variant, #666);
-            font-family: monospace;
-        }
+            .node-id-hex {
+                font-size: 0.75em;
+                font-weight: 400;
+                color: var(--md-sys-color-on-surface-variant, #666);
+                font-family: var(--monospace-font, monospace);
+            }
 
-        .header-actions {
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
+            .header-actions {
+                display: flex;
+                align-items: center;
+                gap: 4px;
+            }
 
-        .action-button {
-            background: none;
-            border: none;
-            padding: 4px;
-            cursor: pointer;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
+            .action-button {
+                background: none;
+                border: none;
+                padding: 4px;
+                cursor: pointer;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
 
-        .action-button:hover {
-            background-color: var(--md-sys-color-surface-container-high, #e8e8e8);
-        }
+            .action-button:hover {
+                background-color: var(--md-sys-color-surface-container-high, #e8e8e8);
+            }
 
-        .action-button ha-svg-icon {
-            --icon-primary-color: var(--md-sys-color-on-surface-variant, #666);
-        }
+            .action-button ha-svg-icon {
+                --icon-primary-color: var(--md-sys-color-on-surface-variant, #666);
+            }
 
-        .close-button {
-            background: none;
-            border: none;
-            padding: 4px;
-            cursor: pointer;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
+            .close-button {
+                background: none;
+                border: none;
+                padding: 4px;
+                cursor: pointer;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
 
-        .close-button:hover {
-            background-color: var(--md-sys-color-surface-container-high, #e8e8e8);
-        }
+            .close-button:hover {
+                background-color: var(--md-sys-color-surface-container-high, #e8e8e8);
+            }
 
-        .close-button ha-svg-icon {
-            --icon-primary-color: var(--md-sys-color-on-surface-variant, #666);
-        }
+            .close-button ha-svg-icon {
+                --icon-primary-color: var(--md-sys-color-on-surface-variant, #666);
+            }
 
-        .content {
-            flex: 1;
-            overflow-y: auto;
-            padding: 0;
-        }
+            .content {
+                flex: 1;
+                overflow-y: auto;
+                padding: 0;
+            }
 
-        .section {
-            padding: 16px;
-        }
+            .section {
+                padding: 16px;
+            }
 
-        .section h4 {
-            margin: 0 0 12px 0;
-            font-size: 0.875rem;
-            font-weight: 500;
-            color: var(--md-sys-color-primary, #6200ee);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
+            .section h4 {
+                margin: 0 0 12px 0;
+                font-size: 0.875rem;
+                font-weight: 500;
+                color: var(--md-sys-color-primary, #6200ee);
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
 
-        .info-row {
-            display: flex;
-            justify-content: space-between;
-            padding: 6px 0;
-            font-size: 0.875rem;
-        }
+            .info-row {
+                display: flex;
+                justify-content: space-between;
+                padding: 6px 0;
+                font-size: 0.875rem;
+            }
 
-        .label {
-            color: var(--md-sys-color-on-surface-variant, #666);
-        }
+            .label {
+                color: var(--md-sys-color-on-surface-variant, #666);
+            }
 
-        .value {
-            color: var(--md-sys-color-on-surface, #333);
-            font-weight: 500;
-            text-align: right;
-            word-break: break-all;
-            max-width: 60%;
-        }
+            .value {
+                color: var(--md-sys-color-on-surface, #333);
+                font-weight: 500;
+                text-align: right;
+                word-break: break-all;
+                max-width: 60%;
+            }
 
-        .value.mono {
-            font-family: monospace;
-            font-size: 0.8rem;
-        }
+            .value.mono {
+                font-family: var(--monospace-font, monospace);
+                font-size: 0.8rem;
+            }
 
-        .status-online {
-            color: #4caf50;
-        }
+            .status-online {
+                color: var(--signal-color-strong, #4caf50);
+            }
 
-        .status-offline {
-            color: var(--danger-color, #f44336);
-        }
+            .status-offline {
+                color: var(--danger-color, #f44336);
+            }
 
-        .neighbors-list {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
+            .neighbors-list {
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+            }
 
-        .neighbor-item {
-            display: flex;
-            align-items: flex-start;
-            gap: 12px;
-            padding: 8px;
-            background-color: var(--md-sys-color-surface-container, #f5f5f5);
-            border-radius: 4px;
-        }
+            .neighbor-item {
+                display: flex;
+                align-items: flex-start;
+                gap: 12px;
+                padding: 8px;
+                background-color: var(--md-sys-color-surface-container, #f5f5f5);
+                border-radius: 4px;
+            }
 
-        .neighbor-item.clickable {
-            cursor: pointer;
-            transition: background-color 0.15s;
-        }
+            .neighbor-item.clickable {
+                cursor: pointer;
+                transition: background-color 0.15s;
+            }
 
-        .neighbor-item.clickable:hover {
-            background-color: var(--md-sys-color-surface-container-high, #e8e8e8);
-        }
+            .neighbor-item.clickable:hover {
+                background-color: var(--md-sys-color-surface-container-high, #e8e8e8);
+            }
 
-        .neighbor-item ha-svg-icon {
-            flex-shrink: 0;
-            margin-top: 2px;
-        }
+            .neighbor-item ha-svg-icon {
+                flex-shrink: 0;
+                margin-top: 2px;
+            }
 
-        .neighbor-info {
-            flex: 1;
-            min-width: 0;
-        }
+            .neighbor-info {
+                flex: 1;
+                min-width: 0;
+            }
 
-        .neighbor-name {
-            font-size: 0.875rem;
-            color: var(--md-sys-color-on-surface, #333);
-            word-break: break-word;
-        }
+            .neighbor-name {
+                font-size: 0.875rem;
+                color: var(--md-sys-color-on-surface, #333);
+                word-break: break-word;
+            }
 
-        .neighbor-signal {
-            font-size: 0.75rem;
-            color: var(--md-sys-color-on-surface-variant, #666);
-            margin-top: 2px;
-        }
+            .neighbor-signal {
+                font-size: 0.75rem;
+                color: var(--md-sys-color-on-surface-variant, #666);
+                margin-top: 2px;
+            }
 
-        .direction-hint {
-            font-style: italic;
-            opacity: 0.8;
-        }
+            .direction-hint {
+                font-style: italic;
+                opacity: 0.8;
+            }
 
-        .route-info {
-            color: var(--md-sys-color-tertiary, #7d5260);
-            font-size: 0.85em;
-        }
+            .route-info {
+                color: var(--md-sys-color-tertiary, #7d5260);
+                font-size: 0.85em;
+            }
 
-        .footer {
-            padding: 12px 16px;
-            border-top: 1px solid var(--md-sys-color-outline-variant, #ccc);
-            text-align: center;
-        }
+            .footer {
+                padding: 12px 16px;
+                border-top: 1px solid var(--md-sys-color-outline-variant, #ccc);
+                text-align: center;
+            }
 
-        .view-link {
-            color: var(--md-sys-color-primary, #6200ee);
-            text-decoration: none;
-            font-size: 0.875rem;
-            font-weight: 500;
-        }
+            .view-link {
+                color: var(--md-sys-color-primary, #6200ee);
+                text-decoration: none;
+                font-size: 0.875rem;
+                font-weight: 500;
+            }
 
-        .view-link:hover {
-            text-decoration: underline;
-        }
+            .view-link:hover {
+                text-decoration: underline;
+            }
 
-        md-divider {
-            --md-divider-color: var(--md-sys-color-outline-variant, #ccc);
-        }
+            md-divider {
+                --md-divider-color: var(--md-sys-color-outline-variant, #ccc);
+            }
 
-        .hint-text {
-            font-size: 0.8rem;
-            color: var(--md-sys-color-on-surface-variant, #666);
-            line-height: 1.4;
-            margin: 0;
-        }
+            .hint-text {
+                font-size: 0.8rem;
+                color: var(--md-sys-color-on-surface-variant, #666);
+                line-height: 1.4;
+                margin: 0;
+            }
 
-        .connected-nodes-list {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
+            .connected-nodes-list {
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+            }
 
-        .connected-node-item {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 8px;
-            background-color: var(--md-sys-color-surface-container, #f5f5f5);
-            border-radius: 4px;
-        }
+            .connected-node-item {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 8px;
+                background-color: var(--md-sys-color-surface-container, #f5f5f5);
+                border-radius: 4px;
+            }
 
-        .connected-node-item.clickable {
-            cursor: pointer;
-            transition: background-color 0.15s;
-        }
+            .connected-node-item.clickable {
+                cursor: pointer;
+                transition: background-color 0.15s;
+            }
 
-        .connected-node-item.clickable:hover {
-            background-color: var(--md-sys-color-surface-container-high, #e8e8e8);
-        }
+            .connected-node-item.clickable:hover {
+                background-color: var(--md-sys-color-surface-container-high, #e8e8e8);
+            }
 
-        .connected-node-item .node-name {
-            font-size: 0.875rem;
-            color: var(--md-sys-color-on-surface, #333);
-            word-break: break-word;
-        }
+            .connected-node-item .node-name {
+                font-size: 0.875rem;
+                color: var(--md-sys-color-on-surface, #333);
+                word-break: break-word;
+            }
 
-        .connected-node-item .node-signal {
-            font-size: 0.8rem;
-            font-weight: 500;
-            flex-shrink: 0;
-            margin-left: 8px;
-        }
-    `;
+            .connected-node-item .node-signal {
+                font-size: 0.8rem;
+                font-weight: 500;
+                flex-shrink: 0;
+                margin-left: 8px;
+            }
+        `,
+    ];
 }

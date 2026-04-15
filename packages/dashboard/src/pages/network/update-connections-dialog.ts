@@ -12,6 +12,7 @@ import type { MatterClient, MatterNode } from "@matter-server/ws-client";
 import { mdiLoading } from "@mdi/js";
 import { LitElement, css, html, nothing, svg } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import { reducedMotionStyles } from "../../util/shared-styles.js";
 import { getNetworkType } from "./network-utils.js";
 
 declare global {
@@ -187,9 +188,8 @@ export class UpdateConnectionsDialog extends LitElement {
     private _renderOnlineContent(): unknown {
         return html`
             <p>Refresh network information for "<strong>${this.selectedNodeName}</strong>".</p>
-            ${
-                this.onlineNeighborIds.length > 0
-                    ? html`
+            ${this.onlineNeighborIds.length > 0
+                ? html`
                       <label class="checkbox-row">
                           <md-checkbox
                               ?checked=${this._includeNeighbors}
@@ -202,45 +202,36 @@ export class UpdateConnectionsDialog extends LitElement {
                           >
                       </label>
                   `
-                    : nothing
-            }
+                : nothing}
         `;
     }
 
     private _renderOfflineContent(): unknown {
         return html`
             <p>"<strong>${this.selectedNodeName}</strong>" appears to be offline.</p>
-            ${
-                this.onlineNeighborIds.length > 0
-                    ? html`
+            ${this.onlineNeighborIds.length > 0
+                ? html`
                       <p>
                           Update network data from its ${this.onlineNeighborIds.length} online
                           neighbor${this.onlineNeighborIds.length !== 1 ? "s" : ""} to refresh connection info.
                       </p>
                   `
-                    : html`
-                          <p>No online neighbors available to update.</p>
-                      `
-            }
+                : html` <p>No online neighbors available to update.</p> `}
         `;
     }
 
     private _renderUnknownContent(): unknown {
         return html`
             <p>This device is not commissioned to this fabric and cannot be queried directly.</p>
-            ${
-                this.onlineNeighborIds.length > 0
-                    ? html`
+            ${this.onlineNeighborIds.length > 0
+                ? html`
                       <p>
                           Update network data from ${this.onlineNeighborIds.length}
                           node${this.onlineNeighborIds.length !== 1 ? "s" : ""} that
                           see${this.onlineNeighborIds.length === 1 ? "s" : ""} this device to refresh info.
                       </p>
                   `
-                    : html`
-                          <p>No online nodes available that see this device.</p>
-                      `
-            }
+                : html` <p>No online nodes available that see this device.</p> `}
         `;
     }
 
@@ -254,13 +245,11 @@ export class UpdateConnectionsDialog extends LitElement {
             <md-dialog @closed=${this._handleDialogClosed}>
                 <div slot="headline">Update Connection Data</div>
                 <div slot="content">
-                    ${
-                        this.selectedNodeType === "online"
-                            ? this._renderOnlineContent()
-                            : this.selectedNodeType === "offline"
-                              ? this._renderOfflineContent()
-                              : this._renderUnknownContent()
-                    }
+                    ${this.selectedNodeType === "online"
+                        ? this._renderOnlineContent()
+                        : this.selectedNodeType === "offline"
+                          ? this._renderOfflineContent()
+                          : this._renderUnknownContent()}
                 </div>
                 <div slot="actions">
                     <md-text-button @click=${this._closeDialog} ?disabled=${this._isUpdating}>Cancel</md-text-button>
@@ -268,74 +257,75 @@ export class UpdateConnectionsDialog extends LitElement {
                         @click=${this._executeUpdate}
                         ?disabled=${this._isUpdating || this._updateCount === 0}
                     >
-                        ${
-                            this._isUpdating
-                                ? html`<span class="updating-content"
+                        ${this._isUpdating
+                            ? html`<span class="updating-content"
                                   >${svg`<svg class="spinner" viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="${mdiLoading}"/></svg>`}Updating...</span
                               >`
-                                : buttonText
-                        }
+                            : buttonText}
                     </md-filled-button>
                 </div>
             </md-dialog>
         `;
     }
 
-    static override styles = css`
-        md-dialog {
-            --md-dialog-container-color: var(--md-sys-color-surface, #fff);
-        }
-
-        [slot="content"] {
-            padding: 0 24px;
-        }
-
-        [slot="content"] p {
-            margin: 0 0 16px 0;
-            font-size: 0.875rem;
-            line-height: 1.5;
-            color: var(--md-sys-color-on-surface, #333);
-        }
-
-        [slot="content"] p:last-child {
-            margin-bottom: 0;
-        }
-
-        .checkbox-row {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            cursor: pointer;
-            font-size: 0.875rem;
-            color: var(--md-sys-color-on-surface, #333);
-        }
-
-        .updating-content {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .spinner {
-            animation: spin 1s linear infinite;
-            flex-shrink: 0;
-        }
-
-        .updating-content svg {
-            color: inherit;
-        }
-
-        @keyframes spin {
-            from {
-                transform: rotate(0deg);
+    static override styles = [
+        reducedMotionStyles,
+        css`
+            md-dialog {
+                --md-dialog-container-color: var(--md-sys-color-surface, #fff);
             }
-            to {
-                transform: rotate(360deg);
-            }
-        }
 
-        md-filled-button {
-            min-width: 140px;
-        }
-    `;
+            [slot="content"] {
+                padding: 0 24px;
+            }
+
+            [slot="content"] p {
+                margin: 0 0 16px 0;
+                font-size: 0.875rem;
+                line-height: 1.5;
+                color: var(--md-sys-color-on-surface, #333);
+            }
+
+            [slot="content"] p:last-child {
+                margin-bottom: 0;
+            }
+
+            .checkbox-row {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                cursor: pointer;
+                font-size: 0.875rem;
+                color: var(--md-sys-color-on-surface, #333);
+            }
+
+            .updating-content {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+            }
+
+            .spinner {
+                animation: spin 1s linear infinite;
+                flex-shrink: 0;
+            }
+
+            .updating-content svg {
+                color: inherit;
+            }
+
+            @keyframes spin {
+                from {
+                    transform: rotate(0deg);
+                }
+                to {
+                    transform: rotate(360deg);
+                }
+            }
+
+            md-filled-button {
+                min-width: 140px;
+            }
+        `,
+    ];
 }

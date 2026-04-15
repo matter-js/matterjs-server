@@ -8,16 +8,17 @@ import {
     Bytes,
     CommissioningClient,
     Crypto,
+    DclBehavior,
     Environment,
     FabricId,
     GlobalFabricId,
     Logger,
+    MatterAggregateError,
     NodeId,
-    SharedEnvironmentServices,
     SoftwareUpdateManager,
     Timestamp,
 } from "@matter/main";
-import { DclCertificateService, DclOtaUpdateService, DclVendorInfoService, VendorInfo } from "@matter/main/protocol";
+import { VendorInfo } from "@matter/main/protocol";
 import { VendorId } from "@matter/main/types";
 import { CommissioningController } from "@project-chip/matter.js";
 import { Readable } from "node:stream";
@@ -66,7 +67,6 @@ function parseVersionToNumber(version: string): number {
 
 export class MatterController {
     #env: Environment;
-    #services?: SharedEnvironmentServices;
     #controllerInstance?: CommissioningController;
     #commandHandler?: ControllerCommandHandler;
     #config: ConfigStorage;
@@ -97,41 +97,45 @@ export class MatterController {
         if (legacyData !== undefined) {
             const crypto = environment.get(Crypto);
             const baseStorage = await config.service.open(serverId);
-            if (legacyData.credentials && legacyData.fabricId) {
-                await LegacyDataInjector.injectCredentials(
-                    baseStorage.createContext("credentials"),
-                    crypto,
-                    legacyData.credentials,
-                    legacyData.fabric,
-                );
-            }
-            if (
-                (await LegacyDataInjector.injectNodeData(
-                    baseStorage,
-                    legacyData.nodeData,
-                    legacyData.fabric?.fabricIndex,
-                )) &&
-                legacyData.nodeData !== undefined
-            ) {
-                for (const [nodeIdStr, data] of Object.entries(legacyData.nodeData.nodes)) {
-                    const { date_commissioned: commissionedAt } = data;
-                    commissionedDates.set(nodeIdStr, Timestamp(new Date(commissionedAt).getTime()));
-                }
-            }
-
-            // Check if the nextNodeId needs to be updated based on legacy data
-            const lastNodeId = legacyData.nodeData?.last_node_id;
-            if (typeof lastNodeId === "number") {
-                if (config.nextNodeId <= lastNodeId) {
-                    const newNextNodeId = lastNodeId + 10;
-                    logger.info(
-                        `Updating nextNodeId from ${config.nextNodeId} to ${newNextNodeId} (legacy last_node_id: ${lastNodeId})`,
+            try {
+                if (legacyData.credentials && legacyData.fabricId) {
+                    await LegacyDataInjector.injectCredentials(
+                        baseStorage.createContext("credentials"),
+                        baseStorage.createContext("fabrics"),
+                        crypto,
+                        legacyData.credentials,
+                        legacyData.fabric,
                     );
-                    await config.set({ nextNodeId: newNextNodeId });
                 }
-            }
+                if (
+                    (await LegacyDataInjector.injectNodeData(
+                        baseStorage,
+                        legacyData.nodeData,
+                        legacyData.fabric?.fabricIndex,
+                    )) &&
+                    legacyData.nodeData !== undefined
+                ) {
+                    for (const [nodeIdStr, data] of Object.entries(legacyData.nodeData.nodes)) {
+                        const { date_commissioned: commissionedAt } = data;
+                        commissionedDates.set(nodeIdStr, Timestamp(new Date(commissionedAt).getTime()));
+                    }
+                }
 
-            await baseStorage.close();
+                // Check if the nextNodeId needs to be updated based on legacy data
+                const lastNodeId = legacyData.nodeData?.last_node_id;
+                if (typeof lastNodeId === "number" || typeof lastNodeId === "bigint") {
+                    // Compare as BigInt to safely handle both number and bigint types
+                    if (BigInt(config.nextNodeId) <= BigInt(lastNodeId)) {
+                        const newNextNodeId = BigInt(lastNodeId) + 10n;
+                        logger.info(
+                            `Updating nextNodeId from ${config.nextNodeId} to ${newNextNodeId} (legacy last_node_id: ${lastNodeId})`,
+                        );
+                        await config.set({ nextNodeId: newNextNodeId });
+                    }
+                }
+            } finally {
+                await baseStorage.close();
+            }
         }
 
         await instance.initialize(legacyData?.vendorId, legacyData?.fabricId, commissionedDates);
@@ -174,12 +178,6 @@ export class MatterController {
                 softwareVersionString: this.#serverVersion.split("-")[0], // Base version without alpha/beta suffix
             },
         });
-
-        // Start loading and initialization of meta data
-        /* eslint-disable @typescript-eslint/no-unused-expressions */
-        this.vendorInfoService;
-        /* eslint-disable @typescript-eslint/no-unused-expressions */
-        this.certificateService;
     }
 
     get commandHandler() {
@@ -194,12 +192,28 @@ export class MatterController {
             );
 
             this.#commandHandler.events.started.once(async () => {
+                this.#controllerInstance!.node.behaviors.require(DclBehavior, {
+                    fetchTestCertificates: this.#enableTestNetDcl,
+                });
+
+                const initPromises = new Array<Promise<unknown>>();
+
                 if (this.#legacyCommissionedDates !== undefined) {
-                    await this.injectCommissionedDates();
+                    initPromises.push(this.injectCommissionedDates());
                 }
 
+                // Start loading and initialization of meta data
+                initPromises.push(this.vendorInfoService());
+                initPromises.push(this.certificateService());
+
                 if (!this.#disableOtaProvider && this.#enableTestNetDcl) {
-                    await this.#enableTestOtaImages();
+                    initPromises.push(this.#enableTestOtaImages());
+                }
+
+                try {
+                    await MatterAggregateError.allSettled(initPromises);
+                } catch (error) {
+                    logger.error("Error initializing controller additional services", error);
                 }
             });
         }
@@ -208,35 +222,42 @@ export class MatterController {
     }
 
     /**
-     * Get the shared environment services instance.
-     */
-    get services(): SharedEnvironmentServices {
-        if (this.#services === undefined) {
-            this.#services = this.#env.asDependent();
-        }
-        return this.#services;
-    }
-
-    /**
      * Get the DCL vendor info service instance.
      * Lazily initializes the service if not already present.
      */
-    get vendorInfoService(): DclVendorInfoService {
-        if (!this.#env.has(DclVendorInfoService)) {
-            new DclVendorInfoService(this.#env);
+    async vendorInfoService() {
+        if (this.#controllerInstance === undefined) {
+            throw new Error("Controller not initialized");
         }
-        return this.services.get(DclVendorInfoService);
+        const service = await this.#controllerInstance.node.act(agent => agent.get(DclBehavior).vendorInfoService);
+        await service.construction;
+        return service;
     }
 
     /**
      * Get the DCL certificate service instance
      * Lazily initializes the service if not already present.
      */
-    get certificateService() {
-        if (!this.#env.has(DclCertificateService)) {
-            new DclCertificateService(this.#env, { fetchTestCertificates: this.#enableTestNetDcl });
+    async certificateService() {
+        if (this.#controllerInstance === undefined) {
+            throw new Error("Controller not initialized");
         }
-        return this.services.get(DclCertificateService);
+        const service = await this.#controllerInstance.node.act(agent => agent.get(DclBehavior).certificateService);
+        await service.construction;
+        return service;
+    }
+
+    /**
+     * Get the DCL OTA update service instance
+     * Lazily initializes the service if not already present.
+     */
+    async otaUpdateService() {
+        if (this.#controllerInstance === undefined) {
+            throw new Error("Controller not initialized");
+        }
+        const service = await this.#controllerInstance.node.act(agent => agent.get(DclBehavior).otaUpdateService);
+        await service.construction;
+        return service;
     }
 
     /**
@@ -244,16 +265,14 @@ export class MatterController {
      * Returns undefined if the vendor is not found.
      */
     async getVendorInfo(vendorId: number): Promise<VendorInfo | undefined> {
-        await this.vendorInfoService.construction;
-        return this.vendorInfoService.infoFor(vendorId);
+        return (await this.vendorInfoService()).infoFor(vendorId);
     }
 
     /**
      * Get all vendor information from the DCL service.
      */
     async getAllVendors(): Promise<ReadonlyMap<number, VendorInfo>> {
-        await this.vendorInfoService.construction;
-        return this.vendorInfoService.vendors;
+        return (await this.vendorInfoService()).vendors;
     }
 
     async injectCommissionedDates() {
@@ -276,7 +295,6 @@ export class MatterController {
 
     async stop() {
         await this.#commandHandler?.close(); // This closes also the controller instance if started
-        await this.#services?.close();
     }
 
     /**
@@ -301,7 +319,7 @@ export class MatterController {
     async storeOtaImageFromFile(filePath: string): Promise<boolean> {
         const { createReadStream } = await import("node:fs");
         const { pathToFileURL } = await import("node:url");
-        const otaService = this.services.get(DclOtaUpdateService);
+        const otaService = await this.otaUpdateService();
 
         // Convert file path to file:// URL for the OTA service
         const fileUrl = pathToFileURL(filePath).href;
@@ -317,12 +335,5 @@ export class MatterController {
         const storeStream = Readable.toWeb(createReadStream(filePath)) as ReadableStream<Uint8Array>;
         await otaService.store(storeStream, updateInfo, "local");
         return true;
-    }
-
-    /**
-     * Close the services when shutting down.
-     */
-    async closeServices() {
-        await this.#services?.close();
     }
 }

@@ -20,18 +20,17 @@ import {
     SupportedStorageTypes,
     Time,
 } from "@matter/main";
-import { DescriptorCluster } from "@matter/main/clusters";
 import { CertificateAuthority, Fabric, FabricBuilder, Noc, PeerAddress } from "@matter/main/protocol";
-import { VendorId } from "@matter/main/types";
+import { Global, VendorId } from "@matter/main/types";
 import { ClusterMap } from "../model/ModelMapper.js";
 import { convertWebSocketTagBasedToMatter } from "../server/Converters.js";
 
 const logger = Logger.get("LegacyDataInjector");
 
-/* eslint-disable regexp/no-unused-capturing-group */
+/**/
 const BASE64_REGEX = /^([0-9a-z+/]{4})*(([0-9a-z+/]{2}==)|([0-9a-z+/]{3}=))?$/i;
 
-const FEATUREMAP_ID = DescriptorCluster.attributes.featureMap.id.toString();
+const FEATUREMAP_ID = Global.attributes.featureMap.id.toString();
 
 /**
  * Fabric configuration data extracted from chip.json.
@@ -95,20 +94,20 @@ export interface LegacyVendorInfo {
 
 /** Node data from Python Matter Server nodes map */
 export interface LegacyNodeData {
-    node_id: number;
+    node_id: number | bigint;
     date_commissioned: string;
     last_interview: string;
     interview_version: number;
     available: boolean;
     is_bridge: boolean;
     attributes: Record<string, unknown>;
-    attribute_subscriptions: unknown[];
+    attribute_subscriptions: readonly [];
 }
 
 /** Structure of the <compressedFabricId>.json file */
 export interface LegacyServerFile {
     vendor_info: Record<string, LegacyVendorInfo>;
-    last_node_id: number;
+    last_node_id: number | bigint;
     nodes: Record<string, LegacyNodeData>;
 }
 
@@ -134,6 +133,7 @@ export namespace LegacyDataInjector {
 
     export async function injectCredentials(
         credentialsStorage: StorageContext,
+        fabricsStorage: StorageContext,
         crypto: Crypto,
         credentialData: CertificateAuthority.Configuration,
         fabricData?: LegacyFabricConfigData,
@@ -184,12 +184,15 @@ export namespace LegacyDataInjector {
             keyPair: await crypto.createKeyPair(), // Just use a new keypair temporarily because chip data does not have it
         });
 
+        let keyRewritten = false;
         if (await credentialsStorage.has("fabric")) {
             const storedFabric = await credentialsStorage.get<Fabric.Config>("fabric");
             if (!Bytes.areEqual(storedFabric.rootPublicKey!, tempFabric.rootPublicKey)) {
                 logger.warn("Existing fabric root public key changed. Rewriting from legacy data");
+                keyRewritten = true;
             } else {
                 logger.info("Fabric root public key unchanged. Skipping rewrite.");
+                await syncFabrics(fabricsStorage, storedFabric, false);
                 return;
             }
         }
@@ -209,6 +212,26 @@ export namespace LegacyDataInjector {
         const rootFabric = await builder.build(tempFabric.fabricIndex);
 
         await credentialsStorage.set("fabric", rootFabric.config);
+
+        await syncFabrics(fabricsStorage, rootFabric.config, keyRewritten);
+    }
+
+    async function syncFabrics(fabricsStorage: StorageContext, fabricConfig: Fabric.Config, overwriteKey: boolean) {
+        if (!(await fabricsStorage.has("fabrics"))) {
+            await fabricsStorage.set("fabrics", [fabricConfig]);
+            logger.info("Initializing FabricManager storage");
+            return;
+        }
+        let fabrics = await fabricsStorage.get<Fabric.Config[]>("fabrics", []);
+        if (overwriteKey) {
+            fabrics = fabrics.filter(f => f.fabricIndex !== fabricConfig.fabricIndex);
+        } else if (fabrics.some(({ fabricIndex }) => fabricIndex === fabricConfig.fabricIndex)) {
+            logger.info("FabricManager storage already has fabric index. Skipping update.");
+            return;
+        }
+        fabrics.push(fabricConfig);
+        await fabricsStorage.set("fabrics", fabrics);
+        logger.info("Added fabric to FabricManager storage");
     }
 
     export async function injectNodeData(
@@ -247,6 +270,7 @@ export namespace LegacyDataInjector {
     ) {
         const commissionedNodes = new Array<[NodeId, any]>();
         let injectedNodes = 0;
+        const writes = new Array<MaybePromise<void>>();
 
         for (const [nodeId, nodeDetails] of Object.entries(nodeData.nodes)) {
             const nodeStorage = baseStorage.createContext(`node-${nodeId}`);
@@ -255,13 +279,16 @@ export namespace LegacyDataInjector {
             }
             commissionedNodes.push([NodeId(BigInt(nodeId)), {}]);
             let newNode = true;
+            const attributes = Object.entries(nodeDetails.attributes);
+            if (attributes.length === 0) {
+                continue;
+            }
             logger.info(`Injecting node ${nodeId} into storage`);
-            const nodeWrites = new Array<MaybePromise<void>>();
-            for (const [attributeKey, value] of Object.entries(nodeDetails.attributes)) {
-                let currentEndpointId: string | undefined;
-                let currentClusterId: string | undefined;
-                let endpointStorage: StorageContext | undefined;
-                let clusterStorage: StorageContext | undefined;
+            let currentEndpointId: string | undefined;
+            let currentClusterId: string | undefined;
+            let endpointStorage: StorageContext | undefined;
+            let clusterStorage: StorageContext | undefined;
+            for (const [attributeKey, value] of attributes) {
                 const [endpointId, clusterId, attributeId] = attributeKey.split("/");
                 if (currentEndpointId !== endpointId) {
                     endpointStorage = nodeStorage.createContext(endpointId);
@@ -279,7 +306,7 @@ export namespace LegacyDataInjector {
                         newNode = false;
                         injectedNodes++;
                     }
-                    nodeWrites.push(clusterStorage.set("__version__", 1));
+                    writes.push(clusterStorage.set("__version__", 1));
                 }
 
                 const clusterModel = ClusterMap[clusterId];
@@ -289,13 +316,13 @@ export namespace LegacyDataInjector {
                         logger.debug(
                             `Node ${nodeId}: Attribute ${attributeKey}, unknown featuremap converted to empty featuremap`,
                         );
-                        nodeWrites.push(clusterStorage!.set(attributeId, { value: {} } as SupportedStorageTypes));
+                        writes.push(clusterStorage!.set(attributeId, { value: {} } as SupportedStorageTypes));
                     } else if (isPrimitiveType(value) || (Array.isArray(value) && value.every(isPrimitiveType))) {
                         logger.debug(
                             `Node ${nodeId}: Attribute ${attributeKey}, unknown primary type converted generically`,
                             value,
                         );
-                        nodeWrites.push(clusterStorage!.set(attributeId, { value } as SupportedStorageTypes));
+                        writes.push(clusterStorage!.set(attributeId, { value } as SupportedStorageTypes));
                     } else {
                         logger.debug(
                             `Node ${nodeId}: Attribute ${attributeKey}, not found in and unclear value. Skipping injection.`,
@@ -308,7 +335,7 @@ export namespace LegacyDataInjector {
                             ? undefined
                             : convertWebSocketTagBasedToMatter(value, model, clusterModel.model);
                     if (convertedValue !== undefined) {
-                        nodeWrites.push(
+                        writes.push(
                             clusterStorage!.set(attributeId, { value: convertedValue } as SupportedStorageTypes),
                         );
                     } else {
@@ -316,8 +343,10 @@ export namespace LegacyDataInjector {
                     }
                 }
             }
-            await Promise.allSettled(nodeWrites);
-            nodeWrites.length = 0;
+        }
+        if (writes.length) {
+            logger.info(`... wait for all ${writes.length} records to be written ... be patient!`);
+            await Promise.allSettled(writes);
         }
 
         if (injectedNodes > 0) {
@@ -341,6 +370,7 @@ export namespace LegacyDataInjector {
     ) {
         const commissionedNodes = new Array<[NodeId, any]>();
         let injectedNodes = 0;
+        const writes = new Array<MaybePromise<void>>();
 
         let peerCounter = 1;
         for (const [nodeId, nodeDetails] of Object.entries(nodeData.nodes)) {
@@ -353,22 +383,19 @@ export namespace LegacyDataInjector {
             commissionedNodes.push([NodeId(BigInt(nodeId)), {}]);
             let newNode = true;
             logger.info(`Injecting node ${nodeId} directly into peer storage as ${peerId}`);
-            const nodeWrites = new Array<MaybePromise<void>>();
             // Define the peer address for this peer
-            nodeWrites.push(
+            writes.push(
                 peerStorage
                     .createContext("0")
                     .createContext("commissioning")
                     .set("peerAddress", PeerAddress({ fabricIndex, nodeId: NodeId(BigInt(nodeId)) })),
             );
-            nodeWrites.push(
-                peerStorage.createContext("0").createContext("commissioning").set("discoveredAt", Time.nowMs),
-            );
+            writes.push(peerStorage.createContext("0").createContext("commissioning").set("discoveredAt", Time.nowMs));
+            let currentEndpointId: string | undefined;
+            let currentClusterId: string | undefined;
+            let endpointStorage: StorageContext | undefined;
+            let clusterStorage: StorageContext | undefined;
             for (const [attributeKey, value] of Object.entries(nodeDetails.attributes)) {
-                let currentEndpointId: string | undefined;
-                let currentClusterId: string | undefined;
-                let endpointStorage: StorageContext | undefined;
-                let clusterStorage: StorageContext | undefined;
                 const [endpointId, clusterId, attributeId] = attributeKey.split("/");
                 if (currentEndpointId !== endpointId) {
                     endpointStorage = peerStorage.createContext(endpointId);
@@ -380,13 +407,13 @@ export namespace LegacyDataInjector {
                     currentClusterId = clusterId;
                     if (newNode) {
                         // Write marker that this node is migrated, so would be skipped for full migration approach
-                        nodeWrites.push(
+                        writes.push(
                             legacyNodeStorage.createContext(endpointId).createContext(clusterId).set("__version__", 1),
                         );
                         newNode = false;
                         injectedNodes++;
                     }
-                    nodeWrites.push(clusterStorage.set("__version__", 1));
+                    writes.push(clusterStorage.set("__version__", 1));
                 }
 
                 const clusterModel = ClusterMap[clusterId];
@@ -396,13 +423,13 @@ export namespace LegacyDataInjector {
                         logger.debug(
                             `Node ${nodeId}: Attribute ${attributeKey}, unknown featuremap converted to empty featuremap`,
                         );
-                        nodeWrites.push(clusterStorage!.set(attributeId, {} as SupportedStorageTypes));
+                        writes.push(clusterStorage!.set(attributeId, {} as SupportedStorageTypes));
                     } else if (isPrimitiveType(value) || (Array.isArray(value) && value.every(isPrimitiveType))) {
                         logger.debug(
                             `Node ${nodeId}: Attribute ${attributeKey}, unknown primary type converted generically`,
                             value,
                         );
-                        nodeWrites.push(clusterStorage!.set(attributeId, value as SupportedStorageTypes));
+                        writes.push(clusterStorage!.set(attributeId, value as SupportedStorageTypes));
                     } else {
                         logger.debug(
                             `Node ${nodeId}: Attribute ${attributeKey}, not found in and unclear value. Skipping injection.`,
@@ -415,14 +442,16 @@ export namespace LegacyDataInjector {
                             ? undefined
                             : convertWebSocketTagBasedToMatter(value, model, clusterModel.model);
                     if (convertedValue !== undefined) {
-                        nodeWrites.push(clusterStorage!.set(attributeId, convertedValue as SupportedStorageTypes));
+                        writes.push(clusterStorage!.set(attributeId, convertedValue as SupportedStorageTypes));
                     } else {
                         logger.debug(`Attribute ${attributeKey} could not be converted. Skipping injection.`);
                     }
                 }
             }
-            await Promise.allSettled(nodeWrites);
-            nodeWrites.length = 0;
+        }
+        if (writes.length) {
+            logger.info(`... wait for all ${writes.length} records to be written ... be patient!`);
+            await Promise.allSettled(writes);
         }
 
         if (injectedNodes > 0) {

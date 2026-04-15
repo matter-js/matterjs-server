@@ -15,6 +15,7 @@ import { css, html, LitElement, nothing } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
 import { fireAndForget, handleAsync } from "../../../util/async-handler.js";
 import { preventDefault } from "../../../util/prevent_default.js";
+import { showAlertDialog } from "../../dialog-box/show-dialog-box.js";
 
 const LOG_LEVELS: { value: LogLevelString; label: string }[] = [
     { value: "critical", label: "Critical" },
@@ -73,7 +74,7 @@ export class LogLevelDialog extends LitElement {
             this._close();
         } catch (err) {
             console.error("Failed to apply log levels:", err);
-            alert("Failed to apply log levels");
+            showAlertDialog({ title: "Error", text: "Failed to apply log levels" });
         } finally {
             this._applying = false;
         }
@@ -92,12 +93,9 @@ export class LogLevelDialog extends LitElement {
             <md-dialog open @cancel=${preventDefault} @closed=${this._handleClosed}>
                 <div slot="headline">Server Log Settings</div>
                 <div slot="content">
-                    ${
-                        this._loading
-                            ? html`
-                                  <p class="loading">Loading...</p>
-                              `
-                            : html`
+                    ${this._loading
+                        ? html` <p class="loading">Loading...</p> `
+                        : html`
                               <p class="hint">Changes are temporary and will be reset on the next server restart.</p>
                               <div class="form-field">
                                   <label>Console Log Level</label>
@@ -114,9 +112,8 @@ export class LogLevelDialog extends LitElement {
                                       )}
                                   </md-outlined-select>
                               </div>
-                              ${
-                                  this._fileLevel !== null
-                                      ? html`
+                              ${this._fileLevel !== null
+                                  ? html`
                                         <div class="form-field">
                                             <label>File Log Level</label>
                                             <md-outlined-select name="file" .value=${this._fileLevel}>
@@ -133,10 +130,8 @@ export class LogLevelDialog extends LitElement {
                                             </md-outlined-select>
                                         </div>
                                     `
-                                      : nothing
-                              }
-                          `
-                    }
+                                  : nothing}
+                          `}
                 </div>
                 <div slot="actions">
                     <md-text-button @click=${this._close}>Cancel</md-text-button>

@@ -72,7 +72,7 @@ describe("Converters", () => {
                 // DeviceTypeStruct has: 0 = deviceType, 1 = revision
                 const descriptorCluster = ClusterMap[29]!;
                 const deviceTypeListAttr = descriptorCluster.attributes[0]!; // list of DeviceTypeStruct
-                const deviceTypeStructModel = deviceTypeListAttr.members[0]; // DeviceTypeStruct
+                const deviceTypeStructModel = deviceTypeListAttr.members.at(0)!; // DeviceTypeStruct
 
                 const tagBasedValue = { "0": 22, "1": 1 };
                 const result = convertWebSocketTagBasedToMatter(
@@ -89,7 +89,7 @@ describe("Converters", () => {
                 // LabelStruct has: 0 = label, 1 = value
                 const userLabelCluster = ClusterMap[64]!;
                 const labelListAttr = userLabelCluster.attributes[0]!;
-                const labelStructModel = labelListAttr.members[0];
+                const labelStructModel = labelListAttr.members.at(0)!;
 
                 const tagBasedValue = { "0": "room", "1": "bedroom" };
                 const result = convertWebSocketTagBasedToMatter(
@@ -116,7 +116,7 @@ describe("Converters", () => {
             it("should preserve unknown keys in structs", () => {
                 const descriptorCluster = ClusterMap[29]!;
                 const deviceTypeListAttr = descriptorCluster.attributes[0]!;
-                const deviceTypeStructModel = deviceTypeListAttr.members[0];
+                const deviceTypeStructModel = deviceTypeListAttr.members.at(0)!;
 
                 const tagBasedValue = { "0": 22, "1": 1, "254": 1 }; // 254 is fabricIndex, often added
                 const result = convertWebSocketTagBasedToMatter(
@@ -272,7 +272,7 @@ describe("Converters", () => {
         it("should round-trip struct correctly", () => {
             const descriptorCluster = ClusterMap[29]!;
             const deviceTypeListAttr = descriptorCluster.attributes[0]!;
-            const deviceTypeStructModel = deviceTypeListAttr.members[0];
+            const deviceTypeStructModel = deviceTypeListAttr.members.at(0)!;
 
             const original = { deviceType: 256, revision: 2 };
             const tagBased = convertMatterToWebSocketTagBased(original, deviceTypeStructModel, descriptorCluster.model);
@@ -406,7 +406,7 @@ describe("Converters", () => {
         it("should convert struct to tag-based format", () => {
             const descriptorCluster = ClusterMap[29]!;
             const deviceTypeListAttr = descriptorCluster.attributes[0]!;
-            const deviceTypeStructModel = deviceTypeListAttr.members[0];
+            const deviceTypeStructModel = deviceTypeListAttr.members.at(0)!;
 
             const original = { deviceType: 256, revision: 2 };
             const result = convertMatterToWebSocketTagBased(original, deviceTypeStructModel, descriptorCluster.model);
@@ -952,7 +952,7 @@ describe("Converters", () => {
             // Descriptor cluster, DeviceTypeStruct
             const descriptorCluster = ClusterMap[29]!;
             const deviceTypeListAttr = descriptorCluster.attributes[0]!;
-            const deviceTypeStructModel = deviceTypeListAttr.members[0];
+            const deviceTypeStructModel = deviceTypeListAttr.members.at(0)!;
 
             const matterValue = { deviceType: 256, revision: 2 };
             const result = convertMatterToWebSocketNameBased(

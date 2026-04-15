@@ -27,7 +27,7 @@ export class DevicePanel extends LitElement {
     public type: PanelType = "wifi";
 
     @property({ type: Array })
-    public nodeIds: number[] = [];
+    public nodeIds: (number | bigint)[] = [];
 
     @property({ type: Object })
     public nodes: Record<string, MatterNode> = {};
@@ -70,7 +70,14 @@ export class DevicePanel extends LitElement {
         this._isExpanded = !this._isExpanded;
     }
 
-    private _handleNodeClick(nodeId: number): void {
+    private _handleHeaderKeydown(event: KeyboardEvent): void {
+        if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            this._toggleExpanded();
+        }
+    }
+
+    private _handleNodeClick(nodeId: number | bigint): void {
         this.dispatchEvent(
             new CustomEvent("node-selected", {
                 detail: { nodeId },
@@ -87,7 +94,14 @@ export class DevicePanel extends LitElement {
 
         return html`
             <div class="panel">
-                <div class="header" @click=${this._toggleExpanded}>
+                <div
+                    class="header"
+                    role="button"
+                    tabindex="0"
+                    aria-expanded=${this._isExpanded}
+                    @click=${this._toggleExpanded}
+                    @keydown=${this._handleHeaderKeydown}
+                >
                     <ha-svg-icon .path=${this._getIcon()} class="type-icon"></ha-svg-icon>
                     <span class="title">${this._getTitle()}</span>
                     <span class="count">(${this.nodeIds.length})</span>
@@ -96,9 +110,8 @@ export class DevicePanel extends LitElement {
                         class="expand-icon"
                     ></ha-svg-icon>
                 </div>
-                ${
-                    this._isExpanded
-                        ? html`
+                ${this._isExpanded
+                    ? html`
                           <md-list class="device-list">
                               ${this.nodeIds.map(nodeId => {
                                   const node = this.nodes[nodeId.toString()];
@@ -114,8 +127,7 @@ export class DevicePanel extends LitElement {
                               })}
                           </md-list>
                       `
-                        : nothing
-                }
+                    : nothing}
             </div>
         `;
     }
@@ -143,6 +155,11 @@ export class DevicePanel extends LitElement {
 
         .header:hover {
             background-color: var(--md-sys-color-surface-container-high, #e8e8e8);
+        }
+
+        .header:focus-visible {
+            outline: 2px solid var(--md-sys-color-primary);
+            outline-offset: -2px;
         }
 
         .type-icon {
@@ -173,10 +190,6 @@ export class DevicePanel extends LitElement {
 
         md-list-item {
             --md-list-item-one-line-container-height: 48px;
-        }
-
-        md-list-item::part(focus-ring) {
-            display: none;
         }
     `;
 }

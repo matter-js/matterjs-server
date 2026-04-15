@@ -56,13 +56,13 @@ import {
     mdiWeatherRainy,
     mdiWifi,
 } from "@mdi/js";
-import { ThemeService } from "./theme-service.js";
+import { getCssVar } from "./shared-styles.js";
 
 /**
  * Get theme-aware default icon color.
  */
 function getDefaultIconColor(): string {
-    return ThemeService.effectiveTheme === "dark" ? "#b0b0b0" : "#666666";
+    return getCssVar("--node-color-default", "#666666");
 }
 
 /**
@@ -483,9 +483,11 @@ export function createNodeIconDataUrl(
     const iconPath = getDeviceIcon(node, threadRole);
     let color: string;
     if (isSelected) {
-        color = isOffline ? "#b71c1c" : "#1976d2"; // Dark red for selected+offline, blue for selected
+        color = isOffline
+            ? getCssVar("--node-color-selected-offline", "#b71c1c")
+            : getCssVar("--node-color-selected", "#1976d2");
     } else if (isOffline) {
-        color = "#d32f2f"; // Red for offline
+        color = getCssVar("--node-color-offline", "#d32f2f");
     } else {
         color = getDefaultIconColor(); // Theme-aware default
     }
@@ -500,7 +502,9 @@ export function createNodeIconDataUrl(
  */
 export function createUnknownDeviceIconDataUrl(isRouter: boolean = false, isSelected: boolean = false): string {
     const iconPath = isRouter ? mdiAccessPoint : mdiHelp;
-    const color = isSelected ? "#1976d2" : "#ff9800"; // Orange for unknown
+    const color = isSelected
+        ? getCssVar("--node-color-selected", "#1976d2")
+        : getCssVar("--node-color-unknown", "#ff9800");
     return createIconDataUrl(iconPath, color);
 }
 
@@ -510,6 +514,8 @@ export function createUnknownDeviceIconDataUrl(isRouter: boolean = false, isSele
  * @returns A data URL containing the SVG
  */
 export function createWiFiRouterIconDataUrl(isSelected: boolean = false): string {
-    const color = isSelected ? "#1976d2" : "#ff9800"; // Orange for external infrastructure (same as Thread unknown)
+    const color = isSelected
+        ? getCssVar("--node-color-selected", "#1976d2")
+        : getCssVar("--node-color-unknown", "#ff9800");
     return createIconDataUrl(mdiWifi, color);
 }

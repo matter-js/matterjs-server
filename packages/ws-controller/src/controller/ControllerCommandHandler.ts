@@ -16,6 +16,7 @@ import {
     isObject,
     Logger,
     Millis,
+    Minutes,
     NodeId,
     Observable,
     Seconds,
@@ -23,6 +24,8 @@ import {
     ServerAddressUdp,
     SoftwareUpdateInfo,
     SoftwareUpdateManager,
+    Time,
+    Timer,
     DnsRecordType,
 } from "@matter/main";
 import { OperationalCredentialsClient } from "@matter/main/behaviors";
@@ -40,35 +43,22 @@ import {
     Invoke,
     PeerAddress,
     Read,
+    Specifier,
     SupportedTransportsSchema,
     PeerSet,
-    getOperationalDeviceQname,
 } from "@matter/main/protocol";
 import {
-    Attribute,
     AttributeId,
     ClusterId,
     ClusterType,
-    Command,
     DeviceTypeId,
     EndpointNumber,
-    getClusterById,
     GroupId,
     ManualPairingCodeCodec,
     QrPairingCodeCodec,
     SpecificationVersion,
     Status,
     StatusResponseError,
-    TlvAny,
-    TlvBoolean,
-    TlvByteString,
-    TlvInt32,
-    TlvNoResponse,
-    TlvNullable,
-    TlvObject,
-    TlvString,
-    TlvUInt64,
-    TlvVoid,
     VendorId,
 } from "@matter/main/types";
 import { CommissioningController, NodeCommissioningOptions } from "@project-chip/matter.js";
@@ -90,7 +80,6 @@ import {
     CommissioningResponse,
     DiscoveryRequest,
     DiscoveryResponse,
-    InvokeByIdRequest,
     InvokeRequest,
     MatterNodeData,
     OpenCommissioningWindowRequest,
@@ -101,7 +90,6 @@ import {
     SubscribeAttributeResponse,
     SubscribeEventRequest,
     SubscribeEventResponse,
-    WriteAttributeByIdRequest,
     WriteAttributeRequest,
 } from "../types/CommandHandler.js";
 import {
@@ -120,6 +108,9 @@ import { CustomClusterPoller } from "./CustomClusterPoller.js";
 import { Nodes } from "./Nodes.js";
 
 const logger = Logger.get("ControllerCommandHandler");
+
+/** After this duration in Reconnecting state, declare the node unavailable */
+const RECONNECT_TIMEOUT = Minutes(3);
 
 /**
  * Cluster IDs whose attribute changes should trigger a full node_updated broadcast.
@@ -175,8 +166,8 @@ export class ControllerCommandHandler {
     #availableUpdates = new Map<NodeId, SoftwareUpdateInfo>();
     /** Poller for custom cluster attributes (Eve energy, etc.) */
     #customClusterPoller: CustomClusterPoller;
-    /** Track the last known availability for each node to detect changes */
-    #lastAvailability = new Map<NodeId, boolean>();
+    /** Per-node timers that fire when Reconnecting state exceeds the timeout */
+    #reconnectTimers = new Map<NodeId, Timer>();
     /** Track in-flight invoke-commands for deduplication across all WebSocket connections */
     readonly #inFlightInvokes = new Map<string, Promise<unknown>>();
     events = {
@@ -287,9 +278,15 @@ export class ControllerCommandHandler {
         }
     }
 
-    close() {
-        if (!this.#started) return;
-        this.#customClusterPoller.stop();
+    async close() {
+        for (const timer of this.#reconnectTimers.values()) {
+            timer.stop();
+        }
+        this.#reconnectTimers.clear();
+        await this.#customClusterPoller.stop();
+        if (!this.#started) {
+            return;
+        }
         return this.#controller.close();
     }
 
@@ -320,38 +317,49 @@ export class ControllerCommandHandler {
         });
         node.events.eventTriggered.on(data => this.events.eventChanged.emit(nodeId, data));
         node.events.stateChanged.on(state => {
-            if (state === NodeStates.Disconnected) {
-                return;
-            }
-
-            // Calculate availability before and after state change
-            const previousState = this.#nodes.getPreviousState(nodeId);
-            const wasAvailable = this.#lastAvailability.get(nodeId) ?? false;
-            const isAvailable = this.#nodes.isNodeAvailable(state, previousState);
-
-            // Only refresh cache on Connected state (not Reconnecting, WaitingForDiscovery, etc.)
+            // Only refresh cache on Connected state
             if (state === NodeStates.Connected) {
                 attributeCache.update(node);
-                // Register for custom cluster polling (e.g., Eve energy) after cache is updated
                 const attributes = attributeCache.get(nodeId);
                 if (attributes) {
                     this.#customClusterPoller.registerNode(nodeId, attributes);
                 }
             }
 
-            // Update state tracking for the next transition
-            this.#nodes.setPreviousState(nodeId, state);
-            this.#lastAvailability.set(nodeId, isAvailable);
+            // Manage reconnect timer
+            if (state === NodeStates.Reconnecting) {
+                if (!this.#reconnectTimers.has(nodeId)) {
+                    const timer = Time.getTimer(`reconnect-timeout-${nodeId}`, RECONNECT_TIMEOUT, () => {
+                        this.#reconnectTimers.delete(nodeId);
+                        if (this.#nodes.forceUnavailable(nodeId)) {
+                            logger.info(
+                                `Node ${this.formatNode(nodeId)} still reconnecting after timeout, marking unavailable`,
+                            );
+                            this.events.nodeAvailabilityChanged.emit(nodeId, false);
+                        }
+                    });
+                    timer.utility = true;
+                    timer.start();
+                    this.#reconnectTimers.set(nodeId, timer);
+                }
+            } else {
+                // Any non-Reconnecting state clears the timer
+                this.#reconnectTimers.get(nodeId)?.stop();
+                this.#reconnectTimers.delete(nodeId);
+            }
+
+            // Process state change and check if availability changed
+            const result = this.#nodes.processStateChange(nodeId, state);
 
             // Emit state changed event
             this.events.nodeStateChanged.emit(nodeId, state);
 
             // Emit availability changed if it actually changed
-            if (wasAvailable !== isAvailable) {
+            if (result.availabilityChanged) {
                 logger.info(
-                    `Node ${this.formatNode(nodeId)} availability changed: ${wasAvailable} -> ${isAvailable} (state: ${NodeStates[previousState ?? -1]} -> ${NodeStates[state]})`,
+                    `Node ${this.formatNode(nodeId)} availability changed to ${result.available} (state: ${NodeStates[state]})`,
                 );
-                this.events.nodeAvailabilityChanged.emit(nodeId, isAvailable);
+                this.events.nodeAvailabilityChanged.emit(nodeId, result.available);
             }
         });
         node.events.structureChanged.on(() => {
@@ -369,14 +377,7 @@ export class ControllerCommandHandler {
         // Store the node for direct access
         this.#nodes.set(nodeId, node);
 
-        // Seed state tracking from the node's current connection state so the first
-        // stateChanged event shows a real previous state instead of "undefined".
-        const initialState = node.connectionState;
-        this.#nodes.setPreviousState(nodeId, initialState);
-        // Only mark as available when actually connected; all other states default to false (unavailable).
-        if (initialState === NodeStates.Connected) {
-            this.#lastAvailability.set(nodeId, true);
-        }
+        this.#nodes.seedState(nodeId, node.connectionState);
 
         // Initialize attribute cache if node is already initialized
         if (node.initialized) {
@@ -754,8 +755,7 @@ export class ControllerCommandHandler {
         }
     }
 
-    // TODO improve response typing
-    async #invokeCommand<const C extends ClusterType>(
+    async #invokeCommand<const C extends Specifier.ClusterLike>(
         node: ClientNode,
         request: Invoke.ConcreteCommandRequest<C>,
         options: Omit<Invoke.Definition, "commands"> = {},
@@ -792,22 +792,25 @@ export class ControllerCommandHandler {
         } = data;
         let { data: commandData } = data;
 
-        const cluster = getClusterById(clusterId);
+        const clusterEntry = ClusterMap[clusterId];
+        if (!clusterEntry) {
+            throw ServerError.invalidArguments(`Cluster Id "${clusterId}" unknown`);
+        }
+        const clusterName = clusterEntry.model.propertyName;
         const commandName = camelize(data.commandName);
         const commands = (
             this.#nodes.get(nodeId).node.endpoints.for(endpointId).commands as Record<string, Record<string, unknown>>
-        )[camelize(cluster.name)];
+        )[clusterName];
         if (!commands[commandName]) {
-            throw ServerError.invalidArguments(`Command "${commandName}" does not exist on cluster "${cluster.name}"`);
+            throw ServerError.invalidArguments(`Command "${commandName}" does not exist on cluster "${clusterName}"`);
         }
 
         if (isObject(commandData)) {
             if (Object.keys(commandData).length === 0) {
                 commandData = undefined;
             } else {
-                const clusterEntry = ClusterMap[clusterId];
-                const model = clusterEntry?.commands[commandName.toLowerCase()];
-                if (cluster && model) {
+                const model = clusterEntry.commands[commandName.toLowerCase()];
+                if (model) {
                     commandData = convertCommandDataToMatter(commandData, model, clusterEntry.model);
                 }
             }
@@ -821,10 +824,13 @@ export class ControllerCommandHandler {
         const existing = this.#inFlightInvokes.get(dedupKey);
         if (existing !== undefined) {
             logger.warn(
-                `Duplicate command detected for ${this.formatNode(nodeId)}/${endpointId}/${cluster.name}/${commandName} - coalescing with in-flight request`,
+                `Duplicate command detected for ${this.formatNode(nodeId)}/${endpointId}/${clusterName}/${commandName} - coalescing with in-flight request`,
             );
             return existing;
         }
+
+        // Resolve cluster namespace with command definitions for typed invoke
+        const cluster = ClusterType(clusterEntry.model) as Specifier.ClusterLike;
 
         // Execute and track the command
         const invokePromise = this.#invokeCommand(
@@ -847,65 +853,6 @@ export class ControllerCommandHandler {
         // Ensure cleanup of the in-flight entry once the invoke completes
         return invokePromise.finally(() => {
             this.#inFlightInvokes.delete(dedupKey);
-        });
-    }
-
-    /** InvokeById minimalistic handler because only used for error testing */
-    async handleInvokeById(data: InvokeByIdRequest): Promise<void> {
-        const { nodeId, endpointId, clusterId, commandId, data: commandData, timedInteractionTimeoutMs } = data;
-        const client = this.#nodes.interactionClientFor(nodeId);
-        await client.invoke<Command<any, any, any>>({
-            endpointId,
-            clusterId: clusterId,
-            command: Command(commandId, TlvAny, 0x00, TlvNoResponse, {
-                timed: timedInteractionTimeoutMs !== undefined,
-            }),
-            request: commandData === undefined ? TlvVoid.encodeTlv() : TlvObject({}).encodeTlv(commandData as any),
-            asTimedRequest: timedInteractionTimeoutMs !== undefined,
-            timedRequestTimeout: Millis(timedInteractionTimeoutMs),
-            skipValidation: true,
-        });
-    }
-
-    async handleWriteAttributeById(data: WriteAttributeByIdRequest): Promise<void> {
-        const { nodeId, endpointId, clusterId, attributeId, value } = data;
-
-        const client = this.#nodes.interactionClientFor(nodeId);
-
-        logger.info("Writing attribute", attributeId, "with value", value);
-
-        let tlvValue: any;
-
-        if (value === null) {
-            tlvValue = TlvNullable(TlvBoolean).encodeTlv(value); // Boolean is just a placeholder here
-        } else if (value instanceof Uint8Array) {
-            tlvValue = TlvByteString.encodeTlv(value);
-        } else {
-            switch (typeof value) {
-                case "boolean":
-                    tlvValue = TlvBoolean.encodeTlv(value);
-                    break;
-                case "number":
-                    tlvValue = TlvInt32.encodeTlv(value);
-                    break;
-                case "bigint":
-                    tlvValue = TlvUInt64.encodeTlv(value);
-                    break;
-                case "string":
-                    tlvValue = TlvString.encodeTlv(value);
-                    break;
-                default:
-                    throw ServerError.invalidArguments(`Unsupported value type "${typeof value}" for Any encoding`);
-            }
-        }
-
-        await client.setAttribute({
-            attributeData: {
-                endpointId,
-                clusterId,
-                attribute: Attribute(attributeId, TlvAny),
-                value: tlvValue,
-            },
         });
     }
 
@@ -958,7 +905,7 @@ export class ControllerCommandHandler {
         }
 
         const { onNetworkOnly, wifiCredentials: wifiNetwork, threadCredentials: threadNetwork } = data;
-        return {
+        const options = {
             commissioning: {
                 nodeId: data.nodeId,
                 regulatoryLocation: GeneralCommissioning.RegulatoryLocationType.IndoorOutdoor,
@@ -983,6 +930,7 @@ export class ControllerCommandHandler {
             },
             passcode,
         };
+        return options;
     }
 
     async commissionNode(data: CommissioningRequest): Promise<CommissioningResponse> {
@@ -1072,38 +1020,39 @@ export class ControllerCommandHandler {
     }
 
     async getNodeIpAddresses(nodeId: NodeId, preferCache = true) {
-        if (this.#peers !== undefined && preferCache) {
-            const peer = this.#peers.for(this.#controller.fabric.addressOf(nodeId));
-            const addresses = new Array<string>();
+        const addresses = new Set<string>();
+        const peer = this.#peers?.for(this.#controller.fabric.addressOf(nodeId));
+        if (peer) {
             for (const address of peer.service.addresses) {
-                addresses.push(address.ip);
+                addresses.add(address.ip);
             }
-            return addresses;
         }
-
-        // Try mDNS discovery first (like Python matter server does)
-        const addresses = await this.#discoverNodeAddressesViaMdns(nodeId);
-        if (addresses.length > 0) {
-            return addresses;
+        if (!preferCache || !addresses.size) {
+            // Try mDNS discovery first (like Python matter server does)
+            for (const address of await this.#discoverNodeAddressesViaMdns(nodeId)) {
+                addresses.add(address);
+            }
+        }
+        if (peer) {
+            const sessionIp = peer.newestSession?.channel.networkAddress?.ip;
+            if (sessionIp) {
+                addresses.add(sessionIp);
+            }
         }
 
         // Fall back to commissioning addresses from the node state if mDNS fails
         const node = this.#nodes.get(nodeId);
         const commissioningAddresses = node.node.maybeStateOf(CommissioningClient)?.addresses;
         if (commissioningAddresses !== undefined && commissioningAddresses.length > 0) {
-            logger.info(
-                `Node ${this.formatNode(nodeId)}: mDNS discovery returned no addresses, using commissioning addresses`,
-                commissioningAddresses,
-            );
             const fallbackAddresses = commissioningAddresses
                 .filter((addr): addr is ServerAddressUdp => addr.type === "udp")
                 .map(addr => addr.ip);
-            if (fallbackAddresses.length > 0) {
-                return fallbackAddresses;
+            for (const address of fallbackAddresses) {
+                addresses.add(address);
             }
         }
 
-        return [];
+        return [...addresses.values()];
     }
 
     /**
@@ -1123,7 +1072,7 @@ export class ControllerCommandHandler {
             const names = peer.service.names;
             await names.solicitor.discover({
                 abort,
-                name: names.get(getOperationalDeviceQname(this.#controller.fabric.globalId, nodeId)),
+                name: peer.service.name,
                 recordTypes: [DnsRecordType.SRV],
             });
 
@@ -1191,6 +1140,8 @@ export class ControllerCommandHandler {
             throw ServerError.nodeNotExists(nodeId);
         }
         await this.#controller.removeNode(nodeId, !!node?.isConnected);
+        this.#reconnectTimers.get(nodeId)?.stop();
+        this.#reconnectTimers.delete(nodeId);
         // Remove node from storage (also clears attribute cache)
         this.#nodes.delete(nodeId);
         // Unregister from custom cluster polling

@@ -4,7 +4,15 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { attribute, cluster, uint8, writable } from "@matter/main/model";
+import { attribute, cluster, uint8, writable, command, uint16, field } from "@matter/main/model";
+
+/**
+ * Input to the {@link HeimanCluster.mutingSensor} command.
+ */
+class MutingSensorCommand {
+    @field(uint16)
+    mutingTime!: number;
+}
 
 @cluster(0x120bfc01)
 export class HeimanCluster {
@@ -28,4 +36,10 @@ export class HeimanCluster {
 
     @attribute(0x0016, uint8, writable)
     lowPowerMode?: number;
+
+    /**
+     * This command is used for muting sensor for a specific period if there is an alarm, like a fire alarm.
+     */
+    @command(0x00, MutingSensorCommand)
+    mutingSensor(_request: MutingSensorCommand): void {}
 }

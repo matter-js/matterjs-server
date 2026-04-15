@@ -3,7 +3,9 @@
  * Copyright 2025-2026 Open Home Foundation
  * SPDX-License-Identifier: Apache-2.0
  */
-
+// Register the custom clusters
+import "@matter-server/custom-clusters";
+// Standard imports
 import { BleProxyHandler, ProxyBle } from "@matter-server/ble-proxy";
 import {
     ConfigStorage,
@@ -18,37 +20,14 @@ import {
     WebSocketControllerHandler,
 } from "@matter-server/ws-controller";
 import { Ble } from "@matter/main/protocol";
-import { open } from "node:fs/promises";
 import { getCliOptions, type LogLevel as CliLogLevel } from "./cli.js";
 import { LegacyDataWriter, loadLegacyData, type LegacyData } from "./converter/index.js";
+import { createFileLogger } from "./file-logger.js";
 import { initializeOta } from "./ota.js";
 import { HealthHandler } from "./server/HealthHandler.js";
 import { StaticFileHandler } from "./server/StaticFileHandler.js";
 import { WebServer } from "./server/WebServer.js";
 import { MATTER_SERVER_VERSION } from "./version.js";
-// Register the custom clusters
-import "@matter-server/custom-clusters";
-
-/**
- * Creates a file-based logger that appends to the given path.
- * The file is opened on start and closed when the process shuts down.
- */
-async function createFileLogger(path: string) {
-    const fileHandle = await open(path, "a");
-    const writer = fileHandle.createWriteStream();
-    process.on(
-        "beforeExit",
-        () => void fileHandle.close().catch(err => err && console.error(`Failed to close log file: ${err}`)),
-    );
-
-    return (formattedLog: string) => {
-        try {
-            writer.write(`${formattedLog}\n`);
-        } catch (error) {
-            console.error(`Failed to write to log file: ${error}`);
-        }
-    };
-}
 
 // Parse CLI options early for logging setup
 const cliOptions = getCliOptions();
@@ -106,14 +85,18 @@ let server: WebServer;
 let config: ConfigStorage;
 let legacyData: LegacyData;
 let legacyDataWriter: LegacyDataWriter | undefined;
+let fileLoggerClose: (() => Promise<void>) | undefined;
+let stopping = false;
+let startCompleted: Promise<void> = Promise.resolve();
 
 async function start() {
     // Set up file logging additionally to the console if configured
     if (cliOptions.logFile) {
         try {
-            const fileWriter = await createFileLogger(cliOptions.logFile);
+            const fileLogger = await createFileLogger(cliOptions.logFile);
+            fileLoggerClose = fileLogger.close;
             Logger.destinations.file = LogDestination({
-                write: fileWriter,
+                write: fileLogger.write,
                 level: mapLogLevel(cliOptions.logLevel),
                 format: LogFormat("plain"),
             });
@@ -181,7 +164,7 @@ async function start() {
     );
 
     if (!cliOptions.disableOta) {
-        await initializeOta(controller, cliOptions);
+        controller.commandHandler?.events.started.once(async () => await initializeOta(controller, cliOptions));
     }
 
     // Subscribe to node events for legacy data file updates
@@ -218,22 +201,74 @@ async function start() {
     }
     server = new WebServer({ listenAddresses: cliOptions.listenAddress, port: cliOptions.port }, handlers);
 
+    if (!cliOptions.listenAddress) {
+        logger.warn(
+            `WebSocket server is listening on all network interfaces. Use --listen-address to restrict access. Ensure your environment (firewall, network) prevents unauthorized access.`,
+        );
+    }
+
     await server.start();
 }
 
 async function stop() {
-    await server?.stop();
-    await controller?.stop();
-    // Flush any pending legacy data writes before closing
-    if (legacyDataWriter?.hasPendingWork()) {
-        logger.info("Flushing pending legacy data writes...");
-        await legacyDataWriter.flush();
+    if (stopping) {
+        return;
     }
-    await config?.close();
-    process.exit(0);
+    stopping = true;
+
+    // Wait for start() to finish (or fail) before tearing down, so we don't
+    // race against in-flight initialization that could re-create resources.
+    try {
+        await startCompleted;
+    } catch {
+        // start() failed - that's fine, we still need to clean up
+    }
+
+    try {
+        await server?.stop();
+    } catch (err) {
+        console.error(`Failed to stop server: ${err}`);
+    }
+    try {
+        await controller?.stop();
+    } catch (err) {
+        console.error(`Failed to stop controller: ${err}`);
+    }
+    // Flush any pending legacy data writes before closing
+    try {
+        if (legacyDataWriter?.hasPendingWork()) {
+            logger.info("Flushing pending legacy data writes...");
+            await legacyDataWriter.flush();
+        }
+    } catch (err) {
+        console.error(`Failed to flush legacy data: ${err}`);
+    }
+    try {
+        await config?.close();
+    } catch (err) {
+        console.error(`Failed to close config storage: ${err}`);
+    }
+    // Wait for the Environment runtime to fully shut down (flushes all storage,
+    // completes async worker cleanup). Without this, controller storage like
+    // "server-1-fff1" may not be flushed before the process exits.
+    try {
+        await env.runtime.close();
+    } catch (err) {
+        console.error(`Failed to close runtime: ${err}`);
+    }
+    try {
+        await fileLoggerClose?.();
+    } catch (err) {
+        console.error(`Failed to flush log file on shutdown: ${err}`);
+    }
 }
 
-start().catch(err => console.error(err));
+startCompleted = start().catch(async err => {
+    if (!stopping) {
+        console.error(err);
+    }
+    await config?.close();
+});
 
 process.on("SIGINT", () => void stop().catch(err => console.error(err)));
 process.on("SIGTERM", () => void stop().catch(err => console.error(err)));

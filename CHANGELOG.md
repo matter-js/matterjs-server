@@ -7,6 +7,105 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
+## 0.6.0 (2026-04-15)
+- Change: Consider devices as offline 3 minutes in the reconnection state
+- Adjustment: Streamlined some Dashboard UI topics to have a more streamlined UI and basis for enhancements
+- Fix: Update matter.js to the latest 0.17.0-nightly
+    - Improves DNS-SD discovery reliability
+
+## 0.5.15 (2026-04-10)
+- No-Change-Re-Release because Python and Docker had publishing issues on GitHub for 0.5.14
+
+## 0.5.14 (2026-04-10)
+- Fix: Correctly reports Node availabilities via WS events to HA and other consumers (also consider a device offline after five mins in Reconnection state)
+- Fix: Allows binding deletion via the dashboard when the target node no longer exists and other consistency checks
+- Fix: Fixes shutdown hang when SIGINT arrives during the startup phase
+- Fix: Adds global attributes to custom cluster Python classes
+- Fix: Update matter.js to the latest 0.17.0-nightly
+    - Fixes and enhances multiple commissioning issues around Discovery, PASE, and BLE
+    - More RAM optimizations
+    - Fixes cache flush crash and data race after node deletion
+    - Reintroduces Probe logging
+
+## 0.5.13 (2026-04-02)
+- Fix: Ignore directories in the OTA update directory
+- Fix: (FuNK3Y) Enhances network interface name logic for Websocket binding
+- Fix: Update matter.js to the latest 0.17.0-nightly
+    - Fixes some model and Tlv access errors from the latest version
+    - Fixes a CASE establishment edge case when multiple IPs are tried
+
+## 0.5.12 (2026-04-01)
+- Feature: (FuNK3Y) Allows network interface name for Websocket binding
+- Enhancement/Fix: Update matter.js to the latest 0.17.0-nightly
+    - RAM usage optimization and other refactorings in the background
+    - Fixes a BLE crash case
+    - Optimizes commissioning edge and error cases
+    - Buffer client cluster writes; persists only every 20 minutes
+
+## 0.5.10 (2026-03-27)
+- Fix: Ensures correct shutdown flow including releasing all locks
+
+## 0.5.9 (2026-03-26)
+- Fix: Always return response data for device commands (ignore "response_type")
+
+## 0.5.8 (2026-03-26)
+- Increase Legacy Eve device energy data polling to 60s (was 30s) to reduce traffic on thread network
+- Enhancement/Fix: Update matter.js to the latest 0.17.0-nightly
+    - Optimizes commissioning process and device connections during commissioning
+    - RAM usage reductions and improvements
+    - Optimizes reconnections and how fast we react to new detected IPs to speed up reconnections
+    - Probes discovered addresses and potentially updates the session address when they change even when we have a valid working session
+    - Ensures a proper BDX session teardown when non-bdx errors happened
+    - Fixes crash cases during commissioning (BLE and when multiple IPs were found)
+
+## 0.5.7 (2026-03-13)
+- Fix: Corrects event payload encoding in websocket messages to match the Python server (and fixes bug from 0.5.6)
+- Fix: Only stream attribute updates after start_listening like all other event-style websocket messages
+- Fix: Try to optimize requested IP list for the node
+
+## 0.5.6 (2026-03-12)
+
+- Fix: Corrects event payload encoding in websocket messages to match the Python server
+- Fix: When querying IPs always include the IP of the current session (if any) and/or the fallback IP
+- Fix: Update matter.js to the latest 0.17.0-nightly
+    - Enhances session and OTA management when devices reboot surprisingly and push new sessions
+    - Optimized OTA process for Ikea "multiple reboots" OTA updates
+    - Ensures commands are never queued
+
+## 0.5.5 (2026-03-11)
+- Enhancement: Adds log file rotation (seven daily backups, rotated on startup and every 24 hours) when --log-file is specified
+- Enhancement: Allows configuration of the DCL location and networking settings
+- Fix: Update matter.js to the latest 0.17.0-nightly
+    - Sets subscription minimum interval to 0 for ICD devices
+    - Only declare peer lost when an exchange received no response
+    - Skip deletion of already-destroyed child endpoints during peer removal
+    - Respect the 5 minute BDX timeout also for transfer problems
+    - Properly expire commissionable device records when TTL runs out
+
+## 0.5.4 (2026-03-08)
+- Fix: Initializes the Fabric storage when migrating from Python server to prevent startup issues
+- Fix: Update matter.js to the latest 0.17.0-nightly
+  - Increase subscription timeout with 8-second bonus time
+  - Re-introduce data version filter refresh after incomplete reads or subscriptions
+  - Ensures delivery of all events to the ChangeNotificationService (and to WebSocket clients)
+  - Restores processing of incoming data reports from the final message directly rather than after receiving the acknowledgement
+  - Prepares configuration options for the network profiles (official support introduced in a later release)
+
+## 0.5.3 (2026-03-07)
+- Fix: Update matter.js to the latest 0.17.0-nightly
+  - Fixes the broken storage initialization that rendered 0.5.2 unusable depending on how the storage path was provided in CLI
+
+## 0.5.2 (2026-03-06) - REVERTED!!! DO NOT USE!
+- Fix/Enhancement: Update matter.js to the latest 0.17.0-nightly
+  - Fix hanging interactions (Read/Subscribe) and ensure proper timeouts when the device answered unexpectedly, or we aborted internally
+  - Prevents removing clusters when devices contain them but not declaring them ("Schrödinger's clusters")
+
+## 0.5.1 (2026-03-05)
+- Fix: Revert one Eve change for pressure custom attribute
+- Fix/Enhancement: Update matter.js to 0.17.0-nightly
+  - Fix invoke batching
+  - Fix uncommissioned peer startup issues
+
 ## 0.5.0 (2026-03-05)
 - Feature: Allows searching for thread nodes in the network graph by extended address
 - Adjustment: Also sorts neighbors in network graph details by quality

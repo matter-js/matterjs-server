@@ -42,6 +42,16 @@ npm run format-verify
 
 **CI enforces formatting and linting.** The `check-and-lint` job in `build-test.js.yml` runs `npm run format-verify` and `npm run lint` and all other CI jobs (`test`, `build-non-linux`) are gated on it. PRs will fail if either check does not pass.
 
+### Running the server
+
+```bash
+# Start the server (requires a prior build)
+npm run server
+
+# With options
+npm run server -- --storage-path data --primary-interface en0 --bluetooth-adapter 0
+```
+
 ### Debugging
 
 ```bash
@@ -49,6 +59,19 @@ npm run format-verify
 npm run send-command -- ws://localhost:5580/ws server_info
 npm run send-command -- ws://localhost:5580/ws get_node '{"node_id": 1}'
 npm run send-command -- ws://localhost:5580/ws device_command '{"node_id":1,"endpoint_id":1,"cluster_id":6,"command_name":"toggle","payload":{}}'
+```
+
+### Python client
+
+```bash
+# Install
+npm run python:install
+
+# Unit tests (fast, no server needed)
+npm run python:test
+
+# Integration tests (requires a running server on localhost:5580)
+npm run python:test-integration
 ```
 
 ## Monorepo Structure
@@ -72,7 +95,7 @@ npm workspaces with six packages:
 - `StaticFileHandler` — serves dashboard assets
 - `HealthHandler` — `/health` endpoint
 
-Custom clusters are registered at import time via `import "@matter-server/custom-clusters"` in `MatterServer.ts`. The registration in `custom-clusters/src/register.ts` pushes each cluster definition into `MatterModel` and `ClusterRegistry`.
+Custom clusters are registered at import time via `import "@matter-server/custom-clusters"` in `MatterServer.ts`. The registration in `custom-clusters/src/register.ts` pushes each cluster definition into `Matter` and `ClusterRegistry`.
 
 ### WebSocket Protocol (Schema version 11)
 Messages follow the Python Matter Server protocol. Key commands: `start_listening`, `commission_with_code`, `commission_on_network`, `device_command`, `read_attribute`, `write_attribute`, `subscribe_attribute`, `get_nodes`, `get_node`, `server_info`, `diagnostics`.
@@ -91,7 +114,7 @@ The WS protocol uses a custom JSON serialiser (`toBigIntAwareJson`) and parser (
 Attribute changes normally emit granular `attribute_updated` events. Changes to the **BasicInformation** (0x28) or **BridgedDeviceBasicInformation** (0x39) clusters trigger a full `node_updated` broadcast instead (firmware version, product name, etc. are reflected in the node object).
 
 ### `ModelMapper` / cluster metadata
-`ClusterMap` in `ws-controller/src/model/ModelMapper.ts` is built at module load time from `MatterModel.standard`. It indexes clusters by lowercase name and numeric ID. `GlobalAttributes` (IDs 65528–65533) are indexed by both name and numeric ID to support decoding in custom/unknown clusters.
+`ClusterMap` in `ws-controller/src/model/ModelMapper.ts` is built at module load time from `Matter`. It indexes clusters by lowercase name and numeric ID. `GlobalAttributes` (IDs 65528–65533) are indexed by both name and numeric ID to support decoding in custom/unknown clusters.
 
 ## Dashboard
 
@@ -125,6 +148,16 @@ Base tsconfig targets **ES2022**. The dashboard includes the `"es2023"` lib to e
 
 ### TypeScript target
 Base tsconfig targets **ES2022**. The dashboard adds `"ES2023.Array"` to its lib to enable `Array.prototype.toSorted()`.
+
+## Test Nodes
+
+`TestNodeCommandHandler` manages synthetic nodes used for testing (e.g., importing a HA diagnostics dump without real hardware). Test node IDs are `>= 0xffff_fffe_0000_0000`. The WS handler automatically routes commands to the correct handler via `#handlerFor(nodeId)` — real nodes go to `ControllerCommandHandler`, test nodes go to `TestNodeCommandHandler`.
+
+To import test nodes, send `import_test_nodes` with a JSON dump string (HA diagnostics format). Test nodes support `read_attribute` and `attribute_updated` events but do not perform real Matter communication.
+
+## Legacy Data Migration
+
+`packages/matter-server/src/converter/` handles one-time migration from Python Matter Server storage format. On startup, `MatterServer.ts` calls `loadLegacyData()` to detect and import fabric config and node data from the old format. This path is only active when legacy data is present.
 
 ## Custom Clusters
 

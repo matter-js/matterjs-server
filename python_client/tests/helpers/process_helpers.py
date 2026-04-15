@@ -7,13 +7,14 @@ Provides helpers to start/stop the Matter.js server and test device subprocesses
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
+from pathlib import Path
 import shutil
 import signal
 import subprocess
 import tempfile
 import time
-from pathlib import Path
 
 import aiohttp
 
@@ -44,10 +45,8 @@ def cleanup_temp_storage(server_path: str, device_path: str) -> None:
     Silently ignores errors if directories don't exist or can't be removed.
     """
     for path in (server_path, device_path):
-        try:
+        with contextlib.suppress(OSError):
             shutil.rmtree(path)
-        except OSError:
-            pass
 
 
 def start_server(storage_path: str) -> subprocess.Popen:
@@ -101,9 +100,11 @@ def start_test_device(storage_path: str) -> subprocess.Popen:
 
 
 async def wait_for_port(port: int, timeout: float = 30.0) -> None:
-    """Wait for the WebSocket server to accept connections on the given port.
+    """Wait for the server to be fully ready on the given port.
 
-    Repeatedly attempts a WebSocket connection until successful or timeout.
+    Polls the HTTP /health endpoint until it returns 200 with a valid JSON body.
+    This is stricter than a bare TCP/WebSocket connect because it confirms the
+    server has finished initialising and all request handlers are wired up.
 
     Args:
         port: The port number to connect to.
@@ -113,14 +114,19 @@ async def wait_for_port(port: int, timeout: float = 30.0) -> None:
         TimeoutError: If the server doesn't become available within the timeout.
     """
     start = time.monotonic()
+    url = f"http://localhost:{port}/health"
     while time.monotonic() - start < timeout:
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.ws_connect(f"ws://localhost:{port}/ws", timeout=2):
-                    return
-        except (aiohttp.ClientError, OSError, asyncio.TimeoutError):
-            await asyncio.sleep(0.5)
-    raise TimeoutError(f"Timeout waiting for WebSocket server on port {port}")
+            async with aiohttp.ClientSession() as session, asyncio.timeout(2):
+                async with session.get(url) as resp:
+                    if resp.status == 200:
+                        body = await resp.json()
+                        if "version" in body and "node_count" in body:
+                            return
+        except (TimeoutError, aiohttp.ClientError, OSError):
+            pass
+        await asyncio.sleep(0.5)
+    raise TimeoutError(f"Timeout waiting for server /health on port {port}")
 
 
 async def wait_for_device_ready(process: subprocess.Popen, timeout: float = 30.0) -> None:
@@ -144,6 +150,8 @@ async def wait_for_device_ready(process: subprocess.Popen, timeout: float = 30.0
         """Blocking reader, run via run_in_executor to avoid stalling the event loop."""
         start = time.monotonic()
         while time.monotonic() - start < timeout:
+            if process.stdout is None:
+                raise RuntimeError("Process stdout is None")
             line = process.stdout.readline()
             if not line:
                 if process.poll() is not None:
@@ -176,7 +184,5 @@ def kill_process(process: subprocess.Popen | None, timeout: float = 5.0) -> None
         process.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
         process.kill()
-        try:
+        with contextlib.suppress(subprocess.TimeoutExpired):
             process.wait(timeout=2)
-        except subprocess.TimeoutExpired:
-            pass

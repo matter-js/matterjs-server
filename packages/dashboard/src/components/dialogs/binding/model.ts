@@ -9,7 +9,7 @@ export type InputType = {
 };
 
 export interface BindingEntryStruct {
-    node: number | undefined;
+    node: number | bigint | undefined;
     group: number | undefined;
     endpoint: number | undefined;
     cluster: number | undefined;
@@ -21,6 +21,7 @@ export class BindingEntryDataTransformer {
         [inputKey: string]: keyof BindingEntryStruct;
     } = {
         "1": "node",
+        "2": "group",
         "3": "endpoint",
         "4": "cluster",
         "254": "fabricIndex",
@@ -42,12 +43,12 @@ export class BindingEntryDataTransformer {
                     if (value === undefined) {
                         continue;
                     }
-                    if (mappedKey === "fabricIndex") {
-                        result[mappedKey] = value === undefined ? undefined : Number(value);
-                    } else if (mappedKey === "node" || mappedKey === "endpoint") {
-                        result[mappedKey] = Number(value);
+                    if (mappedKey === "node") {
+                        // Node IDs can be bigint - preserve the original type
+                        result[mappedKey] = value;
                     } else {
-                        result[mappedKey] = value as BindingEntryStruct[typeof mappedKey];
+                        // group, endpoint, cluster, fabricIndex are all numeric
+                        result[mappedKey] = Number(value);
                     }
                 }
             }

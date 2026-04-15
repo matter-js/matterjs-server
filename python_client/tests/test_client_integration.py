@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 
 import aiohttp
 import pytest
@@ -50,10 +51,8 @@ async def test_start_listening(mock_server, client_session):
 
     await client.disconnect()
     listen_task.cancel()
-    try:
+    with contextlib.suppress(asyncio.CancelledError):
         await listen_task
-    except asyncio.CancelledError:
-        pass
 
 
 @pytest.mark.asyncio
@@ -79,10 +78,8 @@ async def test_send_command_and_receive_response(mock_server, client_session):
 
     await client.disconnect()
     listen_task.cancel()
-    try:
+    with contextlib.suppress(asyncio.CancelledError):
         await listen_task
-    except asyncio.CancelledError:
-        pass
 
 
 @pytest.mark.asyncio

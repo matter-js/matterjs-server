@@ -32,13 +32,17 @@
         "format-verify": "oxfmt --check \"packages/**/*.ts\"",
         "test": "matter-test --force-exit",
         "relock": "node ./utils/relock.js && npm install",
-        "sync-matterjs": "node ./utils/sync-matterjs.js && npm install",
+        "sync-matterjs": "node ./utils/sync-matterjs.js && npm run relock",
         "server": "node --enable-source-maps packages/matter-server/dist/esm/MatterServer.js",
         "noble-ble-proxy": "npm run noble-ble-proxy -w packages/ble-proxy",
         "send-command": "node --enable-source-maps packages/ws-controller/dist/esm/example/send-command.js",
         "python:install": "cd python_client && python3 -m venv .venv && .venv/bin/pip install -e '.[test]'",
+        "python:generate": "npx tsx python_client/scripts/generate-python-clusters.ts",
         "python:test": "cd python_client && .venv/bin/pytest tests/ -v --ignore=tests/test_integration.py",
         "python:test-integration": "cd python_client && .venv/bin/pytest tests/test_integration.py -v",
+        "python:lint": "cd python_client && .venv/bin/ruff check . --exclude chip",
+        "python:lint-fix": "cd python_client && .venv/bin/ruff check . --exclude chip --fix --unsafe-fixes",
+        "python:typecheck": "cd python_client && .venv/bin/mypy .",
         "python:test-all": "cd python_client && .venv/bin/pytest tests/ -v",
         "python:build": "cd python_client && .venv/bin/pip install build && .venv/bin/python -m build"
     },
@@ -49,13 +53,13 @@
         }
     },
     "devDependencies": {
-        "@matter/testing": "0.17.0-alpha.0-20260304-444297156",
+        "@matter/testing": "0.17.0-alpha.0-20260415-d9b8bc8d3",
         "@types/mocha": "^10.0.10",
         "glob": "^13.0.6",
-        "globals": "^17.4.0",
-        "oxfmt": "^0.36.0",
-        "oxlint": "^1.51.0",
-        "oxlint-tsgolint": "^0.16.0",
+        "globals": "^17.5.0",
+        "oxfmt": "^0.45.0",
+        "oxlint": "^1.60.0",
+        "oxlint-tsgolint": "^0.21.0",
         "tsx": "^4.21.0",
         "typescript": "~5.9.3"
     }

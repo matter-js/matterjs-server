@@ -9,11 +9,10 @@ from typing import Final, cast
 
 from aiohttp import ClientSession, ClientWebSocketResponse, WSMsgType, client_exceptions
 
+from matter_server.common.const import SCHEMA_VERSION
+from matter_server.common.helpers.json import json_dumps, json_loads
 from matter_server.common.helpers.util import dataclass_from_dict
-
-from ..common.const import SCHEMA_VERSION
-from ..common.helpers.json import json_dumps, json_loads
-from ..common.models import (
+from matter_server.common.models import (
     CommandMessage,
     ErrorResultMessage,
     EventMessage,
@@ -21,6 +20,7 @@ from ..common.models import (
     ServerInfoMessage,
     SuccessResultMessage,
 )
+
 from .exceptions import (
     CannotConnect,
     ConnectionClosed,
@@ -44,7 +44,7 @@ class MatterClientConnection:
         self,
         ws_server_url: str,
         aiohttp_session: ClientSession,
-    ):
+    ) -> None:
         """Initialize the Client class."""
         self.ws_server_url = ws_server_url
         # server info is retrieved on connect
@@ -60,7 +60,8 @@ class MatterClientConnection:
     async def connect(self) -> None:
         """Connect to the websocket server."""
         if self._ws_client is not None:
-            raise InvalidState("Already connected")
+            msg = "Already connected"
+            raise InvalidState(msg)
 
         LOGGER.debug("Trying to connect")
         try:

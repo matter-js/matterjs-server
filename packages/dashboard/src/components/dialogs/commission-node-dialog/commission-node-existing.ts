@@ -14,6 +14,7 @@ import { customElement, property, query, state } from "lit/decorators.js";
 import { clientContext } from "../../../client/client-context.js";
 import { handleAsync } from "../../../util/async-handler.js";
 import { fireEvent } from "../../../util/fire_event.js";
+import { showAlertDialog } from "../../dialog-box/show-dialog-box.js";
 
 @customElement("commission-node-existing")
 export class CommissionNodeExisting extends LitElement {
@@ -33,13 +34,7 @@ export class CommissionNodeExisting extends LitElement {
             <br />
             <md-outlined-button @click=${handleAsync(() => this._commissionNode())} .disabled="${this._loading}"
                 >Commission</md-outlined-button
-            >${
-                this._loading
-                    ? html`
-                          <md-circular-progress indeterminate></md-circular-progress>
-                      `
-                    : nothing
-            }`;
+            >${this._loading ? html` <md-circular-progress indeterminate></md-circular-progress> ` : nothing}`;
     }
 
     private async _commissionNode() {
@@ -48,7 +43,7 @@ export class CommissionNodeExisting extends LitElement {
             const node = await this.client.commissionWithCode(this._pairingCodeField.value, true);
             fireEvent(this, "node-commissioned", node);
         } catch (err) {
-            alert(`Error commissioning node: ${(err as Error).message}`);
+            showAlertDialog({ title: "Error commissioning node", text: (err as Error).message });
         } finally {
             this._loading = false;
         }

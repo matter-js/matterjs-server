@@ -25,8 +25,8 @@ function getMatterServerVersion(): string {
     const thisFile = fileURLToPath(import.meta.url);
     let dir = dirname(thisFile);
 
-    // Navigate up to find package.json
-    while (dir !== "/") {
+    // Navigate up to find package.json; stop at filesystem root (portable across OS)
+    while (dirname(dir) !== dir) {
         try {
             const packageJsonPath = join(dir, "package.json");
             const content = readFileSync(packageJsonPath, "utf-8");

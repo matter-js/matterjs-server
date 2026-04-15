@@ -211,11 +211,9 @@ export type OpenCommissioningWindowResponse = {
     qrCode: string;
 };
 
-import { AttributesData, MatterNode } from "./WebSocketMessageTypes.js";
+import type { AttributesData, MatterNodeData } from "@matter-server/ws-client";
 
-/** MatterNode details for WebSocket API - re-export from WebSocketMessageTypes */
-export type { AttributesData };
-export type MatterNodeData = MatterNode;
+export type { AttributesData, MatterNodeData };
 
 /**
  * Interface for node command handlers.

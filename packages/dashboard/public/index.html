@@ -19,8 +19,9 @@
     --text-color: rgba(0, 0, 0, 0.6);
     --danger-color: #db4437;
 
-    --md-sys-color-primary: #03a9f4;;
+    --md-sys-color-primary: #03a9f4;
     --md-sys-color-on-primary: #fff;
+    --md-dialog-container-shape: 8px;
     --md-ref-typeface-brand: var(--roboto-font);
     --md-ref-typeface-plain: var(--roboto-font);
 
@@ -35,8 +36,30 @@
     --md-sys-color-surface-container-high: #fff;
     --md-sys-color-surface-container-highest: #f5f5f5;
     --md-sys-color-secondary-container: #e0e0e0;
+    --md-sys-color-error: #b3261e;
+    --md-sys-color-on-error: #fff;
+    --md-sys-color-error-container: #f9dedc;
+    --md-sys-color-on-error-container: #410e0b;
+    --md-sys-color-tertiary: #7d5260;
+    --md-sys-color-on-tertiary: #fff;
+    --md-sys-color-primary-container: #d0e4ff;
+    --md-sys-color-on-primary-container: #001d36;
     --md-sys-color-outline: #79747e;
     --md-sys-color-outline-variant: #cac4d0;
+
+    /* Graph / network semantic colors */
+    --signal-color-strong: #4caf50;
+    --signal-color-medium: #ff9800;
+    --signal-color-weak: #f44336;
+    --node-color-selected: #1976d2;
+    --node-color-offline: #d32f2f;
+    --node-color-selected-offline: #b71c1c;
+    --node-color-unknown: #ff9800;
+    --node-color-default: #666666;
+    --graph-font-color: #333333;
+    --graph-edge-dimmed: #cccccc;
+    --graph-node-fallback: #999999;
+    --monospace-font: "Roboto Mono", ui-monospace, monospace;
 
     --md-sys-typescale-headline-font: var(--roboto-font);
     --md-sys-typescale-title-font: var(--roboto-font);
@@ -71,12 +94,41 @@
     --md-sys-color-surface-container-highest: #363636;
     --md-sys-color-secondary-container: #4a4458;
     --md-sys-color-on-secondary-container: #e8def8;
+    --md-sys-color-error: #f2b8b5;
+    --md-sys-color-on-error: #601410;
+    --md-sys-color-error-container: #8c1d18;
+    --md-sys-color-on-error-container: #f9dedc;
+    --md-sys-color-tertiary: #efb8c8;
+    --md-sys-color-on-tertiary: #492532;
+    --md-sys-color-primary-container: #004a77;
+    --md-sys-color-on-primary-container: #d0e4ff;
     --md-sys-color-outline: #938f99;
     --md-sys-color-outline-variant: #49454f;
+    --signal-color-strong: #66bb6a;
+    --signal-color-medium: #ffa726;
+    --signal-color-weak: #ef5350;
+    --node-color-selected: #42a5f5;
+    --node-color-offline: #ef5350;
+    --node-color-selected-offline: #e53935;
+    --node-color-unknown: #ffa726;
+    --node-color-default: #b0b0b0;
+    --graph-font-color: #e0e0e0;
+    --graph-edge-dimmed: #555555;
+    --graph-node-fallback: #999999;
     --text-color: rgba(255, 255, 255, 0.6);
     --danger-color: #ff7961;
     --primary-color: #4fc3f7;
     color-scheme: dark;
+  }
+
+  /* Respect user preference for reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
   </style>
 </head>

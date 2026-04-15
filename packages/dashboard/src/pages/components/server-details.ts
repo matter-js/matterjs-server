@@ -32,13 +32,7 @@ export class ServerDetails extends LitElement {
         <md-list-item>
             <div slot="headline">
                 <b>Open Home Foundation Matter Server ${this.client.isProduction ? "" : `(${this.client.serverBaseAddress})`}</b>
-                ${
-                    this.client.connection.connected
-                        ? nothing
-                        : html`
-                              <span class="status">OFFLINE</span>
-                          `
-                }
+                ${this.client.connection.connected ? nothing : html` <span class="status">OFFLINE</span> `}
       </div>
         </md-list-item>
         <md-list-item>
@@ -108,6 +102,8 @@ export class ServerDetails extends LitElement {
                         title: "Failed to import test node",
                         text: err.message,
                     });
+                } finally {
+                    fileElem.value = "";
                 }
             };
         }

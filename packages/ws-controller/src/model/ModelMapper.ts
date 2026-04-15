@@ -15,7 +15,7 @@ import {
     EventModel,
     FeatureMap,
     GeneratedCommandList,
-    MatterModel,
+    Matter,
 } from "@matter/main/model";
 
 type AttributeDetails = { readonly [key: string]: AttributeModel | undefined };
@@ -53,7 +53,7 @@ export type ClusterMapType = {
 // Build the cluster map at module load time
 const clusterMapBuilder: { [key: string]: ClusterMapEntry | undefined } = {};
 
-MatterModel.standard.clusters.forEach(cluster => {
+Matter.clusters.forEach(cluster => {
     if (cluster.id === undefined) {
         return;
     } // Skip clusters without an ID

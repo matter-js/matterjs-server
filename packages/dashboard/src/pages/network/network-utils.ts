@@ -5,6 +5,7 @@
  */
 
 import type { MatterNode } from "@matter-server/ws-client";
+import { getCssVar } from "../../util/shared-styles.js";
 import type {
     CategorizedDevices,
     NetworkType,
@@ -27,10 +28,16 @@ const SIGNAL_MEDIUM_THRESHOLD = -85;
 const LQI_STRONG_THRESHOLD = 200;
 const LQI_MEDIUM_THRESHOLD = 100;
 
-// Signal colors
-const SIGNAL_COLOR_STRONG = "#4caf50"; // Green
-const SIGNAL_COLOR_MEDIUM = "#ff9800"; // Orange
-const SIGNAL_COLOR_WEAK = "#f44336"; // Red
+// Signal colors — read from CSS variables for theme awareness
+function getSignalColorStrong(): string {
+    return getCssVar("--signal-color-strong", "#4caf50");
+}
+function getSignalColorMedium(): string {
+    return getCssVar("--signal-color-medium", "#ff9800");
+}
+function getSignalColorWeak(): string {
+    return getCssVar("--signal-color-weak", "#f44336");
+}
 
 /**
  * WiFi Diagnostics info from cluster 0x36/54.
@@ -444,6 +451,33 @@ export function findUnknownDevices(
     return Array.from(unknownMap.values());
 }
 
+export type SignalLevel = "strong" | "medium" | "weak";
+
+/** Determine signal level from a Thread neighbor's RSSI/LQI. */
+export function getSignalLevel(neighbor: ThreadNeighbor): SignalLevel {
+    const rssi = neighbor.avgRssi ?? neighbor.lastRssi;
+    if (rssi !== null) {
+        if (rssi > SIGNAL_STRONG_THRESHOLD) return "strong";
+        if (rssi > SIGNAL_MEDIUM_THRESHOLD) return "medium";
+        return "weak";
+    }
+    if (neighbor.lqi > LQI_STRONG_THRESHOLD) return "strong";
+    if (neighbor.lqi > LQI_MEDIUM_THRESHOLD) return "medium";
+    return "weak";
+}
+
+/** Map a signal level to its theme-aware color. */
+export function signalLevelToColor(level: SignalLevel): string {
+    switch (level) {
+        case "strong":
+            return getSignalColorStrong();
+        case "medium":
+            return getSignalColorMedium();
+        case "weak":
+            return getSignalColorWeak();
+    }
+}
+
 /**
  * Gets the signal color based on RSSI or LQI values.
  * Green: Strong signal
@@ -456,22 +490,22 @@ export function getSignalColor(neighbor: ThreadNeighbor): string {
 
     if (rssi !== null) {
         if (rssi > SIGNAL_STRONG_THRESHOLD) {
-            return SIGNAL_COLOR_STRONG;
+            return getSignalColorStrong();
         }
         if (rssi > SIGNAL_MEDIUM_THRESHOLD) {
-            return SIGNAL_COLOR_MEDIUM;
+            return getSignalColorMedium();
         }
-        return SIGNAL_COLOR_WEAK;
+        return getSignalColorWeak();
     }
 
     // Fallback to LQI (0-255, higher is better)
     if (neighbor.lqi > LQI_STRONG_THRESHOLD) {
-        return SIGNAL_COLOR_STRONG;
+        return getSignalColorStrong();
     }
     if (neighbor.lqi > LQI_MEDIUM_THRESHOLD) {
-        return SIGNAL_COLOR_MEDIUM;
+        return getSignalColorMedium();
     }
-    return SIGNAL_COLOR_WEAK;
+    return getSignalColorWeak();
 }
 
 /**
@@ -481,12 +515,12 @@ export function getSignalColor(neighbor: ThreadNeighbor): string {
  */
 export function getSignalColorFromLqi(lqi: number): string {
     if (lqi > LQI_STRONG_THRESHOLD) {
-        return SIGNAL_COLOR_STRONG;
+        return getSignalColorStrong();
     }
     if (lqi > LQI_MEDIUM_THRESHOLD) {
-        return SIGNAL_COLOR_MEDIUM;
+        return getSignalColorMedium();
     }
-    return SIGNAL_COLOR_WEAK;
+    return getSignalColorWeak();
 }
 
 /**
@@ -577,15 +611,15 @@ export function getWiFiDiagnostics(node: MatterNode): WiFiDiagnostics {
  */
 export function getSignalColorFromRssi(rssi: number | null): string {
     if (rssi === null) {
-        return SIGNAL_COLOR_MEDIUM; // Default to medium if unknown
+        return getSignalColorMedium(); // Default to medium if unknown
     }
     if (rssi > SIGNAL_STRONG_THRESHOLD) {
-        return SIGNAL_COLOR_STRONG;
+        return getSignalColorStrong();
     }
     if (rssi > SIGNAL_MEDIUM_THRESHOLD) {
-        return SIGNAL_COLOR_MEDIUM;
+        return getSignalColorMedium();
     }
-    return SIGNAL_COLOR_WEAK;
+    return getSignalColorWeak();
 }
 
 /**
