@@ -15,6 +15,7 @@ import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { showLogLevelDialog } from "../../components/dialogs/settings/show-log-level-dialog.js";
 import "../../components/ha-svg-icon";
+import { reducedMotionStyles } from "../../util/shared-styles.js";
 import { EffectiveTheme, ThemePreference, ThemeService } from "../../util/theme-service.js";
 
 interface HeaderAction {
@@ -174,68 +175,71 @@ export class DashboardHeader extends LitElement {
         `;
     }
 
-    static override styles = css`
-        .header {
-            background-color: var(--md-sys-color-primary);
-            color: var(--md-sys-color-on-primary);
-            --icon-primary-color: var(--md-sys-color-on-primary);
-            font-weight: 400;
-            display: flex;
-            align-items: center;
-            padding-left: 18px;
-            padding-right: 8px;
-            min-height: 48px;
-        }
-
-        md-icon-button {
-            margin-right: 8px;
-        }
-
-        .title {
-            flex: 1;
-            min-width: 0;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-
-        .actions {
-            display: flex;
-            max-width: 100%;
-            align-items: center;
-        }
-
-        .nav-tabs {
-            display: flex;
-            margin-left: 24px;
-            gap: 4px;
-        }
-
-        .nav-tab {
-            padding: 8px 16px;
-            color: var(--md-sys-color-on-primary);
-            text-decoration: none;
-            font-size: 0.875rem;
-            font-weight: 500;
-            border-radius: 4px 4px 0 0;
-            opacity: 0.7;
-            transition: opacity 0.2s;
-        }
-
-        .nav-tab:hover {
-            opacity: 0.9;
-        }
-
-        .nav-tab.active {
-            opacity: 1;
-            background-color: rgba(255, 255, 255, 0.15);
-            border-bottom: 2px solid var(--md-sys-color-on-primary);
-        }
-
-        @media (max-width: 768px) {
-            .nav-tabs {
-                display: none;
+    static override styles = [
+        reducedMotionStyles,
+        css`
+            .header {
+                background-color: var(--md-sys-color-primary);
+                color: var(--md-sys-color-on-primary);
+                --icon-primary-color: var(--md-sys-color-on-primary);
+                font-weight: 400;
+                display: flex;
+                align-items: center;
+                padding-left: 18px;
+                padding-right: 8px;
+                min-height: 48px;
             }
-        }
-    `;
+
+            md-icon-button {
+                margin-right: 8px;
+            }
+
+            .title {
+                flex: 1;
+                min-width: 0;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+
+            .actions {
+                display: flex;
+                max-width: 100%;
+                align-items: center;
+            }
+
+            .nav-tabs {
+                display: flex;
+                margin-left: 24px;
+                gap: 4px;
+            }
+
+            .nav-tab {
+                padding: 8px 16px;
+                color: var(--md-sys-color-on-primary);
+                text-decoration: none;
+                font-size: 0.875rem;
+                font-weight: 500;
+                border-radius: 4px 4px 0 0;
+                opacity: 0.7;
+                transition: opacity 0.2s;
+            }
+
+            .nav-tab:hover {
+                opacity: 0.9;
+            }
+
+            .nav-tab.active {
+                opacity: 1;
+                background-color: rgba(255, 255, 255, 0.15);
+                border-bottom: 2px solid var(--md-sys-color-on-primary);
+            }
+
+            @media (max-width: 768px) {
+                .nav-tabs {
+                    display: none;
+                }
+            }
+        `,
+    ];
 }

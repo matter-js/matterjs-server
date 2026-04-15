@@ -4,18 +4,20 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import "@material/web/button/outlined-button";
 import "@material/web/divider/divider";
 import "@material/web/iconbutton/icon-button";
 import "@material/web/list/list";
 import "@material/web/list/list-item";
 import { isTestNodeId, MatterClient, MatterNode } from "@matter-server/ws-client";
-import { mdiChevronRight, mdiGraphOutline } from "@mdi/js";
+import { mdiAlertCircleOutline, mdiChevronRight, mdiGraphOutline } from "@mdi/js";
 import { css, html, LitElement } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { guard } from "lit/directives/guard.js";
 import "../components/ha-svg-icon";
 import { getDeviceIcon, getEndpointIcon } from "../util/device-icons.js";
 import { formatNodeAddress, getEffectiveFabricIndex } from "../util/format_hex.js";
+import { notFoundStyles, reducedMotionStyles } from "../util/shared-styles.js";
 import "./components/header";
 import "./components/node-details";
 import { getEndpointDeviceTypes } from "./matter-endpoint-view.js";
@@ -44,8 +46,12 @@ class MatterNodeView extends LitElement {
     override render() {
         if (!this.node) {
             return html`
-                <p>Node not found!</p>
-                <button @click=${this._goBack}>Back</button>
+                <dashboard-header title="Node not found" .client=${this.client} backButton="#"></dashboard-header>
+                <div class="not-found">
+                    <ha-svg-icon .path=${mdiAlertCircleOutline}></ha-svg-icon>
+                    <p>Node not found</p>
+                    <md-outlined-button @click=${this._goBack}>Back</md-outlined-button>
+                </div>
             `;
         }
 
@@ -129,103 +135,107 @@ class MatterNodeView extends LitElement {
         history.back();
     }
 
-    static override styles = css`
-        :host {
-            display: flex;
-            background-color: var(--md-sys-color-background);
-            box-sizing: border-box;
-            flex-direction: column;
-            min-height: 100vh;
-        }
+    static override styles = [
+        notFoundStyles,
+        reducedMotionStyles,
+        css`
+            :host {
+                display: flex;
+                background-color: var(--md-sys-color-background);
+                box-sizing: border-box;
+                flex-direction: column;
+                min-height: 100vh;
+            }
 
-        .container {
-            padding: 16px;
-            max-width: 95%;
-            margin: 0 auto;
-            width: 100%;
-        }
-
-        @media (max-width: 600px) {
             .container {
-                padding: 16px 0;
+                padding: 16px;
+                max-width: 95%;
+                margin: 0 auto;
+                width: 100%;
             }
-        }
 
-        .status {
-            color: var(--danger-color);
-            font-weight: bold;
-            font-size: 0.8em;
-        }
-
-        .node-title-bar {
-            display: flex;
-            align-items: center;
-            gap: 16px;
-            margin-bottom: 16px;
-        }
-
-        .node-icon {
-            --icon-primary-color: var(--md-sys-color-on-surface-variant, #666);
-            --mdc-icon-size: 28px;
-        }
-
-        .endpoint-icon {
-            --icon-primary-color: var(--md-sys-color-on-surface-variant, #666);
-        }
-
-        .node-title-bar h2 {
-            margin: 0;
-            font-size: 1.25rem;
-            font-weight: 500;
-            color: var(--md-sys-color-on-background, #333);
-        }
-
-        .node-id-hex {
-            font-size: 0.75em;
-            font-weight: 400;
-            color: var(--md-sys-color-on-surface-variant, #666);
-            font-family: monospace;
-        }
-
-        .show-in-graph-button {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            padding: 6px 12px;
-            background-color: var(--md-sys-color-primary);
-            color: var(--md-sys-color-on-primary);
-            text-decoration: none;
-            border-radius: 4px;
-            font-size: 0.8rem;
-            font-weight: 500;
-            transition: opacity 0.2s;
-            white-space: nowrap;
-        }
-
-        .show-in-graph-button:hover {
-            opacity: 0.9;
-        }
-
-        .show-in-graph-button ha-svg-icon {
-            --icon-primary-color: var(--md-sys-color-on-primary);
-            width: 16px;
-            height: 16px;
-        }
-
-        @media (max-width: 768px) {
-            .show-in-graph-button {
-                display: none;
+            @media (max-width: 600px) {
+                .container {
+                    padding: 16px 0;
+                }
             }
-        }
 
-        @media (max-width: 480px) {
-            .show-in-graph-button .button-text {
-                display: none;
+            .status {
+                color: var(--danger-color);
+                font-weight: bold;
+                font-size: 0.8em;
+            }
+
+            .node-title-bar {
+                display: flex;
+                align-items: center;
+                gap: 16px;
+                margin-bottom: 16px;
+            }
+
+            .node-icon {
+                --icon-primary-color: var(--md-sys-color-on-surface-variant, #666);
+                --mdc-icon-size: 28px;
+            }
+
+            .endpoint-icon {
+                --icon-primary-color: var(--md-sys-color-on-surface-variant, #666);
+            }
+
+            .node-title-bar h2 {
+                margin: 0;
+                font-size: 1.25rem;
+                font-weight: 500;
+                color: var(--md-sys-color-on-background, #333);
+            }
+
+            .node-id-hex {
+                font-size: 0.75em;
+                font-weight: 400;
+                color: var(--md-sys-color-on-surface-variant, #666);
+                font-family: var(--monospace-font, monospace);
             }
 
             .show-in-graph-button {
-                padding: 6px;
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                padding: 6px 12px;
+                background-color: var(--md-sys-color-primary);
+                color: var(--md-sys-color-on-primary);
+                text-decoration: none;
+                border-radius: 4px;
+                font-size: 0.8rem;
+                font-weight: 500;
+                transition: opacity 0.2s;
+                white-space: nowrap;
             }
-        }
-    `;
+
+            .show-in-graph-button:hover {
+                opacity: 0.9;
+            }
+
+            .show-in-graph-button ha-svg-icon {
+                --icon-primary-color: var(--md-sys-color-on-primary);
+                width: 16px;
+                height: 16px;
+            }
+
+            @media (max-width: 768px) {
+                .show-in-graph-button {
+                    display: none;
+                }
+            }
+
+            @media (max-width: 480px) {
+                .show-in-graph-button .button-text {
+                    display: none;
+                }
+
+                .show-in-graph-button {
+                    padding: 6px;
+                }
+            }
+        `,
+    ];
 }

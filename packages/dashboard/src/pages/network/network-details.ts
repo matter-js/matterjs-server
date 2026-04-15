@@ -13,6 +13,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import { clientContext } from "../../client/client-context.js";
 import "../../components/ha-svg-icon";
 import { formatNodeAddressFromAny, getEffectiveFabricIndex } from "../../util/format_hex.js";
+import { getCssVar, reducedMotionStyles } from "../../util/shared-styles.js";
 import type { ThreadNeighbor } from "./network-types.js";
 import type { NodeConnection } from "./network-utils.js";
 import {
@@ -100,16 +101,15 @@ export class NetworkDetails extends LitElement {
     }
 
     private _getSignalIcon(neighbor: ThreadNeighbor): string {
-        const color = getSignalColor(neighbor);
-        if (color === "#4caf50") return mdiSignalCellular3; // Strong
-        if (color === "#ff9800") return mdiSignalCellular2; // Medium
-        return mdiSignalCellular1; // Weak
+        return this._getSignalIconFromColor(getSignalColor(neighbor));
     }
 
     private _getSignalIconFromColor(color: string): string {
-        if (color === "#4caf50") return mdiSignalCellular3; // Strong
-        if (color === "#ff9800") return mdiSignalCellular2; // Medium
-        return mdiSignalCellular1; // Weak
+        const strongColor = getCssVar("--signal-color-strong", "#4caf50");
+        const mediumColor = getCssVar("--signal-color-medium", "#ff9800");
+        if (color === strongColor) return mdiSignalCellular3;
+        if (color === mediumColor) return mdiSignalCellular2;
+        return mdiSignalCellular1;
     }
 
     /**
@@ -429,7 +429,9 @@ export class NetworkDetails extends LitElement {
 
                                       // Find the neighbor entry to get RSSI/LQI
                                       const neighborEntry = this._findNeighborEntry(node, unknown.extAddressHex);
-                                      const signalColor = neighborEntry ? getSignalColor(neighborEntry) : "#999";
+                                      const signalColor = neighborEntry
+                                          ? getSignalColor(neighborEntry)
+                                          : getCssVar("--graph-node-fallback", "#999");
                                       const rssi = neighborEntry?.avgRssi ?? neighborEntry?.lastRssi ?? null;
                                       const lqi = neighborEntry?.lqi;
 
@@ -793,269 +795,272 @@ export class NetworkDetails extends LitElement {
         `;
     }
 
-    static override styles = css`
-        :host {
-            display: block;
-            height: 100%;
-        }
+    static override styles = [
+        reducedMotionStyles,
+        css`
+            :host {
+                display: block;
+                height: 100%;
+            }
 
-        .empty-state {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            height: 100%;
-            color: var(--md-sys-color-on-surface-variant, #666);
-            text-align: center;
-            padding: 24px;
-        }
+            .empty-state {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                height: 100%;
+                color: var(--md-sys-color-on-surface-variant, #666);
+                text-align: center;
+                padding: 24px;
+            }
 
-        .details-panel {
-            display: flex;
-            flex-direction: column;
-            height: 100%;
-            background-color: var(--md-sys-color-surface, #fff);
-            border-radius: 8px;
-            border: 1px solid var(--md-sys-color-outline-variant, #ccc);
-            overflow: hidden;
-        }
+            .details-panel {
+                display: flex;
+                flex-direction: column;
+                height: 100%;
+                background-color: var(--md-sys-color-surface, #fff);
+                border-radius: 8px;
+                border: 1px solid var(--md-sys-color-outline-variant, #ccc);
+                overflow: hidden;
+            }
 
-        .header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 12px 16px;
-            background-color: var(--md-sys-color-surface-container, #f5f5f5);
-            border-bottom: 1px solid var(--md-sys-color-outline-variant, #ccc);
-        }
+            .header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 12px 16px;
+                background-color: var(--md-sys-color-surface-container, #f5f5f5);
+                border-bottom: 1px solid var(--md-sys-color-outline-variant, #ccc);
+            }
 
-        .header h3 {
-            margin: 0;
-            font-size: 1rem;
-            font-weight: 500;
-            color: var(--md-sys-color-on-surface, #333);
-        }
+            .header h3 {
+                margin: 0;
+                font-size: 1rem;
+                font-weight: 500;
+                color: var(--md-sys-color-on-surface, #333);
+            }
 
-        .node-id-hex {
-            font-size: 0.75em;
-            font-weight: 400;
-            color: var(--md-sys-color-on-surface-variant, #666);
-            font-family: monospace;
-        }
+            .node-id-hex {
+                font-size: 0.75em;
+                font-weight: 400;
+                color: var(--md-sys-color-on-surface-variant, #666);
+                font-family: var(--monospace-font, monospace);
+            }
 
-        .header-actions {
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
+            .header-actions {
+                display: flex;
+                align-items: center;
+                gap: 4px;
+            }
 
-        .action-button {
-            background: none;
-            border: none;
-            padding: 4px;
-            cursor: pointer;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
+            .action-button {
+                background: none;
+                border: none;
+                padding: 4px;
+                cursor: pointer;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
 
-        .action-button:hover {
-            background-color: var(--md-sys-color-surface-container-high, #e8e8e8);
-        }
+            .action-button:hover {
+                background-color: var(--md-sys-color-surface-container-high, #e8e8e8);
+            }
 
-        .action-button ha-svg-icon {
-            --icon-primary-color: var(--md-sys-color-on-surface-variant, #666);
-        }
+            .action-button ha-svg-icon {
+                --icon-primary-color: var(--md-sys-color-on-surface-variant, #666);
+            }
 
-        .close-button {
-            background: none;
-            border: none;
-            padding: 4px;
-            cursor: pointer;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
+            .close-button {
+                background: none;
+                border: none;
+                padding: 4px;
+                cursor: pointer;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
 
-        .close-button:hover {
-            background-color: var(--md-sys-color-surface-container-high, #e8e8e8);
-        }
+            .close-button:hover {
+                background-color: var(--md-sys-color-surface-container-high, #e8e8e8);
+            }
 
-        .close-button ha-svg-icon {
-            --icon-primary-color: var(--md-sys-color-on-surface-variant, #666);
-        }
+            .close-button ha-svg-icon {
+                --icon-primary-color: var(--md-sys-color-on-surface-variant, #666);
+            }
 
-        .content {
-            flex: 1;
-            overflow-y: auto;
-            padding: 0;
-        }
+            .content {
+                flex: 1;
+                overflow-y: auto;
+                padding: 0;
+            }
 
-        .section {
-            padding: 16px;
-        }
+            .section {
+                padding: 16px;
+            }
 
-        .section h4 {
-            margin: 0 0 12px 0;
-            font-size: 0.875rem;
-            font-weight: 500;
-            color: var(--md-sys-color-primary, #6200ee);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
+            .section h4 {
+                margin: 0 0 12px 0;
+                font-size: 0.875rem;
+                font-weight: 500;
+                color: var(--md-sys-color-primary, #6200ee);
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
 
-        .info-row {
-            display: flex;
-            justify-content: space-between;
-            padding: 6px 0;
-            font-size: 0.875rem;
-        }
+            .info-row {
+                display: flex;
+                justify-content: space-between;
+                padding: 6px 0;
+                font-size: 0.875rem;
+            }
 
-        .label {
-            color: var(--md-sys-color-on-surface-variant, #666);
-        }
+            .label {
+                color: var(--md-sys-color-on-surface-variant, #666);
+            }
 
-        .value {
-            color: var(--md-sys-color-on-surface, #333);
-            font-weight: 500;
-            text-align: right;
-            word-break: break-all;
-            max-width: 60%;
-        }
+            .value {
+                color: var(--md-sys-color-on-surface, #333);
+                font-weight: 500;
+                text-align: right;
+                word-break: break-all;
+                max-width: 60%;
+            }
 
-        .value.mono {
-            font-family: monospace;
-            font-size: 0.8rem;
-        }
+            .value.mono {
+                font-family: var(--monospace-font, monospace);
+                font-size: 0.8rem;
+            }
 
-        .status-online {
-            color: #4caf50;
-        }
+            .status-online {
+                color: var(--signal-color-strong, #4caf50);
+            }
 
-        .status-offline {
-            color: var(--danger-color, #f44336);
-        }
+            .status-offline {
+                color: var(--danger-color, #f44336);
+            }
 
-        .neighbors-list {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
+            .neighbors-list {
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+            }
 
-        .neighbor-item {
-            display: flex;
-            align-items: flex-start;
-            gap: 12px;
-            padding: 8px;
-            background-color: var(--md-sys-color-surface-container, #f5f5f5);
-            border-radius: 4px;
-        }
+            .neighbor-item {
+                display: flex;
+                align-items: flex-start;
+                gap: 12px;
+                padding: 8px;
+                background-color: var(--md-sys-color-surface-container, #f5f5f5);
+                border-radius: 4px;
+            }
 
-        .neighbor-item.clickable {
-            cursor: pointer;
-            transition: background-color 0.15s;
-        }
+            .neighbor-item.clickable {
+                cursor: pointer;
+                transition: background-color 0.15s;
+            }
 
-        .neighbor-item.clickable:hover {
-            background-color: var(--md-sys-color-surface-container-high, #e8e8e8);
-        }
+            .neighbor-item.clickable:hover {
+                background-color: var(--md-sys-color-surface-container-high, #e8e8e8);
+            }
 
-        .neighbor-item ha-svg-icon {
-            flex-shrink: 0;
-            margin-top: 2px;
-        }
+            .neighbor-item ha-svg-icon {
+                flex-shrink: 0;
+                margin-top: 2px;
+            }
 
-        .neighbor-info {
-            flex: 1;
-            min-width: 0;
-        }
+            .neighbor-info {
+                flex: 1;
+                min-width: 0;
+            }
 
-        .neighbor-name {
-            font-size: 0.875rem;
-            color: var(--md-sys-color-on-surface, #333);
-            word-break: break-word;
-        }
+            .neighbor-name {
+                font-size: 0.875rem;
+                color: var(--md-sys-color-on-surface, #333);
+                word-break: break-word;
+            }
 
-        .neighbor-signal {
-            font-size: 0.75rem;
-            color: var(--md-sys-color-on-surface-variant, #666);
-            margin-top: 2px;
-        }
+            .neighbor-signal {
+                font-size: 0.75rem;
+                color: var(--md-sys-color-on-surface-variant, #666);
+                margin-top: 2px;
+            }
 
-        .direction-hint {
-            font-style: italic;
-            opacity: 0.8;
-        }
+            .direction-hint {
+                font-style: italic;
+                opacity: 0.8;
+            }
 
-        .route-info {
-            color: var(--md-sys-color-tertiary, #7d5260);
-            font-size: 0.85em;
-        }
+            .route-info {
+                color: var(--md-sys-color-tertiary, #7d5260);
+                font-size: 0.85em;
+            }
 
-        .footer {
-            padding: 12px 16px;
-            border-top: 1px solid var(--md-sys-color-outline-variant, #ccc);
-            text-align: center;
-        }
+            .footer {
+                padding: 12px 16px;
+                border-top: 1px solid var(--md-sys-color-outline-variant, #ccc);
+                text-align: center;
+            }
 
-        .view-link {
-            color: var(--md-sys-color-primary, #6200ee);
-            text-decoration: none;
-            font-size: 0.875rem;
-            font-weight: 500;
-        }
+            .view-link {
+                color: var(--md-sys-color-primary, #6200ee);
+                text-decoration: none;
+                font-size: 0.875rem;
+                font-weight: 500;
+            }
 
-        .view-link:hover {
-            text-decoration: underline;
-        }
+            .view-link:hover {
+                text-decoration: underline;
+            }
 
-        md-divider {
-            --md-divider-color: var(--md-sys-color-outline-variant, #ccc);
-        }
+            md-divider {
+                --md-divider-color: var(--md-sys-color-outline-variant, #ccc);
+            }
 
-        .hint-text {
-            font-size: 0.8rem;
-            color: var(--md-sys-color-on-surface-variant, #666);
-            line-height: 1.4;
-            margin: 0;
-        }
+            .hint-text {
+                font-size: 0.8rem;
+                color: var(--md-sys-color-on-surface-variant, #666);
+                line-height: 1.4;
+                margin: 0;
+            }
 
-        .connected-nodes-list {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
+            .connected-nodes-list {
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+            }
 
-        .connected-node-item {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 8px;
-            background-color: var(--md-sys-color-surface-container, #f5f5f5);
-            border-radius: 4px;
-        }
+            .connected-node-item {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 8px;
+                background-color: var(--md-sys-color-surface-container, #f5f5f5);
+                border-radius: 4px;
+            }
 
-        .connected-node-item.clickable {
-            cursor: pointer;
-            transition: background-color 0.15s;
-        }
+            .connected-node-item.clickable {
+                cursor: pointer;
+                transition: background-color 0.15s;
+            }
 
-        .connected-node-item.clickable:hover {
-            background-color: var(--md-sys-color-surface-container-high, #e8e8e8);
-        }
+            .connected-node-item.clickable:hover {
+                background-color: var(--md-sys-color-surface-container-high, #e8e8e8);
+            }
 
-        .connected-node-item .node-name {
-            font-size: 0.875rem;
-            color: var(--md-sys-color-on-surface, #333);
-            word-break: break-word;
-        }
+            .connected-node-item .node-name {
+                font-size: 0.875rem;
+                color: var(--md-sys-color-on-surface, #333);
+                word-break: break-word;
+            }
 
-        .connected-node-item .node-signal {
-            font-size: 0.8rem;
-            font-weight: 500;
-            flex-shrink: 0;
-            margin-left: 8px;
-        }
-    `;
+            .connected-node-item .node-signal {
+                font-size: 0.8rem;
+                font-weight: 500;
+                flex-shrink: 0;
+                margin-left: 8px;
+            }
+        `,
+    ];
 }

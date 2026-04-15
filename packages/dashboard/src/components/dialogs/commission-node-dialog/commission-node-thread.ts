@@ -14,6 +14,7 @@ import { customElement, property, query, state } from "lit/decorators.js";
 import { clientContext } from "../../../client/client-context.js";
 import { handleAsync } from "../../../util/async-handler.js";
 import { fireEvent } from "../../../util/fire_event.js";
+import { showAlertDialog } from "../../dialog-box/show-dialog-box.js";
 
 @customElement("commission-node-thread")
 export class CommissionNodeThread extends LitElement {
@@ -31,7 +32,11 @@ export class CommissionNodeThread extends LitElement {
 
     protected override render() {
         if (!this.client.serverInfo.thread_credentials_set) {
-            return html`<md-outlined-text-field label="Thread dataset" .disabled="${this._loading}">
+            return html`<md-outlined-text-field
+                    label="Thread dataset"
+                    .disabled="${this._loading}"
+                    supporting-text="Hex string (e.g. 0E080000...)"
+                >
                 </md-outlined-text-field>
                 <br />
                 <br />
@@ -50,18 +55,21 @@ export class CommissionNodeThread extends LitElement {
     private async _setThreadDataset() {
         const dataset = this._datasetField.value.trim();
         if (!dataset) {
-            alert("Dataset is required");
+            showAlertDialog({ title: "Validation error", text: "Dataset is required" });
             return;
         }
         if (!/^[0-9a-fA-F]*$/.test(dataset) || dataset.length % 2 !== 0) {
-            alert("Invalid Thread dataset: must be a hex string with even length (each byte is two hex characters)");
+            showAlertDialog({
+                title: "Invalid Thread dataset",
+                text: "Must be a hex string with even length (each byte is two hex characters)",
+            });
             return;
         }
         this._loading = true;
         try {
             await this.client.setThreadOperationalDataset(dataset);
         } catch (err) {
-            alert(`Error setting Thread dataset: ${(err as Error).message}`);
+            showAlertDialog({ title: "Error setting Thread dataset", text: (err as Error).message });
         } finally {
             this._loading = false;
         }
@@ -73,7 +81,7 @@ export class CommissionNodeThread extends LitElement {
             const node = await this.client.commissionWithCode(this._pairingCodeField.value, false);
             fireEvent(this, "node-commissioned", node);
         } catch (err) {
-            alert(`Error commissioning node: ${(err as Error).message}`);
+            showAlertDialog({ title: "Error commissioning node", text: (err as Error).message });
         } finally {
             this._loading = false;
         }

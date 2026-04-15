@@ -15,6 +15,7 @@ import { css, html, LitElement, nothing } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
 import { fireAndForget, handleAsync } from "../../../util/async-handler.js";
 import { preventDefault } from "../../../util/prevent_default.js";
+import { showAlertDialog } from "../../dialog-box/show-dialog-box.js";
 
 const LOG_LEVELS: { value: LogLevelString; label: string }[] = [
     { value: "critical", label: "Critical" },
@@ -73,7 +74,7 @@ export class LogLevelDialog extends LitElement {
             this._close();
         } catch (err) {
             console.error("Failed to apply log levels:", err);
-            alert("Failed to apply log levels");
+            showAlertDialog({ title: "Error", text: "Failed to apply log levels" });
         } finally {
             this._applying = false;
         }

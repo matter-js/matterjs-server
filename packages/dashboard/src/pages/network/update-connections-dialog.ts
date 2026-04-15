@@ -12,6 +12,7 @@ import type { MatterClient, MatterNode } from "@matter-server/ws-client";
 import { mdiLoading } from "@mdi/js";
 import { LitElement, css, html, nothing, svg } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import { reducedMotionStyles } from "../../util/shared-styles.js";
 import { getNetworkType } from "./network-utils.js";
 
 declare global {
@@ -267,61 +268,64 @@ export class UpdateConnectionsDialog extends LitElement {
         `;
     }
 
-    static override styles = css`
-        md-dialog {
-            --md-dialog-container-color: var(--md-sys-color-surface, #fff);
-        }
-
-        [slot="content"] {
-            padding: 0 24px;
-        }
-
-        [slot="content"] p {
-            margin: 0 0 16px 0;
-            font-size: 0.875rem;
-            line-height: 1.5;
-            color: var(--md-sys-color-on-surface, #333);
-        }
-
-        [slot="content"] p:last-child {
-            margin-bottom: 0;
-        }
-
-        .checkbox-row {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            cursor: pointer;
-            font-size: 0.875rem;
-            color: var(--md-sys-color-on-surface, #333);
-        }
-
-        .updating-content {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .spinner {
-            animation: spin 1s linear infinite;
-            flex-shrink: 0;
-        }
-
-        .updating-content svg {
-            color: inherit;
-        }
-
-        @keyframes spin {
-            from {
-                transform: rotate(0deg);
+    static override styles = [
+        reducedMotionStyles,
+        css`
+            md-dialog {
+                --md-dialog-container-color: var(--md-sys-color-surface, #fff);
             }
-            to {
-                transform: rotate(360deg);
-            }
-        }
 
-        md-filled-button {
-            min-width: 140px;
-        }
-    `;
+            [slot="content"] {
+                padding: 0 24px;
+            }
+
+            [slot="content"] p {
+                margin: 0 0 16px 0;
+                font-size: 0.875rem;
+                line-height: 1.5;
+                color: var(--md-sys-color-on-surface, #333);
+            }
+
+            [slot="content"] p:last-child {
+                margin-bottom: 0;
+            }
+
+            .checkbox-row {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                cursor: pointer;
+                font-size: 0.875rem;
+                color: var(--md-sys-color-on-surface, #333);
+            }
+
+            .updating-content {
+                display: inline-flex;
+                align-items: center;
+                gap: 8px;
+            }
+
+            .spinner {
+                animation: spin 1s linear infinite;
+                flex-shrink: 0;
+            }
+
+            .updating-content svg {
+                color: inherit;
+            }
+
+            @keyframes spin {
+                from {
+                    transform: rotate(0deg);
+                }
+                to {
+                    transform: rotate(360deg);
+                }
+            }
+
+            md-filled-button {
+                min-width: 140px;
+            }
+        `,
+    ];
 }

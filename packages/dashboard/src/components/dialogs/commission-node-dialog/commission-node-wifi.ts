@@ -14,6 +14,7 @@ import { customElement, property, query, state } from "lit/decorators.js";
 import { clientContext } from "../../../client/client-context.js";
 import { handleAsync } from "../../../util/async-handler.js";
 import { fireEvent } from "../../../util/fire_event.js";
+import { showAlertDialog } from "../../dialog-box/show-dialog-box.js";
 
 @customElement("commission-node-wifi")
 export class CommissionNodeWifi extends LitElement {
@@ -33,16 +34,19 @@ export class CommissionNodeWifi extends LitElement {
 
     protected override render() {
         if (!this.client.serverInfo.wifi_credentials_set) {
-            return html`<md-outlined-text-field label="SSID" .disabled="${this._loading}"> </md-outlined-text-field>
+            return html`<md-outlined-text-field
+                    label="SSID"
+                    .disabled="${this._loading}"
+                    supporting-text="Network name"
+                >
+                </md-outlined-text-field>
                 <md-outlined-text-field label="Password" type="password" .disabled="${this._loading}">
                 </md-outlined-text-field>
                 <br />
                 <br />
                 <md-outlined-button @click=${handleAsync(() => this._setWifiCredentials())} .disabled="${this._loading}"
                     >Set WiFi Credentials</md-outlined-button
-                >${this._loading
-                    ? html`<md-circular-progress indeterminate .visible="${this._loading}"></md-circular-progress>`
-                    : nothing}`;
+                >${this._loading ? html`<md-circular-progress indeterminate></md-circular-progress>` : nothing}`;
         }
         return html`<md-outlined-text-field label="Pairing code" .disabled="${this._loading}"> </md-outlined-text-field>
             <br />
@@ -55,19 +59,19 @@ export class CommissionNodeWifi extends LitElement {
     private async _setWifiCredentials() {
         const ssid = this._ssidField.value;
         if (!ssid) {
-            alert("SSID is required");
+            showAlertDialog({ title: "Validation error", text: "SSID is required" });
             return;
         }
         const password = this._passwordField.value;
         if (!password) {
-            alert("Password is required");
+            showAlertDialog({ title: "Validation error", text: "Password is required" });
             return;
         }
         this._loading = true;
         try {
             await this.client.setWifiCredentials(ssid, password);
         } catch (err) {
-            alert(`Error setting WiFi credentials: \n${(err as Error).message}`);
+            showAlertDialog({ title: "Error setting WiFi credentials", text: (err as Error).message });
         } finally {
             this._loading = false;
         }
@@ -76,14 +80,14 @@ export class CommissionNodeWifi extends LitElement {
     private async _commissionNode() {
         try {
             if (!this._pairingCodeField.value) {
-                alert("Pairing code is required");
+                showAlertDialog({ title: "Validation error", text: "Pairing code is required" });
                 return;
             }
             this._loading = true;
             const node = await this.client.commissionWithCode(this._pairingCodeField.value, false);
             fireEvent(this, "node-commissioned", node);
         } catch (err) {
-            alert(`Error commissioning node: \n${(err as Error).message}`);
+            showAlertDialog({ title: "Error commissioning node", text: (err as Error).message });
         } finally {
             this._loading = false;
         }

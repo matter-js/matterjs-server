@@ -250,7 +250,7 @@ export class NodeBindingDialog extends LitElement {
         const rawNodeId = this._targetNodeId.value?.trim();
         if (rawNodeId) {
             if (!/^\d+$/.test(rawNodeId)) {
-                alert("Please enter a valid target node ID");
+                showAlertDialog({ title: "Validation error", text: "Please enter a valid target node ID" });
                 return;
             }
             targetNodeId = BigInt(rawNodeId);
@@ -259,12 +259,12 @@ export class NodeBindingDialog extends LitElement {
         const targetCluster = this._targetCluster.value ? parseInt(this._targetCluster.value, 10) : undefined;
 
         if (targetNodeId === undefined || targetNodeId <= 0n) {
-            alert("Please enter a valid target node ID");
+            showAlertDialog({ title: "Validation error", text: "Please enter a valid target node ID" });
             return;
         }
 
         if (targetEndpoint === undefined || targetEndpoint <= 0 || targetEndpoint > 0xfffe) {
-            alert("Please enter a valid target endpoint");
+            showAlertDialog({ title: "Validation error", text: "Please enter a valid target endpoint" });
             return;
         }
 
@@ -272,7 +272,7 @@ export class NodeBindingDialog extends LitElement {
         if (targetCluster !== undefined) {
             // We ignore vendor specific clusters for now
             if (targetCluster < 0 || targetCluster > 0x7fff) {
-                alert("Please enter a valid target cluster");
+                showAlertDialog({ title: "Validation error", text: "Please enter a valid target cluster" });
                 return;
             }
         }
@@ -294,11 +294,11 @@ export class NodeBindingDialog extends LitElement {
 
         const aclResult = await this.add_target_acl(targetNodeId, acl_entry);
         if (aclResult.outcome === "all_failed") {
-            alert(`Failed to add ACL entry:\n${aclResult.message}`);
+            showAlertDialog({ title: "Failed to add ACL entry", text: aclResult.message });
             return;
         }
         if (aclResult.outcome === "partial") {
-            alert(`ACL entry partially failed:\n${aclResult.message}`);
+            showAlertDialog({ title: "ACL entry partially failed", text: aclResult.message });
             // Continue with binding attempt since some ACL entries succeeded
         }
 
@@ -320,10 +320,10 @@ export class NodeBindingDialog extends LitElement {
             this._targetCluster.value = "";
             this.requestUpdate();
         } else if (bindingResult.outcome === "partial") {
-            alert(`Binding partially failed:\n${bindingResult.message}`);
+            showAlertDialog({ title: "Binding partially failed", text: bindingResult.message });
             this.requestUpdate(); // Update UI to show what succeeded
         } else {
-            alert(`Failed to add binding:\n${bindingResult.message}`);
+            showAlertDialog({ title: "Failed to add binding", text: bindingResult.message });
         }
     }
 
@@ -367,11 +367,11 @@ export class NodeBindingDialog extends LitElement {
                 </div>
                 <div slot="content">
                     <div>
-                        <md-list style="padding-bottom:18px;">
+                        <md-list style="padding-bottom:16px;">
                             ${Object.values(bindings).map(
                                 (entry, index) => html`
                   <md-list-item class="binding-item">
-                    <div style="display:flex;gap:10px;">
+                    <div style="display:flex;gap:8px;">
                         <div>node:${entry["node"]}</div>
                         <div>endpoint:${entry["endpoint"]}</div>
                         ${entry["cluster"] ? html` <div>cluster:${entry["cluster"]}</div> ` : nothing}
@@ -420,13 +420,13 @@ export class NodeBindingDialog extends LitElement {
                             </div>
                         </div>
                         <div style="margin:8px;">
-                            <Text style="font-size: 10px;font-style: italic;font-weight: bold;">
+                            <span style="font-size: 0.75rem;font-style: italic;font-weight: bold;">
                                 Note: The Cluster ID field is optional according to the Matter specification. If you
                                 leave it blank, the binding applies to all eligible clusters on the target endpoint.
                                 However, some devices may require a specific cluster to be set in order for the binding
                                 to function correctly. If you experience unexpected behavior, try specifying the cluster
                                 explicitly.
-                            </Text>
+                            </span>
                         </div>
                     </div>
                 </div>
@@ -459,7 +459,7 @@ export class NodeBindingDialog extends LitElement {
 
         .target-item {
             display: inline-block;
-            padding: 20px 10px 10px 10px;
+            padding: 16px 8px 8px 8px;
             border-radius: 4px;
             vertical-align: middle;
             min-width: 80px;
@@ -469,11 +469,11 @@ export class NodeBindingDialog extends LitElement {
 
         .group-label {
             position: absolute;
-            left: 15px;
+            left: 16px;
             top: -12px;
             background: var(--md-sys-color-primary);
             color: var(--md-sys-color-on-primary);
-            padding: 3px 15px;
+            padding: 4px 16px;
             border-radius: 4px;
         }
     `;
