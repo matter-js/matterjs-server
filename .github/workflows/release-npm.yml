@@ -200,7 +200,7 @@ jobs:
       - name: Determine version
         if: steps.publish_tasks.outputs.pr_merged == 'true'
         id: version
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           result-encoding: string
           script: |
@@ -322,7 +322,7 @@ jobs:
 
       - name: Build and push Docker image (release)
         if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.docker_needed == 'true' && !contains(steps.version.outputs.result, '-')
-        uses: docker/build-push-action@v7.0.0
+        uses: docker/build-push-action@v7.1.0
         with:
           context: ./docker/matterjs-server
           platforms: linux/amd64,linux/arm64
@@ -340,7 +340,7 @@ jobs:
 
       - name: Build and push Docker image (pre-release)
         if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.docker_needed == 'true' && contains(steps.version.outputs.result, '-')
-        uses: docker/build-push-action@v7.0.0
+        uses: docker/build-push-action@v7.1.0
         with:
           context: ./docker/matterjs-server
           platforms: linux/amd64,linux/arm64
