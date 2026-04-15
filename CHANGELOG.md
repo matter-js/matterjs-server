@@ -7,6 +7,12 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
+## __WORK IN PROGRESS__
+- Change: Consider devices as offline 3 minutes in the reconnection state
+- Adjustment: Streamlined some Dashboard UI topics to have a more streamlined UI and basis for enhancements
+- Fix: Update matter.js to the latest 0.17.0-nightly
+    - Improves DNS-SD discovery reliability
+
 ## 0.5.15 (2026-04-10)
 - No-Change-Re-Release because Python and Docker had publishing issues on GitHub for 0.5.14
 
@@ -16,7 +22,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Fix: Fixes shutdown hang when SIGINT arrives during the startup phase
 - Fix: Adds global attributes to custom cluster Python classes
 - Fix: Update matter.js to the latest 0.17.0-nightly
-    - Fixes and enhances multiple commissioning issues around Discovery, PASE and BLE
+    - Fixes and enhances multiple commissioning issues around Discovery, PASE, and BLE
     - More RAM optimizations
     - Fixes cache flush crash and data race after node deletion
     - Reintroduces Probe logging

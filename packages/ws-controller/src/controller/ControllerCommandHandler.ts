@@ -110,7 +110,7 @@ import { Nodes } from "./Nodes.js";
 const logger = Logger.get("ControllerCommandHandler");
 
 /** After this duration in Reconnecting state, declare the node unavailable */
-const RECONNECT_TIMEOUT = Minutes(5);
+const RECONNECT_TIMEOUT = Minutes(3);
 
 /**
  * Cluster IDs whose attribute changes should trigger a full node_updated broadcast.
