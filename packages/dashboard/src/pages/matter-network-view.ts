@@ -9,6 +9,7 @@ import { mdiFitToScreen, mdiMagnifyMinus, mdiMagnifyPlus, mdiPause, mdiPlay } fr
 import { css, html, LitElement } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
 import "../components/ha-svg-icon";
+import { reducedMotionStyles } from "../util/shared-styles.js";
 import "./components/footer";
 import "./components/header";
 import type { ActiveView } from "./components/header.js";
@@ -324,234 +325,242 @@ class MatterNetworkView extends LitElement {
         `;
     }
 
-    static override styles = css`
-        :host {
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-            height: 100dvh; /* dynamic viewport height - fallback above for older browsers */
-            overflow: hidden;
-            background-color: var(--md-sys-color-background, #fafafa);
-        }
-
-        .content {
-            display: flex;
-            flex: 1 1 0;
-            padding: 8px 16px;
-            gap: 8px;
-            max-width: 1600px;
-            margin: 0 auto;
-            width: 100%;
-            box-sizing: border-box;
-            min-height: 0;
-            overflow: hidden;
-        }
-
-        .main-area {
-            flex: 1 1 0;
-            display: flex;
-            flex-direction: column;
-            min-width: 0;
-            min-height: 0;
-            overflow: hidden;
-        }
-
-        .graph-section {
-            flex: 1 1 0;
-            min-height: 0;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }
-
-        .graph-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 4px;
-            flex-shrink: 0;
-        }
-
-        .graph-header h2 {
-            margin: 0;
-            font-size: 1.1rem;
-            font-weight: 500;
-            color: var(--md-sys-color-on-background, #333);
-        }
-
-        .graph-controls {
-            display: flex;
-            gap: 4px;
-        }
-
-        .graph-actions {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            min-width: 0;
-        }
-
-        .thread-search {
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
-
-        .thread-search input {
-            width: 260px;
-            max-width: 45vw;
-            padding: 6px 8px;
-            border: 1px solid var(--md-sys-color-outline-variant, #ccc);
-            border-radius: 4px;
-            background-color: var(--md-sys-color-surface, #fff);
-            color: var(--md-sys-color-on-surface, #1c1b1f);
-            font: inherit;
-        }
-
-        .thread-search input:focus {
-            outline: 2px solid var(--md-sys-color-primary, #6750a4);
-            outline-offset: 1px;
-        }
-
-        .search-button {
-            padding: 6px 10px;
-            border: 1px solid var(--md-sys-color-outline-variant, #ccc);
-            border-radius: 4px;
-            background-color: var(--md-sys-color-surface, #fff);
-            color: var(--md-sys-color-on-surface, #1c1b1f);
-            cursor: pointer;
-            font: inherit;
-        }
-
-        .search-button:hover {
-            background-color: var(--md-sys-color-surface-container-high, #e8e8e8);
-        }
-
-        .thread-search-status {
-            margin: 0 0 6px;
-            font-size: 0.85rem;
-            color: var(--md-sys-color-on-surface-variant, #666);
-        }
-
-        .thread-search-status.found {
-            color: #2e7d32;
-        }
-
-        .thread-search-status.not-found {
-            color: #c62828;
-        }
-
-        .control-button {
-            background: none;
-            border: 1px solid var(--md-sys-color-outline-variant, #ccc);
-            border-radius: 4px;
-            padding: 6px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition:
-                background-color 0.2s,
-                border-color 0.2s;
-        }
-
-        .control-button:hover {
-            background-color: var(--md-sys-color-surface-container-high, #e8e8e8);
-        }
-
-        .control-button.active {
-            background-color: var(--md-sys-color-primary-container, #e8def8);
-            border-color: var(--md-sys-color-primary, #6750a4);
-        }
-
-        .control-button ha-svg-icon {
-            --icon-primary-color: var(--md-sys-color-on-surface-variant, #666);
-        }
-
-        .control-button.active ha-svg-icon {
-            --icon-primary-color: var(--md-sys-color-on-primary-container, #21005d);
-        }
-
-        .graph-section thread-graph,
-        .graph-section wifi-graph {
-            flex: 1 1 0;
-            min-height: 0;
-        }
-
-        .wifi-section {
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-            overflow-y: auto;
-        }
-
-        .wifi-section h2 {
-            margin: 0;
-            font-size: 1.25rem;
-            font-weight: 500;
-            color: var(--md-sys-color-on-background, #333);
-        }
-
-        .wifi-section device-panel {
-            flex-shrink: 0;
-        }
-
-        .details-sidebar {
-            width: 320px;
-            flex-shrink: 0;
-            display: none;
-            min-height: 0;
-            overflow-y: auto;
-        }
-
-        .details-sidebar.visible {
-            display: block;
-        }
-
-        @media (max-width: 1024px) {
-            .content {
+    static override styles = [
+        reducedMotionStyles,
+        css`
+            :host {
+                display: flex;
                 flex-direction: column;
+                height: 100vh;
+                height: 100dvh; /* dynamic viewport height - fallback above for older browsers */
+                overflow: hidden;
+                background-color: var(--md-sys-color-background, #fafafa);
+            }
+
+            .content {
+                display: flex;
+                flex: 1 1 0;
+                padding: 8px 16px;
+                gap: 8px;
+                max-width: 1600px;
+                margin: 0 auto;
+                width: 100%;
+                box-sizing: border-box;
+                min-height: 0;
+                overflow: hidden;
+            }
+
+            .main-area {
+                flex: 1 1 0;
+                display: flex;
+                flex-direction: column;
+                min-width: 0;
+                min-height: 0;
+                overflow: hidden;
+            }
+
+            .graph-section {
+                flex: 1 1 0;
+                min-height: 0;
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+            }
+
+            .graph-header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                margin-bottom: 4px;
+                flex-shrink: 0;
+            }
+
+            .graph-header h2 {
+                margin: 0;
+                font-size: 1.1rem;
+                font-weight: 500;
+                color: var(--md-sys-color-on-background, #333);
+            }
+
+            .graph-controls {
+                display: flex;
+                gap: 4px;
+            }
+
+            .graph-actions {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                min-width: 0;
+            }
+
+            .thread-search {
+                display: flex;
+                align-items: center;
+                gap: 4px;
+            }
+
+            .thread-search input {
+                width: 260px;
+                max-width: 45vw;
+                padding: 6px 8px;
+                border: 1px solid var(--md-sys-color-outline-variant, #ccc);
+                border-radius: 4px;
+                background-color: var(--md-sys-color-surface, #fff);
+                color: var(--md-sys-color-on-surface, #1c1b1f);
+                font: inherit;
+            }
+
+            .thread-search input:focus {
+                outline: 2px solid var(--md-sys-color-primary, #6750a4);
+                outline-offset: 1px;
+            }
+
+            .search-button {
+                padding: 6px 10px;
+                border: 1px solid var(--md-sys-color-outline-variant, #ccc);
+                border-radius: 4px;
+                background-color: var(--md-sys-color-surface, #fff);
+                color: var(--md-sys-color-on-surface, #1c1b1f);
+                cursor: pointer;
+                font: inherit;
+            }
+
+            .search-button:hover {
+                background-color: var(--md-sys-color-surface-container-high, #e8e8e8);
+            }
+
+            .search-button:focus-visible {
+                outline: 2px solid var(--md-sys-color-primary);
+                outline-offset: 1px;
+            }
+
+            .thread-search-status {
+                margin: 0 0 6px;
+                font-size: 0.85rem;
+                color: var(--md-sys-color-on-surface-variant, #666);
+            }
+
+            .thread-search-status.found {
+                color: var(--signal-color-strong);
+            }
+
+            .thread-search-status.not-found {
+                color: var(--md-sys-color-error);
+            }
+
+            .control-button {
+                background: none;
+                border: 1px solid var(--md-sys-color-outline-variant, #ccc);
+                border-radius: 4px;
+                padding: 6px;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                transition:
+                    background-color 0.2s,
+                    border-color 0.2s;
+            }
+
+            .control-button:hover {
+                background-color: var(--md-sys-color-surface-container-high, #e8e8e8);
+            }
+
+            .control-button.active {
+                background-color: var(--md-sys-color-primary-container, #e8def8);
+                border-color: var(--md-sys-color-primary, #6750a4);
+            }
+
+            .control-button ha-svg-icon {
+                --icon-primary-color: var(--md-sys-color-on-surface-variant, #666);
+            }
+
+            .control-button.active ha-svg-icon {
+                --icon-primary-color: var(--md-sys-color-on-primary-container, #21005d);
+            }
+
+            .graph-section thread-graph,
+            .graph-section wifi-graph {
+                flex: 1 1 0;
+                min-height: 0;
+            }
+
+            .wifi-section {
+                display: flex;
+                flex-direction: column;
+                gap: 16px;
+                overflow-y: auto;
+            }
+
+            .wifi-section h2 {
+                margin: 0;
+                font-size: 1.25rem;
+                font-weight: 500;
+                color: var(--md-sys-color-on-background, #333);
+            }
+
+            .wifi-section device-panel {
+                flex-shrink: 0;
             }
 
             .details-sidebar {
-                width: 100%;
-                max-height: 300px;
+                width: 320px;
+                flex-shrink: 0;
+                display: none;
+                min-height: 0;
+                overflow-y: auto;
             }
 
             .details-sidebar.visible {
                 display: block;
             }
-        }
 
-        @media (max-width: 600px) {
-            .content {
-                padding: 8px;
+            @media (max-width: 1024px) {
+                .content {
+                    flex-direction: column;
+                }
+
+                .details-sidebar {
+                    width: 100%;
+                    max-height: 300px;
+                }
+
+                .details-sidebar.visible {
+                    display: block;
+                }
             }
 
-            .graph-header {
-                align-items: flex-start;
-                gap: 6px;
-            }
+            @media (max-width: 600px) {
+                .content {
+                    padding: 8px;
+                }
 
-            .graph-actions {
-                flex-direction: column;
-                align-items: stretch;
-                width: 100%;
-            }
+                .graph-header {
+                    align-items: flex-start;
+                    gap: 6px;
+                }
 
-            .thread-search {
-                width: 100%;
-            }
+                .graph-actions {
+                    flex-direction: column;
+                    align-items: stretch;
+                    width: 100%;
+                }
 
-            .thread-search input {
-                flex: 1 1 auto;
-                width: auto;
-                max-width: none;
-            }
+                .thread-search {
+                    width: 100%;
+                }
 
-            .graph-controls {
-                justify-content: flex-end;
+                .thread-search input {
+                    flex: 1 1 auto;
+                    width: auto;
+                    max-width: none;
+                }
+
+                .graph-controls {
+                    justify-content: flex-end;
+                }
             }
-        }
-    `;
+        `,
+    ];
 }

@@ -27,7 +27,7 @@ import { convertWebSocketTagBasedToMatter } from "../server/Converters.js";
 
 const logger = Logger.get("LegacyDataInjector");
 
-/* eslint-disable regexp/no-unused-capturing-group */
+/**/
 const BASE64_REGEX = /^([0-9a-z+/]{4})*(([0-9a-z+/]{2}==)|([0-9a-z+/]{3}=))?$/i;
 
 const FEATUREMAP_ID = Global.attributes.featureMap.id.toString();
@@ -270,6 +270,7 @@ export namespace LegacyDataInjector {
     ) {
         const commissionedNodes = new Array<[NodeId, any]>();
         let injectedNodes = 0;
+        const writes = new Array<MaybePromise<void>>();
 
         for (const [nodeId, nodeDetails] of Object.entries(nodeData.nodes)) {
             const nodeStorage = baseStorage.createContext(`node-${nodeId}`);
@@ -283,7 +284,6 @@ export namespace LegacyDataInjector {
                 continue;
             }
             logger.info(`Injecting node ${nodeId} into storage`);
-            const nodeWrites = new Array<MaybePromise<void>>();
             for (const [attributeKey, value] of attributes) {
                 let currentEndpointId: string | undefined;
                 let currentClusterId: string | undefined;
@@ -306,7 +306,7 @@ export namespace LegacyDataInjector {
                         newNode = false;
                         injectedNodes++;
                     }
-                    nodeWrites.push(clusterStorage.set("__version__", 1));
+                    writes.push(clusterStorage.set("__version__", 1));
                 }
 
                 const clusterModel = ClusterMap[clusterId];
@@ -316,13 +316,13 @@ export namespace LegacyDataInjector {
                         logger.debug(
                             `Node ${nodeId}: Attribute ${attributeKey}, unknown featuremap converted to empty featuremap`,
                         );
-                        nodeWrites.push(clusterStorage!.set(attributeId, { value: {} } as SupportedStorageTypes));
+                        writes.push(clusterStorage!.set(attributeId, { value: {} } as SupportedStorageTypes));
                     } else if (isPrimitiveType(value) || (Array.isArray(value) && value.every(isPrimitiveType))) {
                         logger.debug(
                             `Node ${nodeId}: Attribute ${attributeKey}, unknown primary type converted generically`,
                             value,
                         );
-                        nodeWrites.push(clusterStorage!.set(attributeId, { value } as SupportedStorageTypes));
+                        writes.push(clusterStorage!.set(attributeId, { value } as SupportedStorageTypes));
                     } else {
                         logger.debug(
                             `Node ${nodeId}: Attribute ${attributeKey}, not found in and unclear value. Skipping injection.`,
@@ -335,7 +335,7 @@ export namespace LegacyDataInjector {
                             ? undefined
                             : convertWebSocketTagBasedToMatter(value, model, clusterModel.model);
                     if (convertedValue !== undefined) {
-                        nodeWrites.push(
+                        writes.push(
                             clusterStorage!.set(attributeId, { value: convertedValue } as SupportedStorageTypes),
                         );
                     } else {
@@ -343,8 +343,10 @@ export namespace LegacyDataInjector {
                     }
                 }
             }
-            await Promise.allSettled(nodeWrites);
-            nodeWrites.length = 0;
+        }
+        if (writes.length) {
+            logger.info(`... wait for all ${writes.length} records to be written ... be patent!`);
+            await Promise.allSettled(writes);
         }
 
         if (injectedNodes > 0) {
@@ -368,6 +370,7 @@ export namespace LegacyDataInjector {
     ) {
         const commissionedNodes = new Array<[NodeId, any]>();
         let injectedNodes = 0;
+        const writes = new Array<MaybePromise<void>>();
 
         let peerCounter = 1;
         for (const [nodeId, nodeDetails] of Object.entries(nodeData.nodes)) {
@@ -380,17 +383,14 @@ export namespace LegacyDataInjector {
             commissionedNodes.push([NodeId(BigInt(nodeId)), {}]);
             let newNode = true;
             logger.info(`Injecting node ${nodeId} directly into peer storage as ${peerId}`);
-            const nodeWrites = new Array<MaybePromise<void>>();
             // Define the peer address for this peer
-            nodeWrites.push(
+            writes.push(
                 peerStorage
                     .createContext("0")
                     .createContext("commissioning")
                     .set("peerAddress", PeerAddress({ fabricIndex, nodeId: NodeId(BigInt(nodeId)) })),
             );
-            nodeWrites.push(
-                peerStorage.createContext("0").createContext("commissioning").set("discoveredAt", Time.nowMs),
-            );
+            writes.push(peerStorage.createContext("0").createContext("commissioning").set("discoveredAt", Time.nowMs));
             for (const [attributeKey, value] of Object.entries(nodeDetails.attributes)) {
                 let currentEndpointId: string | undefined;
                 let currentClusterId: string | undefined;
@@ -407,13 +407,13 @@ export namespace LegacyDataInjector {
                     currentClusterId = clusterId;
                     if (newNode) {
                         // Write marker that this node is migrated, so would be skipped for full migration approach
-                        nodeWrites.push(
+                        writes.push(
                             legacyNodeStorage.createContext(endpointId).createContext(clusterId).set("__version__", 1),
                         );
                         newNode = false;
                         injectedNodes++;
                     }
-                    nodeWrites.push(clusterStorage.set("__version__", 1));
+                    writes.push(clusterStorage.set("__version__", 1));
                 }
 
                 const clusterModel = ClusterMap[clusterId];
@@ -423,13 +423,13 @@ export namespace LegacyDataInjector {
                         logger.debug(
                             `Node ${nodeId}: Attribute ${attributeKey}, unknown featuremap converted to empty featuremap`,
                         );
-                        nodeWrites.push(clusterStorage!.set(attributeId, {} as SupportedStorageTypes));
+                        writes.push(clusterStorage!.set(attributeId, {} as SupportedStorageTypes));
                     } else if (isPrimitiveType(value) || (Array.isArray(value) && value.every(isPrimitiveType))) {
                         logger.debug(
                             `Node ${nodeId}: Attribute ${attributeKey}, unknown primary type converted generically`,
                             value,
                         );
-                        nodeWrites.push(clusterStorage!.set(attributeId, value as SupportedStorageTypes));
+                        writes.push(clusterStorage!.set(attributeId, value as SupportedStorageTypes));
                     } else {
                         logger.debug(
                             `Node ${nodeId}: Attribute ${attributeKey}, not found in and unclear value. Skipping injection.`,
@@ -442,14 +442,16 @@ export namespace LegacyDataInjector {
                             ? undefined
                             : convertWebSocketTagBasedToMatter(value, model, clusterModel.model);
                     if (convertedValue !== undefined) {
-                        nodeWrites.push(clusterStorage!.set(attributeId, convertedValue as SupportedStorageTypes));
+                        writes.push(clusterStorage!.set(attributeId, convertedValue as SupportedStorageTypes));
                     } else {
                         logger.debug(`Attribute ${attributeKey} could not be converted. Skipping injection.`);
                     }
                 }
             }
-            await Promise.allSettled(nodeWrites);
-            nodeWrites.length = 0;
+        }
+        if (writes.length) {
+            logger.info(`... wait for all ${writes.length} records to be written ... be patent!`);
+            await Promise.allSettled(writes);
         }
 
         if (injectedNodes > 0) {

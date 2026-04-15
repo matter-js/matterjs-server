@@ -9,6 +9,7 @@ import { LitElement, css } from "lit";
 import { property, state } from "lit/decorators.js";
 // @ts-expect-error vis-network doesn't have proper type declarations for standalone export
 import { DataSet, Network } from "vis-network/standalone";
+import { getCssVar } from "../../util/shared-styles.js";
 import { ThemeService } from "../../util/theme-service.js";
 import type { NetworkGraphEdge, NetworkGraphNode } from "./network-types.js";
 
@@ -43,11 +44,11 @@ export abstract class BaseNetworkGraph extends LitElement {
     private _originalEdgeColors: Map<string, { color: string; highlight: string }> = new Map();
 
     protected _getFontColor(): string {
-        return ThemeService.effectiveTheme === "dark" ? "#e0e0e0" : "#333333";
+        return getCssVar("--graph-font-color", ThemeService.effectiveTheme === "dark" ? "#e0e0e0" : "#333333");
     }
 
     protected _getDimmedEdgeColor(): string {
-        return ThemeService.effectiveTheme === "dark" ? "#555555" : "#cccccc";
+        return getCssVar("--graph-edge-dimmed", ThemeService.effectiveTheme === "dark" ? "#555555" : "#cccccc");
     }
 
     /**
@@ -432,7 +433,7 @@ export abstract class BaseNetworkGraph extends LitElement {
             if (!this._originalEdgeColors.has(edgeId)) {
                 const colorObj = edge.color as { color: string; highlight: string } | undefined;
                 // Extract colors, with fallbacks
-                const color = colorObj?.color ?? "#999999";
+                const color = colorObj?.color ?? getCssVar("--graph-node-fallback", "#999999");
                 const highlight = colorObj?.highlight ?? color;
                 this._originalEdgeColors.set(edgeId, { color, highlight });
             }
@@ -459,7 +460,10 @@ export abstract class BaseNetworkGraph extends LitElement {
             const isConnected = edge.from === nodeId || edge.to === nodeId;
             const originalColor = this._originalEdgeColors.get(String(edge.id));
             // Use stored original color for connected edges, fallback to a default if somehow missing
-            const connectedColor = originalColor ?? { color: "#999999", highlight: "#999999" };
+            const connectedColor = originalColor ?? {
+                color: getCssVar("--graph-node-fallback", "#999999"),
+                highlight: getCssVar("--graph-node-fallback", "#999999"),
+            };
             return {
                 id: edge.id,
                 width: isConnected ? 3 : 1,
@@ -502,7 +506,10 @@ export abstract class BaseNetworkGraph extends LitElement {
             return {
                 id: edge.id,
                 width: 2,
-                color: originalColor ?? { color: "#999999", highlight: "#999999" },
+                color: originalColor ?? {
+                    color: getCssVar("--graph-node-fallback", "#999999"),
+                    highlight: getCssVar("--graph-node-fallback", "#999999"),
+                },
             };
         });
         this._edgesDataSet.update(edgeUpdates);

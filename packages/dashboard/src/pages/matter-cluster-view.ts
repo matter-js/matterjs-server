@@ -5,11 +5,13 @@
  */
 
 import { provide } from "@lit/context";
+import "@material/web/button/outlined-button";
 import "@material/web/divider/divider";
 import "@material/web/iconbutton/icon-button";
 import "@material/web/list/list";
 import "@material/web/list/list-item";
 import { isTestNodeId, MatterClient, MatterNode, toBigIntAwareJson } from "@matter-server/ws-client";
+import { mdiAlertCircleOutline } from "@mdi/js";
 import { css, html, LitElement } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
@@ -19,6 +21,7 @@ import "../components/ha-svg-icon";
 import "../pages/components/node-details";
 // Cluster command components (auto-register on import)
 import { formatHex, formatNodeAddress, getEffectiveFabricIndex } from "../util/format_hex.js";
+import { notFoundStyles } from "../util/shared-styles.js";
 import { getClusterCommandsTag } from "./cluster-commands/index.js";
 import { bindingContext } from "./components/context.js";
 
@@ -74,8 +77,12 @@ class MatterClusterView extends LitElement {
     override render() {
         if (!this.node || this.endpoint == undefined || this.cluster == undefined) {
             return html`
-                <p>Node, endpoint or cluster not found!</p>
-                <button @click=${this._goBack}>Back</button>
+                <dashboard-header title="Not found" .client=${this.client} backButton="#"></dashboard-header>
+                <div class="not-found">
+                    <ha-svg-icon .path=${mdiAlertCircleOutline}></ha-svg-icon>
+                    <p>Node, endpoint, or cluster not found</p>
+                    <md-outlined-button @click=${this._goBack}>Back</md-outlined-button>
+                </div>
             `;
         }
 
@@ -127,13 +134,13 @@ class MatterClusterView extends LitElement {
                                 </div>
                                 <div slot="end">
                                     ${toBigIntAwareJson(attribute.value).length > 30
-                                        ? html`<button
+                                        ? html`<md-outlined-button
                                               @click=${() => {
                                                   this._showAttributeValue(attribute.value);
                                               }}
                                           >
                                               Show value
-                                          </button>`
+                                          </md-outlined-button>`
                                         : html`<code>${toBigIntAwareJson(attribute.value)}</code>`}
                                 </div>
                             </md-list-item>
@@ -190,45 +197,48 @@ class MatterClusterView extends LitElement {
         history.back();
     }
 
-    static override styles = css`
-        :host {
-            display: block;
-            background-color: var(--md-sys-color-background);
-        }
+    static override styles = [
+        notFoundStyles,
+        css`
+            :host {
+                display: block;
+                background-color: var(--md-sys-color-background);
+            }
 
-        .header {
-            background-color: var(--md-sys-color-primary);
-            color: var(--md-sys-color-on-primary);
-            --icon-primary-color: var(--md-sys-color-on-primary);
-            font-weight: 400;
-            display: flex;
-            align-items: center;
-            padding-right: 8px;
-            height: 48px;
-        }
+            .header {
+                background-color: var(--md-sys-color-primary);
+                color: var(--md-sys-color-on-primary);
+                --icon-primary-color: var(--md-sys-color-on-primary);
+                font-weight: 400;
+                display: flex;
+                align-items: center;
+                padding-right: 8px;
+                height: 48px;
+            }
 
-        md-icon-button {
-            margin-right: 8px;
-        }
+            md-icon-button {
+                margin-right: 8px;
+            }
 
-        .flex {
-            flex: 1;
-        }
+            .flex {
+                flex: 1;
+            }
 
-        .container {
-            padding: 16px;
-            max-width: 95%;
-            margin: 0 auto;
-        }
+            .container {
+                padding: 16px;
+                max-width: 95%;
+                margin: 0 auto;
+            }
 
-        .status {
-            color: var(--danger-color);
-            font-weight: bold;
-            font-size: 0.8em;
-        }
+            .status {
+                color: var(--danger-color);
+                font-weight: bold;
+                font-size: 0.8em;
+            }
 
-        md-list-item.alternate-row {
-            background-color: rgba(128, 128, 128, 0.1);
-        }
-    `;
+            md-list-item.alternate-row {
+                background-color: var(--md-sys-color-surface-container-low);
+            }
+        `,
+    ];
 }

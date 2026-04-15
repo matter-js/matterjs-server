@@ -4,18 +4,20 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import "@material/web/button/outlined-button";
 import "@material/web/divider/divider";
 import "@material/web/iconbutton/icon-button";
 import "@material/web/list/list";
 import "@material/web/list/list-item";
 import { MatterClient, MatterNode, isTestNodeId } from "@matter-server/ws-client";
-import { mdiChevronRight } from "@mdi/js";
+import { mdiAlertCircleOutline, mdiChevronRight } from "@mdi/js";
 import { LitElement, css, html } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { guard } from "lit/directives/guard.js";
 import { DeviceType, clusters, device_types } from "../client/models/descriptions.js";
 import "../components/ha-svg-icon";
 import { formatHex, formatNodeAddress, getEffectiveFabricIndex } from "../util/format_hex.js";
+import { notFoundStyles } from "../util/shared-styles.js";
 
 declare global {
     interface HTMLElementTagNameMap {
@@ -57,8 +59,12 @@ class MatterEndpointView extends LitElement {
     override render() {
         if (!this.node || this.endpoint == undefined) {
             return html`
-                <p>Node or endpoint not found!</p>
-                <button @click=${this._goBack}>Back</button>
+                <dashboard-header title="Not found" .client=${this.client} backButton="#"></dashboard-header>
+                <div class="not-found">
+                    <ha-svg-icon .path=${mdiAlertCircleOutline}></ha-svg-icon>
+                    <p>Node or endpoint not found</p>
+                    <md-outlined-button @click=${this._goBack}>Back</md-outlined-button>
+                </div>
             `;
         }
 
@@ -120,41 +126,44 @@ class MatterEndpointView extends LitElement {
         history.back();
     }
 
-    static override styles = css`
-        :host {
-            display: block;
-            background-color: var(--md-sys-color-background);
-        }
+    static override styles = [
+        notFoundStyles,
+        css`
+            :host {
+                display: block;
+                background-color: var(--md-sys-color-background);
+            }
 
-        .header {
-            background-color: var(--md-sys-color-primary);
-            color: var(--md-sys-color-on-primary);
-            --icon-primary-color: var(--md-sys-color-on-primary);
-            font-weight: 400;
-            display: flex;
-            align-items: center;
-            padding-right: 8px;
-            height: 48px;
-        }
+            .header {
+                background-color: var(--md-sys-color-primary);
+                color: var(--md-sys-color-on-primary);
+                --icon-primary-color: var(--md-sys-color-on-primary);
+                font-weight: 400;
+                display: flex;
+                align-items: center;
+                padding-right: 8px;
+                height: 48px;
+            }
 
-        md-icon-button {
-            margin-right: 8px;
-        }
+            md-icon-button {
+                margin-right: 8px;
+            }
 
-        .flex {
-            flex: 1;
-        }
+            .flex {
+                flex: 1;
+            }
 
-        .container {
-            padding: 16px;
-            max-width: 95%;
-            margin: 0 auto;
-        }
+            .container {
+                padding: 16px;
+                max-width: 95%;
+                margin: 0 auto;
+            }
 
-        .status {
-            color: var(--danger-color);
-            font-weight: bold;
-            font-size: 0.8em;
-        }
-    `;
+            .status {
+                color: var(--danger-color);
+                font-weight: bold;
+                font-size: 0.8em;
+            }
+        `,
+    ];
 }

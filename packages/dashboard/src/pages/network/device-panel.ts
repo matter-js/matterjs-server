@@ -70,6 +70,13 @@ export class DevicePanel extends LitElement {
         this._isExpanded = !this._isExpanded;
     }
 
+    private _handleHeaderKeydown(event: KeyboardEvent): void {
+        if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            this._toggleExpanded();
+        }
+    }
+
     private _handleNodeClick(nodeId: number | bigint): void {
         this.dispatchEvent(
             new CustomEvent("node-selected", {
@@ -87,7 +94,14 @@ export class DevicePanel extends LitElement {
 
         return html`
             <div class="panel">
-                <div class="header" @click=${this._toggleExpanded}>
+                <div
+                    class="header"
+                    role="button"
+                    tabindex="0"
+                    aria-expanded=${this._isExpanded}
+                    @click=${this._toggleExpanded}
+                    @keydown=${this._handleHeaderKeydown}
+                >
                     <ha-svg-icon .path=${this._getIcon()} class="type-icon"></ha-svg-icon>
                     <span class="title">${this._getTitle()}</span>
                     <span class="count">(${this.nodeIds.length})</span>
@@ -143,6 +157,11 @@ export class DevicePanel extends LitElement {
             background-color: var(--md-sys-color-surface-container-high, #e8e8e8);
         }
 
+        .header:focus-visible {
+            outline: 2px solid var(--md-sys-color-primary);
+            outline-offset: -2px;
+        }
+
         .type-icon {
             --icon-primary-color: var(--md-sys-color-primary, #6200ee);
             margin-right: 12px;
@@ -171,10 +190,6 @@ export class DevicePanel extends LitElement {
 
         md-list-item {
             --md-list-item-one-line-container-height: 48px;
-        }
-
-        md-list-item::part(focus-ring) {
-            display: none;
         }
     `;
 }

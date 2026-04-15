@@ -102,6 +102,8 @@ export class ServerDetails extends LitElement {
                         title: "Failed to import test node",
                         text: err.message,
                     });
+                } finally {
+                    fileElem.value = "";
                 }
             };
         }
