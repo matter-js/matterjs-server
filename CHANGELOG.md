@@ -7,6 +7,11 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
+## __WORK IN PROGRESS__
+- Fix: Update matter.js to the latest 0.17.0-nightly
+    - Wait up to 60 seconds for devices to connect to Thread/Wifi networks
+    - Optimized PASE connections when multiple IPs were found
+
 ## 0.6.0 (2026-04-15)
 - Change: Consider devices as offline 3 minutes in the reconnection state
 - Adjustment: Streamlined some Dashboard UI topics to have a more streamlined UI and basis for enhancements
