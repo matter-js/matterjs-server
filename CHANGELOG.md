@@ -7,7 +7,7 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
-## __WORK IN PROGRESS__
+## 0.6.1 (2026-04-16)
 - Fix: Update matter.js to the latest 0.17.0-nightly
     - Wait up to 60 seconds for devices to connect to Thread/Wifi networks
     - Optimized PASE connections when multiple IPs were found
