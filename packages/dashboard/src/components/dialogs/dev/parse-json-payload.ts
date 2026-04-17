@@ -25,3 +25,13 @@ export function parseJsonPayload(text: string): ParsedPayload {
         return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
 }
+
+/**
+ * True if the value is a JSON object (non-null, non-array, plain record shape).
+ *
+ * Matter command payloads are struct-shaped, so invoking with a raw array / string /
+ * number is almost certainly a user mistake.
+ */
+export function isPlainObject(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+}

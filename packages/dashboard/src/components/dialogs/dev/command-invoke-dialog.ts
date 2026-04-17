@@ -13,7 +13,7 @@ import { customElement, property, query, state } from "lit/decorators.js";
 import { handleAsync } from "../../../util/async-handler.js";
 import { formatHex } from "../../../util/format_hex.js";
 import { preventDefault } from "../../../util/prevent_default.js";
-import { parseJsonPayload } from "./parse-json-payload.js";
+import { isPlainObject, parseJsonPayload } from "./parse-json-payload.js";
 
 @customElement("command-invoke-dialog")
 export class CommandInvokeDialog extends LitElement {
@@ -56,7 +56,12 @@ export class CommandInvokeDialog extends LitElement {
             this._response = null;
             return;
         }
-        const payload = parsed.value as Record<string, unknown>;
+        const payload = parsed.value;
+        if (!isPlainObject(payload)) {
+            this._error = "Payload must be a JSON object (use {} for commands with no arguments).";
+            this._response = null;
+            return;
+        }
         this._busy = true;
         try {
             const result = await this.client.deviceCommand(

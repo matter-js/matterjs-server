@@ -224,10 +224,19 @@ class MatterClusterView extends LitElement {
 
     private async _refreshAttribute(attributeId: number) {
         if (!this.node) return;
-        const path = `${this.endpoint}/${this.cluster}/${attributeId}`;
+        // Snapshot the context at click time so a late-arriving response cannot leak
+        // state into a different cluster view after navigation.
+        const nodeId = this.node.node_id;
+        const endpoint = this.endpoint;
+        const cluster = this.cluster;
+        const path = `${endpoint}/${cluster}/${attributeId}`;
+        const isSameContext = () =>
+            this.isConnected && this.node?.node_id === nodeId && this.endpoint === endpoint && this.cluster === cluster;
+
         this._refreshState = { ...this._refreshState, [attributeId]: "loading" };
         try {
-            const result = await this.client.readAttribute(this.node.node_id, path);
+            const result = await this.client.readAttribute(nodeId, path);
+            if (!isSameContext()) return;
             // Defensive merge — attribute_updated events usually do this already.
             for (const [key, value] of Object.entries(result)) {
                 this.node.attributes[key] = value;
@@ -235,12 +244,13 @@ class MatterClusterView extends LitElement {
             this.requestUpdate();
             this._refreshState = { ...this._refreshState, [attributeId]: "success" };
             setTimeout(() => {
-                if (!this.isConnected) return;
+                if (!isSameContext()) return;
                 if (this._refreshState[attributeId] === "success") {
                     this._refreshState = { ...this._refreshState, [attributeId]: "idle" };
                 }
             }, REFRESH_SUCCESS_MS);
         } catch (err) {
+            if (!isSameContext()) return;
             this._refreshState = { ...this._refreshState, [attributeId]: "idle" };
             const message = err instanceof Error ? err.message : String(err);
             showAlertDialog({ title: "Read failed", text: message });

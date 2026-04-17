@@ -281,7 +281,7 @@ export class DashboardHeader extends LitElement {
             }
 
             .dev-badge:focus-visible {
-                outline: 2px solid #ffffff;
+                outline: 2px solid var(--dev-on-color);
                 outline-offset: 2px;
             }
         `,
