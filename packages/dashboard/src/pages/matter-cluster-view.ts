@@ -8,18 +8,22 @@ import { provide } from "@lit/context";
 import "@material/web/button/outlined-button";
 import "@material/web/divider/divider";
 import "@material/web/iconbutton/icon-button";
+import "@material/web/iconbutton/outlined-icon-button";
 import "@material/web/list/list";
 import "@material/web/list/list-item";
 import { isTestNodeId, MatterClient, MatterNode, toBigIntAwareJson } from "@matter-server/ws-client";
-import { mdiAlertCircleOutline } from "@mdi/js";
-import { css, html, LitElement } from "lit";
-import { customElement, property } from "lit/decorators.js";
+import { mdiAlertCircleOutline, mdiPencil, mdiPlay, mdiRefresh } from "@mdi/js";
+import { css, html, LitElement, nothing, type TemplateResult } from "lit";
+import { customElement, property, state } from "lit/decorators.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { clusters } from "../client/models/descriptions.js";
 import { showAlertDialog } from "../components/dialog-box/show-dialog-box.js";
+import { showAttributeWriteDialog } from "../components/dialogs/dev/show-attribute-write-dialog.js";
+import { showCommandInvokeDialog } from "../components/dialogs/dev/show-command-invoke-dialog.js";
 import "../components/ha-svg-icon";
 import "../pages/components/node-details";
 // Cluster command components (auto-register on import)
+import { DevModeService } from "../util/dev-mode-service.js";
 import { formatHex, formatNodeAddress, getEffectiveFabricIndex } from "../util/format_hex.js";
 import { notFoundStyles } from "../util/shared-styles.js";
 import { getClusterCommandsTag } from "./cluster-commands/index.js";
@@ -34,6 +38,14 @@ declare global {
 // Global attribute IDs range (0xFFF0-0xFFFF)
 const GLOBAL_ATTRIBUTE_MIN = 0xfff0;
 const GLOBAL_ATTRIBUTE_MAX = 0xffff;
+
+// AcceptedCommandList global attribute (lists server-supported command IDs per cluster instance)
+const ACCEPTED_COMMAND_LIST_ATTR = 0xfff9;
+
+// How long to flash the refresh icon in success state.
+const REFRESH_SUCCESS_MS = 600;
+
+type RefreshState = "idle" | "loading" | "success";
 
 function isGlobalAttribute(id: number): boolean {
     return id >= GLOBAL_ATTRIBUTE_MIN && id <= GLOBAL_ATTRIBUTE_MAX;
@@ -74,6 +86,25 @@ class MatterClusterView extends LitElement {
     @property()
     public cluster?: number;
 
+    @state() private _devMode = DevModeService.active;
+
+    // Per-attribute refresh state, keyed by attribute id (within the current ep/cluster)
+    @state() private _refreshState: Record<number, RefreshState> = {};
+
+    private _unsubscribeDev?: () => void;
+
+    override connectedCallback() {
+        super.connectedCallback();
+        this._unsubscribeDev = DevModeService.subscribe(active => {
+            this._devMode = active;
+        });
+    }
+
+    override disconnectedCallback() {
+        super.disconnectedCallback();
+        this._unsubscribeDev?.();
+    }
+
     override render() {
         if (!this.node || this.endpoint == undefined || this.cluster == undefined) {
             return html`
@@ -108,6 +139,9 @@ class MatterClusterView extends LitElement {
             <!-- Cluster commands section (if available for this cluster) -->
             ${this._renderClusterCommands()}
 
+            <!-- Developer-mode commands panel -->
+            ${this._devMode ? this._renderDevCommandsPanel() : nothing}
+
             <!-- Cluster attributes listing -->
             <div class="container">
                 <md-list>
@@ -132,7 +166,10 @@ class MatterClusterView extends LitElement {
                                     AttributeId: ${attribute.key} (${formatHex(attribute.key)}) - Value type:
                                     ${clusters[this.cluster!]?.attributes[attribute.key]?.type ?? "unknown"}
                                 </div>
-                                <div slot="end">
+                                <div slot="end" class="row-end">
+                                    ${this._devMode
+                                        ? this._renderAttributeDevActions(attribute.key, attribute.value)
+                                        : nothing}
                                     ${toBigIntAwareJson(attribute.value).length > 30
                                         ? html`<md-outlined-button
                                               @click=${() => {
@@ -149,6 +186,152 @@ class MatterClusterView extends LitElement {
                 </md-list>
             </div>
         `;
+    }
+
+    private _renderAttributeDevActions(attributeId: number, currentValue: unknown): TemplateResult {
+        const meta = clusters[this.cluster!]?.attributes[attributeId];
+        const online = this.node?.available === true;
+        const state = this._refreshState[attributeId] ?? "idle";
+        const refreshClasses = `dev-action refresh refresh-${state}`;
+
+        return html`
+            <span class="dev-actions">
+                <md-outlined-icon-button
+                    class=${refreshClasses}
+                    title="Read attribute now"
+                    aria-label="Read attribute now"
+                    ?disabled=${!online || state === "loading"}
+                    @click=${() => this._refreshAttribute(attributeId)}
+                >
+                    <ha-svg-icon .path=${mdiRefresh}></ha-svg-icon>
+                </md-outlined-icon-button>
+                ${meta?.writable
+                    ? html`
+                          <md-outlined-icon-button
+                              class="dev-action pencil"
+                              title="Write attribute…"
+                              aria-label="Write attribute"
+                              ?disabled=${!online}
+                              @click=${() => this._openAttributeWriteDialog(attributeId, currentValue, meta.label)}
+                          >
+                              <ha-svg-icon .path=${mdiPencil}></ha-svg-icon>
+                          </md-outlined-icon-button>
+                      `
+                    : nothing}
+            </span>
+        `;
+    }
+
+    private async _refreshAttribute(attributeId: number) {
+        if (!this.node) return;
+        // Snapshot the context at click time so a late-arriving response cannot leak
+        // state into a different cluster view after navigation.
+        const nodeId = this.node.node_id;
+        const endpoint = this.endpoint;
+        const cluster = this.cluster;
+        const path = `${endpoint}/${cluster}/${attributeId}`;
+        const isSameContext = () =>
+            this.isConnected && this.node?.node_id === nodeId && this.endpoint === endpoint && this.cluster === cluster;
+
+        this._refreshState = { ...this._refreshState, [attributeId]: "loading" };
+        try {
+            const result = await this.client.readAttribute(nodeId, path);
+            if (!isSameContext()) return;
+            // Defensive merge — attribute_updated events usually do this already.
+            for (const [key, value] of Object.entries(result)) {
+                this.node.attributes[key] = value;
+            }
+            this.requestUpdate();
+            this._refreshState = { ...this._refreshState, [attributeId]: "success" };
+            setTimeout(() => {
+                if (!isSameContext()) return;
+                if (this._refreshState[attributeId] === "success") {
+                    this._refreshState = { ...this._refreshState, [attributeId]: "idle" };
+                }
+            }, REFRESH_SUCCESS_MS);
+        } catch (err) {
+            if (!isSameContext()) return;
+            this._refreshState = { ...this._refreshState, [attributeId]: "idle" };
+            const message = err instanceof Error ? err.message : String(err);
+            showAlertDialog({ title: "Read failed", text: message });
+        }
+    }
+
+    private _openAttributeWriteDialog(attributeId: number, currentValue: unknown, label: string) {
+        if (!this.node || this.cluster === undefined) return;
+        showAttributeWriteDialog({
+            client: this.client,
+            nodeId: this.node.node_id,
+            endpointId: this.endpoint,
+            clusterId: this.cluster,
+            attributeId,
+            label,
+            currentValue,
+        });
+    }
+
+    private _renderDevCommandsPanel(): TemplateResult {
+        const clusterMeta = this.cluster !== undefined ? clusters[this.cluster] : undefined;
+        const rawAcceptedList = this.node?.attributes[`${this.endpoint}/${this.cluster}/${ACCEPTED_COMMAND_LIST_ATTR}`];
+        const acceptedList = Array.isArray(rawAcceptedList) ? (rawAcceptedList as number[]) : [];
+
+        const commands = acceptedList
+            .map(id => clusterMeta?.commands[id])
+            .filter((cmd): cmd is NonNullable<typeof cmd> => cmd !== undefined);
+
+        const online = this.node?.available === true;
+
+        return html`
+            <div class="container">
+                <details class="dev-commands-panel">
+                    <summary>
+                        <span class="dev-chip">DEV</span>
+                        Commands
+                    </summary>
+                    <div class="dev-commands-content">
+                        ${commands.length === 0
+                            ? html`<p class="empty">No invokable commands for this cluster.</p>`
+                            : html`
+                                  <ul class="command-list">
+                                      ${commands.map(
+                                          cmd => html`
+                                              <li class="command-row">
+                                                  <div class="command-meta">
+                                                      <span class="command-label">${cmd.label}</span>
+                                                      <span class="command-sub"
+                                                          >CommandId ${cmd.id} (${formatHex(cmd.id)}) ·
+                                                          <code>${cmd.name}</code></span
+                                                      >
+                                                  </div>
+                                                  <md-outlined-button
+                                                      class="dev-invoke-button"
+                                                      ?disabled=${!online}
+                                                      @click=${() => this._openCommandInvokeDialog(cmd.name, cmd.label)}
+                                                  >
+                                                      <ha-svg-icon slot="icon" .path=${mdiPlay}></ha-svg-icon>
+                                                      Invoke
+                                                  </md-outlined-button>
+                                              </li>
+                                          `,
+                                      )}
+                                  </ul>
+                              `}
+                    </div>
+                </details>
+            </div>
+        `;
+    }
+
+    private _openCommandInvokeDialog(commandName: string, commandLabel: string) {
+        if (!this.node || this.cluster === undefined) return;
+        showCommandInvokeDialog({
+            client: this.client,
+            nodeId: this.node.node_id,
+            endpointId: this.endpoint,
+            clusterId: this.cluster,
+            commandName,
+            commandLabel,
+        });
     }
 
     private async _showAttributeValue(value: any) {
@@ -179,6 +362,11 @@ class MatterClusterView extends LitElement {
 
     override updated(changedProperties: Map<string, unknown>) {
         super.updated(changedProperties);
+
+        // Reset per-attribute refresh state when navigating to a different cluster/endpoint.
+        if (changedProperties.has("cluster") || changedProperties.has("endpoint")) {
+            this._refreshState = {};
+        }
 
         // After render, find and configure the cluster commands component
         const container = this.shadowRoot?.getElementById("cluster-commands-container");
@@ -238,6 +426,180 @@ class MatterClusterView extends LitElement {
 
             md-list-item.alternate-row {
                 background-color: var(--md-sys-color-surface-container-low);
+            }
+
+            .row-end {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+
+            /* Framed dev-mode actions, clearly separated from the value display. */
+            .dev-actions {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                padding-right: 10px;
+                margin-right: 2px;
+                border-right: 1px solid var(--md-sys-color-outline-variant);
+            }
+
+            .dev-action {
+                /* Compact, visible outlined frame in dev-mode accent (deep violet). */
+                --md-outlined-icon-button-container-width: 32px;
+                --md-outlined-icon-button-container-height: 32px;
+                --md-outlined-icon-button-icon-size: 18px;
+                --md-outlined-icon-button-outline-color: var(--dev-color);
+                --md-outlined-icon-button-outline-width: 1px;
+                --md-outlined-icon-button-icon-color: var(--dev-color);
+                --md-outlined-icon-button-hover-state-layer-color: var(--dev-color);
+                --md-outlined-icon-button-focus-state-layer-color: var(--dev-color);
+                --md-outlined-icon-button-pressed-state-layer-color: var(--dev-color);
+                --icon-primary-color: var(--dev-color);
+                /* Round container kept constant so the success-fill transitions smoothly. */
+                border-radius: 9999px;
+                background: transparent;
+                margin-right: 0;
+                transition: background 300ms ease-out;
+            }
+
+            .dev-action.refresh-loading ha-svg-icon {
+                animation: dev-spin 0.9s linear infinite;
+            }
+
+            .dev-action.refresh-success {
+                --md-outlined-icon-button-icon-color: var(--dev-on-color);
+                --icon-primary-color: var(--dev-on-color);
+                background: var(--dev-color);
+            }
+
+            @keyframes dev-spin {
+                from {
+                    transform: rotate(0deg);
+                }
+                to {
+                    transform: rotate(360deg);
+                }
+            }
+
+            @media (prefers-reduced-motion: reduce) {
+                .dev-action.refresh-loading ha-svg-icon {
+                    animation: none;
+                }
+            }
+
+            details.dev-commands-panel {
+                background-color: var(--md-sys-color-surface-container);
+                border: 1px solid var(--dev-color);
+                border-radius: 12px;
+                overflow: hidden;
+            }
+
+            details.dev-commands-panel summary {
+                padding: 14px 16px;
+                font-weight: 500;
+                color: var(--md-sys-color-on-surface);
+                cursor: pointer;
+                user-select: none;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+
+            details.dev-commands-panel summary:hover {
+                background-color: color-mix(in srgb, var(--dev-color) 8%, transparent);
+            }
+
+            details.dev-commands-panel summary::before {
+                content: "▶";
+                font-size: 12px;
+                color: var(--dev-color);
+                transition: transform 0.2s ease;
+            }
+
+            details.dev-commands-panel[open] summary::before {
+                transform: rotate(90deg);
+            }
+
+            details.dev-commands-panel summary::-webkit-details-marker {
+                display: none;
+            }
+
+            .dev-chip {
+                font-family: var(--monospace-font);
+                font-size: 0.7rem;
+                font-weight: 600;
+                letter-spacing: 0.08em;
+                padding: 2px 6px;
+                border-radius: 4px;
+                background: var(--dev-color);
+                color: var(--dev-on-color);
+                line-height: 1;
+            }
+
+            .dev-commands-content {
+                padding: 0 16px 16px 16px;
+            }
+
+            .empty {
+                color: var(--md-sys-color-on-surface-variant);
+                font-size: 0.9rem;
+                margin: 0;
+            }
+
+            .command-list {
+                list-style: none;
+                margin: 0;
+                padding: 0;
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+            }
+
+            .command-row {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 16px;
+                padding: 8px 12px;
+                background: var(--md-sys-color-surface-container-low);
+                border-radius: 8px;
+            }
+
+            .dev-invoke-button {
+                --md-outlined-button-outline-color: var(--dev-color);
+                --md-outlined-button-label-text-color: var(--dev-color);
+                --md-outlined-button-hover-state-layer-color: var(--dev-color);
+                --md-outlined-button-focus-state-layer-color: var(--dev-color);
+                --md-outlined-button-pressed-state-layer-color: var(--dev-color);
+                --md-outlined-button-icon-color: var(--dev-color);
+                --md-outlined-button-hover-label-text-color: var(--dev-color);
+                --md-outlined-button-focus-label-text-color: var(--dev-color);
+                --md-outlined-button-pressed-label-text-color: var(--dev-color);
+            }
+
+            .command-meta {
+                display: flex;
+                flex-direction: column;
+                gap: 2px;
+                min-width: 0;
+            }
+
+            .command-label {
+                font-weight: 500;
+                color: var(--md-sys-color-on-surface);
+            }
+
+            .command-sub {
+                font-size: 0.825rem;
+                color: var(--md-sys-color-on-surface-variant);
+            }
+
+            .command-sub code {
+                font-family: var(--monospace-font);
+                background: var(--md-sys-color-surface-container-high);
+                padding: 0 4px;
+                border-radius: 3px;
             }
         `,
     ];

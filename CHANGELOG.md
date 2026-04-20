@@ -7,6 +7,9 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
+## __WORK IN PROGRESS__
+- Feature: Add "Developer mode" to the Dashboard to allow reading, write and invoke operations on clusters directly from the UI for testing and debugging purposes
+
 ## 0.6.1 (2026-04-16)
 - Fix: Update matter.js to the latest 0.17.0-nightly
     - Wait up to 60 seconds for devices to connect to Thread/Wifi networks

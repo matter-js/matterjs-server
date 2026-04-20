@@ -101,3 +101,22 @@ Unknown devices show as "Router (external)" or "End Device (external)" based on 
 **Thread roles for external devices**: The Thread role (Leader, Router, End Device) can only be determined for devices commissioned to this fabric. External devices like Home Assistant's Thread Border Router will show as "Router (external)" even if they are the current Thread Leader. This is a fundamental Matter limitation - we cannot query attributes from devices on other fabrics.
 
 **Leader role is dynamic**: In Thread networks, the Leader role can change via leader election. Any router can potentially become the Leader, so this status may change over time.
+
+## Developer Mode
+
+The dashboard has a built-in developer mode for raw, per-attribute and per-command interaction with a node. It is intended for people building or debugging Matter integrations — not for everyday control of devices.
+
+### Enable / disable
+
+- Append `?dev=on` (or any non-empty value) to the dashboard URL, or
+- Open **Settings** from the header (cog icon) and toggle **Enable developer mode**.
+
+Developer mode is browser-only and is not persisted. Reloading without the `?dev` parameter disables it. While active, a small **DEV** badge is shown in the header.
+
+### What developer mode adds on a cluster view
+
+- **Per-attribute Read button** — forces an immediate read of a single attribute. On success the icon briefly flashes; on failure the raw server error is shown in a popup.
+- **Per-attribute Write button** — shown only for writable attributes. Opens an editor prefilled with the current value as JSON; pressing *Write* sends the exact value to the server.
+- **Commands panel** (collapsed by default) — lists every command the cluster reports as supported. Each entry opens a payload editor; pressing *Invoke* sends the command and shows the server response as JSON, or the raw error if the invocation fails.
+
+Unknown attributes (not present in the dashboard's metadata) cannot be written. Unknown commands (in the cluster's accepted list but missing from the metadata) are not listed. All server errors are shown verbatim so the exact response from the device is visible.
