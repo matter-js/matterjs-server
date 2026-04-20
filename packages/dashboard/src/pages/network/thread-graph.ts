@@ -5,7 +5,7 @@
  */
 
 import { html } from "lit";
-import { customElement } from "lit/decorators.js";
+import { customElement, property } from "lit/decorators.js";
 import { createNodeIconDataUrl, createUnknownDeviceIconDataUrl } from "../../util/device-icons.js";
 import { BaseNetworkGraph } from "./base-network-graph.js";
 import type { NetworkGraphEdge, NetworkGraphNode, UnknownThreadDevice } from "./network-types.js";
@@ -28,8 +28,34 @@ declare global {
 
 @customElement("thread-graph")
 export class ThreadGraph extends BaseNetworkGraph {
+    @property({ type: Boolean })
+    public hideOfflineNodes = false;
+
+    @property({ type: Boolean })
+    public hideWeakSignalEdges = false;
+
+    @property({ type: Boolean })
+    public hideMediumSignalEdges = false;
+
+    @property({ type: Boolean })
+    public hideStrongSignalEdges = false;
+
     /** Cache of unknown devices for the current render */
     private _unknownDevices: UnknownThreadDevice[] = [];
+
+    override updated(changedProperties: Map<string, unknown>): void {
+        super.updated(changedProperties);
+
+        // Trigger graph update when any hide option changes
+        if (
+            changedProperties.has("hideOfflineNodes") ||
+            changedProperties.has("hideWeakSignalEdges") ||
+            changedProperties.has("hideMediumSignalEdges") ||
+            changedProperties.has("hideStrongSignalEdges")
+        ) {
+            this._debouncedUpdateGraph();
+        }
+    }
 
     /** Cached map of unknown devices (rebuilt in _updateGraph) */
     private _unknownDevicesMapCache: Map<
@@ -90,7 +116,10 @@ export class ThreadGraph extends BaseNetworkGraph {
         this._clearOriginalEdgeColors();
 
         // Filter to Thread devices only
-        const threadNodes = Object.values(this.nodes).filter(node => getNetworkType(node) === "thread");
+        // Apply offline filter if enabled
+        const threadNodes = Object.values(this.nodes).filter(
+            node => getNetworkType(node) === "thread" && (!this.hideOfflineNodes || node.available !== false),
+        );
 
         if (threadNodes.length === 0) {
             this._nodesDataSet.clear();
@@ -105,7 +134,20 @@ export class ThreadGraph extends BaseNetworkGraph {
         const rloc16Map = buildRloc16Map(this.nodes);
 
         // Find unknown devices (seen in neighbor tables but not commissioned)
-        this._unknownDevices = findUnknownDevices(this.nodes, extAddrMap, rloc16Map);
+        let unknownDevices = findUnknownDevices(this.nodes, extAddrMap, rloc16Map);
+
+        // Filter out unknown devices connected only to offline nodes if hideOfflineNodes is enabled
+        if (this.hideOfflineNodes) {
+            unknownDevices = unknownDevices.filter(unknown => {
+                // Keep unknown device if it's seen by at least one online node
+                return unknown.seenBy.some(nodeId => {
+                    const node = this.nodes[nodeId];
+                    return node && node.available !== false;
+                });
+            });
+        }
+
+        this._unknownDevices = unknownDevices;
 
         // Rebuild the cached map
         this._unknownDevicesMapCache.clear();
@@ -154,8 +196,22 @@ export class ThreadGraph extends BaseNetworkGraph {
             });
         }
 
-        // Create edge data for vis.js
-        const graphEdges: NetworkGraphEdge[] = connections.map((conn, index) => {
+        // Create edge data for vis.js with inline filtering
+        const onlineNodeIds = this.hideOfflineNodes ? new Set(graphNodes.map(n => n.id)) : null;
+
+        const graphEdges: NetworkGraphEdge[] = connections.flatMap((conn, index) => {
+            // Filter by signal strength first
+            if (this.hideWeakSignalEdges && conn.signalLevel === "weak") return [];
+            if (this.hideMediumSignalEdges && conn.signalLevel === "medium") return [];
+            if (this.hideStrongSignalEdges && conn.signalLevel === "strong") return [];
+
+            // Filter out edges connected to offline nodes if hideOfflineNodes is enabled
+            if (onlineNodeIds) {
+                if (!onlineNodeIds.has(String(conn.fromNodeId)) || !onlineNodeIds.has(String(conn.toNodeId))) {
+                    return [];
+                }
+            }
+
             const isToUnknown = typeof conn.toNodeId === "string" && conn.toNodeId.startsWith("unknown_");
 
             // Check if either endpoint is offline - connection data may be stale
@@ -163,18 +219,20 @@ export class ThreadGraph extends BaseNetworkGraph {
             const toNode = this.nodes[String(conn.toNodeId)];
             const hasOfflineEndpoint = fromNode?.available === false || toNode?.available === false;
 
-            return {
-                id: `edge_${index}`,
-                from: conn.fromNodeId,
-                to: conn.toNodeId,
-                color: {
-                    color: conn.signalColor,
-                    highlight: conn.signalColor,
+            return [
+                {
+                    id: `edge_${index}`,
+                    from: conn.fromNodeId,
+                    to: conn.toNodeId,
+                    color: {
+                        color: conn.signalColor,
+                        highlight: conn.signalColor,
+                    },
+                    width: 2,
+                    title: conn.rssi !== null ? `RSSI: ${conn.rssi} dBm, LQI: ${conn.lqi}` : `LQI: ${conn.lqi}`,
+                    dashes: isToUnknown || hasOfflineEndpoint, // Dashed lines to unknown or offline devices
                 },
-                width: 2,
-                title: conn.rssi !== null ? `RSSI: ${conn.rssi} dBm, LQI: ${conn.lqi}` : `LQI: ${conn.lqi}`,
-                dashes: isToUnknown || hasOfflineEndpoint, // Dashed lines to unknown or offline devices
-            };
+            ];
         });
 
         // Update datasets

@@ -5,7 +5,7 @@
  */
 
 import type { MatterClient, MatterNode } from "@matter-server/ws-client";
-import { mdiFitToScreen, mdiMagnifyMinus, mdiMagnifyPlus, mdiPause, mdiPlay } from "@mdi/js";
+import { mdiEyeOff, mdiFitToScreen, mdiMagnifyMinus, mdiMagnifyPlus, mdiPause, mdiPlay } from "@mdi/js";
 import { css, html, LitElement } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
 import "../components/ha-svg-icon";
@@ -61,6 +61,22 @@ class MatterNetworkView extends LitElement {
     @state()
     private _threadAddressSearchStatus: "idle" | "found" | "not-found" = "idle";
 
+    @state()
+    private _showHideMenu = false;
+
+    @state()
+    private _hideOfflineNodes = false;
+
+    @state()
+    private _hideWeakSignalEdges = false;
+
+    @state()
+    private _hideMediumSignalEdges = false;
+
+    @state()
+    private _hideStrongSignalEdges = false;
+
+    @state()
     private _initialSelectionApplied = false;
     private _selectRetryTimer?: ReturnType<typeof setTimeout>;
 
@@ -153,6 +169,36 @@ class MatterNetworkView extends LitElement {
         }
     }
 
+    private _handleToggleHideMenu(): void {
+        this._showHideMenu = !this._showHideMenu;
+    }
+
+    private _handleCloseHideMenu(event: MouseEvent): void {
+        // Close menu when clicking outside
+        const target = event.target as HTMLElement;
+        if (!target.closest(".hide-menu-container")) {
+            this._showHideMenu = false;
+        }
+    }
+
+    private _handleToggleHideOption(option: keyof MatterNetworkView): void {
+        const value = this[option] as boolean;
+        (this[option] as boolean) = !value;
+    }
+
+    private _getHideOptions() {
+        return [
+            { key: "_hideOfflineNodes" as keyof MatterNetworkView, label: "Offline nodes" },
+            { key: "_hideWeakSignalEdges" as keyof MatterNetworkView, label: "Weak signal edges" },
+            { key: "_hideMediumSignalEdges" as keyof MatterNetworkView, label: "Medium signal edges" },
+            { key: "_hideStrongSignalEdges" as keyof MatterNetworkView, label: "Strong signal edges" },
+        ];
+    }
+
+    private _isAnyHideOptionActive(): boolean {
+        return this._getHideOptions().some(option => this[option.key] as boolean);
+    }
+
     private _handleTogglePhysics(): void {
         const newState = !this._physicsEnabled;
         this._physicsEnabled = newState;
@@ -231,6 +277,33 @@ class MatterNetworkView extends LitElement {
                             <button class="control-button" @click=${this._handleFitToScreen} title="Fit to screen">
                                 <ha-svg-icon .path=${mdiFitToScreen}></ha-svg-icon>
                             </button>
+                            <div class="hide-menu-container">
+                                <button
+                                    class="control-button ${this._isAnyHideOptionActive() ? "active" : ""}"
+                                    @click=${this._handleToggleHideMenu}
+                                    title="Hide options"
+                                >
+                                    <ha-svg-icon .path=${mdiEyeOff}></ha-svg-icon>
+                                </button>
+                                ${this._showHideMenu
+                                    ? html`
+                                          <div class="hide-dropdown">
+                                              ${this._getHideOptions().map(
+                                                  option => html`
+                                                      <label class="hide-option">
+                                                          <input
+                                                              type="checkbox"
+                                                              .checked=${this[option.key] as boolean}
+                                                              @change=${() => this._handleToggleHideOption(option.key)}
+                                                          />
+                                                          <span>${option.label}</span>
+                                                      </label>
+                                                  `,
+                                              )}
+                                          </div>
+                                      `
+                                    : ""}
+                            </div>
                             <button
                                 class="control-button ${this._physicsEnabled ? "" : "active"}"
                                 @click=${this._handleTogglePhysics}
@@ -250,6 +323,10 @@ class MatterNetworkView extends LitElement {
                       </div>`}
                 <thread-graph
                     .nodes=${this.nodes}
+                    .hideOfflineNodes=${this._hideOfflineNodes}
+                    .hideWeakSignalEdges=${this._hideWeakSignalEdges}
+                    .hideMediumSignalEdges=${this._hideMediumSignalEdges}
+                    .hideStrongSignalEdges=${this._hideStrongSignalEdges}
                     @node-selected=${this._handleNodeSelected}
                     @physics-changed=${this._handlePhysicsChanged}
                 ></thread-graph>
@@ -304,7 +381,7 @@ class MatterNetworkView extends LitElement {
                 .hasWifiDevices=${this.hasWifiDevices}
             ></dashboard-header>
 
-            <div class="content">
+            <div class="content" @click=${this._handleCloseHideMenu}>
                 <div class="main-area">
                     ${this.networkType === "thread" ? this._renderThreadView() : this._renderWifiView()}
                 </div>
@@ -320,7 +397,6 @@ class MatterNetworkView extends LitElement {
                     ></network-details>
                 </aside>
             </div>
-
             <dashboard-footer></dashboard-footer>
         `;
     }
@@ -478,6 +554,47 @@ class MatterNetworkView extends LitElement {
 
             .control-button.active ha-svg-icon {
                 --icon-primary-color: var(--md-sys-color-on-primary-container, #21005d);
+            }
+
+            .hide-menu-container {
+                position: relative;
+            }
+
+            .hide-dropdown {
+                position: absolute;
+                top: calc(100% + 4px);
+                right: 0;
+                background: var(--md-sys-color-surface-container, #fff);
+                border: 1px solid var(--md-sys-color-outline-variant, #ccc);
+                border-radius: 4px;
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+                min-width: 150px;
+                z-index: 100;
+                padding: 4px 0;
+            }
+
+            .hide-option {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding: 8px 12px;
+                cursor: pointer;
+                color: var(--md-sys-color-on-surface, #1c1b1f);
+                font-size: 0.9rem;
+                user-select: none;
+            }
+
+            .hide-option:hover {
+                background-color: var(--md-sys-color-surface-container-high, #e8e8e8);
+            }
+
+            .hide-option input[type="checkbox"] {
+                cursor: pointer;
+                margin: 0;
+            }
+
+            .hide-option span {
+                flex: 1;
             }
 
             .graph-section thread-graph,

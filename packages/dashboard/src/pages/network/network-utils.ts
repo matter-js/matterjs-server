@@ -733,6 +733,7 @@ export function buildThreadConnections(
                 fromNodeId,
                 toNodeId,
                 signalColor: getSignalColor(neighbor),
+                signalLevel: getSignalLevel(neighbor),
                 lqi: neighbor.lqi,
                 rssi: neighbor.avgRssi ?? neighbor.lastRssi,
                 pathCost: routeEntry?.pathCost,

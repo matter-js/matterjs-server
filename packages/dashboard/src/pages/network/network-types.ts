@@ -103,6 +103,7 @@ export interface ThreadConnection {
     fromNodeId: number | string;
     toNodeId: number | string;
     signalColor: string;
+    signalLevel: "strong" | "medium" | "weak";
     lqi: number;
     rssi: number | null;
     /** Path cost from route table (1 = direct, higher = multi-hop). Only available for routers. */
