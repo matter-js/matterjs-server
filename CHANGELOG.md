@@ -7,21 +7,29 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
+## **WORK IN PROGRESS**
+
+- Fix: Ignoring link-local addresses for commissioning requests from WS
+
 ## 0.6.1 (2026-04-16)
+
 - Fix: Update matter.js to the latest 0.17.0-nightly
     - Wait up to 60 seconds for devices to connect to Thread/Wifi networks
     - Optimized PASE connections when multiple IPs were found
 
 ## 0.6.0 (2026-04-15)
+
 - Change: Consider devices as offline 3 minutes in the reconnection state
 - Adjustment: Streamlined some Dashboard UI topics to have a more streamlined UI and basis for enhancements
 - Fix: Update matter.js to the latest 0.17.0-nightly
     - Improves DNS-SD discovery reliability
 
 ## 0.5.15 (2026-04-10)
+
 - No-Change-Re-Release because Python and Docker had publishing issues on GitHub for 0.5.14
 
 ## 0.5.14 (2026-04-10)
+
 - Fix: Correctly reports Node availabilities via WS events to HA and other consumers (also consider a device offline after five mins in Reconnection state)
 - Fix: Allows binding deletion via the dashboard when the target node no longer exists and other consistency checks
 - Fix: Fixes shutdown hang when SIGINT arrives during the startup phase
@@ -33,6 +41,7 @@ This page shows a detailed overview of the changes between versions without the 
     - Reintroduces Probe logging
 
 ## 0.5.13 (2026-04-02)
+
 - Fix: Ignore directories in the OTA update directory
 - Fix: (FuNK3Y) Enhances network interface name logic for Websocket binding
 - Fix: Update matter.js to the latest 0.17.0-nightly
@@ -40,6 +49,7 @@ This page shows a detailed overview of the changes between versions without the 
     - Fixes a CASE establishment edge case when multiple IPs are tried
 
 ## 0.5.12 (2026-04-01)
+
 - Feature: (FuNK3Y) Allows network interface name for Websocket binding
 - Enhancement/Fix: Update matter.js to the latest 0.17.0-nightly
     - RAM usage optimization and other refactorings in the background
@@ -48,12 +58,15 @@ This page shows a detailed overview of the changes between versions without the 
     - Buffer client cluster writes; persists only every 20 minutes
 
 ## 0.5.10 (2026-03-27)
+
 - Fix: Ensures correct shutdown flow including releasing all locks
 
 ## 0.5.9 (2026-03-26)
+
 - Fix: Always return response data for device commands (ignore "response_type")
 
 ## 0.5.8 (2026-03-26)
+
 - Increase Legacy Eve device energy data polling to 60s (was 30s) to reduce traffic on thread network
 - Enhancement/Fix: Update matter.js to the latest 0.17.0-nightly
     - Optimizes commissioning process and device connections during commissioning
@@ -64,6 +77,7 @@ This page shows a detailed overview of the changes between versions without the 
     - Fixes crash cases during commissioning (BLE and when multiple IPs were found)
 
 ## 0.5.7 (2026-03-13)
+
 - Fix: Corrects event payload encoding in websocket messages to match the Python server (and fixes bug from 0.5.6)
 - Fix: Only stream attribute updates after start_listening like all other event-style websocket messages
 - Fix: Try to optimize requested IP list for the node
@@ -78,6 +92,7 @@ This page shows a detailed overview of the changes between versions without the 
     - Ensures commands are never queued
 
 ## 0.5.5 (2026-03-11)
+
 - Enhancement: Adds log file rotation (seven daily backups, rotated on startup and every 24 hours) when --log-file is specified
 - Enhancement: Allows configuration of the DCL location and networking settings
 - Fix: Update matter.js to the latest 0.17.0-nightly
@@ -88,39 +103,45 @@ This page shows a detailed overview of the changes between versions without the 
     - Properly expire commissionable device records when TTL runs out
 
 ## 0.5.4 (2026-03-08)
+
 - Fix: Initializes the Fabric storage when migrating from Python server to prevent startup issues
 - Fix: Update matter.js to the latest 0.17.0-nightly
-  - Increase subscription timeout with 8-second bonus time
-  - Re-introduce data version filter refresh after incomplete reads or subscriptions
-  - Ensures delivery of all events to the ChangeNotificationService (and to WebSocket clients)
-  - Restores processing of incoming data reports from the final message directly rather than after receiving the acknowledgement
-  - Prepares configuration options for the network profiles (official support introduced in a later release)
+    - Increase subscription timeout with 8-second bonus time
+    - Re-introduce data version filter refresh after incomplete reads or subscriptions
+    - Ensures delivery of all events to the ChangeNotificationService (and to WebSocket clients)
+    - Restores processing of incoming data reports from the final message directly rather than after receiving the acknowledgement
+    - Prepares configuration options for the network profiles (official support introduced in a later release)
 
 ## 0.5.3 (2026-03-07)
+
 - Fix: Update matter.js to the latest 0.17.0-nightly
-  - Fixes the broken storage initialization that rendered 0.5.2 unusable depending on how the storage path was provided in CLI
+    - Fixes the broken storage initialization that rendered 0.5.2 unusable depending on how the storage path was provided in CLI
 
 ## 0.5.2 (2026-03-06) - REVERTED!!! DO NOT USE!
+
 - Fix/Enhancement: Update matter.js to the latest 0.17.0-nightly
-  - Fix hanging interactions (Read/Subscribe) and ensure proper timeouts when the device answered unexpectedly, or we aborted internally
-  - Prevents removing clusters when devices contain them but not declaring them ("Schrödinger's clusters")
+    - Fix hanging interactions (Read/Subscribe) and ensure proper timeouts when the device answered unexpectedly, or we aborted internally
+    - Prevents removing clusters when devices contain them but not declaring them ("Schrödinger's clusters")
 
 ## 0.5.1 (2026-03-05)
+
 - Fix: Revert one Eve change for pressure custom attribute
 - Fix/Enhancement: Update matter.js to 0.17.0-nightly
-  - Fix invoke batching
-  - Fix uncommissioned peer startup issues
+    - Fix invoke batching
+    - Fix uncommissioned peer startup issues
 
 ## 0.5.0 (2026-03-05)
+
 - Feature: Allows searching for thread nodes in the network graph by extended address
 - Adjustment: Also sorts neighbors in network graph details by quality
 - Fix: Fixed datatype of some custom cluster attributes
 - Fix: Only allows starting a node update when the node is connected/subscribed currently
 - Fix/Enhancement: Update matter.js to 0.17.0-nightly
     - Rework and further optimize Discovery and connection logic
-    - Fix cases where BLE disconnects could crash the server 
+    - Fix cases where BLE disconnects could crash the server
 
 ## 0.4.3 (2026-02-25)
+
 - Adjustment: Sort connection quality entries in network graph details by quality
 - Fix: Fixed encoding of custom array-based data types
 - Fix: Triggers a full node-update when a (Bridged Node) Basic Information cluster attribute changes
@@ -128,10 +149,12 @@ This page shows a detailed overview of the changes between versions without the 
 - Fix/Enhancement: Update matter.js to 0.16.11-nightly
 
 ## 0.4.2 (2026-02-22)
+
 - Fix: Sanitize wifi/thread credentials in the log when setting them
 - Fix: Update matter.js to 0.16.10
 
 ## 0.4.1 (2026-02-21)
+
 - Feature: Added a new "Drop-in-replacement" matter-python-client as a replacement for the Matter Server package
 - Fix: Fixes custom-cluster writable attributes
 - Fix: Fixed datatype of a thirdreality custom cluster attribute
@@ -140,6 +163,7 @@ This page shows a detailed overview of the changes between versions without the 
     - Ensure subscriptions are also properly handled queued
 
 ## 0.4.0 (2026-02-19)
+
 - BREAKING: (schildbach) Only for Docker/Podman users: run server as an unprivileged user. Use `chown -R 1000:1000 /path-to-data-volume` once to migrate permissions!
   If you're using rootless Podman or Docker and user namespaces, UIDs and GIDs will be remapped to a different value and the previous command
   needs to be adapted accordingly. If you want to avoid that, use the `--userns=keep-id` option when running the container.
@@ -155,6 +179,7 @@ This page shows a detailed overview of the changes between versions without the 
     - Optimize reconnection handling on OTA updates
 
 ## 0.3.8 (2026-02-16)
+
 - Enhancement: (lboue) Add Eve childLock custom attributes
 - Enhancement: Enhance mapping and naming of "Unknown" Nodes in the thread graph
 - Enhancement: (lboue) Also show icons for endpoints in the dashboard
@@ -168,13 +193,15 @@ This page shows a detailed overview of the changes between versions without the 
     - Matter messaging optimizations
 
 ## 0.3.7 (2026-02-12)
+
 - Fix: Improve the performance of startup and start_listening WebSocket command
 
 ## 0.3.6 (2026-02-11)
+
 - Enhancement: Update Icons in Dashboard graphs and introduce in UI
 - Adjustment: (Leo2442926161) Update the Heiman custom attributes
 - Adjustment: Defined Inovelli attributes writable
-- Enhancement: (lboue) Add Eve childLock custom attribute 
+- Enhancement: (lboue) Add Eve childLock custom attribute
 - Fix: Add missing package dependencies to the docker container to enable BLE support
 - Fix: Update matter.js to 0.16.9-nightly
     - Add Jitter to max ceiling for subscription when thread to spread datareports a bit better
@@ -201,7 +228,6 @@ This page shows a detailed overview of the changes between versions without the 
 - Fix: Update matter.js to 0.16.9-nightly
     - Exposes message diagnostics for interactions to especially show retransmissions also on info loglevel
 
-
 ## 0.3.3 (2026-01-30)
 
 - Feature: Allows setting the Node Label via BasicInformation cluster command in the dashboard
@@ -214,9 +240,9 @@ This page shows a detailed overview of the changes between versions without the 
 - Enhancement: (ximex) Optimizations for Dashboard code
 - Fix: Correctly set the basic Information cluster information for the Controller node
 - Fix: Update matter.js to 0.16.8-nightly
-     - Fixes cases where devices were not properly reconnecting as soon as a list of IPs (aka mdns discovery) was requested
-     - Prevents collecting IPs to overwrite newer IPs when sessions close
-     - Ignores File size mismatches for OTA files when checksum matches (unblocks Nanoleaf updates)
+    - Fixes cases where devices were not properly reconnecting as soon as a list of IPs (aka mdns discovery) was requested
+    - Prevents collecting IPs to overwrite newer IPs when sessions close
+    - Ignores File size mismatches for OTA files when checksum matches (unblocks Nanoleaf updates)
 
 ## 0.3.1 (2026-01-28)
 
@@ -226,9 +252,9 @@ This page shows a detailed overview of the changes between versions without the 
 
 - BREAKING: (Only relevant for users that do not use the HomeAssistant Add-On)
     - Now respects the provided FabricID and VendorID when starting the server and migrating data from a former storage!
-      Before this version we always used the "first chip.json entry" and took FabricId/VendorId from there. Now the 
+      Before this version we always used the "first chip.json entry" and took FabricId/VendorId from there. Now the
       provided parameters are used, and if not matching to any chip.json entry, we startup with an empty storage.
-    - Renames the storage directory from "server" to "server-<fabricId>-<vendorId>" to ensure proper separation of 
+    - Renames the storage directory from "server" to "server-<fabricId>-<vendorId>" to ensure proper separation of
       multiple servers in one storage
 - Enhancement: Introduce /health endpoint to use for (docker) health checks. It returns the server version and number of nodes
 - Enhancement: Correctly handles the start up of the server with multiple fabric-ids and vendor-ids in the same storage
@@ -288,7 +314,7 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## 0.2.5 (2026-01-16)
 
-- Enhancement: Uses a best effort approach to detect the used Fabric label from the Python server 
+- Enhancement: Uses a best effort approach to detect the used Fabric label from the Python server
 - Fix: Ensures correct handling and storing of the desired FabricLabel
 
 ## 0.2.4 (2026-01-16)
@@ -298,7 +324,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Enhancement: Displays the global cluster attributes always last in the cluster view of the dashboard
 - Enhancement: Include custom cluster definitions in the generated dashboard data to show attributes and clusters with names
 - Fix: Update matter.js to 0.16.5
-   - Correctly handles already downloaded production OTA updates as production updates
+    - Correctly handles already downloaded production OTA updates as production updates
 
 ## 0.2.3 (2026-01-15)
 
@@ -308,7 +334,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Fix: Update matter.js to 0.16.4
     - Also report attribute updates for bridges correctly (depending on endpoint-structure, they were partially missing)
     - Also accept invalid attribute-ids in the migrated and data from paired nodes
-    - Exclude usage of the Thread interaction queue for command invokes, so you need to know yourself what you are doing 
+    - Exclude usage of the Thread interaction queue for command invokes, so you need to know yourself what you are doing
 
 ## 0.2.2 (2026-01-14)
 
@@ -316,7 +342,7 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## 0.2.1 (2026-01-13)
 
-- Fix: remove a require-lookup which was not ESM 
+- Fix: remove a require-lookup which was not ESM
 
 ## 0.2.0 (2026-01-13)
 
