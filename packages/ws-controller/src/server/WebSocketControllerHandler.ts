@@ -645,7 +645,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
         const baseRequest = {
             nodeId: NodeId(nextNodeId),
             onNetworkOnly: true, // commission_on_network is always network-only
-            knownAddress: ip_addr ? { ip: ip_addr, port: 5540 } : undefined,
+            // Ignore fe80 addresses and better do generic discovery because could be from mobile devices
+            knownAddress: ip_addr && !ip_addr.startsWith("fe80") ? { ip: ip_addr, port: 5540 } : undefined,
         };
 
         switch (filter_type) {
