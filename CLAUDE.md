@@ -43,7 +43,7 @@ This is an npm workspaces monorepo with four packages:
 - **packages/ws-controller** (`@matter-server/ws-controller`): Core Matter controller library wrapping `@project-chip/matter.js`. Exports `MatterController`, `ControllerCommandHandler`, `WebSocketControllerHandler`, `ConfigStorage`
 - **packages/dashboard** (`@matter-server/dashboard`): Web UI built with Lit, Rollup, and Material Web Components. Connects to server via WebSocket
 - **packages/matter-server** (`matter-server`): Main entry point. HTTP/WebSocket server using Express, combines controller + dashboard
-- **packages/tools** (`@matter/tools`) (private unpublished package only!): Build infrastructure using esbuild + TSC. Provides `matter-build`, `matter-run`, `matter-version` binaries
+- Build tooling is provided by the external `@nacho-iot/js-tools` dev dependency (CLI binaries `nacho-build`, `nacho-run`).
 
 ## Architecture
 
@@ -64,12 +64,13 @@ The server implements a protocol compatible with Home Assistant's Python Matter 
 
 ## Build System
 
-Uses custom `@matter/tools` build system:
+Uses external `@nacho-iot/js-tools` build system:
 - TSC for type checking and declaration files
 - esbuild for transpilation (ESM + CJS)
 - Dashboard uses Rollup for bundling with Babel
+- Shared tsconfigs live in `/tsc` at repo root (`tsconfig.base.json`, `tsconfig.lib.json`, `tsconfig.test.json`, `tsconfig.app.json`)
 
-Package-level builds: `matter-build` (aliased in each package.json)
+Package-level builds: `nacho-build` (aliased in each package.json)
 
 Dashboard has additional `npm run generate` step for cluster descriptions.
 

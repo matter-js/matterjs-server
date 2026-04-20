@@ -3,7 +3,6 @@
     "private": true,
     "type": "module",
     "workspaces": [
-        "packages/tools",
         "packages/custom-clusters",
         "packages/ws-controller",
         "packages/ws-client",
@@ -20,10 +19,10 @@
     },
     "scripts": {
         "prepare": "npm run build-clean",
-        "clean": "node packages/tools/bin/build.js clean",
-        "build-only": "node packages/tools/bin/build.js",
+        "clean": "nacho-build clean",
+        "build-only": "nacho-build",
         "build": "npm run build-only && npm run generate --workspaces --if-present && npm run build-only && npm run bundle --workspaces --if-present",
-        "version": "node packages/tools/bin/version.js",
+        "version": "nacho-build version",
         "build-clean": "npm run clean && npm run build",
         "lint": "oxlint --type-aware",
         "lint-fix": "oxlint --fix --type-aware",
@@ -51,7 +50,7 @@
         }
     },
     "devDependencies": {
-        "@matter/testing": "0.17.0-alpha.0-20260416-29168c0a2",
+        "@matter/testing": "0.17.0-alpha.0-20260417-8f958ba0d",
         "@types/mocha": "^10.0.10",
         "glob": "^13.0.6",
         "globals": "^17.5.0",
@@ -59,6 +58,7 @@
         "oxlint": "^1.60.0",
         "oxlint-tsgolint": "^0.21.0",
         "tsx": "^4.21.0",
-        "typescript": "~5.9.3"
+        "typescript": "~5.9.3",
+        "@nacho-iot/js-tools": "^0.1.3"
     }
 }

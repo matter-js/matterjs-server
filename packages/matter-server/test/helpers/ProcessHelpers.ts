@@ -14,10 +14,12 @@ import { tmpdir } from "os";
 import { join } from "path";
 import WebSocket from "ws";
 
-// Constants
-export const SERVER_PORT = 5580;
+// Constants - use non-default ports to avoid conflicts with any real Matter
+// server/device that may already be bound to the production defaults on the
+// host (ws server 5580, Matter protocol 5540).
+export const SERVER_PORT = 5590;
 export const SERVER_WS_URL = `ws://localhost:${SERVER_PORT}/ws`;
-export const DEVICE_PORT = 5540;
+export const DEVICE_PORT = 5550;
 export const MANUAL_PAIRING_CODE = "34970112332";
 export const DEVICE_PASSCODE = 20202021;
 export const DEVICE_DISCRIMINATOR = 3840;
@@ -69,6 +71,7 @@ export function startServer(
         "../../packages/matter-server/dist/esm/MatterServer.js",
         `--storage-path=${storagePath}`,
         `--log-level=${logLevel}`,
+        `--port=${SERVER_PORT}`,
     ];
     if (logFilePath !== undefined) {
         args.push(`--log-file=${logFilePath}`);
@@ -92,10 +95,14 @@ export function startServer(
  * Starts the test device process with persistent stdout/stderr logging.
  */
 export function startTestDevice(storagePath: string): ChildProcess {
-    const proc = spawn("npx", ["tsx", "test/fixtures/TestLightDevice.ts", `--storage-path=${storagePath}`], {
-        cwd: process.cwd(),
-        stdio: ["pipe", "pipe", "pipe"],
-    });
+    const proc = spawn(
+        "npx",
+        ["tsx", "test/fixtures/TestLightDevice.ts", `--storage-path=${storagePath}`, `--port=${DEVICE_PORT}`],
+        {
+            cwd: process.cwd(),
+            stdio: ["pipe", "pipe", "pipe"],
+        },
+    );
 
     // Keep logging throughout the entire test run (not just during startup)
     proc.stdout?.on("data", (data: Buffer) => {

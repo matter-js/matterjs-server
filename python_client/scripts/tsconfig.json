@@ -1,5 +1,5 @@
 {
-    "extends": "../../packages/tools/tsc/tsconfig.base.json",
+    "extends": "../../tsc/tsconfig.base.json",
     "compilerOptions": {
         "types": ["node"],
         "module": "node16",

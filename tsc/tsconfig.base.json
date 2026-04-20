@@ -34,7 +34,7 @@
             "es2022",
 
             "ESNext.Disposable",
-        
+
             // Many standard types are only available via node or DOM.  Neither are fully appropriate for our purposes,
             // however the DOM types are closer to the standard and add fewer objects that are not present at runtime
             // (namely window and document, which we don't have much use for and know to avoid)

@@ -13,16 +13,27 @@
     },
     "author": "Open Home Foundation",
     "main": "dist/esm/register.js",
+    "exports": {
+        ".": {
+            "dev-types": {
+                "types": "./src/register.ts"
+            },
+            "import": {
+                "types": "./dist/esm/register.d.ts",
+                "default": "./dist/esm/register.js"
+            }
+        }
+    },
     "scripts": {
-        "clean": "matter-build clean",
-        "build": "matter-build",
-        "build-clean": "matter-build --clean"
+        "clean": "nacho-build clean",
+        "build": "nacho-build",
+        "build-clean": "nacho-build --clean"
     },
     "engines": {
         "node": ">=20.19.0 <22.0.0 || >=22.13.0"
     },
     "dependencies": {
-        "@matter/main": "0.17.0-alpha.0-20260416-29168c0a2"
+        "@matter/main": "0.17.0-alpha.0-20260417-8f958ba0d"
     },
     "files": [
         "dist/**/*",
