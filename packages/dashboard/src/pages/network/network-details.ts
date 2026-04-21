@@ -25,6 +25,7 @@ import {
     getRoutableDestinationsCount,
     getSignalColor,
     getSignalColorFromRssi,
+    getSignalLevel,
     getThreadChannel,
     getThreadExtendedAddressHex,
     getThreadRole,
@@ -46,6 +47,18 @@ declare global {
 export class NetworkDetails extends LitElement {
     @property()
     public selectedNodeId: number | string | null = null;
+
+    @property({ type: Boolean })
+    public hideOfflineNodes = false;
+
+    @property({ type: Boolean })
+    public hideWeakSignalEdges = false;
+
+    @property({ type: Boolean })
+    public hideMediumSignalEdges = false;
+
+    @property({ type: Boolean })
+    public hideStrongSignalEdges = false;
 
     @property({ type: Object })
     public nodes: Record<string, MatterNode> = {};
@@ -191,7 +204,22 @@ export class NetworkDetails extends LitElement {
         // Get all connections (bidirectional) - this matches what the graph shows
         // Use string to avoid BigInt precision loss
         const nodeId = String(node.node_id);
-        const connections = getNodeConnections(nodeId, this.nodes, extAddrMap, rloc16Map);
+        const allConnections = getNodeConnections(nodeId, this.nodes, extAddrMap, rloc16Map);
+
+        // Filter connections based on active filters
+        const connections = allConnections.filter(conn => {
+            // Filter offline nodes
+            if (this.hideOfflineNodes && conn.connectedNode?.available === false) {
+                return false;
+            }
+
+            // Filter by signal level
+            if (this.hideWeakSignalEdges && conn.signalLevel === "weak") return false;
+            if (this.hideMediumSignalEdges && conn.signalLevel === "medium") return false;
+            if (this.hideStrongSignalEdges && conn.signalLevel === "strong") return false;
+
+            return true;
+        });
 
         return html`
             <div class="section">
@@ -363,6 +391,32 @@ export class NetworkDetails extends LitElement {
     }
 
     /**
+     * Get filtered neighbors for an unknown device based on active filters.
+     */
+    private _getFilteredUnknownNeighbors(unknown: { extAddressHex: string; seenBy: string[] }): string[] {
+        return unknown.seenBy.filter(nodeId => {
+            const node = this.nodes[nodeId.toString()];
+            if (!node) return false;
+
+            // Filter offline nodes
+            if (this.hideOfflineNodes && node.available === false) {
+                return false;
+            }
+
+            // Filter by signal level
+            const neighborEntry = this._findNeighborEntry(node, unknown.extAddressHex);
+            if (neighborEntry) {
+                const level = getSignalLevel(neighborEntry);
+                if (this.hideWeakSignalEdges && level === "weak") return false;
+                if (this.hideMediumSignalEdges && level === "medium") return false;
+                if (this.hideStrongSignalEdges && level === "strong") return false;
+            }
+
+            return true;
+        });
+    }
+
+    /**
      * Find the neighbor entry for an unknown device from a node's neighbor table.
      */
     private _findNeighborEntry(node: MatterNode, unknownExtAddrHex: string): ThreadNeighbor | null {
@@ -407,9 +461,9 @@ export class NetworkDetails extends LitElement {
                 ? html`
                       <md-divider></md-divider>
                       <div class="section">
-                          <h4>Neighbors (${unknown.seenBy.length})</h4>
+                          <h4>Neighbors (${this._getFilteredUnknownNeighbors(unknown).length})</h4>
                           <div class="neighbors-list">
-                              ${unknown.seenBy
+                              ${this._getFilteredUnknownNeighbors(unknown)
                                   .toSorted((a, b) => {
                                       const score = (nodeId: string): number => {
                                           const n = this.nodes[nodeId.toString()];

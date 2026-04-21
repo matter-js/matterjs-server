@@ -392,6 +392,10 @@ class MatterNetworkView extends LitElement {
                         .nodes=${this.nodes}
                         .unknownDevices=${unknownDevices}
                         .wifiAccessPoints=${wifiAccessPoints}
+                        .hideOfflineNodes=${this._hideOfflineNodes}
+                        .hideWeakSignalEdges=${this._hideWeakSignalEdges}
+                        .hideMediumSignalEdges=${this._hideMediumSignalEdges}
+                        .hideStrongSignalEdges=${this._hideStrongSignalEdges}
                         @close=${this._handleDetailsClose}
                         @select-node=${this._handleSelectNode}
                     ></network-details>

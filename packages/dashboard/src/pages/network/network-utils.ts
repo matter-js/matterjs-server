@@ -800,6 +800,7 @@ export interface NodeConnection {
     extAddressHex: string;
     /** Signal strength info (if available) */
     signalColor: string;
+    signalLevel: "strong" | "medium" | "weak";
     lqi: number | null;
     rssi: number | null;
     /** Whether this connection is from THIS node's neighbor table (true) or from the OTHER node's table (false) */
@@ -861,6 +862,7 @@ export function getNodeConnections(
             connectedNode,
             extAddressHex: neighbor.extAddress.toString(16).toUpperCase().padStart(16, "0"),
             signalColor: getSignalColor(neighbor),
+            signalLevel: getSignalLevel(neighbor),
             lqi: neighbor.lqi,
             rssi: neighbor.avgRssi ?? neighbor.lastRssi,
             isOutgoing: true,
@@ -896,6 +898,7 @@ export function getNodeConnections(
                     connectedNode: otherNode,
                     extAddressHex: extAddrHex,
                     signalColor: getSignalColor(reverseEntry),
+                    signalLevel: getSignalLevel(reverseEntry),
                     lqi: reverseEntry.lqi,
                     rssi: reverseEntry.avgRssi ?? reverseEntry.lastRssi,
                     isOutgoing: false,
