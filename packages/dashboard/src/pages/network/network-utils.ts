@@ -9,6 +9,7 @@ import { getCssVar } from "../../util/shared-styles.js";
 import type {
     CategorizedDevices,
     NetworkType,
+    SignalLevel,
     ThreadConnection,
     ThreadNeighbor,
     ThreadRoute,
@@ -451,8 +452,6 @@ export function findUnknownDevices(
     return Array.from(unknownMap.values());
 }
 
-export type SignalLevel = "strong" | "medium" | "weak";
-
 /** Determine signal level from a Thread neighbor's RSSI/LQI. */
 export function getSignalLevel(neighbor: ThreadNeighbor): SignalLevel {
     const rssi = neighbor.avgRssi ?? neighbor.lastRssi;
@@ -461,8 +460,13 @@ export function getSignalLevel(neighbor: ThreadNeighbor): SignalLevel {
         if (rssi > SIGNAL_MEDIUM_THRESHOLD) return "medium";
         return "weak";
     }
-    if (neighbor.lqi > LQI_STRONG_THRESHOLD) return "strong";
-    if (neighbor.lqi > LQI_MEDIUM_THRESHOLD) return "medium";
+    return getSignalLevelFromLqi(neighbor.lqi);
+}
+
+/** Determine signal level from an LQI value alone (e.g. route table entries without RSSI). */
+export function getSignalLevelFromLqi(lqi: number): SignalLevel {
+    if (lqi > LQI_STRONG_THRESHOLD) return "strong";
+    if (lqi > LQI_MEDIUM_THRESHOLD) return "medium";
     return "weak";
 }
 
@@ -775,6 +779,7 @@ export function buildThreadConnections(
                 fromNodeId,
                 toNodeId,
                 signalColor,
+                signalLevel: bidirectionalLqi !== undefined ? getSignalLevelFromLqi(bidirectionalLqi) : undefined,
                 lqi: bidirectionalLqi ?? 0,
                 rssi: null,
                 pathCost: route.pathCost,
@@ -800,7 +805,8 @@ export interface NodeConnection {
     extAddressHex: string;
     /** Signal strength info (if available) */
     signalColor: string;
-    signalLevel: "strong" | "medium" | "weak";
+    /** Undefined when link strength is unknown. */
+    signalLevel?: SignalLevel;
     lqi: number | null;
     rssi: number | null;
     /** Whether this connection is from THIS node's neighbor table (true) or from the OTHER node's table (false) */

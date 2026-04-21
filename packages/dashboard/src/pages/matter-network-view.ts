@@ -26,6 +26,15 @@ declare global {
     }
 }
 
+type HideOptionKey = "_hideOfflineNodes" | "_hideWeakSignalEdges" | "_hideMediumSignalEdges" | "_hideStrongSignalEdges";
+
+const HIDE_OPTIONS: readonly { key: HideOptionKey; label: string }[] = [
+    { key: "_hideOfflineNodes", label: "Offline nodes" },
+    { key: "_hideWeakSignalEdges", label: "Weak signal edges" },
+    { key: "_hideMediumSignalEdges", label: "Medium signal edges" },
+    { key: "_hideStrongSignalEdges", label: "Strong signal edges" },
+];
+
 @customElement("matter-network-view")
 class MatterNetworkView extends LitElement {
     public client!: MatterClient;
@@ -76,7 +85,6 @@ class MatterNetworkView extends LitElement {
     @state()
     private _hideStrongSignalEdges = false;
 
-    @state()
     private _initialSelectionApplied = false;
     private _selectRetryTimer?: ReturnType<typeof setTimeout>;
 
@@ -105,8 +113,16 @@ class MatterNetworkView extends LitElement {
         }
     }
 
+    override connectedCallback(): void {
+        super.connectedCallback();
+        document.addEventListener("click", this._documentClickHandler);
+        document.addEventListener("keydown", this._documentKeyHandler);
+    }
+
     override disconnectedCallback(): void {
         super.disconnectedCallback();
+        document.removeEventListener("click", this._documentClickHandler);
+        document.removeEventListener("keydown", this._documentKeyHandler);
         if (this._selectRetryTimer) {
             clearTimeout(this._selectRetryTimer);
         }
@@ -173,30 +189,25 @@ class MatterNetworkView extends LitElement {
         this._showHideMenu = !this._showHideMenu;
     }
 
-    private _handleCloseHideMenu(event: MouseEvent): void {
-        // Close menu when clicking outside
-        const target = event.target as HTMLElement;
-        if (!target.closest(".hide-menu-container")) {
+    private readonly _documentClickHandler = (event: MouseEvent): void => {
+        const path = event.composedPath();
+        if (!path.some(el => el instanceof HTMLElement && el.classList.contains("hide-menu-container"))) {
             this._showHideMenu = false;
         }
-    }
+    };
 
-    private _handleToggleHideOption(option: keyof MatterNetworkView): void {
-        const value = this[option] as boolean;
-        (this[option] as boolean) = !value;
-    }
+    private readonly _documentKeyHandler = (event: KeyboardEvent): void => {
+        if (event.key === "Escape" && this._showHideMenu) {
+            this._showHideMenu = false;
+        }
+    };
 
-    private _getHideOptions() {
-        return [
-            { key: "_hideOfflineNodes" as keyof MatterNetworkView, label: "Offline nodes" },
-            { key: "_hideWeakSignalEdges" as keyof MatterNetworkView, label: "Weak signal edges" },
-            { key: "_hideMediumSignalEdges" as keyof MatterNetworkView, label: "Medium signal edges" },
-            { key: "_hideStrongSignalEdges" as keyof MatterNetworkView, label: "Strong signal edges" },
-        ];
+    private _handleToggleHideOption(option: HideOptionKey): void {
+        this[option] = !this[option];
     }
 
     private _isAnyHideOptionActive(): boolean {
-        return this._getHideOptions().some(option => this[option.key] as boolean);
+        return HIDE_OPTIONS.some(option => this[option.key]);
     }
 
     private _handleTogglePhysics(): void {
@@ -282,18 +293,26 @@ class MatterNetworkView extends LitElement {
                                     class="control-button ${this._isAnyHideOptionActive() ? "active" : ""}"
                                     @click=${this._handleToggleHideMenu}
                                     title="Hide options"
+                                    aria-haspopup="true"
+                                    aria-expanded=${this._showHideMenu}
+                                    aria-controls="hide-options-menu"
                                 >
                                     <ha-svg-icon .path=${mdiEyeOff}></ha-svg-icon>
                                 </button>
                                 ${this._showHideMenu
                                     ? html`
-                                          <div class="hide-dropdown">
-                                              ${this._getHideOptions().map(
+                                          <div
+                                              id="hide-options-menu"
+                                              class="hide-dropdown"
+                                              role="group"
+                                              aria-label="Hide options"
+                                          >
+                                              ${HIDE_OPTIONS.map(
                                                   option => html`
                                                       <label class="hide-option">
                                                           <input
                                                               type="checkbox"
-                                                              .checked=${this[option.key] as boolean}
+                                                              .checked=${this[option.key]}
                                                               @change=${() => this._handleToggleHideOption(option.key)}
                                                           />
                                                           <span>${option.label}</span>
@@ -381,7 +400,7 @@ class MatterNetworkView extends LitElement {
                 .hasWifiDevices=${this.hasWifiDevices}
             ></dashboard-header>
 
-            <div class="content" @click=${this._handleCloseHideMenu}>
+            <div class="content">
                 <div class="main-area">
                     ${this.networkType === "thread" ? this._renderThreadView() : this._renderWifiView()}
                 </div>
@@ -401,6 +420,7 @@ class MatterNetworkView extends LitElement {
                     ></network-details>
                 </aside>
             </div>
+
             <dashboard-footer></dashboard-footer>
         `;
     }
@@ -571,7 +591,7 @@ class MatterNetworkView extends LitElement {
                 background: var(--md-sys-color-surface-container, #fff);
                 border: 1px solid var(--md-sys-color-outline-variant, #ccc);
                 border-radius: 4px;
-                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+                box-shadow: var(--md-sys-elevation-level2, 0 2px 6px var(--md-sys-color-shadow, rgba(0, 0, 0, 0.15)));
                 min-width: 150px;
                 z-index: 100;
                 padding: 4px 0;

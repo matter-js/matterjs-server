@@ -10,6 +10,11 @@
 export type NetworkType = "thread" | "wifi" | "ethernet" | "unknown";
 
 /**
+ * Classification of a Thread mesh link based on RSSI/LQI.
+ */
+export type SignalLevel = "strong" | "medium" | "weak";
+
+/**
  * Thread routing role from ThreadNetworkDiagnostics cluster.
  * Attribute 0/53/1 (RoutingRole)
  */
@@ -103,7 +108,8 @@ export interface ThreadConnection {
     fromNodeId: number | string;
     toNodeId: number | string;
     signalColor: string;
-    signalLevel: "strong" | "medium" | "weak";
+    /** Undefined when link strength is unknown (e.g. route-table entry without LQI). */
+    signalLevel?: SignalLevel;
     lqi: number;
     rssi: number | null;
     /** Path cost from route table (1 = direct, higher = multi-hop). Only available for routers. */

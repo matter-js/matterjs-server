@@ -255,12 +255,20 @@ export class ThreadGraph extends BaseNetworkGraph {
 
     override render() {
         const threadNodes = Object.values(this.nodes).filter(node => getNetworkType(node) === "thread");
+        const visibleThreadNodes = this.hideOfflineNodes
+            ? threadNodes.filter(node => node.available !== false)
+            : threadNodes;
 
-        if (threadNodes.length === 0) {
+        if (visibleThreadNodes.length === 0) {
+            const allOfflineFiltered = threadNodes.length > 0 && this.hideOfflineNodes;
             return html`
                 <div class="empty-state">
-                    <p>No Thread devices found</p>
-                    <p class="hint">Thread devices will appear here once commissioned</p>
+                    <p>${allOfflineFiltered ? "No online Thread devices" : "No Thread devices found"}</p>
+                    <p class="hint">
+                        ${allOfflineFiltered
+                            ? 'Disable the "Offline nodes" filter to show offline devices'
+                            : "Thread devices will appear here once commissioned"}
+                    </p>
                 </div>
             `;
         }

@@ -436,6 +436,8 @@ export class NetworkDetails extends LitElement {
             return html` <p>Unknown device data not available</p> `;
         }
 
+        const filteredNeighbors = this._getFilteredUnknownNeighbors(unknown);
+
         return html`
             <div class="section">
                 <h4>Unknown Device</h4>
@@ -461,9 +463,9 @@ export class NetworkDetails extends LitElement {
                 ? html`
                       <md-divider></md-divider>
                       <div class="section">
-                          <h4>Neighbors (${this._getFilteredUnknownNeighbors(unknown).length})</h4>
+                          <h4>Neighbors (${filteredNeighbors.length})</h4>
                           <div class="neighbors-list">
-                              ${this._getFilteredUnknownNeighbors(unknown)
+                              ${filteredNeighbors
                                   .toSorted((a, b) => {
                                       const score = (nodeId: string): number => {
                                           const n = this.nodes[nodeId.toString()];
