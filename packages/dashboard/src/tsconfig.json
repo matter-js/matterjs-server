@@ -3,6 +3,8 @@
 {
     "extends": "../../../tsc/tsconfig.lib.json",
     "compilerOptions": {
+        "module": "esnext",
+        "moduleResolution": "bundler",
         "lib": [
             "es2023",
             "dom"
