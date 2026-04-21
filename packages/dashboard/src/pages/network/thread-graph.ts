@@ -8,7 +8,7 @@ import { html } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { createNodeIconDataUrl, createUnknownDeviceIconDataUrl } from "../../util/device-icons.js";
 import { BaseNetworkGraph } from "./base-network-graph.js";
-import type { NetworkGraphEdge, NetworkGraphNode, UnknownThreadDevice } from "./network-types.js";
+import type { NetworkGraphEdge, NetworkGraphNode, ThreadConnection, UnknownThreadDevice } from "./network-types.js";
 import {
     buildExtAddrMap,
     buildRloc16Map,
@@ -144,8 +144,27 @@ export class ThreadGraph extends BaseNetworkGraph {
             });
         }
 
-        // Build Thread connections (including to unknown devices)
-        const connections = buildThreadConnections(this.nodes, extAddrMap, rloc16Map, this._unknownDevices);
+        // Build Thread connections (including to unknown devices).
+        // When a filter would hide the first-seen direction of a pair, skip it so the
+        // reverse direction can win dedup — keeps the graph edge in sync with the
+        // details panel when only one direction passes the active filter.
+        const anyEdgeFilterActive =
+            this.hideWeakSignalEdges || this.hideMediumSignalEdges || this.hideStrongSignalEdges;
+        const shouldShowConnection = anyEdgeFilterActive
+            ? (conn: ThreadConnection) => {
+                  if (this.hideWeakSignalEdges && conn.signalLevel === "weak") return false;
+                  if (this.hideMediumSignalEdges && conn.signalLevel === "medium") return false;
+                  if (this.hideStrongSignalEdges && conn.signalLevel === "strong") return false;
+                  return true;
+              }
+            : undefined;
+        const connections = buildThreadConnections(
+            this.nodes,
+            extAddrMap,
+            rloc16Map,
+            this._unknownDevices,
+            shouldShowConnection,
+        );
 
         // Track which nodes should be hidden
         const hiddenNodeIds = new Set<string>();

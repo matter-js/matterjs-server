@@ -676,12 +676,18 @@ export function getWiFiVersionName(version: number | null): string {
  * Builds Thread mesh connections from neighbor tables.
  * Returns connections with signal information.
  * Includes connections to unknown devices (prefixed with 'unknown_').
+ *
+ * When `shouldShowConnection` is provided, candidates that fail the predicate are
+ * skipped without reserving the pair, allowing the reverse direction to win dedup.
+ * This keeps the graph edge in sync with the details page when a filter would
+ * otherwise hide the first-seen direction while the opposite direction passes.
  */
 export function buildThreadConnections(
     nodes: Record<string, MatterNode>,
     extAddrMap: Map<bigint, string>,
     rloc16Map: Map<number, string>,
     unknownDevices: UnknownThreadDevice[],
+    shouldShowConnection?: (connection: ThreadConnection) => boolean,
 ): ThreadConnection[] {
     const connections: ThreadConnection[] = [];
     const seenConnections = new Set<string>();
@@ -726,14 +732,13 @@ export function buildThreadConnections(
                 // Already have this connection
                 continue;
             }
-            seenConnections.add(connectionKey);
 
             // Look up route table entry for supplementary data (pathCost, bidirectional LQI)
             const routeEntry = findRouteByExtAddress(node, neighbor.extAddress);
             const bidirectionalLqi = routeEntry ? getRouteBidirectionalLqi(routeEntry) : undefined;
 
             // Always use neighbor table RSSI/LQI for signal color (most accurate link quality)
-            connections.push({
+            const candidate: ThreadConnection = {
                 fromNodeId,
                 toNodeId,
                 signalColor: getSignalColor(neighbor),
@@ -742,7 +747,15 @@ export function buildThreadConnections(
                 rssi: neighbor.avgRssi ?? neighbor.lastRssi,
                 pathCost: routeEntry?.pathCost,
                 bidirectionalLqi,
-            });
+            };
+
+            // Skip without reserving the pair so the reverse direction gets a chance
+            if (shouldShowConnection && !shouldShowConnection(candidate)) {
+                continue;
+            }
+
+            seenConnections.add(connectionKey);
+            connections.push(candidate);
         }
 
         // Check route table for connections not in neighbor table (supplementary data)
@@ -767,7 +780,6 @@ export function buildThreadConnections(
             if (seenConnections.has(connectionKey) || seenConnections.has(reverseKey)) {
                 continue;
             }
-            seenConnections.add(connectionKey);
 
             const bidirectionalLqi = getRouteBidirectionalLqi(route);
             const signalColor =
@@ -775,7 +787,7 @@ export function buildThreadConnections(
                     ? getSignalColorFromLqi(bidirectionalLqi)
                     : "var(--md-sys-color-outline, grey)"; // Unknown signal
 
-            connections.push({
+            const candidate: ThreadConnection = {
                 fromNodeId,
                 toNodeId,
                 signalColor,
@@ -785,7 +797,14 @@ export function buildThreadConnections(
                 pathCost: route.pathCost,
                 bidirectionalLqi,
                 fromRouteTable: true,
-            });
+            };
+
+            if (shouldShowConnection && !shouldShowConnection(candidate)) {
+                continue;
+            }
+
+            seenConnections.add(connectionKey);
+            connections.push(candidate);
         }
     }
 
