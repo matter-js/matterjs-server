@@ -154,6 +154,8 @@ export interface NetworkGraphNode {
     isUnknown?: boolean;
     /** Physics group: "connected" or "disconnected" */
     group?: "connected" | "disconnected";
+    /** Whether the node should be hidden */
+    hidden?: boolean;
 }
 
 /**
@@ -171,4 +173,6 @@ export interface NetworkGraphEdge {
     title?: string;
     /** Whether to show as dashed line */
     dashes?: boolean;
+    /** Whether the edge should be hidden */
+    hidden?: boolean;
 }
