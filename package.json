@@ -50,7 +50,7 @@
         }
     },
     "devDependencies": {
-        "@matter/testing": "0.17.0-alpha.0-20260417-8f958ba0d",
+        "@matter/testing": "0.17.0-alpha.0-20260421-ee36adbe4",
         "@types/mocha": "^10.0.10",
         "glob": "^13.0.6",
         "globals": "^17.5.0",
