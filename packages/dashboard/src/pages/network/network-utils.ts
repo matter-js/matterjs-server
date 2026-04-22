@@ -1086,3 +1086,125 @@ export function buildThreadEdgePairs(
 
     return pairs;
 }
+
+/**
+ * Filter options for edge visibility, matching the graph's filter pipeline.
+ */
+export interface EdgeFilterOptions {
+    hideOfflineNodes?: boolean;
+    hideWeakSignalEdges?: boolean;
+    hideMediumSignalEdges?: boolean;
+    hideStrongSignalEdges?: boolean;
+}
+
+/**
+ * Derives NodeConnection[] from pre-computed edge pairs for a given node.
+ * This is the single-source-of-truth alternative to getNodeConnections():
+ * it uses the same edge pairs as the graph, ensuring the side panel
+ * and the graph always agree on which connections exist.
+ *
+ * The function mirrors the graph's exact pipeline:
+ *   1. Filter each edge independently (offline cascade + signal level)
+ *   2. Among survivors per pair, prefer the outgoing edge (matches graph
+ *      highlight swap); fall back to worst signal (matches graph dedup)
+ *
+ * When filters are omitted, no filtering is applied and the outgoing
+ * edge is preferred (useful for the "update connections" dialog).
+ *
+ * One entry per connected peer (no duplicates).
+ */
+export function getNodeConnectionsFromPairs(
+    nodeId: string,
+    edgePairs: Map<string, ThreadEdgePair>,
+    nodes: Record<string, MatterNode>,
+    filters?: EdgeFilterOptions,
+): NodeConnection[] {
+    const connections: NodeConnection[] = [];
+
+    // Build set of hidden node IDs (offline cascade, same as graph)
+    const hiddenNodeIds = new Set<string>();
+    if (filters?.hideOfflineNodes) {
+        for (const node of Object.values(nodes)) {
+            if (node.available === false) {
+                hiddenNodeIds.add(String(node.node_id));
+            }
+        }
+    }
+
+    for (const pair of edgePairs.values()) {
+        const isA = pair.nodeA === nodeId;
+        const isB = pair.nodeB === nodeId;
+        if (!isA && !isB) continue;
+
+        const remoteId = isA ? pair.nodeB : pair.nodeA;
+        const outgoing = isA ? pair.edgeAB : pair.edgeBA;
+        const incoming = isA ? pair.edgeBA : pair.edgeAB;
+
+        // Apply filters to each edge independently (mirrors graph pipeline)
+        const survivors: { conn: ThreadConnection; isOutgoing: boolean }[] = [];
+
+        for (const [conn, isOut] of [
+            [outgoing, true],
+            [incoming, false],
+        ] as const) {
+            if (!conn) continue;
+
+            if (filters) {
+                const fromId = String(conn.fromNodeId);
+                const toId = String(conn.toNodeId);
+
+                // Offline cascade: skip if either endpoint is hidden
+                if (hiddenNodeIds.has(fromId) || hiddenNodeIds.has(toId)) continue;
+
+                // Signal level filters
+                if (filters.hideWeakSignalEdges && conn.signalLevel === "weak") continue;
+                if (filters.hideMediumSignalEdges && conn.signalLevel === "medium") continue;
+                if (filters.hideStrongSignalEdges && conn.signalLevel === "strong") continue;
+            }
+
+            survivors.push({ conn, isOutgoing: isOut });
+        }
+
+        if (survivors.length === 0) continue;
+
+        // Among survivors: prefer outgoing (matches graph highlight swap),
+        // fall back to worst signal (matches graph dedup)
+        let winner: { conn: ThreadConnection; isOutgoing: boolean };
+        const outgoingSurvivor = survivors.find(s => s.isOutgoing);
+        if (outgoingSurvivor) {
+            winner = outgoingSurvivor;
+        } else {
+            survivors.sort((a, b) => getEdgeSignalScore(a.conn) - getEdgeSignalScore(b.conn));
+            winner = survivors[0];
+        }
+
+        const remoteNode = nodes[remoteId];
+        const isUnknown = remoteId.startsWith("unknown_");
+
+        // Derive extended address hex for display
+        let extAddressHex: string;
+        if (isUnknown) {
+            extAddressHex = remoteId.slice("unknown_".length);
+        } else if (remoteNode) {
+            extAddressHex = getThreadExtendedAddressHex(remoteNode) ?? "Unknown";
+        } else {
+            extAddressHex = "Unknown";
+        }
+
+        connections.push({
+            connectedNodeId: remoteId,
+            connectedNode: remoteNode,
+            extAddressHex,
+            signalColor: winner.conn.signalColor,
+            signalLevel: winner.conn.signalLevel,
+            lqi: winner.conn.lqi,
+            rssi: winner.conn.rssi,
+            isOutgoing: winner.isOutgoing,
+            isUnknown,
+            pathCost: winner.conn.pathCost,
+            bidirectionalLqi: winner.conn.bidirectionalLqi,
+        });
+    }
+
+    return connections;
+}

@@ -390,6 +390,7 @@ class MatterNetworkView extends LitElement {
         const showSidebar = this._selectedNodeId !== null;
         const unknownDevices = this._threadGraph?.unknownDevicesMap ?? new Map();
         const wifiAccessPoints = this._wifiGraph?.wifiAccessPointsMap ?? new Map();
+        const threadEdgePairs = this._threadGraph?.edgePairs ?? new Map();
 
         return html`
             <dashboard-header
@@ -411,6 +412,7 @@ class MatterNetworkView extends LitElement {
                         .nodes=${this.nodes}
                         .unknownDevices=${unknownDevices}
                         .wifiAccessPoints=${wifiAccessPoints}
+                        .threadEdgePairs=${threadEdgePairs}
                         .hideOfflineNodes=${this._hideOfflineNodes}
                         .hideWeakSignalEdges=${this._hideWeakSignalEdges}
                         .hideMediumSignalEdges=${this._hideMediumSignalEdges}

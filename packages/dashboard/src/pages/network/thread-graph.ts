@@ -450,13 +450,10 @@ export class ThreadGraph extends BaseNetworkGraph {
                             : { color: "#999999", highlight: "#999999" },
                     };
                 } else {
-                    // ARROW: no edge from highlighted node exists — add an
-                    // arrow pointing toward the highlighted node.
-                    // from=remote, to=highlighted → arrows:"to" points at highlighted.
+                    // No edge from highlighted node — just thicken the remote's edge.
                     edgeUpdates[String(edge.id)] = {
                         id: edge.id,
                         width: 3,
-                        arrows: "to",
                     };
                 }
             } else {
@@ -533,7 +530,6 @@ export class ThreadGraph extends BaseNetworkGraph {
                 width: baseState.width,
                 color: { color: baseState.color.color, highlight: baseState.color.highlight },
                 dashes: baseState.dashes,
-                arrows: "", // Clear any arrows added during highlight
             });
         }
         this._edgesDataSet.update(edgeUpdates);
