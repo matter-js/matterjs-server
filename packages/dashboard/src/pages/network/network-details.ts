@@ -103,14 +103,6 @@ export class NetworkDetails extends LitElement {
         }
     }
 
-    private _formatExtAddress(extAddr: bigint | string | undefined): string {
-        if (extAddr === undefined || extAddr === "") return "Unknown";
-        if (typeof extAddr === "bigint") {
-            return extAddr.toString(16).toUpperCase().padStart(16, "0");
-        }
-        return extAddr;
-    }
-
     private _getSignalIconFromColor(color: string): string {
         const strongColor = getCssVar("--signal-color-strong", "#4caf50");
         const mediumColor = getCssVar("--signal-color-medium", "#ff9800");

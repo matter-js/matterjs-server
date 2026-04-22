@@ -556,7 +556,7 @@ export class ThreadGraph extends BaseNetworkGraph {
 
     /**
      * Restores all edges to their base state (undoes highlight modifications).
-     * This resets hidden/visible state, width, color, dashes, and clears arrows.
+     * This resets hidden/visible state, width, color, and dashes.
      */
     private _restoreEdgeBaseState(): void {
         if (!this._edgesDataSet) return;
