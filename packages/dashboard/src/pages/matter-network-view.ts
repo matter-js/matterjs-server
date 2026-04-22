@@ -148,6 +148,12 @@ class MatterNetworkView extends LitElement {
 
     private _handleDetailsClose(): void {
         this._selectedNodeId = null;
+        // Tell the graph to deselect and clear highlights
+        if (this.networkType === "thread") {
+            this._threadGraph?.deselectAll();
+        } else {
+            this._wifiGraph?.deselectAll();
+        }
     }
 
     private _handleSelectNode(event: CustomEvent<{ nodeId: number | string }>): void {

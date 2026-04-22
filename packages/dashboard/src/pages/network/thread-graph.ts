@@ -76,6 +76,9 @@ export class ThreadGraph extends BaseNetworkGraph {
     /** Whether highlight is currently active */
     private _isHighlighted = false;
 
+    /** Node ID currently highlighted (for icon restoration on clear) */
+    private _highlightedNodeId: string | null = null;
+
     /** Get unknown devices as a map for use by details panel */
     public get unknownDevicesMap(): Map<
         string,
@@ -191,7 +194,6 @@ export class ThreadGraph extends BaseNetworkGraph {
         const graphNodes: NetworkGraphNode[] = threadNodes.map(node => {
             const nodeId = String(node.node_id);
             const threadRole = getThreadRole(node);
-            const isSelected = nodeId === String(this._selectedNodeId);
             const isOffline = node.available === false;
             const shouldHide = this.hideOfflineNodes && isOffline;
 
@@ -202,7 +204,7 @@ export class ThreadGraph extends BaseNetworkGraph {
             return {
                 id: nodeId,
                 label: getDeviceName(node),
-                image: createNodeIconDataUrl(node, threadRole, isSelected, isOffline),
+                image: createNodeIconDataUrl(node, threadRole, false, isOffline),
                 shape: "image" as const,
                 networkType: "thread" as const,
                 threadRole,
@@ -213,7 +215,6 @@ export class ThreadGraph extends BaseNetworkGraph {
 
         // Unknown/external devices
         for (const unknown of this._unknownDevices) {
-            const isSelected = unknown.id === this._selectedNodeId;
             const typeLabel = unknown.isRouter ? "External Router" : "External Device";
 
             // Hide if hideOfflineNodes is enabled AND all nodes that see it are offline
@@ -233,7 +234,7 @@ export class ThreadGraph extends BaseNetworkGraph {
             graphNodes.push({
                 id: unknown.id,
                 label: `${typeLabel} (${unknown.extAddressHex.slice(-8)})`,
-                image: createUnknownDeviceIconDataUrl(unknown.isRouter, isSelected),
+                image: createUnknownDeviceIconDataUrl(unknown.isRouter, false),
                 shape: "image" as const,
                 networkType: "thread" as const,
                 isUnknown: true,
@@ -485,6 +486,24 @@ export class ThreadGraph extends BaseNetworkGraph {
         });
         this._nodesDataSet.update(nodeUpdates);
 
+        // Update selected node icon to show highlighted/selected state
+        this._highlightedNodeId = nodeIdStr;
+        const selectedNodeData = this.nodes[nodeIdStr];
+        if (selectedNodeData) {
+            const threadRole = getThreadRole(selectedNodeData);
+            const isOffline = selectedNodeData.available === false;
+            this._nodesDataSet.update({
+                id: nodeIdStr,
+                image: createNodeIconDataUrl(selectedNodeData, threadRole, true, isOffline),
+            });
+        } else if (nodeIdStr.startsWith("unknown_")) {
+            const unknown = this._unknownDevicesMapCache.get(nodeIdStr);
+            this._nodesDataSet.update({
+                id: nodeIdStr,
+                image: createUnknownDeviceIconDataUrl(unknown?.isRouter ?? false, true),
+            });
+        }
+
         this._isHighlighted = true;
     }
 
@@ -497,6 +516,26 @@ export class ThreadGraph extends BaseNetworkGraph {
 
         // Restore edges to their base state
         this._restoreEdgeBaseState();
+
+        // Restore highlighted node icon to default (non-selected) state
+        if (this._highlightedNodeId) {
+            const nodeData = this.nodes[this._highlightedNodeId];
+            if (nodeData) {
+                const threadRole = getThreadRole(nodeData);
+                const isOffline = nodeData.available === false;
+                this._nodesDataSet.update({
+                    id: this._highlightedNodeId,
+                    image: createNodeIconDataUrl(nodeData, threadRole, false, isOffline),
+                });
+            } else if (this._highlightedNodeId.startsWith("unknown_")) {
+                const unknown = this._unknownDevicesMapCache.get(this._highlightedNodeId);
+                this._nodesDataSet.update({
+                    id: this._highlightedNodeId,
+                    image: createUnknownDeviceIconDataUrl(unknown?.isRouter ?? false, false),
+                });
+            }
+            this._highlightedNodeId = null;
+        }
 
         // Restore nodes to default styling
         const allNodes = this._nodesDataSet.get();
