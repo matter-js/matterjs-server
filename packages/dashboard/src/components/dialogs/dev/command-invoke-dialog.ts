@@ -23,12 +23,13 @@ export class CommandInvokeDialog extends LitElement {
     @property({ type: Number }) public nodeId!: number | bigint;
     @property({ type: Number }) public endpointId!: number;
     @property({ type: Number }) public clusterId!: number;
+    @property({ type: Number }) public commandId!: number;
     @property({ type: String }) public commandName!: string;
-    @property({ type: String }) public commandLabel!: string;
 
     @state() private _busy = false;
     @state() private _error: string | null = null;
     @state() private _response: string | null = null;
+    @state() private _success = false;
 
     @query("textarea") private _textarea!: HTMLTextAreaElement;
 
@@ -50,6 +51,7 @@ export class CommandInvokeDialog extends LitElement {
 
     private async _invoke() {
         this._error = null;
+        this._success = false;
         const parsed = parseJsonPayload(this._textarea.value);
         if (!parsed.ok) {
             this._error = `Invalid JSON: ${parsed.error}`;
@@ -71,11 +73,18 @@ export class CommandInvokeDialog extends LitElement {
                 this.commandName,
                 payload,
             );
-            this._response = toBigIntAwareJson(result ?? null, 2);
+            if (result === null || result === undefined) {
+                this._success = true;
+                this._response = null;
+            } else {
+                this._response = toBigIntAwareJson(result, 2);
+                this._success = false;
+            }
             this._error = null;
         } catch (err) {
             this._error = err instanceof Error ? err.message : String(err);
             this._response = null;
+            this._success = false;
         } finally {
             this._busy = false;
         }
@@ -84,11 +93,14 @@ export class CommandInvokeDialog extends LitElement {
     protected override render() {
         return html`
             <md-dialog open @cancel=${preventDefault} @closed=${this._handleClosed}>
-                <div slot="headline">Invoke ${this.commandLabel}</div>
+                <div slot="headline">Invoke ${this.commandName}</div>
                 <div slot="content">
                     <p class="path" id="invoke-path">
                         Cluster <code>${this.clusterId}</code> (${formatHex(this.clusterId)}) · Endpoint
-                        <code>${this.endpointId}</code> · Command <code>${this.commandName}</code>
+                        <code>${this.endpointId}</code> · Command <code>${this.commandId}</code> (${formatHex(
+                            this.commandId,
+                        )})
+                        · <code>${this.commandName}</code>
                     </p>
                     <label class="textarea-label" for="payload">Payload (JSON)</label>
                     <textarea
@@ -103,6 +115,7 @@ export class CommandInvokeDialog extends LitElement {
                     ${this._error
                         ? html`<div id="invoke-error" class="error" role="alert">${this._error}</div>`
                         : nothing}
+                    ${this._success ? html`<div class="success" role="status">Success</div>` : nothing}
                     ${this._response !== null
                         ? html`
                               <label class="textarea-label">Response</label>
@@ -175,6 +188,17 @@ export class CommandInvokeDialog extends LitElement {
             font-size: 0.875rem;
             white-space: pre-wrap;
             word-break: break-word;
+        }
+
+        .success {
+            margin-top: 10px;
+            padding: 10px 12px;
+            background: color-mix(in srgb, var(--success-color) 18%, transparent);
+            color: var(--success-color);
+            border: 1px solid color-mix(in srgb, var(--success-color) 40%, transparent);
+            border-radius: 6px;
+            font-size: 0.9rem;
+            font-weight: 500;
         }
 
         .response {
