@@ -124,9 +124,11 @@ class MatterClusterView extends LitElement {
         );
         const nodeHex = formatNodeAddress(fabricIndex, this.node.node_id);
 
+        const clusterName = clusters[this.cluster]?.label ?? "Custom/Unknown Cluster";
+
         return html`
             <dashboard-header
-                .title=${`Node ${this.node.node_id} ${nodeHex}  |  Endpoint ${this.endpoint}  |  Cluster ${this.cluster}`}
+                .title=${`Node ${this.node.node_id} ${nodeHex}  |  Endpoint ${this.endpoint}  |  Cluster ${this.cluster} (${clusterName})`}
                 .backButton=${`#node/${this.node.node_id}/${this.endpoint}`}
                 .client=${this.client}
             ></dashboard-header>
@@ -277,7 +279,8 @@ class MatterClusterView extends LitElement {
 
         const commands = acceptedList
             .map(id => clusterMeta?.commands[id])
-            .filter((cmd): cmd is NonNullable<typeof cmd> => cmd !== undefined);
+            .filter((cmd): cmd is NonNullable<typeof cmd> => cmd !== undefined)
+            .sort((a, b) => a.id - b.id);
 
         const online = this.node?.available === true;
 
@@ -306,7 +309,7 @@ class MatterClusterView extends LitElement {
                                                   <md-outlined-button
                                                       class="dev-invoke-button"
                                                       ?disabled=${!online}
-                                                      @click=${() => this._openCommandInvokeDialog(cmd.name, cmd.label)}
+                                                      @click=${() => this._openCommandInvokeDialog(cmd.id, cmd.name)}
                                                   >
                                                       <ha-svg-icon slot="icon" .path=${mdiPlay}></ha-svg-icon>
                                                       Invoke
@@ -322,15 +325,15 @@ class MatterClusterView extends LitElement {
         `;
     }
 
-    private _openCommandInvokeDialog(commandName: string, commandLabel: string) {
+    private _openCommandInvokeDialog(commandId: number, commandName: string) {
         if (!this.node || this.cluster === undefined) return;
         showCommandInvokeDialog({
             client: this.client,
             nodeId: this.node.node_id,
             endpointId: this.endpoint,
             clusterId: this.cluster,
+            commandId,
             commandName,
-            commandLabel,
         });
     }
 
@@ -564,6 +567,11 @@ class MatterClusterView extends LitElement {
                 padding: 8px 12px;
                 background: var(--md-sys-color-surface-container-low);
                 border-radius: 8px;
+                transition: background 120ms ease-out;
+            }
+
+            .command-row:hover {
+                background: color-mix(in srgb, var(--dev-color) 12%, var(--md-sys-color-surface-container-low));
             }
 
             .dev-invoke-button {
