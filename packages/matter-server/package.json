@@ -45,7 +45,7 @@
         "@types/express": "^5.0.6",
         "@types/node": "^25.6.0",
         "@matter/nodejs": "0.17.0-alpha.0-20260422-79d4eee90",
-        "@matter/testing": "0.17.0-alpha.0-20260422-79d4eee90",
+        "@matter/testing": "0.17.0-alpha.0-20260422-905228653",
         "@matter-server/ws-client": "*"
     },
     "files": [
