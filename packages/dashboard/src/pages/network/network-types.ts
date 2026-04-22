@@ -121,6 +121,23 @@ export interface ThreadConnection {
 }
 
 /**
+ * A pair of Thread nodes with their directional edge data.
+ * Each connected pair has 0-2 edges (one per neighbor/route table direction).
+ */
+export interface ThreadEdgePair {
+    /** Canonical pair key (sorted node IDs joined by "|") */
+    pairKey: string;
+    /** First node ID (lexicographically smaller) */
+    nodeA: string;
+    /** Second node ID (lexicographically larger) */
+    nodeB: string;
+    /** Edge where nodeA reports nodeB as neighbor */
+    edgeAB?: ThreadConnection;
+    /** Edge where nodeB reports nodeA as neighbor */
+    edgeBA?: ThreadConnection;
+}
+
+/**
  * Unknown Thread device seen in neighbor tables but not commissioned.
  */
 export interface UnknownThreadDevice {
@@ -175,4 +192,10 @@ export interface NetworkGraphEdge {
     dashes?: boolean;
     /** Whether the edge should be hidden */
     hidden?: boolean;
+    /** vis.js arrow configuration (e.g., "to", "from", or "") */
+    arrows?: string;
+    /** The edge pair key this belongs to (Thread graph dedup/highlight) */
+    pairKey?: string;
+    /** Which node reported this connection from its neighbor/route table */
+    reportingNodeId?: number | string;
 }

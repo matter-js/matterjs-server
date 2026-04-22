@@ -11,6 +11,7 @@ import type {
     NetworkType,
     SignalLevel,
     ThreadConnection,
+    ThreadEdgePair,
     ThreadNeighbor,
     ThreadRoute,
     UnknownThreadDevice,
@@ -936,4 +937,152 @@ export function getNodeConnections(
     }
 
     return connections;
+}
+
+/**
+ * Creates a canonical pair key from two node IDs.
+ * The key is always ordered so that the same pair produces the same key regardless of direction.
+ */
+export function makePairKey(a: string, b: string): string {
+    return a < b ? `${a}|${b}` : `${b}|${a}`;
+}
+
+/**
+ * Computes a numeric signal score for edge comparison.
+ * Lower score = weaker signal (worst case).
+ */
+export function getEdgeSignalScore(conn: ThreadConnection): number {
+    const levelScore =
+        conn.signalLevel === "strong"
+            ? 3000
+            : conn.signalLevel === "medium"
+              ? 2000
+              : conn.signalLevel === "weak"
+                ? 1000
+                : 0;
+    const detail = conn.rssi !== null ? conn.rssi + 200 : conn.lqi;
+    return levelScore + detail;
+}
+
+/**
+ * Builds edge pairs for all Thread connections.
+ * Each pair represents two connected nodes with up to 2 directional edges
+ * (one from each node's neighbor/route table). No dedup is performed —
+ * callers are responsible for selecting which edge to display per pair.
+ */
+export function buildThreadEdgePairs(
+    nodes: Record<string, MatterNode>,
+    extAddrMap: Map<bigint, string>,
+    rloc16Map: Map<number, string>,
+    unknownDevices: UnknownThreadDevice[],
+): Map<string, ThreadEdgePair> {
+    const pairs = new Map<string, ThreadEdgePair>();
+
+    const unknownExtAddrMap = new Map<bigint, string>();
+    for (const unknown of unknownDevices) {
+        unknownExtAddrMap.set(unknown.extAddress, unknown.id);
+    }
+
+    for (const node of Object.values(nodes)) {
+        const fromNodeId = String(node.node_id);
+        const neighbors = parseNeighborTable(node);
+
+        for (const neighbor of neighbors) {
+            let toNodeId: string | undefined = extAddrMap.get(neighbor.extAddress);
+            if (toNodeId === undefined && neighbor.rloc16 !== 0) {
+                toNodeId = rloc16Map.get(neighbor.rloc16);
+            }
+            if (toNodeId === undefined) {
+                toNodeId = unknownExtAddrMap.get(neighbor.extAddress);
+            }
+            if (toNodeId === undefined || fromNodeId === toNodeId) continue;
+
+            const pairKey = makePairKey(fromNodeId, toNodeId);
+            if (!pairs.has(pairKey)) {
+                const [nodeA, nodeB] = fromNodeId < toNodeId ? [fromNodeId, toNodeId] : [toNodeId, fromNodeId];
+                pairs.set(pairKey, { pairKey, nodeA, nodeB });
+            }
+
+            const pair = pairs.get(pairKey)!;
+            const isFromA = fromNodeId === pair.nodeA;
+
+            // Neighbor table entry takes precedence — skip if already present for this direction
+            if (isFromA && pair.edgeAB) continue;
+            if (!isFromA && pair.edgeBA) continue;
+
+            const routeEntry = findRouteByExtAddress(node, neighbor.extAddress);
+            const bidirectionalLqi = routeEntry ? getRouteBidirectionalLqi(routeEntry) : undefined;
+
+            const edge: ThreadConnection = {
+                fromNodeId,
+                toNodeId,
+                signalColor: getSignalColor(neighbor),
+                signalLevel: getSignalLevel(neighbor),
+                lqi: neighbor.lqi,
+                rssi: neighbor.avgRssi ?? neighbor.lastRssi,
+                pathCost: routeEntry?.pathCost,
+                bidirectionalLqi,
+            };
+
+            if (isFromA) {
+                pair.edgeAB = edge;
+            } else {
+                pair.edgeBA = edge;
+            }
+        }
+
+        // Supplementary: route table entries not already covered by neighbor table
+        const routes = parseRouteTable(node);
+        for (const route of routes) {
+            if (!route.linkEstablished || !route.allocated) continue;
+
+            let toNodeId: string | undefined = extAddrMap.get(route.extAddress);
+            if (toNodeId === undefined && route.rloc16 !== 0) {
+                toNodeId = rloc16Map.get(route.rloc16);
+            }
+            if (toNodeId === undefined) {
+                toNodeId = unknownExtAddrMap.get(route.extAddress);
+            }
+            if (toNodeId === undefined || toNodeId === fromNodeId) continue;
+
+            const pairKey = makePairKey(fromNodeId, toNodeId);
+            if (!pairs.has(pairKey)) {
+                const [nodeA, nodeB] = fromNodeId < toNodeId ? [fromNodeId, toNodeId] : [toNodeId, fromNodeId];
+                pairs.set(pairKey, { pairKey, nodeA, nodeB });
+            }
+
+            const pair = pairs.get(pairKey)!;
+            const isFromA = fromNodeId === pair.nodeA;
+
+            // Only add from route table if no neighbor table edge for this direction
+            if (isFromA && pair.edgeAB) continue;
+            if (!isFromA && pair.edgeBA) continue;
+
+            const bidirectionalLqi = getRouteBidirectionalLqi(route);
+            const signalColor =
+                bidirectionalLqi !== undefined
+                    ? getSignalColorFromLqi(bidirectionalLqi)
+                    : "var(--md-sys-color-outline, grey)";
+
+            const edge: ThreadConnection = {
+                fromNodeId,
+                toNodeId,
+                signalColor,
+                signalLevel: bidirectionalLqi !== undefined ? getSignalLevelFromLqi(bidirectionalLqi) : undefined,
+                lqi: bidirectionalLqi ?? 0,
+                rssi: null,
+                pathCost: route.pathCost,
+                bidirectionalLqi,
+                fromRouteTable: true,
+            };
+
+            if (isFromA) {
+                pair.edgeAB = edge;
+            } else {
+                pair.edgeBA = edge;
+            }
+        }
+    }
+
+    return pairs;
 }
