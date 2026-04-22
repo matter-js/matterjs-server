@@ -39,7 +39,7 @@
     "dependencies": {
         "@matter/main": "0.17.0-alpha.0-20260422-79d4eee90",
         "@matter-server/ws-client": "*",
-        "@project-chip/matter.js": "0.17.0-alpha.0-20260422-79d4eee90",
+        "@project-chip/matter.js": "0.17.0-alpha.0-20260422-905228653",
         "ws": "^8.20.0"
     },
     "devDependencies": {
