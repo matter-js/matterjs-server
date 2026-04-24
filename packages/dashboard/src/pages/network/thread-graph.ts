@@ -356,25 +356,27 @@ export class ThreadGraph extends BaseNetworkGraph {
      * Highlights edges connected to the selected node with swap/arrow logic.
      *
      * For each visible edge connected to the highlighted node:
-     * - If the visible edge comes from the highlighted node → thicken it.
      * - If the visible edge comes from the remote node AND there is a
      *   dedup-hidden edge from the highlighted node → SWAP: show the
-     *   highlighted node's edge instead (it has better signal but we
-     *   prefer showing the highlighted node's perspective).
-     * - If the visible edge comes from the remote node AND there is NO
-     *   edge from the highlighted node → ARROW: add a "to" arrow on the
-     *   edge, pointing toward the highlighted node (indicating one-way
-     *   visibility from the remote node).
+     *   highlighted node's edge instead (its signal is better or equal,
+     *   but we prefer the highlighted node's perspective).
+     * - Otherwise → thicken the edge. If the pair is truly one-way (only
+     *   one of edgeAB/edgeBA exists), also draw an arrow in the data
+     *   direction so asymmetric visibility is visible at a glance.
      */
     protected override _highlightConnections(nodeId: number | string): void {
         if (!this._edgesDataSet || !this._nodesDataSet) return;
+
+        const nodeIdStr = String(nodeId);
+
+        // Re-selecting the same node is a no-op: a full restore + re-highlight
+        // would cause a visible flicker on dense graphs.
+        if (this._isHighlighted && this._highlightedNodeId === nodeIdStr) return;
 
         // Restore base state first if already highlighted (e.g. switching nodes)
         if (this._isHighlighted) {
             this._restoreEdgeBaseState();
         }
-
-        const nodeIdStr = String(nodeId);
         const allEdges = this._edgesDataSet.get();
         const dimmedColor = this._getDimmedEdgeColor();
 
@@ -451,18 +453,18 @@ export class ThreadGraph extends BaseNetworkGraph {
                             : { color: "#999999", highlight: "#999999" },
                     };
                 } else {
-                    // No edge from highlighted node — just thicken the remote's edge.
-                    edgeUpdates[String(edge.id)] = {
-                        id: edge.id,
-                        width: 3,
-                    };
+                    // True one-way visibility is distinct from the highlighted
+                    // node's edge being filter-hidden: check pair data, not
+                    // just visible/dedup base state. Arrow at the data `to`
+                    // end reproduces the removed directional cue.
+                    edgeUpdates[String(edge.id)] = this._asymmetricEdgeUpdate(edge);
                 }
             } else {
-                // Visible edge comes from the HIGHLIGHTED node — just thicken.
-                edgeUpdates[String(edge.id)] = {
-                    id: edge.id,
-                    width: 3,
-                };
+                // Visible edge comes from the HIGHLIGHTED node. Mirror the
+                // asymmetric-arrow treatment so the cue is symmetric: the
+                // highlighted node reports remote but remote has no matching
+                // neighbor-table entry.
+                edgeUpdates[String(edge.id)] = this._asymmetricEdgeUpdate(edge);
             }
         }
 
@@ -486,25 +488,60 @@ export class ThreadGraph extends BaseNetworkGraph {
         });
         this._nodesDataSet.update(nodeUpdates);
 
-        // Update selected node icon to show highlighted/selected state
-        this._highlightedNodeId = nodeIdStr;
-        const selectedNodeData = this.nodes[nodeIdStr];
-        if (selectedNodeData) {
-            const threadRole = getThreadRole(selectedNodeData);
-            const isOffline = selectedNodeData.available === false;
-            this._nodesDataSet.update({
-                id: nodeIdStr,
-                image: createNodeIconDataUrl(selectedNodeData, threadRole, true, isOffline),
-            });
-        } else if (nodeIdStr.startsWith("unknown_")) {
-            const unknown = this._unknownDevicesMapCache.get(nodeIdStr);
-            this._nodesDataSet.update({
-                id: nodeIdStr,
-                image: createUnknownDeviceIconDataUrl(unknown?.isRouter ?? false, true),
-            });
+        // Switching highlight without a full deselect (e.g. clicking a connection
+        // row in the side panel) keeps the previous node's icon in its selected
+        // variant unless we reset it here.
+        if (this._highlightedNodeId && this._highlightedNodeId !== nodeIdStr) {
+            this._setNodeIconHighlight(this._highlightedNodeId, false);
         }
 
+        this._highlightedNodeId = nodeIdStr;
+        this._setNodeIconHighlight(nodeIdStr, true);
+
         this._isHighlighted = true;
+    }
+
+    /**
+     * Thicken a connected edge and add a directional arrow when the pair is
+     * truly one-way (only one of edgeAB/edgeBA exists). The arrow sits at the
+     * data `to` end — matching both "remote reports me" (arrow on me) and
+     * "I report remote" (arrow on remote) without extra per-branch logic.
+     */
+    private _asymmetricEdgeUpdate(edge: NetworkGraphEdge): Partial<NetworkGraphEdge> {
+        const pair = edge.pairKey ? this._edgePairs.get(edge.pairKey) : undefined;
+        const isAsymmetric = pair ? !pair.edgeAB || !pair.edgeBA : false;
+        const update: Partial<NetworkGraphEdge> = {
+            id: edge.id,
+            width: 3,
+        };
+        if (isAsymmetric) {
+            update.arrows = "to";
+        }
+        return update;
+    }
+
+    /**
+     * Swap a node's icon between the default and highlighted variants.
+     * Kept separate so both `_highlightConnections` (switching target) and
+     * `_clearHighlights` (fully unselecting) reach the same end state.
+     */
+    private _setNodeIconHighlight(nodeId: string, isHighlighted: boolean): void {
+        if (!this._nodesDataSet) return;
+        const nodeData = this.nodes[nodeId];
+        if (nodeData) {
+            const threadRole = getThreadRole(nodeData);
+            const isOffline = nodeData.available === false;
+            this._nodesDataSet.update({
+                id: nodeId,
+                image: createNodeIconDataUrl(nodeData, threadRole, isHighlighted, isOffline),
+            });
+        } else if (nodeId.startsWith("unknown_")) {
+            const unknown = this._unknownDevicesMapCache.get(nodeId);
+            this._nodesDataSet.update({
+                id: nodeId,
+                image: createUnknownDeviceIconDataUrl(unknown?.isRouter ?? false, isHighlighted),
+            });
+        }
     }
 
     /**
@@ -517,23 +554,8 @@ export class ThreadGraph extends BaseNetworkGraph {
         // Restore edges to their base state
         this._restoreEdgeBaseState();
 
-        // Restore highlighted node icon to default (non-selected) state
         if (this._highlightedNodeId) {
-            const nodeData = this.nodes[this._highlightedNodeId];
-            if (nodeData) {
-                const threadRole = getThreadRole(nodeData);
-                const isOffline = nodeData.available === false;
-                this._nodesDataSet.update({
-                    id: this._highlightedNodeId,
-                    image: createNodeIconDataUrl(nodeData, threadRole, false, isOffline),
-                });
-            } else if (this._highlightedNodeId.startsWith("unknown_")) {
-                const unknown = this._unknownDevicesMapCache.get(this._highlightedNodeId);
-                this._nodesDataSet.update({
-                    id: this._highlightedNodeId,
-                    image: createUnknownDeviceIconDataUrl(unknown?.isRouter ?? false, false),
-                });
-            }
+            this._setNodeIconHighlight(this._highlightedNodeId, false);
             this._highlightedNodeId = null;
         }
 
@@ -569,6 +591,7 @@ export class ThreadGraph extends BaseNetworkGraph {
                 width: baseState.width,
                 color: { color: baseState.color.color, highlight: baseState.color.highlight },
                 dashes: baseState.dashes,
+                arrows: "",
             });
         }
         this._edgesDataSet.update(edgeUpdates);

@@ -294,9 +294,17 @@ export class NetworkDetails extends LitElement {
                                                                 >, Cost: ${conn.pathCost}</span
                                                             >`
                                                           : nothing}
-                                                      ${!conn.isOutgoing
-                                                          ? html` <span class="direction-hint">(reverse)</span> `
-                                                          : nothing}
+                                                      ${conn.isReverseOnly
+                                                          ? html`
+                                                                <span
+                                                                    class="direction-hint reverse-only"
+                                                                    title="Peer reports this node but this node has no matching neighbor-table entry. Possible one-way visibility (range, TX power, or stale neighbor table)."
+                                                                    >← one-way</span
+                                                                >
+                                                            `
+                                                          : !conn.isOutgoing
+                                                            ? html` <span class="direction-hint">(reverse)</span> `
+                                                            : nothing}
                                                   </div>
                                               </div>
                                           </div>
@@ -959,6 +967,14 @@ export class NetworkDetails extends LitElement {
             .direction-hint {
                 font-style: italic;
                 opacity: 0.8;
+            }
+
+            .direction-hint.reverse-only {
+                font-style: normal;
+                font-weight: 500;
+                opacity: 1;
+                color: var(--md-sys-color-error, #b3261e);
+                cursor: help;
             }
 
             .route-info {

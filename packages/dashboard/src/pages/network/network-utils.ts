@@ -692,6 +692,8 @@ export interface NodeConnection {
     rssi: number | null;
     /** Whether this connection is from THIS node's neighbor table (true) or from the OTHER node's table (false) */
     isOutgoing: boolean;
+    /** True when only the peer reports this edge — this node has no matching neighbor-table entry. Surfaces true asymmetric visibility, distinct from a reverse view caused by filtering. */
+    isReverseOnly: boolean;
     /** Whether this is an unknown/external device */
     isUnknown: boolean;
     /** Path cost from route table (1 = direct, higher = multi-hop). Only available for routers. */
@@ -960,6 +962,7 @@ export function getNodeConnectionsFromPairs(
             lqi: winner.conn.lqi,
             rssi: winner.conn.rssi,
             isOutgoing: winner.isOutgoing,
+            isReverseOnly: !outgoing,
             isUnknown,
             pathCost: winner.conn.pathCost,
             bidirectionalLqi: winner.conn.bidirectionalLqi,
