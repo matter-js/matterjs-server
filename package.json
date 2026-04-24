@@ -44,7 +44,7 @@
         "python:build": "cd python_client && .venv/bin/pip install build && .venv/bin/python -m build"
     },
     "devDependencies": {
-        "@matter/testing": "0.17.0-alpha.0-20260422-79d4eee90",
+        "@matter/testing": "0.17.0-alpha.0-20260424-020222527",
         "@nacho-iot/js-tools": "^0.1.3",
         "@types/mocha": "^10.0.10",
         "glob": "^13.0.6",

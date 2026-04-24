@@ -83,6 +83,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
     #serverVersion: string;
     #wss?: WebSocketServer;
     #closed = false;
+    #shuttingDown = false;
     /** Circular buffer for recent node events (max 25) */
     #eventHistory: MatterNodeEvent[] = [];
     /** Track when each node was last interviewed (connected) - keyed by nodeId */
@@ -134,11 +135,15 @@ export class WebSocketControllerHandler implements WebServerHandler {
         return [...this.#eventHistory];
     }
 
+    initiateShutdown(): void {
+        this.#shuttingDown = true;
+    }
+
     async register(server: HttpServer) {
         logger.info(`Starting server: matter-server/${this.#serverVersion} (matter.js/${MATTER_VERSION})`);
         const wss = (this.#wss = new WebSocketServer({ server: server, path: "/ws" }));
         wss.on("connection", ws => {
-            if (this.#closed) return;
+            if (this.#closed || this.#shuttingDown) return;
 
             const connId = generateConnectionId();
             logger.info(`[${connId}] WebSocket connection established`);
@@ -147,7 +152,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             const observers = new ObserverGroup();
 
             const sendNodeDetailsEvent = <E extends EventTypes>(eventName: E, nodeId: NodeId) => {
-                if (this.#closed || !listening) return;
+                if (this.#closed || this.#shuttingDown || !listening) return;
 
                 switch (eventName) {
                     case "node_added":
@@ -177,7 +182,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
             // Register all event listeners using ObserverGroup for easy cleanup
             observers.on(this.#commandHandler.events.attributeChanged, (nodeId, data) => {
-                if (this.#closed || !listening) return;
+                if (this.#closed || this.#shuttingDown || !listening) return;
                 const { endpointId, clusterId, attributeId } = data.path;
                 const pathStr = `${endpointId}/${clusterId}/${attributeId}`;
                 const clusterData = ClusterMap[clusterId];
@@ -195,7 +200,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             });
 
             observers.on(this.#commandHandler.events.eventChanged, (nodeId, data) => {
-                if (this.#closed || !listening) return;
+                if (this.#closed || this.#shuttingDown || !listening) return;
                 const { path, events } = data;
                 const { endpointId, clusterId, eventId } = path;
                 const clusterData = ClusterMap[clusterId];
@@ -274,7 +279,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             });
 
             observers.on(this.#commandHandler.events.nodeEndpointAdded, (nodeId, endpointId) => {
-                if (this.#closed || !listening) return;
+                if (this.#closed || this.#shuttingDown || !listening) return;
                 logger.info(
                     `[${connId}] Sending endpoint_added event for Node ${this.#commandHandler.formatNode(nodeId)} endpoint ${endpointId}`,
                 );
@@ -284,7 +289,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             });
 
             observers.on(this.#commandHandler.events.nodeEndpointRemoved, (nodeId, endpointId) => {
-                if (this.#closed || !listening) return;
+                if (this.#closed || this.#shuttingDown || !listening) return;
                 logger.info(
                     `[${connId}] Sending endpoint_removed event for Node ${this.#commandHandler.formatNode(nodeId)} endpoint ${endpointId}`,
                 );
@@ -298,13 +303,13 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
             // Register test node event listeners
             observers.on(this.#testNodeHandler.nodeAdded, (_nodeId, testNode) => {
-                if (this.#closed || !listening) return;
+                if (this.#closed || this.#shuttingDown || !listening) return;
                 logger.info(`[${connId}] Sending node_added event for test node ${testNode.node_id}`);
                 ws.send(toBigIntAwareJson({ event: "node_added", data: testNode }));
             });
 
             observers.on(this.#testNodeHandler.nodeRemoved, nodeId => {
-                if (this.#closed || !listening) return;
+                if (this.#closed || this.#shuttingDown || !listening) return;
                 logger.info(`[${connId}] Sending node_removed event for test node ${formatNodeId(nodeId)}`);
                 ws.send(toBigIntAwareJson({ event: "node_removed", data: nodeId }));
             });
@@ -552,7 +557,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
      * Broadcast an event to all connected WebSocket clients.
      */
     #broadcastEvent(event: string, data: unknown) {
-        if (!this.#wss || this.#closed) return;
+        if (!this.#wss || this.#closed || this.#shuttingDown) return;
         const message = toBigIntAwareJson({ event, data });
         this.#wss.clients.forEach(client => {
             if (client.readyState === 1 /* WebSocket.OPEN */) {
