@@ -7,10 +7,11 @@ This page shows a detailed overview of the changes between versions without the 
 	## __WORK IN PROGRESS__
 -->
 
-## __WORK IN PROGRESS__
+## **WORK IN PROGRESS**
 
 - Feature: Add "Developer mode" to the Dashboard to allow reading, write and invoke operations on clusters directly from the UI for testing and debugging purposes
 - Fix: Ignore link-local addresses for WebSocket commissioning requests
+- Fix: Do not send "Not offline" state via websocket when the server shuts down
 
 ## 0.6.1 (2026-04-16)
 
