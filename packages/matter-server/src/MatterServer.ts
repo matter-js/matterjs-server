@@ -197,6 +197,9 @@ async function stop() {
     }
     stopping = true;
 
+    // Must run before any await.
+    server?.initiateShutdown();
+
     // Wait for start() to finish (or fail) before tearing down, so we don't
     // race against in-flight initialization that could re-create resources.
     try {
