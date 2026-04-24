@@ -143,7 +143,14 @@ export class WebSocketControllerHandler implements WebServerHandler {
         logger.info(`Starting server: matter-server/${this.#serverVersion} (matter.js/${MATTER_VERSION})`);
         const wss = (this.#wss = new WebSocketServer({ server: server, path: "/ws" }));
         wss.on("connection", ws => {
-            if (this.#closed || this.#shuttingDown) return;
+            if (this.#closed || this.#shuttingDown) {
+                try {
+                    ws.close(1001, "server shutting down");
+                } catch {
+                    // ignore
+                }
+                return;
+            }
 
             const connId = generateConnectionId();
             logger.info(`[${connId}] WebSocket connection established`);
