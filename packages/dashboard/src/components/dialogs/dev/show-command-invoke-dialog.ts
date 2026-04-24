@@ -11,8 +11,8 @@ export interface ShowCommandInvokeDialogOptions {
     nodeId: number | bigint;
     endpointId: number;
     clusterId: number;
+    commandId: number;
     commandName: string;
-    commandLabel: string;
 }
 
 export const showCommandInvokeDialog = async (options: ShowCommandInvokeDialogOptions) => {
@@ -22,7 +22,7 @@ export const showCommandInvokeDialog = async (options: ShowCommandInvokeDialogOp
     dialog.nodeId = options.nodeId;
     dialog.endpointId = options.endpointId;
     dialog.clusterId = options.clusterId;
+    dialog.commandId = options.commandId;
     dialog.commandName = options.commandName;
-    dialog.commandLabel = options.commandLabel;
     document.querySelector("matter-dashboard-app")?.renderRoot.appendChild(dialog);
 };
