@@ -370,7 +370,10 @@ export class ControllerCommandHandler {
             basicInfoChangedInBatch = false;
             this.events.nodeStructureChanged.emit(nodeId);
         });
-        node.events.decommissioned.on(() => this.events.nodeDecommissioned.emit(nodeId));
+        node.events.decommissioned.on(() => {
+            this.#cleanupNodeAfterRemoval(nodeId);
+            this.events.nodeDecommissioned.emit(nodeId);
+        });
         node.events.nodeEndpointAdded.on(endpointId => this.events.nodeEndpointAdded.emit(nodeId, endpointId));
         node.events.nodeEndpointRemoved.on(endpointId => this.events.nodeEndpointRemoved.emit(nodeId, endpointId));
 
@@ -1140,11 +1143,19 @@ export class ControllerCommandHandler {
             throw ServerError.nodeNotExists(nodeId);
         }
         await this.#controller.removeNode(nodeId, !!node?.isConnected);
+        this.#cleanupNodeAfterRemoval(nodeId);
+    }
+
+    /**
+     * Drop all references to a removed node so subsequent reads don't reach a
+     * destroyed PairedNode. Idempotent — both the `decommissioned` listener
+     * (external fabric leave) and `decommissionNode` invoke it, and the
+     * listener may have run first.
+     */
+    #cleanupNodeAfterRemoval(nodeId: NodeId) {
         this.#reconnectTimers.get(nodeId)?.stop();
         this.#reconnectTimers.delete(nodeId);
-        // Remove node from storage (also clears attribute cache)
         this.#nodes.delete(nodeId);
-        // Unregister from custom cluster polling
         this.#customClusterPoller.unregisterNode(nodeId);
     }
 
