@@ -192,8 +192,9 @@ export interface NetworkGraphEdge {
     dashes?: boolean;
     /** Whether the edge should be hidden */
     hidden?: boolean;
-    /** vis.js arrow configuration (e.g., "to", "from", or "") */
-    arrows?: string;
+    /** vis.js arrow configuration: shorthand string ("to", "from", "") or
+     * object form for explicit head sizing on dashed edges. */
+    arrows?: string | { to?: { enabled: boolean; scaleFactor: number } };
     /** The edge pair key this belongs to (Thread graph dedup/highlight) */
     pairKey?: string;
     /** Which node reported this connection from its neighbor/route table */

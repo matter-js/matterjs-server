@@ -453,17 +453,18 @@ export class ThreadGraph extends BaseNetworkGraph {
                             : { color: "#999999", highlight: "#999999" },
                     };
                 } else {
-                    // True one-way visibility is distinct from the highlighted
-                    // node's edge being filter-hidden: check pair data, not
-                    // just visible/dedup base state. Arrow at the data `to`
-                    // end reproduces the removed directional cue.
-                    edgeUpdates[String(edge.id)] = this._asymmetricEdgeUpdate(edge);
+                    // No swap target means the displayed direction is reverse
+                    // from the highlighted node's perspective and we cannot
+                    // recover the outgoing direction (truly one-way OR
+                    // filter-hidden). Both look the same to the eye, so always
+                    // arrow; panel disambiguates via one-way badge vs (reverse).
+                    edgeUpdates[String(edge.id)] = this._reverseEdgeUpdate(edge);
                 }
             } else {
-                // Visible edge comes from the HIGHLIGHTED node. Mirror the
-                // asymmetric-arrow treatment so the cue is symmetric: the
-                // highlighted node reports remote but remote has no matching
-                // neighbor-table entry.
+                // Visible edge comes from the HIGHLIGHTED node. Only mark with
+                // an arrow when the peer's direction is genuinely absent — a
+                // peer-direction filter-hide here would just add noise to the
+                // user's own perspective.
                 edgeUpdates[String(edge.id)] = this._asymmetricEdgeUpdate(edge);
             }
         }
@@ -503,9 +504,12 @@ export class ThreadGraph extends BaseNetworkGraph {
 
     /**
      * Thicken a connected edge and add a directional arrow when the pair is
-     * truly one-way (only one of edgeAB/edgeBA exists). The arrow sits at the
-     * data `to` end — matching both "remote reports me" (arrow on me) and
-     * "I report remote" (arrow on remote) without extra per-branch logic.
+     * truly one-way in data (only one of edgeAB/edgeBA exists). Used for the
+     * highlighted-reports-peer branch where filter-hidden peer directions
+     * should not draw an arrow on the user's own perspective.
+     *
+     * Explicit arrow object (vs the shorthand "to") keeps the head visible
+     * on dashed offline edges where some vis.js builds skip the shorthand.
      */
     private _asymmetricEdgeUpdate(edge: NetworkGraphEdge): Partial<NetworkGraphEdge> {
         const pair = edge.pairKey ? this._edgePairs.get(edge.pairKey) : undefined;
@@ -515,9 +519,23 @@ export class ThreadGraph extends BaseNetworkGraph {
             width: 3,
         };
         if (isAsymmetric) {
-            update.arrows = "to";
+            update.arrows = { to: { enabled: true, scaleFactor: 1 } };
         }
         return update;
+    }
+
+    /**
+     * Thicken a connected edge and always add a directional arrow. Used for
+     * the remote-reports-highlighted branch where the displayed edge is the
+     * peer's direction (no swap target available); the user sees the same
+     * single line whether the outgoing direction is filter-hidden or absent.
+     */
+    private _reverseEdgeUpdate(edge: NetworkGraphEdge): Partial<NetworkGraphEdge> {
+        return {
+            id: edge.id,
+            width: 3,
+            arrows: { to: { enabled: true, scaleFactor: 1 } },
+        };
     }
 
     /**
