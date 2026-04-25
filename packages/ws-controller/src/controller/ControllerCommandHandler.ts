@@ -1157,6 +1157,7 @@ export class ControllerCommandHandler {
         this.#reconnectTimers.delete(nodeId);
         this.#nodes.delete(nodeId);
         this.#customClusterPoller.unregisterNode(nodeId);
+        this.#availableUpdates.delete(nodeId);
     }
 
     async openCommissioningWindow(data: OpenCommissioningWindowRequest): Promise<OpenCommissioningWindowResponse> {
