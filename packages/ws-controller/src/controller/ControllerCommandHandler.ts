@@ -9,7 +9,6 @@ import {
     AsyncObservable,
     camelize,
     ClientNode,
-    ClientNodeInteraction,
     CommissioningClient,
     FabricId,
     FabricIndex,
@@ -462,7 +461,7 @@ export class ControllerCommandHandler {
             }),
             includeKnownVersions: true, // do not send DataVersionFilters, so we do a new clean read
         };
-        for await (const _chunk of (node.node.interaction as ClientNodeInteraction).read(read));
+        for await (const _chunk of node.node.interaction.read(read));
     }
 
     /**
@@ -1050,7 +1049,7 @@ export class ControllerCommandHandler {
             includeKnownVersions: true, // we want to read from device
         };
 
-        for await (const chunk of (node.node.interaction as ClientNodeInteraction).read(read)) {
+        for await (const chunk of node.node.interaction.read(read)) {
             for (const attr of chunk) {
                 if (attr.kind === "attr-value" && Array.isArray(attr.value)) {
                     // We only expect one array response
