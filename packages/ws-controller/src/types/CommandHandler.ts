@@ -3,7 +3,7 @@
  * Copyright 2025-2026 Open Home Foundation
  * SPDX-License-Identifier: Apache-2.0
  */
-import { AttributeId, ClusterId, CommandId, Duration, EventId, EventNumber, NodeId, Observable } from "@matter/main";
+import { AttributeId, ClusterId, CommandId, Duration, NodeId } from "@matter/main";
 import { CommissionableDeviceIdentifiers } from "@matter/main/protocol";
 import { EndpointNumber, Status } from "@matter/main/types";
 import { ControllerCommissioningFlowOptions } from "@matter/protocol";
@@ -50,16 +50,6 @@ export type AttributeErrorResponseData = {
 
 export type ReadByIdResponse = AttributeErrorResponseData;
 
-export type SubscribeAttributeRequest = ReadAttributeRequest & {
-    minInterval: number;
-    maxInterval: number;
-    changeListener: (data: AttributeResponseData) => void;
-};
-export type SubscribeAttributeResponse = {
-    values: AttributeResponseData[];
-    updated: Observable<[void]>;
-};
-
 export type WriteAttributeRequest = {
     nodeId: NodeId;
     endpointId: EndpointNumber;
@@ -74,39 +64,6 @@ export type WriteAttributeByIdRequest = {
     clusterId: ClusterId;
     attributeId: AttributeId;
     value: unknown;
-};
-
-export type ReadEventRequest = {
-    nodeId: NodeId;
-    endpointId: EndpointNumber;
-    clusterId: ClusterId;
-    eventId: EventId;
-    eventMin?: EventNumber;
-};
-export type EventResponseData = {
-    clusterId: number;
-    eventId: number;
-    endpointId: number;
-    eventNumber: number | bigint;
-    value: unknown;
-};
-export type EventResponseStatus = {
-    clusterId: number;
-    eventId: number;
-    endpointId: number;
-    status?: Status;
-    clusterStatus?: number;
-};
-export type ReadEventResponse = { values: EventResponseData[]; status?: EventResponseStatus[] };
-
-export type SubscribeEventRequest = ReadEventRequest & {
-    minInterval: number;
-    maxInterval: number;
-    changeListener: (data: EventResponseData) => void;
-};
-export type SubscribeEventResponse = {
-    values: EventResponseData[];
-    updated: Observable<[void]>;
 };
 
 export type InvokeRequest = {
