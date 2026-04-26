@@ -3,28 +3,11 @@
  * Copyright 2025-2026 Open Home Foundation
  * SPDX-License-Identifier: Apache-2.0
  */
-import { AttributeId, ClusterId, CommandId, Duration, NodeId } from "@matter/main";
+import { AttributeId, ClusterId, Duration, NodeId } from "@matter/main";
 import { CommissionableDeviceIdentifiers } from "@matter/main/protocol";
 import { EndpointNumber, Status } from "@matter/main/types";
 import { ControllerCommissioningFlowOptions } from "@matter/protocol";
 
-export type ReadAttributeRequest = {
-    nodeId: NodeId;
-    /** Endpoint ID or undefined for wildcard */
-    endpointId?: EndpointNumber;
-    /** Cluster ID or undefined for wildcard */
-    clusterId?: ClusterId;
-    /** Attribute ID or undefined for wildcard */
-    attributeId?: AttributeId;
-    fabricFiltered?: boolean;
-};
-export type AttributeResponseData = {
-    clusterId: number;
-    attributeId: number;
-    endpointId: number;
-    dataVersion: number;
-    value: unknown;
-};
 export type AttributeResponseStatus = {
     clusterId: number;
     attributeId: number;
@@ -32,33 +15,8 @@ export type AttributeResponseStatus = {
     status?: Status;
     clusterStatus?: number;
 };
-export type ReadAttributeResponse = { values: AttributeResponseData[]; status?: AttributeResponseStatus[] };
-
-export type ReadByIdRequest = {
-    nodeId: NodeId;
-    endpointId: EndpointNumber;
-    clusterId: ClusterId;
-    attributeId: AttributeId;
-    fabricFiltered?: boolean;
-};
-export type AttributeErrorResponseData = {
-    clusterId: number;
-    attributeId: number;
-    endpointId: number;
-    error: string;
-};
-
-export type ReadByIdResponse = AttributeErrorResponseData;
 
 export type WriteAttributeRequest = {
-    nodeId: NodeId;
-    endpointId: EndpointNumber;
-    clusterId: ClusterId;
-    attributeId: AttributeId;
-    value: unknown;
-};
-
-export type WriteAttributeByIdRequest = {
     nodeId: NodeId;
     endpointId: EndpointNumber;
     clusterId: ClusterId;
@@ -74,26 +32,6 @@ export type InvokeRequest = {
     data: unknown;
     timedInteractionTimeoutMs?: Duration;
     interactionTimeoutMs?: Duration;
-};
-export type InvokeResponse = {
-    clusterId: number;
-    commandId?: number;
-    endpointId: number;
-    value?: unknown;
-};
-
-export type InvokeByIdRequest = {
-    nodeId: NodeId;
-    endpointId: EndpointNumber;
-    clusterId: ClusterId;
-    commandId: CommandId;
-    data: unknown;
-    timedInteractionTimeoutMs?: number;
-};
-
-export type DelayRequest = {
-    nodeId?: NodeId;
-    expireExistingSession?: boolean;
 };
 
 export type CommissioningRequest = {
@@ -141,22 +79,6 @@ export type DiscoveryResponse = {
     mrpSessionIdleInterval?: number;
     mrpSessionActiveInterval?: number;
 }[];
-
-export type RootCertificateResponse = {
-    RCAC: Uint8Array;
-};
-
-export type IssueNocChainRequest = {
-    elements: Uint8Array;
-    nodeId: NodeId;
-};
-
-export type IssueNocChainResponse = {
-    ICAC?: Uint8Array;
-    IPK: Uint8Array;
-    NOC: Uint8Array;
-    RCAC: Uint8Array;
-};
 
 export type OpenCommissioningWindowRequest = {
     nodeId: NodeId;
