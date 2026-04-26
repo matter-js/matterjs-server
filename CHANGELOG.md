@@ -10,8 +10,15 @@ This page shows a detailed overview of the changes between versions without the 
 ## **WORK IN PROGRESS**
 
 - Feature: Add "Developer mode" to the Dashboard to allow reading, write and invoke operations on clusters directly from the UI for testing and debugging purposes
+- Enhancement: Migrate read and write attribute commands to new mmatter,js API to prevent legacy state initialization
 - Fix: Ignore link-local addresses for WebSocket commissioning requests
-- Fix: Do not send "Not offline" state via websocket when the server shuts down
+- Fix: Do not send a "Not offline" event via websocket when the server shuts down
+- Fix: Update matter.js to the latest 0.17.0-nightly
+    - Handles BLE commissioning for misdeclared non-concurrent devices more resilient
+    - Removes stale test-mode OTA update files when test-DCL is disabled
+    - Optimizes commissioning with mixed ULA + link-local IPv6 addresses
+    - Optimizes MDNS server handling of unrelated queries
+    - Optimizes Session handling on node decommissioning
 
 ## 0.6.1 (2026-04-16)
 
