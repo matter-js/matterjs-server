@@ -34,7 +34,7 @@
         "node": ">=20.19.0 <22.0.0 || >=22.13.0"
     },
     "dependencies": {
-        "@matter/main": "0.17.0-alpha.0-20260424-020222527",
+        "@matter/main": "0.17.0-alpha.0-20260426-5bf9dab53",
         "@matter-server/ws-controller": "*",
         "@matter-server/dashboard": "*",
         "@matter-server/custom-clusters": "*",
@@ -44,8 +44,8 @@
     "devDependencies": {
         "@types/express": "^5.0.6",
         "@types/node": "^25.6.0",
-        "@matter/nodejs": "0.17.0-alpha.0-20260424-020222527",
-        "@matter/testing": "0.17.0-alpha.0-20260424-020222527",
+        "@matter/nodejs": "0.17.0-alpha.0-20260426-5bf9dab53",
+        "@matter/testing": "0.17.0-alpha.0-20260426-5bf9dab53",
         "@matter-server/ws-client": "*"
     },
     "files": [
