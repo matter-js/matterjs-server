@@ -2,108 +2,108 @@
 name: Official release
 
 on:
-  workflow_dispatch: # Manually on demand
-    inputs:
-      versionBump:
-        description: 'Type of version bump'
-        required: true
-        default: 'patch'
-        type: choice
-        options:
-          - patch
-          - minor
-          - major
+    workflow_dispatch: # Manually on demand
+        inputs:
+            versionBump:
+                description: "Type of version bump"
+                required: true
+                default: "patch"
+                type: choice
+                options:
+                    - patch
+                    - minor
+                    - major
 
 jobs:
-  publish-config:
-    if: github.repository == 'matter-js/matterjs-server'
-    runs-on: ubuntu-latest
+    publish-config:
+        if: github.repository == 'matter-js/matterjs-server'
+        runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0 # Fetch the history, or this action won't work
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v6
+              with:
+                  fetch-depth: 0 # Fetch the history, or this action won't work
 
-      - name: Prepare testing environment
-        uses: ./.github/actions/prepare-env
+            - name: Prepare testing environment
+              uses: ./.github/actions/prepare-env
 
-      - name: Execute tests
-        run: npm run test
+            - name: Execute tests
+              run: npm run test
 
-      - name: Determine the version bump
-        id: version
-        uses: actions/github-script@v9
-        env:
-          VERSION_BUMP: ${{ inputs.versionBump }}
-        with:
-          result-encoding: string
-          script: |
-            const semver = require('semver');
-            const fs = require("fs");
+            - name: Determine the version bump
+              id: version
+              uses: actions/github-script@v9
+              env:
+                  VERSION_BUMP: ${{ inputs.versionBump }}
+              with:
+                  result-encoding: string
+                  script: |
+                      const semver = require('semver');
+                      const fs = require("fs");
 
-            const prevVersion = fs.readFileSync(`${process.env.GITHUB_WORKSPACE}/version.txt`, "utf8").trim();
+                      const prevVersion = fs.readFileSync(`${process.env.GITHUB_WORKSPACE}/version.txt`, "utf8").trim();
 
-            const parsed = semver.parse(prevVersion);
+                      const parsed = semver.parse(prevVersion);
 
-            // Figure out the next version
-            return `${semver.inc(parsed, process.env.VERSION_BUMP)}`;
+                      // Figure out the next version
+                      return `${semver.inc(parsed, process.env.VERSION_BUMP)}`;
 
-      - name: Prepare changelog
-        env:
-          VERSION: ${{ steps.version.outputs.result }}
-        uses: actions/github-script@v9
-        with:
-          script: |
-            const fs = require('fs');
-            
-            const WIP_MARKER = '__WORK IN PROGRESS__';
-            
-            const TEMP_PLACEHOLDER = '**TEMP_PLACEHOLDER_GH_ACTION**';
-            const changelog = fs
-            .readFileSync(`${process.env.GITHUB_WORKSPACE}/CHANGELOG.md`, 'utf8')
-            .replace(WIP_MARKER, TEMP_PLACEHOLDER);
-            
-            if (!changelog.includes(WIP_MARKER)) {
-              throw new Error(`${WIP_MARKER} is missing in changelog`);
-            }
-            
-            const dateStr = new Date().toISOString().split('T')[0];
-            
-            const versionDateStr = `${process.env.VERSION} (${dateStr})`;
-            
-            fs.writeFileSync(
-              `${process.env.GITHUB_WORKSPACE}/CHANGELOG.md`,
-              changelog.replace(WIP_MARKER, versionDateStr).replace(TEMP_PLACEHOLDER, WIP_MARKER),
-              'utf8'
-            );
+            - name: Prepare changelog
+              env:
+                  VERSION: ${{ steps.version.outputs.result }}
+              uses: actions/github-script@v9
+              with:
+                  script: |
+                      const fs = require('fs');
 
-      - name: Bump version locally
-        env:
-          VERSION: ${{ steps.version.outputs.result }}
-        run: |
-          git config --global user.email "github-automation@fischer-ka.de"
-          git config --global user.name "Github Action"
-          
-          npm run version -- --set ${VERSION}
-          git add version.txt
-          git commit -m "v${VERSION}"
+                      const WIP_MARKER = '**WORK IN PROGRESS**';
 
-      - name: Create Pull Request
-        id: cpr
-        uses: peter-evans/create-pull-request@v8
-        with:
-          token: ${{ secrets.PR_TOKEN }}
-          commit-message: "[OFFICIAL RELEASE] ${{ steps.version.outputs.result }}"
-          committer: Automator77 <github-automation@fischer-ka.de>
-          author: Automator77 <github-automation@fischer-ka.de>
-          signoff: false
-          branch: official-release
-          delete-branch: true
-          title: "[OFFICIAL RELEASE] ${{ steps.version.outputs.result }}"
-          body: |
-            Update version by release action
-          labels: |
-            automated-npm-release
-          assignees: Automator77
-          draft: false
+                      const TEMP_PLACEHOLDER = '**TEMP_PLACEHOLDER_GH_ACTION**';
+                      const changelog = fs
+                      .readFileSync(`${process.env.GITHUB_WORKSPACE}/CHANGELOG.md`, 'utf8')
+                      .replace(WIP_MARKER, TEMP_PLACEHOLDER);
+
+                      if (!changelog.includes(WIP_MARKER)) {
+                        throw new Error(`${WIP_MARKER} is missing in changelog`);
+                      }
+
+                      const dateStr = new Date().toISOString().split('T')[0];
+
+                      const versionDateStr = `${process.env.VERSION} (${dateStr})`;
+
+                      fs.writeFileSync(
+                        `${process.env.GITHUB_WORKSPACE}/CHANGELOG.md`,
+                        changelog.replace(WIP_MARKER, versionDateStr).replace(TEMP_PLACEHOLDER, WIP_MARKER),
+                        'utf8'
+                      );
+
+            - name: Bump version locally
+              env:
+                  VERSION: ${{ steps.version.outputs.result }}
+              run: |
+                  git config --global user.email "github-automation@fischer-ka.de"
+                  git config --global user.name "Github Action"
+
+                  npm run version -- --set ${VERSION}
+                  git add version.txt
+                  git commit -m "v${VERSION}"
+
+            - name: Create Pull Request
+              id: cpr
+              uses: peter-evans/create-pull-request@v8
+              with:
+                  token: ${{ secrets.PR_TOKEN }}
+                  commit-message: "[OFFICIAL RELEASE] ${{ steps.version.outputs.result }}"
+                  committer: Automator77 <github-automation@fischer-ka.de>
+                  author: Automator77 <github-automation@fischer-ka.de>
+                  signoff: false
+                  branch: official-release
+                  delete-branch: true
+                  title: "[OFFICIAL RELEASE] ${{ steps.version.outputs.result }}"
+                  body: |
+                      Update version by release action
+                  labels: |
+                      automated-npm-release
+                  assignees: Automator77
+                  draft: false
