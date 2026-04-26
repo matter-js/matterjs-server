@@ -9,7 +9,6 @@ import {
     AsyncObservable,
     camelize,
     ClientNode,
-    ClientNodeInteraction,
     CommissioningClient,
     FabricId,
     FabricIndex,
@@ -84,12 +83,6 @@ import {
     MatterNodeData,
     OpenCommissioningWindowRequest,
     OpenCommissioningWindowResponse,
-    ReadEventRequest,
-    ReadEventResponse,
-    SubscribeAttributeRequest,
-    SubscribeAttributeResponse,
-    SubscribeEventRequest,
-    SubscribeEventResponse,
     WriteAttributeRequest,
 } from "../types/CommandHandler.js";
 import {
@@ -468,7 +461,7 @@ export class ControllerCommandHandler {
             }),
             includeKnownVersions: true, // do not send DataVersionFilters, so we do a new clean read
         };
-        for await (const _chunk of (node.node.interaction as ClientNodeInteraction).read(read));
+        for await (const _chunk of node.node.interaction.read(read));
     }
 
     /**
@@ -520,42 +513,44 @@ export class ControllerCommandHandler {
         fabricFiltered = false,
     ): Promise<AttributesData> {
         const result: AttributesData = {};
-        const client = this.#nodes.interactionClientFor(nodeId);
+        const node = this.#nodes.get(nodeId);
         const batchSize = 9;
-
-        // Parse all paths (wildcards become undefined for that component)
         const parsedPaths = attributePaths.map(path => splitAttributePath(path));
 
-        // Process in batches of up to 9
         for (let i = 0; i < parsedPaths.length; i += batchSize) {
             const batch = parsedPaths.slice(i, i + batchSize);
-            const attributes = batch.map(({ endpointId, clusterId, attributeId }) => ({
-                endpointId: endpointId !== undefined ? EndpointNumber(endpointId) : undefined,
-                clusterId: clusterId !== undefined ? ClusterId(clusterId) : undefined,
-                attributeId: attributeId !== undefined ? AttributeId(attributeId) : undefined,
-            }));
+            const readRequest = {
+                ...Read({
+                    fabricFilter: fabricFiltered,
+                    attributes: batch.map(({ endpointId, clusterId, attributeId }) => ({
+                        endpointId: endpointId !== undefined ? EndpointNumber(endpointId) : undefined,
+                        clusterId: clusterId !== undefined ? ClusterId(clusterId) : undefined,
+                        attributeId: attributeId !== undefined ? AttributeId(attributeId) : undefined,
+                    })),
+                }),
+                includeKnownVersions: true,
+            };
 
-            const { attributeData, attributeStatus } = await client.getMultipleAttributesAndStatus({
-                attributes,
-                isFabricFiltered: fabricFiltered,
-            });
-
-            for (const { path: attrPath, value } of attributeData) {
-                const { pathStr, value: wsValue } = this.#convertAttributeToWebSocket(
-                    {
-                        endpointId: EndpointNumber(attrPath.endpointId),
-                        clusterId: ClusterId(attrPath.clusterId),
-                        attributeId: attrPath.attributeId,
-                    },
-                    value,
-                );
-                result[pathStr] = wsValue;
-            }
-
-            if (attributeStatus && attributeStatus.length > 0) {
-                for (const { path: attrPath, status } of attributeStatus) {
-                    const pathStr = buildAttributePath(attrPath.endpointId, attrPath.clusterId, attrPath.attributeId);
-                    logger.warn(`Failed to read attribute ${pathStr}: status=${status}`);
+            for await (const chunk of node.node.interaction.read(readRequest)) {
+                for (const entry of chunk) {
+                    if (entry.kind === "attr-value") {
+                        const { pathStr, value: wsValue } = this.#convertAttributeToWebSocket(
+                            {
+                                endpointId: EndpointNumber(entry.path.endpointId),
+                                clusterId: ClusterId(entry.path.clusterId),
+                                attributeId: entry.path.attributeId,
+                            },
+                            entry.value,
+                        );
+                        result[pathStr] = wsValue;
+                    } else if (entry.kind === "attr-status") {
+                        const pathStr = buildAttributePath(
+                            entry.path.endpointId,
+                            entry.path.clusterId,
+                            entry.path.attributeId,
+                        );
+                        logger.warn(`Failed to read attribute ${pathStr}: status=${entry.status}`);
+                    }
                 }
             }
         }
@@ -586,6 +581,33 @@ export class ControllerCommandHandler {
     }
 
     /**
+     * Write a single attribute on a remote node. Uses `setStateOf(string, ...)` (not `set({...})`)
+     * because peer cluster behaviors are dynamically registered and aren't on the agent's cached property getters.
+     */
+    async #writeAttribute(
+        nodeId: NodeId,
+        endpointId: EndpointNumber,
+        clusterId: ClusterId,
+        attributeName: string,
+        value: unknown,
+    ): Promise<{ status: number; clusterStatus?: number }> {
+        const node = this.#nodes.get(nodeId);
+        const clusterEntry = ClusterMap[clusterId];
+        if (!clusterEntry) {
+            throw ServerError.invalidArguments(`Cluster Id "${clusterId}" unknown`);
+        }
+        const clusterProperty = clusterEntry.model.propertyName;
+
+        try {
+            await node.node.endpoints.for(endpointId).setStateOf(clusterProperty, { [attributeName]: value });
+            return { status: 0 };
+        } catch (error) {
+            StatusResponseError.accept(error);
+            return { status: error.code, clusterStatus: error.clusterCode };
+        }
+    }
+
+    /**
      * Set the fabric label. Pass null or empty string to reset to "Home".
      * Note: matter.js requires non-empty labels (1-32 chars), so null/empty resets to default.
      */
@@ -597,165 +619,27 @@ export class ControllerCommandHandler {
         return this.#controller.disconnectNode(nodeId, true);
     }
 
-    async handleReadEvent(data: ReadEventRequest): Promise<ReadEventResponse> {
-        const { nodeId, endpointId, clusterId, eventId, eventMin } = data;
-        const client = this.#nodes.interactionClientFor(nodeId);
-        const { eventData, eventStatus } = await client.getMultipleEventsAndStatus({
-            events: [
-                {
-                    endpointId,
-                    clusterId,
-                    eventId,
-                },
-            ],
-            eventFilters: eventMin ? [{ eventMin }] : undefined,
-        });
-
-        return {
-            values: eventData.flatMap(({ path: { endpointId, clusterId, eventId }, events }) =>
-                events.map(({ eventNumber, data }) => ({
-                    eventId,
-                    clusterId,
-                    endpointId,
-                    eventNumber,
-                    value: data,
-                })),
-            ),
-            status: eventStatus?.map(({ path: { endpointId, clusterId, eventId }, status, clusterStatus }) => ({
-                clusterId,
-                endpointId,
-                eventId,
-                status,
-                clusterStatus,
-            })),
-        };
-    }
-
-    async handleSubscribeAttribute(data: SubscribeAttributeRequest): Promise<SubscribeAttributeResponse> {
-        const { nodeId, endpointId, clusterId, attributeId, minInterval, maxInterval, changeListener } = data;
-        const client = this.#nodes.interactionClientFor(nodeId);
-        const updated = Observable<[void]>();
-        let ignoreData = true; // We ignore data coming in during initial seeding
-        const { attributeReports = [] } = await client.subscribeMultipleAttributesAndEvents({
-            attributes: [
-                {
-                    endpointId,
-                    clusterId,
-                    attributeId,
-                },
-            ],
-            minIntervalFloorSeconds: minInterval,
-            maxIntervalCeilingSeconds: maxInterval,
-            attributeListener: data => {
-                if (ignoreData) return;
-                changeListener({
-                    attributeId: data.path.attributeId,
-                    clusterId: data.path.clusterId,
-                    endpointId: data.path.endpointId,
-                    dataVersion: data.version,
-                    value: data.value,
-                });
-            },
-            updateReceived: () => {
-                updated.emit();
-            },
-            keepSubscriptions: false,
-        });
-        ignoreData = false;
-
-        return {
-            values: attributeReports.map(
-                ({ path: { endpointId, clusterId, attributeId }, value, version: dataVersion }) => ({
-                    attributeId,
-                    clusterId,
-                    endpointId,
-                    dataVersion,
-                    value,
-                }),
-            ),
-            updated,
-        };
-    }
-
-    async handleSubscribeEvent(data: SubscribeEventRequest): Promise<SubscribeEventResponse> {
-        const { nodeId, endpointId, clusterId, eventId, minInterval, maxInterval, changeListener } = data;
-        const client = this.#nodes.interactionClientFor(nodeId);
-        const updated = Observable<[void]>();
-        let ignoreData = true; // We ignore data coming in during initial seeding
-        const { eventReports = [] } = await client.subscribeMultipleAttributesAndEvents({
-            events: [
-                {
-                    endpointId,
-                    clusterId,
-                    eventId,
-                },
-            ],
-            minIntervalFloorSeconds: minInterval,
-            maxIntervalCeilingSeconds: maxInterval,
-            eventListener: data => {
-                if (ignoreData) return;
-                data.events.forEach(event =>
-                    changeListener({
-                        eventId: data.path.eventId,
-                        clusterId: data.path.clusterId,
-                        endpointId: data.path.endpointId,
-                        eventNumber: event.eventNumber,
-                        value: event.data,
-                    }),
-                );
-            },
-            updateReceived: () => {
-                updated.emit();
-            },
-            keepSubscriptions: false,
-        });
-        ignoreData = false;
-
-        return {
-            values: eventReports.flatMap(({ path: { endpointId, clusterId, eventId }, events }) =>
-                events.map(({ eventNumber, data }) => ({
-                    eventId,
-                    clusterId,
-                    endpointId,
-                    eventNumber,
-                    value: data,
-                })),
-            ),
-            updated,
-        };
-    }
-
     async handleWriteAttribute(data: WriteAttributeRequest): Promise<AttributeResponseStatus> {
         const { nodeId, endpointId, clusterId, attributeId } = data;
         let { value } = data;
 
-        const client = this.#nodes.clusterClientByIdFor(nodeId, endpointId, clusterId);
-
         const clusterEntry = ClusterMap[clusterId];
-        const model = clusterEntry?.attributes[attributeId];
-        if (model && clusterEntry) {
-            value = convertWebSocketTagBasedToMatter(value, model, clusterEntry.model);
+        const attributeModel = clusterEntry?.attributes[attributeId];
+        if (!clusterEntry || !attributeModel) {
+            throw ServerError.invalidArguments(`Attribute ${attributeId} on cluster ${clusterId} unknown`);
         }
+
+        value = convertWebSocketTagBasedToMatter(value, attributeModel, clusterEntry.model);
 
         logger.info("Writing attribute", attributeId, "with value", value);
-        try {
-            await client.attributes[attributeId].set(value);
-            return {
-                attributeId,
-                clusterId,
-                endpointId,
-                status: 0,
-            };
-        } catch (error) {
-            StatusResponseError.accept(error);
-            return {
-                attributeId,
-                clusterId,
-                endpointId,
-                status: error.code,
-                clusterStatus: error.clusterCode,
-            };
-        }
+        const { status, clusterStatus } = await this.#writeAttribute(
+            nodeId,
+            endpointId,
+            clusterId,
+            attributeModel.propertyName,
+            value,
+        );
+        return { attributeId, clusterId, endpointId, status, clusterStatus };
     }
 
     async #invokeCommand<const C extends Specifier.ClusterLike>(
@@ -1184,7 +1068,7 @@ export class ControllerCommandHandler {
             includeKnownVersions: true, // we want to read from device
         };
 
-        for await (const chunk of (node.node.interaction as ClientNodeInteraction).read(read)) {
+        for await (const chunk of node.node.interaction.read(read)) {
             for (const attr of chunk) {
                 if (attr.kind === "attr-value" && Array.isArray(attr.value)) {
                     // We only expect one array response
@@ -1209,12 +1093,8 @@ export class ControllerCommandHandler {
     /**
      * Set Access Control List entries on a node.
      * Writes to the ACL attribute on the AccessControl cluster (endpoint 0).
-     * TODO Migrate to new Node API
      */
     async setAclEntry(nodeId: NodeId, entries: AccessControlEntry[]): Promise<AttributeWriteResult[] | null> {
-        const client = this.#nodes.clusterClientFor(nodeId, EndpointNumber(0), AccessControl.Cluster);
-
-        // Convert from WebSocket format (snake_case) to Matter.js format (camelCase)
         const aclEntries: AccessControl.AccessControlEntry[] = entries.map(entry => ({
             privilege: entry.privilege as AccessControl.AccessControlEntryPrivilege,
             authMode: entry.auth_mode as AccessControl.AccessControlEntryAuthMode,
@@ -1230,46 +1110,30 @@ export class ControllerCommandHandler {
 
         logger.info("Setting ACL entries", aclEntries);
 
-        try {
-            await client.setAclAttribute(aclEntries);
-            return [
-                {
-                    path: {
-                        endpoint_id: 0,
-                        cluster_id: AccessControl.Cluster.id,
-                        attribute_id: 0, // ACL attribute ID
-                    },
-                    status: 0,
-                },
-            ];
-        } catch (error) {
-            StatusResponseError.accept(error);
-            return [
-                {
-                    path: {
-                        endpoint_id: 0,
-                        cluster_id: AccessControl.Cluster.id,
-                        attribute_id: 0,
-                    },
-                    status: error.code,
-                },
-            ];
-        }
+        const { status } = await this.#writeAttribute(
+            nodeId,
+            EndpointNumber(0),
+            AccessControl.Cluster.id,
+            "acl",
+            aclEntries,
+        );
+        return [
+            {
+                path: { endpoint_id: 0, cluster_id: AccessControl.Cluster.id, attribute_id: 0 },
+                status,
+            },
+        ];
     }
 
     /**
      * Set bindings on a specific endpoint of a node.
      * Writes to the Binding attribute on the Binding cluster.
-     * TODO Migrate to new Node API
      */
     async setNodeBinding(
         nodeId: NodeId,
         endpointId: EndpointNumber,
         bindings: BindingTarget[],
     ): Promise<AttributeWriteResult[] | null> {
-        const client = this.#nodes.clusterClientFor(nodeId, endpointId, Binding.Cluster);
-
-        // Convert from WebSocket format to Matter.js format
         const bindingEntries: Binding.Target[] = bindings.map(binding => ({
             node: binding.node !== null ? NodeId(binding.node) : undefined,
             group: binding.group !== null ? GroupId(binding.group) : undefined,
@@ -1280,31 +1144,19 @@ export class ControllerCommandHandler {
 
         logger.info("Setting bindings on endpoint", endpointId, bindingEntries);
 
-        try {
-            await client.attributes.binding.set(bindingEntries);
-            return [
-                {
-                    path: {
-                        endpoint_id: endpointId,
-                        cluster_id: Binding.Cluster.id,
-                        attribute_id: 0, // Binding attribute ID
-                    },
-                    status: 0,
-                },
-            ];
-        } catch (error) {
-            StatusResponseError.accept(error);
-            return [
-                {
-                    path: {
-                        endpoint_id: endpointId,
-                        cluster_id: Binding.Cluster.id,
-                        attribute_id: 0,
-                    },
-                    status: error.code,
-                },
-            ];
-        }
+        const { status } = await this.#writeAttribute(
+            nodeId,
+            endpointId,
+            Binding.Cluster.id,
+            "binding",
+            bindingEntries,
+        );
+        return [
+            {
+                path: { endpoint_id: endpointId, cluster_id: Binding.Cluster.id, attribute_id: 0 },
+                status,
+            },
+        ];
     }
 
     /**
