@@ -7,7 +7,7 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
-## **WORK IN PROGRESS**
+## 0.6.2 (2026-04-26)
 
 - Feature: Add "Developer mode" to the Dashboard to allow reading, write and invoke operations on clusters directly from the UI for testing and debugging purposes
 - Enhancement: Migrate read and write attribute commands to new matter.js API to prevent legacy state initialization
