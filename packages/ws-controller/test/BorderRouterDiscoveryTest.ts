@@ -74,46 +74,42 @@ describe("BorderRouterDiscovery", () => {
             await disc.stop();
         });
 
-        it("creates a meshcop entry with parsed fields and sorted addresses", async () => {
+        it("inserts an entry keyed by uppercase xa derived from the trel qname with merged meshcop fields", async () => {
             await disc.start();
             stub.makeTarget("Kuche.local.", ["192.168.1.10", "fd00::1", "2001:db8::5", "fe80::abcd"]);
-            const inst = stub.makeInstance("Kuche._meshcop._udp.local", {
+            const trelInst = stub.makeInstance("aabbccddeeff0011._trel._udp.local", {
+                txt: {},
+                srvTarget: "Kuche.local.",
+                srvPort: 12345,
+            });
+            stub.discover(trelInst);
+            const meshcopInst = stub.makeInstance("Kuche._meshcop._udp.local", {
                 txt: {
-                    xa: "aabbccddeeff0011",
-                    xp: "1122334455667788",
                     nn: "MyNetwork",
                     vn: "ACME",
                     mn: "BR-100",
                     tv: "1.3.0",
-                    dd: "deadbeef",
-                    sb: "00000010",
-                    at: "0000000000000001",
-                    pt: "12345678",
                     dn: "domain.example",
                 },
                 srvTarget: "Kuche.local.",
                 srvPort: 49154,
             });
-            stub.discover(inst);
+            stub.discover(meshcopInst);
 
             const list = disc.list();
             expect(list.length).to.equal(1);
             const e = list[0];
             expect(e.extAddressHex).to.equal("AABBCCDDEEFF0011");
-            expect(e.extendedPanIdHex).to.equal("1122334455667788");
             expect(e.networkName).to.equal("MyNetwork");
             expect(e.vendorName).to.equal("ACME");
             expect(e.modelName).to.equal("BR-100");
             expect(e.threadVersion).to.equal("1.3.0");
-            expect(e.borderAgentIdHex).to.equal("DEADBEEF");
-            expect(e.stateBitmapHex).to.equal("00000010");
-            expect(e.activeTimestampHex).to.equal("0000000000000001");
-            expect(e.partitionIdHex).to.equal("12345678");
             expect(e.domainName).to.equal("domain.example");
             expect(e.hostname).to.equal("Kuche.local.");
             expect(e.meshcopPort).to.equal(49154);
-            expect(e.trelPort).to.equal(undefined);
-            expect(e.sources).to.deep.equal(["meshcop"]);
+            expect(e.trelPort).to.equal(12345);
+            expect(e.sources).to.include("meshcop");
+            expect(e.sources).to.include("trel");
             expect(e.addresses).to.deep.equal(["192.168.1.10", "2001:db8::5", "fd00::1", "fe80::abcd"]);
         });
 
@@ -121,7 +117,7 @@ describe("BorderRouterDiscovery", () => {
             await disc.start();
             stub.makeTarget("br.local.", ["10.0.0.5"]);
             const inst = stub.makeInstance("aabbccddeeff0011._trel._udp.local", {
-                txt: { xa: "aabbccddeeff0011" },
+                txt: {},
                 srvTarget: "br.local.",
                 srvPort: 12345,
             });
@@ -136,19 +132,49 @@ describe("BorderRouterDiscovery", () => {
             expect(e!.addresses).to.deep.equal(["10.0.0.5"]);
         });
 
-        it("merges meshcop and trel for the same xa", async () => {
+        it("merges meshcop into a trel-keyed entry when trel arrives first", async () => {
             await disc.start();
             stub.makeTarget("Kuche.local.", ["192.168.1.10"]);
-            stub.makeTarget("br.local.", ["10.0.0.5"]);
+            const trelInst = stub.makeInstance("aabbccddeeff0011._trel._udp.local", {
+                txt: {},
+                srvTarget: "Kuche.local.",
+                srvPort: 12345,
+            });
+            stub.discover(trelInst);
             const meshcopInst = stub.makeInstance("Kuche._meshcop._udp.local", {
-                txt: { xa: "aabbccddeeff0011", xp: "1111111111111111", nn: "MyNet", vn: "ACME" },
+                txt: { nn: "MyNet", vn: "ACME" },
                 srvTarget: "Kuche.local.",
                 srvPort: 49154,
             });
             stub.discover(meshcopInst);
+
+            const e = disc.get("AABBCCDDEEFF0011");
+            expect(e).to.not.equal(undefined);
+            expect(e!.networkName).to.equal("MyNet");
+            expect(e!.vendorName).to.equal("ACME");
+            expect(e!.meshcopPort).to.equal(49154);
+            expect(e!.trelPort).to.equal(12345);
+            expect(e!.hostname).to.equal("Kuche.local.");
+            expect(e!.sources).to.include("trel");
+            expect(e!.sources).to.include("meshcop");
+        });
+
+        it("merges meshcop into trel-keyed entry when meshcop arrives first by hostname", async () => {
+            await disc.start();
+            stub.makeTarget("Kuche.local.", ["192.168.1.10"]);
+            const meshcopInst = stub.makeInstance("Kuche._meshcop._udp.local", {
+                txt: { nn: "MyNet", vn: "ACME" },
+                srvTarget: "Kuche.local.",
+                srvPort: 49154,
+            });
+            stub.discover(meshcopInst);
+
+            // Meshcop alone produces no entry; it's pending until a trel record matches the hostname.
+            expect(disc.list()).to.deep.equal([]);
+
             const trelInst = stub.makeInstance("aabbccddeeff0011._trel._udp.local", {
-                txt: { xa: "aabbccddeeff0011", xp: "1111111111111111" },
-                srvTarget: "br.local.",
+                txt: {},
+                srvTarget: "Kuche.local.",
                 srvPort: 12345,
             });
             stub.discover(trelInst);
@@ -160,48 +186,28 @@ describe("BorderRouterDiscovery", () => {
             expect(e!.meshcopPort).to.equal(49154);
             expect(e!.trelPort).to.equal(12345);
             expect(e!.hostname).to.equal("Kuche.local.");
-            expect(e!.sources).to.deep.equal(["meshcop", "trel"]);
-        });
-
-        it("meshcop wins when xp conflicts with trel", async () => {
-            await disc.start();
-            stub.makeTarget("Kuche.local.", ["192.168.1.10"]);
-            stub.makeTarget("br.local.", ["10.0.0.5"]);
-            const meshcopInst = stub.makeInstance("Kuche._meshcop._udp.local", {
-                txt: { xa: "aabbccddeeff0011", xp: "AAAAAAAAAAAAAAAA", nn: "MyNet" },
-                srvTarget: "Kuche.local.",
-                srvPort: 49154,
-            });
-            stub.discover(meshcopInst);
-            const trelInst = stub.makeInstance("aabbccddeeff0011._trel._udp.local", {
-                txt: { xa: "aabbccddeeff0011", xp: "BBBBBBBBBBBBBBBB" },
-                srvTarget: "br.local.",
-                srvPort: 12345,
-            });
-            stub.discover(trelInst);
-
-            const e = disc.get("AABBCCDDEEFF0011");
-            expect(e!.extendedPanIdHex).to.equal("AAAAAAAAAAAAAAAA");
+            expect(e!.sources).to.include("trel");
         });
 
         it("removes a source when an instance becomes undiscovered, deletes entry when last source", async () => {
             await disc.start();
             stub.makeTarget("Kuche.local.", ["192.168.1.10"]);
-            stub.makeTarget("br.local.", ["10.0.0.5"]);
+            const trelInst = stub.makeInstance("aabbccddeeff0011._trel._udp.local", {
+                txt: {},
+                srvTarget: "Kuche.local.",
+                srvPort: 12345,
+            });
+            stub.discover(trelInst);
             const meshcopInst = stub.makeInstance("Kuche._meshcop._udp.local", {
-                txt: { xa: "aabbccddeeff0011", nn: "MyNet" },
+                txt: { nn: "MyNet" },
                 srvTarget: "Kuche.local.",
                 srvPort: 49154,
             });
             stub.discover(meshcopInst);
-            const trelInst = stub.makeInstance("aabbccddeeff0011._trel._udp.local", {
-                txt: { xa: "aabbccddeeff0011" },
-                srvTarget: "br.local.",
-                srvPort: 12345,
-            });
-            stub.discover(trelInst);
 
-            expect(disc.get("AABBCCDDEEFF0011")!.sources).to.deep.equal(["meshcop", "trel"]);
+            const before = disc.get("AABBCCDDEEFF0011")!;
+            expect(before.sources).to.include("trel");
+            expect(before.sources).to.include("meshcop");
 
             trelInst.setDiscovered(false);
             trelInst.emit({ name: trelInst });
@@ -210,7 +216,6 @@ describe("BorderRouterDiscovery", () => {
             expect(after).to.not.equal(undefined);
             expect(after!.sources).to.deep.equal(["meshcop"]);
             expect(after!.trelPort).to.equal(undefined);
-            expect(stub.targetByKey("br.local.")!.observerCount()).to.equal(0);
 
             meshcopInst.setDiscovered(false);
             meshcopInst.emit({ name: meshcopInst });
@@ -221,10 +226,10 @@ describe("BorderRouterDiscovery", () => {
         it("populates addresses retroactively when target's A/AAAA arrive later", async () => {
             await disc.start();
             const target = stub.makeTarget("Kuche.local.", []);
-            const inst = stub.makeInstance("Kuche._meshcop._udp.local", {
-                txt: { xa: "aabbccddeeff0011", nn: "MyNet" },
+            const inst = stub.makeInstance("aabbccddeeff0011._trel._udp.local", {
+                txt: {},
                 srvTarget: "Kuche.local.",
-                srvPort: 49154,
+                srvPort: 12345,
             });
             stub.discover(inst);
             expect(disc.get("AABBCCDDEEFF0011")!.addresses).to.deep.equal([]);
@@ -239,10 +244,10 @@ describe("BorderRouterDiscovery", () => {
         it("replaces addresses when the target changes its A records", async () => {
             await disc.start();
             const target = stub.makeTarget("Kuche.local.", ["192.168.1.10"]);
-            const inst = stub.makeInstance("Kuche._meshcop._udp.local", {
-                txt: { xa: "aabbccddeeff0011", nn: "MyNet" },
+            const inst = stub.makeInstance("aabbccddeeff0011._trel._udp.local", {
+                txt: {},
                 srvTarget: "Kuche.local.",
-                srvPort: 49154,
+                srvPort: 12345,
             });
             stub.discover(inst);
             expect(disc.get("AABBCCDDEEFF0011")!.addresses).to.deep.equal(["192.168.1.10"]);
@@ -254,18 +259,6 @@ describe("BorderRouterDiscovery", () => {
             expect(e!.addresses).to.deep.equal(["192.168.2.20", "fe80::cafe"]);
         });
 
-        it("skips records missing an xa TXT key", async () => {
-            await disc.start();
-            stub.makeTarget("Kuche.local.", ["192.168.1.10"]);
-            const inst = stub.makeInstance("Kuche._meshcop._udp.local", {
-                txt: { nn: "OrphanNet" },
-                srvTarget: "Kuche.local.",
-                srvPort: 49154,
-            });
-            stub.discover(inst);
-            expect(disc.list()).to.deep.equal([]);
-        });
-
         it("evicts oldest entry when registry exceeds 256", async () => {
             await disc.start();
             const oldestXa = makeXa(0);
@@ -273,8 +266,8 @@ describe("BorderRouterDiscovery", () => {
                 const xa = makeXa(i);
                 const host = `host${i}.local.`;
                 stub.makeTarget(host, [`10.0.${(i >> 8) & 0xff}.${i & 0xff}`]);
-                const inst = stub.makeInstance(`${xa.toLowerCase()}._meshcop._udp.local`, {
-                    txt: { xa: xa.toLowerCase(), nn: `Net${i}` },
+                const inst = stub.makeInstance(`${xa.toLowerCase()}._trel._udp.local`, {
+                    txt: {},
                     srvTarget: host,
                     srvPort: 49154 + i,
                 });
@@ -284,8 +277,8 @@ describe("BorderRouterDiscovery", () => {
 
             const xa257 = makeXa(257);
             stub.makeTarget(`host257.local.`, [`10.1.0.0`]);
-            const inst257 = stub.makeInstance(`${xa257.toLowerCase()}._meshcop._udp.local`, {
-                txt: { xa: xa257.toLowerCase(), nn: "Net257" },
+            const inst257 = stub.makeInstance(`${xa257.toLowerCase()}._trel._udp.local`, {
+                txt: {},
                 srvTarget: `host257.local.`,
                 srvPort: 50000,
             });
@@ -309,8 +302,8 @@ describe("BorderRouterDiscovery", () => {
                 const xa = makeXa(i);
                 const host = `host${i}.local.`;
                 stub.makeTarget(host, [`10.0.${(i >> 8) & 0xff}.${i & 0xff}`]);
-                const inst = stub.makeInstance(`${xa.toLowerCase()}._meshcop._udp.local`, {
-                    txt: { xa: xa.toLowerCase(), nn: `Net${i}` },
+                const inst = stub.makeInstance(`${xa.toLowerCase()}._trel._udp.local`, {
+                    txt: {},
                     srvTarget: host,
                     srvPort: 49154 + i,
                 });
@@ -318,7 +311,7 @@ describe("BorderRouterDiscovery", () => {
                 disc.get(xa)!.lastSeen = 1000 + i;
             }
             const evictedXa = makeXa(0);
-            const evictedQname = `${evictedXa.toLowerCase()}._meshcop._udp.local`;
+            const evictedQname = `${evictedXa.toLowerCase()}._trel._udp.local`;
             const evictedInstance = stub.targetByKey(evictedQname)!;
             const evictedHost = stub.targetByKey("host0.local.")!;
             expect(disc.get(evictedXa)).to.not.equal(undefined);
@@ -327,8 +320,8 @@ describe("BorderRouterDiscovery", () => {
 
             const xa257 = makeXa(257);
             stub.makeTarget("host257.local.", ["10.1.0.0"]);
-            const inst257 = stub.makeInstance(`${xa257.toLowerCase()}._meshcop._udp.local`, {
-                txt: { xa: xa257.toLowerCase(), nn: "Net257" },
+            const inst257 = stub.makeInstance(`${xa257.toLowerCase()}._trel._udp.local`, {
+                txt: {},
                 srvTarget: "host257.local.",
                 srvPort: 50000,
             });
@@ -340,7 +333,7 @@ describe("BorderRouterDiscovery", () => {
 
             const reHost = stub.makeTarget("host0-re.local.", ["10.9.9.9"]);
             const reInstance = stub.makeInstance(evictedQname, {
-                txt: { xa: evictedXa.toLowerCase(), nn: "NetRe" },
+                txt: {},
                 srvTarget: "host0-re.local.",
                 srvPort: 60000,
             });
@@ -348,62 +341,10 @@ describe("BorderRouterDiscovery", () => {
 
             const e = disc.get(evictedXa);
             expect(e).to.not.equal(undefined);
-            expect(e!.networkName).to.equal("NetRe");
             expect(e!.hostname).to.equal("host0-re.local.");
             expect(reInstance.observerCount()).to.equal(1);
             expect(reHost.observerCount()).to.equal(1);
             expect(disc.list().length).to.equal(256);
-        });
-
-        it("releases trel's old target observer when meshcop overwrites the hostname", async () => {
-            await disc.start();
-            const targetA = stub.makeTarget("brA.local.", ["10.0.0.1"]);
-            const trelInst = stub.makeInstance("aabbccddeeff0011._trel._udp.local", {
-                txt: { xa: "aabbccddeeff0011" },
-                srvTarget: "brA.local.",
-                srvPort: 12345,
-            });
-            stub.discover(trelInst);
-            expect(targetA.observerCount()).to.equal(1);
-
-            const targetB = stub.makeTarget("brB.local.", ["10.0.0.2"]);
-            const meshcopInst = stub.makeInstance("Kuche._meshcop._udp.local", {
-                txt: { xa: "aabbccddeeff0011", nn: "MyNet" },
-                srvTarget: "brB.local.",
-                srvPort: 49154,
-            });
-            stub.discover(meshcopInst);
-
-            expect(targetA.observerCount()).to.equal(0);
-            expect(targetB.observerCount()).to.equal(1);
-            const e = disc.get("AABBCCDDEEFF0011")!;
-            expect(e.hostname).to.equal("brB.local.");
-            expect(e.addresses).to.deep.equal(["10.0.0.2"]);
-        });
-
-        it("keeps meshcop's target intact when trel arrives later with a different hostname", async () => {
-            await disc.start();
-            const targetA = stub.makeTarget("brA.local.", ["10.0.0.1"]);
-            const meshcopInst = stub.makeInstance("Kuche._meshcop._udp.local", {
-                txt: { xa: "aabbccddeeff0011", nn: "MyNet" },
-                srvTarget: "brA.local.",
-                srvPort: 49154,
-            });
-            stub.discover(meshcopInst);
-
-            const targetC = stub.makeTarget("brC.local.", ["10.0.0.3"]);
-            const trelInst = stub.makeInstance("aabbccddeeff0011._trel._udp.local", {
-                txt: { xa: "aabbccddeeff0011" },
-                srvTarget: "brC.local.",
-                srvPort: 12345,
-            });
-            stub.discover(trelInst);
-
-            expect(targetA.observerCount()).to.equal(1);
-            expect(targetC.observerCount()).to.equal(1);
-            const e = disc.get("AABBCCDDEEFF0011")!;
-            expect(e.hostname).to.equal("brA.local.");
-            expect(e.addresses).to.deep.equal(["10.0.0.1"]);
         });
 
         it("does not attach observers when a discovered event fires after stop", async () => {
@@ -416,10 +357,10 @@ describe("BorderRouterDiscovery", () => {
             expect(stub.discoveredObserverCount()).to.equal(0);
 
             stub.makeTarget("Kuche.local.", ["192.168.1.10"]);
-            const inst = stub.makeInstance("Kuche._meshcop._udp.local", {
-                txt: { xa: "aabbccddeeff0011", nn: "MyNet" },
+            const inst = stub.makeInstance("aabbccddeeff0011._trel._udp.local", {
+                txt: {},
                 srvTarget: "Kuche.local.",
-                srvPort: 49154,
+                srvPort: 12345,
             });
             inflight(inst);
 
@@ -433,8 +374,8 @@ describe("BorderRouterDiscovery", () => {
                 const xa = makeXa(i);
                 const host = `host${i}.local.`;
                 stub.makeTarget(host, [`10.0.${(i >> 8) & 0xff}.${i & 0xff}`]);
-                const inst = stub.makeInstance(`${xa.toLowerCase()}._meshcop._udp.local`, {
-                    txt: { xa: xa.toLowerCase(), nn: `Net${i}` },
+                const inst = stub.makeInstance(`${xa.toLowerCase()}._trel._udp.local`, {
+                    txt: {},
                     srvTarget: host,
                     srvPort: 49154 + i,
                 });
@@ -450,8 +391,8 @@ describe("BorderRouterDiscovery", () => {
                 const xa = makeXa(1000 + i);
                 const host = `cycle2-host${i}.local.`;
                 stub.makeTarget(host, [`11.0.${(i >> 8) & 0xff}.${i & 0xff}`]);
-                const inst = stub.makeInstance(`${xa.toLowerCase()}._meshcop._udp.local`, {
-                    txt: { xa: xa.toLowerCase(), nn: `Cycle2Net${i}` },
+                const inst = stub.makeInstance(`${xa.toLowerCase()}._trel._udp.local`, {
+                    txt: {},
                     srvTarget: host,
                     srvPort: 51000 + i,
                 });
@@ -464,10 +405,10 @@ describe("BorderRouterDiscovery", () => {
         it("clears registry, removes filter, and detaches observers on stop", async () => {
             await disc.start();
             const target = stub.makeTarget("Kuche.local.", ["192.168.1.10"]);
-            const inst = stub.makeInstance("Kuche._meshcop._udp.local", {
-                txt: { xa: "aabbccddeeff0011", nn: "MyNet" },
+            const inst = stub.makeInstance("aabbccddeeff0011._trel._udp.local", {
+                txt: {},
                 srvTarget: "Kuche.local.",
-                srvPort: 49154,
+                srvPort: 12345,
             });
             stub.discover(inst);
             expect(disc.list().length).to.equal(1);
@@ -483,6 +424,35 @@ describe("BorderRouterDiscovery", () => {
             expect(inst.observerCount()).to.equal(0);
             expect(stub.filterCount()).to.equal(0);
             expect(stub.discoveredObserverCount()).to.equal(0);
+        });
+
+        it("clears pending meshcop fields on stop so a restart needs a fresh meshcop record", async () => {
+            await disc.start();
+            stub.makeTarget("Kuche.local.", ["192.168.1.10"]);
+            const meshcopInst = stub.makeInstance("Kuche._meshcop._udp.local", {
+                txt: { nn: "MyNet" },
+                srvTarget: "Kuche.local.",
+                srvPort: 49154,
+            });
+            stub.discover(meshcopInst);
+            expect(disc.list()).to.deep.equal([]);
+
+            await disc.stop();
+            await disc.start();
+
+            // After restart, a trel record alone for the same hostname must NOT pick up the
+            // previously-pending meshcop fields — they were cleared.
+            const trelInst = stub.makeInstance("aabbccddeeff0011._trel._udp.local", {
+                txt: {},
+                srvTarget: "Kuche.local.",
+                srvPort: 12345,
+            });
+            stub.discover(trelInst);
+
+            const e = disc.get("AABBCCDDEEFF0011");
+            expect(e).to.not.equal(undefined);
+            expect(e!.networkName).to.equal(undefined);
+            expect(e!.meshcopPort).to.equal(undefined);
         });
     });
 });
@@ -598,7 +568,7 @@ class StubDnssdNames {
     makeInstance(qname: string, descriptor: InstanceDescriptor): StubDnssdName {
         const name = this.get(qname);
         for (const [k, v] of Object.entries(descriptor.txt)) {
-            name.parameters.set(k, BINARY_TXT_KEYS.has(k) ? hexToBytesString(v) : v);
+            name.parameters.set(k, v);
         }
         const records: DnsRecord[] = [];
         if (descriptor.srvTarget !== undefined && descriptor.srvPort !== undefined) {
@@ -663,14 +633,4 @@ class StubSolicitor {
     solicit(solicitation: { name: StubDnssdName; recordTypes: DnsRecordType[] }): void {
         this.solicited.push(solicitation);
     }
-}
-
-const BINARY_TXT_KEYS = new Set(["xa", "xp", "at", "pt", "dd", "sb"]);
-
-function hexToBytesString(hex: string): string {
-    let out = "";
-    for (let i = 0; i < hex.length; i += 2) {
-        out += String.fromCharCode(parseInt(hex.slice(i, i + 2), 16));
-    }
-    return out;
 }

@@ -78,11 +78,27 @@ interface TargetTracking {
  * Subscribes to `_meshcop._udp.local` and `_trel._udp.local`, builds a per-extended-address
  * registry, and exposes the current entries through {@link list}. Owned by {@link MatterController}.
  */
+interface PendingMeshcop {
+    networkName?: string;
+    vendorName?: string;
+    modelName?: string;
+    threadVersion?: string;
+    domainName?: string;
+    meshcopPort?: number;
+    addresses: string[];
+}
+
 export class BorderRouterDiscovery {
     readonly #env: Environment;
     readonly #registry = new Map<string, BorderRouterEntry>();
     readonly #instanceObservers = new Map<string, InstanceTracking>();
     readonly #targetObservers = new Map<string, TargetTracking>();
+    /**
+     * Meshcop fields seen before a matching trel record (which carries the canonical xa hex
+     * in its qname). Keyed by lowercased hostname (SRV target). Drained when a trel record
+     * arrives whose target matches.
+     */
+    readonly #pendingMeshcopByHostname = new Map<string, PendingMeshcop>();
     #names?: DnssdNamesLike;
     #injectedNames?: DnssdNamesLike;
     #suffixFilter?: (record: DnsRecord) => boolean;
@@ -162,6 +178,7 @@ export class BorderRouterDiscovery {
         this.#targetObservers.clear();
 
         this.#registry.clear();
+        this.#pendingMeshcopByHostname.clear();
         this.#names = undefined;
     }
 
@@ -270,12 +287,6 @@ export class BorderRouterDiscovery {
         if (names === undefined) return;
 
         try {
-            const params = name.parameters;
-            const xaKey = parseHexBytes(params.get("xa"));
-            if (xaKey === undefined || xaKey.length === 0) {
-                return;
-            }
-
             const records = Array.from(name.records);
             const srvRecord = records.find(r => r.recordType === DnsRecordType.SRV);
             let srvTarget: string | undefined;
@@ -292,94 +303,125 @@ export class BorderRouterDiscovery {
                 this.#attachTargetObserver(name, srvTarget, target);
             }
 
-            const xp = parseHexBytes(params.get("xp"));
-
-            const existing = this.#registry.get(xaKey);
-            const meshcopWins = source === "meshcop";
-            const entry: BorderRouterEntry = existing ?? {
-                extAddressHex: xaKey,
-                addresses: [],
-                sources: [],
-                lastSeen: Date.now(),
-            };
-
-            const meshcopAlreadyContributed = entry.sources.includes("meshcop");
-            const canOverwrite = meshcopWins || !meshcopAlreadyContributed;
-
-            if (xp !== undefined && canOverwrite) {
-                entry.extendedPanIdHex = xp;
+            if (source === "trel") {
+                this.#upsertFromTrel(name, srvTarget, srvPort, addresses);
+            } else {
+                this.#upsertFromMeshcop(name, srvTarget, srvPort, addresses);
             }
-
-            const previousHostname = entry.hostname;
-            if (srvTarget !== undefined && canOverwrite) {
-                entry.hostname = srvTarget;
-            }
-
-            if (
-                source === "meshcop" &&
-                srvTarget !== undefined &&
-                previousHostname !== undefined &&
-                previousHostname.toLowerCase() !== srvTarget.toLowerCase()
-            ) {
-                this.#repointTrelTargetForXa(xaKey, previousHostname, srvTarget, names);
-            }
-
-            if (addresses.length > 0 && canOverwrite) {
-                entry.addresses = addresses;
-            }
-
-            if (source === "meshcop") {
-                if (srvPort !== undefined) entry.meshcopPort = srvPort;
-                const nn = params.get("nn");
-                if (nn !== undefined) entry.networkName = nn;
-                const vn = params.get("vn");
-                if (vn !== undefined) entry.vendorName = vn;
-                const mn = params.get("mn");
-                if (mn !== undefined) entry.modelName = mn;
-                const tv = params.get("tv");
-                if (tv !== undefined) entry.threadVersion = tv;
-                const dd = parseHexBytes(params.get("dd"));
-                if (dd !== undefined) entry.borderAgentIdHex = dd;
-                const sb = parseHexBytes(params.get("sb"));
-                if (sb !== undefined) entry.stateBitmapHex = sb;
-                const at = parseHexBytes(params.get("at"));
-                if (at !== undefined) entry.activeTimestampHex = at;
-                const pt = parseHexBytes(params.get("pt"));
-                if (pt !== undefined) entry.partitionIdHex = pt;
-                const dn = params.get("dn");
-                if (dn !== undefined) entry.domainName = dn;
-            } else if (source === "trel") {
-                if (srvPort !== undefined) entry.trelPort = srvPort;
-            }
-
-            if (!entry.sources.includes(source)) {
-                if (source === "meshcop") {
-                    entry.sources.unshift(source);
-                } else {
-                    entry.sources.push(source);
-                }
-            }
-            entry.lastSeen = Date.now();
-
-            if (existing === undefined) {
-                if (this.#registry.size >= REGISTRY_MAX_ENTRIES) {
-                    this.#evictOldest();
-                }
-                this.#registry.set(xaKey, entry);
-            }
-
-            const tracking = this.#instanceObservers.get(name.qname.toLowerCase());
-            if (tracking !== undefined) {
-                tracking.xaKey = xaKey;
-            }
-
-            const verb = existing === undefined ? "discovered" : "updated";
-            logger.info(
-                `Border router ${verb} via ${source} [xa=${xaKey} qname=${name.qname}]: ${JSON.stringify(entry)}`,
-            );
         } catch (e) {
             logger.debug("Error parsing border router record:", e);
         }
+    }
+
+    #upsertFromTrel(
+        name: DnssdNameLike,
+        srvTarget: string | undefined,
+        srvPort: number | undefined,
+        addresses: string[],
+    ): void {
+        const xaKey = parseTrelXaFromQname(name.qname);
+        if (xaKey === undefined) return;
+
+        const existing = this.#registry.get(xaKey);
+        const entry: BorderRouterEntry = existing ?? {
+            extAddressHex: xaKey,
+            addresses: [],
+            sources: [],
+            lastSeen: Date.now(),
+        };
+
+        if (srvTarget !== undefined && entry.hostname === undefined) {
+            entry.hostname = srvTarget;
+        }
+        if (addresses.length > 0 && entry.addresses.length === 0) {
+            entry.addresses = addresses;
+        }
+        if (srvPort !== undefined) entry.trelPort = srvPort;
+        if (!entry.sources.includes("trel")) entry.sources.push("trel");
+        entry.lastSeen = Date.now();
+
+        if (srvTarget !== undefined) {
+            const pending = this.#pendingMeshcopByHostname.get(srvTarget.toLowerCase());
+            if (pending !== undefined) {
+                this.#applyPendingMeshcop(entry, pending);
+                this.#pendingMeshcopByHostname.delete(srvTarget.toLowerCase());
+            }
+        }
+
+        if (existing === undefined) {
+            if (this.#registry.size >= REGISTRY_MAX_ENTRIES) this.#evictOldest();
+            this.#registry.set(xaKey, entry);
+        }
+        this.#trackXaOnInstance(name, xaKey);
+
+        const verb = existing === undefined ? "discovered" : "updated";
+        logger.info(`Border router ${verb} via trel [xa=${xaKey} qname=${name.qname}]: ${JSON.stringify(entry)}`);
+    }
+
+    /**
+     * Meshcop TXT values for binary fields (xa, xp, at, pt, sb, dd) are mangled to U+FFFD by
+     * matter.js's UTF-8 TXT decoder, so we cannot recover xa from meshcop alone. We merge
+     * meshcop string-only fields (nn, vn, mn, tv, dn, hostname, ports, addresses) into the
+     * trel-keyed entry by matching SRV target. If the trel record hasn't arrived yet we stash
+     * by hostname; the trel parse path drains the pending entry when its target matches.
+     */
+    #upsertFromMeshcop(
+        name: DnssdNameLike,
+        srvTarget: string | undefined,
+        srvPort: number | undefined,
+        addresses: string[],
+    ): void {
+        if (srvTarget === undefined) return;
+        const params = name.parameters;
+        const fields: PendingMeshcop = {
+            networkName: params.get("nn") ?? undefined,
+            vendorName: params.get("vn") ?? undefined,
+            modelName: params.get("mn") ?? undefined,
+            threadVersion: params.get("tv") ?? undefined,
+            domainName: params.get("dn") ?? undefined,
+            meshcopPort: srvPort,
+            addresses,
+        };
+
+        const targetKey = srvTarget.toLowerCase();
+        const matchingEntry = this.#findEntryByHostname(targetKey);
+        if (matchingEntry !== undefined) {
+            this.#applyPendingMeshcop(matchingEntry, fields);
+            if (matchingEntry.hostname === undefined) matchingEntry.hostname = srvTarget;
+            if (!matchingEntry.sources.includes("meshcop")) matchingEntry.sources.unshift("meshcop");
+            matchingEntry.lastSeen = Date.now();
+            this.#trackXaOnInstance(name, matchingEntry.extAddressHex);
+            logger.info(
+                `Border router updated via meshcop [xa=${matchingEntry.extAddressHex} qname=${name.qname}]: ${JSON.stringify(matchingEntry)}`,
+            );
+        } else {
+            this.#pendingMeshcopByHostname.set(targetKey, fields);
+            logger.info(
+                `Border router meshcop pending (no trel xa yet) [hostname=${srvTarget} qname=${name.qname}]: ${JSON.stringify(fields)}`,
+            );
+        }
+    }
+
+    #findEntryByHostname(lowerHostname: string): BorderRouterEntry | undefined {
+        for (const entry of this.#registry.values()) {
+            if (entry.hostname?.toLowerCase() === lowerHostname) return entry;
+        }
+        return undefined;
+    }
+
+    #applyPendingMeshcop(entry: BorderRouterEntry, fields: PendingMeshcop): void {
+        if (fields.networkName !== undefined) entry.networkName = fields.networkName;
+        if (fields.vendorName !== undefined) entry.vendorName = fields.vendorName;
+        if (fields.modelName !== undefined) entry.modelName = fields.modelName;
+        if (fields.threadVersion !== undefined) entry.threadVersion = fields.threadVersion;
+        if (fields.domainName !== undefined) entry.domainName = fields.domainName;
+        if (fields.meshcopPort !== undefined) entry.meshcopPort = fields.meshcopPort;
+        if (fields.addresses.length > 0 && entry.addresses.length === 0) entry.addresses = fields.addresses;
+    }
+
+    #trackXaOnInstance(name: DnssdNameLike, xaKey: string): void {
+        const tracking = this.#instanceObservers.get(name.qname.toLowerCase());
+        if (tracking !== undefined) tracking.xaKey = xaKey;
     }
 
     #collectAddresses(target: DnssdNameLike): string[] {
@@ -449,16 +491,6 @@ export class BorderRouterDiscovery {
         }
     }
 
-    #repointTrelTargetForXa(xaKey: string, previousHostname: string, newTarget: string, names: DnssdNamesLike): void {
-        const previousKey = previousHostname.toLowerCase();
-        for (const tracking of this.#instanceObservers.values()) {
-            if (tracking.xaKey !== xaKey) continue;
-            if (tracking.source !== "trel") continue;
-            if (tracking.targetKey !== previousKey) continue;
-            this.#attachTargetObserver(tracking.name, newTarget, names.get(newTarget));
-        }
-    }
-
     #releaseTarget(targetKey: string): void {
         const tracking = this.#targetObservers.get(targetKey);
         if (tracking === undefined) return;
@@ -516,16 +548,19 @@ function isSrvValue(value: unknown): value is SrvRecordValue {
 }
 
 /**
- * MeshCoP TXT records carry binary-valued fields (xa, xp, at, pt, dd, sb) where each TXT
- * "value" is raw bytes. matter.js exposes them through `DnssdName.parameters` as JS strings
- * with one character per byte. Convert to uppercase hex so the registry key, the WS
- * payload, and the dashboard's xa→xa join all use the canonical form.
+ * The `_trel._udp.local` instance qname is the lowercase hex form of the 8-byte extended
+ * address (xa). matter.js's TXT decoder mangles binary `xa` values to U+FFFD, but the qname
+ * survives intact, so this is the only reliable source of the canonical xa hex.
  */
-function parseHexBytes(value: string | undefined): string | undefined {
-    if (value === undefined || value.length === 0) return undefined;
-    let out = "";
-    for (let i = 0; i < value.length; i++) {
-        out += value.charCodeAt(i).toString(16).padStart(2, "0");
+function parseTrelXaFromQname(qname: string): string | undefined {
+    const lower = qname.toLowerCase();
+    const idx = lower.indexOf("." + TREL_TYPE_QNAME);
+    if (idx !== 16 && idx !== -1) {
+        // Instance qname must start with exactly 16 hex chars before the type suffix.
+        return undefined;
     }
-    return out.toUpperCase();
+    if (idx === -1) return undefined;
+    const prefix = lower.slice(0, 16);
+    if (!/^[0-9a-f]{16}$/.test(prefix)) return undefined;
+    return prefix.toUpperCase();
 }
