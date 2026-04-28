@@ -9,7 +9,9 @@ import { getCssVar } from "../../util/shared-styles.js";
 import type {
     CategorizedDevices,
     NetworkType,
+    SignalLevel,
     ThreadConnection,
+    ThreadEdgePair,
     ThreadNeighbor,
     ThreadRoute,
     UnknownThreadDevice,
@@ -451,8 +453,6 @@ export function findUnknownDevices(
     return Array.from(unknownMap.values());
 }
 
-export type SignalLevel = "strong" | "medium" | "weak";
-
 /** Determine signal level from a Thread neighbor's RSSI/LQI. */
 export function getSignalLevel(neighbor: ThreadNeighbor): SignalLevel {
     const rssi = neighbor.avgRssi ?? neighbor.lastRssi;
@@ -461,8 +461,13 @@ export function getSignalLevel(neighbor: ThreadNeighbor): SignalLevel {
         if (rssi > SIGNAL_MEDIUM_THRESHOLD) return "medium";
         return "weak";
     }
-    if (neighbor.lqi > LQI_STRONG_THRESHOLD) return "strong";
-    if (neighbor.lqi > LQI_MEDIUM_THRESHOLD) return "medium";
+    return getSignalLevelFromLqi(neighbor.lqi);
+}
+
+/** Determine signal level from an LQI value alone (e.g. route table entries without RSSI). */
+export function getSignalLevelFromLqi(lqi: number): SignalLevel {
+    if (lqi > LQI_STRONG_THRESHOLD) return "strong";
+    if (lqi > LQI_MEDIUM_THRESHOLD) return "medium";
     return "weak";
 }
 
@@ -669,20 +674,73 @@ export function getWiFiVersionName(version: number | null): string {
 }
 
 /**
- * Builds Thread mesh connections from neighbor tables.
- * Returns connections with signal information.
- * Includes connections to unknown devices (prefixed with 'unknown_').
+ * Represents a connection from the perspective of a specific node.
+ * Includes both neighbors this node reports AND nodes that report this node as their neighbor.
  */
-export function buildThreadConnections(
+export interface NodeConnection {
+    /** The connected node ID (number for known nodes, string for unknown devices) */
+    connectedNodeId: number | string;
+    /** The connected MatterNode if it's a known device */
+    connectedNode?: MatterNode;
+    /** Extended address hex string for display */
+    extAddressHex: string;
+    /** Signal strength info (if available) */
+    signalColor: string;
+    /** Undefined when link strength is unknown. */
+    signalLevel?: SignalLevel;
+    lqi: number | null;
+    rssi: number | null;
+    /** Whether this connection is from THIS node's neighbor table (true) or from the OTHER node's table (false) */
+    isOutgoing: boolean;
+    /** True when only the peer reports this edge — this node has no matching neighbor-table entry. Surfaces true asymmetric visibility, distinct from a reverse view caused by filtering. */
+    isReverseOnly: boolean;
+    /** Whether this is an unknown/external device */
+    isUnknown: boolean;
+    /** Path cost from route table (1 = direct, higher = multi-hop). Only available for routers. */
+    pathCost?: number;
+    /** Bidirectional LQI from route table (average of lqiIn and lqiOut) */
+    bidirectionalLqi?: number;
+}
+
+/**
+ * Creates a canonical pair key from two node IDs.
+ * The key is always ordered so that the same pair produces the same key regardless of direction.
+ */
+export function makePairKey(a: string, b: string): string {
+    return a < b ? `${a}|${b}` : `${b}|${a}`;
+}
+
+/**
+ * Computes a numeric signal score for edge comparison.
+ * Lower score = weaker signal (worst case).
+ */
+export function getEdgeSignalScore(conn: ThreadConnection): number {
+    const levelScore =
+        conn.signalLevel === "strong"
+            ? 3000
+            : conn.signalLevel === "medium"
+              ? 2000
+              : conn.signalLevel === "weak"
+                ? 1000
+                : 0;
+    const detail = conn.rssi !== null ? conn.rssi + 200 : conn.lqi;
+    return levelScore + detail;
+}
+
+/**
+ * Builds edge pairs for all Thread connections.
+ * Each pair represents two connected nodes with up to 2 directional edges
+ * (one from each node's neighbor/route table). No dedup is performed —
+ * callers are responsible for selecting which edge to display per pair.
+ */
+export function buildThreadEdgePairs(
     nodes: Record<string, MatterNode>,
     extAddrMap: Map<bigint, string>,
     rloc16Map: Map<number, string>,
     unknownDevices: UnknownThreadDevice[],
-): ThreadConnection[] {
-    const connections: ThreadConnection[] = [];
-    const seenConnections = new Set<string>();
+): Map<string, ThreadEdgePair> {
+    const pairs = new Map<string, ThreadEdgePair>();
 
-    // Build map of unknown device extAddress -> id
     const unknownExtAddrMap = new Map<bigint, string>();
     for (const unknown of unknownDevices) {
         unknownExtAddrMap.set(unknown.extAddress, unknown.id);
@@ -693,55 +751,50 @@ export function buildThreadConnections(
         const neighbors = parseNeighborTable(node);
 
         for (const neighbor of neighbors) {
-            // Try to find in known devices first (extAddress, then RLOC16 fallback)
             let toNodeId: string | undefined = extAddrMap.get(neighbor.extAddress);
             if (toNodeId === undefined && neighbor.rloc16 !== 0) {
                 toNodeId = rloc16Map.get(neighbor.rloc16);
             }
-
-            // If not found, check unknown devices
             if (toNodeId === undefined) {
                 toNodeId = unknownExtAddrMap.get(neighbor.extAddress);
             }
+            if (toNodeId === undefined || fromNodeId === toNodeId) continue;
 
-            if (toNodeId === undefined) {
-                // Should not happen if unknownDevices was built correctly
-                continue;
+            const pairKey = makePairKey(fromNodeId, toNodeId);
+            if (!pairs.has(pairKey)) {
+                const [nodeA, nodeB] = fromNodeId < toNodeId ? [fromNodeId, toNodeId] : [toNodeId, fromNodeId];
+                pairs.set(pairKey, { pairKey, nodeA, nodeB });
             }
 
-            // Skip self-connections
-            if (fromNodeId === toNodeId) {
-                continue;
-            }
+            const pair = pairs.get(pairKey)!;
+            const isFromA = fromNodeId === pair.nodeA;
 
-            // Create a unique key for this connection
-            const connectionKey = `${fromNodeId}-${toNodeId}`;
-            const reverseKey = `${toNodeId}-${fromNodeId}`;
+            // Neighbor table entry takes precedence — skip if already present for this direction
+            if (isFromA && pair.edgeAB) continue;
+            if (!isFromA && pair.edgeBA) continue;
 
-            if (seenConnections.has(connectionKey) || seenConnections.has(reverseKey)) {
-                // Already have this connection
-                continue;
-            }
-            seenConnections.add(connectionKey);
-
-            // Look up route table entry for supplementary data (pathCost, bidirectional LQI)
             const routeEntry = findRouteByExtAddress(node, neighbor.extAddress);
             const bidirectionalLqi = routeEntry ? getRouteBidirectionalLqi(routeEntry) : undefined;
 
-            // Always use neighbor table RSSI/LQI for signal color (most accurate link quality)
-            connections.push({
+            const edge: ThreadConnection = {
                 fromNodeId,
                 toNodeId,
                 signalColor: getSignalColor(neighbor),
+                signalLevel: getSignalLevel(neighbor),
                 lqi: neighbor.lqi,
                 rssi: neighbor.avgRssi ?? neighbor.lastRssi,
                 pathCost: routeEntry?.pathCost,
                 bidirectionalLqi,
-            });
+            };
+
+            if (isFromA) {
+                pair.edgeAB = edge;
+            } else {
+                pair.edgeBA = edge;
+            }
         }
 
-        // Check route table for connections not in neighbor table (supplementary data)
-        // This helps when neighbor table is stale or incomplete
+        // Supplementary: route table entries not already covered by neighbor table
         const routes = parseRouteTable(node);
         for (const route of routes) {
             if (!route.linkEstablished || !route.allocated) continue;
@@ -755,155 +808,165 @@ export function buildThreadConnections(
             }
             if (toNodeId === undefined || toNodeId === fromNodeId) continue;
 
-            const connectionKey = `${fromNodeId}-${toNodeId}`;
-            const reverseKey = `${toNodeId}-${fromNodeId}`;
-
-            // Only add if we don't already have this connection from neighbor table
-            if (seenConnections.has(connectionKey) || seenConnections.has(reverseKey)) {
-                continue;
+            const pairKey = makePairKey(fromNodeId, toNodeId);
+            if (!pairs.has(pairKey)) {
+                const [nodeA, nodeB] = fromNodeId < toNodeId ? [fromNodeId, toNodeId] : [toNodeId, fromNodeId];
+                pairs.set(pairKey, { pairKey, nodeA, nodeB });
             }
-            seenConnections.add(connectionKey);
+
+            const pair = pairs.get(pairKey)!;
+            const isFromA = fromNodeId === pair.nodeA;
+
+            // Only add from route table if no neighbor table edge for this direction
+            if (isFromA && pair.edgeAB) continue;
+            if (!isFromA && pair.edgeBA) continue;
 
             const bidirectionalLqi = getRouteBidirectionalLqi(route);
             const signalColor =
                 bidirectionalLqi !== undefined
                     ? getSignalColorFromLqi(bidirectionalLqi)
-                    : "var(--md-sys-color-outline, grey)"; // Unknown signal
+                    : "var(--md-sys-color-outline, grey)";
 
-            connections.push({
+            const edge: ThreadConnection = {
                 fromNodeId,
                 toNodeId,
                 signalColor,
+                signalLevel: bidirectionalLqi !== undefined ? getSignalLevelFromLqi(bidirectionalLqi) : undefined,
                 lqi: bidirectionalLqi ?? 0,
                 rssi: null,
                 pathCost: route.pathCost,
                 bidirectionalLqi,
                 fromRouteTable: true,
-            });
-        }
-    }
+            };
 
-    return connections;
-}
-
-/**
- * Represents a connection from the perspective of a specific node.
- * Includes both neighbors this node reports AND nodes that report this node as their neighbor.
- */
-export interface NodeConnection {
-    /** The connected node ID (number for known nodes, string for unknown devices) */
-    connectedNodeId: number | string;
-    /** The connected MatterNode if it's a known device */
-    connectedNode?: MatterNode;
-    /** Extended address hex string for display */
-    extAddressHex: string;
-    /** Signal strength info (if available) */
-    signalColor: string;
-    lqi: number | null;
-    rssi: number | null;
-    /** Whether this connection is from THIS node's neighbor table (true) or from the OTHER node's table (false) */
-    isOutgoing: boolean;
-    /** Whether this is an unknown/external device */
-    isUnknown: boolean;
-    /** Path cost from route table (1 = direct, higher = multi-hop). Only available for routers. */
-    pathCost?: number;
-    /** Bidirectional LQI from route table (average of lqiIn and lqiOut) */
-    bidirectionalLqi?: number;
-}
-
-/**
- * Get all connections for a specific node (bidirectional).
- * This includes:
- * 1. Neighbors this node reports in its neighbor table (outgoing)
- * 2. Nodes that report this node as their neighbor (incoming)
- *
- * Returns a deduplicated list - if both directions exist, only the outgoing one is included
- * (since that has signal data from THIS node's perspective).
- *
- * @param nodeId - Node ID as string to avoid BigInt precision loss
- */
-export function getNodeConnections(
-    nodeId: string,
-    nodes: Record<string, MatterNode>,
-    extAddrMap: Map<bigint, string>,
-    rloc16Map?: Map<number, string>,
-): NodeConnection[] {
-    const connections: NodeConnection[] = [];
-    const seenConnectedIds = new Set<string>();
-
-    const node = nodes[nodeId];
-    if (!node) return connections;
-
-    // Get this node's extended address for reverse lookups (from General Diagnostics, not Thread Diagnostics)
-    const thisExtAddr = getThreadExtendedAddress(node);
-
-    // 1. Add neighbors this node reports (outgoing connections)
-    const neighbors = parseNeighborTable(node);
-    for (const neighbor of neighbors) {
-        let connectedNodeId = extAddrMap.get(neighbor.extAddress);
-        if (connectedNodeId === undefined && rloc16Map && neighbor.rloc16 !== 0) {
-            connectedNodeId = rloc16Map.get(neighbor.rloc16);
-        }
-        const connectedNode = connectedNodeId ? nodes[connectedNodeId] : undefined;
-        const isUnknown = connectedNodeId === undefined;
-        const displayId: string =
-            connectedNodeId ?? `unknown_${neighbor.extAddress.toString(16).toUpperCase().padStart(16, "0")}`;
-
-        seenConnectedIds.add(displayId);
-
-        // Look up route table entry for enhanced data
-        const routeEntry = findRouteByExtAddress(node, neighbor.extAddress);
-        const bidirectionalLqi = routeEntry ? getRouteBidirectionalLqi(routeEntry) : undefined;
-
-        connections.push({
-            connectedNodeId: displayId,
-            connectedNode,
-            extAddressHex: neighbor.extAddress.toString(16).toUpperCase().padStart(16, "0"),
-            signalColor: getSignalColor(neighbor),
-            lqi: neighbor.lqi,
-            rssi: neighbor.avgRssi ?? neighbor.lastRssi,
-            isOutgoing: true,
-            isUnknown,
-            pathCost: routeEntry?.pathCost,
-            bidirectionalLqi,
-        });
-    }
-
-    // 2. Find nodes that report THIS node as their neighbor (incoming connections)
-    if (thisExtAddr !== undefined) {
-        for (const otherNode of Object.values(nodes)) {
-            const otherNodeId = String(otherNode.node_id);
-            if (otherNodeId === nodeId) continue; // Skip self
-
-            // Check if already connected via outgoing
-            if (seenConnectedIds.has(otherNodeId)) continue;
-
-            // Check if other node reports this node as neighbor
-            const otherNeighbors = parseNeighborTable(otherNode);
-            const reverseEntry = otherNeighbors.find(n => n.extAddress === thisExtAddr);
-
-            if (reverseEntry) {
-                const otherExtAddr = getThreadExtendedAddress(otherNode);
-                const extAddrHex = otherExtAddr ? otherExtAddr.toString(16).toUpperCase().padStart(16, "0") : "Unknown";
-
-                // Look up route table entry from the other node's perspective
-                const routeEntry = findRouteByExtAddress(otherNode, thisExtAddr);
-                const bidirectionalLqi = routeEntry ? getRouteBidirectionalLqi(routeEntry) : undefined;
-
-                connections.push({
-                    connectedNodeId: otherNodeId,
-                    connectedNode: otherNode,
-                    extAddressHex: extAddrHex,
-                    signalColor: getSignalColor(reverseEntry),
-                    lqi: reverseEntry.lqi,
-                    rssi: reverseEntry.avgRssi ?? reverseEntry.lastRssi,
-                    isOutgoing: false,
-                    isUnknown: false,
-                    pathCost: routeEntry?.pathCost,
-                    bidirectionalLqi,
-                });
+            if (isFromA) {
+                pair.edgeAB = edge;
+            } else {
+                pair.edgeBA = edge;
             }
         }
+    }
+
+    return pairs;
+}
+
+/**
+ * Filter options for edge visibility, matching the graph's filter pipeline.
+ */
+export interface EdgeFilterOptions {
+    hideOfflineNodes?: boolean;
+    hideWeakSignalEdges?: boolean;
+    hideMediumSignalEdges?: boolean;
+    hideStrongSignalEdges?: boolean;
+}
+
+/**
+ * Derives NodeConnection[] from pre-computed edge pairs for a given node.
+ * Uses the same edge pairs as the graph, ensuring the side panel and the
+ * graph always agree on which connections exist.
+ *
+ * The function mirrors the graph's exact pipeline:
+ *   1. Filter each edge independently (offline cascade + signal level)
+ *   2. Among survivors per pair, prefer the outgoing edge (matches graph
+ *      highlight swap); fall back to worst signal (matches graph dedup)
+ *
+ * When filters are omitted, no filtering is applied and the outgoing
+ * edge is preferred (useful for the "update connections" dialog).
+ *
+ * One entry per connected peer (no duplicates).
+ */
+export function getNodeConnectionsFromPairs(
+    nodeId: string,
+    edgePairs: Map<string, ThreadEdgePair>,
+    nodes: Record<string, MatterNode>,
+    filters?: EdgeFilterOptions,
+): NodeConnection[] {
+    const connections: NodeConnection[] = [];
+
+    // Build set of hidden node IDs (offline cascade, same as graph)
+    const hiddenNodeIds = new Set<string>();
+    if (filters?.hideOfflineNodes) {
+        for (const node of Object.values(nodes)) {
+            if (node.available === false) {
+                hiddenNodeIds.add(String(node.node_id));
+            }
+        }
+    }
+
+    for (const pair of edgePairs.values()) {
+        const isA = pair.nodeA === nodeId;
+        const isB = pair.nodeB === nodeId;
+        if (!isA && !isB) continue;
+
+        const remoteId = isA ? pair.nodeB : pair.nodeA;
+        const outgoing = isA ? pair.edgeAB : pair.edgeBA;
+        const incoming = isA ? pair.edgeBA : pair.edgeAB;
+
+        // Apply filters to each edge independently (mirrors graph pipeline)
+        const survivors: { conn: ThreadConnection; isOutgoing: boolean }[] = [];
+
+        for (const [conn, isOut] of [
+            [outgoing, true],
+            [incoming, false],
+        ] as const) {
+            if (!conn) continue;
+
+            if (filters) {
+                const fromId = String(conn.fromNodeId);
+                const toId = String(conn.toNodeId);
+
+                // Offline cascade: skip if either endpoint is hidden
+                if (hiddenNodeIds.has(fromId) || hiddenNodeIds.has(toId)) continue;
+
+                // Signal level filters
+                if (filters.hideWeakSignalEdges && conn.signalLevel === "weak") continue;
+                if (filters.hideMediumSignalEdges && conn.signalLevel === "medium") continue;
+                if (filters.hideStrongSignalEdges && conn.signalLevel === "strong") continue;
+            }
+
+            survivors.push({ conn, isOutgoing: isOut });
+        }
+
+        if (survivors.length === 0) continue;
+
+        // Among survivors: prefer outgoing (matches graph highlight swap),
+        // fall back to worst signal (matches graph dedup)
+        let winner: { conn: ThreadConnection; isOutgoing: boolean };
+        const outgoingSurvivor = survivors.find(s => s.isOutgoing);
+        if (outgoingSurvivor) {
+            winner = outgoingSurvivor;
+        } else {
+            survivors.sort((a, b) => getEdgeSignalScore(a.conn) - getEdgeSignalScore(b.conn));
+            winner = survivors[0];
+        }
+
+        const remoteNode = nodes[remoteId];
+        const isUnknown = remoteId.startsWith("unknown_");
+
+        // Derive extended address hex for display
+        let extAddressHex: string;
+        if (isUnknown) {
+            extAddressHex = remoteId.slice("unknown_".length);
+        } else if (remoteNode) {
+            extAddressHex = getThreadExtendedAddressHex(remoteNode) ?? "Unknown";
+        } else {
+            extAddressHex = "Unknown";
+        }
+
+        connections.push({
+            connectedNodeId: remoteId,
+            connectedNode: remoteNode,
+            extAddressHex,
+            signalColor: winner.conn.signalColor,
+            signalLevel: winner.conn.signalLevel,
+            lqi: winner.conn.lqi,
+            rssi: winner.conn.rssi,
+            isOutgoing: winner.isOutgoing,
+            isReverseOnly: !outgoing,
+            isUnknown,
+            pathCost: winner.conn.pathCost,
+            bidirectionalLqi: winner.conn.bidirectionalLqi,
+        });
     }
 
     return connections;

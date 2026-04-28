@@ -10,6 +10,11 @@
 export type NetworkType = "thread" | "wifi" | "ethernet" | "unknown";
 
 /**
+ * Classification of a Thread mesh link based on RSSI/LQI.
+ */
+export type SignalLevel = "strong" | "medium" | "weak";
+
+/**
  * Thread routing role from ThreadNetworkDiagnostics cluster.
  * Attribute 0/53/1 (RoutingRole)
  */
@@ -103,6 +108,8 @@ export interface ThreadConnection {
     fromNodeId: number | string;
     toNodeId: number | string;
     signalColor: string;
+    /** Undefined when link strength is unknown (e.g. route-table entry without LQI). */
+    signalLevel?: SignalLevel;
     lqi: number;
     rssi: number | null;
     /** Path cost from route table (1 = direct, higher = multi-hop). Only available for routers. */
@@ -111,6 +118,23 @@ export interface ThreadConnection {
     bidirectionalLqi?: number;
     /** Whether this connection was supplemented by route table data (vs neighbor table only) */
     fromRouteTable?: boolean;
+}
+
+/**
+ * A pair of Thread nodes with their directional edge data.
+ * Each connected pair has 0-2 edges (one per neighbor/route table direction).
+ */
+export interface ThreadEdgePair {
+    /** Canonical pair key (sorted node IDs joined by "|") */
+    pairKey: string;
+    /** First node ID (lexicographically smaller) */
+    nodeA: string;
+    /** Second node ID (lexicographically larger) */
+    nodeB: string;
+    /** Edge where nodeA reports nodeB as neighbor */
+    edgeAB?: ThreadConnection;
+    /** Edge where nodeB reports nodeA as neighbor */
+    edgeBA?: ThreadConnection;
 }
 
 /**
@@ -147,6 +171,8 @@ export interface NetworkGraphNode {
     isUnknown?: boolean;
     /** Physics group: "connected" or "disconnected" */
     group?: "connected" | "disconnected";
+    /** Whether the node should be hidden */
+    hidden?: boolean;
 }
 
 /**
@@ -164,4 +190,13 @@ export interface NetworkGraphEdge {
     title?: string;
     /** Whether to show as dashed line */
     dashes?: boolean;
+    /** Whether the edge should be hidden */
+    hidden?: boolean;
+    /** vis.js arrow configuration: shorthand string ("to", "from", "") or
+     * object form for explicit head sizing on dashed edges. */
+    arrows?: string | { to?: { enabled: boolean; scaleFactor: number } };
+    /** The edge pair key this belongs to (Thread graph dedup/highlight) */
+    pairKey?: string;
+    /** Which node reported this connection from its neighbor/route table */
+    reportingNodeId?: number | string;
 }

@@ -14,16 +14,13 @@ import { clientContext } from "../../client/client-context.js";
 import "../../components/ha-svg-icon";
 import { formatNodeAddressFromAny, getEffectiveFabricIndex } from "../../util/format_hex.js";
 import { getCssVar, reducedMotionStyles } from "../../util/shared-styles.js";
-import type { ThreadNeighbor } from "./network-types.js";
+import type { ThreadEdgePair } from "./network-types.js";
 import type { NodeConnection } from "./network-utils.js";
 import {
-    buildExtAddrMap,
-    buildRloc16Map,
     getDeviceName,
     getNetworkType,
-    getNodeConnections,
+    getNodeConnectionsFromPairs,
     getRoutableDestinationsCount,
-    getSignalColor,
     getSignalColorFromRssi,
     getThreadChannel,
     getThreadExtendedAddressHex,
@@ -32,7 +29,6 @@ import {
     getWiFiDiagnostics,
     getWiFiSecurityTypeName,
     getWiFiVersionName,
-    parseNeighborTable,
 } from "./network-utils.js";
 import "./update-connections-dialog.js";
 
@@ -47,6 +43,18 @@ export class NetworkDetails extends LitElement {
     @property()
     public selectedNodeId: number | string | null = null;
 
+    @property({ type: Boolean })
+    public hideOfflineNodes = false;
+
+    @property({ type: Boolean })
+    public hideWeakSignalEdges = false;
+
+    @property({ type: Boolean })
+    public hideMediumSignalEdges = false;
+
+    @property({ type: Boolean })
+    public hideStrongSignalEdges = false;
+
     @property({ type: Object })
     public nodes: Record<string, MatterNode> = {};
 
@@ -58,6 +66,9 @@ export class NetworkDetails extends LitElement {
 
     @property({ type: Object })
     public wifiAccessPoints: Map<string, { bssid: string; connectedNodes: string[] }> = new Map();
+
+    @property({ type: Object })
+    public threadEdgePairs: Map<string, ThreadEdgePair> = new Map();
 
     @consume({ context: clientContext })
     private client!: MatterClient;
@@ -90,18 +101,6 @@ export class NetworkDetails extends LitElement {
             event.preventDefault();
             this._handleSelectNode(nodeId);
         }
-    }
-
-    private _formatExtAddress(extAddr: bigint | string | undefined): string {
-        if (extAddr === undefined || extAddr === "") return "Unknown";
-        if (typeof extAddr === "bigint") {
-            return extAddr.toString(16).toUpperCase().padStart(16, "0");
-        }
-        return extAddr;
-    }
-
-    private _getSignalIcon(neighbor: ThreadNeighbor): string {
-        return this._getSignalIconFromColor(getSignalColor(neighbor));
     }
 
     private _getSignalIconFromColor(color: string): string {
@@ -185,13 +184,14 @@ export class NetworkDetails extends LitElement {
         const threadRole = getThreadRole(node);
         const channel = getThreadChannel(node);
         const extAddressHex = getThreadExtendedAddressHex(node);
-        const extAddrMap = buildExtAddrMap(this.nodes);
-        const rloc16Map = buildRloc16Map(this.nodes);
-
-        // Get all connections (bidirectional) - this matches what the graph shows
-        // Use string to avoid BigInt precision loss
+        // Get connections from edge pairs with the same filter pipeline as the graph
         const nodeId = String(node.node_id);
-        const connections = getNodeConnections(nodeId, this.nodes, extAddrMap, rloc16Map);
+        const connections = getNodeConnectionsFromPairs(nodeId, this.threadEdgePairs, this.nodes, {
+            hideOfflineNodes: this.hideOfflineNodes,
+            hideWeakSignalEdges: this.hideWeakSignalEdges,
+            hideMediumSignalEdges: this.hideMediumSignalEdges,
+            hideStrongSignalEdges: this.hideStrongSignalEdges,
+        });
 
         return html`
             <div class="section">
@@ -294,9 +294,17 @@ export class NetworkDetails extends LitElement {
                                                                 >, Cost: ${conn.pathCost}</span
                                                             >`
                                                           : nothing}
-                                                      ${!conn.isOutgoing
-                                                          ? html` <span class="direction-hint">(reverse)</span> `
-                                                          : nothing}
+                                                      ${conn.isReverseOnly
+                                                          ? html`
+                                                                <span
+                                                                    class="direction-hint reverse-only"
+                                                                    title="Peer reports this node but this node has no matching neighbor-table entry. Possible one-way visibility (range, TX power, or stale neighbor table)."
+                                                                    >← one-way</span
+                                                                >
+                                                            `
+                                                          : !conn.isOutgoing
+                                                            ? html` <span class="direction-hint">(reverse)</span> `
+                                                            : nothing}
                                                   </div>
                                               </div>
                                           </div>
@@ -362,25 +370,19 @@ export class NetworkDetails extends LitElement {
         `;
     }
 
-    /**
-     * Find the neighbor entry for an unknown device from a node's neighbor table.
-     */
-    private _findNeighborEntry(node: MatterNode, unknownExtAddrHex: string): ThreadNeighbor | null {
-        const neighbors = parseNeighborTable(node);
-        for (const neighbor of neighbors) {
-            const neighborHex = this._formatExtAddress(neighbor.extAddress);
-            if (neighborHex === unknownExtAddrHex) {
-                return neighbor;
-            }
-        }
-        return null;
-    }
-
     private _renderUnknownDeviceInfo(deviceId: string): TemplateResult | typeof nothing {
         const unknown = this.unknownDevices.get(deviceId);
         if (!unknown) {
             return html` <p>Unknown device data not available</p> `;
         }
+
+        // Get connections from edge pairs with the same filter pipeline as the graph
+        const connections = getNodeConnectionsFromPairs(deviceId, this.threadEdgePairs, this.nodes, {
+            hideOfflineNodes: this.hideOfflineNodes,
+            hideWeakSignalEdges: this.hideWeakSignalEdges,
+            hideMediumSignalEdges: this.hideMediumSignalEdges,
+            hideStrongSignalEdges: this.hideStrongSignalEdges,
+        });
 
         return html`
             <div class="section">
@@ -403,68 +405,48 @@ export class NetworkDetails extends LitElement {
                     : nothing}
             </div>
 
-            ${unknown.seenBy.length > 0
+            ${connections.length > 0
                 ? html`
                       <md-divider></md-divider>
                       <div class="section">
-                          <h4>Neighbors (${unknown.seenBy.length})</h4>
+                          <h4>Neighbors (${connections.length})</h4>
                           <div class="neighbors-list">
-                              ${unknown.seenBy
+                              ${connections
                                   .toSorted((a, b) => {
-                                      const score = (nodeId: string): number => {
-                                          const n = this.nodes[nodeId.toString()];
-                                          if (!n) return -Infinity;
-                                          const entry = this._findNeighborEntry(n, unknown.extAddressHex);
-                                          if (!entry) return -Infinity;
-                                          const rssi = entry.avgRssi ?? entry.lastRssi;
-                                          if (rssi !== null && rssi !== undefined) return rssi;
-                                          if (entry.lqi !== null && entry.lqi !== undefined) return entry.lqi;
+                                      const score = (conn: NodeConnection): number => {
+                                          if (conn.rssi !== null && conn.rssi !== undefined) return conn.rssi;
+                                          if (conn.lqi !== null && conn.lqi !== undefined) return conn.lqi;
                                           return -Infinity;
                                       };
                                       return score(b) - score(a);
                                   })
-                                  .map(nodeId => {
-                                      const node = this.nodes[nodeId.toString()];
-                                      if (!node) return nothing;
-
-                                      // Find the neighbor entry to get RSSI/LQI
-                                      const neighborEntry = this._findNeighborEntry(node, unknown.extAddressHex);
-                                      const signalColor = neighborEntry
-                                          ? getSignalColor(neighborEntry)
-                                          : getCssVar("--graph-node-fallback", "#999");
-                                      const rssi = neighborEntry?.avgRssi ?? neighborEntry?.lastRssi ?? null;
-                                      const lqi = neighborEntry?.lqi;
+                                  .map((conn: NodeConnection) => {
+                                      if (!conn.connectedNode) return nothing;
 
                                       return html`
                                           <div
                                               class="neighbor-item clickable"
                                               role="button"
                                               tabindex="0"
-                                              @click=${() => this._handleSelectNode(nodeId)}
-                                              @keydown=${(e: KeyboardEvent) => this._handleKeyDown(e, nodeId)}
+                                              @click=${() => this._handleSelectNode(conn.connectedNodeId)}
+                                              @keydown=${(e: KeyboardEvent) =>
+                                                  this._handleKeyDown(e, conn.connectedNodeId)}
                                           >
-                                              ${neighborEntry
-                                                  ? html`
-                                                        <ha-svg-icon
-                                                            .path=${this._getSignalIcon(neighborEntry)}
-                                                            style="--icon-primary-color: ${signalColor}"
-                                                        ></ha-svg-icon>
-                                                    `
-                                                  : nothing}
+                                              <ha-svg-icon
+                                                  .path=${this._getSignalIconFromColor(conn.signalColor)}
+                                                  style="--icon-primary-color: ${conn.signalColor}"
+                                              ></ha-svg-icon>
                                               <div class="neighbor-info">
                                                   <div class="neighbor-name">
-                                                      Node ${nodeId}
-                                                      <span class="node-id-hex">${this._formatNodeIdHex(nodeId)}</span>:
-                                                      ${getDeviceName(node)}
+                                                      Node ${conn.connectedNodeId}
+                                                      <span class="node-id-hex"
+                                                          >${this._formatNodeIdHex(conn.connectedNodeId)}</span
+                                                      >: ${getDeviceName(conn.connectedNode)}
                                                   </div>
-                                                  ${neighborEntry
-                                                      ? html`
-                                                            <div class="neighbor-signal">
-                                                                ${rssi !== null ? html`RSSI: ${rssi} dBm, ` : nothing}
-                                                                ${lqi !== undefined ? html`LQI: ${lqi}` : nothing}
-                                                            </div>
-                                                        `
-                                                      : nothing}
+                                                  <div class="neighbor-signal">
+                                                      ${conn.rssi !== null ? html`RSSI: ${conn.rssi} dBm, ` : nothing}
+                                                      ${conn.lqi !== null ? html`LQI: ${conn.lqi}` : nothing}
+                                                  </div>
                                               </div>
                                           </div>
                                       `;
@@ -534,17 +516,12 @@ export class NetworkDetails extends LitElement {
 
         const networkType = getNetworkType(node);
         if (networkType === "thread") {
-            const extAddrMap = buildExtAddrMap(this.nodes);
-            const rloc16Map = buildRloc16Map(this.nodes);
-            const connections = getNodeConnections(nodeId, this.nodes, extAddrMap, rloc16Map);
+            // Use edge pairs without filters to get ALL connections (for update dialog)
+            const connections = getNodeConnectionsFromPairs(nodeId, this.threadEdgePairs, this.nodes);
             return connections
                 .filter(conn => {
-                    // Only include commissioned nodes (not unknown devices)
-                    if (typeof conn.connectedNodeId === "string" && conn.connectedNodeId.startsWith("unknown_")) {
-                        return false;
-                    }
-                    const connectedNode = this.nodes[String(conn.connectedNodeId)];
-                    return connectedNode?.available === true;
+                    if (conn.isUnknown) return false;
+                    return conn.connectedNode?.available === true;
                 })
                 .map(conn => String(conn.connectedNodeId));
         }
@@ -990,6 +967,14 @@ export class NetworkDetails extends LitElement {
             .direction-hint {
                 font-style: italic;
                 opacity: 0.8;
+            }
+
+            .direction-hint.reverse-only {
+                font-style: normal;
+                font-weight: 500;
+                opacity: 1;
+                color: var(--md-sys-color-error, #b3261e);
+                cursor: help;
             }
 
             .route-info {

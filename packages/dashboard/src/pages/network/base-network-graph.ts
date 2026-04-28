@@ -406,6 +406,16 @@ export abstract class BaseNetworkGraph extends LitElement {
         });
     }
 
+    /**
+     * Deselects all nodes, clears highlights, and restores default styling.
+     */
+    public deselectAll(): void {
+        if (!this._network) return;
+        this._selectedNodeId = null;
+        this._network.unselectAll();
+        this._clearHighlights();
+    }
+
     protected _dispatchNodeSelected(nodeId: number | string | null): void {
         this.dispatchEvent(
             new CustomEvent("node-selected", {
