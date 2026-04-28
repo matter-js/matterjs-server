@@ -26,6 +26,10 @@ export class BorderRouterStore {
         for (const entry of list) {
             this.#entries.set(entry.extAddressHex.toUpperCase(), entry);
         }
+        console.info(
+            `[BorderRouterStore] snapshot received: ${list.length} entries`,
+            Array.from(this.#entries.entries()),
+        );
     }
 
     reset(): void {
