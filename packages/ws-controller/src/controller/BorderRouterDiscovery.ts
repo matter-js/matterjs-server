@@ -26,7 +26,7 @@ interface DnssdRecordLike {
 
 interface DnssdNameLike {
     readonly qname: string;
-    readonly parameters: Map<string, string>;
+    readonly parameters: ReadonlyMap<string, string>;
     readonly records: Iterable<DnssdRecordLike>;
     readonly isDiscovered: boolean;
     on(observer: NameObserver): void;

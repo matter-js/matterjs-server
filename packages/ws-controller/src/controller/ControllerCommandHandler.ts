@@ -110,10 +110,7 @@ const RECONNECT_TIMEOUT = Minutes(3);
  * BasicInformation (0x28) covers firmware version, product name, etc.
  * BridgedDeviceBasicInformation (0x39) covers the same for bridged child nodes.
  */
-const FULL_UPDATE_CLUSTER_IDS = new Set<ClusterId>([
-    BasicInformation.Cluster.id,
-    BridgedDeviceBasicInformation.Cluster.id,
-]);
+const FULL_UPDATE_CLUSTER_IDS = new Set<ClusterId>([BasicInformation.id, BridgedDeviceBasicInformation.id]);
 
 /**
  * Determine the Matter specification version from cached attributes.
@@ -151,8 +148,8 @@ export class ControllerCommandHandler {
     #controller: CommissioningController;
     #started = false;
     #connected = false;
-    #bleEnabled = false;
-    #otaEnabled = false;
+    readonly #bleEnabled: boolean;
+    readonly #otaEnabled: boolean;
     /** Node management and attribute cache */
     #nodes = new Nodes();
     /** Cache of available updates keyed by nodeId */
@@ -188,10 +185,25 @@ export class ControllerCommandHandler {
         // Initialize custom cluster poller for Eve energy attributes etc.
         // Reads automatically trigger change events through the normal attribute flow
         this.#customClusterPoller = new CustomClusterPoller({
-            nodeConnected: nodeId => !!(this.#nodes.has(nodeId) && this.#nodes.get(nodeId).isConnected),
-            handleReadAttributes: (nodeId, paths, fabricFiltered) =>
-                this.handleReadAttributes(nodeId, paths, fabricFiltered),
+            nodeConnected: peer => !!(this.#nodes.has(peer.nodeId) && this.#nodes.get(peer.nodeId).isConnected),
+            handleReadAttributes: (peer, paths, fabricFiltered) =>
+                this.handleReadAttributes(peer.nodeId, paths, fabricFiltered),
         });
+    }
+
+    /**
+     * Build the canonical PeerAddress for the given node on this controller's fabric.
+     *
+     * Throws if the controller's fabric is not yet resolved. Callers must run after
+     * controller start; a silent fallback would intern PeerAddressMap entries under the
+     * wrong fabric index and leak poller registrations.
+     */
+    #peerOf(nodeId: NodeId): PeerAddress {
+        const fabric = this.#controller.fabric;
+        if (fabric === undefined) {
+            throw new Error(`Cannot resolve PeerAddress for node ${nodeId}: controller fabric is not initialized`);
+        }
+        return PeerAddress({ fabricIndex: fabric.fabricIndex, nodeId });
     }
 
     /**
@@ -254,14 +266,14 @@ export class ControllerCommandHandler {
             // Handle updateAvailable events - cache the update info
             softwareUpdateManagerEvents.updateAvailable.on(
                 (peerAddress: PeerAddress, updateDetails: SoftwareUpdateInfo) => {
-                    logger.info(`Update available for node ${peerAddress.nodeId}:`, updateDetails);
+                    logger.info(`Update available for node ${this.formatNode(peerAddress.nodeId)}:`, updateDetails);
                     this.#availableUpdates.set(peerAddress.nodeId, updateDetails);
                 },
             );
 
             // Handle updateDone events - clear the cached update info
             softwareUpdateManagerEvents.updateDone.on((peerAddress: PeerAddress) => {
-                logger.info(`Update done for node ${peerAddress.nodeId}`);
+                logger.info(`Update done for node ${this.formatNode(peerAddress.nodeId)}`);
                 this.#availableUpdates.delete(peerAddress.nodeId);
             });
 
@@ -315,7 +327,7 @@ export class ControllerCommandHandler {
                 attributeCache.update(node);
                 const attributes = attributeCache.get(nodeId);
                 if (attributes) {
-                    this.#customClusterPoller.registerNode(nodeId, attributes);
+                    this.#customClusterPoller.registerNode(this.#peerOf(nodeId), attributes);
                 }
             }
 
@@ -381,7 +393,7 @@ export class ControllerCommandHandler {
             // Register for custom cluster polling (e.g., Eve energy)
             const attributes = attributeCache.get(nodeId);
             if (attributes) {
-                this.#customClusterPoller.registerNode(nodeId, attributes);
+                this.#customClusterPoller.registerNode(this.#peerOf(nodeId), attributes);
             }
         }
 
@@ -615,10 +627,6 @@ export class ControllerCommandHandler {
         await this.#controller.updateFabricLabel(label);
     }
 
-    disconnectNode(nodeId: NodeId) {
-        return this.#controller.disconnectNode(nodeId, true);
-    }
-
     async handleWriteAttribute(data: WriteAttributeRequest): Promise<AttributeResponseStatus> {
         const { nodeId, endpointId, clusterId, attributeId } = data;
         let { value } = data;
@@ -792,7 +800,7 @@ export class ControllerCommandHandler {
         }
 
         const { onNetworkOnly, wifiCredentials: wifiNetwork, threadCredentials: threadNetwork } = data;
-        const options = {
+        return {
             commissioning: {
                 nodeId: data.nodeId,
                 regulatoryLocation: GeneralCommissioning.RegulatoryLocationType.IndoorOutdoor,
@@ -817,7 +825,6 @@ export class ControllerCommandHandler {
             },
             passcode,
         };
-        return options;
     }
 
     async commissionNode(data: CommissioningRequest): Promise<CommissioningResponse> {
@@ -1040,7 +1047,7 @@ export class ControllerCommandHandler {
         this.#reconnectTimers.get(nodeId)?.stop();
         this.#reconnectTimers.delete(nodeId);
         this.#nodes.delete(nodeId);
-        this.#customClusterPoller.unregisterNode(nodeId);
+        this.#customClusterPoller.unregisterNode(this.#peerOf(nodeId));
         this.#availableUpdates.delete(nodeId);
     }
 
@@ -1061,7 +1068,7 @@ export class ControllerCommandHandler {
                 },
                 Read.Attribute({
                     endpoint: EndpointNumber(0),
-                    cluster: OperationalCredentials.Complete,
+                    cluster: OperationalCredentials,
                     attributes: "fabrics",
                 }),
             ),
@@ -1110,16 +1117,10 @@ export class ControllerCommandHandler {
 
         logger.info("Setting ACL entries", aclEntries);
 
-        const { status } = await this.#writeAttribute(
-            nodeId,
-            EndpointNumber(0),
-            AccessControl.Cluster.id,
-            "acl",
-            aclEntries,
-        );
+        const { status } = await this.#writeAttribute(nodeId, EndpointNumber(0), AccessControl.id, "acl", aclEntries);
         return [
             {
-                path: { endpoint_id: 0, cluster_id: AccessControl.Cluster.id, attribute_id: 0 },
+                path: { endpoint_id: 0, cluster_id: AccessControl.id, attribute_id: 0 },
                 status,
             },
         ];
@@ -1144,16 +1145,10 @@ export class ControllerCommandHandler {
 
         logger.info("Setting bindings on endpoint", endpointId, bindingEntries);
 
-        const { status } = await this.#writeAttribute(
-            nodeId,
-            endpointId,
-            Binding.Cluster.id,
-            "binding",
-            bindingEntries,
-        );
+        const { status } = await this.#writeAttribute(nodeId, endpointId, Binding.id, "binding", bindingEntries);
         return [
             {
-                path: { endpoint_id: endpointId, cluster_id: Binding.Cluster.id, attribute_id: 0 },
+                path: { endpoint_id: endpointId, cluster_id: Binding.id, attribute_id: 0 },
                 status,
             },
         ];

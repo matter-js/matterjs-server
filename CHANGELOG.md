@@ -7,6 +7,13 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
+## **WORK IN PROGRESS**
+
+- Feature: Add a "Hide" menu on the Thread network visualization to hide offline nodes and specific connections
+- Fix: Update matter.js to the latest 0.17.0-nightly
+    - More optimizations around MDNS discovery
+    - Optimize logging for informational and error cases
+
 ## 0.6.2 (2026-04-26)
 
 - Feature: Add "Developer mode" to the Dashboard to allow reading, write and invoke operations on clusters directly from the UI for testing and debugging purposes
