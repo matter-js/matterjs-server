@@ -8,7 +8,7 @@ import { html } from "lit";
 import { customElement } from "lit/decorators.js";
 import { createNodeIconDataUrl, createUnknownDeviceIconDataUrl } from "../../util/device-icons.js";
 import { BaseNetworkGraph } from "./base-network-graph.js";
-import type { NetworkGraphEdge, NetworkGraphNode, UnknownThreadDevice } from "./network-types.js";
+import type { NetworkGraphEdge, NetworkGraphNode, ThreadExternalDevice } from "./network-types.js";
 import {
     buildExtAddrMap,
     buildRloc16Map,
@@ -28,8 +28,8 @@ declare global {
 
 @customElement("thread-graph")
 export class ThreadGraph extends BaseNetworkGraph {
-    /** Cache of unknown devices for the current render */
-    private _unknownDevices: UnknownThreadDevice[] = [];
+    /** Cache of external Thread devices (Border Routers and unknown) for the current render */
+    private _unknownDevices: ThreadExternalDevice[] = [];
 
     /** Cached map of unknown devices (rebuilt in _updateGraph) */
     private _unknownDevicesMapCache: Map<

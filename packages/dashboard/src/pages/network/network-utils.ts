@@ -4,15 +4,15 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type { MatterNode } from "@matter-server/ws-client";
+import type { BorderRouterEntry, MatterNode } from "@matter-server/ws-client";
 import { getCssVar } from "../../util/shared-styles.js";
 import type {
     CategorizedDevices,
     NetworkType,
     ThreadConnection,
+    ThreadExternalDevice,
     ThreadNeighbor,
     ThreadRoute,
-    UnknownThreadDevice,
 } from "./network-types.js";
 
 // NetworkCommissioning cluster feature map bits (cluster 0x31/49)
@@ -388,25 +388,33 @@ export function buildRloc16Map(nodes: Record<string, MatterNode>): Map<number, s
     return rloc16Map;
 }
 
+interface ExternalAggregate {
+    extAddressHex: string;
+    extAddress: bigint;
+    seenBy: string[];
+    isRouter: boolean;
+    bestRssi: number | null;
+}
+
 /**
- * Finds unknown Thread devices - addresses seen in neighbor tables
- * that don't match any known commissioned device.
- * These are typically Thread Border Routers or devices from other ecosystems.
- * Uses RLOC16 as fallback when extended address matching fails.
+ * Finds external Thread devices - addresses seen in neighbor tables that don't match
+ * any commissioned device. Classifies each against the optional Border Router registry:
+ * matched ones are emitted as kind:"br" with full mDNS enrichment; the rest stay as
+ * kind:"unknown". Uses RLOC16 as fallback when extended address matching fails.
  */
 export function findUnknownDevices(
     nodes: Record<string, MatterNode>,
     extAddrMap: Map<bigint, string>,
     rloc16Map: Map<number, string>,
-): UnknownThreadDevice[] {
-    const unknownMap = new Map<string, UnknownThreadDevice>();
+    borderRouters?: ReadonlyMap<string, BorderRouterEntry>,
+): ThreadExternalDevice[] {
+    const aggregates = new Map<string, ExternalAggregate>();
 
     for (const node of Object.values(nodes)) {
         const nodeId = String(node.node_id);
         const neighbors = parseNeighborTable(node);
 
         for (const neighbor of neighbors) {
-            // Check if this neighbor is in our known devices (by extended address or RLOC16 fallback)
             if (extAddrMap.has(neighbor.extAddress)) {
                 continue;
             }
@@ -415,41 +423,59 @@ export function findUnknownDevices(
             }
 
             const extAddressHex = neighbor.extAddress.toString(16).padStart(16, "0").toUpperCase();
-            const id = `unknown_${extAddressHex}`;
 
-            if (!unknownMap.has(id)) {
-                unknownMap.set(id, {
-                    kind: "unknown",
-                    id,
+            let agg = aggregates.get(extAddressHex);
+            if (agg === undefined) {
+                agg = {
                     extAddressHex,
                     extAddress: neighbor.extAddress,
                     seenBy: [],
                     isRouter: false,
                     bestRssi: null,
-                });
+                };
+                aggregates.set(extAddressHex, agg);
             }
 
-            const unknown = unknownMap.get(id)!;
-
-            // Add this node to seenBy if not already there
-            if (!unknown.seenBy.includes(nodeId)) {
-                unknown.seenBy.push(nodeId);
+            if (!agg.seenBy.includes(nodeId)) {
+                agg.seenBy.push(nodeId);
             }
-
-            // Update router status (field 10 = rxOnWhenIdle, indicates router-like behavior)
             if (neighbor.rxOnWhenIdle) {
-                unknown.isRouter = true;
+                agg.isRouter = true;
             }
-
-            // Track best signal
             const rssi = neighbor.avgRssi ?? neighbor.lastRssi;
-            if (rssi !== null && (unknown.bestRssi === null || rssi > unknown.bestRssi)) {
-                unknown.bestRssi = rssi;
+            if (rssi !== null && (agg.bestRssi === null || rssi > agg.bestRssi)) {
+                agg.bestRssi = rssi;
             }
         }
     }
 
-    return Array.from(unknownMap.values());
+    const out = new Array<ThreadExternalDevice>();
+    for (const agg of aggregates.values()) {
+        const br = borderRouters?.get(agg.extAddressHex);
+        if (br !== undefined) {
+            out.push({
+                kind: "br",
+                ...br,
+                id: `br_${agg.extAddressHex}`,
+                extAddressHex: agg.extAddressHex,
+                extAddress: agg.extAddress,
+                seenBy: agg.seenBy,
+                isRouter: agg.isRouter,
+                bestRssi: agg.bestRssi,
+            });
+        } else {
+            out.push({
+                kind: "unknown",
+                id: `unknown_${agg.extAddressHex}`,
+                extAddressHex: agg.extAddressHex,
+                extAddress: agg.extAddress,
+                seenBy: agg.seenBy,
+                isRouter: agg.isRouter,
+                bestRssi: agg.bestRssi,
+            });
+        }
+    }
+    return out;
 }
 
 export type SignalLevel = "strong" | "medium" | "weak";
@@ -678,7 +704,7 @@ export function buildThreadConnections(
     nodes: Record<string, MatterNode>,
     extAddrMap: Map<bigint, string>,
     rloc16Map: Map<number, string>,
-    unknownDevices: UnknownThreadDevice[],
+    unknownDevices: ThreadExternalDevice[],
 ): ThreadConnection[] {
     const connections: ThreadConnection[] = [];
     const seenConnections = new Set<string>();
