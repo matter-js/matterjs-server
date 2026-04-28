@@ -419,6 +419,7 @@ export function findUnknownDevices(
 
             if (!unknownMap.has(id)) {
                 unknownMap.set(id, {
+                    kind: "unknown",
                     id,
                     extAddressHex,
                     extAddress: neighbor.extAddress,

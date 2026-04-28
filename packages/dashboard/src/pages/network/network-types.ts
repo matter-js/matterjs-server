@@ -4,6 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import type { BorderRouterEntry } from "@matter-server/ws-client";
+
 /**
  * Network type detected from NetworkCommissioning cluster feature map.
  */
@@ -117,6 +119,7 @@ export interface ThreadConnection {
  * Unknown Thread device seen in neighbor tables but not commissioned.
  */
 export interface UnknownThreadDevice {
+    kind: "unknown";
     /** Unique ID for the unknown device (prefixed with 'unknown_') */
     id: string;
     /** Extended address as hex string */
@@ -130,6 +133,32 @@ export interface UnknownThreadDevice {
     /** Best signal strength seen */
     bestRssi: number | null;
 }
+
+/**
+ * Thread Border Router enriched via mDNS.
+ *
+ * Same neighbor-table aggregate fields as UnknownThreadDevice (seenBy, isRouter, bestRssi),
+ * plus all BorderRouterEntry fields (network name, vendor, addresses, etc.).
+ */
+export interface KnownBorderRouter extends BorderRouterEntry {
+    kind: "br";
+    /** DOM/graph ID, formatted "br_<XAHEX>". */
+    id: string;
+    /** Convenience copy of extAddressHex as bigint, mirroring UnknownThreadDevice. */
+    extAddress: bigint;
+    /** Commissioned node IDs whose neighbor table sees this xa. */
+    seenBy: string[];
+    /** Inferred from neighbor entry. */
+    isRouter: boolean;
+    /** Best signal strength seen across observers. */
+    bestRssi: number | null;
+}
+
+/**
+ * External Thread device discriminated union — either a recognized Border Router
+ * or an unidentified neighbor.
+ */
+export type ThreadExternalDevice = KnownBorderRouter | UnknownThreadDevice;
 
 /**
  * Network graph node data for vis.js.
