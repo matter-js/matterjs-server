@@ -271,10 +271,11 @@ export class BorderRouterDiscovery {
 
         try {
             const params = name.parameters;
-            const xaKey = parseHexBytes(params.get("xa"));
-            if (xaKey === undefined || xaKey.length === 0) {
+            const xa = params.get("xa");
+            if (xa === undefined || xa.length === 0) {
                 return;
             }
+            const xaKey = xa.toUpperCase();
 
             const records = Array.from(name.records);
             const srvRecord = records.find(r => r.recordType === DnsRecordType.SRV);
@@ -292,7 +293,7 @@ export class BorderRouterDiscovery {
                 this.#attachTargetObserver(name, srvTarget, target);
             }
 
-            const xp = parseHexBytes(params.get("xp"));
+            const xp = params.get("xp")?.toUpperCase();
 
             const existing = this.#registry.get(xaKey);
             const meshcopWins = source === "meshcop";
@@ -338,14 +339,14 @@ export class BorderRouterDiscovery {
                 if (mn !== undefined) entry.modelName = mn;
                 const tv = params.get("tv");
                 if (tv !== undefined) entry.threadVersion = tv;
-                const dd = parseHexBytes(params.get("dd"));
-                if (dd !== undefined) entry.borderAgentIdHex = dd;
-                const sb = parseHexBytes(params.get("sb"));
-                if (sb !== undefined) entry.stateBitmapHex = sb;
-                const at = parseHexBytes(params.get("at"));
-                if (at !== undefined) entry.activeTimestampHex = at;
-                const pt = parseHexBytes(params.get("pt"));
-                if (pt !== undefined) entry.partitionIdHex = pt;
+                const dd = params.get("dd");
+                if (dd !== undefined) entry.borderAgentIdHex = dd.toUpperCase();
+                const sb = params.get("sb");
+                if (sb !== undefined) entry.stateBitmapHex = sb.toUpperCase();
+                const at = params.get("at");
+                if (at !== undefined) entry.activeTimestampHex = at.toUpperCase();
+                const pt = params.get("pt");
+                if (pt !== undefined) entry.partitionIdHex = pt.toUpperCase();
                 const dn = params.get("dn");
                 if (dn !== undefined) entry.domainName = dn;
             } else if (source === "trel") {
@@ -513,19 +514,4 @@ function isSrvValue(value: unknown): value is SrvRecordValue {
         "port" in value &&
         typeof value.port === "number"
     );
-}
-
-/**
- * MeshCoP TXT records carry binary-valued fields (xa, xp, at, pt, dd, sb) where each TXT
- * "value" is raw bytes. matter.js exposes them through `DnssdName.parameters` as JS strings
- * with one character per byte. Convert to uppercase hex so the registry key, the WS
- * payload, and the dashboard's xa→xa join all use the canonical form.
- */
-function parseHexBytes(value: string | undefined): string | undefined {
-    if (value === undefined || value.length === 0) return undefined;
-    let out = "";
-    for (let i = 0; i < value.length; i++) {
-        out += value.charCodeAt(i).toString(16).padStart(2, "0");
-    }
-    return out.toUpperCase();
 }

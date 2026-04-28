@@ -598,7 +598,7 @@ class StubDnssdNames {
     makeInstance(qname: string, descriptor: InstanceDescriptor): StubDnssdName {
         const name = this.get(qname);
         for (const [k, v] of Object.entries(descriptor.txt)) {
-            name.parameters.set(k, BINARY_TXT_KEYS.has(k) ? hexToBytesString(v) : v);
+            name.parameters.set(k, v);
         }
         const records: DnsRecord[] = [];
         if (descriptor.srvTarget !== undefined && descriptor.srvPort !== undefined) {
@@ -663,14 +663,4 @@ class StubSolicitor {
     solicit(solicitation: { name: StubDnssdName; recordTypes: DnsRecordType[] }): void {
         this.solicited.push(solicitation);
     }
-}
-
-const BINARY_TXT_KEYS = new Set(["xa", "xp", "at", "pt", "dd", "sb"]);
-
-function hexToBytesString(hex: string): string {
-    let out = "";
-    for (let i = 0; i < hex.length; i += 2) {
-        out += String.fromCharCode(parseInt(hex.slice(i, i + 2), 16));
-    }
-    return out;
 }
