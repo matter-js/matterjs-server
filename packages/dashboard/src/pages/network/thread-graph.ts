@@ -4,9 +4,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import type { BorderRouterEntry } from "@matter-server/ws-client";
 import { html } from "lit";
-import { customElement } from "lit/decorators.js";
-import { createNodeIconDataUrl, createUnknownDeviceIconDataUrl } from "../../util/device-icons.js";
+import { customElement, property } from "lit/decorators.js";
+import {
+    createBorderRouterIconDataUrl,
+    createNodeIconDataUrl,
+    createUnknownDeviceIconDataUrl,
+} from "../../util/device-icons.js";
 import { BaseNetworkGraph } from "./base-network-graph.js";
 import type { NetworkGraphEdge, NetworkGraphNode, ThreadExternalDevice } from "./network-types.js";
 import {
@@ -28,20 +33,16 @@ declare global {
 
 @customElement("thread-graph")
 export class ThreadGraph extends BaseNetworkGraph {
+    @property({ attribute: false }) borderRouters: ReadonlyMap<string, BorderRouterEntry> = new Map();
+
     /** Cache of external Thread devices (Border Routers and unknown) for the current render */
     private _unknownDevices: ThreadExternalDevice[] = [];
 
-    /** Cached map of unknown devices (rebuilt in _updateGraph) */
-    private _unknownDevicesMapCache: Map<
-        string,
-        { extAddressHex: string; isRouter: boolean; seenBy: string[]; bestRssi: number | null }
-    > = new Map();
+    /** Cached map of external Thread devices (rebuilt in _updateGraph) */
+    private _unknownDevicesMapCache: Map<string, ThreadExternalDevice> = new Map();
 
-    /** Get unknown devices as a map for use by details panel */
-    public get unknownDevicesMap(): Map<
-        string,
-        { extAddressHex: string; isRouter: boolean; seenBy: string[]; bestRssi: number | null }
-    > {
+    /** Get external Thread devices as a map for use by details panel */
+    public get unknownDevicesMap(): ReadonlyMap<string, ThreadExternalDevice> {
         return this._unknownDevicesMapCache;
     }
 
@@ -104,18 +105,13 @@ export class ThreadGraph extends BaseNetworkGraph {
         const extAddrMap = buildExtAddrMap(this.nodes);
         const rloc16Map = buildRloc16Map(this.nodes);
 
-        // Find unknown devices (seen in neighbor tables but not commissioned)
-        this._unknownDevices = findUnknownDevices(this.nodes, extAddrMap, rloc16Map);
+        // Find external Thread devices (seen in neighbor tables but not commissioned),
+        // classified against the BR registry so mDNS-known routers render distinctly.
+        this._unknownDevices = findUnknownDevices(this.nodes, extAddrMap, rloc16Map, this.borderRouters);
 
-        // Rebuild the cached map
         this._unknownDevicesMapCache.clear();
         for (const device of this._unknownDevices) {
-            this._unknownDevicesMapCache.set(device.id, {
-                extAddressHex: device.extAddressHex,
-                isRouter: device.isRouter,
-                seenBy: device.seenBy,
-                bestRssi: device.bestRssi,
-            });
+            this._unknownDevicesMapCache.set(device.id, device);
         }
 
         // Build Thread connections (including to unknown devices)
@@ -140,18 +136,32 @@ export class ThreadGraph extends BaseNetworkGraph {
             };
         });
 
-        // Add external devices with question mark icons
-        for (const unknown of this._unknownDevices) {
-            const isSelected = unknown.id === this._selectedNodeId;
-            const typeLabel = unknown.isRouter ? "External Router" : "External Device";
-            graphNodes.push({
-                id: unknown.id,
-                label: `${typeLabel} (${unknown.extAddressHex.slice(-8)})`,
-                image: createUnknownDeviceIconDataUrl(unknown.isRouter, isSelected),
-                shape: "image",
-                networkType: "thread",
-                isUnknown: true,
-            });
+        // Add external Thread devices: known Border Routers get a friendly label/icon,
+        // unidentified neighbors keep the generic question-mark style.
+        for (const device of this._unknownDevices) {
+            const isSelected = device.id === this._selectedNodeId;
+            if (device.kind === "br") {
+                const hostname = device.hostname?.replace(/\.$/, "");
+                const label = (device.networkName ?? hostname ?? "Border Router").slice(0, 24);
+                graphNodes.push({
+                    id: device.id,
+                    label,
+                    image: createBorderRouterIconDataUrl(isSelected),
+                    shape: "image",
+                    networkType: "thread",
+                    isUnknown: false,
+                });
+            } else {
+                const typeLabel = device.isRouter ? "External Router" : "External Device";
+                graphNodes.push({
+                    id: device.id,
+                    label: `${typeLabel} (${device.extAddressHex.slice(-8)})`,
+                    image: createUnknownDeviceIconDataUrl(device.isRouter, isSelected),
+                    shape: "image",
+                    networkType: "thread",
+                    isUnknown: true,
+                });
+            }
         }
 
         // Create edge data for vis.js

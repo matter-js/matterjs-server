@@ -13,6 +13,7 @@ import { reducedMotionStyles } from "../util/shared-styles.js";
 import "./components/footer";
 import "./components/header";
 import type { ActiveView } from "./components/header.js";
+import { BorderRouterStore } from "./network/border-router-store.js";
 import "./network/device-panel";
 import "./network/network-details";
 import "./network/thread-graph";
@@ -61,6 +62,9 @@ class MatterNetworkView extends LitElement {
     @state()
     private _threadAddressSearchStatus: "idle" | "found" | "not-found" = "idle";
 
+    @state()
+    private _borderRouterStore = new BorderRouterStore();
+
     private _initialSelectionApplied = false;
     private _selectRetryTimer?: ReturnType<typeof setTimeout>;
 
@@ -76,6 +80,23 @@ class MatterNetworkView extends LitElement {
             this._selectedNodeId = this.initialSelectedNodeId;
             this._initialSelectionApplied = false;
         }
+    }
+
+    override firstUpdated(): void {
+        void this._refreshBorderRouters();
+    }
+
+    private async _refreshBorderRouters(): Promise<void> {
+        try {
+            await this._borderRouterStore.refresh(this.client);
+            this.requestUpdate();
+        } catch (err) {
+            console.warn("Failed to refresh border router store:", err);
+        }
+    }
+
+    private _handleConnectionsUpdated(): void {
+        void this._refreshBorderRouters();
     }
 
     override updated(changedProperties: Map<string, unknown>): void {
@@ -250,6 +271,7 @@ class MatterNetworkView extends LitElement {
                       </div>`}
                 <thread-graph
                     .nodes=${this.nodes}
+                    .borderRouters=${this._borderRouterStore.entries}
                     @node-selected=${this._handleNodeSelected}
                     @physics-changed=${this._handlePhysicsChanged}
                 ></thread-graph>
@@ -314,9 +336,11 @@ class MatterNetworkView extends LitElement {
                         .selectedNodeId=${this._selectedNodeId}
                         .nodes=${this.nodes}
                         .unknownDevices=${unknownDevices}
+                        .borderRouters=${this._borderRouterStore.entries}
                         .wifiAccessPoints=${wifiAccessPoints}
                         @close=${this._handleDetailsClose}
                         @select-node=${this._handleSelectNode}
+                        @connections-updated=${this._handleConnectionsUpdated}
                     ></network-details>
                 </aside>
             </div>

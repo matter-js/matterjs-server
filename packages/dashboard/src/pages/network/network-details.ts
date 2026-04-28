@@ -6,7 +6,7 @@
 
 import { consume } from "@lit/context";
 import "@material/web/divider/divider";
-import { isTestNodeId, type MatterClient, type MatterNode } from "@matter-server/ws-client";
+import { isTestNodeId, type BorderRouterEntry, type MatterClient, type MatterNode } from "@matter-server/ws-client";
 import { mdiClose, mdiRefresh, mdiSignalCellular1, mdiSignalCellular2, mdiSignalCellular3 } from "@mdi/js";
 import { LitElement, TemplateResult, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
@@ -14,7 +14,7 @@ import { clientContext } from "../../client/client-context.js";
 import "../../components/ha-svg-icon";
 import { formatNodeAddressFromAny, getEffectiveFabricIndex } from "../../util/format_hex.js";
 import { getCssVar, reducedMotionStyles } from "../../util/shared-styles.js";
-import type { ThreadNeighbor } from "./network-types.js";
+import type { ThreadExternalDevice, ThreadNeighbor } from "./network-types.js";
 import type { NodeConnection } from "./network-utils.js";
 import {
     buildExtAddrMap,
@@ -51,10 +51,10 @@ export class NetworkDetails extends LitElement {
     public nodes: Record<string, MatterNode> = {};
 
     @property({ type: Object })
-    public unknownDevices: Map<
-        string,
-        { extAddressHex: string; isRouter: boolean; seenBy: string[]; bestRssi: number | null }
-    > = new Map();
+    public unknownDevices: ReadonlyMap<string, ThreadExternalDevice> = new Map();
+
+    @property({ attribute: false })
+    public borderRouters: ReadonlyMap<string, BorderRouterEntry> = new Map();
 
     @property({ type: Object })
     public wifiAccessPoints: Map<string, { bssid: string; connectedNodes: string[] }> = new Map();
@@ -591,6 +591,12 @@ export class NetworkDetails extends LitElement {
 
     private _handleDialogClose(): void {
         this._showUpdateDialog = false;
+        this.dispatchEvent(
+            new CustomEvent("connections-updated", {
+                bubbles: true,
+                composed: true,
+            }),
+        );
     }
 
     private _renderWiFiAccessPointInfo(apId: string): TemplateResult | typeof nothing {
