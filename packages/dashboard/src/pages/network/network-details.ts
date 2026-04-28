@@ -377,10 +377,11 @@ export class NetworkDetails extends LitElement {
     }
 
     private _renderUnknownDeviceInfo(deviceId: string): TemplateResult | typeof nothing {
-        const unknown = this.unknownDevices.get(deviceId);
-        if (!unknown) {
+        const device = this.unknownDevices.get(deviceId);
+        if (!device || device.kind !== "unknown") {
             return html` <p>Unknown device data not available</p> `;
         }
+        const unknown = device;
 
         return html`
             <div class="section">
@@ -403,76 +404,7 @@ export class NetworkDetails extends LitElement {
                     : nothing}
             </div>
 
-            ${unknown.seenBy.length > 0
-                ? html`
-                      <md-divider></md-divider>
-                      <div class="section">
-                          <h4>Neighbors (${unknown.seenBy.length})</h4>
-                          <div class="neighbors-list">
-                              ${unknown.seenBy
-                                  .toSorted((a, b) => {
-                                      const score = (nodeId: string): number => {
-                                          const n = this.nodes[nodeId.toString()];
-                                          if (!n) return -Infinity;
-                                          const entry = this._findNeighborEntry(n, unknown.extAddressHex);
-                                          if (!entry) return -Infinity;
-                                          const rssi = entry.avgRssi ?? entry.lastRssi;
-                                          if (rssi !== null && rssi !== undefined) return rssi;
-                                          if (entry.lqi !== null && entry.lqi !== undefined) return entry.lqi;
-                                          return -Infinity;
-                                      };
-                                      return score(b) - score(a);
-                                  })
-                                  .map(nodeId => {
-                                      const node = this.nodes[nodeId.toString()];
-                                      if (!node) return nothing;
-
-                                      // Find the neighbor entry to get RSSI/LQI
-                                      const neighborEntry = this._findNeighborEntry(node, unknown.extAddressHex);
-                                      const signalColor = neighborEntry
-                                          ? getSignalColor(neighborEntry)
-                                          : getCssVar("--graph-node-fallback", "#999");
-                                      const rssi = neighborEntry?.avgRssi ?? neighborEntry?.lastRssi ?? null;
-                                      const lqi = neighborEntry?.lqi;
-
-                                      return html`
-                                          <div
-                                              class="neighbor-item clickable"
-                                              role="button"
-                                              tabindex="0"
-                                              @click=${() => this._handleSelectNode(nodeId)}
-                                              @keydown=${(e: KeyboardEvent) => this._handleKeyDown(e, nodeId)}
-                                          >
-                                              ${neighborEntry
-                                                  ? html`
-                                                        <ha-svg-icon
-                                                            .path=${this._getSignalIcon(neighborEntry)}
-                                                            style="--icon-primary-color: ${signalColor}"
-                                                        ></ha-svg-icon>
-                                                    `
-                                                  : nothing}
-                                              <div class="neighbor-info">
-                                                  <div class="neighbor-name">
-                                                      Node ${nodeId}
-                                                      <span class="node-id-hex">${this._formatNodeIdHex(nodeId)}</span>:
-                                                      ${getDeviceName(node)}
-                                                  </div>
-                                                  ${neighborEntry
-                                                      ? html`
-                                                            <div class="neighbor-signal">
-                                                                ${rssi !== null ? html`RSSI: ${rssi} dBm, ` : nothing}
-                                                                ${lqi !== undefined ? html`LQI: ${lqi}` : nothing}
-                                                            </div>
-                                                        `
-                                                      : nothing}
-                                              </div>
-                                          </div>
-                                      `;
-                                  })}
-                          </div>
-                      </div>
-                  `
-                : nothing}
+            ${this._renderExternalDeviceNeighbors(unknown.seenBy, unknown.extAddressHex)}
 
             <md-divider></md-divider>
             <div class="section">
@@ -481,6 +413,301 @@ export class NetworkDetails extends LitElement {
                     Thread Border Router or a device from another Matter ecosystem.
                 </p>
             </div>
+        `;
+    }
+
+    /**
+     * Neighbor list shared by external-device panels (unknown + BR).
+     * Sorted by best RSSI/LQI signal, descending.
+     */
+    private _renderExternalDeviceNeighbors(
+        seenBy: readonly string[],
+        extAddrHex: string,
+    ): TemplateResult | typeof nothing {
+        if (seenBy.length === 0) return nothing;
+
+        return html`
+            <md-divider></md-divider>
+            <div class="section">
+                <h4>Neighbors (${seenBy.length})</h4>
+                <div class="neighbors-list">
+                    ${seenBy
+                        .toSorted((a, b) => {
+                            const score = (nodeId: string): number => {
+                                const n = this.nodes[nodeId.toString()];
+                                if (!n) return -Infinity;
+                                const entry = this._findNeighborEntry(n, extAddrHex);
+                                if (!entry) return -Infinity;
+                                const rssi = entry.avgRssi ?? entry.lastRssi;
+                                if (rssi !== null && rssi !== undefined) return rssi;
+                                if (entry.lqi !== null && entry.lqi !== undefined) return entry.lqi;
+                                return -Infinity;
+                            };
+                            return score(b) - score(a);
+                        })
+                        .map(nodeId => {
+                            const node = this.nodes[nodeId.toString()];
+                            if (!node) return nothing;
+
+                            const neighborEntry = this._findNeighborEntry(node, extAddrHex);
+                            const signalColor = neighborEntry
+                                ? getSignalColor(neighborEntry)
+                                : getCssVar("--graph-node-fallback", "#999");
+                            const rssi = neighborEntry?.avgRssi ?? neighborEntry?.lastRssi ?? null;
+                            const lqi = neighborEntry?.lqi;
+
+                            return html`
+                                <div
+                                    class="neighbor-item clickable"
+                                    role="button"
+                                    tabindex="0"
+                                    @click=${() => this._handleSelectNode(nodeId)}
+                                    @keydown=${(e: KeyboardEvent) => this._handleKeyDown(e, nodeId)}
+                                >
+                                    ${neighborEntry
+                                        ? html`
+                                              <ha-svg-icon
+                                                  .path=${this._getSignalIcon(neighborEntry)}
+                                                  style="--icon-primary-color: ${signalColor}"
+                                              ></ha-svg-icon>
+                                          `
+                                        : nothing}
+                                    <div class="neighbor-info">
+                                        <div class="neighbor-name">
+                                            Node ${nodeId}
+                                            <span class="node-id-hex">${this._formatNodeIdHex(nodeId)}</span>:
+                                            ${getDeviceName(node)}
+                                        </div>
+                                        ${neighborEntry
+                                            ? html`
+                                                  <div class="neighbor-signal">
+                                                      ${rssi !== null ? html`RSSI: ${rssi} dBm, ` : nothing}
+                                                      ${lqi !== undefined ? html`LQI: ${lqi}` : nothing}
+                                                  </div>
+                                              `
+                                            : nothing}
+                                    </div>
+                                </div>
+                            `;
+                        })}
+                </div>
+            </div>
+        `;
+    }
+
+    /**
+     * Identity rows for a Border Router (network name, vendor, model, Thread version, ext address).
+     * Caller controls the surrounding <div class="section"> + heading.
+     */
+    private _renderBorderRouterIdentityRows(br: BorderRouterEntry, includeExtAddr: boolean): TemplateResult {
+        return html`
+            ${br.networkName
+                ? html`
+                      <div class="info-row">
+                          <span class="label">Network name:</span>
+                          <span class="value">${br.networkName}</span>
+                      </div>
+                  `
+                : nothing}
+            ${br.vendorName
+                ? html`
+                      <div class="info-row">
+                          <span class="label">Vendor:</span>
+                          <span class="value">${br.vendorName}</span>
+                      </div>
+                  `
+                : nothing}
+            ${br.modelName
+                ? html`
+                      <div class="info-row">
+                          <span class="label">Model:</span>
+                          <span class="value">${br.modelName}</span>
+                      </div>
+                  `
+                : nothing}
+            ${br.threadVersion
+                ? html`
+                      <div class="info-row">
+                          <span class="label">Thread version:</span>
+                          <span class="value">${br.threadVersion}</span>
+                      </div>
+                  `
+                : nothing}
+            ${includeExtAddr
+                ? html`
+                      <div class="info-row">
+                          <span class="label">Extended Address:</span>
+                          <span class="value mono">${br.extAddressHex}</span>
+                      </div>
+                  `
+                : nothing}
+        `;
+    }
+
+    /**
+     * Network-info rows for a Border Router (extended PAN ID, partition, timestamps, state, domain, agent ID).
+     * Returns nothing if no fields are populated, so the caller can skip the surrounding section.
+     */
+    private _renderBorderRouterNetworkRows(br: BorderRouterEntry): TemplateResult | typeof nothing {
+        const hasAny =
+            br.extendedPanIdHex !== undefined ||
+            br.partitionIdHex !== undefined ||
+            br.activeTimestampHex !== undefined ||
+            br.stateBitmapHex !== undefined ||
+            br.domainName !== undefined ||
+            br.borderAgentIdHex !== undefined;
+        if (!hasAny) return nothing;
+
+        return html`
+            ${br.extendedPanIdHex
+                ? html`
+                      <div class="info-row">
+                          <span class="label">Extended PAN ID:</span>
+                          <span class="value mono">${br.extendedPanIdHex}</span>
+                      </div>
+                  `
+                : nothing}
+            ${br.partitionIdHex
+                ? html`
+                      <div class="info-row">
+                          <span class="label">Partition ID:</span>
+                          <span class="value mono">${br.partitionIdHex}</span>
+                      </div>
+                  `
+                : nothing}
+            ${br.activeTimestampHex
+                ? html`
+                      <div class="info-row">
+                          <span class="label">Active timestamp:</span>
+                          <span class="value mono">${br.activeTimestampHex}</span>
+                      </div>
+                  `
+                : nothing}
+            ${br.stateBitmapHex
+                ? html`
+                      <div class="info-row">
+                          <span class="label">State bitmap:</span>
+                          <span class="value mono">${br.stateBitmapHex}</span>
+                      </div>
+                  `
+                : nothing}
+            ${br.domainName
+                ? html`
+                      <div class="info-row">
+                          <span class="label">Domain:</span>
+                          <span class="value">${br.domainName}</span>
+                      </div>
+                  `
+                : nothing}
+            ${br.borderAgentIdHex
+                ? html`
+                      <div class="info-row">
+                          <span class="label">Border agent ID:</span>
+                          <span class="value mono">${br.borderAgentIdHex}</span>
+                      </div>
+                  `
+                : nothing}
+        `;
+    }
+
+    /**
+     * Address rows for a Border Router (hostname, IPs, ports, sources).
+     */
+    private _renderBorderRouterAddressRows(br: BorderRouterEntry): TemplateResult | typeof nothing {
+        const hasAny =
+            br.hostname !== undefined ||
+            br.addresses.length > 0 ||
+            br.meshcopPort !== undefined ||
+            br.trelPort !== undefined ||
+            br.sources.length > 0;
+        if (!hasAny) return nothing;
+
+        return html`
+            ${br.hostname
+                ? html`
+                      <div class="info-row">
+                          <span class="label">Hostname:</span>
+                          <span class="value mono">${br.hostname}</span>
+                      </div>
+                  `
+                : nothing}
+            ${br.addresses.map(
+                addr => html`
+                    <div class="info-row">
+                        <span class="label">Address:</span>
+                        <span class="value mono">${addr}</span>
+                    </div>
+                `,
+            )}
+            ${br.meshcopPort !== undefined
+                ? html`
+                      <div class="info-row">
+                          <span class="label">meshcop port:</span>
+                          <span class="value">${br.meshcopPort}</span>
+                      </div>
+                  `
+                : nothing}
+            ${br.trelPort !== undefined
+                ? html`
+                      <div class="info-row">
+                          <span class="label">trel port:</span>
+                          <span class="value">${br.trelPort}</span>
+                      </div>
+                  `
+                : nothing}
+            ${br.sources.length > 0
+                ? html`
+                      <div class="info-row">
+                          <span class="label">Sources:</span>
+                          <span class="value">${br.sources.join(", ")}</span>
+                      </div>
+                  `
+                : nothing}
+        `;
+    }
+
+    private _renderBorderRouterInfo(deviceId: string): TemplateResult | typeof nothing {
+        const device = this.unknownDevices.get(deviceId);
+        if (!device || device.kind !== "br") {
+            return html` <p>Border router data not available</p> `;
+        }
+        const br = device;
+        const networkRows = this._renderBorderRouterNetworkRows(br);
+        const addressRows = this._renderBorderRouterAddressRows(br);
+
+        return html`
+            <div class="section">
+                <h4>Border Router</h4>
+                ${this._renderBorderRouterIdentityRows(br, true)}
+                ${br.bestRssi !== null
+                    ? html`
+                          <div class="info-row">
+                              <span class="label">Best RSSI:</span>
+                              <span class="value">${br.bestRssi} dBm</span>
+                          </div>
+                      `
+                    : nothing}
+            </div>
+
+            ${networkRows !== nothing
+                ? html`
+                      <md-divider></md-divider>
+                      <div class="section">
+                          <h4>Thread Network</h4>
+                          ${networkRows}
+                      </div>
+                  `
+                : nothing}
+            ${addressRows !== nothing
+                ? html`
+                      <md-divider></md-divider>
+                      <div class="section">
+                          <h4>Addresses</h4>
+                          ${addressRows}
+                      </div>
+                  `
+                : nothing}
+            ${this._renderExternalDeviceNeighbors(br.seenBy, br.extAddressHex)}
         `;
     }
 
@@ -494,9 +721,11 @@ export class NetworkDetails extends LitElement {
         const isAccessPoint = typeof this.selectedNodeId === "string" && this.selectedNodeId.startsWith("ap_");
         if (isAccessPoint) return false;
 
-        // Unknown devices: only if they have online seenBy nodes
-        const isUnknown = typeof this.selectedNodeId === "string" && this.selectedNodeId.startsWith("unknown_");
-        if (isUnknown) {
+        // External devices (unknown or BR) gate on having online seenBy nodes
+        const isExternal =
+            typeof this.selectedNodeId === "string" &&
+            (this.selectedNodeId.startsWith("unknown_") || this.selectedNodeId.startsWith("br_"));
+        if (isExternal) {
             return this._getOnlineSeenByNodes().length > 0;
         }
 
@@ -514,7 +743,10 @@ export class NetworkDetails extends LitElement {
      * Get the type of the currently selected node for dialog variant.
      */
     private _getSelectedNodeType(): "online" | "offline" | "unknown" {
-        if (typeof this.selectedNodeId === "string" && this.selectedNodeId.startsWith("unknown_")) {
+        if (
+            typeof this.selectedNodeId === "string" &&
+            (this.selectedNodeId.startsWith("unknown_") || this.selectedNodeId.startsWith("br_"))
+        ) {
             return "unknown";
         }
 
@@ -557,14 +789,17 @@ export class NetworkDetails extends LitElement {
      * Get online nodes that see an unknown device.
      */
     private _getOnlineSeenByNodes(): string[] {
-        if (typeof this.selectedNodeId !== "string" || !this.selectedNodeId.startsWith("unknown_")) {
+        if (
+            typeof this.selectedNodeId !== "string" ||
+            (!this.selectedNodeId.startsWith("unknown_") && !this.selectedNodeId.startsWith("br_"))
+        ) {
             return [];
         }
 
-        const unknown = this.unknownDevices.get(this.selectedNodeId);
-        if (!unknown) return [];
+        const device = this.unknownDevices.get(this.selectedNodeId);
+        if (!device) return [];
 
-        return unknown.seenBy.filter(nodeId => {
+        return device.seenBy.filter(nodeId => {
             const node = this.nodes[nodeId.toString()];
             return node?.available === true;
         });
@@ -574,11 +809,19 @@ export class NetworkDetails extends LitElement {
      * Get the name of the selected node for display in dialog.
      */
     private _getSelectedNodeName(): string {
-        if (typeof this.selectedNodeId === "string" && this.selectedNodeId.startsWith("unknown_")) {
-            const unknown = this.unknownDevices.get(this.selectedNodeId);
-            if (!unknown) return "External Device";
-            const typeLabel = unknown.isRouter ? "External Router" : "External Device";
-            return `${typeLabel} (${unknown.extAddressHex.slice(-8)})`;
+        if (typeof this.selectedNodeId === "string") {
+            if (this.selectedNodeId.startsWith("br_")) {
+                const device = this.unknownDevices.get(this.selectedNodeId);
+                if (!device || device.kind !== "br") return "Border Router";
+                const label = device.networkName ?? device.vendorName ?? "Border Router";
+                return `${label} (${device.extAddressHex.slice(-8)})`;
+            }
+            if (this.selectedNodeId.startsWith("unknown_")) {
+                const device = this.unknownDevices.get(this.selectedNodeId);
+                if (!device || device.kind !== "unknown") return "External Device";
+                const typeLabel = device.isRouter ? "External Router" : "External Device";
+                return `${typeLabel} (${device.extAddressHex.slice(-8)})`;
+            }
         }
 
         const node = this.nodes[this.selectedNodeId!.toString()];
@@ -671,6 +914,40 @@ export class NetworkDetails extends LitElement {
         `;
     }
 
+    /**
+     * Annotation shown on a commissioned Thread node that is also a discovered Border Router.
+     * Mirrors the BR Identity/Network/Addresses sections, sans the redundant ext-address row.
+     */
+    private _renderCommissionedNodeBorderRouterAnnotation(node: MatterNode): TemplateResult | typeof nothing {
+        const xaHex = getThreadExtendedAddressHex(node);
+        if (!xaHex) return nothing;
+        const br = this.borderRouters.get(xaHex);
+        if (!br) return nothing;
+
+        const networkRows = this._renderBorderRouterNetworkRows(br);
+        const addressRows = this._renderBorderRouterAddressRows(br);
+
+        return html`
+            <md-divider></md-divider>
+            <div class="section">
+                <h4>Also a Border Router</h4>
+                ${this._renderBorderRouterIdentityRows(br, false)}
+                ${networkRows !== nothing
+                    ? html`
+                          <div class="subsection-label">Thread Network</div>
+                          ${networkRows}
+                      `
+                    : nothing}
+                ${addressRows !== nothing
+                    ? html`
+                          <div class="subsection-label">Addresses</div>
+                          ${addressRows}
+                      `
+                    : nothing}
+            </div>
+        `;
+    }
+
     override render() {
         if (this.selectedNodeId === null) {
             return html`
@@ -708,6 +985,54 @@ export class NetworkDetails extends LitElement {
                         </div>
                     </div>
                     <div class="content">${this._renderUnknownDeviceInfo(this.selectedNodeId as string)}</div>
+                </div>
+                ${this._showUpdateDialog
+                    ? html`
+                          <update-connections-dialog
+                              .client=${this.client}
+                              .nodes=${this.nodes}
+                              selectedNodeType="unknown"
+                              .selectedNodeName=${this._getSelectedNodeName()}
+                              .selectedNodeId=${this.selectedNodeId}
+                              .onlineNeighborIds=${onlineSeenByNodes}
+                              @dialog-closed=${this._handleDialogClose}
+                          ></update-connections-dialog>
+                      `
+                    : nothing}
+            `;
+        }
+
+        // Check if this is a discovered Border Router (mDNS-enriched external device)
+        const borderRouterId =
+            typeof this.selectedNodeId === "string" && this.selectedNodeId.startsWith("br_")
+                ? this.selectedNodeId
+                : null;
+
+        if (borderRouterId !== null) {
+            const onlineSeenByNodes = this._getOnlineSeenByNodes();
+            return html`
+                <div class="details-panel">
+                    <div class="header">
+                        <h3>Border Router</h3>
+                        <div class="header-actions">
+                            ${onlineSeenByNodes.length > 0
+                                ? html`
+                                      <button
+                                          class="action-button"
+                                          @click=${this._handleUpdateConnections}
+                                          aria-label="Update connection data"
+                                          title="Update connection data"
+                                      >
+                                          <ha-svg-icon .path=${mdiRefresh}></ha-svg-icon>
+                                      </button>
+                                  `
+                                : nothing}
+                            <button class="close-button" @click=${this._handleClose} aria-label="Close details panel">
+                                <ha-svg-icon .path=${mdiClose}></ha-svg-icon>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="content">${this._renderBorderRouterInfo(borderRouterId)}</div>
                 </div>
                 ${this._showUpdateDialog
                     ? html`
@@ -780,7 +1105,9 @@ export class NetworkDetails extends LitElement {
                         </button>
                     </div>
                 </div>
-                <div class="content">${this._renderNodeInfo(node)}</div>
+                <div class="content">
+                    ${this._renderNodeInfo(node)}${this._renderCommissionedNodeBorderRouterAnnotation(node)}
+                </div>
                 <div class="footer">
                     <a href="#node/${this.selectedNodeId}" class="view-link">View node details</a>
                 </div>
@@ -913,6 +1240,15 @@ export class NetworkDetails extends LitElement {
                 color: var(--md-sys-color-primary, #6200ee);
                 text-transform: uppercase;
                 letter-spacing: 0.5px;
+            }
+
+            .subsection-label {
+                margin: 12px 0 4px 0;
+                font-size: 0.75rem;
+                font-weight: 500;
+                color: var(--md-sys-color-on-surface-variant, #666);
+                text-transform: uppercase;
+                letter-spacing: 0.4px;
             }
 
             .info-row {
