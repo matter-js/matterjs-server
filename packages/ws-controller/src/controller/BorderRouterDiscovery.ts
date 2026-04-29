@@ -92,6 +92,9 @@ export class BorderRouterDiscovery {
     #suffixFilter?: (record: DnsRecord) => boolean;
     #discoveredObserver?: DiscoveredObserver;
     #started = false;
+    /** Incremented on every start/stop. Lets a pending `await mdns.construction.ready`
+     *  detect that `stop()` ran while it was suspended and abort partial setup. */
+    #startGeneration = 0;
     #evictionWarnedThisCycle = false;
 
     constructor(env: Environment, names?: DnssdNamesLike) {
@@ -101,7 +104,7 @@ export class BorderRouterDiscovery {
 
     async start(): Promise<void> {
         if (this.#started) return;
-        this.#started = true;
+        const gen = ++this.#startGeneration;
         this.#evictionWarnedThisCycle = false;
 
         let names: DnssdNamesLike;
@@ -111,13 +114,15 @@ export class BorderRouterDiscovery {
             try {
                 const mdns = this.#env.get(MdnsService);
                 await mdns.construction.ready;
+                if (gen !== this.#startGeneration) return;
                 names = mdns.names;
             } catch (e) {
+                if (gen !== this.#startGeneration) return;
                 logger.warn("MDNS service unavailable; border router discovery inactive:", e);
-                this.#started = false;
                 return;
             }
         }
+        this.#started = true;
         this.#names = names;
 
         const suffixFilter = ({ name }: DnsRecord): boolean => {
@@ -138,6 +143,8 @@ export class BorderRouterDiscovery {
     }
 
     async stop(): Promise<void> {
+        // Bump the generation so any in-flight start() exits without attaching observers.
+        this.#startGeneration++;
         if (!this.#started) return;
         this.#started = false;
 
@@ -168,11 +175,21 @@ export class BorderRouterDiscovery {
     }
 
     list(): BorderRouterEntry[] {
-        return Array.from(this.#registry.values());
+        return Array.from(this.#registry.values(), entry => this.#snapshotEntry(entry));
     }
 
     get(extAddressHex: string): BorderRouterEntry | undefined {
-        return this.#registry.get(extAddressHex.toUpperCase());
+        const entry = this.#registry.get(extAddressHex.toUpperCase());
+        return entry === undefined ? undefined : this.#snapshotEntry(entry);
+    }
+
+    /** Shallow copy so callers cannot mutate registry state through the returned reference. */
+    #snapshotEntry(entry: BorderRouterEntry): BorderRouterEntry {
+        return {
+            ...entry,
+            sources: [...entry.sources],
+            addresses: [...entry.addresses],
+        };
     }
 
     #onDiscovered(name: DnssdNameLike): void {
@@ -238,8 +255,19 @@ export class BorderRouterDiscovery {
         if (idx !== -1) {
             entry.sources.splice(idx, 1);
         }
+        // Clear fields exclusively contributed by the disappearing source so the registry
+        // doesn't expose stale meshcop naming / state when only trel remains (or vice versa).
         if (source === "meshcop") {
             entry.meshcopPort = undefined;
+            entry.networkName = undefined;
+            entry.vendorName = undefined;
+            entry.modelName = undefined;
+            entry.threadVersion = undefined;
+            entry.borderAgentIdHex = undefined;
+            entry.stateBitmapHex = undefined;
+            entry.activeTimestampHex = undefined;
+            entry.partitionIdHex = undefined;
+            entry.domainName = undefined;
         } else {
             entry.trelPort = undefined;
         }
