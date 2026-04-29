@@ -230,9 +230,14 @@ export class ThreadGraph extends BaseNetworkGraph {
 
             if (device.kind === "br") {
                 const hostname = device.hostname?.replace(/\.$/, "").replace(/\.local$/i, "");
+                // Only show network name on a second line when the first line came from a
+                // distinct hostname; otherwise `top` would already be the (possibly truncated)
+                // network name and the second line would just repeat it.
                 const top = (hostname ?? device.networkName ?? "Border Router").slice(0, 24);
                 const suffix =
-                    device.networkName !== undefined && device.networkName !== top ? `\n${device.networkName}` : "";
+                    hostname !== undefined && device.networkName !== undefined && device.networkName !== top
+                        ? `\n${device.networkName}`
+                        : "";
                 const label = `${top}${suffix}`;
                 graphNodes.push({
                     id: device.id,

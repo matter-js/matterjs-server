@@ -120,6 +120,9 @@ class MatterNetworkView extends LitElement {
     }
 
     private _handleConnectionsUpdated(): void {
+        // Skip the BR snapshot refresh when the user updated a WiFi node — the dialog fires
+        // the same event for both network types but BR data is Thread-only.
+        if (this.networkType !== "thread") return;
         void this._refreshBorderRouters();
     }
 
