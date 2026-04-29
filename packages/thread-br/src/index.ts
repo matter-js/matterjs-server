@@ -9,4 +9,5 @@
  *
  * Public API populated incrementally per Phases 0a, 0b, 1+.
  */
-export {};
+export type { BorderRouterEntry } from "./discovery/index.js";
+export { BorderRouterRegistry } from "./discovery/index.js";

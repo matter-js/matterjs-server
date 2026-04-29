@@ -11,9 +11,6 @@
     },
     "references": [
         {
-            "path": "../../thread-br/src"
-        },
-        {
             "path": "../src"
         }
     ]

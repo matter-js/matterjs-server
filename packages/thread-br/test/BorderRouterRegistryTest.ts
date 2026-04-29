@@ -5,15 +5,15 @@
  */
 
 import { Bytes, type DnsRecord, DnsRecordClass, DnsRecordType, Environment, Seconds } from "@matter/main";
-import { BorderRouterDiscovery } from "../src/controller/BorderRouterDiscovery.js";
+import { BorderRouterRegistry } from "../src/discovery/index.js";
 
-describe("BorderRouterDiscovery", () => {
+describe("BorderRouterRegistry", () => {
     let env: Environment;
-    let discovery: BorderRouterDiscovery;
+    let discovery: BorderRouterRegistry;
 
     beforeEach(() => {
         env = new Environment("test");
-        discovery = new BorderRouterDiscovery(env);
+        discovery = new BorderRouterRegistry(env);
     });
 
     afterEach(async () => {
@@ -63,11 +63,11 @@ describe("BorderRouterDiscovery", () => {
 
     describe("on mDNS discovery", () => {
         let stub: StubDnssdNames;
-        let disc: BorderRouterDiscovery;
+        let disc: BorderRouterRegistry;
 
         beforeEach(() => {
             stub = new StubDnssdNames();
-            disc = new BorderRouterDiscovery(new Environment("test"), stub);
+            disc = new BorderRouterRegistry(new Environment("test"), stub);
         });
 
         afterEach(async () => {

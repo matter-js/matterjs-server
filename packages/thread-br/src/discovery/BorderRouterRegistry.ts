@@ -4,11 +4,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type { BorderRouterEntry } from "@matter-server/ws-client";
 import { Bytes, type DnsRecord, DnsRecordType, Environment, Logger, type SrvRecordValue } from "@matter/main";
 import { MdnsService } from "@matter/main/protocol";
+import type { BorderRouterEntry } from "./BorderRouterEntry.js";
+import type { DiscoveredObserver, DnssdNameLike, DnssdNamesLike, NameObserver } from "./DnssdLikeTypes.js";
 
-const logger = Logger.get("BorderRouterDiscovery");
+const logger = Logger.get("BorderRouterRegistry");
 
 const REGISTRY_MAX_ENTRIES = 256;
 /** Generous headroom above REGISTRY_MAX_ENTRIES so we still observe instances that haven't
@@ -21,50 +22,6 @@ const MESHCOP_SUFFIX = "._meshcop._udp.local";
 const TREL_SUFFIX = "._trel._udp.local";
 
 type Source = "meshcop" | "trel";
-
-interface DnssdRecordLike {
-    recordType: DnsRecordType;
-    name: string;
-    value: unknown;
-}
-
-interface DnssdParametersLike extends ReadonlyMap<string, string> {
-    raw(key: string): Bytes | undefined;
-}
-
-interface DnssdNameLike {
-    readonly qname: string;
-    readonly parameters: DnssdParametersLike;
-    readonly records: Iterable<DnssdRecordLike>;
-    readonly isDiscovered: boolean;
-    on(observer: NameObserver): void;
-    off(observer: NameObserver): void;
-}
-
-interface DnssdNamesFiltersLike {
-    add(filter: (record: DnsRecord) => boolean): unknown;
-    delete(filter: (record: DnsRecord) => boolean): unknown;
-}
-
-interface DiscoveredObservableLike {
-    on(observer: DiscoveredObserver): void;
-    off(observer: DiscoveredObserver): void;
-}
-
-interface SolicitorLike {
-    solicit(solicitation: { name: DnssdNameLike; recordTypes: DnsRecordType[] }): void;
-}
-
-interface DnssdNamesLike {
-    readonly filters: DnssdNamesFiltersLike;
-    readonly discovered: DiscoveredObservableLike;
-    readonly solicitor: SolicitorLike;
-    get(qname: string): DnssdNameLike;
-    maybeGet(qname: string): DnssdNameLike | undefined;
-}
-
-type DiscoveredObserver = (name: DnssdNameLike) => void;
-type NameObserver = (changes: { name: DnssdNameLike; updated?: unknown[]; deleted?: unknown[] }) => void;
 
 interface InstanceTracking {
     name: DnssdNameLike;
@@ -89,7 +46,7 @@ interface TargetTracking {
  * Subscribes to `_meshcop._udp.local` and `_trel._udp.local`, builds a per-extended-address
  * registry, and exposes the current entries through {@link list}. Owned by {@link MatterController}.
  */
-export class BorderRouterDiscovery {
+export class BorderRouterRegistry {
     readonly #env: Environment;
     readonly #registry = new Map<string, BorderRouterEntry>();
     readonly #instanceObservers = new Map<string, InstanceTracking>();

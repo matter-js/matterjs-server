@@ -7,5 +7,9 @@
             "globals"
         ]
     },
-    "references": []
+    "references": [
+        {
+            "path": "../../thread-br/src"
+        }
+    ]
 }

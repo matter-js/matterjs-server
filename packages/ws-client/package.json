@@ -33,7 +33,9 @@
     "engines": {
         "node": ">=20.19.0 <22.0.0 || >=22.13.0"
     },
-    "dependencies": {},
+    "dependencies": {
+        "@matter-server/thread-br": "*"
+    },
     "devDependencies": {
         "@types/node": "^25.6.0",
         "@types/ws": "^8.18.1",
