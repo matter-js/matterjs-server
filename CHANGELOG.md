@@ -7,6 +7,10 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
+## **WORK IN PROGRESS**
+
+- Internal: Move Thread Border Router discovery into the new `@matter-server/thread-br` package. The class is renamed from `BorderRouterDiscovery` to `BorderRouterRegistry`; behaviour is unchanged. `BorderRouterEntry` is now sourced from `@matter-server/thread-br` and re-exported from `@matter-server/ws-client` so the wire format and dashboard imports are unchanged. Foundation for upcoming MeshCoP / OTBR REST diagnostic queries.
+
 ## 0.6.3 (2026-04-29)
 
 - Feature: (AlixBa) Add a "Hide" menu on the Thread network visualization to hide offline nodes and specific connections
