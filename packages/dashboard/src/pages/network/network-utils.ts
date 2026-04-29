@@ -503,48 +503,51 @@ export function findUnknownDevices(
 }
 
 /**
- * Decoded form of the MeshCoP `_meshcop` TXT `sb` (state bitmap) field per the Thread Border
- * Router service spec. The bitmap is 32 bits, big-endian; only the lower 11 bits are defined
- * today. Undecoded reserved bits are returned as `reservedHex` so a future spec extension is
- * still visible.
+ * Decoded form of the MeshCoP `_meshcop` TXT `sb` (state bitmap) field. Layout per
+ * OpenThread's `border_agent_txt_data.hpp` (`openthread/openthread`, the de-facto reference
+ * implementation for Thread Border Router service publication):
+ *
+ *   bits 0-2   Connection Mode         (0=Disabled, 1=PSKc/DTLS, 2=PSKd/DTLS, 3=Vendor, 4=X.509)
+ *   bits 3-4   Thread Interface State  (0=NotInit, 1=Init/inactive, 2=Init/active)
+ *   bits 5-6   Availability            (0=Infrequent, 1=High)
+ *   bit  7     BBR Active              (0/1)
+ *   bit  8     BBR Is Primary          (0=secondary, 1=primary; only meaningful when BBR Active)
+ *   bits 9-10  Thread Role             (0=Detached, 1=Child, 2=Router, 3=Leader)
+ *   bit  11    ePSKc Supported         (0/1)
+ *   bits 12-13 Multi-AIL State         (0=Disabled, 1=Not detected, 2=Detected)
+ *   bits 14-31 Reserved
  */
 export interface DecodedStateBitmap {
-    /** Connection mode label (or undefined for reserved values). */
     connectionMode?: string;
-    /** Numeric connection mode (bits 0-2). */
     connectionModeValue: number;
-    /** Thread interface status label (or undefined for reserved values). */
     threadInterfaceStatus?: string;
-    /** Numeric Thread interface status (bits 3-4). */
     threadInterfaceStatusValue: number;
-    /** Availability label (or undefined for reserved values). */
     availability?: string;
-    /** Numeric availability (bits 5-6). */
     availabilityValue: number;
-    /** Bit 7 — true when the BR is also a Backbone Border Router. */
     bbr: boolean;
-    /** BBR Function label (only meaningful when {@link bbr} is true). */
+    /** "primary" / "secondary" — only meaningful when {@link bbr} is true. */
     bbrFunction?: string;
-    /** Numeric BBR Function (bits 8-9). */
-    bbrFunctionValue: number;
-    /** Bit 10 — true when ePSKc commissioning is supported. */
+    threadRole?: string;
+    threadRoleValue: number;
     epskcSupported: boolean;
-    /** Hex of bits 11-31 (reserved). Undefined when zero. */
+    multiAilState?: string;
+    multiAilStateValue: number;
+    /** Hex of any bits beyond bit 13 (reserved/future). Undefined when zero. */
     reservedHex?: string;
 }
 
 const CONNECTION_MODE_LABELS: Record<number, string> = {
-    0: "none",
+    0: "disabled",
     1: "PSKc / DTLS",
-    2: "PSKd",
-    3: "vendor-specific",
+    2: "PSKd / DTLS",
+    3: "vendor-defined",
     4: "X.509",
 };
 
 const THREAD_INTERFACE_STATUS_LABELS: Record<number, string> = {
-    0: "inactive",
-    1: "active, not initialized",
-    2: "attached",
+    0: "not initialized",
+    1: "initialized, inactive",
+    2: "initialized, active",
 };
 
 const AVAILABILITY_LABELS: Record<number, string> = {
@@ -552,15 +555,22 @@ const AVAILABILITY_LABELS: Record<number, string> = {
     1: "high",
 };
 
-const BBR_FUNCTION_LABELS: Record<number, string> = {
-    0: "primary",
-    1: "secondary",
+const THREAD_ROLE_LABELS: Record<number, string> = {
+    0: "detached",
+    1: "child",
+    2: "router",
+    3: "leader",
+};
+
+const MULTI_AIL_STATE_LABELS: Record<number, string> = {
+    0: "disabled",
+    1: "not detected",
+    2: "detected",
 };
 
 /**
- * Decodes a MeshCoP state bitmap hex string (e.g. "000005B1") into the documented fields per
- * the Thread Border Router service spec. Returns undefined if the input is not a valid 32-bit
- * hex value.
+ * Decodes a MeshCoP state bitmap hex string (e.g. "000005B1") per the OpenThread reference
+ * layout. Returns undefined if the input is not a valid hex value.
  */
 export function decodeMeshcopStateBitmap(hex: string | undefined): DecodedStateBitmap | undefined {
     if (hex === undefined || !/^[0-9a-fA-F]{1,8}$/.test(hex)) return undefined;
@@ -571,9 +581,11 @@ export function decodeMeshcopStateBitmap(hex: string | undefined): DecodedStateB
     const threadInterfaceStatusValue = (value >> 3) & 0x3;
     const availabilityValue = (value >> 5) & 0x3;
     const bbr = ((value >> 7) & 0x1) === 1;
-    const bbrFunctionValue = (value >> 8) & 0x3;
-    const epskcSupported = ((value >> 10) & 0x1) === 1;
-    const reserved = (value >>> 11) >>> 0;
+    const bbrIsPrimary = ((value >> 8) & 0x1) === 1;
+    const threadRoleValue = (value >> 9) & 0x3;
+    const epskcSupported = ((value >> 11) & 0x1) === 1;
+    const multiAilStateValue = (value >> 12) & 0x3;
+    const reserved = (value >>> 14) >>> 0;
 
     return {
         connectionModeValue,
@@ -583,9 +595,12 @@ export function decodeMeshcopStateBitmap(hex: string | undefined): DecodedStateB
         availabilityValue,
         availability: AVAILABILITY_LABELS[availabilityValue],
         bbr,
-        bbrFunctionValue,
-        bbrFunction: bbr ? BBR_FUNCTION_LABELS[bbrFunctionValue] : undefined,
+        bbrFunction: bbr ? (bbrIsPrimary ? "primary" : "secondary") : undefined,
+        threadRoleValue,
+        threadRole: THREAD_ROLE_LABELS[threadRoleValue],
         epskcSupported,
+        multiAilStateValue,
+        multiAilState: MULTI_AIL_STATE_LABELS[multiAilStateValue],
         reservedHex: reserved !== 0 ? reserved.toString(16).toUpperCase() : undefined,
     };
 }

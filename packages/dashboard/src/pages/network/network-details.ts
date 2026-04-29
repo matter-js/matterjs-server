@@ -559,22 +559,18 @@ export class NetworkDetails extends LitElement {
         }
 
         const stateParts = new Array<string>();
-        if (decoded.bbr) {
-            stateParts.push(
-                decoded.bbrFunction !== undefined
-                    ? `BBR (${decoded.bbrFunction})`
-                    : `BBR (function ${decoded.bbrFunctionValue})`,
-            );
+        stateParts.push(decoded.bbr ? `BBR (${decoded.bbrFunction ?? "?"})` : "not BBR");
+        if (decoded.threadRole !== undefined) {
+            stateParts.push(`Thread ${decoded.threadRole}`);
         }
         if (decoded.threadInterfaceStatus !== undefined) {
             stateParts.push(decoded.threadInterfaceStatus);
         }
-        const stateLine = stateParts.length > 0 ? stateParts.join(", ") : `raw 0x${hex}`;
 
         return html`
             <div class="info-row">
                 <span class="label">State:</span>
-                <span class="value">${stateLine}</span>
+                <span class="value">${stateParts.join(", ")}</span>
             </div>
             <div class="info-row">
                 <span class="label">Connection:</span>
@@ -584,11 +580,17 @@ export class NetworkDetails extends LitElement {
                 <span class="label">Availability:</span>
                 <span class="value">${decoded.availability ?? `reserved (${decoded.availabilityValue})`}</span>
             </div>
-            ${decoded.bbr
+            <div class="info-row">
+                <span class="label">ePSKc:</span>
+                <span class="value">${decoded.epskcSupported ? "supported" : "not supported"}</span>
+            </div>
+            ${decoded.multiAilStateValue !== 0
                 ? html`
                       <div class="info-row">
-                          <span class="label">ePSKc:</span>
-                          <span class="value">${decoded.epskcSupported ? "supported" : "not supported"}</span>
+                          <span class="label">Multi-AIL:</span>
+                          <span class="value">
+                              ${decoded.multiAilState ?? `reserved (${decoded.multiAilStateValue})`}
+                          </span>
                       </div>
                   `
                 : nothing}
