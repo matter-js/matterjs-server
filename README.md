@@ -127,7 +127,8 @@ Displays the Thread mesh network topology showing how your Thread devices connec
   - Orange: Medium signal (-85 to -70 dBm)
   - Red: Weak signal (< -85 dBm)
 - **Thread roles**: Leader, Router, End Device, Sleepy End Device
-- **Unknown/External devices**: Shown with dashed connections
+- **Border Routers**: External devices identified via mDNS (`_meshcop._udp` + `_trel._udp`) are rendered with a router icon and a two-line label showing the device hostname and the Thread network name. Click a Border Router node to see its full mDNS-derived details — vendor, model, Thread version, hostname, IP addresses, MeshCoP/TREL ports, extended PAN ID, partition ID, active timestamp, state bitmap, border-agent ID, and which commissioned nodes report it as a neighbor.
+- **Unknown / External devices**: Thread routers that appear in commissioned-node neighbor tables but cannot be matched to a known Border Router are shown with a question-mark icon and dashed edges. When their Thread network can be resolved (because at least one Border Router on the same extended PAN ID is known via mDNS), the network name is shown as a second line on the label and in the details panel.
 
 ### WiFi Network Graph
 
@@ -135,15 +136,17 @@ Displays WiFi devices grouped by their access point (router). Each access point 
 
 ### Important: Data Source Limitations
 
-The network topology data is obtained **directly from the commissioned Matter devices** via their diagnostic clusters (Thread Network Diagnostics, WiFi Network Diagnostics). This means:
+The network topology data is obtained **directly from the commissioned Matter devices** via their diagnostic clusters (Thread Network Diagnostics, WiFi Network Diagnostics), and Border Router enrichment data is obtained from passive mDNS discovery on the local network. This means:
 
-1. **Unknown nodes may appear**: Devices in the Thread mesh that are not commissioned to this Matter fabric (e.g., Thread Border Routers from other ecosystems, devices commissioned to different controllers) will appear as "Unknown" nodes with partial information.
+1. **Border Routers are best-effort identified via mDNS**: The server subscribes to `_meshcop._udp.local` and `_trel._udp.local` to learn each BR's friendly name, vendor, model, addresses, and Thread network identity. The BR is then matched against external entries seen in commissioned-node neighbor tables by extended address.
 
-2. **Connection data is device-reported**: The neighbor tables and signal strength values come from what each device reports about its neighbors. This may not represent a complete picture of the network.
+2. **Some routers may still appear as "Unknown" even on a recognized network**: Several Border Router vendors (notably Apple and Aqara) advertise a stable border-agent identifier as the MeshCoP `xa` field while their Thread radio MAC visible to neighboring routers is a different value (sometimes randomized at every boot for privacy). When that happens the same physical device shows up twice — once as a known Border Router (matched via its MeshCoP `xa`) and once as an "External Router" carrying its current Thread radio MAC. The unknown-device details panel labels these with the Thread network name (resolved via the shared extended PAN ID) so the relationship is visible. There is no protocol-level way to merge them today; widening the match would require Thread to expose a cross-reference between the border-agent ID and the radio MAC.
 
-3. **Not all network participants are Matter devices**: Thread networks often include infrastructure devices (Border Routers, range extenders) that are not Matter devices and cannot be commissioned, so they will always appear as unknown.
+3. **Connection data is device-reported**: The neighbor tables and signal strength values come from what each device reports about its neighbors. This may not represent a complete picture of the network.
 
-4. **Bidirectional visibility**: A connection appears when at least one device reports the other as a neighbor. The details panel shows both "outgoing" connections (what this device reports) and "reverse" connections (what other devices report about this device).
+4. **Not all network participants are Matter devices**: Thread networks often include infrastructure devices (Border Routers, range extenders) that are not Matter devices and cannot be commissioned. The mDNS-based BR enrichment described above identifies the BRs we can; everything else stays in the unknown bucket with a question-mark icon.
+
+5. **Bidirectional visibility**: A connection appears when at least one device reports the other as a neighbor. The details panel shows both "outgoing" connections (what this device reports) and "reverse" connections (what other devices report about this device).
 
 ### Using the Graphs
 
