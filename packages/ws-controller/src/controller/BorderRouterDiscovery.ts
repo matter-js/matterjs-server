@@ -135,8 +135,6 @@ export class BorderRouterDiscovery {
         const observer: DiscoveredObserver = name => this.#onDiscovered(name);
         this.#discoveredObserver = observer;
         names.discovered.on(observer);
-
-        logger.info(`Border router discovery active (${MESHCOP_TYPE_QNAME} + ${TREL_TYPE_QNAME})`);
     }
 
     async stop(): Promise<void> {
@@ -247,11 +245,6 @@ export class BorderRouterDiscovery {
         }
         if (entry.sources.length === 0) {
             this.#registry.delete(xaKey);
-            logger.info(`Border router removed [xa=${xaKey}] (last source ${source} expired)`);
-        } else {
-            logger.info(
-                `Border router source dropped [xa=${xaKey} source=${source}], remaining=${entry.sources.join(",")}`,
-            );
         }
     }
 
@@ -376,11 +369,6 @@ export class BorderRouterDiscovery {
             if (tracking !== undefined) {
                 tracking.xaKey = xaKey;
             }
-
-            const verb = existing === undefined ? "discovered" : "updated";
-            logger.info(
-                `Border router ${verb} via ${source} [xa=${xaKey} qname=${name.qname}]: ${JSON.stringify(entry)}`,
-            );
         } catch (e) {
             logger.debug("Error parsing border router record:", e);
         }

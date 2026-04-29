@@ -470,12 +470,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 case "set_thread_dataset":
                     result = await this.#handleSetThreadDataset(args);
                     break;
-                case "get_thread_border_routers": {
-                    const list = this.#controller.borderRouters.list();
-                    logger.info(`get_thread_border_routers returning ${list.length} entries: ${JSON.stringify(list)}`);
-                    result = list;
+                case "get_thread_border_routers":
+                    result = this.#controller.borderRouters.list();
                     break;
-                }
                 case "open_commissioning_window":
                     result = await this.#handleOpenCommissioningWindow(args);
                     break;

@@ -470,12 +470,9 @@ export function findUnknownDevices(
     }
 
     const out = new Array<ThreadExternalDevice>();
-    let brCount = 0;
-    let unknownCount = 0;
     for (const agg of aggregates.values()) {
         const br = borderRouters?.get(agg.extAddressHex);
         if (br !== undefined) {
-            brCount++;
             out.push({
                 kind: "br",
                 ...br,
@@ -487,7 +484,6 @@ export function findUnknownDevices(
                 bestRssi: agg.bestRssi,
             });
         } else {
-            unknownCount++;
             const networkName =
                 agg.extendedPanIdHex !== undefined ? networkNameByXp.get(agg.extendedPanIdHex) : undefined;
             out.push({
@@ -502,12 +498,6 @@ export function findUnknownDevices(
                 networkName,
             });
         }
-    }
-    if (out.length > 0) {
-        console.info(`[findUnknownDevices] external Thread devices: ${brCount} BR, ${unknownCount} unknown`, {
-            results: out,
-            registrySize: borderRouters?.size ?? 0,
-        });
     }
     return out;
 }
