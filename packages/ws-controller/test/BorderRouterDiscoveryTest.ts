@@ -267,33 +267,42 @@ describe("BorderRouterDiscovery", () => {
         });
 
         it("evicts oldest entry when registry exceeds 256", async () => {
-            await disc.start();
-            const oldestXa = makeXa(0);
-            for (let i = 0; i < 256; i++) {
-                const xa = makeXa(i);
-                const host = `host${i}.local.`;
-                stub.makeTarget(host, [`10.0.${(i >> 8) & 0xff}.${i & 0xff}`]);
-                const inst = stub.makeInstance(`${xa.toLowerCase()}._meshcop._udp.local`, {
-                    txt: { xa: xa.toLowerCase(), nn: `Net${i}` },
-                    srvTarget: host,
-                    srvPort: 49154 + i,
+            // Drive lastSeen via a controlled Date.now so eviction order is deterministic.
+            // (`disc.get(xa).lastSeen = ...` would only mutate a snapshot copy.)
+            const originalDateNow = Date.now;
+            let now = 1000;
+            Date.now = () => now;
+            try {
+                await disc.start();
+                const oldestXa = makeXa(0);
+                for (let i = 0; i < 256; i++) {
+                    const xa = makeXa(i);
+                    const host = `host${i}.local.`;
+                    stub.makeTarget(host, [`10.0.${(i >> 8) & 0xff}.${i & 0xff}`]);
+                    const inst = stub.makeInstance(`${xa.toLowerCase()}._meshcop._udp.local`, {
+                        txt: { xa: xa.toLowerCase(), nn: `Net${i}` },
+                        srvTarget: host,
+                        srvPort: 49154 + i,
+                    });
+                    stub.discover(inst);
+                    now++;
+                }
+
+                const xa257 = makeXa(257);
+                stub.makeTarget(`host257.local.`, [`10.1.0.0`]);
+                const inst257 = stub.makeInstance(`${xa257.toLowerCase()}._meshcop._udp.local`, {
+                    txt: { xa: xa257.toLowerCase(), nn: "Net257" },
+                    srvTarget: `host257.local.`,
+                    srvPort: 50000,
                 });
-                stub.discover(inst);
-                disc.get(xa)!.lastSeen = 1000 + i;
+                stub.discover(inst257);
+
+                expect(disc.list().length).to.equal(256);
+                expect(disc.get(oldestXa)).to.equal(undefined);
+                expect(disc.get(xa257)).to.not.equal(undefined);
+            } finally {
+                Date.now = originalDateNow;
             }
-
-            const xa257 = makeXa(257);
-            stub.makeTarget(`host257.local.`, [`10.1.0.0`]);
-            const inst257 = stub.makeInstance(`${xa257.toLowerCase()}._meshcop._udp.local`, {
-                txt: { xa: xa257.toLowerCase(), nn: "Net257" },
-                srvTarget: `host257.local.`,
-                srvPort: 50000,
-            });
-            stub.discover(inst257);
-
-            expect(disc.list().length).to.equal(256);
-            expect(disc.get(oldestXa)).to.equal(undefined);
-            expect(disc.get(xa257)).to.not.equal(undefined);
         });
 
         it("issues a one-shot solicit for both service-type qnames on start", async () => {
@@ -304,55 +313,62 @@ describe("BorderRouterDiscovery", () => {
         });
 
         it("re-discovers after eviction without leaking instance observers", async () => {
-            await disc.start();
-            for (let i = 0; i < 256; i++) {
-                const xa = makeXa(i);
-                const host = `host${i}.local.`;
-                stub.makeTarget(host, [`10.0.${(i >> 8) & 0xff}.${i & 0xff}`]);
-                const inst = stub.makeInstance(`${xa.toLowerCase()}._meshcop._udp.local`, {
-                    txt: { xa: xa.toLowerCase(), nn: `Net${i}` },
-                    srvTarget: host,
-                    srvPort: 49154 + i,
+            const originalDateNow = Date.now;
+            let now = 1000;
+            Date.now = () => now;
+            try {
+                await disc.start();
+                for (let i = 0; i < 256; i++) {
+                    const xa = makeXa(i);
+                    const host = `host${i}.local.`;
+                    stub.makeTarget(host, [`10.0.${(i >> 8) & 0xff}.${i & 0xff}`]);
+                    const inst = stub.makeInstance(`${xa.toLowerCase()}._meshcop._udp.local`, {
+                        txt: { xa: xa.toLowerCase(), nn: `Net${i}` },
+                        srvTarget: host,
+                        srvPort: 49154 + i,
+                    });
+                    stub.discover(inst);
+                    now++;
+                }
+                const evictedXa = makeXa(0);
+                const evictedQname = `${evictedXa.toLowerCase()}._meshcop._udp.local`;
+                const evictedInstance = stub.targetByKey(evictedQname)!;
+                const evictedHost = stub.targetByKey("host0.local.")!;
+                expect(disc.get(evictedXa)).to.not.equal(undefined);
+                expect(evictedInstance.observerCount()).to.equal(1);
+                expect(evictedHost.observerCount()).to.equal(1);
+
+                const xa257 = makeXa(257);
+                stub.makeTarget("host257.local.", ["10.1.0.0"]);
+                const inst257 = stub.makeInstance(`${xa257.toLowerCase()}._meshcop._udp.local`, {
+                    txt: { xa: xa257.toLowerCase(), nn: "Net257" },
+                    srvTarget: "host257.local.",
+                    srvPort: 50000,
                 });
-                stub.discover(inst);
-                disc.get(xa)!.lastSeen = 1000 + i;
+                stub.discover(inst257);
+
+                expect(disc.get(evictedXa)).to.equal(undefined);
+                expect(evictedInstance.observerCount()).to.equal(0);
+                expect(evictedHost.observerCount()).to.equal(0);
+
+                const reHost = stub.makeTarget("host0-re.local.", ["10.9.9.9"]);
+                const reInstance = stub.makeInstance(evictedQname, {
+                    txt: { xa: evictedXa.toLowerCase(), nn: "NetRe" },
+                    srvTarget: "host0-re.local.",
+                    srvPort: 60000,
+                });
+                stub.discover(reInstance);
+
+                const e = disc.get(evictedXa);
+                expect(e).to.not.equal(undefined);
+                expect(e!.networkName).to.equal("NetRe");
+                expect(e!.hostname).to.equal("host0-re.local.");
+                expect(reInstance.observerCount()).to.equal(1);
+                expect(reHost.observerCount()).to.equal(1);
+                expect(disc.list().length).to.equal(256);
+            } finally {
+                Date.now = originalDateNow;
             }
-            const evictedXa = makeXa(0);
-            const evictedQname = `${evictedXa.toLowerCase()}._meshcop._udp.local`;
-            const evictedInstance = stub.targetByKey(evictedQname)!;
-            const evictedHost = stub.targetByKey("host0.local.")!;
-            expect(disc.get(evictedXa)).to.not.equal(undefined);
-            expect(evictedInstance.observerCount()).to.equal(1);
-            expect(evictedHost.observerCount()).to.equal(1);
-
-            const xa257 = makeXa(257);
-            stub.makeTarget("host257.local.", ["10.1.0.0"]);
-            const inst257 = stub.makeInstance(`${xa257.toLowerCase()}._meshcop._udp.local`, {
-                txt: { xa: xa257.toLowerCase(), nn: "Net257" },
-                srvTarget: "host257.local.",
-                srvPort: 50000,
-            });
-            stub.discover(inst257);
-
-            expect(disc.get(evictedXa)).to.equal(undefined);
-            expect(evictedInstance.observerCount()).to.equal(0);
-            expect(evictedHost.observerCount()).to.equal(0);
-
-            const reHost = stub.makeTarget("host0-re.local.", ["10.9.9.9"]);
-            const reInstance = stub.makeInstance(evictedQname, {
-                txt: { xa: evictedXa.toLowerCase(), nn: "NetRe" },
-                srvTarget: "host0-re.local.",
-                srvPort: 60000,
-            });
-            stub.discover(reInstance);
-
-            const e = disc.get(evictedXa);
-            expect(e).to.not.equal(undefined);
-            expect(e!.networkName).to.equal("NetRe");
-            expect(e!.hostname).to.equal("host0-re.local.");
-            expect(reInstance.observerCount()).to.equal(1);
-            expect(reHost.observerCount()).to.equal(1);
-            expect(disc.list().length).to.equal(256);
         });
 
         it("releases trel's old target observer when meshcop overwrites the hostname", async () => {

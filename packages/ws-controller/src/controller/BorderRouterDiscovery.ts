@@ -11,6 +11,10 @@ import { MdnsService } from "@matter/main/protocol";
 const logger = Logger.get("BorderRouterDiscovery");
 
 const REGISTRY_MAX_ENTRIES = 256;
+/** Generous headroom above REGISTRY_MAX_ENTRIES so we still observe instances that haven't
+ *  yet emitted a valid xa, but bounded so a noisy LAN can't grow `#instanceObservers`
+ *  without limit. Eviction targets the oldest xa-less observer first. */
+const INSTANCE_OBSERVER_CAP = 512;
 const MESHCOP_TYPE_QNAME = "_meshcop._udp.local";
 const TREL_TYPE_QNAME = "_trel._udp.local";
 const MESHCOP_SUFFIX = "._meshcop._udp.local";
@@ -68,6 +72,9 @@ interface InstanceTracking {
     observer: NameObserver;
     targetKey?: string;
     xaKey?: string;
+    /** Set when the observer is attached. Used to evict oldest xa-less observers when
+     *  `#instanceObservers` grows past {@link INSTANCE_OBSERVER_CAP}. */
+    firstSeen: number;
 }
 
 interface TargetTracking {
@@ -212,11 +219,41 @@ export class BorderRouterDiscovery {
             return;
         }
 
+        if (this.#instanceObservers.size >= INSTANCE_OBSERVER_CAP) {
+            this.#evictOldestPendingInstance();
+        }
+
         const observer: NameObserver = () => this.#onInstanceChanged(name, source);
-        this.#instanceObservers.set(key, { name, source, observer });
+        this.#instanceObservers.set(key, { name, source, observer, firstSeen: Date.now() });
         name.on(observer);
 
         this.#parseAndUpsert(name, source);
+    }
+
+    /**
+     * Evict the oldest xa-less instance observer when the observer cap is hit. Instances
+     * that never publish a valid `xa` (malformed broadcasters or hostile noise) would
+     * otherwise pin observers in `#instanceObservers` indefinitely — eviction targets only
+     * those because observers tied to real registry entries are managed by `#evictOldest`.
+     */
+    #evictOldestPendingInstance(): void {
+        let oldestKey: string | undefined;
+        let oldestSeen = Number.POSITIVE_INFINITY;
+        for (const [k, t] of this.#instanceObservers) {
+            if (t.xaKey !== undefined) continue;
+            if (t.firstSeen < oldestSeen) {
+                oldestSeen = t.firstSeen;
+                oldestKey = k;
+            }
+        }
+        if (oldestKey === undefined) return;
+        const tracking = this.#instanceObservers.get(oldestKey);
+        if (tracking === undefined) return;
+        tracking.name.off(tracking.observer);
+        if (tracking.targetKey !== undefined) {
+            this.#releaseTarget(tracking.targetKey);
+        }
+        this.#instanceObservers.delete(oldestKey);
     }
 
     #onInstanceChanged(name: DnssdNameLike, source: Source): void {
@@ -311,10 +348,17 @@ export class BorderRouterDiscovery {
             }
 
             let addresses: string[] = [];
+            const tracking = this.#instanceObservers.get(name.qname.toLowerCase());
             if (srvTarget !== undefined) {
                 const target = names.get(srvTarget);
                 addresses = this.#sortAddresses(this.#collectAddresses(target));
                 this.#attachTargetObserver(name, srvTarget, target);
+            } else if (tracking?.targetKey !== undefined) {
+                // Update dropped the SRV record. Release the previously-attached target
+                // observer so its refcount is decremented and the entry doesn't keep
+                // receiving address updates for a hostname this instance no longer points at.
+                this.#releaseTarget(tracking.targetKey);
+                tracking.targetKey = undefined;
             }
 
             const xp = rawHex(params.raw("xp"));
@@ -393,7 +437,6 @@ export class BorderRouterDiscovery {
                 this.#registry.set(xaKey, entry);
             }
 
-            const tracking = this.#instanceObservers.get(name.qname.toLowerCase());
             if (tracking !== undefined) {
                 tracking.xaKey = xaKey;
             }
