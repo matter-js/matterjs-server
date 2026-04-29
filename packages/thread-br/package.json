@@ -28,7 +28,8 @@
         "clean": "nacho-build clean",
         "build": "nacho-build",
         "build-clean": "nacho-build --clean",
-        "test": "matter-test --force-exit"
+        "test": "matter-test --force-exit",
+        "example": "node --experimental-strip-types --no-warnings"
     },
     "engines": {
         "node": ">=20.19.0 <22.0.0 || >=22.13.0"
