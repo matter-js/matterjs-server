@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { type DnsRecord, DnsRecordClass, DnsRecordType, Environment, Seconds } from "@matter/main";
+import { Bytes, type DnsRecord, DnsRecordClass, DnsRecordType, Environment, Seconds } from "@matter/main";
 import { BorderRouterDiscovery } from "../src/controller/BorderRouterDiscovery.js";
 
 describe("BorderRouterDiscovery", () => {
@@ -517,8 +517,59 @@ class StubObservable<Args extends unknown[]> {
     }
 }
 
+class StubDnssdParameters {
+    readonly #strings = new Map<string, string>();
+    readonly #raw = new Map<string, Uint8Array>();
+
+    set(key: string, value: string | Uint8Array): void {
+        if (typeof value === "string") {
+            this.#strings.set(key, value);
+        } else {
+            this.#raw.set(key, value);
+        }
+    }
+
+    get(key: string): string | undefined {
+        return this.#strings.get(key);
+    }
+
+    raw(key: string): Uint8Array | undefined {
+        return this.#raw.get(key);
+    }
+
+    has(key: string): boolean {
+        return this.#strings.has(key) || this.#raw.has(key);
+    }
+
+    get size(): number {
+        return this.#strings.size + this.#raw.size;
+    }
+
+    keys(): MapIterator<string> {
+        return this.#strings.keys();
+    }
+
+    values(): MapIterator<string> {
+        return this.#strings.values();
+    }
+
+    entries(): MapIterator<[string, string]> {
+        return this.#strings.entries();
+    }
+
+    [Symbol.iterator](): MapIterator<[string, string]> {
+        return this.entries();
+    }
+
+    forEach(cb: (v: string, k: string, m: ReadonlyMap<string, string>) => void): void {
+        for (const [k, v] of this) cb(v, k, this);
+    }
+}
+
+const BINARY_TXT_KEYS = new Set(["xa", "xp", "at", "pt", "dd", "sb"]);
+
 class StubDnssdName {
-    readonly parameters = new Map<string, string>();
+    readonly parameters = new StubDnssdParameters();
     #records: DnsRecord[] = [];
     #observable = new StubObservable<[changes: { name: StubDnssdName }]>();
     #isDiscovered = true;
@@ -598,7 +649,7 @@ class StubDnssdNames {
     makeInstance(qname: string, descriptor: InstanceDescriptor): StubDnssdName {
         const name = this.get(qname);
         for (const [k, v] of Object.entries(descriptor.txt)) {
-            name.parameters.set(k, v);
+            name.parameters.set(k, BINARY_TXT_KEYS.has(k) ? Bytes.of(Bytes.fromHex(v)) : v);
         }
         const records: DnsRecord[] = [];
         if (descriptor.srvTarget !== undefined && descriptor.srvPort !== undefined) {

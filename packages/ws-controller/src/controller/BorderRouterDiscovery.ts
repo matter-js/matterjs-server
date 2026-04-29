@@ -5,7 +5,7 @@
  */
 
 import type { BorderRouterEntry } from "@matter-server/ws-client";
-import { type DnsRecord, DnsRecordType, Environment, Logger, type SrvRecordValue } from "@matter/main";
+import { Bytes, type DnsRecord, DnsRecordType, Environment, Logger, type SrvRecordValue } from "@matter/main";
 import { MdnsService } from "@matter/main/protocol";
 
 const logger = Logger.get("BorderRouterDiscovery");
@@ -24,9 +24,13 @@ interface DnssdRecordLike {
     value: unknown;
 }
 
+interface DnssdParametersLike extends ReadonlyMap<string, string> {
+    raw(key: string): Bytes | undefined;
+}
+
 interface DnssdNameLike {
     readonly qname: string;
-    readonly parameters: ReadonlyMap<string, string>;
+    readonly parameters: DnssdParametersLike;
     readonly records: Iterable<DnssdRecordLike>;
     readonly isDiscovered: boolean;
     on(observer: NameObserver): void;
@@ -271,11 +275,10 @@ export class BorderRouterDiscovery {
 
         try {
             const params = name.parameters;
-            const xa = params.get("xa");
-            if (xa === undefined || xa.length === 0) {
+            const xaKey = rawHex(params.raw("xa"));
+            if (xaKey === undefined) {
                 return;
             }
-            const xaKey = xa.toUpperCase();
 
             const records = Array.from(name.records);
             const srvRecord = records.find(r => r.recordType === DnsRecordType.SRV);
@@ -293,7 +296,7 @@ export class BorderRouterDiscovery {
                 this.#attachTargetObserver(name, srvTarget, target);
             }
 
-            const xp = params.get("xp")?.toUpperCase();
+            const xp = rawHex(params.raw("xp"));
 
             const existing = this.#registry.get(xaKey);
             const meshcopWins = source === "meshcop";
@@ -339,14 +342,14 @@ export class BorderRouterDiscovery {
                 if (mn !== undefined) entry.modelName = mn;
                 const tv = params.get("tv");
                 if (tv !== undefined) entry.threadVersion = tv;
-                const dd = params.get("dd");
-                if (dd !== undefined) entry.borderAgentIdHex = dd.toUpperCase();
-                const sb = params.get("sb");
-                if (sb !== undefined) entry.stateBitmapHex = sb.toUpperCase();
-                const at = params.get("at");
-                if (at !== undefined) entry.activeTimestampHex = at.toUpperCase();
-                const pt = params.get("pt");
-                if (pt !== undefined) entry.partitionIdHex = pt.toUpperCase();
+                const dd = rawHex(params.raw("dd"));
+                if (dd !== undefined) entry.borderAgentIdHex = dd;
+                const sb = rawHex(params.raw("sb"));
+                if (sb !== undefined) entry.stateBitmapHex = sb;
+                const at = rawHex(params.raw("at"));
+                if (at !== undefined) entry.activeTimestampHex = at;
+                const pt = rawHex(params.raw("pt"));
+                if (pt !== undefined) entry.partitionIdHex = pt;
                 const dn = params.get("dn");
                 if (dn !== undefined) entry.domainName = dn;
             } else if (source === "trel") {
@@ -514,4 +517,13 @@ function isSrvValue(value: unknown): value is SrvRecordValue {
         "port" in value &&
         typeof value.port === "number"
     );
+}
+
+/**
+ * MeshCoP TXT records carry binary-valued fields (xa, xp, at, pt, dd, sb) — raw bytes per
+ * Thread spec. Bytes.toHex returns lowercase; we want the canonical 16-char uppercase hex
+ * shape used as the registry key and the dashboard's xa→xa join.
+ */
+function rawHex(bytes: Bytes | undefined): string | undefined {
+    return bytes === undefined || bytes.byteLength === 0 ? undefined : Bytes.toHex(bytes).toUpperCase();
 }
