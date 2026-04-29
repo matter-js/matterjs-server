@@ -11,3 +11,8 @@
  */
 export type { BorderRouterEntry } from "./discovery/index.js";
 export { BorderRouterRegistry } from "./discovery/index.js";
+
+export { MeshCopTlvType, MeshCopTlvTypeName, OperationalDataset, SecurityPolicy } from "./dataset/index.js";
+
+export type { BasicTlvEntry } from "./tlv/BasicTlvCodec.js";
+export { BasicTlv } from "./tlv/BasicTlvCodec.js";
