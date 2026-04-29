@@ -4,16 +4,21 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import type { BorderRouterEntry } from "@matter-server/ws-client";
 import { html } from "lit";
 import { customElement, property } from "lit/decorators.js";
-import { createNodeIconDataUrl, createUnknownDeviceIconDataUrl } from "../../util/device-icons.js";
+import {
+    createBorderRouterIconDataUrl,
+    createNodeIconDataUrl,
+    createUnknownDeviceIconDataUrl,
+} from "../../util/device-icons.js";
 import { BaseNetworkGraph } from "./base-network-graph.js";
 import type {
     NetworkGraphEdge,
     NetworkGraphNode,
     ThreadConnection,
     ThreadEdgePair,
-    UnknownThreadDevice,
+    ThreadExternalDevice,
 } from "./network-types.js";
 import {
     buildExtAddrMap,
@@ -46,6 +51,8 @@ interface EdgeBaseState {
 
 @customElement("thread-graph")
 export class ThreadGraph extends BaseNetworkGraph {
+    @property({ attribute: false }) borderRouters: ReadonlyMap<string, BorderRouterEntry> = new Map();
+
     @property({ type: Boolean })
     public hideOfflineNodes = false;
 
@@ -58,14 +65,11 @@ export class ThreadGraph extends BaseNetworkGraph {
     @property({ type: Boolean })
     public hideStrongSignalEdges = false;
 
-    /** Cache of unknown devices for the current render */
-    private _unknownDevices: UnknownThreadDevice[] = [];
+    /** Cache of external Thread devices (Border Routers and unknown) for the current render */
+    private _unknownDevices: ThreadExternalDevice[] = [];
 
-    /** Cached map of unknown devices (rebuilt in _updateGraph) */
-    private _unknownDevicesMapCache: Map<
-        string,
-        { extAddressHex: string; isRouter: boolean; seenBy: string[]; bestRssi: number | null }
-    > = new Map();
+    /** Cached map of external Thread devices (rebuilt in _updateGraph) */
+    private _unknownDevicesMapCache: Map<string, ThreadExternalDevice> = new Map();
 
     /** All computed edge pairs (rebuilt in _updateGraph) */
     private _edgePairs: Map<string, ThreadEdgePair> = new Map();
@@ -79,11 +83,8 @@ export class ThreadGraph extends BaseNetworkGraph {
     /** Node ID currently highlighted (for icon restoration on clear) */
     private _highlightedNodeId: string | null = null;
 
-    /** Get unknown devices as a map for use by details panel */
-    public get unknownDevicesMap(): Map<
-        string,
-        { extAddressHex: string; isRouter: boolean; seenBy: string[]; bestRssi: number | null }
-    > {
+    /** Get external Thread devices as a map for use by details panel */
+    public get unknownDevicesMap(): ReadonlyMap<string, ThreadExternalDevice> {
         return this._unknownDevicesMapCache;
     }
 
@@ -95,12 +96,15 @@ export class ThreadGraph extends BaseNetworkGraph {
     override updated(changedProperties: Map<string, unknown>): void {
         super.updated(changedProperties);
 
-        // Trigger graph update when any hide option changes
+        // Trigger graph update when any hide option changes, or when the BR registry
+        // refreshes (BaseNetworkGraph only watches `nodes`, so a BR-only change would
+        // otherwise leave stale labels/icons).
         if (
             changedProperties.has("hideOfflineNodes") ||
             changedProperties.has("hideWeakSignalEdges") ||
             changedProperties.has("hideMediumSignalEdges") ||
-            changedProperties.has("hideStrongSignalEdges")
+            changedProperties.has("hideStrongSignalEdges") ||
+            changedProperties.has("borderRouters")
         ) {
             this._debouncedUpdateGraph();
         }
@@ -168,18 +172,13 @@ export class ThreadGraph extends BaseNetworkGraph {
         const extAddrMap = buildExtAddrMap(this.nodes);
         const rloc16Map = buildRloc16Map(this.nodes);
 
-        // Find unknown devices (seen in neighbor tables but not commissioned)
-        this._unknownDevices = findUnknownDevices(this.nodes, extAddrMap, rloc16Map);
+        // Find external Thread devices (seen in neighbor tables but not commissioned),
+        // classified against the BR registry so mDNS-known routers render distinctly.
+        this._unknownDevices = findUnknownDevices(this.nodes, extAddrMap, rloc16Map, this.borderRouters);
 
-        // Rebuild the cached map
         this._unknownDevicesMapCache.clear();
         for (const device of this._unknownDevices) {
-            this._unknownDevicesMapCache.set(device.id, {
-                extAddressHex: device.extAddressHex,
-                isRouter: device.isRouter,
-                seenBy: device.seenBy,
-                bestRssi: device.bestRssi,
-            });
+            this._unknownDevicesMapCache.set(device.id, device);
         }
 
         // Build ALL edge pairs (0-2 edges per connected pair, no dedup)
@@ -213,14 +212,15 @@ export class ThreadGraph extends BaseNetworkGraph {
             };
         });
 
-        // Unknown/external devices
-        for (const unknown of this._unknownDevices) {
-            const typeLabel = unknown.isRouter ? "External Router" : "External Device";
+        // External Thread devices: known Border Routers get a friendly label/icon,
+        // unidentified neighbors keep the generic question-mark style.
+        for (const device of this._unknownDevices) {
+            const isSelected = device.id === this._selectedNodeId;
 
             // Hide if hideOfflineNodes is enabled AND all nodes that see it are offline
             let shouldHide = false;
             if (this.hideOfflineNodes) {
-                const hasOnlineSeenBy = unknown.seenBy.some(nodeId => {
+                const hasOnlineSeenBy = device.seenBy.some(nodeId => {
                     const node = this.nodes[nodeId];
                     return node && node.available !== false;
                 });
@@ -228,18 +228,42 @@ export class ThreadGraph extends BaseNetworkGraph {
             }
 
             if (shouldHide) {
-                hiddenNodeIds.add(unknown.id);
+                hiddenNodeIds.add(device.id);
             }
 
-            graphNodes.push({
-                id: unknown.id,
-                label: `${typeLabel} (${unknown.extAddressHex.slice(-8)})`,
-                image: createUnknownDeviceIconDataUrl(unknown.isRouter, false),
-                shape: "image" as const,
-                networkType: "thread" as const,
-                isUnknown: true,
-                hidden: shouldHide,
-            });
+            if (device.kind === "br") {
+                const hostname = device.hostname?.replace(/\.$/, "").replace(/\.local$/i, "");
+                // Only show network name on a second line when the first line came from a
+                // distinct hostname; otherwise `top` would already be the (possibly truncated)
+                // network name and the second line would just repeat it.
+                const top = (hostname ?? device.networkName ?? "Border Router").slice(0, 24);
+                const suffix =
+                    hostname !== undefined && device.networkName !== undefined && device.networkName !== top
+                        ? `\n${device.networkName}`
+                        : "";
+                const label = `${top}${suffix}`;
+                graphNodes.push({
+                    id: device.id,
+                    label,
+                    image: createBorderRouterIconDataUrl(isSelected),
+                    shape: "image" as const,
+                    networkType: "thread" as const,
+                    isUnknown: false,
+                    hidden: shouldHide,
+                });
+            } else {
+                const typeLabel = device.isRouter ? "External Router" : "External Device";
+                const suffix = device.networkName !== undefined ? `\n${device.networkName}` : "";
+                graphNodes.push({
+                    id: device.id,
+                    label: `${typeLabel} (${device.extAddressHex.slice(-8)})${suffix}`,
+                    image: createUnknownDeviceIconDataUrl(device.isRouter, isSelected),
+                    shape: "image" as const,
+                    networkType: "thread" as const,
+                    isUnknown: true,
+                    hidden: shouldHide,
+                });
+            }
         }
 
         // --- Build graph edges from edge pairs ---
@@ -255,7 +279,7 @@ export class ThreadGraph extends BaseNetworkGraph {
 
                 const fromId = String(conn.fromNodeId);
                 const toId = String(conn.toNodeId);
-                const isToUnknown = toId.startsWith("unknown_");
+                const isToUnknown = toId.startsWith("unknown_") || toId.startsWith("br_");
                 const fromNode = this.nodes[fromId];
                 const toNode = this.nodes[toId];
                 const hasOfflineEndpoint = fromNode?.available === false || toNode?.available === false;
@@ -553,11 +577,18 @@ export class ThreadGraph extends BaseNetworkGraph {
                 id: nodeId,
                 image: createNodeIconDataUrl(nodeData, threadRole, isHighlighted, isOffline),
             });
-        } else if (nodeId.startsWith("unknown_")) {
-            const unknown = this._unknownDevicesMapCache.get(nodeId);
+            return;
+        }
+        const external = this._unknownDevicesMapCache.get(nodeId);
+        if (external?.kind === "br") {
             this._nodesDataSet.update({
                 id: nodeId,
-                image: createUnknownDeviceIconDataUrl(unknown?.isRouter ?? false, isHighlighted),
+                image: createBorderRouterIconDataUrl(isHighlighted),
+            });
+        } else if (nodeId.startsWith("unknown_") || nodeId.startsWith("br_")) {
+            this._nodesDataSet.update({
+                id: nodeId,
+                image: createUnknownDeviceIconDataUrl(external?.isRouter ?? false, isHighlighted),
             });
         }
     }

@@ -23,6 +23,7 @@ import { VendorId } from "@matter/main/types";
 import { CommissioningController } from "@project-chip/matter.js";
 import { Readable } from "node:stream";
 import { ConfigStorage } from "../server/ConfigStorage.js";
+import { BorderRouterDiscovery } from "./BorderRouterDiscovery.js";
 import { ControllerCommandHandler } from "./ControllerCommandHandler.js";
 import { LegacyDataInjector, LegacyServerData } from "./LegacyDataInjector.js";
 import { resolveServerId } from "./ServerIdResolver.js";
@@ -75,6 +76,7 @@ export class MatterController {
     #legacyCommissionedDates?: Map<string, Timestamp>;
     #enableTestNetDcl = false;
     #disableOtaProvider = true;
+    readonly #borderRouterDiscovery: BorderRouterDiscovery;
 
     static async create(
         environment: Environment,
@@ -144,6 +146,7 @@ export class MatterController {
 
     constructor(environment: Environment, config: ConfigStorage, options: MatterControllerOptions, serverId: string) {
         this.#env = environment;
+        this.#borderRouterDiscovery = new BorderRouterDiscovery(this.#env);
         this.#config = config;
         this.#serverId = serverId;
         this.#serverVersion = options.serverVersion ?? "0.0.0";
@@ -210,6 +213,8 @@ export class MatterController {
                     initPromises.push(this.#enableTestOtaImages());
                 }
 
+                initPromises.push(this.#borderRouterDiscovery.start());
+
                 try {
                     await MatterAggregateError.allSettled(initPromises);
                 } catch (error) {
@@ -219,6 +224,10 @@ export class MatterController {
         }
 
         return this.#commandHandler;
+    }
+
+    get borderRouters(): BorderRouterDiscovery {
+        return this.#borderRouterDiscovery;
     }
 
     /**
@@ -294,6 +303,7 @@ export class MatterController {
     }
 
     async stop() {
+        await this.#borderRouterDiscovery.stop();
         await this.#commandHandler?.close(); // This closes also the controller instance if started
     }
 

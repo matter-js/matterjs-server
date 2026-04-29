@@ -39,6 +39,7 @@ import {
     mdiRemote,
     mdiRobotVacuum,
     mdiRouter,
+    mdiRouterWireless,
     mdiSmokeDetector,
     mdiSnowflakeAlert,
     mdiSolarPower,
@@ -506,6 +507,18 @@ export function createUnknownDeviceIconDataUrl(isRouter: boolean = false, isSele
         ? getCssVar("--node-color-selected", "#1976d2")
         : getCssVar("--node-color-unknown", "#ff9800");
     return createIconDataUrl(iconPath, color);
+}
+
+/**
+ * Creates an SVG data URL for a Thread Border Router identified via mDNS.
+ * @param isSelected - Whether the node is selected
+ * @returns A data URL containing the SVG
+ */
+export function createBorderRouterIconDataUrl(isSelected: boolean = false): string {
+    const color = isSelected
+        ? getCssVar("--node-color-selected", "#1976d2")
+        : getCssVar("--md-sys-color-primary", "#03a9f4");
+    return createIconDataUrl(mdiRouterWireless, color);
 }
 
 /**

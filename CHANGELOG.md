@@ -9,7 +9,8 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## **WORK IN PROGRESS**
 
-- Feature: Add a "Hide" menu on the Thread network visualization to hide offline nodes and specific connections
+- Feature: (AlixBa) Add a "Hide" menu on the Thread network visualization to hide offline nodes and specific connections
+- Feature: Enhances the Thread network visualization with MDNS details of the border routers in the network
 - Fix: Update matter.js to the latest 0.17.0-nightly
     - More optimizations around MDNS discovery
     - Optimize logging for informational and error cases

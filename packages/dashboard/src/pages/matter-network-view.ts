@@ -13,6 +13,7 @@ import { reducedMotionStyles } from "../util/shared-styles.js";
 import "./components/footer";
 import "./components/header";
 import type { ActiveView } from "./components/header.js";
+import { BorderRouterStore } from "./network/border-router-store.js";
 import "./network/device-panel";
 import "./network/network-details";
 import "./network/thread-graph";
@@ -71,6 +72,9 @@ class MatterNetworkView extends LitElement {
     private _threadAddressSearchStatus: "idle" | "found" | "not-found" = "idle";
 
     @state()
+    private _borderRouterStore = new BorderRouterStore();
+
+    @state()
     private _showHideMenu = false;
 
     @state()
@@ -102,8 +106,36 @@ class MatterNetworkView extends LitElement {
         }
     }
 
+    override firstUpdated(): void {
+        if (this.networkType === "thread") {
+            void this._refreshBorderRouters();
+        }
+    }
+
+    private async _refreshBorderRouters(): Promise<void> {
+        try {
+            await this._borderRouterStore.refresh(this.client);
+            this.requestUpdate();
+        } catch (err) {
+            console.warn("Failed to refresh border router store:", err);
+        }
+    }
+
+    private _handleConnectionsUpdated(): void {
+        // Skip the BR snapshot refresh when the user updated a WiFi node — the dialog fires
+        // the same event for both network types but BR data is Thread-only.
+        if (this.networkType !== "thread") return;
+        void this._refreshBorderRouters();
+    }
+
     override updated(changedProperties: Map<string, unknown>): void {
         super.updated(changedProperties);
+
+        // Lazily refresh the BR snapshot the first time the user switches into the Thread
+        // view, in case firstUpdated() fired while the WiFi view was active.
+        if (changedProperties.has("networkType") && this.networkType === "thread") {
+            void this._refreshBorderRouters();
+        }
 
         // After render, select the node in the graph
         if (!this._initialSelectionApplied && this.initialSelectedNodeId !== null) {
@@ -348,6 +380,7 @@ class MatterNetworkView extends LitElement {
                       </div>`}
                 <thread-graph
                     .nodes=${this.nodes}
+                    .borderRouters=${this._borderRouterStore.entries}
                     .hideOfflineNodes=${this._hideOfflineNodes}
                     .hideWeakSignalEdges=${this._hideWeakSignalEdges}
                     .hideMediumSignalEdges=${this._hideMediumSignalEdges}
@@ -417,6 +450,7 @@ class MatterNetworkView extends LitElement {
                         .selectedNodeId=${this._selectedNodeId}
                         .nodes=${this.nodes}
                         .unknownDevices=${unknownDevices}
+                        .borderRouters=${this._borderRouterStore.entries}
                         .wifiAccessPoints=${wifiAccessPoints}
                         .threadEdgePairs=${threadEdgePairs}
                         .hideOfflineNodes=${this._hideOfflineNodes}
@@ -425,6 +459,7 @@ class MatterNetworkView extends LitElement {
                         .hideStrongSignalEdges=${this._hideStrongSignalEdges}
                         @close=${this._handleDetailsClose}
                         @select-node=${this._handleSelectNode}
+                        @connections-updated=${this._handleConnectionsUpdated}
                     ></network-details>
                 </aside>
             </div>
