@@ -14,7 +14,10 @@ import type { BorderRouterEntry, MatterClient } from "@matter-server/ws-client";
  * normalized to the same casing.
  */
 export class BorderRouterStore {
-    readonly #entries = new Map<string, BorderRouterEntry>();
+    // Replaced (not mutated) on every refresh so Lit consumers passing this map as a
+    // @property() detect the snapshot change via the default `===` identity compare and
+    // re-render. Mutating in place would keep the same reference and silently skip updates.
+    #entries: ReadonlyMap<string, BorderRouterEntry> = new Map();
 
     get entries(): ReadonlyMap<string, BorderRouterEntry> {
         return this.#entries;
@@ -22,13 +25,14 @@ export class BorderRouterStore {
 
     async refresh(client: MatterClient): Promise<void> {
         const list = await client.sendCommand("get_thread_border_routers", 0, {});
-        this.#entries.clear();
+        const next = new Map<string, BorderRouterEntry>();
         for (const entry of list) {
-            this.#entries.set(entry.extAddressHex.toUpperCase(), entry);
+            next.set(entry.extAddressHex.toUpperCase(), entry);
         }
+        this.#entries = next;
     }
 
     reset(): void {
-        this.#entries.clear();
+        this.#entries = new Map();
     }
 }

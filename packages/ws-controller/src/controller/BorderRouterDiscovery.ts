@@ -220,7 +220,13 @@ export class BorderRouterDiscovery {
         }
 
         if (this.#instanceObservers.size >= INSTANCE_OBSERVER_CAP) {
-            this.#evictOldestPendingInstance();
+            // Drop xa-less observers first (cheapest to lose); if every observer already
+            // has an xa, fall back to evicting the oldest registry entry, which detaches
+            // its instance observers via the same path. Repeat until under the cap so
+            // the cap is strictly enforced even on a flood of valid-xa instances.
+            while (this.#instanceObservers.size >= INSTANCE_OBSERVER_CAP) {
+                if (!this.#evictOldestPendingInstance() && !this.#evictOldest()) break;
+            }
         }
 
         const observer: NameObserver = () => this.#onInstanceChanged(name, source);
@@ -236,7 +242,7 @@ export class BorderRouterDiscovery {
      * otherwise pin observers in `#instanceObservers` indefinitely — eviction targets only
      * those because observers tied to real registry entries are managed by `#evictOldest`.
      */
-    #evictOldestPendingInstance(): void {
+    #evictOldestPendingInstance(): boolean {
         let oldestKey: string | undefined;
         let oldestSeen = Number.POSITIVE_INFINITY;
         for (const [k, t] of this.#instanceObservers) {
@@ -246,14 +252,15 @@ export class BorderRouterDiscovery {
                 oldestKey = k;
             }
         }
-        if (oldestKey === undefined) return;
+        if (oldestKey === undefined) return false;
         const tracking = this.#instanceObservers.get(oldestKey);
-        if (tracking === undefined) return;
+        if (tracking === undefined) return false;
         tracking.name.off(tracking.observer);
         if (tracking.targetKey !== undefined) {
             this.#releaseTarget(tracking.targetKey);
         }
         this.#instanceObservers.delete(oldestKey);
+        return true;
     }
 
     #onInstanceChanged(name: DnssdNameLike, source: Source): void {
@@ -344,7 +351,7 @@ export class BorderRouterDiscovery {
 
         try {
             const params = name.parameters;
-            const xaKey = rawHex(params.raw("xa"));
+            const xaKey = rawHex(params.raw("xa"), 8);
             if (xaKey === undefined) {
                 return;
             }
@@ -372,7 +379,7 @@ export class BorderRouterDiscovery {
                 tracking.targetKey = undefined;
             }
 
-            const xp = rawHex(params.raw("xp"));
+            const xp = rawHex(params.raw("xp"), 8);
 
             const existing = this.#registry.get(xaKey);
             const meshcopWins = source === "meshcop";
@@ -418,13 +425,16 @@ export class BorderRouterDiscovery {
                 if (mn !== undefined) entry.modelName = mn;
                 const tv = params.get("tv");
                 if (tv !== undefined) entry.threadVersion = tv;
+                // dd (border-agent ID) is variable-width per spec; xa/xp/at = 8 bytes,
+                // pt/sb = 4 bytes (Thread MeshCoP). Reject malformed lengths for fixed
+                // fields so a malformed broadcaster can't pollute the snapshot.
                 const dd = rawHex(params.raw("dd"));
                 if (dd !== undefined) entry.borderAgentIdHex = dd;
-                const sb = rawHex(params.raw("sb"));
+                const sb = rawHex(params.raw("sb"), 4);
                 if (sb !== undefined) entry.stateBitmapHex = sb;
-                const at = rawHex(params.raw("at"));
+                const at = rawHex(params.raw("at"), 8);
                 if (at !== undefined) entry.activeTimestampHex = at;
-                const pt = rawHex(params.raw("pt"));
+                const pt = rawHex(params.raw("pt"), 4);
                 if (pt !== undefined) entry.partitionIdHex = pt;
                 const dn = params.get("dn");
                 if (dn !== undefined) entry.domainName = dn;
@@ -543,7 +553,7 @@ export class BorderRouterDiscovery {
         }
     }
 
-    #evictOldest(): void {
+    #evictOldest(): boolean {
         let oldestKey: string | undefined;
         let oldestSeen = Number.POSITIVE_INFINITY;
         for (const [xa, entry] of this.#registry) {
@@ -552,7 +562,7 @@ export class BorderRouterDiscovery {
                 oldestKey = xa;
             }
         }
-        if (oldestKey === undefined) return;
+        if (oldestKey === undefined) return false;
 
         this.#registry.delete(oldestKey);
 
@@ -575,6 +585,7 @@ export class BorderRouterDiscovery {
         } else {
             logger.debug(`Evicted border router xa=${oldestKey}; released ${releasedObservers} instance observers`);
         }
+        return true;
     }
 }
 
@@ -591,9 +602,12 @@ function isSrvValue(value: unknown): value is SrvRecordValue {
 
 /**
  * MeshCoP TXT records carry binary-valued fields (xa, xp, at, pt, dd, sb) — raw bytes per
- * Thread spec. Bytes.toHex returns lowercase; we want the canonical 16-char uppercase hex
- * shape used as the registry key and the dashboard's xa→xa join.
+ * Thread spec. Bytes.toHex returns lowercase; callers can require an exact byte length so
+ * malformed broadcasters can't pollute the registry with non-canonical xa keys (the
+ * dashboard's xa→xa join expects uppercase 16-char hex, i.e. 8 bytes).
  */
-function rawHex(bytes: Bytes | undefined): string | undefined {
-    return bytes === undefined || bytes.byteLength === 0 ? undefined : Bytes.toHex(bytes).toUpperCase();
+function rawHex(bytes: Bytes | undefined, expectedByteLength?: number): string | undefined {
+    if (bytes === undefined || bytes.byteLength === 0) return undefined;
+    if (expectedByteLength !== undefined && bytes.byteLength !== expectedByteLength) return undefined;
+    return Bytes.toHex(bytes).toUpperCase();
 }

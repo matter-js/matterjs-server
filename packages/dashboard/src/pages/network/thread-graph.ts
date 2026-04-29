@@ -96,12 +96,15 @@ export class ThreadGraph extends BaseNetworkGraph {
     override updated(changedProperties: Map<string, unknown>): void {
         super.updated(changedProperties);
 
-        // Trigger graph update when any hide option changes
+        // Trigger graph update when any hide option changes, or when the BR registry
+        // refreshes (BaseNetworkGraph only watches `nodes`, so a BR-only change would
+        // otherwise leave stale labels/icons).
         if (
             changedProperties.has("hideOfflineNodes") ||
             changedProperties.has("hideWeakSignalEdges") ||
             changedProperties.has("hideMediumSignalEdges") ||
-            changedProperties.has("hideStrongSignalEdges")
+            changedProperties.has("hideStrongSignalEdges") ||
+            changedProperties.has("borderRouters")
         ) {
             this._debouncedUpdateGraph();
         }
