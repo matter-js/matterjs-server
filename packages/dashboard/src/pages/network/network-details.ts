@@ -17,6 +17,7 @@ import { getCssVar, reducedMotionStyles } from "../../util/shared-styles.js";
 import type { ThreadEdgePair, ThreadExternalDevice } from "./network-types.js";
 import type { NodeConnection } from "./network-utils.js";
 import {
+    decodeMeshcopStateBitmap,
     getDeviceName,
     getNetworkType,
     getNodeConnectionsFromPairs,
@@ -541,6 +542,64 @@ export class NetworkDetails extends LitElement {
     }
 
     /**
+     * Render the MeshCoP state bitmap as decoded fields (BBR role, connection mode, Thread
+     * interface status, availability, ePSKc) plus the raw hex underneath. Reserved values are
+     * rendered as numeric so a future spec extension stays visible.
+     */
+    private _renderStateBitmap(hex: string | undefined): TemplateResult | typeof nothing {
+        if (hex === undefined) return nothing;
+        const decoded = decodeMeshcopStateBitmap(hex);
+        if (decoded === undefined) {
+            return html`
+                <div class="info-row">
+                    <span class="label">State bitmap:</span>
+                    <span class="value mono">${hex}</span>
+                </div>
+            `;
+        }
+
+        const stateParts = new Array<string>();
+        if (decoded.bbr) {
+            stateParts.push(
+                decoded.bbrFunction !== undefined
+                    ? `BBR (${decoded.bbrFunction})`
+                    : `BBR (function ${decoded.bbrFunctionValue})`,
+            );
+        }
+        if (decoded.threadInterfaceStatus !== undefined) {
+            stateParts.push(decoded.threadInterfaceStatus);
+        }
+        const stateLine = stateParts.length > 0 ? stateParts.join(", ") : `raw 0x${hex}`;
+
+        return html`
+            <div class="info-row">
+                <span class="label">State:</span>
+                <span class="value">${stateLine}</span>
+            </div>
+            <div class="info-row">
+                <span class="label">Connection:</span>
+                <span class="value">${decoded.connectionMode ?? `reserved (${decoded.connectionModeValue})`}</span>
+            </div>
+            <div class="info-row">
+                <span class="label">Availability:</span>
+                <span class="value">${decoded.availability ?? `reserved (${decoded.availabilityValue})`}</span>
+            </div>
+            ${decoded.bbr
+                ? html`
+                      <div class="info-row">
+                          <span class="label">ePSKc:</span>
+                          <span class="value">${decoded.epskcSupported ? "supported" : "not supported"}</span>
+                      </div>
+                  `
+                : nothing}
+            <div class="info-row">
+                <span class="label">State bitmap (raw):</span>
+                <span class="value mono">${hex}</span>
+            </div>
+        `;
+    }
+
+    /**
      * Network-info rows for a Border Router (extended PAN ID, partition, timestamps, state, domain, agent ID).
      * Returns nothing if no fields are populated, so the caller can skip the surrounding section.
      */
@@ -579,14 +638,7 @@ export class NetworkDetails extends LitElement {
                       </div>
                   `
                 : nothing}
-            ${br.stateBitmapHex
-                ? html`
-                      <div class="info-row">
-                          <span class="label">State bitmap:</span>
-                          <span class="value mono">${br.stateBitmapHex}</span>
-                      </div>
-                  `
-                : nothing}
+            ${this._renderStateBitmap(br.stateBitmapHex)}
             ${br.domainName
                 ? html`
                       <div class="info-row">

@@ -502,6 +502,94 @@ export function findUnknownDevices(
     return out;
 }
 
+/**
+ * Decoded form of the MeshCoP `_meshcop` TXT `sb` (state bitmap) field per the Thread Border
+ * Router service spec. The bitmap is 32 bits, big-endian; only the lower 11 bits are defined
+ * today. Undecoded reserved bits are returned as `reservedHex` so a future spec extension is
+ * still visible.
+ */
+export interface DecodedStateBitmap {
+    /** Connection mode label (or undefined for reserved values). */
+    connectionMode?: string;
+    /** Numeric connection mode (bits 0-2). */
+    connectionModeValue: number;
+    /** Thread interface status label (or undefined for reserved values). */
+    threadInterfaceStatus?: string;
+    /** Numeric Thread interface status (bits 3-4). */
+    threadInterfaceStatusValue: number;
+    /** Availability label (or undefined for reserved values). */
+    availability?: string;
+    /** Numeric availability (bits 5-6). */
+    availabilityValue: number;
+    /** Bit 7 — true when the BR is also a Backbone Border Router. */
+    bbr: boolean;
+    /** BBR Function label (only meaningful when {@link bbr} is true). */
+    bbrFunction?: string;
+    /** Numeric BBR Function (bits 8-9). */
+    bbrFunctionValue: number;
+    /** Bit 10 — true when ePSKc commissioning is supported. */
+    epskcSupported: boolean;
+    /** Hex of bits 11-31 (reserved). Undefined when zero. */
+    reservedHex?: string;
+}
+
+const CONNECTION_MODE_LABELS: Record<number, string> = {
+    0: "none",
+    1: "PSKc / DTLS",
+    2: "PSKd",
+    3: "vendor-specific",
+    4: "X.509",
+};
+
+const THREAD_INTERFACE_STATUS_LABELS: Record<number, string> = {
+    0: "inactive",
+    1: "active, not initialized",
+    2: "attached",
+};
+
+const AVAILABILITY_LABELS: Record<number, string> = {
+    0: "infrequent",
+    1: "high",
+};
+
+const BBR_FUNCTION_LABELS: Record<number, string> = {
+    0: "primary",
+    1: "secondary",
+};
+
+/**
+ * Decodes a MeshCoP state bitmap hex string (e.g. "000005B1") into the documented fields per
+ * the Thread Border Router service spec. Returns undefined if the input is not a valid 32-bit
+ * hex value.
+ */
+export function decodeMeshcopStateBitmap(hex: string | undefined): DecodedStateBitmap | undefined {
+    if (hex === undefined || !/^[0-9a-fA-F]{1,8}$/.test(hex)) return undefined;
+    const value = parseInt(hex, 16);
+    if (!Number.isFinite(value)) return undefined;
+
+    const connectionModeValue = value & 0x7;
+    const threadInterfaceStatusValue = (value >> 3) & 0x3;
+    const availabilityValue = (value >> 5) & 0x3;
+    const bbr = ((value >> 7) & 0x1) === 1;
+    const bbrFunctionValue = (value >> 8) & 0x3;
+    const epskcSupported = ((value >> 10) & 0x1) === 1;
+    const reserved = (value >>> 11) >>> 0;
+
+    return {
+        connectionModeValue,
+        connectionMode: CONNECTION_MODE_LABELS[connectionModeValue],
+        threadInterfaceStatusValue,
+        threadInterfaceStatus: THREAD_INTERFACE_STATUS_LABELS[threadInterfaceStatusValue],
+        availabilityValue,
+        availability: AVAILABILITY_LABELS[availabilityValue],
+        bbr,
+        bbrFunctionValue,
+        bbrFunction: bbr ? BBR_FUNCTION_LABELS[bbrFunctionValue] : undefined,
+        epskcSupported,
+        reservedHex: reserved !== 0 ? reserved.toString(16).toUpperCase() : undefined,
+    };
+}
+
 /** Determine signal level from a Thread neighbor's RSSI/LQI. */
 export function getSignalLevel(neighbor: ThreadNeighbor): SignalLevel {
     const rssi = neighbor.avgRssi ?? neighbor.lastRssi;
