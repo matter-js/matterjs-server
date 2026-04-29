@@ -7,7 +7,7 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
-## **WORK IN PROGRESS**
+## 0.6.3 (2026-04-29)
 
 - Feature: (AlixBa) Add a "Hide" menu on the Thread network visualization to hide offline nodes and specific connections
 - Feature: Enhances the Thread network visualization with MDNS details of the border routers in the network
