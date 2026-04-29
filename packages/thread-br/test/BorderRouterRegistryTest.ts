@@ -9,73 +9,73 @@ import { BorderRouterRegistry } from "../src/discovery/index.js";
 
 describe("BorderRouterRegistry", () => {
     let env: Environment;
-    let discovery: BorderRouterRegistry;
+    let registry: BorderRouterRegistry;
 
     beforeEach(() => {
         env = new Environment("test");
-        discovery = new BorderRouterRegistry(env);
+        registry = new BorderRouterRegistry(env);
     });
 
     afterEach(async () => {
-        await discovery.stop();
+        await registry.stop();
     });
 
     it("starts with an empty registry", () => {
-        expect(discovery.list()).to.deep.equal([]);
+        expect(registry.list()).to.deep.equal([]);
     });
 
     it("stop() before start() is a no-op", async () => {
-        await discovery.stop();
-        expect(discovery.list()).to.deep.equal([]);
+        await registry.stop();
+        expect(registry.list()).to.deep.equal([]);
     });
 
     it("start() is callable without errors", async () => {
-        await discovery.start();
-        expect(discovery.list()).to.deep.equal([]);
+        await registry.start();
+        expect(registry.list()).to.deep.equal([]);
     });
 
     it("start() is idempotent", async () => {
-        await discovery.start();
-        await discovery.start();
-        expect(discovery.list()).to.deep.equal([]);
+        await registry.start();
+        await registry.start();
+        expect(registry.list()).to.deep.equal([]);
     });
 
     it("stop() after start() is a no-op when registry is empty", async () => {
-        await discovery.start();
-        await discovery.stop();
-        expect(discovery.list()).to.deep.equal([]);
+        await registry.start();
+        await registry.stop();
+        expect(registry.list()).to.deep.equal([]);
     });
 
     it("stop() is idempotent", async () => {
-        await discovery.start();
-        await discovery.stop();
-        await discovery.stop();
-        expect(discovery.list()).to.deep.equal([]);
+        await registry.start();
+        await registry.stop();
+        await registry.stop();
+        expect(registry.list()).to.deep.equal([]);
     });
 
     it("get() returns undefined when xa is unknown", () => {
-        expect(discovery.get("AABBCCDDEEFF0011")).to.equal(undefined);
+        expect(registry.get("AABBCCDDEEFF0011")).to.equal(undefined);
     });
 
     it("get() normalizes lowercase xa to uppercase", () => {
-        expect(discovery.get("aabbccddeeff0011")).to.equal(undefined);
+        expect(registry.get("aabbccddeeff0011")).to.equal(undefined);
     });
 
     describe("on mDNS discovery", () => {
         let stub: StubDnssdNames;
-        let disc: BorderRouterRegistry;
+        let innerRegistry: BorderRouterRegistry;
 
         beforeEach(() => {
             stub = new StubDnssdNames();
-            disc = new BorderRouterRegistry(new Environment("test"), stub);
+            innerRegistry = new BorderRouterRegistry(new Environment("test"), stub);
         });
 
         afterEach(async () => {
-            await disc.stop();
+            await innerRegistry.stop();
         });
 
         it("creates a meshcop entry with parsed fields and sorted addresses", async () => {
-            await disc.start();
+            await innerRegistry.start();
             stub.makeTarget("Kuche.local.", ["192.168.1.10", "fd00::1", "2001:db8::5", "fe80::abcd"]);
             const inst = stub.makeInstance("Kuche._meshcop._udp.local", {
                 txt: {
@@ -96,7 +96,7 @@ describe("BorderRouterRegistry", () => {
             });
             stub.discover(inst);
 
-            const list = disc.list();
+            const list = innerRegistry.list();
             expect(list.length).to.equal(1);
             const e = list[0];
             expect(e.extAddressHex).to.equal("AABBCCDDEEFF0011");
@@ -118,7 +118,7 @@ describe("BorderRouterRegistry", () => {
         });
 
         it("creates a trel-only entry without naming fields", async () => {
-            await disc.start();
+            await innerRegistry.start();
             stub.makeTarget("br.local.", ["10.0.0.5"]);
             const inst = stub.makeInstance("aabbccddeeff0011._trel._udp.local", {
                 txt: { xa: "aabbccddeeff0011" },
@@ -127,7 +127,7 @@ describe("BorderRouterRegistry", () => {
             });
             stub.discover(inst);
 
-            const e = disc.get("AABBCCDDEEFF0011");
+            const e = innerRegistry.get("AABBCCDDEEFF0011");
             expect(e).to.not.equal(undefined);
             expect(e!.trelPort).to.equal(12345);
             expect(e!.meshcopPort).to.equal(undefined);
@@ -137,7 +137,7 @@ describe("BorderRouterRegistry", () => {
         });
 
         it("merges meshcop and trel for the same xa", async () => {
-            await disc.start();
+            await innerRegistry.start();
             stub.makeTarget("Kuche.local.", ["192.168.1.10"]);
             stub.makeTarget("br.local.", ["10.0.0.5"]);
             const meshcopInst = stub.makeInstance("Kuche._meshcop._udp.local", {
@@ -153,7 +153,7 @@ describe("BorderRouterRegistry", () => {
             });
             stub.discover(trelInst);
 
-            const e = disc.get("AABBCCDDEEFF0011");
+            const e = innerRegistry.get("AABBCCDDEEFF0011");
             expect(e).to.not.equal(undefined);
             expect(e!.networkName).to.equal("MyNet");
             expect(e!.vendorName).to.equal("ACME");
@@ -164,7 +164,7 @@ describe("BorderRouterRegistry", () => {
         });
 
         it("meshcop wins when xp conflicts with trel", async () => {
-            await disc.start();
+            await innerRegistry.start();
             stub.makeTarget("Kuche.local.", ["192.168.1.10"]);
             stub.makeTarget("br.local.", ["10.0.0.5"]);
             const meshcopInst = stub.makeInstance("Kuche._meshcop._udp.local", {
@@ -180,12 +180,12 @@ describe("BorderRouterRegistry", () => {
             });
             stub.discover(trelInst);
 
-            const e = disc.get("AABBCCDDEEFF0011");
+            const e = innerRegistry.get("AABBCCDDEEFF0011");
             expect(e!.extendedPanIdHex).to.equal("AAAAAAAAAAAAAAAA");
         });
 
         it("removes a source when an instance becomes undiscovered, deletes entry when last source", async () => {
-            await disc.start();
+            await innerRegistry.start();
             stub.makeTarget("Kuche.local.", ["192.168.1.10"]);
             stub.makeTarget("br.local.", ["10.0.0.5"]);
             const meshcopInst = stub.makeInstance("Kuche._meshcop._udp.local", {
@@ -201,12 +201,12 @@ describe("BorderRouterRegistry", () => {
             });
             stub.discover(trelInst);
 
-            expect(disc.get("AABBCCDDEEFF0011")!.sources).to.deep.equal(["meshcop", "trel"]);
+            expect(innerRegistry.get("AABBCCDDEEFF0011")!.sources).to.deep.equal(["meshcop", "trel"]);
 
             trelInst.setDiscovered(false);
             trelInst.emit({ name: trelInst });
 
-            const after = disc.get("AABBCCDDEEFF0011");
+            const after = innerRegistry.get("AABBCCDDEEFF0011");
             expect(after).to.not.equal(undefined);
             expect(after!.sources).to.deep.equal(["meshcop"]);
             expect(after!.trelPort).to.equal(undefined);
@@ -214,12 +214,12 @@ describe("BorderRouterRegistry", () => {
 
             meshcopInst.setDiscovered(false);
             meshcopInst.emit({ name: meshcopInst });
-            expect(disc.get("AABBCCDDEEFF0011")).to.equal(undefined);
+            expect(innerRegistry.get("AABBCCDDEEFF0011")).to.equal(undefined);
             expect(stub.targetByKey("kuche.local.")!.observerCount()).to.equal(0);
         });
 
         it("populates addresses retroactively when target's A/AAAA arrive later", async () => {
-            await disc.start();
+            await innerRegistry.start();
             const target = stub.makeTarget("Kuche.local.", []);
             const inst = stub.makeInstance("Kuche._meshcop._udp.local", {
                 txt: { xa: "aabbccddeeff0011", nn: "MyNet" },
@@ -227,17 +227,17 @@ describe("BorderRouterRegistry", () => {
                 srvPort: 49154,
             });
             stub.discover(inst);
-            expect(disc.get("AABBCCDDEEFF0011")!.addresses).to.deep.equal([]);
+            expect(innerRegistry.get("AABBCCDDEEFF0011")!.addresses).to.deep.equal([]);
 
             target.setAddresses(["192.168.1.10", "fd00::1"]);
             target.emit({ name: target });
 
-            const e = disc.get("AABBCCDDEEFF0011");
+            const e = innerRegistry.get("AABBCCDDEEFF0011");
             expect(e!.addresses).to.deep.equal(["192.168.1.10", "fd00::1"]);
         });
 
         it("replaces addresses when the target changes its A records", async () => {
-            await disc.start();
+            await innerRegistry.start();
             const target = stub.makeTarget("Kuche.local.", ["192.168.1.10"]);
             const inst = stub.makeInstance("Kuche._meshcop._udp.local", {
                 txt: { xa: "aabbccddeeff0011", nn: "MyNet" },
@@ -245,17 +245,17 @@ describe("BorderRouterRegistry", () => {
                 srvPort: 49154,
             });
             stub.discover(inst);
-            expect(disc.get("AABBCCDDEEFF0011")!.addresses).to.deep.equal(["192.168.1.10"]);
+            expect(innerRegistry.get("AABBCCDDEEFF0011")!.addresses).to.deep.equal(["192.168.1.10"]);
 
             target.setAddresses(["192.168.2.20", "fe80::cafe"]);
             target.emit({ name: target });
 
-            const e = disc.get("AABBCCDDEEFF0011");
+            const e = innerRegistry.get("AABBCCDDEEFF0011");
             expect(e!.addresses).to.deep.equal(["192.168.2.20", "fe80::cafe"]);
         });
 
         it("skips records missing an xa TXT key", async () => {
-            await disc.start();
+            await innerRegistry.start();
             stub.makeTarget("Kuche.local.", ["192.168.1.10"]);
             const inst = stub.makeInstance("Kuche._meshcop._udp.local", {
                 txt: { nn: "OrphanNet" },
@@ -263,17 +263,17 @@ describe("BorderRouterRegistry", () => {
                 srvPort: 49154,
             });
             stub.discover(inst);
-            expect(disc.list()).to.deep.equal([]);
+            expect(innerRegistry.list()).to.deep.equal([]);
         });
 
         it("evicts oldest entry when registry exceeds 256", async () => {
             // Drive lastSeen via a controlled Date.now so eviction order is deterministic.
-            // (`disc.get(xa).lastSeen = ...` would only mutate a snapshot copy.)
+            // (`innerRegistry.get(xa).lastSeen = ...` would only mutate a snapshot copy.)
             const originalDateNow = Date.now;
             let now = 1000;
             Date.now = () => now;
             try {
-                await disc.start();
+                await innerRegistry.start();
                 const oldestXa = makeXa(0);
                 for (let i = 0; i < 256; i++) {
                     const xa = makeXa(i);
@@ -297,16 +297,16 @@ describe("BorderRouterRegistry", () => {
                 });
                 stub.discover(inst257);
 
-                expect(disc.list().length).to.equal(256);
-                expect(disc.get(oldestXa)).to.equal(undefined);
-                expect(disc.get(xa257)).to.not.equal(undefined);
+                expect(innerRegistry.list().length).to.equal(256);
+                expect(innerRegistry.get(oldestXa)).to.equal(undefined);
+                expect(innerRegistry.get(xa257)).to.not.equal(undefined);
             } finally {
                 Date.now = originalDateNow;
             }
         });
 
         it("issues a one-shot solicit for both service-type qnames on start", async () => {
-            await disc.start();
+            await innerRegistry.start();
             const qnames = stub.solicitedQnames();
             expect(qnames).to.include("_meshcop._udp.local");
             expect(qnames).to.include("_trel._udp.local");
@@ -317,7 +317,7 @@ describe("BorderRouterRegistry", () => {
             let now = 1000;
             Date.now = () => now;
             try {
-                await disc.start();
+                await innerRegistry.start();
                 for (let i = 0; i < 256; i++) {
                     const xa = makeXa(i);
                     const host = `host${i}.local.`;
@@ -334,7 +334,7 @@ describe("BorderRouterRegistry", () => {
                 const evictedQname = `${evictedXa.toLowerCase()}._meshcop._udp.local`;
                 const evictedInstance = stub.targetByKey(evictedQname)!;
                 const evictedHost = stub.targetByKey("host0.local.")!;
-                expect(disc.get(evictedXa)).to.not.equal(undefined);
+                expect(innerRegistry.get(evictedXa)).to.not.equal(undefined);
                 expect(evictedInstance.observerCount()).to.equal(1);
                 expect(evictedHost.observerCount()).to.equal(1);
 
@@ -347,7 +347,7 @@ describe("BorderRouterRegistry", () => {
                 });
                 stub.discover(inst257);
 
-                expect(disc.get(evictedXa)).to.equal(undefined);
+                expect(innerRegistry.get(evictedXa)).to.equal(undefined);
                 expect(evictedInstance.observerCount()).to.equal(0);
                 expect(evictedHost.observerCount()).to.equal(0);
 
@@ -359,20 +359,20 @@ describe("BorderRouterRegistry", () => {
                 });
                 stub.discover(reInstance);
 
-                const e = disc.get(evictedXa);
+                const e = innerRegistry.get(evictedXa);
                 expect(e).to.not.equal(undefined);
                 expect(e!.networkName).to.equal("NetRe");
                 expect(e!.hostname).to.equal("host0-re.local.");
                 expect(reInstance.observerCount()).to.equal(1);
                 expect(reHost.observerCount()).to.equal(1);
-                expect(disc.list().length).to.equal(256);
+                expect(innerRegistry.list().length).to.equal(256);
             } finally {
                 Date.now = originalDateNow;
             }
         });
 
         it("releases trel's old target observer when meshcop overwrites the hostname", async () => {
-            await disc.start();
+            await innerRegistry.start();
             const targetA = stub.makeTarget("brA.local.", ["10.0.0.1"]);
             const trelInst = stub.makeInstance("aabbccddeeff0011._trel._udp.local", {
                 txt: { xa: "aabbccddeeff0011" },
@@ -392,13 +392,13 @@ describe("BorderRouterRegistry", () => {
 
             expect(targetA.observerCount()).to.equal(0);
             expect(targetB.observerCount()).to.equal(1);
-            const e = disc.get("AABBCCDDEEFF0011")!;
+            const e = innerRegistry.get("AABBCCDDEEFF0011")!;
             expect(e.hostname).to.equal("brB.local.");
             expect(e.addresses).to.deep.equal(["10.0.0.2"]);
         });
 
         it("keeps meshcop's target intact when trel arrives later with a different hostname", async () => {
-            await disc.start();
+            await innerRegistry.start();
             const targetA = stub.makeTarget("brA.local.", ["10.0.0.1"]);
             const meshcopInst = stub.makeInstance("Kuche._meshcop._udp.local", {
                 txt: { xa: "aabbccddeeff0011", nn: "MyNet" },
@@ -417,18 +417,18 @@ describe("BorderRouterRegistry", () => {
 
             expect(targetA.observerCount()).to.equal(1);
             expect(targetC.observerCount()).to.equal(1);
-            const e = disc.get("AABBCCDDEEFF0011")!;
+            const e = innerRegistry.get("AABBCCDDEEFF0011")!;
             expect(e.hostname).to.equal("brA.local.");
             expect(e.addresses).to.deep.equal(["10.0.0.1"]);
         });
 
         it("does not attach observers when a discovered event fires after stop", async () => {
-            await disc.start();
+            await innerRegistry.start();
             const observers = stub.discovered.snapshot();
             expect(observers.length).to.equal(1);
             const inflight = observers[0];
 
-            await disc.stop();
+            await innerRegistry.stop();
             expect(stub.discoveredObserverCount()).to.equal(0);
 
             stub.makeTarget("Kuche.local.", ["192.168.1.10"]);
@@ -440,13 +440,13 @@ describe("BorderRouterRegistry", () => {
             inflight(inst);
 
             expect(inst.observerCount()).to.equal(0);
-            expect(disc.list()).to.deep.equal([]);
+            expect(innerRegistry.list()).to.deep.equal([]);
         });
 
         it("resets the eviction-warned flag across stop/start cycles", async () => {
             const originalDateNow = Date.now;
             try {
-                await disc.start();
+                await innerRegistry.start();
                 for (let i = 0; i < 257; i++) {
                     const xa = makeXa(i);
                     const host = `host${i}.local.`;
@@ -459,10 +459,10 @@ describe("BorderRouterRegistry", () => {
                     Date.now = () => 1000 + i;
                     stub.discover(inst);
                 }
-                expect(disc.list().length).to.equal(256);
+                expect(innerRegistry.list().length).to.equal(256);
 
-                await disc.stop();
-                await disc.start();
+                await innerRegistry.stop();
+                await innerRegistry.start();
 
                 for (let i = 0; i < 257; i++) {
                     const xa = makeXa(1000 + i);
@@ -476,14 +476,14 @@ describe("BorderRouterRegistry", () => {
                     Date.now = () => 5000 + i;
                     stub.discover(inst);
                 }
-                expect(disc.list().length).to.equal(256);
+                expect(innerRegistry.list().length).to.equal(256);
             } finally {
                 Date.now = originalDateNow;
             }
         });
 
         it("clears registry, removes filter, and detaches observers on stop", async () => {
-            await disc.start();
+            await innerRegistry.start();
             const target = stub.makeTarget("Kuche.local.", ["192.168.1.10"]);
             const inst = stub.makeInstance("Kuche._meshcop._udp.local", {
                 txt: { xa: "aabbccddeeff0011", nn: "MyNet" },
@@ -491,15 +491,15 @@ describe("BorderRouterRegistry", () => {
                 srvPort: 49154,
             });
             stub.discover(inst);
-            expect(disc.list().length).to.equal(1);
+            expect(innerRegistry.list().length).to.equal(1);
             expect(target.observerCount()).to.equal(1);
             expect(inst.observerCount()).to.equal(1);
             expect(stub.filterCount()).to.equal(1);
             expect(stub.discoveredObserverCount()).to.equal(1);
 
-            await disc.stop();
+            await innerRegistry.stop();
 
-            expect(disc.list()).to.deep.equal([]);
+            expect(innerRegistry.list()).to.deep.equal([]);
             expect(target.observerCount()).to.equal(0);
             expect(inst.observerCount()).to.equal(0);
             expect(stub.filterCount()).to.equal(0);

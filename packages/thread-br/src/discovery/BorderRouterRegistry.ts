@@ -44,7 +44,8 @@ interface TargetTracking {
  * Passive Thread Border Router discovery via mDNS.
  *
  * Subscribes to `_meshcop._udp.local` and `_trel._udp.local`, builds a per-extended-address
- * registry, and exposes the current entries through {@link list}. Owned by {@link MatterController}.
+ * registry, and exposes the current entries through {@link list}. Embedders own the lifecycle
+ * via {@link start} / {@link stop}.
  */
 export class BorderRouterRegistry {
     readonly #env: Environment;
