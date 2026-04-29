@@ -107,7 +107,9 @@ class MatterNetworkView extends LitElement {
     }
 
     override firstUpdated(): void {
-        void this._refreshBorderRouters();
+        if (this.networkType === "thread") {
+            void this._refreshBorderRouters();
+        }
     }
 
     private async _refreshBorderRouters(): Promise<void> {
@@ -128,6 +130,12 @@ class MatterNetworkView extends LitElement {
 
     override updated(changedProperties: Map<string, unknown>): void {
         super.updated(changedProperties);
+
+        // Lazily refresh the BR snapshot the first time the user switches into the Thread
+        // view, in case firstUpdated() fired while the WiFi view was active.
+        if (changedProperties.has("networkType") && this.networkType === "thread") {
+            void this._refreshBorderRouters();
+        }
 
         // After render, select the node in the graph
         if (!this._initialSelectionApplied && this.initialSelectedNodeId !== null) {

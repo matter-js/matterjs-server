@@ -444,37 +444,42 @@ describe("BorderRouterDiscovery", () => {
         });
 
         it("resets the eviction-warned flag across stop/start cycles", async () => {
-            await disc.start();
-            for (let i = 0; i < 257; i++) {
-                const xa = makeXa(i);
-                const host = `host${i}.local.`;
-                stub.makeTarget(host, [`10.0.${(i >> 8) & 0xff}.${i & 0xff}`]);
-                const inst = stub.makeInstance(`${xa.toLowerCase()}._meshcop._udp.local`, {
-                    txt: { xa: xa.toLowerCase(), nn: `Net${i}` },
-                    srvTarget: host,
-                    srvPort: 49154 + i,
-                });
-                stub.discover(inst);
-                if (i < 256) disc.get(xa)!.lastSeen = 1000 + i;
-            }
-            expect(disc.list().length).to.equal(256);
+            const originalDateNow = Date.now;
+            try {
+                await disc.start();
+                for (let i = 0; i < 257; i++) {
+                    const xa = makeXa(i);
+                    const host = `host${i}.local.`;
+                    stub.makeTarget(host, [`10.0.${(i >> 8) & 0xff}.${i & 0xff}`]);
+                    const inst = stub.makeInstance(`${xa.toLowerCase()}._meshcop._udp.local`, {
+                        txt: { xa: xa.toLowerCase(), nn: `Net${i}` },
+                        srvTarget: host,
+                        srvPort: 49154 + i,
+                    });
+                    Date.now = () => 1000 + i;
+                    stub.discover(inst);
+                }
+                expect(disc.list().length).to.equal(256);
 
-            await disc.stop();
-            await disc.start();
+                await disc.stop();
+                await disc.start();
 
-            for (let i = 0; i < 257; i++) {
-                const xa = makeXa(1000 + i);
-                const host = `cycle2-host${i}.local.`;
-                stub.makeTarget(host, [`11.0.${(i >> 8) & 0xff}.${i & 0xff}`]);
-                const inst = stub.makeInstance(`${xa.toLowerCase()}._meshcop._udp.local`, {
-                    txt: { xa: xa.toLowerCase(), nn: `Cycle2Net${i}` },
-                    srvTarget: host,
-                    srvPort: 51000 + i,
-                });
-                stub.discover(inst);
-                if (i < 256) disc.get(xa)!.lastSeen = 5000 + i;
+                for (let i = 0; i < 257; i++) {
+                    const xa = makeXa(1000 + i);
+                    const host = `cycle2-host${i}.local.`;
+                    stub.makeTarget(host, [`11.0.${(i >> 8) & 0xff}.${i & 0xff}`]);
+                    const inst = stub.makeInstance(`${xa.toLowerCase()}._meshcop._udp.local`, {
+                        txt: { xa: xa.toLowerCase(), nn: `Cycle2Net${i}` },
+                        srvTarget: host,
+                        srvPort: 51000 + i,
+                    });
+                    Date.now = () => 5000 + i;
+                    stub.discover(inst);
+                }
+                expect(disc.list().length).to.equal(256);
+            } finally {
+                Date.now = originalDateNow;
             }
-            expect(disc.list().length).to.equal(256);
         });
 
         it("clears registry, removes filter, and detaches observers on stop", async () => {

@@ -310,6 +310,17 @@ export class BorderRouterDiscovery {
         }
         if (entry.sources.length === 0) {
             this.#registry.delete(xaKey);
+            return;
+        }
+        // Hostname / addresses can come from either source (meshcop wins on conflict). With
+        // the dropped source gone, re-parse the still-discovered companion instance so those
+        // shared fields reflect the surviving advertisement instead of lingering on the
+        // value the disappearing source last set.
+        for (const otherTracking of this.#instanceObservers.values()) {
+            if (otherTracking.xaKey === xaKey && otherTracking.source !== source) {
+                this.#parseAndUpsert(otherTracking.name, otherTracking.source);
+                break;
+            }
         }
     }
 
