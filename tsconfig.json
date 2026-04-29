@@ -5,6 +5,9 @@
             "path": "packages/custom-clusters"
         },
         {
+            "path": "packages/thread-br"
+        },
+        {
             "path": "packages/ws-controller"
         },
         {
