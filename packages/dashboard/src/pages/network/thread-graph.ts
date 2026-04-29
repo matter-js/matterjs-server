@@ -242,9 +242,10 @@ export class ThreadGraph extends BaseNetworkGraph {
                 });
             } else {
                 const typeLabel = device.isRouter ? "External Router" : "External Device";
+                const suffix = device.networkName !== undefined ? `\n${device.networkName}` : "";
                 graphNodes.push({
                     id: device.id,
-                    label: `${typeLabel} (${device.extAddressHex.slice(-8)})`,
+                    label: `${typeLabel} (${device.extAddressHex.slice(-8)})${suffix}`,
                     image: createUnknownDeviceIconDataUrl(device.isRouter, isSelected),
                     shape: "image" as const,
                     networkType: "thread" as const,

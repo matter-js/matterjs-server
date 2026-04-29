@@ -396,6 +396,8 @@ interface ExternalAggregate {
     seenBy: string[];
     isRouter: boolean;
     bestRssi: number | null;
+    /** xp of the first observing matter node; all neighbors of a Thread node share its xp. */
+    extendedPanIdHex?: string;
 }
 
 /**
@@ -415,6 +417,9 @@ export function findUnknownDevices(
     for (const node of Object.values(nodes)) {
         const nodeId = String(node.node_id);
         const neighbors = parseNeighborTable(node);
+        const observerXp = getThreadExtendedPanId(node);
+        const observerXpHex =
+            observerXp !== undefined ? observerXp.toString(16).padStart(16, "0").toUpperCase() : undefined;
 
         for (const neighbor of neighbors) {
             if (extAddrMap.has(neighbor.extAddress)) {
@@ -434,8 +439,11 @@ export function findUnknownDevices(
                     seenBy: [],
                     isRouter: false,
                     bestRssi: null,
+                    extendedPanIdHex: observerXpHex,
                 };
                 aggregates.set(extAddressHex, agg);
+            } else if (agg.extendedPanIdHex === undefined && observerXpHex !== undefined) {
+                agg.extendedPanIdHex = observerXpHex;
             }
 
             if (!agg.seenBy.includes(nodeId)) {
@@ -447,6 +455,16 @@ export function findUnknownDevices(
             const rssi = neighbor.avgRssi ?? neighbor.lastRssi;
             if (rssi !== null && (agg.bestRssi === null || rssi > agg.bestRssi)) {
                 agg.bestRssi = rssi;
+            }
+        }
+    }
+
+    // Pre-compute xp → networkName from the BR registry so we can label unknowns by network.
+    const networkNameByXp = new Map<string, string>();
+    if (borderRouters !== undefined) {
+        for (const br of borderRouters.values()) {
+            if (br.extendedPanIdHex !== undefined && br.networkName !== undefined) {
+                networkNameByXp.set(br.extendedPanIdHex, br.networkName);
             }
         }
     }
@@ -470,6 +488,8 @@ export function findUnknownDevices(
             });
         } else {
             unknownCount++;
+            const networkName =
+                agg.extendedPanIdHex !== undefined ? networkNameByXp.get(agg.extendedPanIdHex) : undefined;
             out.push({
                 kind: "unknown",
                 id: `unknown_${agg.extAddressHex}`,
@@ -478,6 +498,8 @@ export function findUnknownDevices(
                 seenBy: agg.seenBy,
                 isRouter: agg.isRouter,
                 bestRssi: agg.bestRssi,
+                extendedPanIdHex: agg.extendedPanIdHex,
+                networkName,
             });
         }
     }

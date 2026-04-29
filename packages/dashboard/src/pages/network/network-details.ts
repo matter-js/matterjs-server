@@ -388,6 +388,22 @@ export class NetworkDetails extends LitElement {
                     <span class="label">Extended Address:</span>
                     <span class="value mono">${unknown.extAddressHex}</span>
                 </div>
+                ${unknown.networkName !== undefined
+                    ? html`
+                          <div class="info-row">
+                              <span class="label">Thread Network:</span>
+                              <span class="value">${unknown.networkName}</span>
+                          </div>
+                      `
+                    : nothing}
+                ${unknown.extendedPanIdHex !== undefined
+                    ? html`
+                          <div class="info-row">
+                              <span class="label">Extended PAN ID:</span>
+                              <span class="value mono">${unknown.extendedPanIdHex}</span>
+                          </div>
+                      `
+                    : nothing}
                 ${unknown.bestRssi !== null
                     ? html`
                           <div class="info-row">
@@ -404,7 +420,8 @@ export class NetworkDetails extends LitElement {
             <div class="section">
                 <p class="hint-text">
                     This device appears in Thread neighbor tables but is not commissioned to this fabric. It may be a
-                    Thread Border Router or a device from another Matter ecosystem.
+                    Thread Border Router whose Thread radio MAC differs from its MeshCoP border-agent ID (common with
+                    Apple and Aqara), or a device from another Matter ecosystem.
                 </p>
             </div>
         `;

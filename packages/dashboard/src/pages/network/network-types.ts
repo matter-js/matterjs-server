@@ -156,6 +156,18 @@ export interface UnknownThreadDevice {
     isRouter: boolean;
     /** Best signal strength seen */
     bestRssi: number | null;
+    /**
+     * Extended PAN ID (16-char uppercase hex) inherited from the commissioned node that
+     * reports this neighbor. All Thread neighbors share the observing node's network.
+     */
+    extendedPanIdHex?: string;
+    /**
+     * Friendly Thread network name resolved by joining {@link extendedPanIdHex} against the
+     * Border Router registry. Some BR vendors (e.g. Apple, Aqara) use a stable border-agent
+     * ID as the MeshCoP `xa` while the actual Thread radio MAC differs, so the BR can show
+     * up as both a known BR and an "unknown" router on the same network.
+     */
+    networkName?: string;
 }
 
 /**
