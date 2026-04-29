@@ -117,10 +117,158 @@ export namespace OperationalDataset {
         return ds;
     }
 
+    export function encode(ds: OperationalDataset): Uint8Array {
+        if (ds._originalTlvs !== undefined) {
+            const originalDecoded = decode(ds.raw);
+            return encodeWithReplay(ds, ds._originalTlvs, originalDecoded);
+        }
+        return BasicTlv.encode(canonicalEntries(ds));
+    }
+
     export function redact(ds: OperationalDataset): OperationalDataset {
         return { ...ds, pskc: undefined, networkKey: undefined };
     }
 }
+
+function encodeWithReplay(
+    ds: OperationalDataset,
+    originals: ReadonlyArray<BasicTlvEntry>,
+    originalDecoded: OperationalDataset,
+): Uint8Array {
+    const seenKnownTypes = new Set<number>();
+    const unknownCursor = new Map<number, number>();
+    const out = new Array<BasicTlvEntry>();
+
+    for (const original of originals) {
+        const known = KNOWN_TLV_HANDLERS.get(original.type);
+        if (known !== undefined) {
+            seenKnownTypes.add(original.type);
+            const canonical = known.encodeCurrent(ds);
+            if (canonical === undefined) continue;
+            // Compare named-value equality (not byte equality) so the replay survives
+            // non-canonical encodings (e.g. legacy 1-byte CHANNEL form).
+            if (known.equalsCurrent(ds, originalDecoded)) {
+                out.push({ type: original.type, value: original.value });
+            } else {
+                out.push({ type: original.type, value: canonical });
+            }
+            continue;
+        }
+        const start = unknownCursor.get(original.type) ?? 0;
+        const matchIdx = ds.unknownTlvs.findIndex(
+            (u, i) => i >= start && u.type === original.type && bytesEqual(u.value, original.value),
+        );
+        if (matchIdx === -1) continue;
+        unknownCursor.set(original.type, matchIdx + 1);
+        out.push({ type: original.type, value: original.value });
+    }
+
+    for (const known of KNOWN_TLV_HANDLERS.values()) {
+        if (seenKnownTypes.has(known.type)) continue;
+        const canonical = known.encodeCurrent(ds);
+        if (canonical === undefined) continue;
+        out.push({ type: known.type, value: canonical });
+    }
+
+    return BasicTlv.encode(out);
+}
+
+function canonicalEntries(ds: OperationalDataset): BasicTlvEntry[] {
+    const out = new Array<BasicTlvEntry>();
+    for (const known of KNOWN_TLV_HANDLERS.values()) {
+        const canonical = known.encodeCurrent(ds);
+        if (canonical === undefined) continue;
+        out.push({ type: known.type, value: canonical });
+    }
+    for (const u of ds.unknownTlvs) {
+        out.push({ type: u.type, value: u.value });
+    }
+    return out;
+}
+
+function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+        if (a[i] !== b[i]) return false;
+    }
+    return true;
+}
+
+/**
+ * Each handler erases its field type behind a closure so the heterogeneous
+ * registry can live in a single Map without per-field casts at the call site.
+ */
+interface KnownTlvHandler {
+    type: number;
+    /** Returns the canonical encoding of the named accessor, or undefined when unset. */
+    encodeCurrent(ds: OperationalDataset): Uint8Array | undefined;
+    /** Whether ds[field] structurally equals other[field]. Used for replay decisions. */
+    equalsCurrent(ds: OperationalDataset, other: OperationalDataset): boolean;
+}
+
+function handler<K extends keyof OperationalDataset>(
+    type: number,
+    field: K,
+    encodeValue: (value: NonNullable<OperationalDataset[K]>) => Uint8Array,
+    equals: (a: NonNullable<OperationalDataset[K]>, b: NonNullable<OperationalDataset[K]>) => boolean,
+): KnownTlvHandler {
+    return {
+        type,
+        encodeCurrent(ds) {
+            const value = ds[field];
+            if (value === undefined) return undefined;
+            return encodeValue(value as NonNullable<OperationalDataset[K]>);
+        },
+        equalsCurrent(ds, other) {
+            const a = ds[field];
+            const b = other[field];
+            if (a === undefined || b === undefined) return a === b;
+            return equals(a as NonNullable<OperationalDataset[K]>, b as NonNullable<OperationalDataset[K]>);
+        },
+    };
+}
+
+const eqNumber = (a: number, b: number): boolean => a === b;
+const eqString = (a: string, b: string): boolean => a === b;
+const eqBytes = (a: Uint8Array, b: Uint8Array): boolean => bytesEqual(a, b);
+const eqSecurityPolicy = (a: SecurityPolicy, b: SecurityPolicy): boolean =>
+    a.rotationTime === b.rotationTime && a.flags === b.flags;
+
+const KNOWN_TLV_HANDLERS: Map<number, KnownTlvHandler> = (() => {
+    const list: KnownTlvHandler[] = [
+        handler(
+            MeshCopTlvType.CHANNEL,
+            "channel",
+            value => new Uint8Array([0x00, (value >> 8) & 0xff, value & 0xff]),
+            eqNumber,
+        ),
+        handler(MeshCopTlvType.PANID, "panId", value => new Uint8Array([(value >> 8) & 0xff, value & 0xff]), eqNumber),
+        handler(MeshCopTlvType.EXTPANID, "extPanId", value => value, eqBytes),
+        handler(MeshCopTlvType.NETWORK_NAME, "networkName", value => new TextEncoder().encode(value), eqString),
+        handler(MeshCopTlvType.PSKC, "pskc", value => value, eqBytes),
+        handler(MeshCopTlvType.NETWORK_KEY, "networkKey", value => value, eqBytes),
+        handler(MeshCopTlvType.MESH_LOCAL_PREFIX, "meshLocalPrefix", value => value, eqBytes),
+        handler(
+            MeshCopTlvType.SECURITY_POLICY,
+            "securityPolicy",
+            value => SecurityPolicy.encode(value),
+            eqSecurityPolicy,
+        ),
+        handler(MeshCopTlvType.ACTIVE_TIMESTAMP, "activeTimestamp", value => value, eqBytes),
+        handler(MeshCopTlvType.PENDING_TIMESTAMP, "pendingTimestamp", value => value, eqBytes),
+        handler(
+            MeshCopTlvType.DELAY_TIMER,
+            "delayTimer",
+            value => new Uint8Array([(value >> 24) & 0xff, (value >> 16) & 0xff, (value >> 8) & 0xff, value & 0xff]),
+            eqNumber,
+        ),
+        handler(MeshCopTlvType.CHANNEL_MASK, "channelMask", value => value, eqBytes),
+    ];
+    list.sort((a, b) => a.type - b.type);
+    const map = new Map<number, KnownTlvHandler>();
+    for (const h of list) map.set(h.type, h);
+    return map;
+})();
 
 /**
  * Real-world OpenThread datasets sometimes encode CHANNEL as a single byte

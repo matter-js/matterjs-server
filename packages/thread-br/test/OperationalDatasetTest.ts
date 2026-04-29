@@ -77,3 +77,61 @@ describe("OperationalDataset.decode", () => {
         expect(ds._originalTlvs).to.have.lengthOf(5);
     });
 });
+
+describe("OperationalDataset.encode", () => {
+    it("round-trips the synthetic-1 fixture byte-identically", () => {
+        const blob = loadFixture("synthetic-1.hex");
+        const ds = OperationalDataset.decode(blob);
+        expect(OperationalDataset.encode(ds)).to.deep.equal(blob);
+    });
+
+    it("preserves unknown TLVs through a decode/encode round-trip", () => {
+        const blob = BasicTlv.encode([
+            { type: 0x00, value: new Uint8Array([0x0f]) },
+            { type: 0xaa, value: new Uint8Array([0xde, 0xad, 0xbe, 0xef]) },
+            { type: 0x03, value: new TextEncoder().encode("Foo") },
+            { type: 0xbb, value: new Uint8Array([0x01]) },
+        ]);
+        const ds = OperationalDataset.decode(blob);
+        expect(OperationalDataset.encode(ds)).to.deep.equal(blob);
+    });
+
+    it("replays a non-canonical 1-byte CHANNEL encoding when fields are unmodified", () => {
+        const blob = BasicTlv.encode([
+            { type: 0x00, value: new Uint8Array([0x0f]) },
+            { type: 0x01, value: new Uint8Array([0x12, 0x34]) },
+        ]);
+        const ds = OperationalDataset.decode(blob);
+        expect(ds.channel).to.equal(0x0f);
+        expect(OperationalDataset.encode(ds)).to.deep.equal(blob);
+    });
+
+    it("re-encodes a mutated channel in canonical 3-byte form", () => {
+        const blob = BasicTlv.encode([{ type: 0x00, value: new Uint8Array([0x0f]) }]);
+        const ds = OperationalDataset.decode(blob);
+        ds.channel = 0x19;
+        const encoded = OperationalDataset.encode(ds);
+        const walked = BasicTlv.walk(encoded);
+        expect(walked).to.have.lengthOf(1);
+        expect(walked[0].type).to.equal(0x00);
+        expect(walked[0].value).to.deep.equal(new Uint8Array([0x00, 0x00, 0x19]));
+    });
+
+    it("emits canonical encoding for an in-memory dataset (no _originalTlvs)", () => {
+        const ds: OperationalDataset = {
+            channel: 0x19,
+            panId: 0x1234,
+            unknownTlvs: [{ type: 0xaa, value: new Uint8Array([0x42]) }],
+            raw: new Uint8Array(),
+        };
+        const encoded = OperationalDataset.encode(ds);
+        const walked = BasicTlv.walk(encoded);
+        expect(walked).to.have.lengthOf(3);
+        expect(walked[0].type).to.equal(0x00);
+        expect(walked[0].value).to.deep.equal(new Uint8Array([0x00, 0x00, 0x19]));
+        expect(walked[1].type).to.equal(0x01);
+        expect(walked[1].value).to.deep.equal(new Uint8Array([0x12, 0x34]));
+        expect(walked[2].type).to.equal(0xaa);
+        expect(walked[2].value).to.deep.equal(new Uint8Array([0x42]));
+    });
+});
