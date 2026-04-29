@@ -135,3 +135,49 @@ describe("OperationalDataset.encode", () => {
         expect(walked[2].value).to.deep.equal(new Uint8Array([0x42]));
     });
 });
+
+describe("OperationalDataset.redact", () => {
+    it("drops PSKC and NETWORK_KEY but preserves other fields", () => {
+        const ds: OperationalDataset = {
+            channel: 0x19,
+            panId: 0x1234,
+            networkName: "OpenThread",
+            pskc: new Uint8Array([0x11, 0x22]),
+            networkKey: new Uint8Array(16),
+            unknownTlvs: [],
+            raw: new Uint8Array(),
+        };
+        const redacted = OperationalDataset.redact(ds);
+        expect(redacted.pskc).to.equal(undefined);
+        expect(redacted.networkKey).to.equal(undefined);
+        expect(redacted.channel).to.equal(0x19);
+        expect(redacted.panId).to.equal(0x1234);
+        expect(redacted.networkName).to.equal("OpenThread");
+    });
+
+    it("does not mutate the input dataset", () => {
+        const pskc = new Uint8Array([0x11]);
+        const networkKey = new Uint8Array(16);
+        const ds: OperationalDataset = {
+            pskc,
+            networkKey,
+            unknownTlvs: [],
+            raw: new Uint8Array(),
+        };
+        OperationalDataset.redact(ds);
+        expect(ds.pskc).to.equal(pskc);
+        expect(ds.networkKey).to.equal(networkKey);
+    });
+
+    it("is a no-op when secrets are already absent", () => {
+        const ds: OperationalDataset = {
+            channel: 0x19,
+            unknownTlvs: [],
+            raw: new Uint8Array(),
+        };
+        const redacted = OperationalDataset.redact(ds);
+        expect(redacted.pskc).to.equal(undefined);
+        expect(redacted.networkKey).to.equal(undefined);
+        expect(redacted.channel).to.equal(0x19);
+    });
+});
