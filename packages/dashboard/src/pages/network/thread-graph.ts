@@ -229,8 +229,8 @@ export class ThreadGraph extends BaseNetworkGraph {
             }
 
             if (device.kind === "br") {
-                const hostname = device.hostname?.replace(/\.$/, "");
-                const label = (device.networkName ?? hostname ?? "Border Router").slice(0, 24);
+                const hostname = device.hostname?.replace(/\.$/, "").replace(/\.local$/i, "");
+                const label = (hostname ?? device.networkName ?? "Border Router").slice(0, 24);
                 graphNodes.push({
                     id: device.id,
                     label,
