@@ -62,7 +62,8 @@ export class ThreadCredentialsRegistry {
             activeTimestamp: creds.activeTimestamp,
         };
         this.#byExtPanId.set(keyOf(stored.extPanId), stored);
-        this.events.registered.emit(stored);
+        // Emit a fresh copy so a listener mutating the typed-array views can't reach back into the stored entry.
+        this.events.registered.emit(snapshot(stored));
     }
 
     /** Remove an entry. No-op if absent. */
@@ -86,6 +87,15 @@ export class ThreadCredentialsRegistry {
 
 function keyOf(extPanId: Uint8Array): string {
     return Bytes.toHex(extPanId);
+}
+
+function snapshot(creds: ThreadNetworkCredentials): ThreadNetworkCredentials {
+    return {
+        extPanId: creds.extPanId.slice(),
+        networkName: creds.networkName,
+        pskc: creds.pskc.slice(),
+        activeTimestamp: creds.activeTimestamp,
+    };
 }
 
 function bytesToBigint(bytes: Uint8Array): bigint {
