@@ -17,16 +17,15 @@ const FIXTURE_DIR = resolve(PACKAGE_ROOT, "test/fixtures/datasets");
 interface ParsedLine {
     type: number;
     length: number;
-    valueHex?: string;
-    valueText?: string;
+    value: Uint8Array;
 }
 
 /**
  * Parse Agners' Python output lines (`t:  N (NAME), l: L, v: 0xHEX`).
  *
  * Hex values are emitted as `0x...`; the NETWORK_NAME row uses Python's
- * bytes-literal `b'...'` form, which we capture verbatim so the test can
- * compare network-name bytes to the parser's text rendering.
+ * bytes-literal `b'...'` form, which we decode to UTF-8 bytes so every line
+ * exposes a comparable {@link ParsedLine.value}.
  */
 function parseAgnersLine(line: string): ParsedLine | undefined {
     const match = line.match(/^t:\s*(\d+)\s+\([^)]+\),\s*l:\s*(\d+),\s*v:\s*(.+)$/);
@@ -35,17 +34,17 @@ function parseAgnersLine(line: string): ParsedLine | undefined {
     const length = parseInt(match[2], 10);
     const v = match[3];
     if (v.startsWith("0x")) {
-        return { type, length, valueHex: v.slice(2) };
+        return { type, length, value: Bytes.of(Bytes.fromHex(v.slice(2))) };
     }
     const textMatch = v.match(/^b'(.*)'$/);
     if (textMatch !== null) {
-        return { type, length, valueText: textMatch[1] };
+        return { type, length, value: new TextEncoder().encode(textMatch[1]) };
     }
-    return { type, length };
+    return undefined;
 }
 
 describe("OperationalDataset cross-validation against Agners' Python parser", () => {
-    it("matches per-TLV (type, length, value) for agners-vector-1", () => {
+    it("matches per-TLV (type, length, value) for agners-vector-1 in order", () => {
         const hex = readFileSync(resolve(FIXTURE_DIR, "agners-vector-1.hex"), "utf8").trim();
         const blob = Bytes.of(Bytes.fromHex(hex));
         const expectedRaw = readFileSync(resolve(FIXTURE_DIR, "agners-vector-1.expected.txt"), "utf8");
@@ -56,20 +55,20 @@ describe("OperationalDataset cross-validation against Agners' Python parser", ()
             .map(parseAgnersLine)
             .filter((p): p is ParsedLine => p !== undefined);
 
-        const walked = BasicTlv.walk(blob);
-        const knownByType = new Map(walked.map(e => [e.type, e]));
-        for (const exp of expected) {
-            const got = knownByType.get(exp.type);
-            expect(got, `missing TLV type ${exp.type}`).to.not.equal(undefined);
-            if (got === undefined) continue;
-            expect(got.value.length, `length mismatch for type ${exp.type}`).to.equal(exp.length);
-            if (exp.valueHex !== undefined) {
-                expect(Bytes.toHex(got.value), `hex mismatch for type ${exp.type}`).to.equal(exp.valueHex);
-            } else if (exp.valueText !== undefined) {
-                expect(new TextDecoder("utf-8").decode(got.value), `text mismatch for type ${exp.type}`).to.equal(
-                    exp.valueText,
-                );
-            }
+        // Agners' parser skips TLVs whose type isn't in its enum; filter walked entries
+        // down to the same set so the ordered comparison stays apples-to-apples.
+        const expectedTypes = new Set(expected.map(e => e.type));
+        const walked = BasicTlv.walk(blob).filter(e => expectedTypes.has(e.type));
+        expect(walked.length, "tlv count").to.equal(expected.length);
+        for (let i = 0; i < expected.length; i++) {
+            const exp = expected[i];
+            const got = walked[i];
+            expect(got.type, `type mismatch at index ${i}`).to.equal(exp.type);
+            expect(got.value.length, `length mismatch at index ${i} (type ${exp.type})`).to.equal(exp.length);
+            expect(
+                Bytes.areEqual(got.value, exp.value),
+                `value mismatch at index ${i} (type ${exp.type}): got ${Bytes.toHex(got.value)}, expected ${Bytes.toHex(exp.value)}`,
+            ).to.equal(true);
         }
     });
 
