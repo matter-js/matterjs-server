@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { OperationalDataset, ThreadCredentialsRegistry } from "@matter-server/thread-br";
 import {
     MatterError,
     Diagnostic,
@@ -22,7 +23,7 @@ import { EndpointNumber, QrPairingCodeCodec } from "@matter/main/types";
 import { NodeStates } from "@project-chip/matter.js/device";
 import { WebSocketServer } from "ws";
 import { ControllerCommandHandler } from "../controller/ControllerCommandHandler.js";
-import { MatterController } from "../controller/MatterController.js";
+import { MatterController, registerThreadCredentialsFromHex } from "../controller/MatterController.js";
 import { TestNodeCommandHandler } from "../controller/TestNodeCommandHandler.js";
 import { VendorIds } from "../data/VendorIDs.js";
 import { ClusterMap, ClusterMapEntry } from "../model/ModelMapper.js";
@@ -918,6 +919,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
             );
         }
         await this.#config.set({ threadDataset: dataset });
+
+        syncThreadCredentialsToDataset(this.#controller.credentials, dataset);
+
         // Broadcast server_info_updated event to notify clients of credential change
         try {
             await this.#broadcastServerInfoUpdated();
@@ -1152,5 +1156,36 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
         // Return current levels
         return this.#handleGetLogLevel();
+    }
+}
+
+function parseDatasetExtPanId(hex: string): Uint8Array | undefined {
+    try {
+        const ds = OperationalDataset.decode(Bytes.of(Bytes.fromHex(hex)));
+        return ds.extPanId;
+    } catch {
+        return undefined;
+    }
+}
+
+/**
+ * Reconcile the credentials registry with a freshly-stored dataset hex (or `""` to clear).
+ * Empty input drops every previously-known network. Valid input registers (or replaces by
+ * extPanId) and removes any stale entry whose extPanId is not the one we just stored —
+ * the registry tracks one network at a time today, and `register()` alone would leave
+ * the old entry behind when the new dataset has a different extPanId.
+ */
+export function syncThreadCredentialsToDataset(credentials: ThreadCredentialsRegistry, dataset: string): void {
+    const previousExtPanIds = credentials.list().map(c => c.extPanId);
+    if (dataset === "") {
+        for (const xp of previousExtPanIds) credentials.unregister(xp);
+        return;
+    }
+    if (!registerThreadCredentialsFromHex(credentials, dataset, "set_thread_dataset")) return;
+    const storedExtPanId = parseDatasetExtPanId(dataset);
+    for (const xp of previousExtPanIds) {
+        if (storedExtPanId === undefined || !Bytes.areEqual(xp, storedExtPanId)) {
+            credentials.unregister(xp);
+        }
     }
 }
