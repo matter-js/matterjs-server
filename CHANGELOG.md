@@ -9,7 +9,10 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## **WORK IN PROGRESS**
 
+- Enhancement: Retain Thread Border Router registry entries for 24h after their last mDNS source goes off-air, so the dashboard's xa→name join keeps working for BRs that announce sparsely. Last-known fields are preserved across single- and full-source loss; LRU eviction prefers stale entries before live ones.
 - Fix: Ensures the same event order as the Python Matter server when endpoints got added
+- Fix: Update matter.js to the latest 0.17.0-nightly
+    - Fixes validation issues when writing values guarded by constraint checks
 
 ## 0.6.3 (2026-04-29)
 
