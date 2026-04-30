@@ -5,6 +5,7 @@
  */
 
 import { Bytes } from "@matter/main";
+import process from "node:process";
 import { OperationalDataset } from "../dist/esm/dataset/OperationalDataset.js";
 
 function bytesToHex(value: Uint8Array): string {
