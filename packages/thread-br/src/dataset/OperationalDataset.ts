@@ -195,7 +195,7 @@ function canonicalEntries(ds: OperationalDataset): BasicTlvEntry[] {
         out.push({ type: known.type, value: canonical });
     }
     for (const u of ds.unknownTlvs) {
-        out.push({ type: u.type, value: u.value });
+        out.push({ type: u.type, value: u.value.slice() });
     }
     return out;
 }
@@ -223,21 +223,21 @@ interface KnownTlvHandler {
 function handler<K extends keyof OperationalDataset>(
     type: number,
     field: K,
-    encodeValue: (value: NonNullable<OperationalDataset[K]>) => Uint8Array,
-    equals: (a: NonNullable<OperationalDataset[K]>, b: NonNullable<OperationalDataset[K]>) => boolean,
+    encodeValue: (value: OperationalDataset[K] & {}) => Uint8Array,
+    equals: (a: OperationalDataset[K] & {}, b: OperationalDataset[K] & {}) => boolean,
 ): KnownTlvHandler {
     return {
         type,
         encodeCurrent(ds) {
             const value = ds[field];
             if (value === undefined) return undefined;
-            return encodeValue(value as NonNullable<OperationalDataset[K]>);
+            return encodeValue(value);
         },
         equalsCurrent(ds, other) {
             const a = ds[field];
             const b = other[field];
             if (a === undefined || b === undefined) return a === b;
-            return equals(a as NonNullable<OperationalDataset[K]>, b as NonNullable<OperationalDataset[K]>);
+            return equals(a, b);
         },
     };
 }
