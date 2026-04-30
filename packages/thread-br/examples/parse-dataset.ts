@@ -6,26 +6,24 @@
 
 import { Bytes } from "@matter/main";
 import process from "node:process";
+// `node --experimental-strip-types` doesn't transform TS namespaces, so the example
+// imports from the built artifacts. Run `npm run build -w @matter-server/thread-br` first.
 import { OperationalDataset } from "../dist/esm/dataset/OperationalDataset.js";
-
-function bytesToHex(value: Uint8Array): string {
-    return Array.from(value, b => b.toString(16).padStart(2, "0")).join("");
-}
 
 function summarize(ds: OperationalDataset): Record<string, unknown> {
     const redacted = OperationalDataset.redact(ds);
     return {
         channel: redacted.channel,
         panId: redacted.panId === undefined ? undefined : `0x${redacted.panId.toString(16).padStart(4, "0")}`,
-        extPanId: redacted.extPanId === undefined ? undefined : bytesToHex(redacted.extPanId),
+        extPanId: redacted.extPanId === undefined ? undefined : Bytes.toHex(redacted.extPanId),
         networkName: redacted.networkName,
-        meshLocalPrefix: redacted.meshLocalPrefix === undefined ? undefined : bytesToHex(redacted.meshLocalPrefix),
+        meshLocalPrefix: redacted.meshLocalPrefix === undefined ? undefined : Bytes.toHex(redacted.meshLocalPrefix),
         securityPolicy: redacted.securityPolicy,
-        activeTimestamp: redacted.activeTimestamp === undefined ? undefined : bytesToHex(redacted.activeTimestamp),
-        pendingTimestamp: redacted.pendingTimestamp === undefined ? undefined : bytesToHex(redacted.pendingTimestamp),
+        activeTimestamp: redacted.activeTimestamp === undefined ? undefined : Bytes.toHex(redacted.activeTimestamp),
+        pendingTimestamp: redacted.pendingTimestamp === undefined ? undefined : Bytes.toHex(redacted.pendingTimestamp),
         delayTimer: redacted.delayTimer,
-        channelMask: redacted.channelMask === undefined ? undefined : bytesToHex(redacted.channelMask),
-        unknownTlvs: redacted.unknownTlvs.map(u => ({ type: u.type, valueHex: bytesToHex(u.value) })),
+        channelMask: redacted.channelMask === undefined ? undefined : Bytes.toHex(redacted.channelMask),
+        unknownTlvs: redacted.unknownTlvs.map(u => ({ type: u.type, valueHex: Bytes.toHex(u.value) })),
         pskc: redacted.pskc === undefined ? "<redacted>" : "<unexpected: not redacted>",
         networkKey: redacted.networkKey === undefined ? "<redacted>" : "<unexpected: not redacted>",
     };
@@ -45,8 +43,8 @@ function main(): void {
     const ok = reEncoded.length === blob.length && reEncoded.every((b, i) => b === blob[i]);
     console.log(`Round-trip identity: ${ok ? "ok" : "MISMATCH"}`);
     if (!ok) {
-        console.error(`Original:   ${bytesToHex(blob)}`);
-        console.error(`Re-encoded: ${bytesToHex(reEncoded)}`);
+        console.error(`Original:   ${Bytes.toHex(blob)}`);
+        console.error(`Re-encoded: ${Bytes.toHex(reEncoded)}`);
         process.exit(1);
     }
 }
