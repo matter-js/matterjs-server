@@ -37,13 +37,12 @@ export class ThreadCredentialsRegistry {
         if (dataset.pskc === undefined) {
             throw new Error("Cannot register credentials: dataset is missing pskc");
         }
-        const creds: ThreadNetworkCredentials = {
-            extPanId: dataset.extPanId.slice(),
+        this.registerCredentials({
+            extPanId: dataset.extPanId,
             networkName: dataset.networkName,
-            pskc: dataset.pskc.slice(),
+            pskc: dataset.pskc,
             activeTimestamp: dataset.activeTimestamp === undefined ? undefined : bytesToBigint(dataset.activeTimestamp),
-        };
-        this.registerCredentials(creds);
+        });
     }
 
     /**
@@ -56,9 +55,14 @@ export class ThreadCredentialsRegistry {
      * older — losing an update is worse than a noisy log line.
      */
     registerCredentials(creds: ThreadNetworkCredentials): void {
-        const key = keyOf(creds.extPanId);
-        this.#byExtPanId.set(key, creds);
-        this.events.registered.emit(creds);
+        const stored: ThreadNetworkCredentials = {
+            extPanId: creds.extPanId.slice(),
+            networkName: creds.networkName,
+            pskc: creds.pskc.slice(),
+            activeTimestamp: creds.activeTimestamp,
+        };
+        this.#byExtPanId.set(keyOf(stored.extPanId), stored);
+        this.events.registered.emit(stored);
     }
 
     /** Remove an entry. No-op if absent. */
