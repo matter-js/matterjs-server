@@ -5,7 +5,7 @@
  */
 
 import { p256 } from "@noble/curves/nist.js";
-import { SchnorrZkp } from "./SchnorrZkp.js";
+import { SchnorrZkp, type SchnorrZkpGenerator } from "./SchnorrZkp.js";
 
 /**
  * One half of an EC-JPAKE round-1 message: an ephemeral public key plus a Schnorr
@@ -26,6 +26,7 @@ export interface EcJpakeKeyKP {
 }
 
 const Point = p256.Point;
+const N = Point.Fn.ORDER;
 const POINT_LEN = 65;
 
 function readU8(bytes: Uint8Array, offset: number): number {
@@ -142,5 +143,106 @@ export const EcJpakeRound = {
             throw new Error(`trailing bytes after round-1 pair: ${bytes.length - second.nextOffset} extra`);
         }
         return { kp1: first.kp, kp2: second.kp };
+    },
+
+    /**
+     * Compute the round-2 composite generator `G' = Xp1 + Xp2 + Xm1`
+     * (mbedTLS `ecjpake.c:676-677`, also used by `read_round_two:585-586`).
+     * Both sides use the same formula by symmetry — for the client `Xp1 = X3`,
+     * `Xp2 = X4`, `Xm1 = X1`; for the server `Xp1 = X1`, `Xp2 = X2`, `Xm1 = X3`.
+     */
+    composeRound2Generator(args: { Xp1: Uint8Array; Xp2: Uint8Array; Xm1: Uint8Array }): SchnorrZkpGenerator {
+        const point = Point.fromBytes(args.Xp1).add(Point.fromBytes(args.Xp2)).add(Point.fromBytes(args.Xm1));
+        if (point.is0()) {
+            throw new Error("round-2 generator G' must not be the point at infinity");
+        }
+        return { point, bytes: point.toBytes(false) };
+    },
+
+    /**
+     * Build round 2 from the second private scalar `xm2`, the password (as the
+     * mbedTLS-style big-endian integer `s`), the composite generator `G'`, and a
+     * deterministic ephemeral `v`. Returns `Xm = (xm2 * s) * G'` plus a Schnorr
+     * ZKP proving knowledge of `xm = xm2 * s mod n` against `G'`.
+     *
+     * Caller-supplied `v` makes output deterministic for testing; production
+     * callers must source `v` from a CSPRNG.
+     */
+    buildRound2(args: { xm2: bigint; s: bigint; v: bigint; id: string; generator: SchnorrZkpGenerator }): EcJpakeKeyKP {
+        const { xm2, s, v, id, generator } = args;
+        if (xm2 <= 0n || xm2 >= N) {
+            throw new Error("xm2 must be in [1, n-1]");
+        }
+        if (s <= 0n) {
+            throw new Error("s (password as integer) must be positive");
+        }
+        const xm = (xm2 * s) % N;
+        if (xm === 0n) {
+            throw new Error("xm = xm2*s mod n must be non-zero");
+        }
+        const Xm = generator.point.multiply(xm);
+        const XmBytes = Xm.toBytes(false);
+        const zkp = SchnorrZkp.generate({
+            privateKey: xm,
+            publicKey: XmBytes,
+            ephemeral: v,
+            id,
+            generator,
+        });
+        return { X: XmBytes, zkp };
+    },
+
+    /**
+     * Serialise a round-2 message. When `prependEcParameters` is true the 3-byte
+     * `ECParameters{ named_curve, secp256r1 }` header (mbedTLS `ssl_tls12_server.c:2476-2491`,
+     * also written in `mbedtls_ecjpake_write_round_two` when role=SERVER, ecjpake.c:690-698)
+     * is emitted before the `ECJPAKEKeyKP`. Server-side messages
+     * (ServerKeyExchange) use `true`; client-side (ClientKeyExchange) uses `false`.
+     */
+    serializeRound2(kp: EcJpakeKeyKP, options: { prependEcParameters: boolean }): Uint8Array {
+        const out = new Array<number>();
+        if (options.prependEcParameters) {
+            out.push(0x03, 0x00, 0x17);
+        }
+        writeKeyKP(kp, out);
+        return Uint8Array.from(out);
+    },
+
+    /**
+     * Parse a round-2 message. `expectEcParameters` must be `true` when the parser
+     * is the client reading ServerKeyExchange, and `false` when the parser is the
+     * server reading ClientKeyExchange.
+     */
+    parseRound2(bytes: Uint8Array, options: { expectEcParameters: boolean }): EcJpakeKeyKP {
+        let p = 0;
+        if (options.expectEcParameters) {
+            if (bytes.length < 3) {
+                throw new Error("round-2 message too short for ECParameters header");
+            }
+            if (bytes[0] !== 0x03 || bytes[1] !== 0x00 || bytes[2] !== 0x17) {
+                throw new Error(
+                    `expected ECParameters{named_curve, secp256r1} (03 00 17), got ${Array.from(bytes.subarray(0, 3))
+                        .map(b => b.toString(16).padStart(2, "0"))
+                        .join(" ")}`,
+                );
+            }
+            p = 3;
+        }
+        const { kp, nextOffset } = readKeyKP(bytes, p);
+        if (nextOffset !== bytes.length) {
+            throw new Error(`trailing bytes after round-2 message: ${bytes.length - nextOffset} extra`);
+        }
+        return kp;
+    },
+
+    /**
+     * Verify the embedded round-2 ZKP under the supplied composite generator
+     * and the peer's `id` ("client" or "server"). Returns `false` (does not throw)
+     * on any verification failure — including malformed bytes — to mirror the
+     * round-1 `SchnorrZkp.verify` contract.
+     */
+    verifyRound2Zkp(args: { kp: EcJpakeKeyKP; generator: SchnorrZkpGenerator; peerId: string }): boolean {
+        const { kp, generator, peerId } = args;
+        return SchnorrZkp.verify({ zkp: kp.zkp, publicKey: kp.X, id: peerId, generator });
     },
 } as const;
