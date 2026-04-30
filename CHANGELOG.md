@@ -7,7 +7,7 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
-## **WORK IN PROGRESS**
+## 0.6.4 (2026-04-30)
 
 - Enhancement: Retain Thread Border Router registry entries for 24h after their last mDNS source goes off-air, so the dashboard can still show information even if stale
 - Fix: Ensures the same event order as the Python Matter server when endpoints got added
