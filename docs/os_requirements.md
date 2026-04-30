@@ -105,7 +105,7 @@ echo 'net.netfilter.nf_conntrack_udp_timeout_stream = 3600' | sudo tee /etc/sysc
 - Bare-metal: the host itself.
 - VM with hypervisor firewall (e.g. Proxmox per-VM firewall, vSphere DFW): the **hypervisor** kernel. Setting it inside the guest has no effect.
 - Docker on Linux with firewalld (Fedora/RHEL default) or ufw (Ubuntu, when enabled): the Docker **host**.
-- Home Assistant OS via the Supervisor: usually fine out of the box. Only worry if you have added a custom firewall layer.
+- Home Assistant OS: Configured correctly out of the box. Only worry if you have added a custom firewall layer (e.g. VM with hypervisor firewall).
 
 **DO NOT** filter Matter UDP traffic by destination port. The controller binds an ephemeral port, and device source ports also vary.
 
