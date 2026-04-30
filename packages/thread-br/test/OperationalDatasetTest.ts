@@ -70,12 +70,6 @@ describe("OperationalDataset.decode", () => {
         const blob = BasicTlv.encode([{ type: 0x05, value: new Uint8Array([0x01]) }]);
         expect(() => OperationalDataset.decode(blob)).to.throw(/NETWORK_KEY/);
     });
-
-    it("populates _originalTlvs for round-trip identity", () => {
-        const blob = loadFixture("synthetic-1.hex");
-        const ds = OperationalDataset.decode(blob);
-        expect(ds._originalTlvs).to.have.lengthOf(5);
-    });
 });
 
 describe("OperationalDataset.encode", () => {

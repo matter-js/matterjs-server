@@ -14,7 +14,8 @@ import { SecurityPolicy } from "./SecurityPolicy.js";
  * Each named accessor mirrors a MeshCoP TLV defined in {@link MeshCopTlvType}.
  * Unknown TLVs survive a decode/encode round-trip via {@link unknownTlvs}.
  *
- * `_originalTlvs` lets {@link OperationalDataset.encode} reproduce the source
+ * Datasets returned by {@link OperationalDataset.decode} also carry hidden
+ * replay state so {@link OperationalDataset.encode} can reproduce the source
  * bytes verbatim when no field has been mutated — preserving non-canonical
  * encodings (legacy 1-byte CHANNEL forms, vendor-specific orderings) emitted
  * by real Border Routers.
@@ -34,19 +35,18 @@ export interface OperationalDataset {
     channelMask?: Uint8Array;
     unknownTlvs: Array<{ type: number; value: Uint8Array }>;
     raw: Uint8Array;
-    /** @internal */
-    _originalTlvs?: ReadonlyArray<BasicTlvEntry>;
 }
 
 export namespace OperationalDataset {
     export function decode(blob: Uint8Array): OperationalDataset {
         const entries = BasicTlv.walk(blob);
         const unknownTlvs = new Array<{ type: number; value: Uint8Array }>();
+        const originalTlvs = entries.map(e => ({ type: e.type, value: e.value.slice() }));
         const ds: OperationalDataset = {
             unknownTlvs,
             raw: blob.slice(),
-            _originalTlvs: entries.map(e => ({ type: e.type, value: e.value.slice() })),
         };
+        ORIGINAL_TLVS.set(ds, originalTlvs);
 
         for (const entry of entries) {
             applyKnownTlvToDataset(ds, entry, unknownTlvs);
@@ -56,8 +56,9 @@ export namespace OperationalDataset {
     }
 
     export function encode(ds: OperationalDataset): Uint8Array {
-        if (ds._originalTlvs !== undefined) {
-            return encodeWithReplay(ds, ds._originalTlvs);
+        const originals = ORIGINAL_TLVS.get(ds);
+        if (originals !== undefined) {
+            return encodeWithReplay(ds, originals);
         }
         return BasicTlv.encode(canonicalEntries(ds));
     }
@@ -66,6 +67,13 @@ export namespace OperationalDataset {
         return { ...ds, pskc: undefined, networkKey: undefined };
     }
 }
+
+/**
+ * Replay state for {@link OperationalDataset.encode}. Held off-interface so the
+ * public type stays a plain dataset shape; the entry is reclaimed automatically
+ * when the dataset is garbage-collected.
+ */
+const ORIGINAL_TLVS = new WeakMap<OperationalDataset, ReadonlyArray<BasicTlvEntry>>();
 
 function applyKnownTlvToDataset(
     ds: OperationalDataset,
