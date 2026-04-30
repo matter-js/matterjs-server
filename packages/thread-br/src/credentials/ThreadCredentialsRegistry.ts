@@ -24,8 +24,13 @@ export class ThreadCredentialsRegistry {
 
     /**
      * Register credentials extracted from a parsed Operational Dataset.
-     * Throws if the dataset lacks `extPanId`, `networkName`, or `pskc`.
-     * Replaces any existing entry for the same extPanId.
+     *
+     * `networkKey` is intentionally dropped on the way in — the registry stores
+     * only what's needed for diagnostic queries (extPanId, networkName, pskc,
+     * activeTimestamp). Smaller blast radius for the most sensitive secret.
+     *
+     * Replaces any existing entry for the same extPanId; throws if the dataset
+     * lacks extPanId, networkName, or pskc.
      */
     register(dataset: OperationalDataset): void {
         if (dataset.extPanId === undefined) {
@@ -98,6 +103,8 @@ function snapshot(creds: ThreadNetworkCredentials): ThreadNetworkCredentials {
     };
 }
 
+// matter.js exposes `Bytes.fromBigInt` but no inverse `Bytes.toBigInt` yet —
+// dataset's activeTimestamp is a fixed-width 8-byte BE field so the loop is safe.
 function bytesToBigint(bytes: Uint8Array): bigint {
     let result = 0n;
     for (const b of bytes) {
