@@ -1,5 +1,5 @@
 {
-    "source": "Cross-validated against Python cryptography library (AES-CMAC) + manual PBKDF2 outer loop matching RFC 8018 §5.2.",
+    "_note": "Self-generated via Python `cryptography` lib (AES-CMAC) + manual PBKDF2 outer loop matching RFC 8018 §5.2. Not authoritative; anchored end-to-end by pskc-vectors.json (which uses openthread C-test vectors).",
     "vectors": [
         {
             "name": "1 iter, 16-byte password, 16-byte salt, dkLen=16",

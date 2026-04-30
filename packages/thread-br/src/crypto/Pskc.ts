@@ -11,6 +11,7 @@ const EXT_PAN_ID_LENGTH = 8;
 const NETWORK_NAME_MAX_BYTES = 16;
 const PASSPHRASE_MIN_BYTES = 6;
 const PASSPHRASE_MAX_BYTES = 255;
+// Thread spec §8.4 / openthread `meshcop.cpp::GeneratePskc`: 16384 PBKDF2 iterations.
 const ITERATIONS = 16384;
 const PSKC_LENGTH = 16;
 
