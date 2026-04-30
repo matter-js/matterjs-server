@@ -142,4 +142,3 @@ describe("EcJpakeRound.buildRound1 (deterministic ephemerals)", () => {
         expect(Bytes.areEqual(a.kp2.zkp.r, b.kp2.zkp.r)).to.equal(true);
     });
 });
-
