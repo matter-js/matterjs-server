@@ -15,6 +15,10 @@ const REGISTRY_MAX_ENTRIES = 256;
  *  yet emitted a valid xa, but bounded so a noisy LAN can't grow `#instanceObservers`
  *  without limit. Eviction targets the oldest xa-less observer first. */
 const INSTANCE_OBSERVER_CAP = 512;
+/** Stale entries (sources.length === 0) are pruned 24h after their last successful
+ *  mDNS discovery (entry.lastSeen). Long enough that BRs announcing once per
+ *  ~half-day stay resolvable; short enough that vanished BRs eventually drop. */
+const STALE_RETENTION_MS = 24 * 60 * 60 * 1000;
 const MESHCOP_TYPE_QNAME = "_meshcop._udp.local";
 const TREL_TYPE_QNAME = "_trel._udp.local";
 const MESHCOP_SUFFIX = "._meshcop._udp.local";
@@ -182,12 +186,23 @@ export class BorderRouterDiscovery {
     }
 
     list(): BorderRouterEntry[] {
+        this.#pruneExpired();
         return Array.from(this.#registry.values(), entry => this.#snapshotEntry(entry));
     }
 
     get(extAddressHex: string): BorderRouterEntry | undefined {
+        this.#pruneExpired();
         const entry = this.#registry.get(extAddressHex.toUpperCase());
         return entry === undefined ? undefined : this.#snapshotEntry(entry);
+    }
+
+    #pruneExpired(): void {
+        const cutoff = Date.now() - STALE_RETENTION_MS;
+        for (const [xaKey, entry] of this.#registry) {
+            if (entry.sources.length === 0 && entry.lastSeen < cutoff) {
+                this.#registry.delete(xaKey);
+            }
+        }
     }
 
     /** Shallow copy so callers cannot mutate registry state through the returned reference. */
@@ -201,6 +216,7 @@ export class BorderRouterDiscovery {
 
     #onDiscovered(name: DnssdNameLike): void {
         if (!this.#started) return;
+        this.#pruneExpired();
         const lower = name.qname.toLowerCase();
         if (lower === MESHCOP_TYPE_QNAME || lower === TREL_TYPE_QNAME) {
             return;

@@ -512,6 +512,69 @@ describe("BorderRouterDiscovery", () => {
             expect(stub.filterCount()).to.equal(0);
             expect(stub.discoveredObserverCount()).to.equal(0);
         });
+
+        it("prunes a stale entry once 24h elapses since lastSeen", async () => {
+            const originalDateNow = Date.now;
+            let now = 1000;
+            Date.now = () => now;
+            try {
+                await disc.start();
+                stub.makeTarget("Kuche.local.", ["192.168.1.10"]);
+                const inst = stub.makeInstance("Kuche._meshcop._udp.local", {
+                    txt: { xa: "aabbccddeeff0011", nn: "MyNet" },
+                    srvTarget: "Kuche.local.",
+                    srvPort: 49154,
+                });
+                stub.discover(inst);
+
+                inst.setDiscovered(false);
+                inst.emit({ name: inst });
+                expect(disc.get("AABBCCDDEEFF0011")!.sources).to.deep.equal([]);
+
+                now += 24 * 60 * 60 * 1000 - 1;
+                expect(disc.get("AABBCCDDEEFF0011")).to.not.equal(undefined);
+
+                now += 2;
+                expect(disc.get("AABBCCDDEEFF0011")).to.equal(undefined);
+                expect(disc.list()).to.deep.equal([]);
+            } finally {
+                Date.now = originalDateNow;
+            }
+        });
+
+        it("resets the retention clock when a stale entry is re-discovered", async () => {
+            const originalDateNow = Date.now;
+            let now = 1000;
+            Date.now = () => now;
+            try {
+                await disc.start();
+                stub.makeTarget("Kuche.local.", ["192.168.1.10"]);
+                const inst = stub.makeInstance("Kuche._meshcop._udp.local", {
+                    txt: { xa: "aabbccddeeff0011", nn: "MyNet" },
+                    srvTarget: "Kuche.local.",
+                    srvPort: 49154,
+                });
+                stub.discover(inst);
+
+                inst.setDiscovered(false);
+                inst.emit({ name: inst });
+                const staleAt = now;
+
+                now += 12 * 60 * 60 * 1000;
+                inst.setDiscovered(true);
+                stub.discover(inst);
+
+                const live = disc.get("AABBCCDDEEFF0011");
+                expect(live).to.not.equal(undefined);
+                expect(live!.sources).to.deep.equal(["meshcop"]);
+                expect(live!.lastSeen).to.equal(now);
+
+                now = staleAt + 24 * 60 * 60 * 1000 + 1;
+                expect(disc.get("AABBCCDDEEFF0011")).to.not.equal(undefined);
+            } finally {
+                Date.now = originalDateNow;
+            }
+        });
     });
 });
 
