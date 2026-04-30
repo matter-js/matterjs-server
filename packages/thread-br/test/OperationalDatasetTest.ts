@@ -11,10 +11,8 @@ import { fileURLToPath } from "node:url";
 import { OperationalDataset } from "../src/dataset/OperationalDataset.js";
 import { BasicTlv } from "../src/tlv/BasicTlvCodec.js";
 
-/**
- * Tests run from `<pkg>/build/esm/test/`; fixtures live at `<pkg>/test/fixtures/`.
- * Walk up to the package root and reach into the source tree.
- */
+// Tests execute from `<pkg>/build/esm/test/`; the `../../..` hops up to the package root
+// where the source-tree fixtures live.
 const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const FIXTURE_DIR = resolve(PACKAGE_ROOT, "test/fixtures/datasets");
 

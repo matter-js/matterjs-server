@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { Bytes } from "@matter/main";
 import { type BasicTlvEntry, BasicTlv } from "../tlv/BasicTlvCodec.js";
 import { MeshCopTlvType } from "./meshcopTlvTypes.js";
 import { SecurityPolicy } from "./SecurityPolicy.js";
@@ -156,8 +157,8 @@ function encodeWithReplay(ds: OperationalDataset, originals: ReadonlyArray<Basic
             seenKnownTypes.add(original.type);
             const canonical = known.encodeCurrent(ds);
             if (canonical === undefined) continue;
-            // Decode just this TLV into a scratch dataset so we can compare named values
-            // (not bytes), preserving non-canonical encodings (e.g. legacy 1-byte CHANNEL).
+            // Compare named values rather than bytes so non-canonical encodings (e.g. the
+            // legacy 1-byte CHANNEL form) replay unchanged when the caller hasn't mutated.
             applyKnownTlvToDataset(scratch, original, scratch.unknownTlvs);
             if (known.equalsCurrent(ds, scratch)) {
                 out.push({ type: original.type, value: original.value });
@@ -168,7 +169,7 @@ function encodeWithReplay(ds: OperationalDataset, originals: ReadonlyArray<Basic
         }
         const start = unknownCursor.get(original.type) ?? 0;
         const matchIdx = ds.unknownTlvs.findIndex(
-            (u, i) => i >= start && u.type === original.type && bytesEqual(u.value, original.value),
+            (u, i) => i >= start && u.type === original.type && Bytes.areEqual(u.value, original.value),
         );
         if (matchIdx === -1) continue;
         unknownCursor.set(original.type, matchIdx + 1);
@@ -198,14 +199,6 @@ function canonicalEntries(ds: OperationalDataset): BasicTlvEntry[] {
         out.push({ type: u.type, value: u.value.slice() });
     }
     return out;
-}
-
-function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
-    if (a.length !== b.length) return false;
-    for (let i = 0; i < a.length; i++) {
-        if (a[i] !== b[i]) return false;
-    }
-    return true;
 }
 
 /**
@@ -244,7 +237,7 @@ function handler<K extends keyof OperationalDataset>(
 
 const eqNumber = (a: number, b: number): boolean => a === b;
 const eqString = (a: string, b: string): boolean => a === b;
-const eqBytes = (a: Uint8Array, b: Uint8Array): boolean => bytesEqual(a, b);
+const eqBytes = (a: Uint8Array, b: Uint8Array): boolean => Bytes.areEqual(a, b);
 const eqSecurityPolicy = (a: SecurityPolicy, b: SecurityPolicy): boolean =>
     a.rotationTime === b.rotationTime && a.flags === b.flags;
 
