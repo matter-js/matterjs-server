@@ -93,7 +93,7 @@ function bigintFromBE(bytes: Uint8Array): bigint {
     return v;
 }
 
-function getGBytes(): Uint8Array {
+function getBaseGBytes(): Uint8Array {
     return Point.BASE.toBytes(false);
 }
 
@@ -106,16 +106,45 @@ function pointFromBytes(bytes: Uint8Array): InstanceType<typeof Point> {
     return Point.fromBytes(bytes);
 }
 
+/**
+ * Optional generator override. When omitted the curve base point `G` is used,
+ * matching round-1 ZKPs. Round 2 passes a composite point (e.g. `X1 + X2 + X3`)
+ * and must supply both `point` (for arithmetic) and `bytes` (for the hash
+ * preimage, since mbedTLS hashes the SEC1-uncompressed encoding verbatim).
+ */
+export interface SchnorrZkpGenerator {
+    point: InstanceType<typeof Point>;
+    bytes: Uint8Array;
+}
+
+function generatorOrBase(g?: SchnorrZkpGenerator): SchnorrZkpGenerator {
+    if (g) {
+        if (g.bytes.length !== POINT_LEN || g.bytes[0] !== 0x04) {
+            throw new Error("generator bytes must be SEC1-uncompressed P-256 (65 bytes, 0x04 prefix)");
+        }
+        return g;
+    }
+    return { point: Point.BASE, bytes: getBaseGBytes() };
+}
+
 export const SchnorrZkp = {
     /**
-     * Generate a Schnorr ZKP for `(x, X = x*G)` against base point `G` (curve generator).
+     * Generate a Schnorr ZKP for `(x, X = x*G)`. `G` defaults to the curve generator;
+     * pass `generator` for the round-2 composite-generator case.
+     *
      * The caller must supply both `x` and the SEC1 encoding of `X` to keep the call site
      * identical to the verification path (no implicit recomputation).
      *
      * `ephemeral` is the per-proof scalar `v`; in production it must be sampled
      * uniformly from `[1, n-1]`. Tests pass a fixed value so the proof is deterministic.
      */
-    generate(args: { privateKey: bigint; publicKey: Uint8Array; ephemeral: bigint; id: string }): SchnorrZkp {
+    generate(args: {
+        privateKey: bigint;
+        publicKey: Uint8Array;
+        ephemeral: bigint;
+        id: string;
+        generator?: SchnorrZkpGenerator;
+    }): SchnorrZkp {
         const { privateKey, publicKey, ephemeral, id } = args;
         if (ephemeral <= 0n || ephemeral >= N) {
             throw new Error("ephemeral scalar must be in [1, n-1]");
@@ -123,23 +152,24 @@ export const SchnorrZkp = {
         if (privateKey <= 0n || privateKey >= N) {
             throw new Error("private key scalar must be in [1, n-1]");
         }
-        const gBytes = getGBytes();
-        const V = Point.BASE.multiply(ephemeral);
+        const g = generatorOrBase(args.generator);
+        const V = g.point.multiply(ephemeral);
         const vBytes = V.toBytes(false);
         const idBytes = new TextEncoder().encode(id);
-        const h = hashChallenge({ gBytes, vBytes, xBytes: publicKey, idBytes });
+        const h = hashChallenge({ gBytes: g.bytes, vBytes, xBytes: publicKey, idBytes });
         // r = v - h*x mod n, matching mbedTLS ecjpake_zkp_write order (ecjpake.c:342-345).
         const rBig = (((ephemeral - ((h * privateKey) % N)) % N) + N) % N;
         return { V: vBytes, r: bigintToMinimalBE(rBig) };
     },
 
-    verify(args: { zkp: SchnorrZkp; publicKey: Uint8Array; id: string }): boolean {
+    verify(args: { zkp: SchnorrZkp; publicKey: Uint8Array; id: string; generator?: SchnorrZkpGenerator }): boolean {
         const { zkp, publicKey, id } = args;
-        const gBytes = getGBytes();
         const idBytes = new TextEncoder().encode(id);
+        let g: SchnorrZkpGenerator;
         let V;
         let X;
         try {
+            g = generatorOrBase(args.generator);
             V = pointFromBytes(zkp.V);
             X = pointFromBytes(publicKey);
         } catch {
@@ -152,9 +182,9 @@ export const SchnorrZkp = {
         if (r >= N) {
             return false;
         }
-        const h = hashChallenge({ gBytes, vBytes: zkp.V, xBytes: publicKey, idBytes });
+        const h = hashChallenge({ gBytes: g.bytes, vBytes: zkp.V, xBytes: publicKey, idBytes });
         // mbedTLS verify computes V' = r*G + h*X (ecjpake.c:293-294 via ecp_muladd).
-        const lhs = Point.BASE.multiplyUnsafe(r).add(X.multiplyUnsafe(h));
+        const lhs = g.point.multiplyUnsafe(r).add(X.multiplyUnsafe(h));
         return lhs.equals(V);
     },
 } as const;

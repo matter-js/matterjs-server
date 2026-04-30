@@ -17,6 +17,8 @@ const FIXTURE = resolve(PACKAGE_ROOT, "test/fixtures/ecjpake/mbedtls-self-test-v
 interface MbedTlsVectors {
     x1: string;
     x2: string;
+    x3: string;
+    x4: string;
     cli_one: string;
     srv_one: string;
 }
@@ -191,5 +193,56 @@ describe("SchnorrZkp.generate -> verify round-trip", () => {
         const b = SchnorrZkp.generate({ privateKey: x, publicKey: X, ephemeral: v, id: "client" });
         expect(Bytes.areEqual(a.V, b.V)).to.equal(true);
         expect(Bytes.areEqual(a.r, b.r)).to.equal(true);
+    });
+});
+
+describe("SchnorrZkp custom generator (round-2 prep)", () => {
+    const vectors = loadVectors();
+
+    function makeCompositeGenerator() {
+        // G' = (x1*G) + (x2*G) + (x3*G), the same shape mbedTLS uses for round 2.
+        const X1 = Point.BASE.multiply(bigintFromHex(vectors.x1));
+        const X2 = Point.BASE.multiply(bigintFromHex(vectors.x2));
+        const X3 = Point.BASE.multiply(bigintFromHex(vectors.x3));
+        const point = X1.add(X2).add(X3);
+        return { point, bytes: point.toBytes(false) };
+    }
+
+    it("generate -> verify round-trips against a composite generator", () => {
+        const g = makeCompositeGenerator();
+        const x = bigintFromHex(vectors.x4);
+        const v = bigintFromHex(vectors.x1);
+        const X = g.point.multiply(x).toBytes(false);
+        const zkp = SchnorrZkp.generate({ privateKey: x, publicKey: X, ephemeral: v, id: "server", generator: g });
+        expect(SchnorrZkp.verify({ zkp, publicKey: X, id: "server", generator: g })).to.equal(true);
+    });
+
+    it("verify rejects when the verifier uses the base generator instead of the composite", () => {
+        const g = makeCompositeGenerator();
+        const x = bigintFromHex(vectors.x4);
+        const v = bigintFromHex(vectors.x1);
+        const X = g.point.multiply(x).toBytes(false);
+        const zkp = SchnorrZkp.generate({ privateKey: x, publicKey: X, ephemeral: v, id: "server", generator: g });
+        expect(SchnorrZkp.verify({ zkp, publicKey: X, id: "server" })).to.equal(false);
+    });
+
+    it("verify rejects when the prover uses the base generator but verifier uses composite", () => {
+        const g = makeCompositeGenerator();
+        const x = bigintFromHex(vectors.x4);
+        const v = bigintFromHex(vectors.x1);
+        const X = Point.BASE.multiply(x).toBytes(false);
+        const zkp = SchnorrZkp.generate({ privateKey: x, publicKey: X, ephemeral: v, id: "server" });
+        expect(SchnorrZkp.verify({ zkp, publicKey: X, id: "server", generator: g })).to.equal(false);
+    });
+
+    it("rejects malformed generator bytes", () => {
+        const g = makeCompositeGenerator();
+        const x = bigintFromHex(vectors.x4);
+        const v = bigintFromHex(vectors.x1);
+        const X = g.point.multiply(x).toBytes(false);
+        const bad = { point: g.point, bytes: g.bytes.slice(0, 64) };
+        expect(() =>
+            SchnorrZkp.generate({ privateKey: x, publicKey: X, ephemeral: v, id: "server", generator: bad }),
+        ).to.throw(/generator/);
     });
 });
