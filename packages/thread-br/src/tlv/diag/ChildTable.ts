@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { type Mode, Mode as ModeCodec } from "./Mode.js";
+import { Mode } from "./Mode.js";
 
 /**
  * One Child Table entry — 3 bytes per OpenThread `ChildTableTlvEntry`:
@@ -58,7 +58,7 @@ export namespace ChildTable {
                 timeoutSeconds: timeoutFromExponent(timeoutExponent),
                 incomingLinkQuality: (word & ILQ_MASK) >> ILQ_SHIFT,
                 childId: word & CHILD_ID_MASK,
-                mode: ModeCodec.decode(value.subarray(offset + 2, offset + 3)),
+                mode: Mode.decode(value.subarray(offset + 2, offset + 3)),
             });
         }
         return entries;
@@ -83,7 +83,7 @@ export namespace ChildTable {
                 (e.childId & CHILD_ID_MASK);
             out[i * ENTRY_BYTES] = (word >> 8) & 0xff;
             out[i * ENTRY_BYTES + 1] = word & 0xff;
-            out[i * ENTRY_BYTES + 2] = ModeCodec.encode(e.mode)[0];
+            out[i * ENTRY_BYTES + 2] = Mode.encode(e.mode)[0];
         }
         return out;
     }
