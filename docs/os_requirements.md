@@ -82,7 +82,7 @@ have to use `2` for the accept_ra variable. See also the [Thread Border Router -
 
 **DO NOT** apply conntrack-based firewall rules to traffic **forwarded** between the Thread interface and the LAN on a Thread Border Router itself, when multiple TBRs share the same Thread network. A single Matter flow can ingress one TBR and egress another, so each TBR's conntrack only ever sees half the flow and will drop it.
 
-This applies only to the TBR's forwarding/router role. It does **not** affect conntrack on the Matter Server's own host (see [Stateful firewalls](#stateful-firewalls-host-vm-hypervisor) below) — there, both directions terminate at the same kernel and conntrack works correctly.
+This applies only to the TBR's forwarding/router role. It does **not** affect conntrack on the Matter Server's own host (see [Stateful firewalls](#stateful-firewalls-host-vm-hypervisor) below) — there, traffic of both directions are observed by the same firewall which makes conntrack work correctly.
 
 ## Stateful firewalls (host, VM, hypervisor)
 
