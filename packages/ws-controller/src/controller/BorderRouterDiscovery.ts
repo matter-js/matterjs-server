@@ -540,21 +540,29 @@ export class BorderRouterDiscovery {
     }
 
     #evictOldest(): boolean {
-        let oldestKey: string | undefined;
-        let oldestSeen = Number.POSITIVE_INFINITY;
+        let oldestStaleKey: string | undefined;
+        let oldestStaleSeen = Number.POSITIVE_INFINITY;
+        let oldestLiveKey: string | undefined;
+        let oldestLiveSeen = Number.POSITIVE_INFINITY;
         for (const [xa, entry] of this.#registry) {
-            if (entry.lastSeen < oldestSeen) {
-                oldestSeen = entry.lastSeen;
-                oldestKey = xa;
+            if (entry.sources.length === 0) {
+                if (entry.lastSeen < oldestStaleSeen) {
+                    oldestStaleSeen = entry.lastSeen;
+                    oldestStaleKey = xa;
+                }
+            } else if (entry.lastSeen < oldestLiveSeen) {
+                oldestLiveSeen = entry.lastSeen;
+                oldestLiveKey = xa;
             }
         }
-        if (oldestKey === undefined) return false;
+        const evictKey = oldestStaleKey ?? oldestLiveKey;
+        if (evictKey === undefined) return false;
 
-        this.#registry.delete(oldestKey);
+        this.#registry.delete(evictKey);
 
         let releasedObservers = 0;
         for (const [instanceKey, tracking] of [...this.#instanceObservers]) {
-            if (tracking.xaKey !== oldestKey) continue;
+            if (tracking.xaKey !== evictKey) continue;
             tracking.name.off(tracking.observer);
             if (tracking.targetKey !== undefined) {
                 this.#releaseTarget(tracking.targetKey);
@@ -569,7 +577,7 @@ export class BorderRouterDiscovery {
                 `Border router registry exceeded ${REGISTRY_MAX_ENTRIES} entries; evicting oldest (released ${releasedObservers} instance observer${releasedObservers === 1 ? "" : "s"})`,
             );
         } else {
-            logger.debug(`Evicted border router xa=${oldestKey}; released ${releasedObservers} instance observers`);
+            logger.debug(`Evicted border router xa=${evictKey}; released ${releasedObservers} instance observers`);
         }
         return true;
     }

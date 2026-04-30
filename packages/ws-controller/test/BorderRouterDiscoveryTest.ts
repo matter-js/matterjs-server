@@ -575,6 +575,60 @@ describe("BorderRouterDiscovery", () => {
                 Date.now = originalDateNow;
             }
         });
+
+        it("eviction prefers stale entries before live ones when the cap is hit", async () => {
+            const originalDateNow = Date.now;
+            let now = 1000;
+            Date.now = () => now;
+            try {
+                await disc.start();
+
+                const staleXa = makeXa(0);
+                stub.makeTarget("staleHost.local.", ["10.0.0.1"]);
+                const staleInst = stub.makeInstance(`${staleXa.toLowerCase()}._meshcop._udp.local`, {
+                    txt: { xa: staleXa.toLowerCase(), nn: "Stale" },
+                    srvTarget: "staleHost.local.",
+                    srvPort: 49000,
+                });
+                stub.discover(staleInst);
+                staleInst.setDiscovered(false);
+                staleInst.emit({ name: staleInst });
+                expect(disc.get(staleXa)!.sources).to.deep.equal([]);
+                now++;
+
+                for (let i = 1; i < 256; i++) {
+                    const xa = makeXa(i);
+                    const host = `host${i}.local.`;
+                    stub.makeTarget(host, [`10.1.${(i >> 8) & 0xff}.${i & 0xff}`]);
+                    const inst = stub.makeInstance(`${xa.toLowerCase()}._meshcop._udp.local`, {
+                        txt: { xa: xa.toLowerCase(), nn: `Net${i}` },
+                        srvTarget: host,
+                        srvPort: 49154 + i,
+                    });
+                    stub.discover(inst);
+                    now++;
+                }
+                expect(disc.list().length).to.equal(256);
+
+                const newXa = makeXa(500);
+                stub.makeTarget("newHost.local.", ["10.2.0.0"]);
+                const newInst = stub.makeInstance(`${newXa.toLowerCase()}._meshcop._udp.local`, {
+                    txt: { xa: newXa.toLowerCase(), nn: "New" },
+                    srvTarget: "newHost.local.",
+                    srvPort: 50000,
+                });
+                stub.discover(newInst);
+
+                expect(disc.list().length).to.equal(256);
+                expect(disc.get(staleXa)).to.equal(undefined);
+                expect(disc.get(newXa)).to.not.equal(undefined);
+                for (let i = 1; i < 256; i++) {
+                    expect(disc.get(makeXa(i))).to.not.equal(undefined);
+                }
+            } finally {
+                Date.now = originalDateNow;
+            }
+        });
     });
 });
 
