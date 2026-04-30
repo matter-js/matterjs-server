@@ -15,9 +15,11 @@ const REGISTRY_MAX_ENTRIES = 256;
  *  yet emitted a valid xa, but bounded so a noisy LAN can't grow `#instanceObservers`
  *  without limit. Eviction targets the oldest xa-less observer first. */
 const INSTANCE_OBSERVER_CAP = 512;
-/** Stale entries (sources.length === 0) are pruned 24h after their last successful
- *  mDNS discovery (entry.lastSeen). Long enough that BRs announcing once per
- *  ~half-day stay resolvable; short enough that vanished BRs eventually drop. */
+/** Stale entries (sources.length === 0) become eligible for pruning 24h after their
+ *  last successful mDNS discovery (entry.lastSeen). Pruning is lazy — `#pruneExpired`
+ *  runs on `list` / `get` / `#onDiscovered`, so without activity an eligible entry
+ *  may linger past the window. Long enough that BRs announcing once per ~half-day
+ *  stay resolvable; short enough that vanished BRs eventually drop. */
 const STALE_RETENTION_MS = 24 * 60 * 60 * 1000;
 const MESHCOP_TYPE_QNAME = "_meshcop._udp.local";
 const TREL_TYPE_QNAME = "_trel._udp.local";
