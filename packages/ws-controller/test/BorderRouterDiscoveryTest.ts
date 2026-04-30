@@ -184,7 +184,7 @@ describe("BorderRouterDiscovery", () => {
             expect(e!.extendedPanIdHex).to.equal("AAAAAAAAAAAAAAAA");
         });
 
-        it("removes a source when an instance becomes undiscovered, deletes entry when last source", async () => {
+        it("retains entry across single-source loss and full-source loss with last-known fields preserved", async () => {
             await disc.start();
             stub.makeTarget("Kuche.local.", ["192.168.1.10"]);
             stub.makeTarget("br.local.", ["10.0.0.5"]);
@@ -206,15 +206,22 @@ describe("BorderRouterDiscovery", () => {
             trelInst.setDiscovered(false);
             trelInst.emit({ name: trelInst });
 
-            const after = disc.get("AABBCCDDEEFF0011");
-            expect(after).to.not.equal(undefined);
-            expect(after!.sources).to.deep.equal(["meshcop"]);
-            expect(after!.trelPort).to.equal(undefined);
+            const afterTrelLoss = disc.get("AABBCCDDEEFF0011");
+            expect(afterTrelLoss).to.not.equal(undefined);
+            expect(afterTrelLoss!.sources).to.deep.equal(["meshcop"]);
+            expect(afterTrelLoss!.trelPort).to.equal(12345);
+            expect(afterTrelLoss!.networkName).to.equal("MyNet");
             expect(stub.targetByKey("br.local.")!.observerCount()).to.equal(0);
 
             meshcopInst.setDiscovered(false);
             meshcopInst.emit({ name: meshcopInst });
-            expect(disc.get("AABBCCDDEEFF0011")).to.equal(undefined);
+
+            const stale = disc.get("AABBCCDDEEFF0011");
+            expect(stale).to.not.equal(undefined);
+            expect(stale!.sources).to.deep.equal([]);
+            expect(stale!.networkName).to.equal("MyNet");
+            expect(stale!.meshcopPort).to.equal(49154);
+            expect(stale!.trelPort).to.equal(12345);
             expect(stub.targetByKey("kuche.local.")!.observerCount()).to.equal(0);
         });
 
