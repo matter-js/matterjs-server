@@ -73,8 +73,56 @@ sysctl -w net.ipv6.conf.wlan0.accept_ra=1
 sysctl -w net.ipv6.conf.wlan0.accept_ra_rt_info_max_plen=64
 ```
 
+**DO NOT** rely on `sysctl -w` alone if NetworkManager or systemd-networkd manages the interface — they override runtime sysctl values. Set the values in the network manager's own configuration files (or on the connection profile) so they survive interface restarts.
+
 If your system has IPv6 forwarding enabled (not recommended, see above), you'll
 have to use `2` for the accept_ra variable. See also the [Thread Border Router - Bidirectional IPv6 Connectivity and DNS-Based Service Discovery codelab](https://openthread.io/codelabs/openthread-border-router#6).
+
+### Multiple Thread Border Routers (multi-TBR)
+
+**DO NOT** apply conntrack rules to traffic forwarded between the Thread interface and the LAN on a Thread Border Router. With multiple TBRs in one Thread network, ingress and egress can land on different TBRs; conntrack will drop the resulting asymmetric flow.
+
+## Stateful firewalls (host, VM, hypervisor)
+
+If a stateful firewall sits on the path between the Matter Server and the Thread Border Router (host firewall, VM hypervisor firewall, container host firewall), the Linux conntrack default for UDP streams (120 s) drops reports from battery-powered (sleepy) Matter devices, whose report intervals are several minutes long.
+
+**DO** check `nf_conntrack_udp_timeout_stream` and raise it to at least `1800` (we recommend `3600`) on every kernel that filters Matter traffic:
+
+```sh
+# Skip if no stateful firewall is in the path. Otherwise:
+sysctl net.netfilter.nf_conntrack_udp_timeout_stream 2>/dev/null
+# Absent / "unknown key" → conntrack module not loaded → nothing to do.
+# Present and < 1800 → raise it:
+sudo sysctl -w net.netfilter.nf_conntrack_udp_timeout_stream=3600
+echo 'net.netfilter.nf_conntrack_udp_timeout_stream = 3600' \
+  | sudo tee /etc/sysctl.d/99-matter.conf
+# Present and ≥ 1800 → done.
+```
+
+**DO** apply this on the kernel that actually filters the packets:
+
+- Bare-metal: the host itself.
+- VM with hypervisor firewall (e.g. Proxmox per-VM firewall, vSphere DFW): the **hypervisor** kernel. Setting it inside the guest has no effect.
+- Docker on Linux with firewalld (Fedora/RHEL default) or ufw (Ubuntu, when enabled): the Docker **host**.
+- Home Assistant OS via the Supervisor: usually fine out of the box. Only worry if you have added a custom firewall layer.
+
+**DO NOT** filter Matter UDP traffic by destination port. The controller binds an ephemeral port, and device source ports also vary.
+
+**DO NOT** pin firewall rules to UDP/5540. Most devices use it, but not all.
+
+If you must filter, scope rules by source IPv6 prefix (Thread ULA + OMR prefix) or by interface — never by port.
+
+Diagnostic sentinel: a per-instance firewall chain drop counter climbing in step with battery-device report cycles while your "Matter" ACCEPT rule shows zero hits → conntrack timeout is the cause.
+
+## VM and container deployments
+
+**DO** give the Matter Server host (or VM) a network interface directly on the network where the Thread Border Router lives. Bridged/NAT networking combined with Matter UDP unicast traffic is unreliable.
+
+**DO** set the IPv6 sysctls (`accept_ra`, `accept_ra_rt_info_max_plen`, `forwarding=0`) **inside** the VM guest as well, not just on the hypervisor.
+
+**DO** run the Docker image with `--network=host`. Bridge networking will not work. Note that `--network=host` bypasses Docker's own iptables rules but **not** firewalld or ufw on the host kernel — see [Stateful firewalls](#stateful-firewalls-host-vm-hypervisor) above.
+
+**DO NOT** enable mDNS reflectors or Avahi forwarders between network segments.
 
 ## Bluetooth Low Energy requirements
 
