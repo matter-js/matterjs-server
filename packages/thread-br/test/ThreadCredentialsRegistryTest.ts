@@ -71,6 +71,22 @@ describe("ThreadCredentialsRegistry", () => {
             expect(emitted[0].networkName).to.equal("OpenThread");
         });
 
+        it("emits a fresh copy — mutating the listener's view does not change stored credentials", () => {
+            const lookup = new Uint8Array([0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88]);
+            let received: ThreadNetworkCredentials | undefined;
+            registry.events.registered.on(c => {
+                received = c;
+            });
+            registry.registerCredentials(makeCreds());
+            expect(received).to.not.equal(undefined);
+            received!.extPanId[0] = 0xff;
+            received!.pskc[0] = 0xff;
+            const stored = registry.getCredentials(lookup);
+            expect(stored).to.not.equal(undefined);
+            expect(stored!.extPanId[0]).to.equal(0x11);
+            expect(stored!.pskc[0]).to.equal(0x00);
+        });
+
         it("replaces an existing entry with the same extPanId", () => {
             const ds = loadDataset("synthetic-1.hex");
             registry.register(ds);
@@ -130,6 +146,23 @@ describe("ThreadCredentialsRegistry", () => {
             const list = registry.list();
             expect(list).to.have.lengthOf(1);
             expect(list[0].networkName).to.equal("OpenThread");
+        });
+
+        it("does not retain caller-mutable views of extPanId or pskc", () => {
+            const extPanId = new Uint8Array([0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88]);
+            const pskc = new Uint8Array(16).fill(0xab);
+            registry.registerCredentials({
+                extPanId,
+                networkName: "MyNet",
+                pskc,
+                activeTimestamp: 1n,
+            });
+            extPanId[0] = 0xff;
+            pskc[0] = 0xff;
+            const stored = registry.getCredentials(new Uint8Array([0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88]));
+            expect(stored).to.not.equal(undefined);
+            expect(stored!.extPanId[0]).to.equal(0x11);
+            expect(stored!.pskc[0]).to.equal(0xab);
         });
     });
 
