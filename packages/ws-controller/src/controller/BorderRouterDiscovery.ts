@@ -299,36 +299,6 @@ export class BorderRouterDiscovery {
         if (idx !== -1) {
             entry.sources.splice(idx, 1);
         }
-        // Clear fields exclusively contributed by the disappearing source so the registry
-        // doesn't expose stale meshcop naming / state when only trel remains (or vice versa).
-        if (source === "meshcop") {
-            entry.meshcopPort = undefined;
-            entry.networkName = undefined;
-            entry.vendorName = undefined;
-            entry.modelName = undefined;
-            entry.threadVersion = undefined;
-            entry.borderAgentIdHex = undefined;
-            entry.stateBitmapHex = undefined;
-            entry.activeTimestampHex = undefined;
-            entry.partitionIdHex = undefined;
-            entry.domainName = undefined;
-        } else {
-            entry.trelPort = undefined;
-        }
-        if (entry.sources.length === 0) {
-            this.#registry.delete(xaKey);
-            return;
-        }
-        // Hostname / addresses can come from either source (meshcop wins on conflict). With
-        // the dropped source gone, re-parse the still-discovered companion instance so those
-        // shared fields reflect the surviving advertisement instead of lingering on the
-        // value the disappearing source last set.
-        for (const otherTracking of this.#instanceObservers.values()) {
-            if (otherTracking.xaKey === xaKey && otherTracking.source !== source) {
-                this.#parseAndUpsert(otherTracking.name, otherTracking.source);
-                break;
-            }
-        }
     }
 
     #onTargetChanged(target: DnssdNameLike): void {
