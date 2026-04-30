@@ -281,13 +281,12 @@ export class BorderRouterDiscovery {
 
     #onInstanceChanged(name: DnssdNameLike, source: Source): void {
         if (!this.#started) return;
-        try {
-            this.#parseAndUpsert(name, source);
-        } catch (e) {
-            logger.debug("Error processing border router instance change:", e);
-        }
-
         if (name.isDiscovered) {
+            try {
+                this.#parseAndUpsert(name, source);
+            } catch (e) {
+                logger.debug("Error processing border router instance change:", e);
+            }
             return;
         }
 
