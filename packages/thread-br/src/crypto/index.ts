@@ -5,3 +5,5 @@
  */
 
 export { AesCmac, AesCmacPrf128 } from "./AesCmacPrf128.js";
+export { pbkdf2AesCmac } from "./Pbkdf2AesCmac.js";
+export { Pskc } from "./Pskc.js";

@@ -16,3 +16,5 @@ export { MeshCopTlvType, MeshCopTlvTypeName, OperationalDataset, SecurityPolicy 
 
 export type { BasicTlvEntry } from "./tlv/BasicTlvCodec.js";
 export { BasicTlv } from "./tlv/BasicTlvCodec.js";
+
+export { Pskc } from "./crypto/index.js";
