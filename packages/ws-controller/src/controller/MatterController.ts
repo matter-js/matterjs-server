@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { BorderRouterRegistry } from "@matter-server/thread-br";
+import { BorderRouterRegistry, OperationalDataset, ThreadCredentialsRegistry } from "@matter-server/thread-br";
 import {
     Bytes,
     CommissioningClient,
@@ -66,6 +66,35 @@ function parseVersionToNumber(version: string): number {
     return major * 10000 + minor * 100 + patch;
 }
 
+/**
+ * Decode a stored Thread operational dataset hex string and register the resulting
+ * credentials. Logs the public extPanId + network name; never logs `pskc` or
+ * `networkKey`. Empty / undefined input is a no-op. Errors are caught and warned —
+ * the registry is best-effort so a malformed hex blob in storage doesn't block boot
+ * or block a successful storage write in the WS path.
+ */
+export function registerThreadCredentialsFromHex(
+    credentials: ThreadCredentialsRegistry,
+    hex: string | undefined,
+    source: string,
+): boolean {
+    if (hex === undefined || hex === "") return false;
+    try {
+        const blob = Bytes.of(Bytes.fromHex(hex));
+        const ds = OperationalDataset.decode(blob);
+        credentials.register(ds);
+        logger.info(
+            `Registered Thread credentials from ${source} (xp=${
+                ds.extPanId === undefined ? "?" : Bytes.toHex(ds.extPanId).toUpperCase()
+            }, network="${ds.networkName ?? ""}")`,
+        );
+        return true;
+    } catch (e) {
+        logger.warn(`Could not register Thread credentials from ${source}: ${e}`);
+        return false;
+    }
+}
+
 export class MatterController {
     #env: Environment;
     #controllerInstance?: CommissioningController;
@@ -77,6 +106,7 @@ export class MatterController {
     #enableTestNetDcl = false;
     #disableOtaProvider = true;
     readonly #borderRouterRegistry: BorderRouterRegistry;
+    readonly #credentials = new ThreadCredentialsRegistry();
 
     static async create(
         environment: Environment,
@@ -215,6 +245,8 @@ export class MatterController {
 
                 initPromises.push(this.#borderRouterRegistry.start());
 
+                this.#registerStoredThreadCredentials();
+
                 try {
                     await MatterAggregateError.allSettled(initPromises);
                 } catch (error) {
@@ -228,6 +260,14 @@ export class MatterController {
 
     get borderRouters(): BorderRouterRegistry {
         return this.#borderRouterRegistry;
+    }
+
+    get credentials(): ThreadCredentialsRegistry {
+        return this.#credentials;
+    }
+
+    #registerStoredThreadCredentials(): void {
+        registerThreadCredentialsFromHex(this.#credentials, this.#config.threadDataset, "stored dataset");
     }
 
     /**
