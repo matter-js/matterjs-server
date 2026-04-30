@@ -157,7 +157,7 @@ export const SchnorrZkp = {
         const vBytes = V.toBytes(false);
         const idBytes = new TextEncoder().encode(id);
         const h = hashChallenge({ gBytes: g.bytes, vBytes, xBytes: publicKey, idBytes });
-        // r = v - h*x mod n, matching mbedTLS ecjpake_zkp_write order (ecjpake.c:342-345).
+        // r = v - h*x mod n, matching mbedTLS ecjpake_zkp_write.
         const rBig = (((ephemeral - ((h * privateKey) % N)) % N) + N) % N;
         return { V: vBytes, r: bigintToMinimalBE(rBig) };
     },
@@ -183,7 +183,7 @@ export const SchnorrZkp = {
             return false;
         }
         const h = hashChallenge({ gBytes: g.bytes, vBytes: zkp.V, xBytes: publicKey, idBytes });
-        // mbedTLS verify computes V' = r*G + h*X (ecjpake.c:293-294 via ecp_muladd).
+        // mbedTLS ecjpake_zkp_verify computes V' = r*G + h*X via ecp_muladd.
         const lhs = g.point.multiplyUnsafe(r).add(X.multiplyUnsafe(h));
         return lhs.equals(V);
     },

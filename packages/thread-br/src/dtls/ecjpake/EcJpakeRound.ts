@@ -11,7 +11,7 @@ import { SchnorrZkp, type SchnorrZkpGenerator } from "./SchnorrZkp.js";
  * One half of an EC-JPAKE round-1 message: an ephemeral public key plus a Schnorr
  * proof of knowledge of its private scalar against the curve generator.
  *
- * Wire (mbedTLS v3.6.6 `ecjpake_kkp_write`, ecjpake.c §411-443):
+ * Wire (mbedTLS v3.6.6 `ecjpake_kkp_write`):
  * ```
  * uint8 X_len; uint8 X[X_len];          // X_len = 65 for P-256 uncompressed
  * uint8 V_len; uint8 V[V_len];          // V_len = 65 for P-256 uncompressed
@@ -103,7 +103,7 @@ function readKeyKP(bytes: Uint8Array, offset: number): { kp: EcJpakeKeyKP; nextO
  * `ECJPAKEKeyKPPairList`: two `ECJPAKEKeyKP` structures back-to-back, no separator,
  * no outer length (the carrying TLS extension layer adds the 2-byte length on the wire).
  *
- * Mirrors `ecjpake_kkpp_write` / `ecjpake_kkpp_read` (ecjpake.c §449-511).
+ * Mirrors mbedTLS `ecjpake_kkpp_write` / `ecjpake_kkpp_read`.
  */
 export const EcJpakeRound = {
     /**
@@ -112,7 +112,7 @@ export const EcJpakeRound = {
      * deterministic for testing — production callers must source them from a CSPRNG.
      *
      * `id` is `"client"` for the joiner and `"server"` for the commissioner — these
-     * are the literal byte strings from mbedTLS `ecjpake_id[]` (ecjpake.c §28-31).
+     * are the literal byte strings from mbedTLS `ecjpake_id[]`.
      */
     buildRound1(args: { x1: bigint; x2: bigint; v1: bigint; v2: bigint; id: string }): {
         kp1: EcJpakeKeyKP;
@@ -146,8 +146,8 @@ export const EcJpakeRound = {
     },
 
     /**
-     * Compute the round-2 composite generator `G' = Xp1 + Xp2 + Xm1`
-     * (mbedTLS `ecjpake.c:676-677`, also used by `read_round_two:585-586`).
+     * Compute the round-2 composite generator `G' = Xp1 + Xp2 + Xm1` (mbedTLS
+     * `ecjpake_kkpp_write_round_two` / `ecjpake_kkpp_read_round_two`).
      * Both sides use the same formula by symmetry — for the client `Xp1 = X3`,
      * `Xp2 = X4`, `Xm1 = X1`; for the server `Xp1 = X1`, `Xp2 = X2`, `Xm1 = X3`.
      */
@@ -194,10 +194,11 @@ export const EcJpakeRound = {
 
     /**
      * Serialise a round-2 message. When `prependEcParameters` is true the 3-byte
-     * `ECParameters{ named_curve, secp256r1 }` header (mbedTLS `ssl_tls12_server.c:2476-2491`,
-     * also written in `mbedtls_ecjpake_write_round_two` when role=SERVER, ecjpake.c:690-698)
-     * is emitted before the `ECJPAKEKeyKP`. Server-side messages
-     * (ServerKeyExchange) use `true`; client-side (ClientKeyExchange) uses `false`.
+     * `ECParameters{ named_curve, secp256r1 }` header is emitted before the
+     * `ECJPAKEKeyKP`. mbedTLS writes it inside `mbedtls_ecjpake_write_round_two`
+     * when role=SERVER (consumed by `ssl_write_server_key_exchange`).
+     * Server-side messages (ServerKeyExchange) use `true`; client-side
+     * (ClientKeyExchange) uses `false`.
      */
     serializeRound2(kp: EcJpakeKeyKP, options: { prependEcParameters: boolean }): Uint8Array {
         const out = new Array<number>();

@@ -12,9 +12,8 @@ const N = Point.Fn.ORDER;
 const COORDINATE_BYTES = 32;
 
 /**
- * EC-JPAKE premaster-secret derivation, mirroring
- * `mbedtls_ecjpake_derive_secret` (ecjpake.c v3.6.6 §759-791) and its helper
- * `mbedtls_ecjpake_derive_k` (§726-757).
+ * EC-JPAKE premaster-secret derivation, mirroring mbedTLS v3.6.6
+ * `mbedtls_ecjpake_derive_secret` and its helper `mbedtls_ecjpake_derive_k`.
  *
  * Given the agreed pieces from a completed round-2 exchange:
  *
@@ -47,15 +46,15 @@ export const EcJpakePms = {
         if (Xp_pt.is0() || Xp2_pt.is0()) {
             throw new Error("peer points must not be the point at infinity");
         }
-        const xm2sNeg = ((-((xm2 * s) % N) % N) + N) % N;
+        const xm2sNeg = (N - ((xm2 * s) % N)) % N;
         const K1 = Xp_pt.add(Xp2_pt.multiplyUnsafe(xm2sNeg));
         const K = K1.multiply(xm2);
         if (K.is0()) {
             throw new Error("derived K is the point at infinity");
         }
-        // mbedTLS writes K.X as a fixed-width 32-byte BE field element
-        // (ecjpake.c §782-783) before SHA-256. SEC1-uncompressed encoding from
-        // noble lays out as 0x04 || X(32) || Y(32) — slice X out at offset 1.
+        // mbedTLS writes K.X as a fixed-width 32-byte BE field element before
+        // SHA-256. SEC1-uncompressed encoding from noble lays out as
+        // 0x04 || X(32) || Y(32) — slice X out at offset 1.
         const sec1 = K.toBytes(false);
         const xBytes = sec1.subarray(1, 1 + COORDINATE_BYTES);
         return sha256(xBytes);
