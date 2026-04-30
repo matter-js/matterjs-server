@@ -5,6 +5,7 @@
  */
 
 import { NodeId } from "@matter/main";
+import { EndpointNumber } from "@matter/main/types";
 import { NodeStates, PairedNode } from "@project-chip/matter.js/device";
 import { ServerError } from "../types/WebSocketMessageTypes.js";
 import { AttributeDataCache } from "./AttributeDataCache.js";
@@ -25,6 +26,13 @@ export class Nodes {
     #previousStates = new Map<NodeId, NodeStates>();
     /** Cached availability so serialization and event paths always agree */
     #lastAvailability = new Map<NodeId, boolean>();
+    /**
+     * Endpoint additions queued until the next nodeStructureChanged for that node.
+     * Preserves the wire contract used by python-matter-server: endpoint_added must
+     * arrive AFTER a node_updated that already carries the new endpoint, so consumers
+     * (e.g., Home Assistant) can resolve node.endpoints[endpoint_id] in their callback.
+     */
+    #pendingEndpointAdds = new Map<NodeId, EndpointNumber[]>();
 
     /**
      * Get the attribute cache instance.
@@ -74,6 +82,32 @@ export class Nodes {
         this.#attributeCache.delete(nodeId);
         this.#previousStates.delete(nodeId);
         this.#lastAvailability.delete(nodeId);
+        this.#pendingEndpointAdds.delete(nodeId);
+    }
+
+    /**
+     * Buffer an endpoint_added until the next nodeStructureChanged for that node.
+     */
+    queueEndpointAdded(nodeId: NodeId, endpointId: EndpointNumber): void {
+        let queue = this.#pendingEndpointAdds.get(nodeId);
+        if (queue === undefined) {
+            queue = [];
+            this.#pendingEndpointAdds.set(nodeId, queue);
+        }
+        queue.push(endpointId);
+    }
+
+    /**
+     * Take ownership of buffered endpoint additions for a node and clear the queue.
+     * Returned array is in insertion order; an empty array is returned if nothing is queued.
+     */
+    drainPendingEndpointAdds(nodeId: NodeId): EndpointNumber[] {
+        const queue = this.#pendingEndpointAdds.get(nodeId);
+        if (queue === undefined || queue.length === 0) {
+            return [];
+        }
+        this.#pendingEndpointAdds.delete(nodeId);
+        return queue;
     }
 
     /**

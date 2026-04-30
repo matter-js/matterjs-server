@@ -373,13 +373,18 @@ export class ControllerCommandHandler {
                 attributeCache.update(node);
             }
             basicInfoChangedInBatch = false;
+            // Emit node_updated first so consumers see the new endpoint in node.endpoints,
+            // then drain any endpoint_added events queued since the previous structure change.
             this.events.nodeStructureChanged.emit(nodeId);
+            for (const endpointId of this.#nodes.drainPendingEndpointAdds(nodeId)) {
+                this.events.nodeEndpointAdded.emit(nodeId, endpointId);
+            }
         });
         node.events.decommissioned.on(() => {
             this.#cleanupNodeAfterRemoval(nodeId);
             this.events.nodeDecommissioned.emit(nodeId);
         });
-        node.events.nodeEndpointAdded.on(endpointId => this.events.nodeEndpointAdded.emit(nodeId, endpointId));
+        node.events.nodeEndpointAdded.on(endpointId => this.#nodes.queueEndpointAdded(nodeId, endpointId));
         node.events.nodeEndpointRemoved.on(endpointId => this.events.nodeEndpointRemoved.emit(nodeId, endpointId));
 
         // Store the node for direct access
