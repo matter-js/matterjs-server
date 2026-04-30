@@ -22,19 +22,21 @@ describe("registerThreadCredentialsFromHex (boot path for stored thread dataset)
 
     it("is a no-op when no dataset is stored (undefined)", () => {
         const result = registerThreadCredentialsFromHex(registry, undefined, "stored dataset");
-        expect(result).to.equal(false);
+        expect(result).to.equal(undefined);
         expect(registry.list()).to.deep.equal([]);
     });
 
     it("is a no-op when the stored dataset is the empty string", () => {
         const result = registerThreadCredentialsFromHex(registry, "", "stored dataset");
-        expect(result).to.equal(false);
+        expect(result).to.equal(undefined);
         expect(registry.list()).to.deep.equal([]);
     });
 
-    it("registers credentials from a valid dataset hex blob", () => {
+    it("registers credentials from a valid dataset hex blob and returns the parsed dataset", () => {
         const result = registerThreadCredentialsFromHex(registry, SYNTHETIC_DATASET_HEX, "stored dataset");
-        expect(result).to.equal(true);
+        expect(result).to.not.equal(undefined);
+        expect(Bytes.toHex(result!.extPanId!).toUpperCase()).to.equal("1122334455667788");
+        expect(result!.networkName).to.equal("OpenThread");
         const list = registry.list();
         expect(list).to.have.lengthOf(1);
         expect(Bytes.toHex(list[0].extPanId).toUpperCase()).to.equal("1122334455667788");
@@ -43,13 +45,13 @@ describe("registerThreadCredentialsFromHex (boot path for stored thread dataset)
 
     it("warns and leaves the registry empty on malformed hex", () => {
         const result = registerThreadCredentialsFromHex(registry, "not-hex-at-all", "stored dataset");
-        expect(result).to.equal(false);
+        expect(result).to.equal(undefined);
         expect(registry.list()).to.deep.equal([]);
     });
 
     it("warns and leaves the registry empty when valid hex fails dataset decode", () => {
         const result = registerThreadCredentialsFromHex(registry, "0000", "stored dataset");
-        expect(result).to.equal(false);
+        expect(result).to.equal(undefined);
         expect(registry.list()).to.deep.equal([]);
     });
 });

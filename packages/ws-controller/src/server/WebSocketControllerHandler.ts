@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { OperationalDataset, ThreadCredentialsRegistry } from "@matter-server/thread-br";
+import { ThreadCredentialsRegistry } from "@matter-server/thread-br";
 import {
     MatterError,
     Diagnostic,
@@ -1159,15 +1159,6 @@ export class WebSocketControllerHandler implements WebServerHandler {
     }
 }
 
-function parseDatasetExtPanId(hex: string): Uint8Array | undefined {
-    try {
-        const ds = OperationalDataset.decode(Bytes.of(Bytes.fromHex(hex)));
-        return ds.extPanId;
-    } catch {
-        return undefined;
-    }
-}
-
 /**
  * Reconcile the credentials registry with a freshly-stored dataset hex (or `""` to clear).
  * Empty input drops every previously-known network. Valid input registers (or replaces by
@@ -1181,8 +1172,9 @@ export function syncThreadCredentialsToDataset(credentials: ThreadCredentialsReg
         for (const xp of previousExtPanIds) credentials.unregister(xp);
         return;
     }
-    if (!registerThreadCredentialsFromHex(credentials, dataset, "set_thread_dataset")) return;
-    const storedExtPanId = parseDatasetExtPanId(dataset);
+    const stored = registerThreadCredentialsFromHex(credentials, dataset, "set_thread_dataset");
+    if (stored === undefined) return;
+    const storedExtPanId = stored.extPanId;
     for (const xp of previousExtPanIds) {
         if (storedExtPanId === undefined || !Bytes.areEqual(xp, storedExtPanId)) {
             credentials.unregister(xp);

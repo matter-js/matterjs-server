@@ -72,13 +72,16 @@ function parseVersionToNumber(version: string): number {
  * `networkKey`. Empty / undefined input is a no-op. Errors are caught and warned —
  * the registry is best-effort so a malformed hex blob in storage doesn't block boot
  * or block a successful storage write in the WS path.
+ *
+ * Returns the parsed {@link OperationalDataset} on success so callers that need
+ * downstream fields (e.g. extPanId for reconciliation) can avoid a second decode.
  */
 export function registerThreadCredentialsFromHex(
     credentials: ThreadCredentialsRegistry,
     hex: string | undefined,
     source: string,
-): boolean {
-    if (hex === undefined || hex === "") return false;
+): OperationalDataset | undefined {
+    if (hex === undefined || hex === "") return undefined;
     try {
         const blob = Bytes.of(Bytes.fromHex(hex));
         const ds = OperationalDataset.decode(blob);
@@ -88,10 +91,10 @@ export function registerThreadCredentialsFromHex(
                 ds.extPanId === undefined ? "?" : Bytes.toHex(ds.extPanId).toUpperCase()
             }, network="${ds.networkName ?? ""}")`,
         );
-        return true;
+        return ds;
     } catch (e) {
         logger.warn(`Could not register Thread credentials from ${source}: ${e}`);
-        return false;
+        return undefined;
     }
 }
 
