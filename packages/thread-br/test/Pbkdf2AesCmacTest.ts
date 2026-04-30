@@ -8,7 +8,7 @@ import { Bytes } from "@matter/main";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { pbkdf2AesCmac } from "../src/crypto/Pkdf2AesCmac.js";
+import { pbkdf2AesCmac } from "../src/crypto/Pbkdf2AesCmac.js";
 
 const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const FIXTURE_DIR = resolve(PACKAGE_ROOT, "test/fixtures");

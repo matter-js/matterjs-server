@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { pbkdf2AesCmac } from "./Pkdf2AesCmac.js";
+import { pbkdf2AesCmac } from "./Pbkdf2AesCmac.js";
 
 const SALT_PREFIX = new TextEncoder().encode("Thread");
 const EXT_PAN_ID_LENGTH = 8;
