@@ -13,13 +13,9 @@ const ZERO_BLOCK = new Uint8Array(BLOCK_SIZE);
 function aesEcbEncryptBlock(key: Uint8Array, block: Uint8Array): Uint8Array {
     const cipher = createCipheriv("aes-128-ecb", key, null);
     cipher.setAutoPadding(false);
-    const head = cipher.update(block);
-    const tail = cipher.final();
-    if (tail.length === 0) return new Uint8Array(head.buffer, head.byteOffset, head.byteLength);
-    const out = new Uint8Array(head.length + tail.length);
-    out.set(head, 0);
-    out.set(tail, head.length);
-    return out;
+    const out = cipher.update(block);
+    cipher.final();
+    return new Uint8Array(out.buffer, out.byteOffset, out.byteLength);
 }
 
 function leftShift1(input: Uint8Array): Uint8Array {
