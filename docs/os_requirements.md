@@ -110,7 +110,7 @@ echo 'net.netfilter.nf_conntrack_udp_timeout_stream = 3600' \
 
 **DO NOT** filter Matter UDP traffic by destination port. The controller binds an ephemeral port, and device source ports also vary.
 
-**DO NOT** pin firewall rules to UDP/5540. Most devices use it, but not all.
+**DO NOT** pin firewall rules to UDP/5540. While 5540 is the IANA-assigned Matter port and is commonly used, the Matter specification does not require devices to use a single predetermined well-known port. A Matter node may listen on a different UDP port and advertise that port through its mDNS/DNS-SD service records. Controllers are expected to use the advertised port rather than assuming 5540.
 
 If you must filter, scope rules by source IPv6 prefix (Thread ULA + OMR prefix) or by interface — never by port.
 
