@@ -49,69 +49,7 @@ export namespace OperationalDataset {
         };
 
         for (const entry of entries) {
-            switch (entry.type) {
-                case MeshCopTlvType.CHANNEL:
-                    ds.channel = decodeChannel(entry.value);
-                    break;
-                case MeshCopTlvType.PANID:
-                    if (entry.value.length !== 2) {
-                        throw new Error(`PANID TLV must be 2 bytes, got ${entry.value.length}`);
-                    }
-                    ds.panId = (entry.value[0] << 8) | entry.value[1];
-                    break;
-                case MeshCopTlvType.EXTPANID:
-                    if (entry.value.length !== 8) {
-                        throw new Error(`EXTPANID TLV must be 8 bytes, got ${entry.value.length}`);
-                    }
-                    ds.extPanId = entry.value.slice();
-                    break;
-                case MeshCopTlvType.NETWORK_NAME:
-                    ds.networkName = new TextDecoder("utf-8").decode(entry.value);
-                    break;
-                case MeshCopTlvType.PSKC:
-                    ds.pskc = entry.value.slice();
-                    break;
-                case MeshCopTlvType.NETWORK_KEY:
-                    if (entry.value.length !== 16) {
-                        throw new Error(`NETWORK_KEY TLV must be 16 bytes, got ${entry.value.length}`);
-                    }
-                    ds.networkKey = entry.value.slice();
-                    break;
-                case MeshCopTlvType.MESH_LOCAL_PREFIX:
-                    if (entry.value.length !== 8) {
-                        throw new Error(`MESH_LOCAL_PREFIX TLV must be 8 bytes, got ${entry.value.length}`);
-                    }
-                    ds.meshLocalPrefix = entry.value.slice();
-                    break;
-                case MeshCopTlvType.SECURITY_POLICY:
-                    ds.securityPolicy = SecurityPolicy.decode(entry.value);
-                    break;
-                case MeshCopTlvType.ACTIVE_TIMESTAMP:
-                    if (entry.value.length !== 8) {
-                        throw new Error(`ACTIVE_TIMESTAMP TLV must be 8 bytes, got ${entry.value.length}`);
-                    }
-                    ds.activeTimestamp = entry.value.slice();
-                    break;
-                case MeshCopTlvType.PENDING_TIMESTAMP:
-                    if (entry.value.length !== 8) {
-                        throw new Error(`PENDING_TIMESTAMP TLV must be 8 bytes, got ${entry.value.length}`);
-                    }
-                    ds.pendingTimestamp = entry.value.slice();
-                    break;
-                case MeshCopTlvType.DELAY_TIMER:
-                    if (entry.value.length !== 4) {
-                        throw new Error(`DELAY_TIMER TLV must be 4 bytes, got ${entry.value.length}`);
-                    }
-                    ds.delayTimer =
-                        (entry.value[0] << 24) | (entry.value[1] << 16) | (entry.value[2] << 8) | entry.value[3];
-                    break;
-                case MeshCopTlvType.CHANNEL_MASK:
-                    ds.channelMask = entry.value.slice();
-                    break;
-                default:
-                    unknownTlvs.push({ type: entry.type, value: entry.value.slice() });
-                    break;
-            }
+            applyKnownTlvToDataset(ds, entry, unknownTlvs);
         }
 
         return ds;
@@ -119,8 +57,7 @@ export namespace OperationalDataset {
 
     export function encode(ds: OperationalDataset): Uint8Array {
         if (ds._originalTlvs !== undefined) {
-            const originalDecoded = decode(ds.raw);
-            return encodeWithReplay(ds, ds._originalTlvs, originalDecoded);
+            return encodeWithReplay(ds, ds._originalTlvs);
         }
         return BasicTlv.encode(canonicalEntries(ds));
     }
@@ -130,14 +67,80 @@ export namespace OperationalDataset {
     }
 }
 
-function encodeWithReplay(
+function applyKnownTlvToDataset(
     ds: OperationalDataset,
-    originals: ReadonlyArray<BasicTlvEntry>,
-    originalDecoded: OperationalDataset,
-): Uint8Array {
+    entry: BasicTlvEntry,
+    unknownTlvs: Array<{ type: number; value: Uint8Array }>,
+): void {
+    switch (entry.type) {
+        case MeshCopTlvType.CHANNEL:
+            ds.channel = decodeChannel(entry.value);
+            break;
+        case MeshCopTlvType.PANID:
+            if (entry.value.length !== 2) {
+                throw new Error(`PANID TLV must be 2 bytes, got ${entry.value.length}`);
+            }
+            ds.panId = (entry.value[0] << 8) | entry.value[1];
+            break;
+        case MeshCopTlvType.EXTPANID:
+            if (entry.value.length !== 8) {
+                throw new Error(`EXTPANID TLV must be 8 bytes, got ${entry.value.length}`);
+            }
+            ds.extPanId = entry.value.slice();
+            break;
+        case MeshCopTlvType.NETWORK_NAME:
+            ds.networkName = new TextDecoder("utf-8").decode(entry.value);
+            break;
+        case MeshCopTlvType.PSKC:
+            ds.pskc = entry.value.slice();
+            break;
+        case MeshCopTlvType.NETWORK_KEY:
+            if (entry.value.length !== 16) {
+                throw new Error(`NETWORK_KEY TLV must be 16 bytes, got ${entry.value.length}`);
+            }
+            ds.networkKey = entry.value.slice();
+            break;
+        case MeshCopTlvType.MESH_LOCAL_PREFIX:
+            if (entry.value.length !== 8) {
+                throw new Error(`MESH_LOCAL_PREFIX TLV must be 8 bytes, got ${entry.value.length}`);
+            }
+            ds.meshLocalPrefix = entry.value.slice();
+            break;
+        case MeshCopTlvType.SECURITY_POLICY:
+            ds.securityPolicy = SecurityPolicy.decode(entry.value);
+            break;
+        case MeshCopTlvType.ACTIVE_TIMESTAMP:
+            if (entry.value.length !== 8) {
+                throw new Error(`ACTIVE_TIMESTAMP TLV must be 8 bytes, got ${entry.value.length}`);
+            }
+            ds.activeTimestamp = entry.value.slice();
+            break;
+        case MeshCopTlvType.PENDING_TIMESTAMP:
+            if (entry.value.length !== 8) {
+                throw new Error(`PENDING_TIMESTAMP TLV must be 8 bytes, got ${entry.value.length}`);
+            }
+            ds.pendingTimestamp = entry.value.slice();
+            break;
+        case MeshCopTlvType.DELAY_TIMER:
+            if (entry.value.length !== 4) {
+                throw new Error(`DELAY_TIMER TLV must be 4 bytes, got ${entry.value.length}`);
+            }
+            ds.delayTimer = (entry.value[0] << 24) | (entry.value[1] << 16) | (entry.value[2] << 8) | entry.value[3];
+            break;
+        case MeshCopTlvType.CHANNEL_MASK:
+            ds.channelMask = entry.value.slice();
+            break;
+        default:
+            unknownTlvs.push({ type: entry.type, value: entry.value.slice() });
+            break;
+    }
+}
+
+function encodeWithReplay(ds: OperationalDataset, originals: ReadonlyArray<BasicTlvEntry>): Uint8Array {
     const seenKnownTypes = new Set<number>();
     const unknownCursor = new Map<number, number>();
     const out = new Array<BasicTlvEntry>();
+    const scratch: OperationalDataset = { unknownTlvs: [], raw: EMPTY_BYTES };
 
     for (const original of originals) {
         const known = KNOWN_TLV_HANDLERS.get(original.type);
@@ -145,9 +148,10 @@ function encodeWithReplay(
             seenKnownTypes.add(original.type);
             const canonical = known.encodeCurrent(ds);
             if (canonical === undefined) continue;
-            // Compare named-value equality (not byte equality) so the replay survives
-            // non-canonical encodings (e.g. legacy 1-byte CHANNEL form).
-            if (known.equalsCurrent(ds, originalDecoded)) {
+            // Decode just this TLV into a scratch dataset so we can compare named values
+            // (not bytes), preserving non-canonical encodings (e.g. legacy 1-byte CHANNEL).
+            applyKnownTlvToDataset(scratch, original, scratch.unknownTlvs);
+            if (known.equalsCurrent(ds, scratch)) {
                 out.push({ type: original.type, value: original.value });
             } else {
                 out.push({ type: original.type, value: canonical });
@@ -172,6 +176,8 @@ function encodeWithReplay(
 
     return BasicTlv.encode(out);
 }
+
+const EMPTY_BYTES = new Uint8Array();
 
 function canonicalEntries(ds: OperationalDataset): BasicTlvEntry[] {
     const out = new Array<BasicTlvEntry>();
