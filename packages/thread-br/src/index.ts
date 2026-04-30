@@ -25,9 +25,6 @@ export { NetworkDiagnosticTlv } from "./tlv/NetworkDiagnosticTlv.js";
 export { NetworkDiagTlvType, NetworkDiagTlvTypeName } from "./tlv/networkDiagTlvTypes.js";
 export { TypeListTlv } from "./tlv/TypeListTlv.js";
 
-// Phase 5+ consumers can write `import { NetworkDiagnosticDecoders } from
-// "@matter-server/thread-br"` to access the typed sub-decoders without
-// polluting the top level with two dozen names.
 export * as NetworkDiagnosticDecoders from "./tlv/diag/index.js";
 
 export { DefaultTlvSet } from "./diagnostic/index.js";
