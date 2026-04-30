@@ -52,7 +52,15 @@ export interface BorderRouterEntry {
     domainName?: string;
     /** Which mDNS source(s) contributed to this entry. */
     sources: ("meshcop" | "trel")[];
-    /** Epoch milliseconds of the most recent record install or update. */
+    /**
+     * Epoch milliseconds of the most recent successful mDNS discovery for this entry.
+     * Frozen when `sources` becomes empty (the entry is "stale"); updated on every
+     * re-discovery. Stale entries are retained server-side for at least 24h after
+     * `lastSeen`; the actual prune is lazy and happens on the next `get`, `list`,
+     * or mDNS discovery event after the window elapses, so an entry may linger
+     * longer than 24h if there is no activity. Consumers can derive stale state
+     * via `sources.length === 0` and stale age via `Date.now() - lastSeen`.
+     */
     lastSeen: number;
 }
 
