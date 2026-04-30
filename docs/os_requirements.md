@@ -96,8 +96,7 @@ sysctl net.netfilter.nf_conntrack_udp_timeout_stream 2>/dev/null
 # Absent / "unknown key" → conntrack module not loaded → nothing to do.
 # Present and < 1800 → raise it:
 sudo sysctl -w net.netfilter.nf_conntrack_udp_timeout_stream=3600
-echo 'net.netfilter.nf_conntrack_udp_timeout_stream = 3600' \
-  | sudo tee /etc/sysctl.d/99-matter.conf
+echo 'net.netfilter.nf_conntrack_udp_timeout_stream = 3600' | sudo tee /etc/sysctl.d/99-matter.conf
 # Present and ≥ 1800 → done.
 ```
 
@@ -115,6 +114,8 @@ echo 'net.netfilter.nf_conntrack_udp_timeout_stream = 3600' \
 If you must filter, scope rules by source IPv6 prefix (Thread ULA + OMR prefix) or by interface — never by port.
 
 Diagnostic sentinel: a per-instance firewall chain drop counter climbing in step with battery-device report cycles while your "Matter" ACCEPT rule shows zero hits → conntrack timeout is the cause.
+
+**Before opening an issue:** if you suspect Matter reliability problems are caused by the network path, **disable the host / hypervisor / container firewall entirely** and re-test for at least one full device report interval. If problems disappear with the firewall off, the conntrack timeout above is almost certainly the cause — apply the sysctl change and re-enable the firewall.
 
 ## VM and container deployments
 
