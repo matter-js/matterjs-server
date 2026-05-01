@@ -107,6 +107,25 @@ describe("EcJpakeRound.serializeRound1 (byte-identical with mbedTLS oracle)", ()
     });
 });
 
+describe("EcJpakeRound.parseRound1 defensive copies", () => {
+    const vectors = loadVectors();
+
+    it("returned X / zkp.V / zkp.r are independent of the input buffer", () => {
+        const original = Bytes.of(Bytes.fromHex(vectors.cli_one));
+        const input = new Uint8Array(original);
+        const parsed = EcJpakeRound.parseRound1(input);
+        const x1Snapshot = new Uint8Array(parsed.kp1.X);
+        const v1Snapshot = new Uint8Array(parsed.kp1.zkp.V);
+        const r1Snapshot = new Uint8Array(parsed.kp1.zkp.r);
+        const x2Snapshot = new Uint8Array(parsed.kp2.X);
+        input.fill(0xff);
+        expect(Bytes.areEqual(parsed.kp1.X, x1Snapshot)).to.equal(true);
+        expect(Bytes.areEqual(parsed.kp1.zkp.V, v1Snapshot)).to.equal(true);
+        expect(Bytes.areEqual(parsed.kp1.zkp.r, r1Snapshot)).to.equal(true);
+        expect(Bytes.areEqual(parsed.kp2.X, x2Snapshot)).to.equal(true);
+    });
+});
+
 describe("EcJpakeRound.buildRound1 (deterministic ephemerals)", () => {
     const vectors = loadVectors();
 

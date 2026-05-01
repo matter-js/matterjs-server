@@ -40,7 +40,8 @@ function readSlice(bytes: Uint8Array, offset: number, length: number): Uint8Arra
     if (offset + length > bytes.length) {
         throw new Error(`buffer too short: need ${length} bytes at offset ${offset}, have ${bytes.length - offset}`);
     }
-    return bytes.subarray(offset, offset + length);
+    // slice (copy) so parse outputs own their bytes; callers can pass subarray views safely.
+    return bytes.slice(offset, offset + length);
 }
 
 function validateKeyKP(keyKP: EcJpakeKeyKP): void {
@@ -104,7 +105,7 @@ function readKeyKP(bytes: Uint8Array, offset: number): { kp: EcJpakeKeyKP; nextO
     p += rLen;
 
     return {
-        kp: { X: new Uint8Array(X), zkp: { V: new Uint8Array(V), r: new Uint8Array(r) } },
+        kp: { X, zkp: { V, r } },
         nextOffset: p,
     };
 }
