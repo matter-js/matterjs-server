@@ -183,7 +183,8 @@ export const SchnorrZkp = {
             return false;
         }
         const h = hashChallenge({ gBytes: g.bytes, vBytes: zkp.V, xBytes: publicKey, idBytes });
-        // mbedTLS ecjpake_zkp_verify computes V' = r*G + h*X via ecp_muladd.
+        // mbedTLS ecjpake_zkp_verify computes V' = r*G + h*X via ecp_muladd. multiplyUnsafe is
+        // safe here: r is on the wire (peer-supplied) and h is a hash digest; neither is secret.
         const lhs = g.point.multiplyUnsafe(r).add(X.multiplyUnsafe(h));
         return lhs.equals(V);
     },

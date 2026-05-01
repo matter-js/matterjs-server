@@ -47,7 +47,8 @@ export const EcJpakePms = {
             throw new Error("peer points must not be the point at infinity");
         }
         const xm2sNeg = (N - ((xm2 * s) % N)) % N;
-        const K1 = Xp_pt.add(Xp2_pt.multiplyUnsafe(xm2sNeg));
+        // xm2sNeg is derived from the password; multiply (constant-time) avoids leaking it via timing.
+        const K1 = Xp_pt.add(Xp2_pt.multiply(xm2sNeg));
         const K = K1.multiply(xm2);
         if (K.is0()) {
             throw new Error("derived K is the point at infinity");
