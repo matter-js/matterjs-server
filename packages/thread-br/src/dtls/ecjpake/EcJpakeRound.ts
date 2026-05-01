@@ -29,6 +29,14 @@ const Point = p256.Point;
 const N = Point.Fn.ORDER;
 const POINT_LEN = 65;
 
+/**
+ * EC-JPAKE participant identifiers used in the ZKP challenge hash. These are the literal
+ * byte strings from mbedTLS `ecjpake_id[]` (mbedtls v3.6.6 `library/ecjpake.c`); the wire
+ * value is a hash input on both sides, so the strings must match between client and server.
+ */
+export const ECJPAKE_ID_CLIENT = "client";
+export const ECJPAKE_ID_SERVER = "server";
+
 function readU8(bytes: Uint8Array, offset: number): number {
     if (offset >= bytes.length) {
         throw new Error(`unexpected end of buffer at offset ${offset}`);
@@ -123,8 +131,7 @@ export const EcJpakeRound = {
      * scalars (one ephemeral per ZKP). Caller-supplied ephemerals make the output
      * deterministic for testing — production callers must source them from a CSPRNG.
      *
-     * `id` is `"client"` for the joiner and `"server"` for the commissioner — these
-     * are the literal byte strings from mbedTLS `ecjpake_id[]`.
+     * `id` is `ECJPAKE_ID_CLIENT` for the joiner and `ECJPAKE_ID_SERVER` for the commissioner.
      */
     buildRound1(args: { x1: bigint; x2: bigint; v1: bigint; v2: bigint; id: string }): {
         kp1: EcJpakeKeyKP;

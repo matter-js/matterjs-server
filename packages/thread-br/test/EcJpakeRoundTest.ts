@@ -9,7 +9,7 @@ import { p256 } from "@noble/curves/nist.js";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { EcJpakeRound } from "../src/dtls/ecjpake/EcJpakeRound.js";
+import { ECJPAKE_ID_CLIENT, EcJpakeRound } from "../src/dtls/ecjpake/EcJpakeRound.js";
 import { SchnorrZkp } from "../src/dtls/ecjpake/SchnorrZkp.js";
 
 const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -134,11 +134,11 @@ describe("EcJpakeRound.buildRound1 (deterministic ephemerals)", () => {
         const x2 = bigintFromHex(vectors.x2);
         const v1 = (x1 ^ 0x5a5a5a5an) % N || 1n;
         const v2 = (x2 ^ 0xa5a5a5a5n) % N || 1n;
-        const built = EcJpakeRound.buildRound1({ x1, x2, v1, v2, id: "client" });
+        const built = EcJpakeRound.buildRound1({ x1, x2, v1, v2, id: ECJPAKE_ID_CLIENT });
         const wire = EcJpakeRound.serializeRound1(built.kp1, built.kp2);
         const round = EcJpakeRound.parseRound1(wire);
-        expect(SchnorrZkp.verify({ zkp: round.kp1.zkp, publicKey: round.kp1.X, id: "client" })).to.equal(true);
-        expect(SchnorrZkp.verify({ zkp: round.kp2.zkp, publicKey: round.kp2.X, id: "client" })).to.equal(true);
+        expect(SchnorrZkp.verify({ zkp: round.kp1.zkp, publicKey: round.kp1.X, id: ECJPAKE_ID_CLIENT })).to.equal(true);
+        expect(SchnorrZkp.verify({ zkp: round.kp2.zkp, publicKey: round.kp2.X, id: ECJPAKE_ID_CLIENT })).to.equal(true);
         const expectedX1 = Point.BASE.multiply(x1).toBytes(false);
         const expectedX2 = Point.BASE.multiply(x2).toBytes(false);
         expect(Bytes.toHex(round.kp1.X)).to.equal(Bytes.toHex(expectedX1));
@@ -151,7 +151,7 @@ describe("EcJpakeRound.buildRound1 (deterministic ephemerals)", () => {
             x2: bigintFromHex(vectors.x2),
             v1: bigintFromHex(vectors.x3),
             v2: bigintFromHex(vectors.x4),
-            id: "client" as const,
+            id: ECJPAKE_ID_CLIENT,
         };
         const a = EcJpakeRound.buildRound1(args);
         const b = EcJpakeRound.buildRound1(args);

@@ -8,7 +8,7 @@ import { Bytes } from "@matter/main";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { EcJpakeRound } from "../src/dtls/ecjpake/EcJpakeRound.js";
+import { ECJPAKE_ID_CLIENT, EcJpakeRound } from "../src/dtls/ecjpake/EcJpakeRound.js";
 
 const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const FIXTURE = resolve(PACKAGE_ROOT, "test/fixtures/ecjpake/mbedtls-self-test-vectors.json");
@@ -37,7 +37,7 @@ describe("EcJpakeRound parse -> serialize round-trip", () => {
         const x1 = bigintFromHex(vectors.x1);
         const x2 = bigintFromHex(vectors.x2);
         for (let seed = 7n; seed < 20n; seed++) {
-            const built = EcJpakeRound.buildRound1({ x1, x2, v1: seed, v2: seed + 1n, id: "client" });
+            const built = EcJpakeRound.buildRound1({ x1, x2, v1: seed, v2: seed + 1n, id: ECJPAKE_ID_CLIENT });
             const wire = EcJpakeRound.serializeRound1(built.kp1, built.kp2);
             const round = EcJpakeRound.parseRound1(wire);
             const reEncoded = EcJpakeRound.serializeRound1(round.kp1, round.kp2);
@@ -51,7 +51,7 @@ describe("EcJpakeRound parse -> serialize round-trip", () => {
             x2: bigintFromHex(vectors.x2),
             v1: 0xdeadbeefn,
             v2: 0xfeedfacen,
-            id: "client",
+            id: ECJPAKE_ID_CLIENT,
         });
         const wire = EcJpakeRound.serializeRound1(built.kp1, built.kp2);
         const round = EcJpakeRound.parseRound1(wire);

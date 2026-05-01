@@ -9,7 +9,7 @@ import { p256 } from "@noble/curves/nist.js";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { EcJpakeRound } from "../src/dtls/ecjpake/EcJpakeRound.js";
+import { ECJPAKE_ID_CLIENT, ECJPAKE_ID_SERVER, EcJpakeRound } from "../src/dtls/ecjpake/EcJpakeRound.js";
 
 const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const FIXTURE = resolve(PACKAGE_ROOT, "test/fixtures/ecjpake/mbedtls-self-test-vectors.json");
@@ -83,7 +83,7 @@ describe("EcJpakeRound.parseRound2 + verifyRound2Zkp (mbedTLS oracle)", () => {
         const kp = EcJpakeRound.parseRound2(Bytes.of(Bytes.fromHex(vectors.cli_two)), {
             expectEcParameters: false,
         });
-        expect(EcJpakeRound.verifyRound2Zkp({ kp, generator, peerId: "client" })).to.equal(true);
+        expect(EcJpakeRound.verifyRound2Zkp({ kp, generator, peerId: ECJPAKE_ID_CLIENT })).to.equal(true);
     });
 
     it("verifies the srv_two ZKP under composite generator G' = X1 + X2 + X3 with id='server'", () => {
@@ -94,7 +94,7 @@ describe("EcJpakeRound.parseRound2 + verifyRound2Zkp (mbedTLS oracle)", () => {
         const kp = EcJpakeRound.parseRound2(Bytes.of(Bytes.fromHex(vectors.srv_two)), {
             expectEcParameters: true,
         });
-        expect(EcJpakeRound.verifyRound2Zkp({ kp, generator, peerId: "server" })).to.equal(true);
+        expect(EcJpakeRound.verifyRound2Zkp({ kp, generator, peerId: ECJPAKE_ID_SERVER })).to.equal(true);
     });
 
     it("rejects cli_two ZKP when verified with id='server'", () => {
@@ -105,7 +105,7 @@ describe("EcJpakeRound.parseRound2 + verifyRound2Zkp (mbedTLS oracle)", () => {
         const kp = EcJpakeRound.parseRound2(Bytes.of(Bytes.fromHex(vectors.cli_two)), {
             expectEcParameters: false,
         });
-        expect(EcJpakeRound.verifyRound2Zkp({ kp, generator, peerId: "server" })).to.equal(false);
+        expect(EcJpakeRound.verifyRound2Zkp({ kp, generator, peerId: ECJPAKE_ID_SERVER })).to.equal(false);
     });
 
     it("rejects srv_two ZKP when the wrong generator (base point) is used", () => {
@@ -113,7 +113,7 @@ describe("EcJpakeRound.parseRound2 + verifyRound2Zkp (mbedTLS oracle)", () => {
             expectEcParameters: true,
         });
         const baseG = { point: Point.BASE, bytes: Point.BASE.toBytes(false) };
-        expect(EcJpakeRound.verifyRound2Zkp({ kp, generator: baseG, peerId: "server" })).to.equal(false);
+        expect(EcJpakeRound.verifyRound2Zkp({ kp, generator: baseG, peerId: ECJPAKE_ID_SERVER })).to.equal(false);
     });
 
     it("rejects trailing bytes on cli_two", () => {
@@ -157,10 +157,10 @@ describe("EcJpakeRound.buildRound2 (deterministic ephemerals)", () => {
         const xm2 = bigintFromHex(vectors.x2);
         const s = bigintFromHex(vectors.password.hex);
         const v = (xm2 ^ 0xa5a5a5a5n) % N || 1n;
-        const kp = EcJpakeRound.buildRound2({ xm2, s, v, id: "client", generator });
+        const kp = EcJpakeRound.buildRound2({ xm2, s, v, id: ECJPAKE_ID_CLIENT, generator });
         const wire = EcJpakeRound.serializeRound2(kp, { prependEcParameters: false });
         const parsed = EcJpakeRound.parseRound2(wire, { expectEcParameters: false });
-        expect(EcJpakeRound.verifyRound2Zkp({ kp: parsed, generator, peerId: "client" })).to.equal(true);
+        expect(EcJpakeRound.verifyRound2Zkp({ kp: parsed, generator, peerId: ECJPAKE_ID_CLIENT })).to.equal(true);
         const expectedXm = generator.point.multiply((xm2 * s) % N).toBytes(false);
         expect(Bytes.toHex(parsed.X)).to.equal(Bytes.toHex(expectedXm));
     });
@@ -168,13 +168,15 @@ describe("EcJpakeRound.buildRound2 (deterministic ephemerals)", () => {
     it("rejects xm2 = 0 and xm2 >= n", () => {
         const generator = clientGenerator();
         const s = bigintFromHex(vectors.password.hex);
-        expect(() => EcJpakeRound.buildRound2({ xm2: 0n, s, v: 1n, id: "client", generator })).to.throw(/xm2/);
-        expect(() => EcJpakeRound.buildRound2({ xm2: N, s, v: 1n, id: "client", generator })).to.throw(/xm2/);
+        expect(() => EcJpakeRound.buildRound2({ xm2: 0n, s, v: 1n, id: ECJPAKE_ID_CLIENT, generator })).to.throw(/xm2/);
+        expect(() => EcJpakeRound.buildRound2({ xm2: N, s, v: 1n, id: ECJPAKE_ID_CLIENT, generator })).to.throw(/xm2/);
     });
 
     it("rejects s = 0", () => {
         const generator = clientGenerator();
-        expect(() => EcJpakeRound.buildRound2({ xm2: 1n, s: 0n, v: 1n, id: "client", generator })).to.throw(/s/);
+        expect(() => EcJpakeRound.buildRound2({ xm2: 1n, s: 0n, v: 1n, id: ECJPAKE_ID_CLIENT, generator })).to.throw(
+            /s/,
+        );
     });
 
     it("is fully deterministic: same inputs -> identical bytes", () => {
@@ -183,7 +185,7 @@ describe("EcJpakeRound.buildRound2 (deterministic ephemerals)", () => {
             xm2: bigintFromHex(vectors.x2),
             s: bigintFromHex(vectors.password.hex),
             v: bigintFromHex(vectors.x4),
-            id: "client",
+            id: ECJPAKE_ID_CLIENT,
             generator,
         };
         const a = EcJpakeRound.buildRound2(args);

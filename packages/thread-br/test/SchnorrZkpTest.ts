@@ -9,6 +9,7 @@ import { p256 } from "@noble/curves/nist.js";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { ECJPAKE_ID_CLIENT, ECJPAKE_ID_SERVER } from "../src/dtls/ecjpake/EcJpakeRound.js";
 import { SchnorrZkp } from "../src/dtls/ecjpake/SchnorrZkp.js";
 
 const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -63,28 +64,32 @@ describe("SchnorrZkp.verify (mbedTLS oracle)", () => {
         const buf = Bytes.of(Bytes.fromHex(vectors.cli_one));
         const first = sliceKkp(buf, 0);
         const second = sliceKkp(buf, first.nextOffset);
-        expect(SchnorrZkp.verify({ zkp: { V: first.V, r: first.r }, publicKey: first.X, id: "client" })).to.equal(true);
-        expect(SchnorrZkp.verify({ zkp: { V: second.V, r: second.r }, publicKey: second.X, id: "client" })).to.equal(
-            true,
-        );
+        expect(
+            SchnorrZkp.verify({ zkp: { V: first.V, r: first.r }, publicKey: first.X, id: ECJPAKE_ID_CLIENT }),
+        ).to.equal(true);
+        expect(
+            SchnorrZkp.verify({ zkp: { V: second.V, r: second.r }, publicKey: second.X, id: ECJPAKE_ID_CLIENT }),
+        ).to.equal(true);
     });
 
     it("accepts both ZKPs in mbedTLS srv_one (id='server')", () => {
         const buf = Bytes.of(Bytes.fromHex(vectors.srv_one));
         const first = sliceKkp(buf, 0);
         const second = sliceKkp(buf, first.nextOffset);
-        expect(SchnorrZkp.verify({ zkp: { V: first.V, r: first.r }, publicKey: first.X, id: "server" })).to.equal(true);
-        expect(SchnorrZkp.verify({ zkp: { V: second.V, r: second.r }, publicKey: second.X, id: "server" })).to.equal(
-            true,
-        );
+        expect(
+            SchnorrZkp.verify({ zkp: { V: first.V, r: first.r }, publicKey: first.X, id: ECJPAKE_ID_SERVER }),
+        ).to.equal(true);
+        expect(
+            SchnorrZkp.verify({ zkp: { V: second.V, r: second.r }, publicKey: second.X, id: ECJPAKE_ID_SERVER }),
+        ).to.equal(true);
     });
 
     it("rejects a cli_one ZKP when verified with id='server'", () => {
         const buf = Bytes.of(Bytes.fromHex(vectors.cli_one));
         const first = sliceKkp(buf, 0);
-        expect(SchnorrZkp.verify({ zkp: { V: first.V, r: first.r }, publicKey: first.X, id: "server" })).to.equal(
-            false,
-        );
+        expect(
+            SchnorrZkp.verify({ zkp: { V: first.V, r: first.r }, publicKey: first.X, id: ECJPAKE_ID_SERVER }),
+        ).to.equal(false);
     });
 
     it("rejects when r is mutated (last byte flipped)", () => {
@@ -92,9 +97,9 @@ describe("SchnorrZkp.verify (mbedTLS oracle)", () => {
         const first = sliceKkp(buf, 0);
         const tampered = new Uint8Array(first.r);
         tampered[tampered.length - 1] ^= 0x01;
-        expect(SchnorrZkp.verify({ zkp: { V: first.V, r: tampered }, publicKey: first.X, id: "client" })).to.equal(
-            false,
-        );
+        expect(
+            SchnorrZkp.verify({ zkp: { V: first.V, r: tampered }, publicKey: first.X, id: ECJPAKE_ID_CLIENT }),
+        ).to.equal(false);
     });
 
     it("rejects when V is mutated to a different on-curve point", () => {
@@ -103,9 +108,9 @@ describe("SchnorrZkp.verify (mbedTLS oracle)", () => {
         // Use 2*V as a substitute (still a valid curve point but breaks the proof equation).
         const Vpoint = Point.fromBytes(first.V).double();
         const tamperedV = Vpoint.toBytes(false);
-        expect(SchnorrZkp.verify({ zkp: { V: tamperedV, r: first.r }, publicKey: first.X, id: "client" })).to.equal(
-            false,
-        );
+        expect(
+            SchnorrZkp.verify({ zkp: { V: tamperedV, r: first.r }, publicKey: first.X, id: ECJPAKE_ID_CLIENT }),
+        ).to.equal(false);
     });
 
     it("rejects an off-curve V (last byte mutated, almost surely off-curve)", () => {
@@ -115,11 +120,11 @@ describe("SchnorrZkp.verify (mbedTLS oracle)", () => {
         tamperedV[tamperedV.length - 1] ^= 0x01;
         // Whether the mutation lands off-curve or just breaks the proof, verify must say false (and not throw).
         expect(() =>
-            SchnorrZkp.verify({ zkp: { V: tamperedV, r: first.r }, publicKey: first.X, id: "client" }),
+            SchnorrZkp.verify({ zkp: { V: tamperedV, r: first.r }, publicKey: first.X, id: ECJPAKE_ID_CLIENT }),
         ).to.not.throw();
-        expect(SchnorrZkp.verify({ zkp: { V: tamperedV, r: first.r }, publicKey: first.X, id: "client" })).to.equal(
-            false,
-        );
+        expect(
+            SchnorrZkp.verify({ zkp: { V: tamperedV, r: first.r }, publicKey: first.X, id: ECJPAKE_ID_CLIENT }),
+        ).to.equal(false);
     });
 });
 
@@ -130,15 +135,15 @@ describe("SchnorrZkp.generate -> verify round-trip", () => {
         const x = bigintFromHex(vectors.x1);
         const v = bigintFromHex(vectors.x2);
         const X = Point.BASE.multiply(x).toBytes(false);
-        const zkp = SchnorrZkp.generate({ privateKey: x, publicKey: X, ephemeral: v, id: "client" });
-        expect(SchnorrZkp.verify({ zkp, publicKey: X, id: "client" })).to.equal(true);
+        const zkp = SchnorrZkp.generate({ privateKey: x, publicKey: X, ephemeral: v, id: ECJPAKE_ID_CLIENT });
+        expect(SchnorrZkp.verify({ zkp, publicKey: X, id: ECJPAKE_ID_CLIENT })).to.equal(true);
     });
 
     it("emits r in minimal big-endian (no leading zero) for a 32-byte case", () => {
         const x = bigintFromHex(vectors.x1);
         const v = bigintFromHex(vectors.x2);
         const X = Point.BASE.multiply(x).toBytes(false);
-        const zkp = SchnorrZkp.generate({ privateKey: x, publicKey: X, ephemeral: v, id: "client" });
+        const zkp = SchnorrZkp.generate({ privateKey: x, publicKey: X, ephemeral: v, id: ECJPAKE_ID_CLIENT });
         expect(zkp.r.length).to.be.within(1, 32);
         expect(zkp.r[0]).to.not.equal(0x00);
     });
@@ -153,7 +158,7 @@ describe("SchnorrZkp.generate -> verify round-trip", () => {
         for (let i = 0; i < 4096; i++) {
             v = (v + 1n) % N;
             if (v === 0n) continue;
-            const candidate = SchnorrZkp.generate({ privateKey: x, publicKey: X, ephemeral: v, id: "client" });
+            const candidate = SchnorrZkp.generate({ privateKey: x, publicKey: X, ephemeral: v, id: ECJPAKE_ID_CLIENT });
             if (candidate.r.length < 32) {
                 zkp = candidate;
                 break;
@@ -161,36 +166,36 @@ describe("SchnorrZkp.generate -> verify round-trip", () => {
         }
         expect(zkp, "must find an ephemeral producing r < 32 bytes within 4096 attempts").to.exist;
         expect(zkp!.r[0]).to.not.equal(0x00);
-        expect(SchnorrZkp.verify({ zkp: zkp!, publicKey: X, id: "client" })).to.equal(true);
+        expect(SchnorrZkp.verify({ zkp: zkp!, publicKey: X, id: ECJPAKE_ID_CLIENT })).to.equal(true);
     });
 
     it("rejects ephemeral=0 and ephemeral>=n", () => {
         const x = bigintFromHex(vectors.x1);
         const X = Point.BASE.multiply(x).toBytes(false);
-        expect(() => SchnorrZkp.generate({ privateKey: x, publicKey: X, ephemeral: 0n, id: "client" })).to.throw(
-            /ephemeral/,
-        );
-        expect(() => SchnorrZkp.generate({ privateKey: x, publicKey: X, ephemeral: N, id: "client" })).to.throw(
-            /ephemeral/,
-        );
+        expect(() =>
+            SchnorrZkp.generate({ privateKey: x, publicKey: X, ephemeral: 0n, id: ECJPAKE_ID_CLIENT }),
+        ).to.throw(/ephemeral/);
+        expect(() =>
+            SchnorrZkp.generate({ privateKey: x, publicKey: X, ephemeral: N, id: ECJPAKE_ID_CLIENT }),
+        ).to.throw(/ephemeral/);
     });
 
     it("rejects privateKey=0 and privateKey>=n", () => {
         const X = Point.BASE.toBytes(false);
-        expect(() => SchnorrZkp.generate({ privateKey: 0n, publicKey: X, ephemeral: 1n, id: "client" })).to.throw(
-            /private key/,
-        );
-        expect(() => SchnorrZkp.generate({ privateKey: N, publicKey: X, ephemeral: 1n, id: "client" })).to.throw(
-            /private key/,
-        );
+        expect(() =>
+            SchnorrZkp.generate({ privateKey: 0n, publicKey: X, ephemeral: 1n, id: ECJPAKE_ID_CLIENT }),
+        ).to.throw(/private key/);
+        expect(() =>
+            SchnorrZkp.generate({ privateKey: N, publicKey: X, ephemeral: 1n, id: ECJPAKE_ID_CLIENT }),
+        ).to.throw(/private key/);
     });
 
     it("is deterministic: same inputs -> identical (V, r)", () => {
         const x = bigintFromHex(vectors.x1);
         const v = bigintFromHex(vectors.x2);
         const X = Point.BASE.multiply(x).toBytes(false);
-        const a = SchnorrZkp.generate({ privateKey: x, publicKey: X, ephemeral: v, id: "client" });
-        const b = SchnorrZkp.generate({ privateKey: x, publicKey: X, ephemeral: v, id: "client" });
+        const a = SchnorrZkp.generate({ privateKey: x, publicKey: X, ephemeral: v, id: ECJPAKE_ID_CLIENT });
+        const b = SchnorrZkp.generate({ privateKey: x, publicKey: X, ephemeral: v, id: ECJPAKE_ID_CLIENT });
         expect(Bytes.areEqual(a.V, b.V)).to.equal(true);
         expect(Bytes.areEqual(a.r, b.r)).to.equal(true);
     });
@@ -213,8 +218,14 @@ describe("SchnorrZkp custom generator (round-2 prep)", () => {
         const x = bigintFromHex(vectors.x4);
         const v = bigintFromHex(vectors.x1);
         const X = g.point.multiply(x).toBytes(false);
-        const zkp = SchnorrZkp.generate({ privateKey: x, publicKey: X, ephemeral: v, id: "server", generator: g });
-        expect(SchnorrZkp.verify({ zkp, publicKey: X, id: "server", generator: g })).to.equal(true);
+        const zkp = SchnorrZkp.generate({
+            privateKey: x,
+            publicKey: X,
+            ephemeral: v,
+            id: ECJPAKE_ID_SERVER,
+            generator: g,
+        });
+        expect(SchnorrZkp.verify({ zkp, publicKey: X, id: ECJPAKE_ID_SERVER, generator: g })).to.equal(true);
     });
 
     it("verify rejects when the verifier uses the base generator instead of the composite", () => {
@@ -222,8 +233,14 @@ describe("SchnorrZkp custom generator (round-2 prep)", () => {
         const x = bigintFromHex(vectors.x4);
         const v = bigintFromHex(vectors.x1);
         const X = g.point.multiply(x).toBytes(false);
-        const zkp = SchnorrZkp.generate({ privateKey: x, publicKey: X, ephemeral: v, id: "server", generator: g });
-        expect(SchnorrZkp.verify({ zkp, publicKey: X, id: "server" })).to.equal(false);
+        const zkp = SchnorrZkp.generate({
+            privateKey: x,
+            publicKey: X,
+            ephemeral: v,
+            id: ECJPAKE_ID_SERVER,
+            generator: g,
+        });
+        expect(SchnorrZkp.verify({ zkp, publicKey: X, id: ECJPAKE_ID_SERVER })).to.equal(false);
     });
 
     it("verify rejects when the prover uses the base generator but verifier uses composite", () => {
@@ -231,8 +248,8 @@ describe("SchnorrZkp custom generator (round-2 prep)", () => {
         const x = bigintFromHex(vectors.x4);
         const v = bigintFromHex(vectors.x1);
         const X = Point.BASE.multiply(x).toBytes(false);
-        const zkp = SchnorrZkp.generate({ privateKey: x, publicKey: X, ephemeral: v, id: "server" });
-        expect(SchnorrZkp.verify({ zkp, publicKey: X, id: "server", generator: g })).to.equal(false);
+        const zkp = SchnorrZkp.generate({ privateKey: x, publicKey: X, ephemeral: v, id: ECJPAKE_ID_SERVER });
+        expect(SchnorrZkp.verify({ zkp, publicKey: X, id: ECJPAKE_ID_SERVER, generator: g })).to.equal(false);
     });
 
     it("rejects malformed generator bytes", () => {
@@ -242,7 +259,7 @@ describe("SchnorrZkp custom generator (round-2 prep)", () => {
         const X = g.point.multiply(x).toBytes(false);
         const bad = { point: g.point, bytes: g.bytes.slice(0, 64) };
         expect(() =>
-            SchnorrZkp.generate({ privateKey: x, publicKey: X, ephemeral: v, id: "server", generator: bad }),
+            SchnorrZkp.generate({ privateKey: x, publicKey: X, ephemeral: v, id: ECJPAKE_ID_SERVER, generator: bad }),
         ).to.throw(/generator/);
     });
 });
