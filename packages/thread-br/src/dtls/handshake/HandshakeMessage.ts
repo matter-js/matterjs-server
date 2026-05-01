@@ -61,10 +61,14 @@ function readUint24BE(buf: Uint8Array, offset: number): number {
  * fragment_offset(3) || fragment_length(3) || body`. We always emit the
  * unfragmented form (`fragment_offset=0`, `fragment_length=body.length`).
  *
- * `encodeForTranscript` emits the **TLS 1.2 form** — `type(1) || length(3) ||
- * body` — required by the running handshake-transcript hash. RFC 6347 §4.2.6
- * mandates that DTLS implementations strip the DTLS-only fields when feeding
- * the transcript, otherwise the Finished MAC will not match a TLS 1.2 peer.
+ * `encodeForTranscript` emits the **full DTLS 1.2 form** — same 12-byte header
+ * as `encode` — required by the running handshake-transcript hash. mbedTLS
+ * (and OpenThread BRs built on it) feed the full DTLS handshake bytes
+ * including `message_seq` / `fragment_offset` / `fragment_length` into the
+ * Finished MAC; an earlier reading of RFC 6347 §4.2.6 incorrectly suggested
+ * stripping them. The `fragment_offset`/`fragment_length` are normalised to
+ * the unfragmented form (0 / body.length) regardless of how the message was
+ * actually fragmented on the wire (RFC 6347 §4.2.6 second paragraph).
  *
  * `decode` parses one DTLS handshake message off the front of the buffer; it
  * requires the message to be unfragmented (`fragment_offset=0`,
@@ -92,19 +96,8 @@ export namespace HandshakeMessage {
         return out;
     }
 
-    export function encodeForTranscript(message: { msgType: HandshakeType; body: Uint8Array }): Uint8Array {
-        const { msgType, body } = message;
-        if (!isHandshakeType(msgType)) {
-            throw new Error(`HandshakeMessage unknown msg_type: ${msgType}`);
-        }
-        if (body.length > UINT24_MAX) {
-            throw new Error(`HandshakeMessage body length ${body.length} exceeds 24-bit max`);
-        }
-        const out = new Uint8Array(TLS_HANDSHAKE_HEADER_LEN + body.length);
-        out[0] = msgType;
-        writeUint24BE(out, 1, body.length);
-        out.set(body, TLS_HANDSHAKE_HEADER_LEN);
-        return out;
+    export function encodeForTranscript(message: HandshakeMessage): Uint8Array {
+        return encode(message);
     }
 
     export interface DecodeResult {

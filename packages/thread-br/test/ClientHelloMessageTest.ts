@@ -8,7 +8,10 @@ import { Bytes } from "@matter/main";
 import {
     CIPHER_SUITE_ECJPAKE_WITH_AES_128_CCM_8,
     ClientHelloMessage,
+    EXTENSION_TYPE_EC_POINT_FORMATS,
     EXTENSION_TYPE_ECJPAKE_KKPP,
+    EXTENSION_TYPE_SUPPORTED_GROUPS,
+    NAMED_CURVE_SECP256R1,
 } from "../src/dtls/handshake/ClientHelloMessage.js";
 
 function fillRange(start: number, count: number): Uint8Array {
@@ -45,18 +48,36 @@ describe("ClientHelloMessage.build", () => {
         // compression length=1, body=0x00
         expect(body[p++]).to.equal(1);
         expect(body[p++]).to.equal(0x00);
-        // extensions length: ecjpake_kkpp entry = 2 (type) + 2 (extdata len) + 2 (payload) = 6
+        // extensions length:
+        //   ecjpake_kkpp(0x0100) = 4 header + 2 payload = 6
+        //   supported_groups(0x000a) = 4 header + 2 list_len + 2 secp256r1 = 8
+        //   ec_point_formats(0x000b) = 4 header + 1 list_len + 1 uncompressed = 6
+        //   total = 20
         expect(body[p++]).to.equal(0);
-        expect(body[p++]).to.equal(6);
-        // extension type 0x0100
+        expect(body[p++]).to.equal(20);
+        // ecjpake_kkpp: type 0x0100, len 2, payload aa bb
         expect(body[p++]).to.equal(0x01);
         expect(body[p++]).to.equal(0x00);
-        // extension data length = 2
         expect(body[p++]).to.equal(0);
         expect(body[p++]).to.equal(2);
-        // payload
         expect(body[p++]).to.equal(0xaa);
         expect(body[p++]).to.equal(0xbb);
+        // supported_groups: type 0x000a, ext_data_len 4, list_len 2, secp256r1 0x0017
+        expect(body[p++]).to.equal(0x00);
+        expect(body[p++]).to.equal(0x0a);
+        expect(body[p++]).to.equal(0);
+        expect(body[p++]).to.equal(4);
+        expect(body[p++]).to.equal(0);
+        expect(body[p++]).to.equal(2);
+        expect(body[p++]).to.equal(0x00);
+        expect(body[p++]).to.equal(0x17);
+        // ec_point_formats: type 0x000b, ext_data_len 2, list_len 1, uncompressed 0x00
+        expect(body[p++]).to.equal(0x00);
+        expect(body[p++]).to.equal(0x0b);
+        expect(body[p++]).to.equal(0);
+        expect(body[p++]).to.equal(2);
+        expect(body[p++]).to.equal(1);
+        expect(body[p++]).to.equal(0x00);
         expect(p).to.equal(body.length);
     });
 
@@ -95,18 +116,32 @@ describe("ClientHelloMessage.build", () => {
             cookie: new Uint8Array(0),
             ecjpakeKkpp,
         });
-        // Locate extensions block: end - (extensionsBlockLen)
-        // extensions block = 2 (entries length) + 2 (ext_type) + 2 (ext_data_len) + 200
-        const extBlockLen = 2 + 2 + 2 + 200;
+        // Locate extensions block at: body length - (block payload + 2 length prefix)
+        // ecjpake_kkpp = 4 + 200 = 204; supported_groups = 8; ec_point_formats = 6
+        const ecjpakeEntryLen = 4 + 200;
+        const supportedGroupsLen = 8;
+        const ecPointFormatsLen = 6;
+        const extEntriesLen = ecjpakeEntryLen + supportedGroupsLen + ecPointFormatsLen;
+        const extBlockLen = 2 + extEntriesLen;
         const start = body.length - extBlockLen;
         // extensions list length
-        expect((body[start] << 8) | body[start + 1]).to.equal(2 + 2 + 200);
-        // extension type
+        expect((body[start] << 8) | body[start + 1]).to.equal(extEntriesLen);
+        // ecjpake_kkpp comes first
         expect((body[start + 2] << 8) | body[start + 3]).to.equal(EXTENSION_TYPE_ECJPAKE_KKPP);
-        // extension data length
         expect((body[start + 4] << 8) | body[start + 5]).to.equal(200);
-        // payload bytes follow
-        expect(Bytes.areEqual(body.subarray(start + 6), ecjpakeKkpp)).to.equal(true);
+        expect(Bytes.areEqual(body.subarray(start + 6, start + 6 + 200), ecjpakeKkpp)).to.equal(true);
+        // supported_groups follows
+        const sgStart = start + 2 + ecjpakeEntryLen;
+        expect((body[sgStart] << 8) | body[sgStart + 1]).to.equal(EXTENSION_TYPE_SUPPORTED_GROUPS);
+        expect((body[sgStart + 2] << 8) | body[sgStart + 3]).to.equal(4);
+        expect((body[sgStart + 4] << 8) | body[sgStart + 5]).to.equal(2);
+        expect((body[sgStart + 6] << 8) | body[sgStart + 7]).to.equal(NAMED_CURVE_SECP256R1);
+        // ec_point_formats last
+        const epfStart = sgStart + supportedGroupsLen;
+        expect((body[epfStart] << 8) | body[epfStart + 1]).to.equal(EXTENSION_TYPE_EC_POINT_FORMATS);
+        expect((body[epfStart + 2] << 8) | body[epfStart + 3]).to.equal(2);
+        expect(body[epfStart + 4]).to.equal(1);
+        expect(body[epfStart + 5]).to.equal(0x00);
     });
 
     it("rejects a random other than 32 bytes", () => {

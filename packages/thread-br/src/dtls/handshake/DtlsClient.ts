@@ -224,10 +224,7 @@ export class DtlsClient {
                 out.push({
                     msgType: message.msgType,
                     body: message.body,
-                    transcriptBytes: HandshakeMessage.encodeForTranscript({
-                        msgType: message.msgType,
-                        body: message.body,
-                    }),
+                    transcriptBytes: HandshakeMessage.encodeForTranscript(message),
                 });
                 p += consumed;
             }
@@ -251,7 +248,11 @@ export class DtlsClient {
         });
         if (contributesToTranscript) {
             this.#transcript.appendHandshakeMessage(
-                HandshakeMessage.encodeForTranscript({ msgType: HandshakeType.CLIENT_HELLO, body }),
+                HandshakeMessage.encodeForTranscript({
+                    msgType: HandshakeType.CLIENT_HELLO,
+                    messageSeq: this.#handshakeMessageSeq,
+                    body,
+                }),
             );
         }
         const record = DtlsRecord.encode({
@@ -292,7 +293,11 @@ export class DtlsClient {
             ecjpakeKkpp: this.#round1Bytes,
         });
         this.#transcript.appendHandshakeMessage(
-            HandshakeMessage.encodeForTranscript({ msgType: HandshakeType.CLIENT_HELLO, body: firstHelloBody }),
+            HandshakeMessage.encodeForTranscript({
+                msgType: HandshakeType.CLIENT_HELLO,
+                messageSeq: 0,
+                body: firstHelloBody,
+            }),
         );
         return this.#consumeServerFlight(messages);
     }
@@ -402,9 +407,10 @@ export class DtlsClient {
         });
 
         const ckeBody = ClientKeyExchangeMessage.build(clientRound2);
+        const ckeMsgSeq = this.#handshakeMessageSeq;
         const ckeHandshake = HandshakeMessage.encode({
             msgType: HandshakeType.CLIENT_KEY_EXCHANGE,
-            messageSeq: this.#handshakeMessageSeq,
+            messageSeq: ckeMsgSeq,
             body: ckeBody,
         });
         this.#handshakeMessageSeq += 1;
@@ -412,6 +418,7 @@ export class DtlsClient {
         this.#transcript.appendHandshakeMessage(
             HandshakeMessage.encodeForTranscript({
                 msgType: HandshakeType.CLIENT_KEY_EXCHANGE,
+                messageSeq: ckeMsgSeq,
                 body: ckeBody,
             }),
         );
@@ -449,16 +456,21 @@ export class DtlsClient {
             transcriptDigest: this.#transcript.digest(),
         });
         const finishedBody = FinishedMessage.build(verifyData);
+        const finishedMsgSeq = this.#handshakeMessageSeq;
         const finishedHandshake = HandshakeMessage.encode({
             msgType: HandshakeType.FINISHED,
-            messageSeq: this.#handshakeMessageSeq,
+            messageSeq: finishedMsgSeq,
             body: finishedBody,
         });
         this.#handshakeMessageSeq += 1;
         // Append Finished to transcript NOW — server's Finished is computed over the transcript
         // including our Finished, so when we verify their MAC the digest must reflect this.
         this.#transcript.appendHandshakeMessage(
-            HandshakeMessage.encodeForTranscript({ msgType: HandshakeType.FINISHED, body: finishedBody }),
+            HandshakeMessage.encodeForTranscript({
+                msgType: HandshakeType.FINISHED,
+                messageSeq: finishedMsgSeq,
+                body: finishedBody,
+            }),
         );
 
         const ckeRecord = DtlsRecord.encode({
@@ -508,6 +520,7 @@ export class DtlsClient {
         }
         let sawCcs = false;
         let serverFinishedBody: Uint8Array | undefined;
+        let serverFinishedMsgSeq = 0;
         let p = 0;
         while (p < bytes.length) {
             if (bytes.length - p < 13) {
@@ -542,6 +555,7 @@ export class DtlsClient {
                         throw new Error(`DtlsClient: expected Finished, got msg_type=${message.msgType}`);
                     }
                     serverFinishedBody = message.body;
+                    serverFinishedMsgSeq = message.messageSeq;
                     q += consumed;
                 }
             }
@@ -565,7 +579,11 @@ export class DtlsClient {
             throw new Error("DtlsClient: server Finished verify_data mismatch");
         }
         this.#transcript.appendHandshakeMessage(
-            HandshakeMessage.encodeForTranscript({ msgType: HandshakeType.FINISHED, body: serverFinishedBody }),
+            HandshakeMessage.encodeForTranscript({
+                msgType: HandshakeType.FINISHED,
+                messageSeq: serverFinishedMsgSeq,
+                body: serverFinishedBody,
+            }),
         );
         this.#state = "established";
         return { records: [] };

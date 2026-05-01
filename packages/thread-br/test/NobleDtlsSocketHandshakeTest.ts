@@ -268,7 +268,11 @@ class UdpMirrorServer {
             throw new Error("UdpMirrorServer: cookie mismatch");
         }
         this.#transcript.appendHandshakeMessage(
-            HandshakeMessage.encodeForTranscript({ msgType: HandshakeType.CLIENT_HELLO, body: message.body }),
+            HandshakeMessage.encodeForTranscript({
+                msgType: HandshakeType.CLIENT_HELLO,
+                messageSeq: message.messageSeq,
+                body: message.body,
+            }),
         );
         this.#expectingCookieEcho = false;
         this.#clientRandom = parsed.random;
@@ -309,13 +313,18 @@ class UdpMirrorServer {
         const serverRound1Bytes = EcJpakeRound.serializeRound1(serverRound1.kp1, serverRound1.kp2);
 
         const serverHelloBody = this.#buildServerHelloBody(serverRound1Bytes);
+        const serverHelloMsgSeq = this.#handshakeMessageSeq++;
         const serverHelloHs = HandshakeMessage.encode({
             msgType: HandshakeType.SERVER_HELLO,
-            messageSeq: this.#handshakeMessageSeq++,
+            messageSeq: serverHelloMsgSeq,
             body: serverHelloBody,
         });
         this.#transcript.appendHandshakeMessage(
-            HandshakeMessage.encodeForTranscript({ msgType: HandshakeType.SERVER_HELLO, body: serverHelloBody }),
+            HandshakeMessage.encodeForTranscript({
+                msgType: HandshakeType.SERVER_HELLO,
+                messageSeq: serverHelloMsgSeq,
+                body: serverHelloBody,
+            }),
         );
 
         const serverGenerator = EcJpakeRound.composeRound2Generator({
@@ -332,23 +341,30 @@ class UdpMirrorServer {
             generator: serverGenerator,
         });
         const skeBody = EcJpakeRound.serializeRound2(serverRound2, { prependEcParameters: true });
+        const skeMsgSeq = this.#handshakeMessageSeq++;
         const skeHs = HandshakeMessage.encode({
             msgType: HandshakeType.SERVER_KEY_EXCHANGE,
-            messageSeq: this.#handshakeMessageSeq++,
+            messageSeq: skeMsgSeq,
             body: skeBody,
         });
         this.#transcript.appendHandshakeMessage(
-            HandshakeMessage.encodeForTranscript({ msgType: HandshakeType.SERVER_KEY_EXCHANGE, body: skeBody }),
+            HandshakeMessage.encodeForTranscript({
+                msgType: HandshakeType.SERVER_KEY_EXCHANGE,
+                messageSeq: skeMsgSeq,
+                body: skeBody,
+            }),
         );
 
+        const shdMsgSeq = this.#handshakeMessageSeq++;
         const shdHs = HandshakeMessage.encode({
             msgType: HandshakeType.SERVER_HELLO_DONE,
-            messageSeq: this.#handshakeMessageSeq++,
+            messageSeq: shdMsgSeq,
             body: new Uint8Array(0),
         });
         this.#transcript.appendHandshakeMessage(
             HandshakeMessage.encodeForTranscript({
                 msgType: HandshakeType.SERVER_HELLO_DONE,
+                messageSeq: shdMsgSeq,
                 body: new Uint8Array(0),
             }),
         );
@@ -394,6 +410,7 @@ class UdpMirrorServer {
     #handleClientFlightLazy(bytes: Uint8Array): Uint8Array[] {
         let p = 0;
         let clientFinishedBody: Uint8Array | undefined;
+        let clientFinishedMsgSeq = 0;
         let sawCcs = false;
         let sawCke = false;
         while (p < bytes.length) {
@@ -418,6 +435,7 @@ class UdpMirrorServer {
                 this.#transcript.appendHandshakeMessage(
                     HandshakeMessage.encodeForTranscript({
                         msgType: HandshakeType.CLIENT_KEY_EXCHANGE,
+                        messageSeq: message.messageSeq,
                         body: message.body,
                     }),
                 );
@@ -434,6 +452,7 @@ class UdpMirrorServer {
                     throw new Error(`UdpMirrorServer: expected Finished, got ${message.msgType}`);
                 }
                 clientFinishedBody = message.body;
+                clientFinishedMsgSeq = message.messageSeq;
             }
             p = recordEnd;
         }
@@ -457,6 +476,7 @@ class UdpMirrorServer {
         this.#transcript.appendHandshakeMessage(
             HandshakeMessage.encodeForTranscript({
                 msgType: HandshakeType.FINISHED,
+                messageSeq: clientFinishedMsgSeq,
                 body: clientFinishedBody,
             }),
         );

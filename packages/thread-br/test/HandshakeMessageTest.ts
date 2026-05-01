@@ -5,11 +5,7 @@
  */
 
 import { Bytes } from "@matter/main";
-import {
-    DTLS_HANDSHAKE_HEADER_LEN,
-    HandshakeMessage,
-    TLS_HANDSHAKE_HEADER_LEN,
-} from "../src/dtls/handshake/HandshakeMessage.js";
+import { DTLS_HANDSHAKE_HEADER_LEN, HandshakeMessage } from "../src/dtls/handshake/HandshakeMessage.js";
 import { HandshakeType, isHandshakeType } from "../src/dtls/handshake/HandshakeType.js";
 
 describe("HandshakeType.isHandshakeType", () => {
@@ -148,27 +144,46 @@ describe("HandshakeMessage envelope", () => {
         ).to.throw(/message_seq/);
     });
 
-    it("encodeForTranscript produces only the TLS 1.2 4-byte header (RFC 6347 §4.2.6)", () => {
+    it("encodeForTranscript produces the full DTLS 1.2 12-byte header form (matches encode)", () => {
         const body = Bytes.of(Bytes.fromHex("deadbeef"));
-        const tls = HandshakeMessage.encodeForTranscript({
+        const transcriptBytes = HandshakeMessage.encodeForTranscript({
             msgType: HandshakeType.CLIENT_HELLO,
+            messageSeq: 0,
             body,
         });
-        expect(tls.length).to.equal(TLS_HANDSHAKE_HEADER_LEN + body.length);
-        expect(tls[0]).to.equal(HandshakeType.CLIENT_HELLO);
-        expect(tls[1]).to.equal(0);
-        expect(tls[2]).to.equal(0);
-        expect(tls[3]).to.equal(4);
-        expect(Bytes.areEqual(tls.subarray(TLS_HANDSHAKE_HEADER_LEN), body)).to.equal(true);
+        expect(transcriptBytes.length).to.equal(DTLS_HANDSHAKE_HEADER_LEN + body.length);
+        expect(transcriptBytes[0]).to.equal(HandshakeType.CLIENT_HELLO);
+        // length (3 BE) = 4
+        expect(transcriptBytes[1]).to.equal(0);
+        expect(transcriptBytes[2]).to.equal(0);
+        expect(transcriptBytes[3]).to.equal(4);
+        // message_seq = 0
+        expect(transcriptBytes[4]).to.equal(0);
+        expect(transcriptBytes[5]).to.equal(0);
+        // fragment_offset = 0
+        expect(transcriptBytes[6]).to.equal(0);
+        expect(transcriptBytes[7]).to.equal(0);
+        expect(transcriptBytes[8]).to.equal(0);
+        // fragment_length = 4
+        expect(transcriptBytes[9]).to.equal(0);
+        expect(transcriptBytes[10]).to.equal(0);
+        expect(transcriptBytes[11]).to.equal(4);
+        expect(Bytes.areEqual(transcriptBytes.subarray(DTLS_HANDSHAKE_HEADER_LEN), body)).to.equal(true);
+        // Identical to encode()
+        const wire = HandshakeMessage.encode({
+            msgType: HandshakeType.CLIENT_HELLO,
+            messageSeq: 0,
+            body,
+        });
+        expect(Bytes.areEqual(transcriptBytes, wire)).to.equal(true);
     });
 
-    it("encodeForTranscript drops DTLS-only fields regardless of message_seq used at the wire layer", () => {
+    it("encodeForTranscript reflects message_seq — different seqs produce different bytes", () => {
         const body = Bytes.of(Bytes.fromHex("0102"));
-        const tls1 = HandshakeMessage.encodeForTranscript({ msgType: HandshakeType.SERVER_HELLO, body });
-        const tls2 = HandshakeMessage.encodeForTranscript({ msgType: HandshakeType.SERVER_HELLO, body });
-        expect(Bytes.areEqual(tls1, tls2)).to.equal(true);
-        // And it differs from the DTLS form for the same body.
-        const dtls = HandshakeMessage.encode({ msgType: HandshakeType.SERVER_HELLO, messageSeq: 7, body });
-        expect(dtls.length).to.equal(tls1.length + 8);
+        const t1 = HandshakeMessage.encodeForTranscript({ msgType: HandshakeType.SERVER_HELLO, messageSeq: 7, body });
+        const t2 = HandshakeMessage.encodeForTranscript({ msgType: HandshakeType.SERVER_HELLO, messageSeq: 7, body });
+        expect(Bytes.areEqual(t1, t2)).to.equal(true);
+        const t3 = HandshakeMessage.encodeForTranscript({ msgType: HandshakeType.SERVER_HELLO, messageSeq: 8, body });
+        expect(Bytes.areEqual(t1, t3)).to.equal(false);
     });
 });

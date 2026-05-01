@@ -19,12 +19,25 @@
  * ```
  *
  * Each Extension is `uint16 extension_type || opaque extension_data<0..2^16-1>`.
- * The only extension we ever send is `ecjpake_kkpp` (type 0x0100,
- * draft-cragie-tls-ecjpake-01) carrying the round-1 ECJPAKEKeyKPPairList payload.
+ * Required extensions:
+ * - `ecjpake_kkpp` (0x0100, draft-cragie-tls-ecjpake-01) — round-1 ECJPAKEKeyKPPairList payload
+ * - `supported_groups` (0x000a, RFC 8422 §5.1.1) — peer requires this even though the cipher
+ *   suite hardcodes P-256, otherwise mbedtls rejects with "no common elliptic curve"
+ * - `ec_point_formats` (0x000b, RFC 8422 §5.1.2) — uncompressed-only; mbedtls is lenient if
+ *   omitted but real BRs may not be
  */
 
 /** TLS extension type for `ecjpake_kkpp` (draft-cragie-tls-ecjpake-01 §3). */
 export const EXTENSION_TYPE_ECJPAKE_KKPP = 0x0100;
+
+/** TLS extension type for `supported_groups` (RFC 8422 §5.1.1, formerly `elliptic_curves`). */
+export const EXTENSION_TYPE_SUPPORTED_GROUPS = 0x000a;
+
+/** TLS extension type for `ec_point_formats` (RFC 8422 §5.1.2). */
+export const EXTENSION_TYPE_EC_POINT_FORMATS = 0x000b;
+
+/** Named-curve identifier for `secp256r1` (P-256, RFC 8422 §5.1.1). */
+export const NAMED_CURVE_SECP256R1 = 0x0017;
 
 /** TLS cipher-suite identifier for `TLS_ECJPAKE_WITH_AES_128_CCM_8` (mbedTLS, experimental). */
 export const CIPHER_SUITE_ECJPAKE_WITH_AES_128_CCM_8 = 0xc0ff;
@@ -65,9 +78,10 @@ export const ClientHelloMessage = {
         if (cookie.length > MAX_COOKIE_LEN) {
             throw new Error(`ClientHello cookie must be <= ${MAX_COOKIE_LEN} bytes, got ${cookie.length}`);
         }
-        // ecjpake_kkpp_data: ext_type(2) + ext_data_length(2) + payload
-        const extEntryLen = 2 + 2 + ecjpakeKkpp.length;
-        // extensions block: extensions_length(2) + entries
+        const ecjpakeExtLen = 2 + 2 + ecjpakeKkpp.length;
+        const supportedGroupsExtLen = 2 + 2 + 2 + 2; // header(4) + list_len(2) + secp256r1(2)
+        const ecPointFormatsExtLen = 2 + 2 + 1 + 1; // header(4) + list_len(1) + uncompressed(1)
+        const extEntryLen = ecjpakeExtLen + supportedGroupsExtLen + ecPointFormatsExtLen;
         const extensionsBlockLen = 2 + extEntryLen;
 
         const totalLen =
@@ -103,12 +117,29 @@ export const ClientHelloMessage = {
         // extensions block
         writeUint16BE(out, p, extEntryLen);
         p += 2;
+        // ecjpake_kkpp
         writeUint16BE(out, p, EXTENSION_TYPE_ECJPAKE_KKPP);
         p += 2;
         writeUint16BE(out, p, ecjpakeKkpp.length);
         p += 2;
         out.set(ecjpakeKkpp, p);
         p += ecjpakeKkpp.length;
+        // supported_groups: list_len=2, [secp256r1]
+        writeUint16BE(out, p, EXTENSION_TYPE_SUPPORTED_GROUPS);
+        p += 2;
+        writeUint16BE(out, p, 4); // ext data: list_len(2) + 1 curve(2)
+        p += 2;
+        writeUint16BE(out, p, 2); // list_len = 2 bytes (one curve)
+        p += 2;
+        writeUint16BE(out, p, NAMED_CURVE_SECP256R1);
+        p += 2;
+        // ec_point_formats: list_len=1, [uncompressed=0x00]
+        writeUint16BE(out, p, EXTENSION_TYPE_EC_POINT_FORMATS);
+        p += 2;
+        writeUint16BE(out, p, 2); // ext data: list_len(1) + 1 format(1)
+        p += 2;
+        out[p++] = 1; // list_len = 1 byte (one format)
+        out[p++] = 0x00; // uncompressed
         if (p !== totalLen) {
             throw new Error(`ClientHello internal length mismatch: wrote ${p}, expected ${totalLen}`);
         }
