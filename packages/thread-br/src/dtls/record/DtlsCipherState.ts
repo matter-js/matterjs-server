@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { AntiReplayWindow } from "./AntiReplayWindow.js";
 import { ContentType } from "./ContentType.js";
 import { DTLS_1_2_VERSION, type DtlsRecordCipherState } from "./DtlsRecord.js";
 
@@ -44,12 +45,14 @@ function copyExpect(name: string, value: Uint8Array, expectedLen: number): Uint8
  * Holds:
  * - the four key-block byte arrays,
  * - the local role (controls which write key/salt is used for encrypt vs decrypt),
- * - and is a {@link DtlsRecordCipherState}, providing nonce + AAD construction the
- *   record codec needs.
+ * - per-direction epoch and sequence counters,
+ * - and a per-read-epoch {@link AntiReplayWindow} (RFC 6347 §4.1.2.6).
  *
- * Sequence-number bookkeeping and the read-side anti-replay window land in sub-task
- * 3.2.5; this class deliberately stays free of mutable seq state for now so it can be
- * unit-tested in isolation.
+ * Both epochs start at 0 (plaintext handshake records). After ChangeCipherSpec the
+ * sender bumps its own epoch and resets its sequence counter to 0; the handshake
+ * layer drives that via {@link advanceWriteEpoch} / {@link advanceReadEpoch}. The
+ * read window is allocated lazily for any epoch > 0 because plaintext records carry
+ * no AEAD tag and therefore cannot meaningfully participate in anti-replay.
  */
 export class DtlsCipherState implements DtlsRecordCipherState {
     readonly role: "client" | "server";
@@ -57,6 +60,10 @@ export class DtlsCipherState implements DtlsRecordCipherState {
     readonly #serverWriteKey: Uint8Array;
     readonly #clientWriteSalt: Uint8Array;
     readonly #serverWriteSalt: Uint8Array;
+    #writeEpoch = 0;
+    #writeSeq = 0n;
+    #readEpoch = 0;
+    #readWindow: AntiReplayWindow | undefined;
 
     constructor(role: "client" | "server", inputs: DtlsCipherStateInputs) {
         this.role = role;
@@ -64,6 +71,74 @@ export class DtlsCipherState implements DtlsRecordCipherState {
         this.#serverWriteKey = copyExpect("serverWriteKey", inputs.serverWriteKey, KEY_LEN);
         this.#clientWriteSalt = copyExpect("clientWriteSalt", inputs.clientWriteSalt, SALT_LEN);
         this.#serverWriteSalt = copyExpect("serverWriteSalt", inputs.serverWriteSalt, SALT_LEN);
+    }
+
+    get writeEpoch(): number {
+        return this.#writeEpoch;
+    }
+
+    get readEpoch(): number {
+        return this.#readEpoch;
+    }
+
+    /** Most recently allocated outbound seq, or `-1n` before the first allocation in the current epoch. */
+    get lastWriteSeq(): bigint {
+        return this.#writeSeq - 1n;
+    }
+
+    /**
+     * Allocate the next outbound sequence number for the current write epoch and bump
+     * the counter. Throws if the 48-bit space is exhausted within an epoch.
+     */
+    nextWriteSeq(): bigint {
+        if (this.#writeSeq > MAX_SEQ) {
+            throw new Error(`DtlsCipherState write sequence_number space exhausted at epoch ${this.#writeEpoch}`);
+        }
+        const seq = this.#writeSeq;
+        this.#writeSeq += 1n;
+        return seq;
+    }
+
+    /**
+     * Increment the outbound epoch (called once after sending ChangeCipherSpec) and reset
+     * the seq counter to 0 (RFC 6347 §4.1.2.5).
+     */
+    advanceWriteEpoch(): void {
+        if (this.#writeEpoch >= MAX_EPOCH) {
+            throw new Error(`DtlsCipherState write epoch overflow`);
+        }
+        this.#writeEpoch += 1;
+        this.#writeSeq = 0n;
+    }
+
+    /**
+     * Increment the inbound epoch (called once after receiving ChangeCipherSpec) and
+     * reset the read-side anti-replay window for the new epoch.
+     */
+    advanceReadEpoch(): void {
+        if (this.#readEpoch >= MAX_EPOCH) {
+            throw new Error(`DtlsCipherState read epoch overflow`);
+        }
+        this.#readEpoch += 1;
+        this.#readWindow = new AntiReplayWindow();
+    }
+
+    /**
+     * Test+mark an inbound (epoch, seqNum) pair. Returns false on replay or wrong epoch
+     * so callers can drop the record per RFC 6347 §4.1.2.6. Plaintext epoch=0 records
+     * are accepted unconditionally — they carry no MAC and replay is meaningless.
+     */
+    acceptIncoming(epoch: number, seqNum: bigint): boolean {
+        if (epoch !== this.#readEpoch) {
+            return false;
+        }
+        if (epoch === 0) {
+            return true;
+        }
+        if (this.#readWindow === undefined) {
+            this.#readWindow = new AntiReplayWindow();
+        }
+        return this.#readWindow.check(seqNum);
     }
 
     encryptParams(): { key: Uint8Array; salt: Uint8Array } {

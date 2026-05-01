@@ -7,6 +7,7 @@
 import { Bytes } from "@matter/main";
 import { ContentType } from "../src/dtls/record/ContentType.js";
 import { DtlsCipherState, type DtlsCipherStateInputs } from "../src/dtls/record/DtlsCipherState.js";
+import { DtlsRecord, DtlsReplayError } from "../src/dtls/record/DtlsRecord.js";
 
 const FIXED_INPUTS: DtlsCipherStateInputs = {
     clientWriteKey: Bytes.of(Bytes.fromHex("000102030405060708090a0b0c0d0e0f")),
@@ -108,5 +109,170 @@ describe("DtlsCipherState.aadFor", () => {
     it("rejects out-of-range plaintextLen", () => {
         expect(() => state.aadFor(ContentType.HANDSHAKE, 0, 0n, -1)).to.throw(/plaintextLen/);
         expect(() => state.aadFor(ContentType.HANDSHAKE, 0, 0n, 0x10000)).to.throw(/plaintextLen/);
+    });
+});
+
+/**
+ * Build a paired (client, server) state from the same key block so the two halves can
+ * exchange records end-to-end. The client encrypts with `clientWriteKey` and the server
+ * with `serverWriteKey`, and `decryptParams` on each peer points at the other peer's
+ * write key — this is exactly the layout the TLS 1.2 PRF will produce in sub-batch 4.
+ */
+function pairStates(): { client: DtlsCipherState; server: DtlsCipherState } {
+    return {
+        client: new DtlsCipherState("client", FIXED_INPUTS),
+        server: new DtlsCipherState("server", FIXED_INPUTS),
+    };
+}
+
+describe("DtlsCipherState sequence + epoch counters", () => {
+    it("starts at writeEpoch=0, readEpoch=0, lastWriteSeq=-1", () => {
+        const s = new DtlsCipherState("client", FIXED_INPUTS);
+        expect(s.writeEpoch).to.equal(0);
+        expect(s.readEpoch).to.equal(0);
+        expect(s.lastWriteSeq).to.equal(-1n);
+    });
+
+    it("nextWriteSeq returns 0,1,2,... and updates lastWriteSeq", () => {
+        const s = new DtlsCipherState("client", FIXED_INPUTS);
+        expect(s.nextWriteSeq()).to.equal(0n);
+        expect(s.nextWriteSeq()).to.equal(1n);
+        expect(s.nextWriteSeq()).to.equal(2n);
+        expect(s.lastWriteSeq).to.equal(2n);
+    });
+
+    it("advanceWriteEpoch bumps epoch and resets seq", () => {
+        const s = new DtlsCipherState("client", FIXED_INPUTS);
+        s.nextWriteSeq();
+        s.nextWriteSeq();
+        s.advanceWriteEpoch();
+        expect(s.writeEpoch).to.equal(1);
+        expect(s.lastWriteSeq).to.equal(-1n);
+        expect(s.nextWriteSeq()).to.equal(0n);
+    });
+
+    it("advanceReadEpoch bumps epoch and creates a fresh anti-replay window", () => {
+        const s = new DtlsCipherState("client", FIXED_INPUTS);
+        s.advanceReadEpoch();
+        expect(s.readEpoch).to.equal(1);
+        expect(s.acceptIncoming(1, 0n)).to.equal(true);
+        expect(s.acceptIncoming(1, 0n)).to.equal(false);
+    });
+
+    it("acceptIncoming rejects records from a different epoch", () => {
+        const s = new DtlsCipherState("client", FIXED_INPUTS);
+        s.advanceReadEpoch();
+        expect(s.acceptIncoming(0, 0n)).to.equal(false);
+        expect(s.acceptIncoming(2, 0n)).to.equal(false);
+    });
+
+    it("acceptIncoming on epoch=0 always returns true (plaintext has no MAC)", () => {
+        const s = new DtlsCipherState("client", FIXED_INPUTS);
+        expect(s.acceptIncoming(0, 0n)).to.equal(true);
+        expect(s.acceptIncoming(0, 0n)).to.equal(true);
+        expect(s.acceptIncoming(0, 1234n)).to.equal(true);
+    });
+});
+
+describe("DtlsRecord + DtlsCipherState end-to-end (epoch=1)", () => {
+    function bumpToEpoch1(client: DtlsCipherState, server: DtlsCipherState): void {
+        client.advanceWriteEpoch();
+        client.advanceReadEpoch();
+        server.advanceWriteEpoch();
+        server.advanceReadEpoch();
+    }
+
+    it("encrypt at epoch=1 seq=0 with client state -> decrypt with server state", () => {
+        const { client, server } = pairStates();
+        bumpToEpoch1(client, server);
+        const plaintext = Bytes.of(Bytes.fromHex("a0a1a2a3a4a5"));
+        const seq = client.nextWriteSeq();
+        expect(seq).to.equal(0n);
+        const wire = DtlsRecord.encode(
+            { type: ContentType.APPLICATION_DATA, epoch: client.writeEpoch, sequenceNumber: seq, fragment: plaintext },
+            client,
+        );
+        const { record } = DtlsRecord.decode(wire, server);
+        expect(record.epoch).to.equal(1);
+        expect(record.sequenceNumber).to.equal(0n);
+        expect(Bytes.areEqual(record.fragment, plaintext)).to.equal(true);
+    });
+
+    it("tag tamper -> decode throws (auth failure, not DtlsReplayError)", () => {
+        const { client, server } = pairStates();
+        bumpToEpoch1(client, server);
+        const wire = DtlsRecord.encode(
+            {
+                type: ContentType.APPLICATION_DATA,
+                epoch: 1,
+                sequenceNumber: client.nextWriteSeq(),
+                fragment: Bytes.of(Bytes.fromHex("11223344")),
+            },
+            client,
+        );
+        wire[wire.length - 1] ^= 0x01;
+        let thrown: unknown;
+        try {
+            DtlsRecord.decode(wire, server);
+        } catch (e) {
+            thrown = e;
+        }
+        expect(thrown instanceof Error).to.equal(true);
+        expect(thrown instanceof DtlsReplayError).to.equal(false);
+    });
+
+    it("replay -> decode throws DtlsReplayError on second delivery of the same record", () => {
+        const { client, server } = pairStates();
+        bumpToEpoch1(client, server);
+        const wire = DtlsRecord.encode(
+            {
+                type: ContentType.APPLICATION_DATA,
+                epoch: 1,
+                sequenceNumber: client.nextWriteSeq(),
+                fragment: Bytes.of(Bytes.fromHex("aabbcc")),
+            },
+            client,
+        );
+        // First delivery succeeds.
+        const first = DtlsRecord.decode(wire, server);
+        expect(first.record.sequenceNumber).to.equal(0n);
+        // Replay of the identical bytes is rejected.
+        let thrown: unknown;
+        try {
+            DtlsRecord.decode(wire, server);
+        } catch (e) {
+            thrown = e;
+        }
+        expect(thrown instanceof DtlsReplayError).to.equal(true);
+        if (thrown instanceof DtlsReplayError) {
+            expect(thrown.epoch).to.equal(1);
+            expect(thrown.sequenceNumber).to.equal(0n);
+        }
+    });
+
+    it("out-of-order within window is accepted exactly once", () => {
+        const { client, server } = pairStates();
+        bumpToEpoch1(client, server);
+        const records: Uint8Array[] = [];
+        for (let i = 0; i < 5; i++) {
+            records.push(
+                DtlsRecord.encode(
+                    {
+                        type: ContentType.APPLICATION_DATA,
+                        epoch: 1,
+                        sequenceNumber: client.nextWriteSeq(),
+                        fragment: new Uint8Array([i]),
+                    },
+                    client,
+                ),
+            );
+        }
+        // Deliver in scrambled order: 4, 0, 2, 1, 3
+        for (const idx of [4, 0, 2, 1, 3]) {
+            const { record } = DtlsRecord.decode(records[idx], server);
+            expect(record.fragment[0]).to.equal(idx);
+        }
+        // Replay any one of them — rejected.
+        expect(() => DtlsRecord.decode(records[2], server)).to.throw(DtlsReplayError);
     });
 });

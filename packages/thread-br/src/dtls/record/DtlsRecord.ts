@@ -26,6 +26,10 @@ export const DTLS_HEADER_LEN = 13;
  * Minimal cipher-state surface the record codec needs. The full {@link DtlsCipherState}
  * class implements this and adds key-block bookkeeping; this interface lets the codec
  * accept either the class or a stand-in test double without forcing a circular import.
+ *
+ * `acceptIncoming`, when present, is invoked after a successful AEAD decrypt to apply
+ * the RFC 6347 §4.1.2.6 anti-replay window. Returning `false` causes the codec to throw
+ * a {@link DtlsReplayError}.
  */
 export interface DtlsRecordCipherState {
     /** AES key + 4-byte salt to use for outbound (encrypt) records. */
@@ -36,6 +40,25 @@ export interface DtlsRecordCipherState {
     nonceFor(salt: Uint8Array, epoch: number, seqNum: bigint): Uint8Array;
     /** Build the 13-byte DTLS AAD: epoch||seq(8) || type(1) || version(2) || plaintextLen(2). */
     aadFor(type: ContentType, epoch: number, seqNum: bigint, plaintextLen: number): Uint8Array;
+    /** Optional read-side replay-window check; absent on test doubles or pre-handshake states. */
+    acceptIncoming?(epoch: number, seqNum: bigint): boolean;
+}
+
+/**
+ * Thrown by {@link DtlsRecord.decode} when a successfully-decrypted record is rejected
+ * by the read-side anti-replay window. Distinguishable from AEAD failures so the caller
+ * can log/drop without treating the record as a fatal error.
+ */
+export class DtlsReplayError extends Error {
+    readonly epoch: number;
+    readonly sequenceNumber: bigint;
+
+    constructor(epoch: number, sequenceNumber: bigint) {
+        super(`DTLS replay or wrong-epoch record at epoch=${epoch} seq=${sequenceNumber}`);
+        this.name = "DtlsReplayError";
+        this.epoch = epoch;
+        this.sequenceNumber = sequenceNumber;
+    }
 }
 
 /**
@@ -208,6 +231,11 @@ export namespace DtlsRecord {
             const nonce = state.nonceFor(salt, epoch, sequenceNumber);
             const aad = state.aadFor(type, epoch, sequenceNumber, plaintextLen);
             fragment = AesCcm8.decrypt({ key, nonce, aad, ciphertextWithTag: cipherWithTag });
+            // Anti-replay applies only to AEAD-protected records; epoch=0 plaintext has
+            // no integrity check that a replay tracker could meaningfully gate.
+            if (state.acceptIncoming !== undefined && !state.acceptIncoming(epoch, sequenceNumber)) {
+                throw new DtlsReplayError(epoch, sequenceNumber);
+            }
         }
 
         return {
