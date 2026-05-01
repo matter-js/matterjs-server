@@ -43,7 +43,7 @@ function readSlice(bytes: Uint8Array, offset: number, length: number): Uint8Arra
     return bytes.subarray(offset, offset + length);
 }
 
-function writeKeyKP(keyKP: EcJpakeKeyKP, out: number[]): void {
+function validateKeyKP(keyKP: EcJpakeKeyKP): void {
     if (keyKP.X.length !== POINT_LEN || keyKP.X[0] !== 0x04) {
         throw new Error("X must be SEC1-uncompressed P-256 (65 bytes, 0x04 prefix)");
     }
@@ -59,13 +59,24 @@ function writeKeyKP(keyKP: EcJpakeKeyKP, out: number[]): void {
     if (keyKP.zkp.r[0] === 0x00) {
         throw new Error("ZKP.r must be minimal big-endian (no leading zero)");
     }
+}
 
-    out.push(POINT_LEN);
-    for (const b of keyKP.X) out.push(b);
-    out.push(POINT_LEN);
-    for (const b of keyKP.zkp.V) out.push(b);
-    out.push(keyKP.zkp.r.length);
-    for (const b of keyKP.zkp.r) out.push(b);
+function keyKpEncodedLength(keyKP: EcJpakeKeyKP): number {
+    return 1 + POINT_LEN + 1 + POINT_LEN + 1 + keyKP.zkp.r.length;
+}
+
+function writeKeyKP(keyKP: EcJpakeKeyKP, out: Uint8Array, offset: number): number {
+    let p = offset;
+    out[p++] = POINT_LEN;
+    out.set(keyKP.X, p);
+    p += POINT_LEN;
+    out[p++] = POINT_LEN;
+    out.set(keyKP.zkp.V, p);
+    p += POINT_LEN;
+    out[p++] = keyKP.zkp.r.length;
+    out.set(keyKP.zkp.r, p);
+    p += keyKP.zkp.r.length;
+    return p;
 }
 
 function readKeyKP(bytes: Uint8Array, offset: number): { kp: EcJpakeKeyKP; nextOffset: number } {
@@ -130,10 +141,12 @@ export const EcJpakeRound = {
     },
 
     serializeRound1(kp1: EcJpakeKeyKP, kp2: EcJpakeKeyKP): Uint8Array {
-        const out = new Array<number>();
-        writeKeyKP(kp1, out);
-        writeKeyKP(kp2, out);
-        return Uint8Array.from(out);
+        validateKeyKP(kp1);
+        validateKeyKP(kp2);
+        const out = new Uint8Array(keyKpEncodedLength(kp1) + keyKpEncodedLength(kp2));
+        const after1 = writeKeyKP(kp1, out, 0);
+        writeKeyKP(kp2, out, after1);
+        return out;
     },
 
     parseRound1(bytes: Uint8Array): { kp1: EcJpakeKeyKP; kp2: EcJpakeKeyKP } {
@@ -201,12 +214,17 @@ export const EcJpakeRound = {
      * (ClientKeyExchange) uses `false`.
      */
     serializeRound2(kp: EcJpakeKeyKP, options: { prependEcParameters: boolean }): Uint8Array {
-        const out = new Array<number>();
+        validateKeyKP(kp);
+        const headerLen = options.prependEcParameters ? 3 : 0;
+        const out = new Uint8Array(headerLen + keyKpEncodedLength(kp));
+        let p = 0;
         if (options.prependEcParameters) {
-            out.push(0x03, 0x00, 0x17);
+            out[p++] = 0x03;
+            out[p++] = 0x00;
+            out[p++] = 0x17;
         }
-        writeKeyKP(kp, out);
-        return Uint8Array.from(out);
+        writeKeyKP(kp, out, p);
+        return out;
     },
 
     /**
