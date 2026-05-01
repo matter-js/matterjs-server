@@ -49,5 +49,23 @@
         "expectedClientWriteIvHex": "76573260",
         "expectedServerWriteIvHex": "3008991c",
         "_source": "Synthesized via Python ref P_SHA256. Layout per RFC 5246 §6.3 + RFC 6655 §3 (AES-128-CCM-8 AEAD, no MAC keys): 16+16 keys then 4+4 IVs. Seed order is REVERSED vs master_secret (server then client) — see mbedTLS ssl_tls.c v3.6.6 around line 7257 ('Swap the client and server random values')."
-    }
+    },
+    "finishedVectors": [
+        {
+            "name": "finished_client_synth",
+            "masterSecretHex": "c7611541a06be48b05e4306ac8296f1b9e99e558cd2f2eb5b957302cfcf9080db0ec1f85f2d22d93e6553edf3c7611e1",
+            "transcriptDigestHex": "1569137a59279bed898a1e90f1f33cca0896bb16ee167af445a1e1c7e79e27b1",
+            "role": "client",
+            "expectedVerifyDataHex": "dc3c0e8082dbf30462fb8a8d",
+            "_source": "Synthesized via Python ref P_SHA256. transcriptDigest = SHA-256(b'dummy handshake messages'); 12-byte output per RFC 5246 §7.4.9."
+        },
+        {
+            "name": "finished_server_synth",
+            "masterSecretHex": "c7611541a06be48b05e4306ac8296f1b9e99e558cd2f2eb5b957302cfcf9080db0ec1f85f2d22d93e6553edf3c7611e1",
+            "transcriptDigestHex": "1569137a59279bed898a1e90f1f33cca0896bb16ee167af445a1e1c7e79e27b1",
+            "role": "server",
+            "expectedVerifyDataHex": "f8ce712f601fd53006b3ff6a",
+            "_source": "Synthesized via Python ref P_SHA256. Same transcript as finished_client_synth, server role swaps the label to 'server finished'."
+        }
+    ]
 }

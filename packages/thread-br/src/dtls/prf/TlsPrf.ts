@@ -12,6 +12,7 @@ const RANDOM_LEN = 32;
 const KEY_LEN = 16;
 const IV_LEN = 4;
 const KEY_BLOCK_LEN = KEY_LEN * 2 + IV_LEN * 2;
+const VERIFY_DATA_LEN = 12;
 
 const ASCII_ENCODER = new TextEncoder();
 
@@ -146,5 +147,26 @@ export namespace TlsPrf {
             clientWriteIv: block.slice(KEY_LEN * 2, KEY_LEN * 2 + IV_LEN),
             serverWriteIv: block.slice(KEY_LEN * 2 + IV_LEN, KEY_BLOCK_LEN),
         };
+    }
+
+    /**
+     * Finished `verify_data` (RFC 5246 §7.4.9):
+     *
+     *   verify_data = PRF(master_secret, finished_label,
+     *                     Hash(handshake_messages))[0..11]
+     *
+     * with `finished_label = "client finished"` for the client-sent Finished
+     * and `"server finished"` for the server-sent one.
+     */
+    export function verifyData(args: {
+        masterSecret: Uint8Array;
+        role: "client" | "server";
+        transcriptDigest: Uint8Array;
+    }): Uint8Array {
+        const { masterSecret: ms, role, transcriptDigest } = args;
+        expectLength("masterSecret", ms, MASTER_SECRET_LEN);
+        expectLength("transcriptDigest", transcriptDigest, SHA256_LEN);
+        const label = role === "client" ? "client finished" : "server finished";
+        return compute({ secret: ms, label, seed: transcriptDigest, outputLength: VERIFY_DATA_LEN });
     }
 }

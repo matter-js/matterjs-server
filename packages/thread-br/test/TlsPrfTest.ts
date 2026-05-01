@@ -41,10 +41,18 @@ interface KeyBlockVector {
     expectedServerWriteIvHex: string;
 }
 
+interface FinishedVector {
+    masterSecretHex: string;
+    transcriptDigestHex: string;
+    role: "client" | "server";
+    expectedVerifyDataHex: string;
+}
+
 interface Fixture {
     prfVectors: PrfVector[];
     masterSecretVector: MasterSecretVector;
     keyBlockVector: KeyBlockVector;
+    finishedVectors: FinishedVector[];
 }
 
 function loadFixture(): Fixture {
@@ -180,5 +188,39 @@ describe("TlsPrf.keyBlock (RFC 5246 §6.3 / RFC 6655 §3, AES-128-CCM-8)", () =>
                 serverRandom: new Uint8Array(32),
             }),
         ).to.throw(/masterSecret/);
+    });
+});
+
+describe("TlsPrf.verifyData (RFC 5246 §7.4.9)", () => {
+    const fixture = loadFixture();
+
+    for (const vector of fixture.finishedVectors) {
+        it(`matches ${vector.role}-side Finished verify_data`, () => {
+            const out = TlsPrf.verifyData({
+                masterSecret: Bytes.of(Bytes.fromHex(vector.masterSecretHex)),
+                role: vector.role,
+                transcriptDigest: Bytes.of(Bytes.fromHex(vector.transcriptDigestHex)),
+            });
+            expect(Bytes.toHex(out)).to.equal(vector.expectedVerifyDataHex);
+            expect(out.length).to.equal(12);
+        });
+    }
+
+    it("client and server roles produce different verify_data for the same transcript", () => {
+        const ms = Bytes.of(Bytes.fromHex(fixture.finishedVectors[0].masterSecretHex));
+        const td = Bytes.of(Bytes.fromHex(fixture.finishedVectors[0].transcriptDigestHex));
+        const c = TlsPrf.verifyData({ masterSecret: ms, role: "client", transcriptDigest: td });
+        const s = TlsPrf.verifyData({ masterSecret: ms, role: "server", transcriptDigest: td });
+        expect(Bytes.areEqual(c, s)).to.equal(false);
+    });
+
+    it("rejects a transcriptDigest of wrong length", () => {
+        expect(() =>
+            TlsPrf.verifyData({
+                masterSecret: new Uint8Array(48),
+                role: "client",
+                transcriptDigest: new Uint8Array(31),
+            }),
+        ).to.throw(/transcriptDigest/);
     });
 });
