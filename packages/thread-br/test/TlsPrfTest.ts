@@ -23,8 +23,28 @@ interface PrfVector {
     _source: string;
 }
 
+interface MasterSecretVector {
+    premasterSecretHex: string;
+    clientRandomHex: string;
+    serverRandomHex: string;
+    expectedMasterSecretHex: string;
+}
+
+interface KeyBlockVector {
+    masterSecretHex: string;
+    clientRandomHex: string;
+    serverRandomHex: string;
+    expectedKeyBlockHex: string;
+    expectedClientWriteKeyHex: string;
+    expectedServerWriteKeyHex: string;
+    expectedClientWriteIvHex: string;
+    expectedServerWriteIvHex: string;
+}
+
 interface Fixture {
     prfVectors: PrfVector[];
+    masterSecretVector: MasterSecretVector;
+    keyBlockVector: KeyBlockVector;
 }
 
 function loadFixture(): Fixture {
@@ -87,5 +107,78 @@ describe("TlsPrf.compute (RFC 5246 §5 / RFC 6655)", () => {
         const a = TlsPrf.compute({ ...args, label: "label A" });
         const b = TlsPrf.compute({ ...args, label: "label B" });
         expect(Bytes.areEqual(a, b)).to.equal(false);
+    });
+});
+
+describe("TlsPrf.masterSecret (RFC 5246 §8.1)", () => {
+    const v = loadFixture().masterSecretVector;
+
+    it("matches the synthesized PRF reference", () => {
+        const ms = TlsPrf.masterSecret({
+            premasterSecret: Bytes.of(Bytes.fromHex(v.premasterSecretHex)),
+            clientRandom: Bytes.of(Bytes.fromHex(v.clientRandomHex)),
+            serverRandom: Bytes.of(Bytes.fromHex(v.serverRandomHex)),
+        });
+        expect(Bytes.toHex(ms)).to.equal(v.expectedMasterSecretHex);
+        expect(ms.length).to.equal(48);
+    });
+
+    it("rejects a clientRandom of wrong length", () => {
+        expect(() =>
+            TlsPrf.masterSecret({
+                premasterSecret: new Uint8Array(32),
+                clientRandom: new Uint8Array(31),
+                serverRandom: new Uint8Array(32),
+            }),
+        ).to.throw(/clientRandom/);
+    });
+
+    it("rejects a serverRandom of wrong length", () => {
+        expect(() =>
+            TlsPrf.masterSecret({
+                premasterSecret: new Uint8Array(32),
+                clientRandom: new Uint8Array(32),
+                serverRandom: new Uint8Array(33),
+            }),
+        ).to.throw(/serverRandom/);
+    });
+});
+
+describe("TlsPrf.keyBlock (RFC 5246 §6.3 / RFC 6655 §3, AES-128-CCM-8)", () => {
+    const v = loadFixture().keyBlockVector;
+
+    it("matches the synthesized PRF reference and slices the AEAD layout correctly", () => {
+        const block = TlsPrf.keyBlock({
+            masterSecret: Bytes.of(Bytes.fromHex(v.masterSecretHex)),
+            clientRandom: Bytes.of(Bytes.fromHex(v.clientRandomHex)),
+            serverRandom: Bytes.of(Bytes.fromHex(v.serverRandomHex)),
+        });
+        expect(Bytes.toHex(block.clientWriteKey)).to.equal(v.expectedClientWriteKeyHex);
+        expect(Bytes.toHex(block.serverWriteKey)).to.equal(v.expectedServerWriteKeyHex);
+        expect(Bytes.toHex(block.clientWriteIv)).to.equal(v.expectedClientWriteIvHex);
+        expect(Bytes.toHex(block.serverWriteIv)).to.equal(v.expectedServerWriteIvHex);
+        expect(block.clientWriteKey.length).to.equal(16);
+        expect(block.serverWriteKey.length).to.equal(16);
+        expect(block.clientWriteIv.length).to.equal(4);
+        expect(block.serverWriteIv.length).to.equal(4);
+    });
+
+    it("uses the (server || client) seed order — swapping the randoms changes the output", () => {
+        const ms = Bytes.of(Bytes.fromHex(v.masterSecretHex));
+        const cr = Bytes.of(Bytes.fromHex(v.clientRandomHex));
+        const sr = Bytes.of(Bytes.fromHex(v.serverRandomHex));
+        const correct = TlsPrf.keyBlock({ masterSecret: ms, clientRandom: cr, serverRandom: sr });
+        const swapped = TlsPrf.keyBlock({ masterSecret: ms, clientRandom: sr, serverRandom: cr });
+        expect(Bytes.areEqual(correct.clientWriteKey, swapped.clientWriteKey)).to.equal(false);
+    });
+
+    it("rejects a masterSecret of wrong length", () => {
+        expect(() =>
+            TlsPrf.keyBlock({
+                masterSecret: new Uint8Array(32),
+                clientRandom: new Uint8Array(32),
+                serverRandom: new Uint8Array(32),
+            }),
+        ).to.throw(/masterSecret/);
     });
 });

@@ -7,6 +7,11 @@
 import { createHmac } from "node:crypto";
 
 const SHA256_LEN = 32;
+const MASTER_SECRET_LEN = 48;
+const RANDOM_LEN = 32;
+const KEY_LEN = 16;
+const IV_LEN = 4;
+const KEY_BLOCK_LEN = KEY_LEN * 2 + IV_LEN * 2;
 
 const ASCII_ENCODER = new TextEncoder();
 
@@ -14,6 +19,12 @@ function hmacSha256(key: Uint8Array, data: Uint8Array): Uint8Array {
     const hmac = createHmac("sha256", key);
     hmac.update(data);
     return new Uint8Array(hmac.digest());
+}
+
+function expectLength(name: string, value: Uint8Array, expected: number): void {
+    if (value.length !== expected) {
+        throw new Error(`TlsPrf ${name} must be ${expected} bytes, got ${value.length}`);
+    }
 }
 
 function pSha256(secret: Uint8Array, seed: Uint8Array, outputLength: number): Uint8Array {
@@ -73,5 +84,67 @@ export namespace TlsPrf {
         combined.set(labelBytes, 0);
         combined.set(seed, labelBytes.length);
         return pSha256(secret, combined, outputLength);
+    }
+
+    /**
+     * `master_secret = PRF(pre_master_secret, "master secret",
+     *                      ClientHello.random || ServerHello.random)[0..47]`
+     * (RFC 5246 §8.1).
+     */
+    export function masterSecret(args: {
+        premasterSecret: Uint8Array;
+        clientRandom: Uint8Array;
+        serverRandom: Uint8Array;
+    }): Uint8Array {
+        const { premasterSecret, clientRandom, serverRandom } = args;
+        expectLength("clientRandom", clientRandom, RANDOM_LEN);
+        expectLength("serverRandom", serverRandom, RANDOM_LEN);
+        const seed = new Uint8Array(RANDOM_LEN * 2);
+        seed.set(clientRandom, 0);
+        seed.set(serverRandom, RANDOM_LEN);
+        return compute({ secret: premasterSecret, label: "master secret", seed, outputLength: MASTER_SECRET_LEN });
+    }
+
+    /**
+     * Slices of the 40-byte key block for `TLS_ECJPAKE_WITH_AES_128_CCM_8`
+     * (AEAD, no MAC keys; RFC 6655 §3, RFC 5246 §6.3).
+     */
+    export interface KeyBlock {
+        clientWriteKey: Uint8Array;
+        serverWriteKey: Uint8Array;
+        clientWriteIv: Uint8Array;
+        serverWriteIv: Uint8Array;
+    }
+
+    /**
+     * `key_block = PRF(master_secret, "key expansion",
+     *                  ServerHello.random || ClientHello.random)[0..39]`
+     * (RFC 5246 §6.3). Note the seed order is REVERSED relative to
+     * {@link masterSecret} (server then client) — see mbedTLS ssl_tls.c v3.6.6
+     * "Swap the client and server random values" (RFC 5246 6.3 vs 8.1).
+     *
+     * For `TLS_ECJPAKE_WITH_AES_128_CCM_8` the layout is:
+     * `client_write_key (16) || server_write_key (16) ||
+     *  client_write_IV (4)  || server_write_IV (4)`.
+     */
+    export function keyBlock(args: {
+        masterSecret: Uint8Array;
+        clientRandom: Uint8Array;
+        serverRandom: Uint8Array;
+    }): KeyBlock {
+        const { masterSecret: ms, clientRandom, serverRandom } = args;
+        expectLength("masterSecret", ms, MASTER_SECRET_LEN);
+        expectLength("clientRandom", clientRandom, RANDOM_LEN);
+        expectLength("serverRandom", serverRandom, RANDOM_LEN);
+        const seed = new Uint8Array(RANDOM_LEN * 2);
+        seed.set(serverRandom, 0);
+        seed.set(clientRandom, RANDOM_LEN);
+        const block = compute({ secret: ms, label: "key expansion", seed, outputLength: KEY_BLOCK_LEN });
+        return {
+            clientWriteKey: block.slice(0, KEY_LEN),
+            serverWriteKey: block.slice(KEY_LEN, KEY_LEN * 2),
+            clientWriteIv: block.slice(KEY_LEN * 2, KEY_LEN * 2 + IV_LEN),
+            serverWriteIv: block.slice(KEY_LEN * 2 + IV_LEN, KEY_BLOCK_LEN),
+        };
     }
 }

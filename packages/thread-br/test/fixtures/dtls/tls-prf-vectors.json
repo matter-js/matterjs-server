@@ -29,5 +29,25 @@
             "expectedHex": "7ab2aa6bc31d99c8bd1514b571f36c2484a16adf42e5ec49707f86d21ee58f3c",
             "_source": "Synthesized via Python ref P_SHA256 (RFC 5246 §5). Verifies empty label/seed don't crash."
         }
-    ]
+    ],
+    "masterSecretVector": {
+        "name": "master_secret_synth",
+        "premasterSecretHex": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "clientRandomHex": "c000000000000000000000000000000000000000000000000000000000000000",
+        "serverRandomHex": "5e00000000000000000000000000000000000000000000000000000000000000",
+        "expectedMasterSecretHex": "c7611541a06be48b05e4306ac8296f1b9e99e558cd2f2eb5b957302cfcf9080db0ec1f85f2d22d93e6553edf3c7611e1",
+        "_source": "Synthesized via Python ref P_SHA256. PMS is 32 bytes of 0xAA (mimics EcJpakePms output length). Random nonces have a single non-zero leading byte for visual separation."
+    },
+    "keyBlockVector": {
+        "name": "key_block_synth_aes128_ccm_8",
+        "masterSecretHex": "c7611541a06be48b05e4306ac8296f1b9e99e558cd2f2eb5b957302cfcf9080db0ec1f85f2d22d93e6553edf3c7611e1",
+        "clientRandomHex": "c000000000000000000000000000000000000000000000000000000000000000",
+        "serverRandomHex": "5e00000000000000000000000000000000000000000000000000000000000000",
+        "expectedKeyBlockHex": "8bc9d294e44392a18defc5a600db9ccb8c48899cf475609273b776b76ab265aa765732603008991c",
+        "expectedClientWriteKeyHex": "8bc9d294e44392a18defc5a600db9ccb",
+        "expectedServerWriteKeyHex": "8c48899cf475609273b776b76ab265aa",
+        "expectedClientWriteIvHex": "76573260",
+        "expectedServerWriteIvHex": "3008991c",
+        "_source": "Synthesized via Python ref P_SHA256. Layout per RFC 5246 §6.3 + RFC 6655 §3 (AES-128-CCM-8 AEAD, no MAC keys): 16+16 keys then 4+4 IVs. Seed order is REVERSED vs master_secret (server then client) — see mbedTLS ssl_tls.c v3.6.6 around line 7257 ('Swap the client and server random values')."
+    }
 }
