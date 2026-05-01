@@ -113,9 +113,8 @@ function readUint48BE(buf: Uint8Array, offset: number): bigint {
  *
  * `decode` parses one record off the front of the buffer and returns it together with
  * the number of consumed bytes, so a caller can split multiple records concatenated in
- * one UDP datagram. Anti-replay enforcement is layered on by {@link DtlsCipherState}
- * and lives outside this codec; callers feed inbound records through the cipher
- * state's read window before forwarding them upstack.
+ * one UDP datagram. When the supplied state implements {@link DtlsRecordCipherState.acceptIncoming},
+ * decode invokes it after AEAD success and throws {@link DtlsReplayError} on rejection.
  */
 export namespace DtlsRecord {
     export function encode(record: DtlsRecord, state?: DtlsRecordCipherState): Uint8Array {
