@@ -111,9 +111,9 @@ echo 'net.netfilter.nf_conntrack_udp_timeout_stream = 3600' | sudo tee /etc/sysc
 
 **DO NOT** pin firewall rules to UDP/5540. While 5540 is the IANA-assigned Matter port and is commonly used, the Matter specification does not require devices to use a single predetermined well-known port. A Matter node may listen on a different UDP port and advertise that port through its mDNS/DNS-SD service records. Controllers are expected to use the advertised port rather than assuming 5540.
 
-If you must filter, scope rules by source IPv6 prefix (Thread ULA + OMR prefix) or by interface — never by port.
+If you must filter, scope rules by network interface or by source IPv6 prefix (Thread ULA + OMR prefix) — never by port. On OTBR, `ot-ctl prefix` lists the OMR prefix (look for the `paros` flags).
 
-Diagnostic sentinel: a per-instance firewall chain drop counter climbing in step with battery-device report cycles while your "Matter" ACCEPT rule shows zero hits → conntrack timeout is the cause.
+Diagnostic sentinel: a per-instance firewall chain drop counter climbing in step with battery-device report cycles while your "Matter" ACCEPT rule shows zero hits → conntrack timeout is the cause. To confirm, run `conntrack -L | grep <controller-ip>` on the filtering kernel — each Matter flow shows its remaining UDP timeout in seconds. The `[ASSURED]` flag plus the countdown is the unambiguous tell.
 
 **Before opening an issue:** if you suspect Matter reliability problems are caused by the network path, **disable the host / hypervisor / container firewall entirely** and re-test for at least one full device report interval. If problems disappear with the firewall off, the conntrack timeout above is almost certainly the cause — apply the sysctl change and re-enable the firewall.
 
