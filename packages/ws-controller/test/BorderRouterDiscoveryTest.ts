@@ -184,7 +184,7 @@ describe("BorderRouterDiscovery", () => {
             expect(e!.extendedPanIdHex).to.equal("AAAAAAAAAAAAAAAA");
         });
 
-        it("removes a source when an instance becomes undiscovered, deletes entry when last source", async () => {
+        it("retains entry across single-source loss and full-source loss with last-known fields preserved", async () => {
             await disc.start();
             stub.makeTarget("Kuche.local.", ["192.168.1.10"]);
             stub.makeTarget("br.local.", ["10.0.0.5"]);
@@ -206,15 +206,22 @@ describe("BorderRouterDiscovery", () => {
             trelInst.setDiscovered(false);
             trelInst.emit({ name: trelInst });
 
-            const after = disc.get("AABBCCDDEEFF0011");
-            expect(after).to.not.equal(undefined);
-            expect(after!.sources).to.deep.equal(["meshcop"]);
-            expect(after!.trelPort).to.equal(undefined);
+            const afterTrelLoss = disc.get("AABBCCDDEEFF0011");
+            expect(afterTrelLoss).to.not.equal(undefined);
+            expect(afterTrelLoss!.sources).to.deep.equal(["meshcop"]);
+            expect(afterTrelLoss!.trelPort).to.equal(12345);
+            expect(afterTrelLoss!.networkName).to.equal("MyNet");
             expect(stub.targetByKey("br.local.")!.observerCount()).to.equal(0);
 
             meshcopInst.setDiscovered(false);
             meshcopInst.emit({ name: meshcopInst });
-            expect(disc.get("AABBCCDDEEFF0011")).to.equal(undefined);
+
+            const stale = disc.get("AABBCCDDEEFF0011");
+            expect(stale).to.not.equal(undefined);
+            expect(stale!.sources).to.deep.equal([]);
+            expect(stale!.networkName).to.equal("MyNet");
+            expect(stale!.meshcopPort).to.equal(49154);
+            expect(stale!.trelPort).to.equal(12345);
             expect(stub.targetByKey("kuche.local.")!.observerCount()).to.equal(0);
         });
 
@@ -504,6 +511,270 @@ describe("BorderRouterDiscovery", () => {
             expect(inst.observerCount()).to.equal(0);
             expect(stub.filterCount()).to.equal(0);
             expect(stub.discoveredObserverCount()).to.equal(0);
+        });
+
+        it("prunes a stale entry once 24h elapses since lastSeen", async () => {
+            const originalDateNow = Date.now;
+            let now = 1000;
+            Date.now = () => now;
+            try {
+                await disc.start();
+                stub.makeTarget("Kuche.local.", ["192.168.1.10"]);
+                const inst = stub.makeInstance("Kuche._meshcop._udp.local", {
+                    txt: { xa: "aabbccddeeff0011", nn: "MyNet" },
+                    srvTarget: "Kuche.local.",
+                    srvPort: 49154,
+                });
+                stub.discover(inst);
+
+                inst.setDiscovered(false);
+                inst.emit({ name: inst });
+                expect(disc.get("AABBCCDDEEFF0011")!.sources).to.deep.equal([]);
+
+                now += 24 * 60 * 60 * 1000 - 1;
+                expect(disc.get("AABBCCDDEEFF0011")).to.not.equal(undefined);
+
+                now += 2;
+                expect(disc.get("AABBCCDDEEFF0011")).to.equal(undefined);
+                expect(disc.list()).to.deep.equal([]);
+            } finally {
+                Date.now = originalDateNow;
+            }
+        });
+
+        it("resets the retention clock when a stale entry is re-discovered", async () => {
+            const originalDateNow = Date.now;
+            let now = 1000;
+            Date.now = () => now;
+            try {
+                await disc.start();
+                stub.makeTarget("Kuche.local.", ["192.168.1.10"]);
+                const inst = stub.makeInstance("Kuche._meshcop._udp.local", {
+                    txt: { xa: "aabbccddeeff0011", nn: "MyNet" },
+                    srvTarget: "Kuche.local.",
+                    srvPort: 49154,
+                });
+                stub.discover(inst);
+
+                inst.setDiscovered(false);
+                inst.emit({ name: inst });
+                const staleAt = now;
+
+                now += 12 * 60 * 60 * 1000;
+                inst.setDiscovered(true);
+                stub.discover(inst);
+
+                const live = disc.get("AABBCCDDEEFF0011");
+                expect(live).to.not.equal(undefined);
+                expect(live!.sources).to.deep.equal(["meshcop"]);
+                expect(live!.lastSeen).to.equal(now);
+
+                now = staleAt + 24 * 60 * 60 * 1000 + 1;
+                expect(disc.get("AABBCCDDEEFF0011")).to.not.equal(undefined);
+            } finally {
+                Date.now = originalDateNow;
+            }
+        });
+
+        it("eviction prefers stale entries before live ones when the cap is hit", async () => {
+            const originalDateNow = Date.now;
+            let now = 1000;
+            Date.now = () => now;
+            try {
+                await disc.start();
+
+                const staleXa = makeXa(0);
+                stub.makeTarget("staleHost.local.", ["10.0.0.1"]);
+                const staleInst = stub.makeInstance(`${staleXa.toLowerCase()}._meshcop._udp.local`, {
+                    txt: { xa: staleXa.toLowerCase(), nn: "Stale" },
+                    srvTarget: "staleHost.local.",
+                    srvPort: 49000,
+                });
+                stub.discover(staleInst);
+                staleInst.setDiscovered(false);
+                staleInst.emit({ name: staleInst });
+                expect(disc.get(staleXa)!.sources).to.deep.equal([]);
+                now++;
+
+                for (let i = 1; i < 256; i++) {
+                    const xa = makeXa(i);
+                    const host = `host${i}.local.`;
+                    stub.makeTarget(host, [`10.1.${(i >> 8) & 0xff}.${i & 0xff}`]);
+                    const inst = stub.makeInstance(`${xa.toLowerCase()}._meshcop._udp.local`, {
+                        txt: { xa: xa.toLowerCase(), nn: `Net${i}` },
+                        srvTarget: host,
+                        srvPort: 49154 + i,
+                    });
+                    stub.discover(inst);
+                    now++;
+                }
+                expect(disc.list().length).to.equal(256);
+
+                const newXa = makeXa(500);
+                stub.makeTarget("newHost.local.", ["10.2.0.0"]);
+                const newInst = stub.makeInstance(`${newXa.toLowerCase()}._meshcop._udp.local`, {
+                    txt: { xa: newXa.toLowerCase(), nn: "New" },
+                    srvTarget: "newHost.local.",
+                    srvPort: 50000,
+                });
+                stub.discover(newInst);
+
+                expect(disc.list().length).to.equal(256);
+                expect(disc.get(staleXa)).to.equal(undefined);
+                expect(disc.get(newXa)).to.not.equal(undefined);
+                for (let i = 1; i < 256; i++) {
+                    expect(disc.get(makeXa(i))).to.not.equal(undefined);
+                }
+            } finally {
+                Date.now = originalDateNow;
+            }
+        });
+
+        it("freezes lastSeen when an entry transitions to stale", async () => {
+            const originalDateNow = Date.now;
+            let now = 1000;
+            Date.now = () => now;
+            try {
+                await disc.start();
+                stub.makeTarget("Kuche.local.", ["192.168.1.10"]);
+                const inst = stub.makeInstance("Kuche._meshcop._udp.local", {
+                    txt: { xa: "aabbccddeeff0011", nn: "MyNet" },
+                    srvTarget: "Kuche.local.",
+                    srvPort: 49154,
+                });
+                stub.discover(inst);
+                const discoveredAt = now;
+
+                now += 60 * 1000;
+
+                inst.setDiscovered(false);
+                inst.emit({ name: inst });
+
+                const stale = disc.get("AABBCCDDEEFF0011");
+                expect(stale).to.not.equal(undefined);
+                expect(stale!.sources).to.deep.equal([]);
+                expect(stale!.lastSeen).to.equal(discoveredAt);
+            } finally {
+                Date.now = originalDateNow;
+            }
+        });
+
+        it("eviction picks stale entry even when newer than several live entries", async () => {
+            const originalDateNow = Date.now;
+            let now = 1000;
+            Date.now = () => now;
+            try {
+                await disc.start();
+
+                for (let i = 1; i <= 2; i++) {
+                    const xa = makeXa(i);
+                    const host = `liveOld${i}.local.`;
+                    stub.makeTarget(host, [`10.0.0.${i}`]);
+                    const inst = stub.makeInstance(`${xa.toLowerCase()}._meshcop._udp.local`, {
+                        txt: { xa: xa.toLowerCase(), nn: `OldLive${i}` },
+                        srvTarget: host,
+                        srvPort: 49000 + i,
+                    });
+                    stub.discover(inst);
+                    now++;
+                }
+                const oldLive1 = makeXa(1);
+                const oldLive2 = makeXa(2);
+
+                now = 5000;
+                const staleXa = makeXa(100);
+                stub.makeTarget("staleHost.local.", ["10.5.0.0"]);
+                const staleInst = stub.makeInstance(`${staleXa.toLowerCase()}._meshcop._udp.local`, {
+                    txt: { xa: staleXa.toLowerCase(), nn: "Stale" },
+                    srvTarget: "staleHost.local.",
+                    srvPort: 49500,
+                });
+                stub.discover(staleInst);
+                staleInst.setDiscovered(false);
+                staleInst.emit({ name: staleInst });
+                expect(disc.get(staleXa)!.sources).to.deep.equal([]);
+                expect(disc.get(staleXa)!.lastSeen).to.equal(5000);
+                now = 10000;
+
+                for (let i = 200; i < 200 + 253; i++) {
+                    const xa = makeXa(i);
+                    const host = `host${i}.local.`;
+                    stub.makeTarget(host, [`10.1.${(i >> 8) & 0xff}.${i & 0xff}`]);
+                    const inst = stub.makeInstance(`${xa.toLowerCase()}._meshcop._udp.local`, {
+                        txt: { xa: xa.toLowerCase(), nn: `Net${i}` },
+                        srvTarget: host,
+                        srvPort: 49154 + i,
+                    });
+                    stub.discover(inst);
+                    now++;
+                }
+                expect(disc.list().length).to.equal(256);
+
+                const newXa = makeXa(900);
+                stub.makeTarget("newHost.local.", ["10.2.0.0"]);
+                const newInst = stub.makeInstance(`${newXa.toLowerCase()}._meshcop._udp.local`, {
+                    txt: { xa: newXa.toLowerCase(), nn: "New" },
+                    srvTarget: "newHost.local.",
+                    srvPort: 50000,
+                });
+                stub.discover(newInst);
+
+                expect(disc.list().length).to.equal(256);
+                expect(disc.get(staleXa)).to.equal(undefined);
+                expect(disc.get(oldLive1)).to.not.equal(undefined);
+                expect(disc.get(oldLive2)).to.not.equal(undefined);
+                expect(disc.get(newXa)).to.not.equal(undefined);
+            } finally {
+                Date.now = originalDateNow;
+            }
+        });
+
+        it("re-discovers a stale entry from the other source", async () => {
+            await disc.start();
+            stub.makeTarget("Kuche.local.", ["192.168.1.10"]);
+            const meshcopInst = stub.makeInstance("Kuche._meshcop._udp.local", {
+                txt: { xa: "aabbccddeeff0011", nn: "MyNet" },
+                srvTarget: "Kuche.local.",
+                srvPort: 49154,
+            });
+            stub.discover(meshcopInst);
+            meshcopInst.setDiscovered(false);
+            meshcopInst.emit({ name: meshcopInst });
+            expect(disc.get("AABBCCDDEEFF0011")!.sources).to.deep.equal([]);
+
+            stub.makeTarget("br.local.", ["10.0.0.5"]);
+            const trelInst = stub.makeInstance("aabbccddeeff0011._trel._udp.local", {
+                txt: { xa: "aabbccddeeff0011" },
+                srvTarget: "br.local.",
+                srvPort: 12345,
+            });
+            stub.discover(trelInst);
+
+            const live = disc.get("AABBCCDDEEFF0011");
+            expect(live).to.not.equal(undefined);
+            expect(live!.sources).to.deep.equal(["trel"]);
+            expect(live!.trelPort).to.equal(12345);
+            expect(live!.networkName).to.equal("MyNet");
+            expect(live!.meshcopPort).to.equal(49154);
+        });
+
+        it("stop() clears stale entries from the registry", async () => {
+            await disc.start();
+            stub.makeTarget("Kuche.local.", ["192.168.1.10"]);
+            const inst = stub.makeInstance("Kuche._meshcop._udp.local", {
+                txt: { xa: "aabbccddeeff0011", nn: "MyNet" },
+                srvTarget: "Kuche.local.",
+                srvPort: 49154,
+            });
+            stub.discover(inst);
+            inst.setDiscovered(false);
+            inst.emit({ name: inst });
+            expect(disc.get("AABBCCDDEEFF0011")!.sources).to.deep.equal([]);
+
+            await disc.stop();
+
+            expect(disc.list()).to.deep.equal([]);
+            expect(disc.get("AABBCCDDEEFF0011")).to.equal(undefined);
         });
     });
 });

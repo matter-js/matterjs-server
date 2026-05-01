@@ -15,6 +15,12 @@ const REGISTRY_MAX_ENTRIES = 256;
  *  yet emitted a valid xa, but bounded so a noisy LAN can't grow `#instanceObservers`
  *  without limit. Eviction targets the oldest xa-less observer first. */
 const INSTANCE_OBSERVER_CAP = 512;
+/** Stale entries (sources.length === 0) become eligible for pruning 24h after their
+ *  last successful mDNS discovery (entry.lastSeen). Pruning is lazy — `#pruneExpired`
+ *  runs on `list` / `get` / `#onDiscovered`, so without activity an eligible entry
+ *  may linger past the window. Long enough that BRs announcing once per ~half-day
+ *  stay resolvable; short enough that vanished BRs eventually drop. */
+const STALE_RETENTION_MS = 24 * 60 * 60 * 1000;
 const MESHCOP_TYPE_QNAME = "_meshcop._udp.local";
 const TREL_TYPE_QNAME = "_trel._udp.local";
 const MESHCOP_SUFFIX = "._meshcop._udp.local";
@@ -182,12 +188,23 @@ export class BorderRouterDiscovery {
     }
 
     list(): BorderRouterEntry[] {
+        this.#pruneExpired();
         return Array.from(this.#registry.values(), entry => this.#snapshotEntry(entry));
     }
 
     get(extAddressHex: string): BorderRouterEntry | undefined {
+        this.#pruneExpired();
         const entry = this.#registry.get(extAddressHex.toUpperCase());
         return entry === undefined ? undefined : this.#snapshotEntry(entry);
+    }
+
+    #pruneExpired(): void {
+        const cutoff = Date.now() - STALE_RETENTION_MS;
+        for (const [xaKey, entry] of this.#registry) {
+            if (entry.sources.length === 0 && entry.lastSeen < cutoff) {
+                this.#registry.delete(xaKey);
+            }
+        }
     }
 
     /** Shallow copy so callers cannot mutate registry state through the returned reference. */
@@ -201,6 +218,7 @@ export class BorderRouterDiscovery {
 
     #onDiscovered(name: DnssdNameLike): void {
         if (!this.#started) return;
+        this.#pruneExpired();
         const lower = name.qname.toLowerCase();
         if (lower === MESHCOP_TYPE_QNAME || lower === TREL_TYPE_QNAME) {
             return;
@@ -265,13 +283,12 @@ export class BorderRouterDiscovery {
 
     #onInstanceChanged(name: DnssdNameLike, source: Source): void {
         if (!this.#started) return;
-        try {
-            this.#parseAndUpsert(name, source);
-        } catch (e) {
-            logger.debug("Error processing border router instance change:", e);
-        }
-
         if (name.isDiscovered) {
+            try {
+                this.#parseAndUpsert(name, source);
+            } catch (e) {
+                logger.debug("Error processing border router instance change:", e);
+            }
             return;
         }
 
@@ -298,36 +315,6 @@ export class BorderRouterDiscovery {
         const idx = entry.sources.indexOf(source);
         if (idx !== -1) {
             entry.sources.splice(idx, 1);
-        }
-        // Clear fields exclusively contributed by the disappearing source so the registry
-        // doesn't expose stale meshcop naming / state when only trel remains (or vice versa).
-        if (source === "meshcop") {
-            entry.meshcopPort = undefined;
-            entry.networkName = undefined;
-            entry.vendorName = undefined;
-            entry.modelName = undefined;
-            entry.threadVersion = undefined;
-            entry.borderAgentIdHex = undefined;
-            entry.stateBitmapHex = undefined;
-            entry.activeTimestampHex = undefined;
-            entry.partitionIdHex = undefined;
-            entry.domainName = undefined;
-        } else {
-            entry.trelPort = undefined;
-        }
-        if (entry.sources.length === 0) {
-            this.#registry.delete(xaKey);
-            return;
-        }
-        // Hostname / addresses can come from either source (meshcop wins on conflict). With
-        // the dropped source gone, re-parse the still-discovered companion instance so those
-        // shared fields reflect the surviving advertisement instead of lingering on the
-        // value the disappearing source last set.
-        for (const otherTracking of this.#instanceObservers.values()) {
-            if (otherTracking.xaKey === xaKey && otherTracking.source !== source) {
-                this.#parseAndUpsert(otherTracking.name, otherTracking.source);
-                break;
-            }
         }
     }
 
@@ -554,21 +541,29 @@ export class BorderRouterDiscovery {
     }
 
     #evictOldest(): boolean {
-        let oldestKey: string | undefined;
-        let oldestSeen = Number.POSITIVE_INFINITY;
+        let oldestStaleKey: string | undefined;
+        let oldestStaleSeen = Number.POSITIVE_INFINITY;
+        let oldestLiveKey: string | undefined;
+        let oldestLiveSeen = Number.POSITIVE_INFINITY;
         for (const [xa, entry] of this.#registry) {
-            if (entry.lastSeen < oldestSeen) {
-                oldestSeen = entry.lastSeen;
-                oldestKey = xa;
+            if (entry.sources.length === 0) {
+                if (entry.lastSeen < oldestStaleSeen) {
+                    oldestStaleSeen = entry.lastSeen;
+                    oldestStaleKey = xa;
+                }
+            } else if (entry.lastSeen < oldestLiveSeen) {
+                oldestLiveSeen = entry.lastSeen;
+                oldestLiveKey = xa;
             }
         }
-        if (oldestKey === undefined) return false;
+        const evictKey = oldestStaleKey ?? oldestLiveKey;
+        if (evictKey === undefined) return false;
 
-        this.#registry.delete(oldestKey);
+        this.#registry.delete(evictKey);
 
         let releasedObservers = 0;
         for (const [instanceKey, tracking] of [...this.#instanceObservers]) {
-            if (tracking.xaKey !== oldestKey) continue;
+            if (tracking.xaKey !== evictKey) continue;
             tracking.name.off(tracking.observer);
             if (tracking.targetKey !== undefined) {
                 this.#releaseTarget(tracking.targetKey);
@@ -583,7 +578,7 @@ export class BorderRouterDiscovery {
                 `Border router registry exceeded ${REGISTRY_MAX_ENTRIES} entries; evicting oldest (released ${releasedObservers} instance observer${releasedObservers === 1 ? "" : "s"})`,
             );
         } else {
-            logger.debug(`Evicted border router xa=${oldestKey}; released ${releasedObservers} instance observers`);
+            logger.debug(`Evicted border router xa=${evictKey}; released ${releasedObservers} instance observers`);
         }
         return true;
     }
