@@ -27,10 +27,10 @@ import {
     findUnknownDevices,
     getDeviceName,
     getEdgeSignalScore,
+    getNeighborTableLength,
     getNetworkType,
     getThreadExtendedAddressHex,
     getThreadRole,
-    parseNeighborTable,
 } from "./network-utils.js";
 
 declare global {
@@ -233,7 +233,7 @@ export class ThreadGraph extends BaseNetworkGraph {
                 shouldHide = !hasOnlineObserver;
                 if (!shouldHide && device.seenBy.length === 1) {
                     const observer = this.nodes[device.seenBy[0]];
-                    if (observer !== undefined && parseNeighborTable(observer).length > 1) {
+                    if (observer !== undefined && getNeighborTableLength(observer) > 1) {
                         shouldHide = true;
                     }
                 }
