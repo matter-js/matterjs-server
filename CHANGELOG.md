@@ -7,6 +7,10 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
+## **WORK IN PROGRESS**
+
+- Enhancement: Hide phantom Thread "External" routers/devices that only persist as stale neighbor-table entries (every observer offline, or single observer with other connections)
+
 ## 0.6.4 (2026-04-30)
 
 - Enhancement: Retain Thread Border Router registry entries for 24h after their last mDNS source goes off-air, so the dashboard can still show information even if stale
