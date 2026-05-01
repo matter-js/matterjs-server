@@ -1,0 +1,33 @@
+{
+    "_format": "TLS 1.2 PRF (P_SHA256) test vectors. Each vector documents its source. mbedTLS-derived vectors use the project's official test data; synthesized vectors are generated via an independent Python reference (hashlib HMAC-SHA256) and cross-checked against the mbedTLS vector to confirm the reference is correct.",
+    "_python_reference": "def p_sha256(secret, seed, n):\n    out = b''; a = seed\n    while len(out) < n:\n        a = hmac.new(secret, a, hashlib.sha256).digest()\n        out += hmac.new(secret, a + seed, hashlib.sha256).digest()\n    return out[:n]\ndef prf(secret, label, seed, n):\n    return p_sha256(secret, label.encode('ascii') + seed, n)",
+    "prfVectors": [
+        {
+            "name": "mbedtls_v3_6_6_tls_prf_sha256",
+            "secretHex": "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+            "label": "test tls_prf label",
+            "seedHex": "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+            "outputLen": 16,
+            "expectedHex": "7f9998393198a02c8d731ccc2ef90b2c",
+            "_source": "mbedTLS v3.6.6 tests/suites/test_suite_ssl.data — SSL TLS_PRF MBEDTLS_SSL_TLS_PRF_SHA256"
+        },
+        {
+            "name": "short_secret_100_byte_output",
+            "secretHex": "0102030405060708",
+            "label": "expansion check",
+            "seedHex": "deadbeefdeadbeefdeadbeefdeadbeef",
+            "outputLen": 100,
+            "expectedHex": "4667c2a642a143e6e1dd38b38c00faab3b7d5871474cfba8a33e8dd61ed16193afafc6dd069d72d0de784507ae9535540582db0401b347b1d222b5964d1615090eb6b20a2a72c7156a42fdf4db1bb801a1aeb1acf54333a99e654a7ce8b15cd235e06961",
+            "_source": "Synthesized via Python ref P_SHA256 (RFC 5246 §5). HMAC-SHA256 from hashlib; 100-byte output exercises 4 P_SHA256 blocks (each 32 B)."
+        },
+        {
+            "name": "empty_seed_empty_label",
+            "secretHex": "00112233445566778899aabbccddeeff",
+            "label": "",
+            "seedHex": "",
+            "outputLen": 32,
+            "expectedHex": "7ab2aa6bc31d99c8bd1514b571f36c2484a16adf42e5ec49707f86d21ee58f3c",
+            "_source": "Synthesized via Python ref P_SHA256 (RFC 5246 §5). Verifies empty label/seed don't crash."
+        }
+    ]
+}
