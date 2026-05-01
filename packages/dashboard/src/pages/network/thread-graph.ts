@@ -27,6 +27,7 @@ import {
     findUnknownDevices,
     getDeviceName,
     getEdgeSignalScore,
+    getNeighborTableLength,
     getNetworkType,
     getThreadExtendedAddressHex,
     getThreadRole,
@@ -217,14 +218,27 @@ export class ThreadGraph extends BaseNetworkGraph {
         for (const device of this._unknownDevices) {
             const isSelected = device.id === this._selectedNodeId;
 
-            // Hide if hideOfflineNodes is enabled AND all nodes that see it are offline
-            let shouldHide = false;
-            if (this.hideOfflineNodes) {
-                const hasOnlineSeenBy = device.seenBy.some(nodeId => {
-                    const node = this.nodes[nodeId];
-                    return node && node.available !== false;
-                });
-                shouldHide = !hasOnlineSeenBy;
+            // Unknown externals are pure neighbor-table inference. Two stale-cache
+            // signatures we always filter, regardless of the offline-nodes toggle:
+            //   1. every observer is offline — entry can no longer be re-confirmed.
+            //   2. exactly one observer that has other neighbors — single-source
+            //      ghost from a node that's clearly otherwise reachable.
+            // BRs have independent mDNS evidence — honor only the user toggle for them.
+            const hasOnlineObserver = device.seenBy.some(nodeId => {
+                const node = this.nodes[nodeId];
+                return node !== undefined && node.available !== false;
+            });
+            let shouldHide: boolean;
+            if (device.kind === "unknown") {
+                shouldHide = !hasOnlineObserver;
+                if (!shouldHide && device.seenBy.length === 1) {
+                    const observer = this.nodes[device.seenBy[0]];
+                    if (observer !== undefined && getNeighborTableLength(observer) > 1) {
+                        shouldHide = true;
+                    }
+                }
+            } else {
+                shouldHide = this.hideOfflineNodes && !hasOnlineObserver;
             }
 
             if (shouldHide) {

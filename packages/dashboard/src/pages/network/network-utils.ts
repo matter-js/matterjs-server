@@ -217,6 +217,16 @@ export function getThreadExtendedAddressHex(node: MatterNode): string | undefine
 }
 
 /**
+ * Counts entries in the Thread neighbor table without normalizing each entry.
+ * Use this in hot paths where only the cardinality matters; the full parse
+ * does a base64 decode per entry that adds up across re-renders.
+ */
+export function getNeighborTableLength(node: MatterNode): number {
+    const neighborTable = node.attributes["0/53/7"];
+    return Array.isArray(neighborTable) ? neighborTable.length : 0;
+}
+
+/**
  * Parses the Thread neighbor table from a node's attributes.
  * Attribute 0/53/7 (NeighborTable) is an array of neighbor objects.
  * The data uses numeric keys matching the Matter spec field IDs.
