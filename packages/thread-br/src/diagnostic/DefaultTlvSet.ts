@@ -6,13 +6,7 @@
 
 import { NetworkDiagTlvType } from "../tlv/networkDiagTlvTypes.js";
 
-/**
- * Default Network Diagnostic TLV set requested by `DiagnosticClient` per spec
- * §4.9: the twelve TLVs we need to reconstruct topology and per-node identity.
- *
- * Numeric values are stable wire-format identifiers from
- * {@link NetworkDiagTlvType}.
- */
+/** Default diagnostic TLV set (spec §4.9) for topology + per-node identity. */
 export const DefaultTlvSet: ReadonlyArray<number> = [
     NetworkDiagTlvType.EXT_MAC_ADDRESS,
     NetworkDiagTlvType.ADDRESS16,
