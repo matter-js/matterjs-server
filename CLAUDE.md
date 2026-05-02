@@ -38,11 +38,12 @@ npm run format-verify
 
 ## Monorepo Structure
 
-This is an npm workspaces monorepo with four packages:
+This is an npm workspaces monorepo with five packages:
 
 - **packages/ws-controller** (`@matter-server/ws-controller`): Core Matter controller library wrapping `@project-chip/matter.js`. Exports `MatterController`, `ControllerCommandHandler`, `WebSocketControllerHandler`, `ConfigStorage`
 - **packages/dashboard** (`@matter-server/dashboard`): Web UI built with Lit, Rollup, and Material Web Components. Connects to server via WebSocket
 - **packages/matter-server** (`matter-server`): Main entry point. HTTP/WebSocket server using Express, combines controller + dashboard
+- **packages/thread-br** (`@matter-server/thread-br`): Thread Border Router protocol stack — DTLS-EC-JPAKE handshake (via `@noble/curves`), CoAP, MeshCoP TLV codecs, Network Diagnostic TLV codecs, OperationalDataset namespace, ThreadCredentialsRegistry, OTBR REST adapter. ESM-only. Tests use `@matter/testing` (mocha/chai, `matter-test` runner).
 - Build tooling is provided by the external `@nacho-iot/js-tools` dev dependency (CLI binaries `nacho-build`, `nacho-run`).
 
 ## Architecture
