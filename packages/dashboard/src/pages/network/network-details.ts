@@ -71,7 +71,7 @@ export class NetworkDetails extends LitElement {
     @property({ type: Object })
     public threadEdgePairs: Map<string, ThreadEdgePair> = new Map();
 
-    @consume({ context: clientContext })
+    @consume({ context: clientContext, subscribe: true })
     private client!: MatterClient;
 
     @state()
