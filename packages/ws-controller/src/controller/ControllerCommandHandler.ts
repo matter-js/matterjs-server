@@ -27,7 +27,6 @@ import {
     Timer,
     DnsRecordType,
 } from "@matter/main";
-import { OperationalCredentialsClient } from "@matter/main/behaviors";
 import {
     AccessControl,
     BasicInformation,
@@ -142,6 +141,33 @@ function determineMatterVersion(attributes: AttributesData): string | undefined 
     }
 
     return undefined;
+}
+
+/** Convert WebSocket ACL entries (snake_case) to Matter.js format (camelCase). */
+export function convertAclEntries(entries: AccessControlEntry[]): AccessControl.AccessControlEntry[] {
+    return entries.map(entry => ({
+        privilege: entry.privilege as AccessControl.AccessControlEntryPrivilege,
+        authMode: entry.auth_mode as AccessControl.AccessControlEntryAuthMode,
+        subjects: entry.subjects?.map(s => NodeId(BigInt(s))) ?? null,
+        targets:
+            entry.targets?.map((t: AccessControlTarget) => ({
+                cluster: t.cluster !== null ? ClusterId(t.cluster) : null,
+                endpoint: t.endpoint !== null ? EndpointNumber(t.endpoint) : null,
+                deviceType: t.device_type !== null ? DeviceTypeId(t.device_type) : null,
+            })) ?? null,
+        fabricIndex: FabricIndex.OMIT_FABRIC,
+    }));
+}
+
+/** Convert WebSocket binding targets to Matter.js format. */
+export function convertBindingTargets(bindings: BindingTarget[]): Binding.Target[] {
+    return bindings.map(binding => ({
+        node: binding.node !== null ? NodeId(binding.node) : undefined,
+        group: binding.group !== null ? GroupId(binding.group) : undefined,
+        endpoint: binding.endpoint !== null ? EndpointNumber(binding.endpoint) : undefined,
+        cluster: binding.cluster !== null ? ClusterId(binding.cluster) : undefined,
+        fabricIndex: FabricIndex.OMIT_FABRIC,
+    }));
 }
 
 export class ControllerCommandHandler {
@@ -1099,7 +1125,12 @@ export class ControllerCommandHandler {
     }
 
     removeFabric(nodeId: NodeId, fabricIndex: FabricIndex) {
-        return this.#nodes.get(nodeId).node.commandsOf(OperationalCredentialsClient).removeFabric({ fabricIndex });
+        return this.#invokeCommand(this.#nodes.get(nodeId).node, {
+            endpoint: EndpointNumber(0),
+            cluster: OperationalCredentials.Cluster,
+            command: "removeFabric",
+            fields: { fabricIndex },
+        });
     }
 
     /**
@@ -1107,28 +1138,12 @@ export class ControllerCommandHandler {
      * Writes to the ACL attribute on the AccessControl cluster (endpoint 0).
      */
     async setAclEntry(nodeId: NodeId, entries: AccessControlEntry[]): Promise<AttributeWriteResult[] | null> {
-        const aclEntries: AccessControl.AccessControlEntry[] = entries.map(entry => ({
-            privilege: entry.privilege as AccessControl.AccessControlEntryPrivilege,
-            authMode: entry.auth_mode as AccessControl.AccessControlEntryAuthMode,
-            subjects: entry.subjects?.map(s => NodeId(BigInt(s))) ?? null,
-            targets:
-                entry.targets?.map((t: AccessControlTarget) => ({
-                    cluster: t.cluster !== null ? ClusterId(t.cluster) : null,
-                    endpoint: t.endpoint !== null ? EndpointNumber(t.endpoint) : null,
-                    deviceType: t.device_type !== null ? DeviceTypeId(t.device_type) : null,
-                })) ?? null,
-            fabricIndex: FabricIndex.OMIT_FABRIC,
-        }));
+        const aclEntries = convertAclEntries(entries);
 
         logger.info("Setting ACL entries", aclEntries);
 
         const { status } = await this.#writeAttribute(nodeId, EndpointNumber(0), AccessControl.id, "acl", aclEntries);
-        return [
-            {
-                path: { endpoint_id: 0, cluster_id: AccessControl.id, attribute_id: 0 },
-                status,
-            },
-        ];
+        return [{ path: { endpoint_id: 0, cluster_id: AccessControl.id, attribute_id: 0 }, status }];
     }
 
     /**
@@ -1140,23 +1155,12 @@ export class ControllerCommandHandler {
         endpointId: EndpointNumber,
         bindings: BindingTarget[],
     ): Promise<AttributeWriteResult[] | null> {
-        const bindingEntries: Binding.Target[] = bindings.map(binding => ({
-            node: binding.node !== null ? NodeId(binding.node) : undefined,
-            group: binding.group !== null ? GroupId(binding.group) : undefined,
-            endpoint: binding.endpoint !== null ? EndpointNumber(binding.endpoint) : undefined,
-            cluster: binding.cluster !== null ? ClusterId(binding.cluster) : undefined,
-            fabricIndex: FabricIndex.OMIT_FABRIC,
-        }));
+        const bindingEntries = convertBindingTargets(bindings);
 
         logger.info("Setting bindings on endpoint", endpointId, bindingEntries);
 
         const { status } = await this.#writeAttribute(nodeId, endpointId, Binding.id, "binding", bindingEntries);
-        return [
-            {
-                path: { endpoint_id: endpointId, cluster_id: Binding.id, attribute_id: 0 },
-                status,
-            },
-        ];
+        return [{ path: { endpoint_id: endpointId, cluster_id: Binding.id, attribute_id: 0 }, status }];
     }
 
     /**
