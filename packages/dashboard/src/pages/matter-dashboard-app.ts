@@ -108,6 +108,7 @@ class MatterDashboardApp extends LitElement {
         this.client.startListening().then(
             () => {
                 this._state = "connected";
+                this.provider.setValue(clone(this.client));
                 this._setupEventListeners();
             },
             (_err: MatterError) => {
