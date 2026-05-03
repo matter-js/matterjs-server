@@ -4,10 +4,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { consume } from "@lit/context";
 import type { MatterClient, MatterNode } from "@matter-server/ws-client";
 import { mdiEyeOff, mdiFitToScreen, mdiMagnifyMinus, mdiMagnifyPlus, mdiPause, mdiPlay } from "@mdi/js";
 import { css, html, LitElement } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
+import { clientContext } from "../client/client-context.js";
 import "../components/ha-svg-icon";
 import { reducedMotionStyles } from "../util/shared-styles.js";
 import "./components/footer";
@@ -38,6 +40,8 @@ const HIDE_OPTIONS: readonly { key: HideOptionKey; label: string }[] = [
 
 @customElement("matter-network-view")
 class MatterNetworkView extends LitElement {
+    @consume({ context: clientContext, subscribe: true })
+    @property({ attribute: false })
     public client!: MatterClient;
 
     @property({ type: Object })
@@ -426,7 +430,6 @@ class MatterNetworkView extends LitElement {
         return html`
             <dashboard-header
                 title="Open Home Foundation Matter Server"
-                .client=${this.client}
                 .activeView=${this.activeView}
                 .hasThreadDevices=${this.hasThreadDevices}
                 .hasWifiDevices=${this.hasWifiDevices}

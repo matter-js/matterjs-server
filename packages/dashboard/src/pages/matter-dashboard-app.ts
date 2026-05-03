@@ -198,7 +198,6 @@ class MatterDashboardApp extends LitElement {
             // cluster level
             return html`
                 <matter-cluster-view
-                    .client=${this.client}
                     .node=${this.client.nodes[this._route.path[0]]}
                     .endpoint=${parseInt(this._route.path[1], 10)}
                     .cluster=${parseInt(this._route.path[2], 10)}
@@ -209,7 +208,6 @@ class MatterDashboardApp extends LitElement {
             // endpoint level
             return html`
                 <matter-endpoint-view
-                    .client=${this.client}
                     .node=${this.client.nodes[this._route.path[0]]}
                     .endpoint=${parseInt(this._route.path[1], 10)}
                 ></matter-endpoint-view>
@@ -217,12 +215,7 @@ class MatterDashboardApp extends LitElement {
         }
         if (this._route.prefix === "node") {
             // node level
-            return html`
-                <matter-node-view
-                    .client=${this.client}
-                    .node=${this.client.nodes[this._route.path[0]]}
-                ></matter-node-view>
-            `;
+            return html` <matter-node-view .node=${this.client.nodes[this._route.path[0]]}></matter-node-view> `;
         }
         // Get device counts for conditional navigation
         const { hasThreadDevices, hasWifiDevices } = this._getDeviceCounts();
@@ -230,7 +223,6 @@ class MatterDashboardApp extends LitElement {
         // Check for Thread view (#thread or #thread/123)
         if (this._route.prefix === "thread" || this._route.path[0] === "thread") {
             return html`<matter-network-view
-                .client=${this.client}
                 .nodes=${this.client.nodes}
                 .activeView=${this._activeView}
                 .initialSelectedNodeId=${this._initialSelectedNodeId}
@@ -242,7 +234,6 @@ class MatterDashboardApp extends LitElement {
         // Check for WiFi view (#wifi or #wifi/123)
         if (this._route.prefix === "wifi" || this._route.path[0] === "wifi") {
             return html`<matter-network-view
-                .client=${this.client}
                 .nodes=${this.client.nodes}
                 .activeView=${this._activeView}
                 .initialSelectedNodeId=${this._initialSelectedNodeId}
@@ -253,7 +244,6 @@ class MatterDashboardApp extends LitElement {
         }
         // root level: server overview (nodes view)
         return html`<matter-server-view
-            .client=${this.client}
             .nodes=${this.client.nodes}
             .route=${this._route}
             .activeView=${this._activeView}

@@ -8,10 +8,12 @@ import "@material/web/divider/divider";
 import "@material/web/iconbutton/icon-button";
 import "@material/web/list/list";
 import "@material/web/list/list-item";
+import { consume } from "@lit/context";
 import { isTestNodeId, MatterClient, MatterNode } from "@matter-server/ws-client";
 import { mdiChevronRight } from "@mdi/js";
 import { css, html, LitElement, nothing } from "lit";
 import { customElement, property } from "lit/decorators.js";
+import { clientContext } from "../client/client-context.js";
 import "../components/ha-svg-icon";
 import { getDeviceIcon } from "../util/device-icons.js";
 import { formatNodeAddress } from "../util/format_hex.js";
@@ -28,6 +30,8 @@ declare global {
 
 @customElement("matter-server-view")
 class MatterServerView extends LitElement {
+    @consume({ context: clientContext, subscribe: true })
+    @property({ attribute: false })
     public client!: MatterClient;
 
     @property()
@@ -59,7 +63,6 @@ class MatterServerView extends LitElement {
         return html`
             <dashboard-header
                 title="Open Home Foundation Matter Server"
-                .client=${this.client}
                 .activeView=${this.activeView}
                 .hasThreadDevices=${this.hasThreadDevices}
                 .hasWifiDevices=${this.hasWifiDevices}
@@ -67,7 +70,7 @@ class MatterServerView extends LitElement {
 
             <!-- server details section -->
             <div class="container">
-                <server-details .client=${this.client}></server-details>
+                <server-details></server-details>
             </div>
 
             <!-- Nodes listing -->
