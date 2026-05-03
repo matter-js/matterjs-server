@@ -61,7 +61,7 @@ export class TimeSyncManager extends NodeProcessor {
     constructor(connector: TimeSyncConnector) {
         // Startup window: random 30–60 minutes to stagger across server restarts and
         // allow NTP to stabilize before pushing time to devices
-        const startupDelayMs = Minutes(30) + Math.random() * Minutes(30);
+        const startupDelayMs = Minutes(30) + Math.floor(Math.random() * Minutes(30));
         super("time-sync-resync", startupDelayMs, RESYNC_INTERVAL);
         this.#connector = connector;
     }
