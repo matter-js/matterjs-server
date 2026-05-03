@@ -177,6 +177,7 @@ async function start() {
             serverId: legacyData.serverId,
             serverVersion: MATTER_SERVER_VERSION,
             bleProxyEnabled: cliOptions.bleProxy,
+            enableTimeSync: cliOptions.enableTimeSync,
         },
         legacyServerData,
     );

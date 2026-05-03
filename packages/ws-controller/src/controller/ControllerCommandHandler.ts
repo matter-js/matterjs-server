@@ -20,6 +20,7 @@ import {
     Minutes,
     NodeId,
     Observable,
+    ObserverGroup,
     Seconds,
     ServerAddress,
     SoftwareUpdateInfo,
@@ -36,6 +37,7 @@ import {
     BridgedDeviceBasicInformation,
     GeneralCommissioning,
     OperationalCredentials,
+    TimeSynchronization,
 } from "@matter/main/clusters";
 import { WebRtcTransportDefinitions } from "@matter/main/clusters/web-rtc-transport-definitions";
 import { WebRtcTransportProvider } from "@matter/main/clusters/web-rtc-transport-provider";
@@ -98,11 +100,16 @@ import { WebRtcTransportRequestorServer } from "./behaviors/WebRtcTransportReque
 import { CustomClusterPoller } from "./CustomClusterPoller.js";
 import { Nodes } from "./Nodes.js";
 import { attachWebRtcCallbackBridge } from "./WebRtcCallbackBridge.js";
+import { TimeSyncManager } from "./TimeSyncManager.js";
 
 const logger = Logger.get("ControllerCommandHandler");
 
 /** Grace period after leaving Connected before a node is declared unavailable. */
 const RECONNECT_TIMEOUT = Minutes(3);
+
+// timeFailure event ID within TimeSynchronization cluster (0x0038)
+const TIME_SYNC_CLUSTER_ID = 0x0038;
+const TIME_FAILURE_EVENT_ID = 0x03;
 
 /**
  * Determine the Matter specification version from cached attributes.
@@ -149,6 +156,10 @@ export class ControllerCommandHandler {
     #availableUpdates = new Map<NodeId, SoftwareUpdateInfo>();
     /** Poller for custom cluster attributes (Eve energy, etc.) */
     #customClusterPoller: CustomClusterPoller;
+    /** Manages time synchronization for nodes with the TimeSynchronization cluster */
+    #timeSyncManager?: TimeSyncManager;
+    /** Per-node ObserverGroups for cleanup on decommission */
+    #nodeObservers = new Map<NodeId, ObserverGroup>();
     /** Per-node timers that fire when Reconnecting state exceeds the timeout */
     #reconnectTimers = new Map<NodeId, Timer>();
     /** Track in-flight invoke-commands for deduplication across all WebSocket connections */
@@ -174,6 +185,7 @@ export class ControllerCommandHandler {
         bleEnabled: boolean,
         bleProxyEnabled: boolean,
         otaEnabled: boolean,
+        timeSyncEnabled = false,
     ) {
         this.#controller = controllerInstance;
 
@@ -189,6 +201,14 @@ export class ControllerCommandHandler {
             handleReadAttributes: (peer, paths, fabricFiltered) =>
                 this.handleReadAttributes(peer.nodeId, paths, fabricFiltered),
         });
+
+        if (timeSyncEnabled) {
+            logger.info("Time synchronization enabled");
+            this.#timeSyncManager = new TimeSyncManager({
+                syncTime: peer => this.#syncNodeTime(peer.nodeId),
+                nodeConnected: peer => !!(this.#nodes.has(peer.nodeId) && this.#nodes.get(peer.nodeId).isConnected),
+            });
+        }
     }
 
     /**
@@ -370,12 +390,29 @@ export class ControllerCommandHandler {
         return response;
     }
 
+    /**
+     * Send a setUtcTime command to a node's TimeSynchronization cluster.
+     */
+    async #syncNodeTime(nodeId: NodeId): Promise<void> {
+        const client = this.#nodes.clusterClientByIdFor(nodeId, EndpointNumber(0), TimeSynchronization.Cluster.id);
+        await client.commands.setUtcTime({
+            utcTime: Time.nowMs * 1000,
+            granularity: TimeSynchronization.Granularity.MillisecondsGranularity,
+            timeSource: TimeSynchronization.TimeSource.Admin,
+        });
+    }
+
     async close() {
         for (const timer of this.#reconnectTimers.values()) {
             timer.stop();
         }
         this.#reconnectTimers.clear();
         await this.#customClusterPoller.stop();
+        await this.#timeSyncManager?.stop();
+        for (const observers of this.#nodeObservers.values()) {
+            observers.close();
+        }
+        this.#nodeObservers.clear();
         if (!this.#started) {
             return;
         }
@@ -386,10 +423,16 @@ export class ControllerCommandHandler {
         const node = await this.#controller.getNode(nodeId);
         const attributeCache = this.#nodes.attributeCache;
 
-        // Defer the full node_updated until the subscription batch ends (connectionAlive)
-        // so consumers see one update per batch rather than one per attribute.
+        // Per-node ObserverGroup so all subscriptions are cleaned up on decommission
+        const nodeObservers = new ObserverGroup();
+        this.#nodeObservers.set(nodeId, nodeObservers);
+
+        // Wire all Events to the Event emitters
+        // Track if a BasicInformation or BridgedDeviceBasicInformation attribute changed during
+        // a subscription batch. When the batch ends (connectionAlive), emit a full node_updated.
         let basicInfoChangedInBatch = false;
-        node.events.attributeChanged.on(data => {
+        nodeObservers.on(node.events.attributeChanged, data => {
+            // Update the attribute cache with the new value in WebSocket format
             attributeCache.updateAttribute(nodeId, data);
             this.events.attributeChanged.emit(nodeId, data);
             if (
@@ -400,20 +443,33 @@ export class ControllerCommandHandler {
                 basicInfoChangedInBatch = true;
             }
         });
-        node.events.connectionAlive.on(() => {
+        nodeObservers.on(node.events.connectionAlive, () => {
             if (basicInfoChangedInBatch) {
                 basicInfoChangedInBatch = false;
                 logger.info(`Node ${this.formatNode(nodeId)} basic information changed, sending full node_updated`);
                 this.events.nodeStructureChanged.emit(nodeId);
             }
         });
-        node.events.eventTriggered.on(data => this.events.eventChanged.emit(nodeId, data));
-        node.events.stateChanged.on(state => {
+        nodeObservers.on(node.events.eventTriggered, data => {
+            this.events.eventChanged.emit(nodeId, data);
+            // Filter timeFailure events to trigger time sync
+            if (
+                this.#timeSyncManager !== undefined &&
+                data.path.clusterId === TIME_SYNC_CLUSTER_ID &&
+                data.path.eventId === TIME_FAILURE_EVENT_ID
+            ) {
+                logger.debug(`Received timeFailure event from node ${this.formatNode(nodeId)}, triggering time sync`);
+                this.#timeSyncManager.syncNode(this.#peerOf(nodeId));
+            }
+        });
+        nodeObservers.on(node.events.stateChanged, state => {
+            // Only refresh cache on Connected state
             if (state === NodeStates.Connected) {
                 attributeCache.update(node);
                 const attributes = attributeCache.get(nodeId);
                 if (attributes) {
                     this.#customClusterPoller.registerNode(this.#peerOf(nodeId), attributes);
+                    this.#timeSyncManager?.registerNode(this.#peerOf(nodeId), attributes);
                 }
             }
 
@@ -456,7 +512,8 @@ export class ControllerCommandHandler {
                 this.events.nodeAvailabilityChanged.emit(nodeId, result.available);
             }
         });
-        node.events.structureChanged.on(() => {
+        nodeObservers.on(node.events.structureChanged, () => {
+            // Structure changed means endpoints may have been added/removed, refresh cache
             if (node.isConnected) {
                 attributeCache.update(node);
             }
@@ -466,12 +523,16 @@ export class ControllerCommandHandler {
                 this.events.nodeEndpointAdded.emit(nodeId, endpointId);
             }
         });
-        node.events.decommissioned.on(() => {
+        nodeObservers.on(node.events.decommissioned, () => {
             this.#cleanupNodeAfterRemoval(nodeId);
             this.events.nodeDecommissioned.emit(nodeId);
         });
-        node.events.nodeEndpointAdded.on(endpointId => this.#nodes.queueEndpointAdded(nodeId, endpointId));
-        node.events.nodeEndpointRemoved.on(endpointId => this.events.nodeEndpointRemoved.emit(nodeId, endpointId));
+        nodeObservers.on(node.events.nodeEndpointAdded, endpointId =>
+            this.#nodes.queueEndpointAdded(nodeId, endpointId),
+        );
+        nodeObservers.on(node.events.nodeEndpointRemoved, endpointId =>
+            this.events.nodeEndpointRemoved.emit(nodeId, endpointId),
+        );
 
         this.#nodes.set(nodeId, node);
 
@@ -482,6 +543,7 @@ export class ControllerCommandHandler {
             const attributes = attributeCache.get(nodeId);
             if (attributes) {
                 this.#customClusterPoller.registerNode(this.#peerOf(nodeId), attributes);
+                this.#timeSyncManager?.registerNode(this.#peerOf(nodeId), attributes);
             }
         }
 
@@ -1174,8 +1236,11 @@ export class ControllerCommandHandler {
     #cleanupNodeAfterRemoval(nodeId: NodeId) {
         this.#reconnectTimers.get(nodeId)?.stop();
         this.#reconnectTimers.delete(nodeId);
+        this.#nodeObservers.get(nodeId)?.close();
+        this.#nodeObservers.delete(nodeId);
         this.#nodes.delete(nodeId);
         this.#customClusterPoller.unregisterNode(this.#peerOf(nodeId));
+        this.#timeSyncManager?.unregisterNode(this.#peerOf(nodeId));
         this.#availableUpdates.delete(nodeId);
     }
 
