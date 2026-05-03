@@ -311,11 +311,15 @@ export class ControllerCommandHandler {
      * Send a setUtcTime command to a node's TimeSynchronization cluster.
      */
     async #syncNodeTime(nodeId: NodeId): Promise<void> {
-        const client = this.#nodes.clusterClientByIdFor(nodeId, EndpointNumber(0), TimeSynchronization.Cluster.id);
-        await client.commands.setUtcTime({
-            utcTime: Time.nowMs * 1000,
-            granularity: TimeSynchronization.Granularity.MillisecondsGranularity,
-            timeSource: TimeSynchronization.TimeSource.Admin,
+        await this.#invokeCommand(this.#nodes.get(nodeId).node, {
+            endpoint: EndpointNumber(0),
+            cluster: TimeSynchronization.Cluster,
+            command: "setUtcTime",
+            fields: {
+                utcTime: Time.nowMs * 1000,
+                granularity: TimeSynchronization.Granularity.MillisecondsGranularity,
+                timeSource: TimeSynchronization.TimeSource.Admin,
+            },
         });
     }
 
