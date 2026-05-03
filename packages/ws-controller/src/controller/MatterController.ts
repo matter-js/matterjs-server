@@ -47,6 +47,8 @@ export interface MatterControllerOptions {
     serverId?: string;
     /** Server version string (e.g., "0.2.10" or "0.2.10-alpha.0"). Used for BasicInformation cluster. */
     serverVersion?: string;
+    /** Enable time synchronization for nodes with the TimeSynchronization cluster. Only enable when host NTP is reliable. */
+    enableTimeSync?: boolean;
 }
 
 /**
@@ -76,6 +78,7 @@ export class MatterController {
     #legacyCommissionedDates?: Map<string, Timestamp>;
     #enableTestNetDcl = false;
     #disableOtaProvider = true;
+    #enableTimeSync = false;
     readonly #borderRouterDiscovery: BorderRouterDiscovery;
 
     static async create(
@@ -152,6 +155,7 @@ export class MatterController {
         this.#serverVersion = options.serverVersion ?? "0.0.0";
         this.#enableTestNetDcl = options.enableTestNetDcl ?? this.#enableTestNetDcl;
         this.#disableOtaProvider = options.disableOtaProvider ?? this.#disableOtaProvider;
+        this.#enableTimeSync = options.enableTimeSync ?? this.#enableTimeSync;
     }
 
     protected async initialize(
@@ -192,6 +196,7 @@ export class MatterController {
                 this.#controllerInstance,
                 this.#env.vars.get("ble.enable", false),
                 !this.#disableOtaProvider,
+                this.#enableTimeSync,
             );
 
             this.#commandHandler.events.started.once(async () => {
