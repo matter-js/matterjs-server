@@ -30,6 +30,7 @@ import {
     getWiFiDiagnostics,
     getWiFiSecurityTypeName,
     getWiFiVersionName,
+    stripMdnsHostname,
 } from "./network-utils.js";
 import "./update-connections-dialog.js";
 
@@ -123,6 +124,14 @@ export class NetworkDetails extends LitElement {
         const isTestNode = node ? isTestNodeId(node.node_id) : false;
         const fabricIndex = getEffectiveFabricIndex(this.client?.serverInfo?.fabric_index, isTestNode);
         return formatNodeAddressFromAny(fabricIndex, nodeId);
+    }
+
+    private _getExternalDeviceLabel(conn: NodeConnection): TemplateResult {
+        const device = this.unknownDevices.get(String(conn.connectedNodeId));
+        if (device?.kind === "br" && device.hostname) {
+            return html`${stripMdnsHostname(device.hostname)}`;
+        }
+        return html`External: <span class="mono">${conn.extAddressHex}</span>`;
     }
 
     private _renderWiFiInfo(node: MatterNode): TemplateResult | typeof nothing {
@@ -276,8 +285,7 @@ export class NetworkDetails extends LitElement {
                                                                         conn.connectedNodeId,
                                                                     )}</span
                                                                 >: ${getDeviceName(conn.connectedNode)}`
-                                                          : html`External:
-                                                                <span class="mono">${conn.extAddressHex}</span>`}
+                                                          : this._getExternalDeviceLabel(conn)}
                                                   </div>
                                                   <div class="neighbor-signal">
                                                       ${conn.rssi !== null
