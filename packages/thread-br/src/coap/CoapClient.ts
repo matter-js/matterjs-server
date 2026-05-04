@@ -4,8 +4,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { Logger } from "@matter/main";
 import type { DtlsSocket } from "../dtls/socket/DtlsSocket.js";
 import { CoapMessage } from "./CoapMessage.js";
+
+const logger = Logger.get("CoapClient");
 
 /** Thrown when a CON request exhausts MAX_RETRANSMIT without receiving an ACK. */
 export class CoapTimeoutError extends Error {
@@ -30,11 +33,25 @@ type PendingEntry = {
     reject: (err: Error) => void;
 };
 
+type Listener = {
+    uriPath: string[];
+    handler: (msg: CoapMessage) => void;
+};
+
+function pathsEqual(a: string[], b: string[]): boolean {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+        if (a[i] !== b[i]) return false;
+    }
+    return true;
+}
+
 export class CoapClient {
     #messageId = Math.floor(Math.random() * 0x10000);
     #socket: DtlsSocket;
     #ackTimeoutMs: number;
     #pending = new Map<number, PendingEntry>();
+    #listeners = new Set<Listener>();
 
     constructor(socket: DtlsSocket, opts?: CoapClientOpts) {
         this.#socket = socket;
@@ -69,7 +86,16 @@ export class CoapClient {
         return this.#sendCon(msg);
     }
 
+    listen(uriPath: string[], handler: (msg: CoapMessage) => void): () => void {
+        const entry: Listener = { uriPath: [...uriPath], handler };
+        this.#listeners.add(entry);
+        return () => {
+            this.#listeners.delete(entry);
+        };
+    }
+
     async close(): Promise<void> {
+        this.#listeners.clear();
         await this.#socket.close();
     }
 
@@ -153,7 +179,10 @@ export class CoapClient {
                 const pending = this.#pending.get(response.messageId);
                 if (pending !== undefined) {
                     pending.resolve(response);
+                    continue;
                 }
+
+                this.#dispatchToListeners(response);
             }
         } finally {
             const err = socketError ?? new Error("CoapClient: socket closed");
@@ -161,6 +190,18 @@ export class CoapClient {
                 entry.reject(err);
             }
             this.#pending.clear();
+        }
+    }
+
+    #dispatchToListeners(msg: CoapMessage): void {
+        const inbound = msg.uriPath ?? [];
+        for (const listener of this.#listeners) {
+            if (!pathsEqual(listener.uriPath, inbound)) continue;
+            try {
+                listener.handler(msg);
+            } catch (err) {
+                logger.warn("CoapClient listener handler threw:", err);
+            }
         }
     }
 

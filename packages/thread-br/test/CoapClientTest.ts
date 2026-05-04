@@ -146,4 +146,183 @@ describe("CoapClient", () => {
         expect(hasId).to.equal(true);
         expect(err.name).to.equal("CoapTimeoutError");
     });
+
+    it("listen handler is called when inbound message matches uriPath", async () => {
+        const socket = new MockSocket();
+        const client = new CoapClient(socket);
+
+        const received = new Array<CoapMessage>();
+        client.listen(["d", "da"], msg => {
+            received.push(msg);
+        });
+
+        const inbound: CoapMessage = {
+            type: "NON",
+            code: "0.02",
+            messageId: 0x1234,
+            token: new Uint8Array([1, 2, 3, 4]),
+            uriPath: ["d", "da"],
+            payload: new Uint8Array([0xaa, 0xbb]),
+        };
+        socket.deliverMessage(inbound);
+
+        await new Promise(r => setTimeout(r, 10));
+
+        expect(received).to.have.length(1);
+        expect(received[0].payload).to.deep.equal(new Uint8Array([0xaa, 0xbb]));
+
+        await client.close();
+    });
+
+    it("listen handler is NOT called when uriPath differs", async () => {
+        const socket = new MockSocket();
+        const client = new CoapClient(socket);
+
+        let called = false;
+        client.listen(["d", "da"], () => {
+            called = true;
+        });
+
+        const inbound: CoapMessage = {
+            type: "NON",
+            code: "0.02",
+            messageId: 0x2222,
+            token: new Uint8Array([1, 2, 3, 4]),
+            uriPath: ["d", "dq"],
+            payload: new Uint8Array(),
+        };
+        socket.deliverMessage(inbound);
+
+        await new Promise(r => setTimeout(r, 10));
+
+        expect(called).to.equal(false);
+
+        await client.close();
+    });
+
+    it("multiple listeners on the same path are all called", async () => {
+        const socket = new MockSocket();
+        const client = new CoapClient(socket);
+
+        let countA = 0;
+        let countB = 0;
+        client.listen(["d", "da"], () => {
+            countA++;
+        });
+        client.listen(["d", "da"], () => {
+            countB++;
+        });
+
+        const inbound: CoapMessage = {
+            type: "NON",
+            code: "0.02",
+            messageId: 0x3333,
+            token: new Uint8Array([1, 2, 3, 4]),
+            uriPath: ["d", "da"],
+            payload: new Uint8Array(),
+        };
+        socket.deliverMessage(inbound);
+
+        await new Promise(r => setTimeout(r, 10));
+
+        expect(countA).to.equal(1);
+        expect(countB).to.equal(1);
+
+        await client.close();
+    });
+
+    it("unsubscribe stops further listener calls", async () => {
+        const socket = new MockSocket();
+        const client = new CoapClient(socket);
+
+        let count = 0;
+        const unsubscribe = client.listen(["d", "da"], () => {
+            count++;
+        });
+
+        const makeInbound = (messageId: number): CoapMessage => ({
+            type: "NON",
+            code: "0.02",
+            messageId,
+            token: new Uint8Array([1, 2, 3, 4]),
+            uriPath: ["d", "da"],
+            payload: new Uint8Array(),
+        });
+
+        socket.deliverMessage(makeInbound(0x4444));
+        await new Promise(r => setTimeout(r, 10));
+        expect(count).to.equal(1);
+
+        unsubscribe();
+        socket.deliverMessage(makeInbound(0x4445));
+        await new Promise(r => setTimeout(r, 10));
+        expect(count).to.equal(1);
+
+        await client.close();
+    });
+
+    it("listener that throws does not break the recv loop", async () => {
+        const socket = new MockSocket();
+        const client = new CoapClient(socket);
+
+        let secondCount = 0;
+        client.listen(["d", "da"], () => {
+            throw new Error("intentional test failure");
+        });
+        client.listen(["d", "da"], () => {
+            secondCount++;
+        });
+
+        const makeInbound = (messageId: number): CoapMessage => ({
+            type: "NON",
+            code: "0.02",
+            messageId,
+            token: new Uint8Array([1, 2, 3, 4]),
+            uriPath: ["d", "da"],
+            payload: new Uint8Array(),
+        });
+
+        socket.deliverMessage(makeInbound(0x5555));
+        await new Promise(r => setTimeout(r, 10));
+
+        socket.deliverMessage(makeInbound(0x5556));
+        await new Promise(r => setTimeout(r, 10));
+
+        expect(secondCount).to.equal(2);
+
+        await client.close();
+    });
+
+    it("close() clears all listeners", async () => {
+        const socket = new MockSocket();
+        const client = new CoapClient(socket);
+
+        let count = 0;
+        client.listen(["d", "da"], () => {
+            count++;
+        });
+
+        await client.close();
+
+        const socket2 = new MockSocket();
+        const client2 = new CoapClient(socket2);
+        client2.listen(["d", "da"], () => {
+            count++;
+        });
+
+        const inbound: CoapMessage = {
+            type: "NON",
+            code: "0.02",
+            messageId: 0x6666,
+            token: new Uint8Array([1, 2, 3, 4]),
+            uriPath: ["d", "da"],
+            payload: new Uint8Array(),
+        };
+        socket2.deliverMessage(inbound);
+        await new Promise(r => setTimeout(r, 10));
+
+        expect(count).to.equal(1);
+
+        await client2.close();
+    });
 });

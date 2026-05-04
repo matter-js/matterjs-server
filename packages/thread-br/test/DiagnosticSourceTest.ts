@@ -13,7 +13,7 @@ import { BasicTlv } from "../src/tlv/BasicTlvCodec.js";
 import { NetworkDiagTlvType } from "../src/tlv/networkDiagTlvTypes.js";
 
 type CommissionerLike = Pick<Commissioner, "withSession">;
-type CoapLike = Pick<CoapClient, "request">;
+type CoapLike = Pick<CoapClient, "request" | "listen">;
 
 function mockCommissioner(): CommissionerLike {
     return {
@@ -24,7 +24,10 @@ function mockCommissioner(): CommissionerLike {
 type RequestOpts = { type: "CON" | "NON"; code: string; uriPath: string[]; payload?: Uint8Array };
 
 function mockCoap(responseFn: (opts: RequestOpts) => Promise<CoapMessage>): CoapLike {
-    return { request: responseFn };
+    return {
+        request: responseFn,
+        listen: () => () => {},
+    };
 }
 
 function ackMessage(payload: Uint8Array): CoapMessage {
@@ -147,18 +150,132 @@ describe("MeshCopDiagnosticSource", () => {
         expect(capturedPayload).to.deep.equal(new Uint8Array([0x12, 0x02, 0x00, 0x01]));
     });
 
-    it("queryMulticast throws not-implemented error", async () => {
-        const source = new MeshCopDiagnosticSource(
-            mockCommissioner(),
-            mockCoap(async () => ackMessage(new Uint8Array())),
-        );
+    it("queryMulticast collects responses for collectMs window and returns array", async () => {
+        const extMacA = new Uint8Array([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
+        const extMacB = new Uint8Array([0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18]);
+        const ansA = buildDiagPayload(NetworkDiagTlvType.EXT_MAC_ADDRESS, extMacA);
+        const ansB = buildDiagPayload(NetworkDiagTlvType.EXT_MAC_ADDRESS, extMacB);
 
-        try {
-            await source.queryMulticast("ff03::1", [0], 500);
-            expect.fail("expected Error");
-        } catch (err) {
-            expect(err).to.be.instanceOf(Error);
-            expect((err as Error).message).to.include("Phase 6");
-        }
+        let listenHandler: ((msg: CoapMessage) => void) | undefined;
+
+        const coap: CoapLike = {
+            request: async () => ackMessage(new Uint8Array()),
+            listen: (uriPath, handler) => {
+                expect(uriPath).to.deep.equal(["d", "da"]);
+                listenHandler = handler;
+                return () => {};
+            },
+        };
+
+        const source = new MeshCopDiagnosticSource(mockCommissioner(), coap);
+
+        const queryPromise = source.queryMulticast("ff03::2", [NetworkDiagTlvType.EXT_MAC_ADDRESS], 50);
+
+        await new Promise(r => setTimeout(r, 10));
+        expect(listenHandler).to.not.be.undefined;
+        listenHandler!({ type: "NON", code: "0.02", messageId: 1, token: new Uint8Array(4), payload: ansA });
+        listenHandler!({ type: "NON", code: "0.02", messageId: 2, token: new Uint8Array(4), payload: ansB });
+
+        const results = await queryPromise;
+        expect(results).to.have.length(2);
+        expect(results[0].extMacAddress).to.deep.equal(extMacA);
+        expect(results[1].extMacAddress).to.deep.equal(extMacB);
+    });
+
+    it("queryMulticast subscribes BEFORE sending the query", async () => {
+        const events = new Array<string>();
+
+        const coap: CoapLike = {
+            request: async () => {
+                events.push("request");
+                return ackMessage(new Uint8Array());
+            },
+            listen: () => {
+                events.push("listen");
+                return () => {};
+            },
+        };
+
+        const source = new MeshCopDiagnosticSource(mockCommissioner(), coap);
+        await source.queryMulticast("ff03::2", [NetworkDiagTlvType.EXT_MAC_ADDRESS], 10);
+
+        expect(events).to.deep.equal(["listen", "request"]);
+    });
+
+    it("queryMulticast returns [] when no .ans arrives within collectMs", async () => {
+        const coap: CoapLike = {
+            request: async () => ackMessage(new Uint8Array()),
+            listen: () => () => {},
+        };
+        const source = new MeshCopDiagnosticSource(mockCommissioner(), coap);
+        const results = await source.queryMulticast("ff03::2", [NetworkDiagTlvType.EXT_MAC_ADDRESS], 10);
+        expect(results).to.have.length(0);
+    });
+
+    it("queryMulticast drops empty .ans payloads", async () => {
+        let listenHandler: ((msg: CoapMessage) => void) | undefined;
+        const coap: CoapLike = {
+            request: async () => ackMessage(new Uint8Array()),
+            listen: (_uriPath, handler) => {
+                listenHandler = handler;
+                return () => {};
+            },
+        };
+        const source = new MeshCopDiagnosticSource(mockCommissioner(), coap);
+        const queryPromise = source.queryMulticast("ff03::2", [NetworkDiagTlvType.EXT_MAC_ADDRESS], 30);
+
+        await new Promise(r => setTimeout(r, 5));
+        listenHandler!({
+            type: "NON",
+            code: "0.02",
+            messageId: 1,
+            token: new Uint8Array(4),
+            payload: new Uint8Array(),
+        });
+
+        const results = await queryPromise;
+        expect(results).to.have.length(0);
+    });
+
+    it("queryMulticast drops .ans payloads that fail to decode", async () => {
+        let listenHandler: ((msg: CoapMessage) => void) | undefined;
+        const coap: CoapLike = {
+            request: async () => ackMessage(new Uint8Array()),
+            listen: (_uriPath, handler) => {
+                listenHandler = handler;
+                return () => {};
+            },
+        };
+        const source = new MeshCopDiagnosticSource(mockCommissioner(), coap);
+        const queryPromise = source.queryMulticast("ff03::2", [NetworkDiagTlvType.EXT_MAC_ADDRESS], 30);
+
+        await new Promise(r => setTimeout(r, 5));
+        // Truncated TLV: type=0, length=8, but only 2 bytes follow.
+        listenHandler!({
+            type: "NON",
+            code: "0.02",
+            messageId: 1,
+            token: new Uint8Array(4),
+            payload: new Uint8Array([0x00, 0x08, 0x01, 0x02]),
+        });
+
+        const results = await queryPromise;
+        expect(results).to.have.length(0);
+    });
+
+    it("queryMulticast unsubscribes after the collect window", async () => {
+        let unsubCalled = false;
+
+        const coap: CoapLike = {
+            request: async () => ackMessage(new Uint8Array()),
+            listen: () => () => {
+                unsubCalled = true;
+            },
+        };
+
+        const source = new MeshCopDiagnosticSource(mockCommissioner(), coap);
+        await source.queryMulticast("ff03::2", [NetworkDiagTlvType.EXT_MAC_ADDRESS], 10);
+
+        expect(unsubCalled).to.equal(true);
     });
 });

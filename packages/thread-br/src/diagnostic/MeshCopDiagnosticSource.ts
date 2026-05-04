@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { Logger } from "@matter/main";
 import type { CoapClient } from "../coap/CoapClient.js";
 import type { Commissioner } from "../commissioner/Commissioner.js";
 import { ChildTable } from "../tlv/diag/ChildTable.js";
@@ -38,13 +39,15 @@ import { TypeListTlv } from "../tlv/TypeListTlv.js";
 import type { DiagnosticResponse } from "./DiagnosticResponse.js";
 import type { DiagnosticSource } from "./DiagnosticSource.js";
 
+const logger = Logger.get("MeshCopDiagnosticSource");
+
 export class MeshCopDiagnosticSource implements DiagnosticSource {
     readonly kind = "meshcop" as const;
 
     readonly #commissioner: Pick<Commissioner, "withSession">;
-    readonly #coap: Pick<CoapClient, "request">;
+    readonly #coap: Pick<CoapClient, "request" | "listen">;
 
-    constructor(commissioner: Pick<Commissioner, "withSession">, coap: Pick<CoapClient, "request">) {
+    constructor(commissioner: Pick<Commissioner, "withSession">, coap: Pick<CoapClient, "request" | "listen">) {
         this.#commissioner = commissioner;
         this.#coap = coap;
     }
@@ -74,10 +77,37 @@ export class MeshCopDiagnosticSource implements DiagnosticSource {
 
     async queryMulticast(
         _scope: "ff03::1" | "ff03::2",
-        _tlvTypes: number[],
-        _collectMs: number,
+        tlvTypes: number[],
+        collectMs: number,
     ): Promise<DiagnosticResponse[]> {
-        throw new Error("queryMulticast not yet implemented (Phase 6)");
+        // scope param accepted but not wired into the request: our DTLS socket has a single peer (the BR),
+        // and the BR forwards /d/dq to its configured multicast scope. Per-scope routing requires
+        // socket-level destination control (Phase 8).
+        return this.#commissioner.withSession(async () => {
+            const responses = new Array<DiagnosticResponse>();
+            const unsubscribe = this.#coap.listen(["d", "da"], msg => {
+                if (msg.payload.length === 0) return;
+                try {
+                    responses.push(decodeResponse(msg.payload));
+                } catch (err) {
+                    logger.warn("failed to decode .ans payload, dropping:", err);
+                }
+            });
+            try {
+                await this.#coap.request({
+                    type: "NON",
+                    code: "0.02",
+                    uriPath: ["d", "dq"],
+                    payload: NetworkDiagnosticTlv.encode([
+                        { type: NetworkDiagTlvType.TYPE_LIST, value: TypeListTlv.encode(tlvTypes) },
+                    ]),
+                });
+                await new Promise<void>(r => setTimeout(r, collectMs));
+            } finally {
+                unsubscribe();
+            }
+            return responses;
+        });
     }
 }
 
