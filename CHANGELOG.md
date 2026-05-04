@@ -10,8 +10,8 @@ This page shows a detailed overview of the changes between versions without the 
 ## **WORK IN PROGRESS**
 
 - Enhancement: Hide phantom Thread "External" routers/devices that only persist as stale neighbor-table entries (every observer offline, or single observer with other connections)
-- Enhancement: Also use the Discovered BR hostnames in Connection- and Neighbor-Lists
-- Fix: Enhance error messages when Writes fail
+- Enhancement: Also use discovered BR hostnames in connection and neighbor lists
+- Fix: Enhance error messages when writes fail
 - Fix: Update matter.js to the latest 0.17.0-nightly
 
 ## 0.6.4 (2026-04-30)
