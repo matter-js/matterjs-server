@@ -3,10 +3,10 @@
 ![Matter Logo](docs/matter_logo.svg)
 
 > [!WARNING]
-> This is an Alpha version of a matter.js-based controller with a [Python Matter Server](https://github.com/matter-js/python-matter-server) compatible WebSocket interface.
-> This version is not yet officially re-certified by the CSA, but will be during the current Alpha/Beta phase.
+> This is an Beta version of a matter.js-based controller with a [Python Matter Server](https://github.com/matter-js/python-matter-server) compatible WebSocket interface.
+> This version is not yet officially re-certified by the CSA, but will be in the future.
 > 
-> Please refer to the [Alpha/Beta testing instructions](ALPHABETATESTS.md) how to test this version.
+> Please refer to the [Beta testing instructions](ALPHABETATESTS.md) how to test this version.
 
 The Open Home Foundation Matter Server serves as the foundation to provide Matter support to [Home Assistant](https://home-assistant.io) but its universal approach makes it suitable to be used in other projects too.
 
