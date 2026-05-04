@@ -38,3 +38,14 @@ export type { DtlsBackend, DtlsConnectOpts, DtlsSocket } from "./dtls/socket/ind
 export { createDtlsBackend } from "./dtls/socket/index.js";
 
 export { Commissioner, CommissionerRejectedError, CommissionerTimeoutError } from "./commissioner/index.js";
+
+export type {
+    OtbrDatasetHex,
+    OtbrLeaderData,
+    OtbrNodeInfo,
+    OtbrRestCapability,
+    OtbrRestClientOptions,
+    OtbrRestErrorCode,
+    OtbrRestErrorOptions,
+} from "./otbr-rest/index.js";
+export { OtbrRestClient, OtbrRestDiagnosticSource, OtbrRestError, OtbrRestProbe } from "./otbr-rest/index.js";
