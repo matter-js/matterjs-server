@@ -14,6 +14,7 @@ import {
     FabricIndex,
     isObject,
     Logger,
+    MatterAggregateError,
     Millis,
     Minutes,
     NodeId,
@@ -619,6 +620,20 @@ export class ControllerCommandHandler {
             await node.node.endpoints.for(endpointId).setStateOf(clusterProperty, { [attributeName]: value });
             return { status: 0 };
         } catch (error) {
+            if (error instanceof MatterAggregateError) {
+                const first = error.errors.find((e): e is StatusResponseError => e instanceof StatusResponseError);
+                if (first !== undefined) {
+                    const dropped = error.errors.filter(e => e !== first);
+                    if (dropped.length > 0) {
+                        logger.info(
+                            `Write aggregate: reporting first error, dropping ${dropped.length} additional`,
+                            dropped,
+                        );
+                    }
+                    return { status: first.code, clusterStatus: first.clusterCode };
+                }
+                throw error;
+            }
             StatusResponseError.accept(error);
             return { status: error.code, clusterStatus: error.clusterCode };
         }

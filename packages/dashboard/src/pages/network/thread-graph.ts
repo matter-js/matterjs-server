@@ -31,6 +31,7 @@ import {
     getNetworkType,
     getThreadExtendedAddressHex,
     getThreadRole,
+    stripMdnsHostname,
 } from "./network-utils.js";
 
 declare global {
@@ -246,7 +247,7 @@ export class ThreadGraph extends BaseNetworkGraph {
             }
 
             if (device.kind === "br") {
-                const hostname = device.hostname?.replace(/\.$/, "").replace(/\.local$/i, "");
+                const hostname = device.hostname !== undefined ? stripMdnsHostname(device.hostname) : undefined;
                 // Only show network name on a second line when the first line came from a
                 // distinct hostname; otherwise `top` would already be the (possibly truncated)
                 // network name and the second line would just repeat it.

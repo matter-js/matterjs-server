@@ -690,6 +690,11 @@ export function getSignalColorFromLqi(lqi: number): string {
     return getSignalColorWeak();
 }
 
+/** Strips trailing dot and `.local` suffix from an mDNS hostname. */
+export function stripMdnsHostname(hostname: string): string {
+    return hostname.replace(/\.$/, "").replace(/\.local$/i, "");
+}
+
 /**
  * Gets a human-readable display name for a node.
  * Format: nodeLabel || productName (serialNumber)
