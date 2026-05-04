@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { type BasicTlvEntry, BasicTlv } from "./BasicTlvCodec.js";
+import { BasicTlv, type BasicTlvEntry } from "./BasicTlvCodec.js";
 
 /**
  * One Network Diagnostic TLV entry as walked from the response payload.
@@ -13,10 +13,7 @@ import { type BasicTlvEntry, BasicTlv } from "./BasicTlvCodec.js";
  * {@link value} holds the raw inner bytes; per-TLV typed decoders in
  * `./diag/` interpret it.
  */
-export interface NetworkDiagnosticEntry {
-    type: number;
-    value: Uint8Array;
-}
+export type NetworkDiagnosticEntry = BasicTlvEntry;
 
 /**
  * Outer Network Diagnostic TLV codec.
@@ -31,10 +28,10 @@ export interface NetworkDiagnosticEntry {
  */
 export namespace NetworkDiagnosticTlv {
     export function decode(blob: Uint8Array): NetworkDiagnosticEntry[] {
-        return BasicTlv.walk(blob) as NetworkDiagnosticEntry[];
+        return BasicTlv.walk(blob);
     }
 
     export function encode(entries: ReadonlyArray<NetworkDiagnosticEntry>): Uint8Array {
-        return BasicTlv.encode(entries as ReadonlyArray<BasicTlvEntry>);
+        return BasicTlv.encode(entries);
     }
 }

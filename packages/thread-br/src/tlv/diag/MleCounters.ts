@@ -36,7 +36,20 @@ export interface MleCounters {
     leaderTime: bigint;
 }
 
-const U16_FIELDS: ReadonlyArray<keyof MleCounters> = [
+type U16Key =
+    | "disabledRole"
+    | "detachedRole"
+    | "childRole"
+    | "routerRole"
+    | "leaderRole"
+    | "attachAttempts"
+    | "partitionIdChanges"
+    | "betterPartitionAttachAttempts"
+    | "parentChanges";
+
+type U64Key = "trackedTime" | "disabledTime" | "detachedTime" | "childTime" | "routerTime" | "leaderTime";
+
+const U16_FIELDS: ReadonlyArray<U16Key> = [
     "disabledRole",
     "detachedRole",
     "childRole",
@@ -48,7 +61,7 @@ const U16_FIELDS: ReadonlyArray<keyof MleCounters> = [
     "parentChanges",
 ];
 
-const U64_FIELDS: ReadonlyArray<keyof MleCounters> = [
+const U64_FIELDS: ReadonlyArray<U64Key> = [
     "trackedTime",
     "disabledTime",
     "detachedTime",
@@ -91,27 +104,36 @@ export namespace MleCounters {
         if (value.length !== TOTAL_BYTES) {
             throw new Error(`MleCounters TLV must be ${TOTAL_BYTES} bytes, got ${value.length}`);
         }
-        const out = {} as MleCounters;
-        for (let i = 0; i < U16_FIELDS.length; i++) {
-            (out[U16_FIELDS[i]] as number) = readU16BE(value, i * 2);
-        }
-        for (let i = 0; i < U64_FIELDS.length; i++) {
-            (out[U64_FIELDS[i]] as bigint) = readU64BE(value, U64_OFFSET + i * 8);
-        }
-        return out;
+        return {
+            disabledRole: readU16BE(value, 0),
+            detachedRole: readU16BE(value, 2),
+            childRole: readU16BE(value, 4),
+            routerRole: readU16BE(value, 6),
+            leaderRole: readU16BE(value, 8),
+            attachAttempts: readU16BE(value, 10),
+            partitionIdChanges: readU16BE(value, 12),
+            betterPartitionAttachAttempts: readU16BE(value, 14),
+            parentChanges: readU16BE(value, 16),
+            trackedTime: readU64BE(value, 18),
+            disabledTime: readU64BE(value, 26),
+            detachedTime: readU64BE(value, 34),
+            childTime: readU64BE(value, 42),
+            routerTime: readU64BE(value, 50),
+            leaderTime: readU64BE(value, 58),
+        };
     }
 
     export function encode(counters: MleCounters): Uint8Array {
         const out = new Uint8Array(TOTAL_BYTES);
         for (let i = 0; i < U16_FIELDS.length; i++) {
-            const v = counters[U16_FIELDS[i]] as number;
+            const v = counters[U16_FIELDS[i]];
             if (!Number.isInteger(v) || v < 0 || v > 0xffff) {
                 throw new Error(`MleCounters.${U16_FIELDS[i]} out of range: ${v}`);
             }
             writeU16BE(out, i * 2, v);
         }
         for (let i = 0; i < U64_FIELDS.length; i++) {
-            const v = counters[U64_FIELDS[i]] as bigint;
+            const v = counters[U64_FIELDS[i]];
             if (typeof v !== "bigint" || v < 0n || v > U64_MAX) {
                 throw new Error(`MleCounters.${U64_FIELDS[i]} out of range: ${v}`);
             }

@@ -54,11 +54,17 @@ export namespace MacCounters {
         if (value.length !== TOTAL_BYTES) {
             throw new Error(`MacCounters TLV must be ${TOTAL_BYTES} bytes, got ${value.length}`);
         }
-        const out = {} as MacCounters;
-        for (let i = 0; i < FIELD_ORDER.length; i++) {
-            out[FIELD_ORDER[i]] = readU32BE(value, i * 4);
-        }
-        return out;
+        return {
+            ifInUnknownProtos: readU32BE(value, 0),
+            ifInErrors: readU32BE(value, 4),
+            ifOutErrors: readU32BE(value, 8),
+            ifInUcastPkts: readU32BE(value, 12),
+            ifInBroadcastPkts: readU32BE(value, 16),
+            ifInDiscards: readU32BE(value, 20),
+            ifOutUcastPkts: readU32BE(value, 24),
+            ifOutBroadcastPkts: readU32BE(value, 28),
+            ifOutDiscards: readU32BE(value, 32),
+        };
     }
 
     export function encode(counters: MacCounters): Uint8Array {
