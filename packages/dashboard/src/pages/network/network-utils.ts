@@ -170,10 +170,15 @@ export function getThreadChannel(node: MatterNode): number | undefined {
 /**
  * Gets the Thread extended PAN ID for a node.
  * Uses attribute 0/53/4 (ExtendedPanId, nullable per Matter spec).
+ *
+ * The WebSocket JSON reviver only revives integers above Number.MAX_SAFE_INTEGER
+ * as bigint; smaller uint64 values arrive as plain number, so accept both.
  */
 export function getThreadExtendedPanId(node: MatterNode): bigint | undefined {
     const v = node.attributes["0/53/4"];
-    return typeof v === "bigint" ? v : undefined;
+    if (typeof v === "bigint") return v;
+    if (typeof v === "number" && Number.isInteger(v)) return BigInt(v);
+    return undefined;
 }
 
 /**
