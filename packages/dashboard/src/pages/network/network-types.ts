@@ -12,9 +12,10 @@ import type { BorderRouterEntry } from "@matter-server/ws-client";
 export type NetworkType = "thread" | "wifi" | "ethernet" | "unknown";
 
 /**
- * Classification of a Thread mesh link based on RSSI/LQI.
+ * Classification of a Thread mesh link based on LQI.
+ * "none" means LQI=0 — neighbor entry exists but no recent valid frames (dead/stale link).
  */
-export type SignalLevel = "strong" | "medium" | "weak";
+export type SignalLevel = "strong" | "medium" | "weak" | "none";
 
 /**
  * Thread routing role from ThreadNetworkDiagnostics cluster.
@@ -45,7 +46,10 @@ export interface ThreadNeighbor {
     linkFrameCounter: number;
     /** MLE frame counter */
     mleFrameCounter: number;
-    /** Link Quality Indicator (0-255, higher is better) */
+    /**
+     * Link Quality Indicator. Spec types as uint8 (0-255), but OpenThread reports
+     * 0-3 in practice. 0 = no recent valid frames (dead/stale link).
+     */
     lqi: number;
     /** Average RSSI in dBm (nullable) */
     avgRssi: number | null;
@@ -80,9 +84,9 @@ export interface ThreadRoute {
     nextHop: number;
     /** Path cost */
     pathCost: number;
-    /** LQI in */
+    /** LQI in (0-3 on OpenThread; 0 = no link). */
     lqiIn: number;
-    /** LQI out */
+    /** LQI out (0-3 on OpenThread; 0 = no link). */
     lqiOut: number;
     /** Age of the route */
     age: number;
@@ -110,8 +114,7 @@ export interface ThreadConnection {
     fromNodeId: number | string;
     toNodeId: number | string;
     signalColor: string;
-    /** Undefined when link strength is unknown (e.g. route-table entry without LQI). */
-    signalLevel?: SignalLevel;
+    signalLevel: SignalLevel;
     lqi: number;
     rssi: number | null;
     /** Path cost from route table (1 = direct, higher = multi-hop). Only available for routers. */

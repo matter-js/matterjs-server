@@ -288,6 +288,11 @@ export class ThreadGraph extends BaseNetworkGraph {
         for (const pair of this._edgePairs.values()) {
             // Collect both directional edges for this pair
             const edgesInPair: { conn: ThreadConnection; visEdge: NetworkGraphEdge; filterHidden: boolean }[] = [];
+            // Track if any directional edge in this pair was a no-link (LQI=0) report.
+            // If exactly one direction reports zero while the other has a real link, the pair
+            // is asymmetric — surface the surviving edge as dashed so testers can spot it.
+            let hadZeroEdge = false;
+            let hadLiveEdge = false;
 
             for (const conn of [pair.edgeAB, pair.edgeBA]) {
                 if (!conn) continue;
@@ -305,6 +310,14 @@ export class ThreadGraph extends BaseNetworkGraph {
                 // Cascade from hidden nodes (offline filter)
                 if (hiddenNodeIds.has(fromId) || hiddenNodeIds.has(toId)) {
                     filterHidden = true;
+                }
+
+                // No-link filter: LQI=0 means stale/dead neighbor entry, never draw.
+                if (conn.signalLevel === "none") {
+                    filterHidden = true;
+                    hadZeroEdge = true;
+                } else {
+                    hadLiveEdge = true;
                 }
 
                 // Signal level filters
@@ -345,6 +358,17 @@ export class ThreadGraph extends BaseNetworkGraph {
                 // Keep the weakest (index 0), hide the better one(s)
                 for (let i = 1; i < visibleInPair.length; i++) {
                     visibleInPair[i].visEdge.hidden = true;
+                }
+            }
+
+            // Asymmetric link: one direction reported the link as dead while the other
+            // saw a live link. Mark the surviving edge dashed and annotate the tooltip.
+            if (hadZeroEdge && hadLiveEdge) {
+                for (const e of edgesInPair) {
+                    if (!e.visEdge.hidden) {
+                        e.visEdge.dashes = true;
+                        e.visEdge.title = `${e.visEdge.title ?? ""} (asymmetric: peer reports no link)`;
+                    }
                 }
             }
 
