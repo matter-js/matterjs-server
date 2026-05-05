@@ -24,8 +24,11 @@ npm run server
 # Start server with options
 npm run server -- --storage-path data --primary-interface en0
 
-# Run tests (uses @matter/testing with mocha)
-npm test
+# Run tests (uses @matter/testing with mocha).
+# Integration tests (Commission On Network) need an explicit network interface,
+# otherwise mDNS discovery picks up VPN/utun adapters and the test times out.
+# Set both env vars to the active LAN interface (e.g. en0):
+PRIMARY_INTERFACE=en0 MATTER_MDNS_NETWORKINTERFACE=en0 npm test
 
 # Lint (oxlint with type-aware checking)
 npm run lint
@@ -99,8 +102,11 @@ npm run lint
 # 3. Build (required)
 npm run build
 
-# 4. Run tests (required)
-npm test
+# 4. Run tests (required). See note above — integration tests need both
+#    PRIMARY_INTERFACE and MATTER_MDNS_NETWORKINTERFACE set to the active LAN
+#    interface (e.g. en0). Without them, the Commission On Network test times out
+#    when mDNS picks a VPN/utun interface.
+PRIMARY_INTERFACE=en0 MATTER_MDNS_NETWORKINTERFACE=en0 npm test
 ```
 
 All four checks must pass **in this order**. `npm run format` must be run **before** build/lint — it rewrites files in-place using oxfmt and the build/lint must validate the formatted output. Skipping format leads to formatting drift that gets caught later.
