@@ -7,14 +7,21 @@
 import { consume } from "@lit/context";
 import "@material/web/divider/divider";
 import { isTestNodeId, type BorderRouterEntry, type MatterClient, type MatterNode } from "@matter-server/ws-client";
-import { mdiClose, mdiRefresh, mdiSignalCellular1, mdiSignalCellular2, mdiSignalCellular3 } from "@mdi/js";
+import {
+    mdiClose,
+    mdiLinkVariantOff,
+    mdiRefresh,
+    mdiSignalCellular1,
+    mdiSignalCellular2,
+    mdiSignalCellular3,
+} from "@mdi/js";
 import { LitElement, TemplateResult, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { clientContext } from "../../client/client-context.js";
 import "../../components/ha-svg-icon";
 import { formatNodeAddressFromAny, getEffectiveFabricIndex } from "../../util/format_hex.js";
-import { getCssVar, reducedMotionStyles } from "../../util/shared-styles.js";
-import type { ThreadEdgePair, ThreadExternalDevice } from "./network-types.js";
+import { reducedMotionStyles } from "../../util/shared-styles.js";
+import type { SignalLevel, ThreadEdgePair, ThreadExternalDevice } from "./network-types.js";
 import type { NodeConnection } from "./network-utils.js";
 import {
     decodeMeshcopStateBitmap,
@@ -105,12 +112,17 @@ export class NetworkDetails extends LitElement {
         }
     }
 
-    private _getSignalIconFromColor(color: string): string {
-        const strongColor = getCssVar("--signal-color-strong", "#4caf50");
-        const mediumColor = getCssVar("--signal-color-medium", "#ff9800");
-        if (color === strongColor) return mdiSignalCellular3;
-        if (color === mediumColor) return mdiSignalCellular2;
-        return mdiSignalCellular1;
+    private _getSignalIcon(level: SignalLevel): string {
+        switch (level) {
+            case "strong":
+                return mdiSignalCellular3;
+            case "medium":
+                return mdiSignalCellular2;
+            case "weak":
+                return mdiSignalCellular1;
+            case "none":
+                return mdiLinkVariantOff;
+        }
     }
 
     /**
@@ -273,7 +285,7 @@ export class NetworkDetails extends LitElement {
                                                   this._handleKeyDown(e, conn.connectedNodeId)}
                                           >
                                               <ha-svg-icon
-                                                  .path=${this._getSignalIconFromColor(conn.signalColor)}
+                                                  .path=${this._getSignalIcon(conn.signalLevel)}
                                                   style="--icon-primary-color: ${conn.signalColor}"
                                               ></ha-svg-icon>
                                               <div class="neighbor-info">
@@ -477,7 +489,7 @@ export class NetworkDetails extends LitElement {
                                     @keydown=${(e: KeyboardEvent) => this._handleKeyDown(e, conn.connectedNodeId)}
                                 >
                                     <ha-svg-icon
-                                        .path=${this._getSignalIconFromColor(conn.signalColor)}
+                                        .path=${this._getSignalIcon(conn.signalLevel)}
                                         style="--icon-primary-color: ${conn.signalColor}"
                                     ></ha-svg-icon>
                                     <div class="neighbor-info">

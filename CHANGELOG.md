@@ -7,6 +7,10 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
+## **WORK IN PROGRESS**
+
+- Adjustment: Thread mesh visualization now uses LQI (instead of RSSI) for connection-line and neighbor-list colors.
+
 ## 0.6.5 (2026-05-04)
 
 - Enhancement: Hide phantom Thread "External" routers/devices that only persist as stale neighbor-table entries (every observer offline, or single observer with other connections)
