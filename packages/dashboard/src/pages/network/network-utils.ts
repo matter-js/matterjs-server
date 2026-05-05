@@ -151,26 +151,34 @@ export function categorizeDevices(nodes: Record<string, MatterNode>): Categorize
 
 /**
  * Gets the Thread routing role for a node.
- * Uses attribute 0/53/1 (RoutingRole).
+ * Uses attribute 0/53/1 (RoutingRole, nullable per Matter spec).
  */
 export function getThreadRole(node: MatterNode): number | undefined {
-    return node.attributes["0/53/1"] as number | undefined;
+    const v = node.attributes["0/53/1"];
+    return typeof v === "number" ? v : undefined;
 }
 
 /**
  * Gets the Thread channel for a node.
- * Uses attribute 0/53/0 (Channel).
+ * Uses attribute 0/53/0 (Channel, nullable per Matter spec).
  */
 export function getThreadChannel(node: MatterNode): number | undefined {
-    return node.attributes["0/53/0"] as number | undefined;
+    const v = node.attributes["0/53/0"];
+    return typeof v === "number" ? v : undefined;
 }
 
 /**
  * Gets the Thread extended PAN ID for a node.
- * Uses attribute 0/53/4 (ExtendedPanId).
+ * Uses attribute 0/53/4 (ExtendedPanId, nullable per Matter spec).
+ *
+ * The WebSocket JSON reviver only revives integers above Number.MAX_SAFE_INTEGER
+ * as bigint; smaller uint64 values arrive as plain number, so accept both.
  */
 export function getThreadExtendedPanId(node: MatterNode): bigint | undefined {
-    return node.attributes["0/53/4"] as bigint | undefined;
+    const v = node.attributes["0/53/4"];
+    if (typeof v === "bigint") return v;
+    if (typeof v === "number" && Number.isInteger(v)) return BigInt(v);
+    return undefined;
 }
 
 /**
