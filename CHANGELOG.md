@@ -10,6 +10,7 @@ This page shows a detailed overview of the changes between versions without the 
 ## **WORK IN PROGRESS**
 
 - Adjustment: Thread mesh visualization now uses LQI (instead of RSSI) for connection-line and neighbor-list colors.
+- Fix: Only import BLE module when BLE was enabled for the server
 
 ## 0.6.5 (2026-05-04)
 

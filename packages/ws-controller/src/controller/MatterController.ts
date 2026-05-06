@@ -27,10 +27,29 @@ import { BorderRouterDiscovery } from "./BorderRouterDiscovery.js";
 import { ControllerCommandHandler } from "./ControllerCommandHandler.js";
 import { LegacyDataInjector, LegacyServerData } from "./LegacyDataInjector.js";
 import { resolveServerId } from "./ServerIdResolver.js";
-// Register BLE
-import "@matter/nodejs-ble";
 
 const logger = Logger.get("MatterController");
+
+let bleSupportLoaded: Promise<void> | undefined;
+
+// Lazy-load the optional `@matter/nodejs-ble` so a missing install only fails when BLE is enabled.
+async function loadBleSupport(environment: Environment): Promise<void> {
+    if (!environment.vars.get("ble.enable", false)) return;
+    if (bleSupportLoaded === undefined) {
+        bleSupportLoaded = (async () => {
+            try {
+                await import("@matter/nodejs-ble");
+            } catch (error) {
+                logger.error(
+                    `Failed to load '@matter/nodejs-ble'. Disable BLE or ensure the package is installed.`,
+                    error,
+                );
+                throw error;
+            }
+        })();
+    }
+    return bleSupportLoaded;
+}
 
 export async function computeCompressedNodeId(
     crypto: Crypto,
@@ -84,6 +103,8 @@ export class MatterController {
         options: MatterControllerOptions,
         legacyData?: LegacyServerData,
     ) {
+        await loadBleSupport(environment);
+
         // Resolve the server ID to use
         const serverId = await resolveServerId(
             environment,
