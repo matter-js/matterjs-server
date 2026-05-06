@@ -37,7 +37,7 @@
         "@matter/nodejs-ble": "0.17.0-alpha.0-20260504-e005cc190"
     },
     "dependencies": {
-        "@matter/main": "0.17.0-alpha.0-20260504-e005cc190",
+        "@matter/main": "0.17.0-alpha.0-20260505-f95da55d0",
         "@matter-server/ws-client": "*",
         "@project-chip/matter.js": "0.17.0-alpha.0-20260504-e005cc190",
         "ws": "^8.20.0"
