@@ -49,3 +49,6 @@ export type {
     OtbrRestErrorOptions,
 } from "./otbr-rest/index.js";
 export { OtbrRestClient, OtbrRestDiagnosticSource, OtbrRestError, OtbrRestProbe } from "./otbr-rest/index.js";
+
+export { decodeStateBitmap, ExtPanIdLockManager, selectBr, selectSource } from "./selection/index.js";
+export type { DecodedStateBitmap, SelectSourceOpts } from "./selection/index.js";
