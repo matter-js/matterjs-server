@@ -106,6 +106,25 @@ npm test
 
 All four checks must pass **in this order**. `npm run format` must be run **before** build/lint — it rewrites files in-place using oxfmt and the build/lint must validate the formatted output. Skipping format leads to formatting drift that gets caught later.
 
+#### Test scoping during iteration
+
+For fast iteration while working on a single workspace package, run scoped tests via the npm `-w` flag from the repo root. Example for `thread-br`:
+
+```bash
+npm test -w @matter-server/thread-br
+```
+
+This is the preferred verification mode for in-package work; the full `npm test` is the final gate before declaring work done.
+
+#### Pre-existing integration test caveats
+
+`packages/matter-server/test/IntegrationTest.ts` contains end-to-end tests that depend on real mDNS multicast and a live Matter device handshake on the local network. On developer machines and in some CI environments these can flake or fail with errors like:
+
+- `Integration Test > Device Discovery > should discover commissionable nodes via discover command — expected undefined to exist`
+- `Integration Test > Commission On Network > should commission device using passcode and long discriminator — expected '<vendor>' to equal 'Test Vendor'`
+
+When the full `npm test` reports only these matter-server integration failures and your changes are confined to other packages (e.g. `thread-br`, `ws-controller` non-discovery code paths), treat them as pre-existing environment failures rather than regressions. Confirm by running scoped tests for your package via `npm test -w <workspace>`. Per the global "When tests fail" rule, ask before chasing failures you suspect are pre-existing.
+
 ### Plan Documents
 
 Plan/design documents in `docs/plans/` are working files only. **Never commit them to git.** They may exist locally for reference but must not be included in any commit.
