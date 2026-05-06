@@ -32,7 +32,7 @@ const logger = Logger.get("MatterController");
 
 let bleSupportLoaded: Promise<void> | undefined;
 
-// `@matter/nodejs-ble` is an optionalDependency; tolerate missing install at runtime.
+// Lazy-load the optional `@matter/nodejs-ble` so a missing install only fails when BLE is enabled.
 async function loadBleSupport(environment: Environment): Promise<void> {
     if (!environment.vars.get("ble.enable", false)) return;
     if (bleSupportLoaded === undefined) {
@@ -40,13 +40,10 @@ async function loadBleSupport(environment: Environment): Promise<void> {
             try {
                 await import("@matter/nodejs-ble");
             } catch (error) {
-                const code = (error as { code?: string } | undefined)?.code;
-                if (code === "ERR_MODULE_NOT_FOUND" || code === "MODULE_NOT_FOUND") {
-                    logger.error(
-                        `BLE requested (ble.enable=true) but '@matter/nodejs-ble' is not installed. Install it to enable BLE commissioning.`,
-                    );
-                    return;
-                }
+                logger.error(
+                    `Failed to load '@matter/nodejs-ble'. Disable BLE or ensure the package is installed.`,
+                    error,
+                );
                 throw error;
             }
         })();
