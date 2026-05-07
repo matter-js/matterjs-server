@@ -10,10 +10,11 @@
  * a custom cluster without standard Matter subscription support.
  */
 
-import { CancelablePromise, Duration, Logger, Millis, Time, Timer } from "@matter/main";
+import { Logger } from "@matter/main";
 import { PeerAddress, PeerAddressMap } from "@matter/main/protocol";
 import { AttributesData } from "../types/CommandHandler.js";
 import { formatNodeId } from "../util/formatNodeId.js";
+import { NodeProcessor } from "./NodeProcessor.js";
 
 const logger = Logger.get("CustomClusterPoller");
 
@@ -37,8 +38,8 @@ const ELECTRICAL_POWER_MEASUREMENT_CLUSTER_ID = 0x0090; // 144
 // Polling interval in milliseconds (60 seconds)
 const POLLING_INTERVAL_MS = 60_000;
 
-// Maximum initial delay in milliseconds (random 30-60s to stagger startup)
-const MAX_INITIAL_DELAY_MS = 30_000;
+// Initial delay range: random 30-60s to stagger startup
+const INITIAL_DELAY_MS = 30_000;
 
 // Attribute path format: endpoint/cluster/attribute
 type AttributePath = string;
@@ -117,19 +118,14 @@ export function checkPolledAttributes(attributes: AttributesData): Set<Attribute
 /**
  * Manages polling of custom cluster attributes for multiple nodes.
  */
-export class CustomClusterPoller {
+export class CustomClusterPoller extends NodeProcessor {
     #polledAttributes = new PeerAddressMap<Set<AttributePath>>();
-    #pollerTimer: Timer;
-    #attributeReader: NodeAttributeReader;
-    #isPolling = false;
-    #currentDelayPromise?: CancelablePromise;
+    readonly #attributeReader: NodeAttributeReader;
     #currentReadPromise?: Promise<void>;
-    #closed = false;
 
     constructor(attributeReader: NodeAttributeReader) {
+        super("eve-poller", INITIAL_DELAY_MS + Math.random() * INITIAL_DELAY_MS, POLLING_INTERVAL_MS);
         this.#attributeReader = attributeReader;
-        const delay = Millis(MAX_INITIAL_DELAY_MS + Math.random() * MAX_INITIAL_DELAY_MS);
-        this.#pollerTimer = Time.getTimer("eve-poller", delay, () => this.#pollAllNodes());
     }
 
     /**
@@ -140,126 +136,47 @@ export class CustomClusterPoller {
         const attributesToPoll = checkPolledAttributes(attributes);
 
         if (attributesToPoll.size === 0) {
-            // Remove from polling if it was previously registered
             this.unregisterNode(peer);
             return;
         }
 
         this.#polledAttributes.set(peer, attributesToPoll);
-        logger.info(
-            `Registered node ${formatNodeId(peer)} for custom attribute polling: ${Array.from(attributesToPoll).join(", ")}`,
-        );
+        if (this.registerPeer(peer)) {
+            logger.info(
+                `Registered node ${formatNodeId(peer)} for custom attribute polling: ${Array.from(attributesToPoll).join(", ")}`,
+            );
+        }
 
-        // Start the poller if not already running
-        this.#schedulePoller();
+        this.scheduleIfNeeded();
     }
 
     /**
      * Unregister a node from polling (e.g., when decommissioned or disconnected).
      */
     unregisterNode(peer: PeerAddress): void {
-        if (this.#polledAttributes.delete(peer)) {
+        this.#polledAttributes.delete(peer);
+        if (this.unregisterPeer(peer)) {
             logger.info(`Unregistered node ${formatNodeId(peer)} from custom attribute polling`);
-        }
-        if (this.#polledAttributes.size === 0) {
-            this.#pollerTimer.stop();
         }
     }
 
-    /**
-     * Stop all polling and cleanup. Awaits any in-flight read operation.
-     */
-    async stop(): Promise<void> {
-        this.#closed = true;
-        this.#currentDelayPromise?.cancel(new Error("Close"));
-        this.#pollerTimer?.stop();
-        this.#polledAttributes.clear();
+    override async stop(): Promise<void> {
+        await super.stop();
         if (this.#currentReadPromise) {
             await this.#currentReadPromise;
         }
+        this.#polledAttributes.clear();
         logger.info("Custom attribute poller stopped");
     }
 
-    /**
-     * Schedule the next polling cycle.
-     * Uses a random initial delay (0-30s) on first run to stagger startup,
-     * then polls every 30s thereafter.
-     */
-    #schedulePoller(): void {
-        // No schedule if no nodes to poll
-        if (this.#polledAttributes.size === 0 || this.#closed) {
-            return;
-        }
-
-        // Don't schedule if already scheduled
-        if (this.#pollerTimer?.isRunning || this.#isPolling) {
-            return;
-        }
-
-        // Set the new interval
-        this.#pollerTimer.start();
+    protected override shouldProcess(peer: PeerAddress): boolean {
+        return this.#attributeReader.nodeConnected(peer);
     }
 
-    /**
-     * Poll all registered nodes for their custom attributes.
-     */
-    async #pollAllNodes(): Promise<void> {
-        if (this.#isPolling) {
-            // Already polling, schedule next cycle
-            return;
-        }
+    protected override async processNode(peer: PeerAddress): Promise<void> {
+        const attributePaths = this.#polledAttributes.get(peer);
+        if (!attributePaths) return;
 
-        const targetInterval = Millis(POLLING_INTERVAL_MS);
-        if (this.#pollerTimer.interval !== targetInterval) {
-            this.#pollerTimer.interval = targetInterval;
-        }
-
-        this.#isPolling = true;
-
-        let polledNodes = 0;
-        try {
-            const entries = Array.from(this.#polledAttributes.entries());
-            for (let i = 0; i < entries.length; i++) {
-                if (this.#closed) {
-                    break;
-                }
-                const [peer, attributePaths] = entries[i];
-                if (!this.#polledAttributes.has(peer)) {
-                    // Node was removed, so skip it
-                    continue;
-                }
-                polledNodes++;
-                await this.#pollNode(peer, attributePaths);
-                // Small delay between nodes to avoid overwhelming the network
-                // Only add this delay if there are more nodes remaining to be polled
-                if (i < entries.length - 1) {
-                    this.#currentDelayPromise = Time.sleep("sleep", Millis(2_000)).finally(() => {
-                        this.#currentDelayPromise = undefined;
-                    });
-                    await this.#currentDelayPromise;
-                }
-            }
-        } finally {
-            this.#isPolling = false;
-            // Schedule next polling cycle
-            this.#schedulePoller();
-        }
-        if (polledNodes > 0) {
-            logger.info(
-                `Polled ${polledNodes} nodes for energy data. Scheduling next poll in ${Duration.format(this.#pollerTimer.interval)}`,
-            );
-        }
-    }
-
-    /**
-     * Poll a single node for its custom attributes.
-     * The read will automatically trigger change events through the normal attribute flow.
-     */
-    async #pollNode(peer: PeerAddress, attributePaths: Set<AttributePath>): Promise<void> {
-        if (!this.#attributeReader.nodeConnected(peer)) {
-            logger.debug(`Node ${formatNodeId(peer)} not connected, skipping custom attribute polling`);
-            return;
-        }
         const paths = Array.from(attributePaths);
         logger.debug(`Polling ${paths.length} custom attributes for node ${formatNodeId(peer)}`);
 
@@ -276,6 +193,12 @@ export class CustomClusterPoller {
             logger.warn(`Failed to poll custom attributes for node ${formatNodeId(peer)}: `, error);
         } finally {
             this.#currentReadPromise = undefined;
+        }
+    }
+
+    protected override onCycleComplete(processedCount: number, intervalFormatted: string): void {
+        if (processedCount > 0) {
+            logger.info(`Polled ${processedCount} nodes for energy data. Next poll in ${intervalFormatted}`);
         }
     }
 }

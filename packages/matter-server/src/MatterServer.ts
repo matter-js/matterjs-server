@@ -151,6 +151,7 @@ async function start() {
             disableOtaProvider: cliOptions.disableOta,
             serverId: legacyData.serverId,
             serverVersion: MATTER_SERVER_VERSION,
+            enableTimeSync: cliOptions.enableTimeSync,
         },
         legacyServerData,
     );
