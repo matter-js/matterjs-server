@@ -13,6 +13,135 @@ export type { BorderRouterEntry } from "@matter-server/thread-br";
 /** Attribute data stored as path -> value mapping */
 export type AttributesData = { [key: string]: unknown };
 
+export interface ThreadConnectivity {
+    parentPriority: -1 | 0 | 1;
+    linkQuality3: number;
+    linkQuality2: number;
+    linkQuality1: number;
+    leaderCost: number;
+    idSequence: number;
+    activeRouters: number;
+    sedBufferSize: number;
+    sedDatagramCount: number;
+}
+
+export interface ThreadRoute64Entry {
+    routerId: number;
+    linkQualityIn: number;
+    linkQualityOut: number;
+    routeCost: number;
+}
+
+export interface ThreadRoute64 {
+    idSequence: number;
+    entries: ThreadRoute64Entry[];
+}
+
+export interface ThreadLeaderData {
+    partitionId: number;
+    weighting: number;
+    dataVersion: number;
+    stableDataVersion: number;
+    leaderRouterId: number;
+}
+
+export interface ThreadMacCounters {
+    ifInUnknownProtos: number;
+    ifInErrors: number;
+    ifOutErrors: number;
+    ifInUcastPkts: number;
+    ifInBroadcastPkts: number;
+    ifInDiscards: number;
+    ifOutUcastPkts: number;
+    ifOutBroadcastPkts: number;
+    ifOutDiscards: number;
+}
+
+export interface ThreadMode {
+    rxOnWhenIdle: boolean;
+    ftd: boolean;
+    fullNetworkData: boolean;
+}
+
+export interface ThreadChildTableEntry {
+    timeoutExponent: number;
+    timeoutSeconds: number;
+    incomingLinkQuality: number;
+    childId: number;
+    mode: ThreadMode;
+}
+
+export interface ThreadMleCounters {
+    disabledRole: number;
+    detachedRole: number;
+    childRole: number;
+    routerRole: number;
+    leaderRole: number;
+    attachAttempts: number;
+    partitionIdChanges: number;
+    betterPartitionAttachAttempts: number;
+    parentChanges: number;
+    trackedTime: bigint;
+    disabledTime: bigint;
+    detachedTime: bigint;
+    childTime: bigint;
+    routerTime: bigint;
+    leaderTime: bigint;
+}
+
+export interface ThreadDiagnosticsNode {
+    /** 16-char uppercase hex of the 64-bit Thread MAC. */
+    extMacAddress?: string;
+    rloc16?: number;
+    mode?: ThreadMode;
+    timeout?: number;
+    connectivity?: ThreadConnectivity;
+    route64?: ThreadRoute64;
+    leaderData?: ThreadLeaderData;
+    /** Hex-encoded raw network data blob. */
+    networkData?: string;
+    /** Hex-encoded IPv6 address bytes (16 bytes per entry). */
+    ipv6Addresses?: string[];
+    macCounters?: ThreadMacCounters;
+    childTable?: ThreadChildTableEntry[];
+    channelPages?: number[];
+    maxChildTimeout?: number;
+    /** 16-char uppercase hex EUI-64. */
+    eui64?: string;
+    version?: number;
+    vendorName?: string;
+    vendorModel?: string;
+    vendorSwVersion?: string;
+    threadStackVersion?: string;
+    vendorAppUrl?: string;
+    mleCounters?: ThreadMleCounters;
+    batteryLevel?: number;
+    supplyVoltage?: number;
+    /** Unknown TLVs preserved verbatim. `value` is uppercase hex. */
+    unknown?: Array<{ type: number; value: string }>;
+}
+
+export type ThreadDiagnosticsPartialReason =
+    | "petition_rejected"
+    | "dtls_failed"
+    | "border_router_unreachable"
+    | "no_credentials"
+    | "no_source"
+    | "rest_unreachable"
+    | "rest_protocol"
+    | "timeout";
+
+export interface ThreadDiagnosticsBatch {
+    /** 16-char uppercase hex extPanId. */
+    extPanIdHex: string;
+    networkName: string;
+    /** Epoch ms when the batch was assembled. */
+    collectedAt: number;
+    source: "meshcop" | "otbr-rest";
+    nodes: ThreadDiagnosticsNode[];
+    partialReason?: ThreadDiagnosticsPartialReason;
+}
+
 export interface APICommands {
     start_listening: {
         requestArgs: Record<string, never>;
@@ -65,6 +194,10 @@ export interface APICommands {
     get_thread_border_routers: {
         requestArgs: Record<string, never>;
         response: BorderRouterEntry[];
+    };
+    get_thread_diagnostics: {
+        requestArgs: { extPanId?: string; force?: boolean };
+        response: ThreadDiagnosticsBatch | ThreadDiagnosticsBatch[] | undefined;
     };
     open_commissioning_window: {
         requestArgs: {
@@ -294,6 +427,9 @@ export interface APIEvents {
     server_info_updated: {
         data: ServerInfoMessage;
     };
+    thread_diagnostics_updated: {
+        data: ThreadDiagnosticsBatch;
+    };
 }
 
 /** All known event type names */
@@ -335,6 +471,10 @@ interface ServerEventInfoUpdated {
     event: "server_info_updated";
     data: ServerInfoMessage;
 }
+interface ServerEventThreadDiagnosticsUpdated {
+    event: "thread_diagnostics_updated";
+    data: ThreadDiagnosticsBatch;
+}
 
 export type EventMessage =
     | ServerEventNodeAdded
@@ -345,7 +485,8 @@ export type EventMessage =
     | ServerEventServerShutdown
     | ServerEventEndpointAdded
     | ServerEventEndpointRemoved
-    | ServerEventInfoUpdated;
+    | ServerEventInfoUpdated
+    | ServerEventThreadDiagnosticsUpdated;
 
 export interface ResultMessageBase {
     message_id: string;

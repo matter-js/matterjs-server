@@ -52,6 +52,7 @@ import {
     splitAttributePath,
     toBigIntAwareJson,
 } from "./Converters.js";
+import { serializeBatch } from "./serializeBatch.js";
 
 const logger = Logger.get("WebSocketControllerHandler");
 
@@ -89,6 +90,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
     #eventHistory: MatterNodeEvent[] = [];
     /** Track when each node was last interviewed (connected) - keyed by nodeId */
     #lastInterviewDates = new Map<NodeId, Date>();
+    /** Service-level observer cleanup; populated in {@link register}. */
+    #serviceObservers = new ObserverGroup();
 
     constructor(controller: MatterController, config: ConfigStorage, serverVersion: string) {
         this.#controller = controller;
@@ -143,6 +146,10 @@ export class WebSocketControllerHandler implements WebServerHandler {
     async register(server: HttpServer) {
         logger.info(`Starting server: matter-server/${this.#serverVersion} (matter.js/${MATTER_VERSION})`);
         const wss = (this.#wss = new WebSocketServer({ server: server, path: "/ws" }));
+
+        this.#serviceObservers.on(this.#controller.threadDiagnostics.events.batchUpdated, batch => {
+            this.#broadcastEvent("thread_diagnostics_updated", serializeBatch(batch));
+        });
         wss.on("connection", ws => {
             if (this.#closed || this.#shuttingDown) {
                 try {
@@ -373,6 +380,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         }
 
         this.#closed = true;
+        this.#serviceObservers.close();
         // Send server_shutdown event to all connected clients before closing
         const shutdownMessage = toBigIntAwareJson({ event: "server_shutdown", data: {} });
         this.#wss.clients.forEach(client => {
@@ -473,6 +481,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     break;
                 case "get_thread_border_routers":
                     result = this.#controller.borderRouters.list();
+                    break;
+                case "get_thread_diagnostics":
+                    result = await this.#handleGetThreadDiagnostics(args);
                     break;
                 case "open_commissioning_window":
                     result = await this.#handleOpenCommissioningWindow(args);
@@ -929,6 +940,18 @@ export class WebSocketControllerHandler implements WebServerHandler {
             logger.warn("Failed to broadcast server info update", error);
         }
         return {};
+    }
+
+    async #handleGetThreadDiagnostics(
+        args: ArgsOf<"get_thread_diagnostics">,
+    ): Promise<ResponseOf<"get_thread_diagnostics">> {
+        if (args?.extPanId === undefined) {
+            return this.#controller.threadDiagnostics.listCached().map(serializeBatch);
+        }
+        const batch = await this.#controller.threadDiagnostics.getOrFetch(args.extPanId.toLowerCase(), {
+            force: args.force,
+        });
+        return batch === undefined ? undefined : serializeBatch(batch);
     }
 
     async #handleOpenCommissioningWindow(

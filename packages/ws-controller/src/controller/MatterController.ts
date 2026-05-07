@@ -4,7 +4,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { BorderRouterRegistry, OperationalDataset, ThreadCredentialsRegistry } from "@matter-server/thread-br";
+import {
+    BorderRouterRegistry,
+    OperationalDataset,
+    OtbrRestClient,
+    OtbrRestDiagnosticSource,
+    ThreadCredentialsRegistry,
+} from "@matter-server/thread-br";
 import {
     Bytes,
     CommissioningClient,
@@ -27,6 +33,7 @@ import { ConfigStorage } from "../server/ConfigStorage.js";
 import { ControllerCommandHandler } from "./ControllerCommandHandler.js";
 import { LegacyDataInjector, LegacyServerData } from "./LegacyDataInjector.js";
 import { resolveServerId } from "./ServerIdResolver.js";
+import { ThreadDiagnosticsService } from "./ThreadDiagnosticsService.js";
 // Register BLE
 import "@matter/nodejs-ble";
 
@@ -98,6 +105,19 @@ export function registerThreadCredentialsFromHex(
     }
 }
 
+/**
+ * Split an `OtbrRestCapability.baseUrl` (e.g. `http://[fd00::1]:8081`) into the
+ * host + port the {@link OtbrRestClient} constructor expects. Square-bracketed
+ * IPv6 hosts are stripped — the client wraps them again itself.
+ */
+function parseRestBaseUrl(baseUrl: string): { host: string; port: number } {
+    const url = new URL(baseUrl);
+    let host = url.hostname;
+    if (host.startsWith("[") && host.endsWith("]")) host = host.slice(1, -1);
+    const port = url.port === "" ? 8081 : Number(url.port);
+    return { host, port };
+}
+
 export class MatterController {
     #env: Environment;
     #controllerInstance?: CommissioningController;
@@ -110,6 +130,7 @@ export class MatterController {
     #disableOtaProvider = true;
     readonly #borderRouterRegistry: BorderRouterRegistry;
     readonly #credentials = new ThreadCredentialsRegistry();
+    readonly #threadDiagnostics: ThreadDiagnosticsService;
 
     static async create(
         environment: Environment,
@@ -185,6 +206,21 @@ export class MatterController {
         this.#serverVersion = options.serverVersion ?? "0.0.0";
         this.#enableTestNetDcl = options.enableTestNetDcl ?? this.#enableTestNetDcl;
         this.#disableOtaProvider = options.disableOtaProvider ?? this.#disableOtaProvider;
+        this.#threadDiagnostics = new ThreadDiagnosticsService({
+            borderRouters: this.#borderRouterRegistry,
+            credentials: this.#credentials,
+            makeRestSource: cap => {
+                const { host, port } = parseRestBaseUrl(cap.baseUrl);
+                return new OtbrRestDiagnosticSource(new OtbrRestClient({ host, port }), cap);
+            },
+            // Live MeshCoP orchestration (DTLS socket → CoAP client → Commissioner) lands in
+            // a focused follow-up — see CHANGELOG entry for Phase 9.
+            makeMeshcopSource: async () => {
+                throw new Error(
+                    "MeshCoP source factory not wired yet — Phase 9 follow-up will integrate DTLS+CoAP+Commissioner",
+                );
+            },
+        });
     }
 
     protected async initialize(
@@ -267,6 +303,10 @@ export class MatterController {
 
     get credentials(): ThreadCredentialsRegistry {
         return this.#credentials;
+    }
+
+    get threadDiagnostics(): ThreadDiagnosticsService {
+        return this.#threadDiagnostics;
     }
 
     #registerStoredThreadCredentials(): void {
