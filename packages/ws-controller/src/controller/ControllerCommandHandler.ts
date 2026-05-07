@@ -1132,7 +1132,7 @@ export class ControllerCommandHandler {
                     endpoint: t.endpoint !== null ? EndpointNumber(t.endpoint) : null,
                     deviceType: t.device_type !== null ? DeviceTypeId(t.device_type) : null,
                 })) ?? null,
-            fabricIndex: FabricIndex.OMIT_FABRIC,
+            fabricIndex: FabricIndex.NO_FABRIC,
         }));
 
         logger.info("Setting ACL entries", aclEntries);
@@ -1160,7 +1160,7 @@ export class ControllerCommandHandler {
             group: binding.group !== null ? GroupId(binding.group) : undefined,
             endpoint: binding.endpoint !== null ? EndpointNumber(binding.endpoint) : undefined,
             cluster: binding.cluster !== null ? ClusterId(binding.cluster) : undefined,
-            fabricIndex: FabricIndex.OMIT_FABRIC,
+            fabricIndex: FabricIndex.NO_FABRIC,
         }));
 
         logger.info("Setting bindings on endpoint", endpointId, bindingEntries);

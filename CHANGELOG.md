@@ -7,6 +7,10 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
+## **WORK IN PROGRESS**
+
+- Fix: Fixes setting ACLs
+
 ## 0.6.6 (2026-05-07)
 
 - Adjustment: Thread mesh visualization now uses LQI (instead of RSSI) for connection-line and neighbor-list colors.
