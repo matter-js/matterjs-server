@@ -22,13 +22,16 @@ const WIFI_FEATURE = 1 << 0; // Bit 0: WiFi Network Interface
 const THREAD_FEATURE = 1 << 1; // Bit 1: Thread Network Interface
 const ETHERNET_FEATURE = 1 << 2; // Bit 2: Ethernet Network Interface
 
-// Signal strength thresholds (dBm)
+// WiFi RSSI thresholds (dBm). Used only for the WiFi diagnostics graph; Thread
+// neighbor/route edges are LQI-driven (see below).
 const SIGNAL_STRONG_THRESHOLD = -70;
 const SIGNAL_MEDIUM_THRESHOLD = -85;
 
-// LQI thresholds (0-255)
-const LQI_STRONG_THRESHOLD = 200;
-const LQI_MEDIUM_THRESHOLD = 100;
+// Thread LQI thresholds. Spec types LQI as uint8 (0-255), but OpenThread — the
+// dominant Thread stack — only ever reports 0-3. We classify on the 0-3 scale:
+// 3 = strong, 2 = medium, 1 = weak, 0 = no link (stale/dead neighbor entry).
+const LQI_STRONG_THRESHOLD = 2;
+const LQI_MEDIUM_THRESHOLD = 1;
 
 // Signal colors — read from CSS variables for theme awareness
 function getSignalColorStrong(): string {
@@ -39,6 +42,9 @@ function getSignalColorMedium(): string {
 }
 function getSignalColorWeak(): string {
     return getCssVar("--signal-color-weak", "#f44336");
+}
+function getSignalColorNone(): string {
+    return getCssVar("--signal-color-none", "#9e9e9e");
 }
 
 /**
@@ -145,26 +151,34 @@ export function categorizeDevices(nodes: Record<string, MatterNode>): Categorize
 
 /**
  * Gets the Thread routing role for a node.
- * Uses attribute 0/53/1 (RoutingRole).
+ * Uses attribute 0/53/1 (RoutingRole, nullable per Matter spec).
  */
 export function getThreadRole(node: MatterNode): number | undefined {
-    return node.attributes["0/53/1"] as number | undefined;
+    const v = node.attributes["0/53/1"];
+    return typeof v === "number" ? v : undefined;
 }
 
 /**
  * Gets the Thread channel for a node.
- * Uses attribute 0/53/0 (Channel).
+ * Uses attribute 0/53/0 (Channel, nullable per Matter spec).
  */
 export function getThreadChannel(node: MatterNode): number | undefined {
-    return node.attributes["0/53/0"] as number | undefined;
+    const v = node.attributes["0/53/0"];
+    return typeof v === "number" ? v : undefined;
 }
 
 /**
  * Gets the Thread extended PAN ID for a node.
- * Uses attribute 0/53/4 (ExtendedPanId).
+ * Uses attribute 0/53/4 (ExtendedPanId, nullable per Matter spec).
+ *
+ * The WebSocket JSON reviver only revives integers above Number.MAX_SAFE_INTEGER
+ * as bigint; smaller uint64 values arrive as plain number, so accept both.
  */
 export function getThreadExtendedPanId(node: MatterNode): bigint | undefined {
-    return node.attributes["0/53/4"] as bigint | undefined;
+    const v = node.attributes["0/53/4"];
+    if (typeof v === "bigint") return v;
+    if (typeof v === "number" && Number.isInteger(v)) return BigInt(v);
+    return undefined;
 }
 
 /**
@@ -214,6 +228,16 @@ export function getThreadExtendedAddressHex(node: MatterNode): string | undefine
         return extAddr.toString(16).padStart(16, "0").toUpperCase();
     }
     return undefined;
+}
+
+/**
+ * Counts entries in the Thread neighbor table without normalizing each entry.
+ * Use this in hot paths where only the cardinality matters; the full parse
+ * does a base64 decode per entry that adds up across re-renders.
+ */
+export function getNeighborTableLength(node: MatterNode): number {
+    const neighborTable = node.attributes["0/53/7"];
+    return Array.isArray(neighborTable) ? neighborTable.length : 0;
 }
 
 /**
@@ -605,19 +629,17 @@ export function decodeMeshcopStateBitmap(hex: string | undefined): DecodedStateB
     };
 }
 
-/** Determine signal level from a Thread neighbor's RSSI/LQI. */
+/** Determine signal level from a Thread neighbor's LQI. */
 export function getSignalLevel(neighbor: ThreadNeighbor): SignalLevel {
-    const rssi = neighbor.avgRssi ?? neighbor.lastRssi;
-    if (rssi !== null) {
-        if (rssi > SIGNAL_STRONG_THRESHOLD) return "strong";
-        if (rssi > SIGNAL_MEDIUM_THRESHOLD) return "medium";
-        return "weak";
-    }
     return getSignalLevelFromLqi(neighbor.lqi);
 }
 
-/** Determine signal level from an LQI value alone (e.g. route table entries without RSSI). */
+/**
+ * Map an LQI value (0-3 in practice on OpenThread) to a signal level.
+ * 0 = "none" (no recent valid frames — stale/dead link).
+ */
 export function getSignalLevelFromLqi(lqi: number): SignalLevel {
+    if (lqi <= 0) return "none";
     if (lqi > LQI_STRONG_THRESHOLD) return "strong";
     if (lqi > LQI_MEDIUM_THRESHOLD) return "medium";
     return "weak";
@@ -632,52 +654,27 @@ export function signalLevelToColor(level: SignalLevel): string {
             return getSignalColorMedium();
         case "weak":
             return getSignalColorWeak();
+        case "none":
+            return getSignalColorNone();
     }
 }
 
-/**
- * Gets the signal color based on RSSI or LQI values.
- * Green: Strong signal
- * Orange: Medium signal
- * Red: Weak signal
- */
+/** Gets the signal color for a Thread neighbor based on its LQI. */
 export function getSignalColor(neighbor: ThreadNeighbor): string {
-    // Prefer RSSI if available
-    const rssi = neighbor.avgRssi ?? neighbor.lastRssi;
-
-    if (rssi !== null) {
-        if (rssi > SIGNAL_STRONG_THRESHOLD) {
-            return getSignalColorStrong();
-        }
-        if (rssi > SIGNAL_MEDIUM_THRESHOLD) {
-            return getSignalColorMedium();
-        }
-        return getSignalColorWeak();
-    }
-
-    // Fallback to LQI (0-255, higher is better)
-    if (neighbor.lqi > LQI_STRONG_THRESHOLD) {
-        return getSignalColorStrong();
-    }
-    if (neighbor.lqi > LQI_MEDIUM_THRESHOLD) {
-        return getSignalColorMedium();
-    }
-    return getSignalColorWeak();
+    return getSignalColorFromLqi(neighbor.lqi);
 }
 
 /**
- * Get signal color based on LQI value alone.
- * Used for route table entries where only LQI is available.
- * @param lqi Link Quality Indicator (0-255, higher is better)
+ * Get signal color from an LQI value (0-3 in practice on OpenThread).
+ * 0 = grey (no link), 1 = red, 2 = orange, 3 = green.
  */
 export function getSignalColorFromLqi(lqi: number): string {
-    if (lqi > LQI_STRONG_THRESHOLD) {
-        return getSignalColorStrong();
-    }
-    if (lqi > LQI_MEDIUM_THRESHOLD) {
-        return getSignalColorMedium();
-    }
-    return getSignalColorWeak();
+    return signalLevelToColor(getSignalLevelFromLqi(lqi));
+}
+
+/** Strips trailing dot and `.local` suffix from an mDNS hostname. */
+export function stripMdnsHostname(hostname: string): string {
+    return hostname.replace(/\.$/, "").replace(/\.local$/i, "");
 }
 
 /**
@@ -838,8 +835,7 @@ export interface NodeConnection {
     extAddressHex: string;
     /** Signal strength info (if available) */
     signalColor: string;
-    /** Undefined when link strength is unknown. */
-    signalLevel?: SignalLevel;
+    signalLevel: SignalLevel;
     lqi: number | null;
     rssi: number | null;
     /** Whether this connection is from THIS node's neighbor table (true) or from the OTHER node's table (false) */
@@ -974,16 +970,15 @@ export function buildThreadEdgePairs(
             if (!isFromA && pair.edgeBA) continue;
 
             const bidirectionalLqi = getRouteBidirectionalLqi(route);
-            const signalColor =
-                bidirectionalLqi !== undefined
-                    ? getSignalColorFromLqi(bidirectionalLqi)
-                    : "var(--md-sys-color-outline, grey)";
+            // No bidirectional LQI = both lqiIn and lqiOut are 0 → treat as no-link.
+            const signalLevel: SignalLevel =
+                bidirectionalLqi !== undefined ? getSignalLevelFromLqi(bidirectionalLqi) : "none";
 
             const edge: ThreadConnection = {
                 fromNodeId,
                 toNodeId,
-                signalColor,
-                signalLevel: bidirectionalLqi !== undefined ? getSignalLevelFromLqi(bidirectionalLqi) : undefined,
+                signalColor: signalLevelToColor(signalLevel),
+                signalLevel,
                 lqi: bidirectionalLqi ?? 0,
                 rssi: null,
                 pathCost: route.pathCost,
@@ -1081,15 +1076,21 @@ export function getNodeConnectionsFromPairs(
 
         if (survivors.length === 0) continue;
 
-        // Among survivors: prefer outgoing (matches graph highlight swap),
+        // Mirror graph behavior: zero-LQI edges are hidden in the mesh, so prefer a live
+        // survivor here too. Fall back to a "none" survivor only when both directions
+        // are dead — then the panel renders a single no-link entry.
+        const liveSurvivors = survivors.filter(s => s.conn.signalLevel !== "none");
+        const usable = liveSurvivors.length > 0 ? liveSurvivors : survivors;
+
+        // Among usable survivors: prefer outgoing (matches graph highlight swap),
         // fall back to worst signal (matches graph dedup)
         let winner: { conn: ThreadConnection; isOutgoing: boolean };
-        const outgoingSurvivor = survivors.find(s => s.isOutgoing);
+        const outgoingSurvivor = usable.find(s => s.isOutgoing);
         if (outgoingSurvivor) {
             winner = outgoingSurvivor;
         } else {
-            survivors.sort((a, b) => getEdgeSignalScore(a.conn) - getEdgeSignalScore(b.conn));
-            winner = survivors[0];
+            usable.sort((a, b) => getEdgeSignalScore(a.conn) - getEdgeSignalScore(b.conn));
+            winner = usable[0];
         }
 
         const remoteNode = nodes[remoteId];

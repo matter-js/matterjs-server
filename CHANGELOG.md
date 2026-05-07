@@ -10,10 +10,30 @@ This page shows a detailed overview of the changes between versions without the 
 ## **WORK IN PROGRESS**
 
 - Feature: Add `get_thread_diagnostics` WS command and `thread_diagnostics_updated` WS event for per-Thread-network diagnostic batches collected from Border Routers via MeshCoP (commissioner + CoAP) or OTBR REST. Batches are cached server-side per extPanId with a 1h TTL. The OTBR REST transport is auto-detected via probe and used when reachable; otherwise MeshCoP is used.
+- Fix: Fixes setting ACLs
 - Internal: Move Thread Border Router discovery into the new `@matter-server/thread-br` package. The class is renamed from `BorderRouterDiscovery` to `BorderRouterRegistry`; behaviour is unchanged. `BorderRouterEntry` is now sourced from `@matter-server/thread-br` and re-exported from `@matter-server/ws-client` so the wire format and dashboard imports are unchanged. Foundation for upcoming MeshCoP / OTBR REST diagnostic queries.
 - Internal: `@matter-server/thread-br` package gained Phase 5–8 diagnostic primitives: `DiagnosticSource` interface, `MeshCopDiagnosticSource`, `OtbrRestDiagnosticSource`, BR selection / per-network mutex / source strategy, and OTBR REST adapter.
 - Internal: New `ThreadDiagnosticsService` in `@matter-server/ws-controller` provides per-extPanId cache (1h TTL), source selection (REST > MeshCoP > none), per-network mutex, and event emission.
 - Internal: MeshCoP source factory in `MatterController` is currently a stub; live integration with DTLS socket + CoAP client + Commissioner is a Phase 9 follow-up before real-device smoke testing.
+
+## 0.6.6 (2026-05-07)
+
+- Adjustment: Thread mesh visualization now uses LQI (instead of RSSI) for connection-line and neighbor-list colors.
+- Fix: Only import BLE module when BLE was enabled for the server
+
+## 0.6.5 (2026-05-04)
+
+- Enhancement: Hide phantom Thread "External" routers/devices that only persist as stale neighbor-table entries (every observer offline, or single observer with other connections)
+- Enhancement: Uses discovered BR hostnames also in connection and neighbor lists
+- Fix: Enhance error messages when writes fail
+- Fix: Update matter.js to the latest 0.17.0-nightly
+
+## 0.6.4 (2026-04-30)
+
+- Enhancement: Retain Thread Border Router registry entries for 24h after their last mDNS source goes off-air, so the dashboard can still show information even if stale
+- Fix: Ensures the same event order as the Python Matter server when endpoints got added
+- Fix: Update matter.js to the latest 0.17.0-nightly
+    - Fixes validation issues when writing values guarded by constraint checks
 
 ## 0.6.3 (2026-04-29)
 

@@ -14,6 +14,7 @@ import {
     FabricIndex,
     isObject,
     Logger,
+    MatterAggregateError,
     Millis,
     Minutes,
     NodeId,
@@ -373,13 +374,18 @@ export class ControllerCommandHandler {
                 attributeCache.update(node);
             }
             basicInfoChangedInBatch = false;
+            // Emit node_updated first so consumers see the new endpoint in node.endpoints,
+            // then drain any endpoint_added events queued since the previous structure change.
             this.events.nodeStructureChanged.emit(nodeId);
+            for (const endpointId of this.#nodes.drainPendingEndpointAdds(nodeId)) {
+                this.events.nodeEndpointAdded.emit(nodeId, endpointId);
+            }
         });
         node.events.decommissioned.on(() => {
             this.#cleanupNodeAfterRemoval(nodeId);
             this.events.nodeDecommissioned.emit(nodeId);
         });
-        node.events.nodeEndpointAdded.on(endpointId => this.events.nodeEndpointAdded.emit(nodeId, endpointId));
+        node.events.nodeEndpointAdded.on(endpointId => this.#nodes.queueEndpointAdded(nodeId, endpointId));
         node.events.nodeEndpointRemoved.on(endpointId => this.events.nodeEndpointRemoved.emit(nodeId, endpointId));
 
         // Store the node for direct access
@@ -614,6 +620,20 @@ export class ControllerCommandHandler {
             await node.node.endpoints.for(endpointId).setStateOf(clusterProperty, { [attributeName]: value });
             return { status: 0 };
         } catch (error) {
+            if (error instanceof MatterAggregateError) {
+                const first = error.errors.find((e): e is StatusResponseError => e instanceof StatusResponseError);
+                if (first !== undefined) {
+                    const dropped = error.errors.filter(e => e !== first);
+                    if (dropped.length > 0) {
+                        logger.info(
+                            `Write aggregate: reporting first error, dropping ${dropped.length} additional`,
+                            dropped,
+                        );
+                    }
+                    return { status: first.code, clusterStatus: first.clusterCode };
+                }
+                throw error;
+            }
             StatusResponseError.accept(error);
             return { status: error.code, clusterStatus: error.clusterCode };
         }
@@ -1112,7 +1132,7 @@ export class ControllerCommandHandler {
                     endpoint: t.endpoint !== null ? EndpointNumber(t.endpoint) : null,
                     deviceType: t.device_type !== null ? DeviceTypeId(t.device_type) : null,
                 })) ?? null,
-            fabricIndex: FabricIndex.OMIT_FABRIC,
+            fabricIndex: FabricIndex.NO_FABRIC,
         }));
 
         logger.info("Setting ACL entries", aclEntries);
@@ -1140,7 +1160,7 @@ export class ControllerCommandHandler {
             group: binding.group !== null ? GroupId(binding.group) : undefined,
             endpoint: binding.endpoint !== null ? EndpointNumber(binding.endpoint) : undefined,
             cluster: binding.cluster !== null ? ClusterId(binding.cluster) : undefined,
-            fabricIndex: FabricIndex.OMIT_FABRIC,
+            fabricIndex: FabricIndex.NO_FABRIC,
         }));
 
         logger.info("Setting bindings on endpoint", endpointId, bindingEntries);

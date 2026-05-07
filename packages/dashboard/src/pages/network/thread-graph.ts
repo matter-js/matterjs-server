@@ -27,9 +27,11 @@ import {
     findUnknownDevices,
     getDeviceName,
     getEdgeSignalScore,
+    getNeighborTableLength,
     getNetworkType,
     getThreadExtendedAddressHex,
     getThreadRole,
+    stripMdnsHostname,
 } from "./network-utils.js";
 
 declare global {
@@ -217,14 +219,27 @@ export class ThreadGraph extends BaseNetworkGraph {
         for (const device of this._unknownDevices) {
             const isSelected = device.id === this._selectedNodeId;
 
-            // Hide if hideOfflineNodes is enabled AND all nodes that see it are offline
-            let shouldHide = false;
-            if (this.hideOfflineNodes) {
-                const hasOnlineSeenBy = device.seenBy.some(nodeId => {
-                    const node = this.nodes[nodeId];
-                    return node && node.available !== false;
-                });
-                shouldHide = !hasOnlineSeenBy;
+            // Unknown externals are pure neighbor-table inference. Two stale-cache
+            // signatures we always filter, regardless of the offline-nodes toggle:
+            //   1. every observer is offline — entry can no longer be re-confirmed.
+            //   2. exactly one observer that has other neighbors — single-source
+            //      ghost from a node that's clearly otherwise reachable.
+            // BRs have independent mDNS evidence — honor only the user toggle for them.
+            const hasOnlineObserver = device.seenBy.some(nodeId => {
+                const node = this.nodes[nodeId];
+                return node !== undefined && node.available !== false;
+            });
+            let shouldHide: boolean;
+            if (device.kind === "unknown") {
+                shouldHide = !hasOnlineObserver;
+                if (!shouldHide && device.seenBy.length === 1) {
+                    const observer = this.nodes[device.seenBy[0]];
+                    if (observer !== undefined && getNeighborTableLength(observer) > 1) {
+                        shouldHide = true;
+                    }
+                }
+            } else {
+                shouldHide = this.hideOfflineNodes && !hasOnlineObserver;
             }
 
             if (shouldHide) {
@@ -232,7 +247,7 @@ export class ThreadGraph extends BaseNetworkGraph {
             }
 
             if (device.kind === "br") {
-                const hostname = device.hostname?.replace(/\.$/, "").replace(/\.local$/i, "");
+                const hostname = device.hostname !== undefined ? stripMdnsHostname(device.hostname) : undefined;
                 // Only show network name on a second line when the first line came from a
                 // distinct hostname; otherwise `top` would already be the (possibly truncated)
                 // network name and the second line would just repeat it.
@@ -273,6 +288,11 @@ export class ThreadGraph extends BaseNetworkGraph {
         for (const pair of this._edgePairs.values()) {
             // Collect both directional edges for this pair
             const edgesInPair: { conn: ThreadConnection; visEdge: NetworkGraphEdge; filterHidden: boolean }[] = [];
+            // Track if any directional edge in this pair was a no-link (LQI=0) report.
+            // If exactly one direction reports zero while the other has a real link, the pair
+            // is asymmetric — surface the surviving edge as dashed so testers can spot it.
+            let hadZeroEdge = false;
+            let hadLiveEdge = false;
 
             for (const conn of [pair.edgeAB, pair.edgeBA]) {
                 if (!conn) continue;
@@ -290,6 +310,14 @@ export class ThreadGraph extends BaseNetworkGraph {
                 // Cascade from hidden nodes (offline filter)
                 if (hiddenNodeIds.has(fromId) || hiddenNodeIds.has(toId)) {
                     filterHidden = true;
+                }
+
+                // No-link filter: LQI=0 means stale/dead neighbor entry, never draw.
+                if (conn.signalLevel === "none") {
+                    filterHidden = true;
+                    hadZeroEdge = true;
+                } else {
+                    hadLiveEdge = true;
                 }
 
                 // Signal level filters
@@ -330,6 +358,17 @@ export class ThreadGraph extends BaseNetworkGraph {
                 // Keep the weakest (index 0), hide the better one(s)
                 for (let i = 1; i < visibleInPair.length; i++) {
                     visibleInPair[i].visEdge.hidden = true;
+                }
+            }
+
+            // Asymmetric link: one direction reported the link as dead while the other
+            // saw a live link. Mark the surviving edge dashed and annotate the tooltip.
+            if (hadZeroEdge && hadLiveEdge) {
+                for (const e of edgesInPair) {
+                    if (!e.visEdge.hidden) {
+                        e.visEdge.dashes = true;
+                        e.visEdge.title = `${e.visEdge.title ?? ""} (asymmetric: peer reports no link)`;
+                    }
                 }
             }
 

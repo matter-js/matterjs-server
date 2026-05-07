@@ -242,6 +242,10 @@ If you need to discover Matter devices via the hosts BLE, you can use this worka
 
 However, be aware this workaround effectively disables container isolation. For this reason, using other means of device commissioning (e.g. via the Home Assistant app) are preferred to applying this workaround.
 
+### Battery devices (Sleepy End Devices) drop subscriptions every 15–30 min
+
+This is almost always caused by a stateful firewall somewhere on the path — the host, VM hypervisor, container host, **or the Thread Border Router (e.g. OTBR) host** — expiring its UDP conntrack entry between device report cycles. See [OS Requirements → Stateful firewalls](os_requirements.md#stateful-firewalls-host-vm-hypervisor) for the check and the fix.
+
 ### Pinging device fails
 
 When pinging a Matter device (e.g. via the Home Assistant UI) the matter.js server uses the system `ping` or `ping6` command to send an ICMP echo request to the device and listen for its response.
