@@ -6,17 +6,21 @@
 
 import "@material/web/button/text-button";
 import "@material/web/dialog/dialog";
-import type { MdDialog } from "@material/web/dialog/dialog.js";
+import { consume } from "@lit/context";
 import "@material/web/list/list";
 import "@material/web/list/list-item";
+import type { MdDialog } from "@material/web/dialog/dialog.js";
 import { MatterClient, MatterNode } from "@matter-server/ws-client";
 import { html, LitElement } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import { clientContext } from "../../../client/client-context.js";
 import { preventDefault } from "../../../util/prevent_default.js";
 
 @customElement("commission-node-dialog")
 export class ComissionNodeDialog extends LitElement {
-    @property({ attribute: false }) public client!: MatterClient;
+    @consume({ context: clientContext, subscribe: true })
+    @property({ attribute: false })
+    public client!: MatterClient;
 
     @state() private _mode?: "wifi" | "thread" | "existing";
 

@@ -4,9 +4,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { consume } from "@lit/context";
 import { MatterClient, MatterNode } from "@matter-server/ws-client";
 import { LitElement, css, type CSSResultGroup } from "lit";
 import { property } from "lit/decorators.js";
+import { clientContext } from "../../client/client-context.js";
 import { reducedMotionStyles } from "../../util/shared-styles.js";
 
 /**
@@ -14,6 +16,7 @@ import { reducedMotionStyles } from "../../util/shared-styles.js";
  * Provides shared properties, styling, and helper methods for sending commands.
  */
 export abstract class BaseClusterCommands extends LitElement {
+    @consume({ context: clientContext, subscribe: true })
     @property({ attribute: false })
     public client!: MatterClient;
 
