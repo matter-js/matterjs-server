@@ -1118,10 +1118,24 @@ export class ControllerCommandHandler {
     }
 
     /**
+     * Fabric index assigned to this controller on the peer.
+     * Some peers reject the NO_FABRIC (0) sentinel inside fabric-scoped list entries
+     * even though the spec allows server-side auto-fill, so we send the resolved index.
+     */
+    #currentFabricIndex(nodeId: NodeId): FabricIndex {
+        const state = this.#nodes
+            .get(nodeId)
+            .node.endpoints.for(EndpointNumber(0))
+            .maybeStateOf(OperationalCredentialsClient);
+        return state?.currentFabricIndex ?? FabricIndex.NO_FABRIC;
+    }
+
+    /**
      * Set Access Control List entries on a node.
      * Writes to the ACL attribute on the AccessControl cluster (endpoint 0).
      */
     async setAclEntry(nodeId: NodeId, entries: AccessControlEntry[]): Promise<AttributeWriteResult[] | null> {
+        const fabricIndex = this.#currentFabricIndex(nodeId);
         const aclEntries: AccessControl.AccessControlEntry[] = entries.map(entry => ({
             privilege: entry.privilege as AccessControl.AccessControlEntryPrivilege,
             authMode: entry.auth_mode as AccessControl.AccessControlEntryAuthMode,
@@ -1132,7 +1146,7 @@ export class ControllerCommandHandler {
                     endpoint: t.endpoint !== null ? EndpointNumber(t.endpoint) : null,
                     deviceType: t.device_type !== null ? DeviceTypeId(t.device_type) : null,
                 })) ?? null,
-            fabricIndex: FabricIndex.NO_FABRIC,
+            fabricIndex,
         }));
 
         logger.info("Setting ACL entries", aclEntries);
@@ -1155,12 +1169,13 @@ export class ControllerCommandHandler {
         endpointId: EndpointNumber,
         bindings: BindingTarget[],
     ): Promise<AttributeWriteResult[] | null> {
+        const fabricIndex = this.#currentFabricIndex(nodeId);
         const bindingEntries: Binding.Target[] = bindings.map(binding => ({
             node: binding.node !== null ? NodeId(binding.node) : undefined,
             group: binding.group !== null ? GroupId(binding.group) : undefined,
             endpoint: binding.endpoint !== null ? EndpointNumber(binding.endpoint) : undefined,
             cluster: binding.cluster !== null ? ClusterId(binding.cluster) : undefined,
-            fabricIndex: FabricIndex.NO_FABRIC,
+            fabricIndex,
         }));
 
         logger.info("Setting bindings on endpoint", endpointId, bindingEntries);
