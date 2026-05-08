@@ -27,10 +27,9 @@ export { TypeListTlv } from "./tlv/TypeListTlv.js";
 
 export * as NetworkDiagnosticDecoders from "./tlv/diag/index.js";
 
-export type { DiagnosticResponse } from "./diagnostic/index.js";
+export type { ConnectMeshcopOpts, DiagnosticResponse, MeshcopHandle } from "./diagnostic/index.js";
 export type { DiagnosticSource } from "./diagnostic/index.js";
-export { MeshCopDiagnosticSource } from "./diagnostic/index.js";
-export { DefaultTlvSet } from "./diagnostic/index.js";
+export { connectMeshcop, DefaultTlvSet, MeshCopDiagnosticSource } from "./diagnostic/index.js";
 
 export { Pskc } from "./crypto/index.js";
 

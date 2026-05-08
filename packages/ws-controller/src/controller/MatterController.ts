@@ -6,6 +6,7 @@
 
 import {
     BorderRouterRegistry,
+    connectMeshcop,
     OperationalDataset,
     OtbrRestClient,
     OtbrRestDiagnosticSource,
@@ -234,13 +235,7 @@ export class MatterController {
                 const { host, port } = parseRestBaseUrl(cap.baseUrl);
                 return new OtbrRestDiagnosticSource(new OtbrRestClient({ host, port }), cap);
             },
-            // Live MeshCoP orchestration (DTLS socket → CoAP client → Commissioner) lands in
-            // a focused follow-up — see CHANGELOG entry for Phase 9.
-            makeMeshcopSource: async () => {
-                throw new Error(
-                    "MeshCoP source factory not wired yet — Phase 9 follow-up will integrate DTLS+CoAP+Commissioner",
-                );
-            },
+            makeMeshcopSource: (creds, br) => connectMeshcop({ creds, br }),
         });
     }
 
