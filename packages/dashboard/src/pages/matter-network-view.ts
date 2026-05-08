@@ -91,6 +91,7 @@ class MatterNetworkView extends LitElement {
 
     private _initialSelectionApplied = false;
     private _selectRetryTimer?: ReturnType<typeof setTimeout>;
+    private _diagnosticsUnsubscribe?: () => void;
 
     @query("thread-graph")
     private _threadGraph?: ThreadGraph;
@@ -122,6 +123,14 @@ class MatterNetworkView extends LitElement {
         void this._refreshBorderRouters();
     }
 
+    private _handleRefreshDiagnostics(event: CustomEvent<{ extPanIdHex: string }>): void {
+        const extPanIdHex = event.detail.extPanIdHex;
+        this._borderRouterStore.refreshDiagnosticsFor(this.client, extPanIdHex).then(
+            () => this.requestUpdate(),
+            err => console.warn("Failed to refresh thread diagnostics:", err),
+        );
+    }
+
     override updated(changedProperties: Map<string, unknown>): void {
         super.updated(changedProperties);
 
@@ -141,6 +150,17 @@ class MatterNetworkView extends LitElement {
         super.connectedCallback();
         document.addEventListener("click", this._documentClickHandler);
         document.addEventListener("keydown", this._documentKeyHandler);
+        if (this.client !== undefined) {
+            this._diagnosticsUnsubscribe = this.client.addEventListener("thread_diagnostics_updated", () => {
+                try {
+                    for (const batch of this.client.threadDiagnostics.values()) {
+                        this._borderRouterStore.applyBatch(batch);
+                    }
+                } finally {
+                    this.requestUpdate();
+                }
+            });
+        }
     }
 
     override disconnectedCallback(): void {
@@ -150,6 +170,8 @@ class MatterNetworkView extends LitElement {
         if (this._selectRetryTimer) {
             clearTimeout(this._selectRetryTimer);
         }
+        this._diagnosticsUnsubscribe?.();
+        this._diagnosticsUnsubscribe = undefined;
     }
 
     /**
@@ -373,6 +395,7 @@ class MatterNetworkView extends LitElement {
                 <thread-graph
                     .nodes=${this.nodes}
                     .borderRouters=${this._borderRouterStore.entries}
+                    .threadDiagnostics=${this._borderRouterStore.diagnostics}
                     .hideOfflineNodes=${this._hideOfflineNodes}
                     .hideWeakSignalEdges=${this._hideWeakSignalEdges}
                     .hideMediumSignalEdges=${this._hideMediumSignalEdges}
@@ -443,6 +466,7 @@ class MatterNetworkView extends LitElement {
                         .nodes=${this.nodes}
                         .unknownDevices=${unknownDevices}
                         .borderRouters=${this._borderRouterStore.entries}
+                        .threadDiagnostics=${this._borderRouterStore.diagnostics}
                         .wifiAccessPoints=${wifiAccessPoints}
                         .threadEdgePairs=${threadEdgePairs}
                         .hideOfflineNodes=${this._hideOfflineNodes}
@@ -452,6 +476,7 @@ class MatterNetworkView extends LitElement {
                         @close=${this._handleDetailsClose}
                         @select-node=${this._handleSelectNode}
                         @connections-updated=${this._handleConnectionsUpdated}
+                        @refresh-diagnostics=${this._handleRefreshDiagnostics}
                     ></network-details>
                 </aside>
             </div>

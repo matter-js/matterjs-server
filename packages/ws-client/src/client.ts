@@ -20,6 +20,7 @@ import {
     MatterSoftwareVersion,
     NodePingResult,
     SuccessResultMessage,
+    ThreadDiagnosticsBatch,
 } from "./models/model.js";
 import { MatterNode } from "./models/node.js";
 
@@ -37,6 +38,12 @@ export const DEFAULT_COMMAND_TIMEOUT = 5 * 60 * 1000;
 export class MatterClient {
     public connection: Connection;
     public nodes: Record<string, MatterNode> = {};
+    /**
+     * Latest Thread diagnostic batch per network, keyed by 16-char uppercase extPanId hex.
+     * Replaced (not mutated) on every update so consumers passing this map as a Lit
+     * @property() detect the snapshot change via the default `===` identity compare.
+     */
+    public threadDiagnostics: ReadonlyMap<string, ThreadDiagnosticsBatch> = new Map();
     public serverBaseAddress: string;
     /** Whether this client is connected to a production server (optional, for UI purposes) */
     public isProduction: boolean = false;
@@ -553,6 +560,14 @@ export class MatterClient {
         if (event.event === "server_shutdown") {
             this.fireEvent("server_shutdown");
             this.disconnect();
+            return;
+        }
+
+        if (event.event === "thread_diagnostics_updated") {
+            const next = new Map(this.threadDiagnostics);
+            next.set(event.data.extPanIdHex.toUpperCase(), event.data);
+            this.threadDiagnostics = next;
+            this.fireEvent("thread_diagnostics_updated");
             return;
         }
     }

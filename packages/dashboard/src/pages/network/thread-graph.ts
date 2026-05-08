@@ -4,7 +4,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type { BorderRouterEntry } from "@matter-server/ws-client";
+// Edge link-quality merge from Route64 diagnostics is intentionally deferred:
+// it requires reconciling each Border Router's perspective with each commissioned
+// node's own RouteTable cluster reads, and inconsistent partial views regress the
+// graph more often than they help. Vendor labels and child counts are the
+// lightweight enrichments that ship in this pass.
+
+import type { BorderRouterEntry, ThreadDiagnosticsBatch, ThreadDiagnosticsNode } from "@matter-server/ws-client";
 import { html } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import {
@@ -55,6 +61,8 @@ interface EdgeBaseState {
 export class ThreadGraph extends BaseNetworkGraph {
     @property({ attribute: false }) borderRouters: ReadonlyMap<string, BorderRouterEntry> = new Map();
 
+    @property({ attribute: false }) threadDiagnostics: ReadonlyMap<string, ThreadDiagnosticsBatch> = new Map();
+
     @property({ type: Boolean })
     public hideOfflineNodes = false;
 
@@ -95,6 +103,20 @@ export class ThreadGraph extends BaseNetworkGraph {
         return this._edgePairs;
     }
 
+    /**
+     * Locate a diagnostic node entry across all known batches by uppercase extMacAddress hex.
+     * Returns undefined if no batch reports a node with that MAC.
+     */
+    private _findDiagnosticNode(extAddressHex: string): ThreadDiagnosticsNode | undefined {
+        const target = extAddressHex.toUpperCase();
+        for (const batch of this.threadDiagnostics.values()) {
+            for (const node of batch.nodes) {
+                if (node.extMacAddress?.toUpperCase() === target) return node;
+            }
+        }
+        return undefined;
+    }
+
     override updated(changedProperties: Map<string, unknown>): void {
         super.updated(changedProperties);
 
@@ -106,7 +128,8 @@ export class ThreadGraph extends BaseNetworkGraph {
             changedProperties.has("hideWeakSignalEdges") ||
             changedProperties.has("hideMediumSignalEdges") ||
             changedProperties.has("hideStrongSignalEdges") ||
-            changedProperties.has("borderRouters")
+            changedProperties.has("borderRouters") ||
+            changedProperties.has("threadDiagnostics")
         ) {
             this._debouncedUpdateGraph();
         }
@@ -246,17 +269,23 @@ export class ThreadGraph extends BaseNetworkGraph {
                 hiddenNodeIds.add(device.id);
             }
 
+            const diagNode = this._findDiagnosticNode(device.extAddressHex);
+
             if (device.kind === "br") {
                 const hostname = device.hostname !== undefined ? stripMdnsHostname(device.hostname) : undefined;
                 // Only show network name on a second line when the first line came from a
                 // distinct hostname; otherwise `top` would already be the (possibly truncated)
                 // network name and the second line would just repeat it.
                 const top = (hostname ?? device.networkName ?? "Border Router").slice(0, 24);
-                const suffix =
-                    hostname !== undefined && device.networkName !== undefined && device.networkName !== top
-                        ? `\n${device.networkName}`
-                        : "";
-                const label = `${top}${suffix}`;
+                const childCount = diagNode?.childTable?.length;
+                const suffixParts = new Array<string>();
+                if (hostname !== undefined && device.networkName !== undefined && device.networkName !== top) {
+                    suffixParts.push(device.networkName);
+                }
+                if (childCount !== undefined && childCount > 0) {
+                    suffixParts.push(`${childCount} ${childCount === 1 ? "child" : "children"}`);
+                }
+                const label = suffixParts.length > 0 ? `${top}\n${suffixParts.join(" · ")}` : top;
                 graphNodes.push({
                     id: device.id,
                     label,
@@ -267,11 +296,13 @@ export class ThreadGraph extends BaseNetworkGraph {
                     hidden: shouldHide,
                 });
             } else {
-                const typeLabel = device.isRouter ? "External Router" : "External Device";
+                const baseType = device.isRouter ? "External Router" : "External Device";
+                const typeLabel =
+                    diagNode?.vendorName !== undefined ? `${baseType} (${diagNode.vendorName})` : baseType;
                 const suffix = device.networkName !== undefined ? `\n${device.networkName}` : "";
                 graphNodes.push({
                     id: device.id,
-                    label: `${typeLabel} (${device.extAddressHex.slice(-8)})${suffix}`,
+                    label: `${typeLabel} [${device.extAddressHex.slice(-8)}]${suffix}`,
                     image: createUnknownDeviceIconDataUrl(device.isRouter, isSelected),
                     shape: "image" as const,
                     networkType: "thread" as const,

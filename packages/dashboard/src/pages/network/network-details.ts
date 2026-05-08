@@ -6,8 +6,17 @@
 
 import { consume } from "@lit/context";
 import "@material/web/divider/divider";
-import { isTestNodeId, type BorderRouterEntry, type MatterClient, type MatterNode } from "@matter-server/ws-client";
 import {
+    isTestNodeId,
+    type BorderRouterEntry,
+    type MatterClient,
+    type MatterNode,
+    type ThreadDiagnosticsBatch,
+    type ThreadDiagnosticsNode,
+    type ThreadDiagnosticsPartialReason,
+} from "@matter-server/ws-client";
+import {
+    mdiAlert,
     mdiClose,
     mdiLinkVariantOff,
     mdiRefresh,
@@ -72,6 +81,9 @@ export class NetworkDetails extends LitElement {
 
     @property({ attribute: false })
     public borderRouters: ReadonlyMap<string, BorderRouterEntry> = new Map();
+
+    @property({ attribute: false })
+    public threadDiagnostics: ReadonlyMap<string, ThreadDiagnosticsBatch> = new Map();
 
     @property({ type: Object })
     public wifiAccessPoints: Map<string, { bssid: string; connectedNodes: string[] }> = new Map();
@@ -379,7 +391,7 @@ export class NetworkDetails extends LitElement {
             ${networkType === "thread"
                 ? html`
                       <md-divider></md-divider>
-                      ${this._renderThreadInfo(node)}
+                      ${this._renderThreadInfo(node)} ${this._renderNodeDiagnostics(node)}
                   `
                 : nothing}
             ${networkType === "wifi"
@@ -736,6 +748,218 @@ export class NetworkDetails extends LitElement {
         `;
     }
 
+    /**
+     * Locate a diagnostic node entry across all known batches by uppercase extMacAddress hex.
+     */
+    private _findDiagnosticNode(extAddressHex: string): ThreadDiagnosticsNode | undefined {
+        const target = extAddressHex.toUpperCase();
+        for (const batch of this.threadDiagnostics.values()) {
+            for (const node of batch.nodes) {
+                if (node.extMacAddress?.toUpperCase() === target) return node;
+            }
+        }
+        return undefined;
+    }
+
+    private _formatPartialReason(reason: ThreadDiagnosticsPartialReason): string | undefined {
+        switch (reason) {
+            case "petition_rejected":
+                return (
+                    "Diagnostics unavailable: Border Router rejected the commissioner request. " +
+                    "Stored credentials may not match this network."
+                );
+            case "dtls_failed":
+                return "Diagnostics unavailable: secure handshake to the Border Router failed.";
+            case "border_router_unreachable":
+                return "Diagnostics unavailable: Border Router not reachable.";
+            case "timeout":
+                return "Diagnostics unavailable: query timed out.";
+            case "rest_unreachable":
+                return "Diagnostics unavailable: REST API not reachable.";
+            case "rest_protocol":
+                return "Diagnostics unavailable: REST API returned an unexpected response.";
+            case "no_credentials":
+            case "no_source":
+                return undefined;
+        }
+    }
+
+    private _renderDiagnosticsErrorBanner(message: string): TemplateResult {
+        return html`
+            <div class="diagnostics-error">
+                <ha-svg-icon .path=${mdiAlert}></ha-svg-icon>
+                <span>${message}</span>
+            </div>
+        `;
+    }
+
+    private _renderBorderRouterDiagnostics(br: BorderRouterEntry): TemplateResult | typeof nothing {
+        if (br.extendedPanIdHex === undefined) return nothing;
+        const batch = this.threadDiagnostics.get(br.extendedPanIdHex.toUpperCase());
+        if (batch === undefined) return nothing;
+
+        const brNode = this._findDiagnosticNode(br.extAddressHex);
+        const errorMessage =
+            batch.partialReason !== undefined ? this._formatPartialReason(batch.partialReason) : undefined;
+        const errorBanner = errorMessage !== undefined ? this._renderDiagnosticsErrorBanner(errorMessage) : nothing;
+        const collected = new Date(batch.collectedAt).toLocaleTimeString();
+        const routerCount = brNode?.route64?.entries.length ?? 0;
+        const childCount = brNode?.childTable?.length ?? 0;
+
+        const heading =
+            errorMessage !== undefined
+                ? html`
+                      <h4>
+                          Diagnostics
+                          <ha-svg-icon class="error-icon" .path=${mdiAlert}></ha-svg-icon>
+                      </h4>
+                  `
+                : html`<h4>Diagnostics</h4>`;
+
+        return html`
+            <md-divider></md-divider>
+            <div class="section">
+                ${heading}${errorBanner}
+                <div class="info-row">
+                    <span class="label">Source:</span>
+                    <span class="value">${batch.source}</span>
+                </div>
+                <div class="info-row">
+                    <span class="label">Updated:</span>
+                    <span class="value">${collected}</span>
+                </div>
+                ${routerCount > 0
+                    ? html`
+                          <div class="info-row">
+                              <span class="label">Routers:</span>
+                              <span class="value">${routerCount}</span>
+                          </div>
+                      `
+                    : nothing}
+                ${brNode?.leaderData !== undefined
+                    ? html`
+                          <div class="info-row">
+                              <span class="label">Leader router id:</span>
+                              <span class="value">${brNode.leaderData.leaderRouterId}</span>
+                          </div>
+                          <div class="info-row">
+                              <span class="label">Partition id:</span>
+                              <span class="value mono">${brNode.leaderData.partitionId.toString(16)}</span>
+                          </div>
+                      `
+                    : nothing}
+                ${childCount > 0
+                    ? html`
+                          <div class="info-row">
+                              <span class="label">Children:</span>
+                              <span class="value">${childCount}</span>
+                          </div>
+                      `
+                    : nothing}
+                ${brNode?.vendorName !== undefined
+                    ? html`
+                          <div class="info-row">
+                              <span class="label">Diagnostic vendor:</span>
+                              <span class="value">${brNode.vendorName}</span>
+                          </div>
+                      `
+                    : nothing}
+                ${brNode?.vendorModel !== undefined
+                    ? html`
+                          <div class="info-row">
+                              <span class="label">Diagnostic model:</span>
+                              <span class="value">${brNode.vendorModel}</span>
+                          </div>
+                      `
+                    : nothing}
+                ${brNode?.threadStackVersion !== undefined
+                    ? html`
+                          <div class="info-row">
+                              <span class="label">Stack version:</span>
+                              <span class="value">${brNode.threadStackVersion}</span>
+                          </div>
+                      `
+                    : nothing}
+            </div>
+        `;
+    }
+
+    private _renderNodeDiagnostics(node: MatterNode): TemplateResult | typeof nothing {
+        const extAddressHex = getThreadExtendedAddressHex(node);
+        if (extAddressHex === undefined) return nothing;
+        const diagNode = this._findDiagnosticNode(extAddressHex);
+        if (diagNode === undefined) return nothing;
+
+        const macCounters = diagNode.macCounters;
+        const macTx =
+            macCounters !== undefined ? macCounters.ifOutUcastPkts + macCounters.ifOutBroadcastPkts : undefined;
+        const macRx = macCounters !== undefined ? macCounters.ifInUcastPkts + macCounters.ifInBroadcastPkts : undefined;
+        const ipv6Count = diagNode.ipv6Addresses?.length ?? 0;
+
+        return html`
+            <md-divider></md-divider>
+            <div class="section">
+                <h4>Thread Diagnostics</h4>
+                ${diagNode.vendorName !== undefined
+                    ? html`
+                          <div class="info-row">
+                              <span class="label">Diagnostic vendor:</span>
+                              <span class="value">${diagNode.vendorName}</span>
+                          </div>
+                      `
+                    : nothing}
+                ${diagNode.vendorModel !== undefined
+                    ? html`
+                          <div class="info-row">
+                              <span class="label">Diagnostic model:</span>
+                              <span class="value">${diagNode.vendorModel}</span>
+                          </div>
+                      `
+                    : nothing}
+                ${diagNode.vendorSwVersion !== undefined
+                    ? html`
+                          <div class="info-row">
+                              <span class="label">SW version:</span>
+                              <span class="value">${diagNode.vendorSwVersion}</span>
+                          </div>
+                      `
+                    : nothing}
+                ${diagNode.threadStackVersion !== undefined
+                    ? html`
+                          <div class="info-row">
+                              <span class="label">Stack version:</span>
+                              <span class="value">${diagNode.threadStackVersion}</span>
+                          </div>
+                      `
+                    : nothing}
+                ${ipv6Count > 0
+                    ? html`
+                          <div class="info-row">
+                              <span class="label">IPv6 addresses:</span>
+                              <span class="value">${ipv6Count}</span>
+                          </div>
+                      `
+                    : nothing}
+                ${macTx !== undefined && macRx !== undefined
+                    ? html`
+                          <div class="info-row">
+                              <span class="label">MAC tx/rx:</span>
+                              <span class="value">${macTx} / ${macRx}</span>
+                          </div>
+                      `
+                    : nothing}
+                ${diagNode.mleCounters?.parentChanges !== undefined
+                    ? html`
+                          <div class="info-row">
+                              <span class="label">Parent changes:</span>
+                              <span class="value">${diagNode.mleCounters.parentChanges}</span>
+                          </div>
+                      `
+                    : nothing}
+            </div>
+        `;
+    }
+
     private _renderBorderRouterInfo(deviceId: string): TemplateResult | typeof nothing {
         const device = this.unknownDevices.get(deviceId);
         if (!device || device.kind !== "br") {
@@ -777,7 +1001,7 @@ export class NetworkDetails extends LitElement {
                       </div>
                   `
                 : nothing}
-            ${this._renderExternalDeviceNeighbors(deviceId)}
+            ${this._renderBorderRouterDiagnostics(br)} ${this._renderExternalDeviceNeighbors(deviceId)}
         `;
     }
 
@@ -895,6 +1119,21 @@ export class NetworkDetails extends LitElement {
 
     private _handleUpdateConnections(): void {
         this._showUpdateDialog = true;
+
+        // BR reload click also re-polls live diagnostics for that network. Skip when the
+        // BR has no extendedPanIdHex (Mode B observation only) — there's no key to query by.
+        if (typeof this.selectedNodeId === "string" && this.selectedNodeId.startsWith("br_")) {
+            const device = this.unknownDevices.get(this.selectedNodeId);
+            if (device?.kind === "br" && device.extendedPanIdHex !== undefined) {
+                this.dispatchEvent(
+                    new CustomEvent("refresh-diagnostics", {
+                        detail: { extPanIdHex: device.extendedPanIdHex },
+                        bubbles: true,
+                        composed: true,
+                    }),
+                );
+            }
+        }
     }
 
     private _handleDialogClose(): void {
@@ -1305,6 +1544,33 @@ export class NetworkDetails extends LitElement {
                 color: var(--md-sys-color-primary, #6200ee);
                 text-transform: uppercase;
                 letter-spacing: 0.5px;
+                display: flex;
+                align-items: center;
+                gap: 6px;
+            }
+
+            .section h4 .error-icon {
+                --icon-primary-color: var(--md-sys-color-error, var(--danger-color));
+                width: 18px;
+                height: 18px;
+            }
+
+            .diagnostics-error {
+                display: flex;
+                align-items: flex-start;
+                gap: 8px;
+                margin-bottom: 12px;
+                padding: 8px 12px;
+                background-color: var(--md-sys-color-error-container, rgba(244, 67, 54, 0.08));
+                color: var(--md-sys-color-on-error-container, var(--danger-color));
+                border-radius: 4px;
+                font-size: 0.85rem;
+            }
+
+            .diagnostics-error ha-svg-icon {
+                flex-shrink: 0;
+                margin-top: 1px;
+                --icon-primary-color: var(--md-sys-color-error, var(--danger-color));
             }
 
             .subsection-label {
