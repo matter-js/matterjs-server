@@ -15290,5 +15290,159 @@ export const clusters: Record<number, ClusterDescription> = {
             }
         },
         "commands": {}
+    },
+    "322239488": {
+        "id": 322239488,
+        "label": "TclPrivateCluster",
+        "attributes": {
+            "57344": {
+                "id": 57344,
+                "cluster_id": 322239488,
+                "label": "Opaque",
+                "type": "Optional[string]",
+                "writable": true
+            },
+            "65528": {
+                "id": 65528,
+                "cluster_id": 322239488,
+                "label": "GeneratedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65529": {
+                "id": 65529,
+                "cluster_id": 322239488,
+                "label": "AcceptedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65530": {
+                "id": 65530,
+                "cluster_id": 322239488,
+                "label": "EventList",
+                "type": "Optional[unknown]",
+                "writable": true
+            },
+            "65531": {
+                "id": 65531,
+                "cluster_id": 322239488,
+                "label": "AttributeList",
+                "type": "List[attrib-id]",
+                "writable": false
+            },
+            "65532": {
+                "id": 65532,
+                "cluster_id": 322239488,
+                "label": "FeatureMap",
+                "type": "map32",
+                "writable": false
+            },
+            "65533": {
+                "id": 65533,
+                "cluster_id": 322239488,
+                "label": "ClusterRevision",
+                "type": "uint16",
+                "writable": false
+            }
+        },
+        "commands": {}
+    },
+    "322239491": {
+        "id": 322239491,
+        "label": "TclDehumidifierCluster",
+        "attributes": {
+            "0": {
+                "id": 0,
+                "cluster_id": 322239491,
+                "label": "Mode",
+                "type": "Optional[unknown]",
+                "writable": true
+            },
+            "1": {
+                "id": 1,
+                "cluster_id": 322239491,
+                "label": "TargetHumidity",
+                "type": "Optional[unknown]",
+                "writable": true
+            },
+            "2": {
+                "id": 2,
+                "cluster_id": 322239491,
+                "label": "CurrentHumidity",
+                "type": "Optional[unknown]",
+                "writable": true
+            },
+            "3": {
+                "id": 3,
+                "cluster_id": 322239491,
+                "label": "WaterBucketFull",
+                "type": "Optional[bool]",
+                "writable": true
+            },
+            "4": {
+                "id": 4,
+                "cluster_id": 322239491,
+                "label": "FilterAlert",
+                "type": "Optional[bool]",
+                "writable": true
+            },
+            "5": {
+                "id": 5,
+                "cluster_id": 322239491,
+                "label": "ErrorCodes",
+                "type": "Optional[string]",
+                "writable": true
+            },
+            "6": {
+                "id": 6,
+                "cluster_id": 322239491,
+                "label": "FeatureSet",
+                "type": "Optional[string]",
+                "writable": true
+            },
+            "65528": {
+                "id": 65528,
+                "cluster_id": 322239491,
+                "label": "GeneratedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65529": {
+                "id": 65529,
+                "cluster_id": 322239491,
+                "label": "AcceptedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65530": {
+                "id": 65530,
+                "cluster_id": 322239491,
+                "label": "EventList",
+                "type": "Optional[unknown]",
+                "writable": true
+            },
+            "65531": {
+                "id": 65531,
+                "cluster_id": 322239491,
+                "label": "AttributeList",
+                "type": "List[attrib-id]",
+                "writable": false
+            },
+            "65532": {
+                "id": 65532,
+                "cluster_id": 322239491,
+                "label": "FeatureMap",
+                "type": "map32",
+                "writable": false
+            },
+            "65533": {
+                "id": 65533,
+                "cluster_id": 322239491,
+                "label": "ClusterRevision",
+                "type": "uint16",
+                "writable": false
+            }
+        },
+        "commands": {}
     }
 };
