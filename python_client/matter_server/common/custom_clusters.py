@@ -6,7 +6,6 @@ from chip.clusters.cluster_defs.HeimanCluster import HeimanCluster
 from chip.clusters.cluster_defs.InovelliCluster import InovelliCluster
 from chip.clusters.cluster_defs.NeoCluster import NeoCluster
 from chip.clusters.cluster_defs.TclDehumidifierCluster import TclDehumidifierCluster
-from chip.clusters.cluster_defs.TclPrivateCluster import TclPrivateCluster
 from chip.clusters.cluster_defs.ThirdRealityMeteringCluster import ThirdRealityMeteringCluster
 
 ALL_CUSTOM_CLUSTERS: dict = {
@@ -16,7 +15,6 @@ ALL_CUSTOM_CLUSTERS: dict = {
     InovelliCluster.id: InovelliCluster,
     NeoCluster.id: NeoCluster,
     TclDehumidifierCluster.id: TclDehumidifierCluster,
-    TclPrivateCluster.id: TclPrivateCluster,
     ThirdRealityMeteringCluster.id: ThirdRealityMeteringCluster,
 }
 
@@ -28,6 +26,5 @@ __all__ = [
     "InovelliCluster",
     "NeoCluster",
     "TclDehumidifierCluster",
-    "TclPrivateCluster",
     "ThirdRealityMeteringCluster",
 ]
