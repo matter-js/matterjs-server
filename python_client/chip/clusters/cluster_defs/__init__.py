@@ -101,6 +101,8 @@ from .SmokeCoAlarm import SmokeCoAlarm
 from .SoftwareDiagnostics import SoftwareDiagnostics
 from .Switch import Switch
 from .TargetNavigator import TargetNavigator
+from .TclDehumidifierCluster import TclDehumidifierCluster
+from .TclPrivateCluster import TclPrivateCluster
 from .TemperatureControl import TemperatureControl
 from .TemperatureMeasurement import TemperatureMeasurement
 from .Thermostat import Thermostat
@@ -225,6 +227,8 @@ __all__ = [
     "SoftwareDiagnostics",
     "Switch",
     "TargetNavigator",
+    "TclDehumidifierCluster",
+    "TclPrivateCluster",
     "TemperatureControl",
     "TemperatureMeasurement",
     "Thermostat",

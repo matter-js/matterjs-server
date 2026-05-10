@@ -15299,7 +15299,7 @@ export const clusters: Record<number, ClusterDescription> = {
                 "id": 57344,
                 "cluster_id": 322239488,
                 "label": "Opaque",
-                "type": "Optional[string]",
+                "type": "Optional[bytes]",
                 "writable": true
             },
             "65528": {
