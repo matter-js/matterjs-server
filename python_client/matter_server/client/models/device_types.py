@@ -68,7 +68,7 @@ class AirQualitySensor(DeviceType):
     }
 
 
-fully ok class AudioDoorbell(DeviceType):
+class AudioDoorbell(DeviceType):
     device_type: int = 0x0141
     clusters: set[type[Cluster]] = {
         all_clusters.CameraAvStreamManagement,
