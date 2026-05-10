@@ -23,10 +23,6 @@ class WindowCovering(Cluster):
         return ClusterObjectDescriptor(
             Fields=[
                 ClusterObjectFieldDescriptor(Label="type", Tag=0x00000000, Type=WindowCovering.Enums.Type),
-                ClusterObjectFieldDescriptor(Label="physicalClosedLimitLift", Tag=0x00000001, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="physicalClosedLimitTilt", Tag=0x00000002, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="currentPositionLift", Tag=0x00000003, Type=typing.Union[None, Nullable, uint]),
-                ClusterObjectFieldDescriptor(Label="currentPositionTilt", Tag=0x00000004, Type=typing.Union[None, Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="numberOfActuationsLift", Tag=0x00000005, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="numberOfActuationsTilt", Tag=0x00000006, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="configStatus", Tag=0x00000007, Type=WindowCovering.Bitmaps.ConfigStatus),
@@ -38,16 +34,7 @@ class WindowCovering(Cluster):
                 ClusterObjectFieldDescriptor(Label="endProductType", Tag=0x0000000D, Type=WindowCovering.Enums.EndProductType),
                 ClusterObjectFieldDescriptor(Label="currentPositionLiftPercent100ths", Tag=0x0000000E, Type=typing.Union[None, Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="currentPositionTiltPercent100ths", Tag=0x0000000F, Type=typing.Union[None, Nullable, uint]),
-                ClusterObjectFieldDescriptor(Label="installedOpenLimitLift", Tag=0x00000010, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="installedClosedLimitLift", Tag=0x00000011, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="installedOpenLimitTilt", Tag=0x00000012, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="installedClosedLimitTilt", Tag=0x00000013, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="velocityLift", Tag=0x00000014, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="accelerationTimeLift", Tag=0x00000015, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="decelerationTimeLift", Tag=0x00000016, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="mode", Tag=0x00000017, Type=WindowCovering.Bitmaps.Mode),
-                ClusterObjectFieldDescriptor(Label="intermediateSetpointsLift", Tag=0x00000018, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="intermediateSetpointsTilt", Tag=0x00000019, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="safetyStatus", Tag=0x0000001A, Type=typing.Optional[WindowCovering.Bitmaps.SafetyStatus]),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
@@ -58,10 +45,6 @@ class WindowCovering(Cluster):
             ])
 
     type: WindowCovering.Enums.Type = 0
-    physicalClosedLimitLift: typing.Optional[uint] = None
-    physicalClosedLimitTilt: typing.Optional[uint] = None
-    currentPositionLift: typing.Union[None, Nullable, uint] = None
-    currentPositionTilt: typing.Union[None, Nullable, uint] = None
     numberOfActuationsLift: typing.Optional[uint] = None
     numberOfActuationsTilt: typing.Optional[uint] = None
     configStatus: WindowCovering.Bitmaps.ConfigStatus = 0
@@ -73,16 +56,7 @@ class WindowCovering(Cluster):
     endProductType: WindowCovering.Enums.EndProductType = 0
     currentPositionLiftPercent100ths: typing.Union[None, Nullable, uint] = None
     currentPositionTiltPercent100ths: typing.Union[None, Nullable, uint] = None
-    installedOpenLimitLift: typing.Optional[uint] = None
-    installedClosedLimitLift: typing.Optional[uint] = None
-    installedOpenLimitTilt: typing.Optional[uint] = None
-    installedClosedLimitTilt: typing.Optional[uint] = None
-    velocityLift: typing.Optional[uint] = None
-    accelerationTimeLift: typing.Optional[uint] = None
-    decelerationTimeLift: typing.Optional[uint] = None
     mode: WindowCovering.Bitmaps.Mode = 0
-    intermediateSetpointsLift: typing.Optional[uint] = None
-    intermediateSetpointsTilt: typing.Optional[uint] = None
     safetyStatus: typing.Optional[WindowCovering.Bitmaps.SafetyStatus] = None
     generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
     acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
@@ -157,7 +131,6 @@ class WindowCovering(Cluster):
             kLift = 0x1
             kTilt = 0x2
             kPositionAwareLift = 0x4
-            kAbsolutePosition = 0x8
             kPositionAwareTilt = 0x10
 
         class ConfigStatus(IntFlag):
@@ -238,22 +211,6 @@ class WindowCovering(Cluster):
 
 
         @dataclass
-        class GoToLiftValue(ClusterCommand):
-            cluster_id: typing.ClassVar[int] = 0x00000102
-            command_id: typing.ClassVar[int] = 0x00000004
-            is_client: typing.ClassVar[bool] = True
-            response_type: typing.ClassVar[typing.Optional[str]] = None
-
-            @ChipUtility.classproperty
-            def descriptor(cls) -> ClusterObjectDescriptor:
-                return ClusterObjectDescriptor(
-                    Fields=[
-                        ClusterObjectFieldDescriptor(Label="liftValue", Tag=0, Type=uint),
-                    ])
-
-            liftValue: uint = 0
-
-        @dataclass
         class GoToLiftPercentage(ClusterCommand):
             cluster_id: typing.ClassVar[int] = 0x00000102
             command_id: typing.ClassVar[int] = 0x00000005
@@ -270,22 +227,6 @@ class WindowCovering(Cluster):
 
             liftPercent100thsValue: uint = 0
             ignored: typing.Optional[uint] = None
-
-        @dataclass
-        class GoToTiltValue(ClusterCommand):
-            cluster_id: typing.ClassVar[int] = 0x00000102
-            command_id: typing.ClassVar[int] = 0x00000007
-            is_client: typing.ClassVar[bool] = True
-            response_type: typing.ClassVar[typing.Optional[str]] = None
-
-            @ChipUtility.classproperty
-            def descriptor(cls) -> ClusterObjectDescriptor:
-                return ClusterObjectDescriptor(
-                    Fields=[
-                        ClusterObjectFieldDescriptor(Label="tiltValue", Tag=0, Type=uint),
-                    ])
-
-            tiltValue: uint = 0
 
         @dataclass
         class GoToTiltPercentage(ClusterCommand):
@@ -321,70 +262,6 @@ class WindowCovering(Cluster):
                 return ClusterObjectFieldDescriptor(Type=WindowCovering.Enums.Type)
 
             value: WindowCovering.Enums.Type = 0
-
-        @dataclass
-        class PhysicalClosedLimitLift(ClusterAttributeDescriptor):
-            @ChipUtility.classproperty
-            def cluster_id(cls) -> int:
-                return 0x00000102
-
-            @ChipUtility.classproperty
-            def attribute_id(cls) -> int:
-                return 0x00000001
-
-            @ChipUtility.classproperty
-            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
-
-            value: typing.Optional[uint] = None
-
-        @dataclass
-        class PhysicalClosedLimitTilt(ClusterAttributeDescriptor):
-            @ChipUtility.classproperty
-            def cluster_id(cls) -> int:
-                return 0x00000102
-
-            @ChipUtility.classproperty
-            def attribute_id(cls) -> int:
-                return 0x00000002
-
-            @ChipUtility.classproperty
-            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
-
-            value: typing.Optional[uint] = None
-
-        @dataclass
-        class CurrentPositionLift(ClusterAttributeDescriptor):
-            @ChipUtility.classproperty
-            def cluster_id(cls) -> int:
-                return 0x00000102
-
-            @ChipUtility.classproperty
-            def attribute_id(cls) -> int:
-                return 0x00000003
-
-            @ChipUtility.classproperty
-            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
-
-            value: typing.Union[None, Nullable, uint] = None
-
-        @dataclass
-        class CurrentPositionTilt(ClusterAttributeDescriptor):
-            @ChipUtility.classproperty
-            def cluster_id(cls) -> int:
-                return 0x00000102
-
-            @ChipUtility.classproperty
-            def attribute_id(cls) -> int:
-                return 0x00000004
-
-            @ChipUtility.classproperty
-            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
-
-            value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
         class NumberOfActuationsLift(ClusterAttributeDescriptor):
@@ -563,118 +440,6 @@ class WindowCovering(Cluster):
             value: typing.Union[None, Nullable, uint] = None
 
         @dataclass
-        class InstalledOpenLimitLift(ClusterAttributeDescriptor):
-            @ChipUtility.classproperty
-            def cluster_id(cls) -> int:
-                return 0x00000102
-
-            @ChipUtility.classproperty
-            def attribute_id(cls) -> int:
-                return 0x00000010
-
-            @ChipUtility.classproperty
-            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
-
-            value: typing.Optional[uint] = None
-
-        @dataclass
-        class InstalledClosedLimitLift(ClusterAttributeDescriptor):
-            @ChipUtility.classproperty
-            def cluster_id(cls) -> int:
-                return 0x00000102
-
-            @ChipUtility.classproperty
-            def attribute_id(cls) -> int:
-                return 0x00000011
-
-            @ChipUtility.classproperty
-            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
-
-            value: typing.Optional[uint] = None
-
-        @dataclass
-        class InstalledOpenLimitTilt(ClusterAttributeDescriptor):
-            @ChipUtility.classproperty
-            def cluster_id(cls) -> int:
-                return 0x00000102
-
-            @ChipUtility.classproperty
-            def attribute_id(cls) -> int:
-                return 0x00000012
-
-            @ChipUtility.classproperty
-            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
-
-            value: typing.Optional[uint] = None
-
-        @dataclass
-        class InstalledClosedLimitTilt(ClusterAttributeDescriptor):
-            @ChipUtility.classproperty
-            def cluster_id(cls) -> int:
-                return 0x00000102
-
-            @ChipUtility.classproperty
-            def attribute_id(cls) -> int:
-                return 0x00000013
-
-            @ChipUtility.classproperty
-            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
-
-            value: typing.Optional[uint] = None
-
-        @dataclass
-        class VelocityLift(ClusterAttributeDescriptor):
-            @ChipUtility.classproperty
-            def cluster_id(cls) -> int:
-                return 0x00000102
-
-            @ChipUtility.classproperty
-            def attribute_id(cls) -> int:
-                return 0x00000014
-
-            @ChipUtility.classproperty
-            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
-
-            value: typing.Optional[uint] = None
-
-        @dataclass
-        class AccelerationTimeLift(ClusterAttributeDescriptor):
-            @ChipUtility.classproperty
-            def cluster_id(cls) -> int:
-                return 0x00000102
-
-            @ChipUtility.classproperty
-            def attribute_id(cls) -> int:
-                return 0x00000015
-
-            @ChipUtility.classproperty
-            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
-
-            value: typing.Optional[uint] = None
-
-        @dataclass
-        class DecelerationTimeLift(ClusterAttributeDescriptor):
-            @ChipUtility.classproperty
-            def cluster_id(cls) -> int:
-                return 0x00000102
-
-            @ChipUtility.classproperty
-            def attribute_id(cls) -> int:
-                return 0x00000016
-
-            @ChipUtility.classproperty
-            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
-
-            value: typing.Optional[uint] = None
-
-        @dataclass
         class Mode(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
@@ -689,38 +454,6 @@ class WindowCovering(Cluster):
                 return ClusterObjectFieldDescriptor(Type=WindowCovering.Bitmaps.Mode)
 
             value: WindowCovering.Bitmaps.Mode = 0
-
-        @dataclass
-        class IntermediateSetpointsLift(ClusterAttributeDescriptor):
-            @ChipUtility.classproperty
-            def cluster_id(cls) -> int:
-                return 0x00000102
-
-            @ChipUtility.classproperty
-            def attribute_id(cls) -> int:
-                return 0x00000018
-
-            @ChipUtility.classproperty
-            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
-
-            value: typing.Optional[uint] = None
-
-        @dataclass
-        class IntermediateSetpointsTilt(ClusterAttributeDescriptor):
-            @ChipUtility.classproperty
-            def cluster_id(cls) -> int:
-                return 0x00000102
-
-            @ChipUtility.classproperty
-            def attribute_id(cls) -> int:
-                return 0x00000019
-
-            @ChipUtility.classproperty
-            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
-
-            value: typing.Optional[uint] = None
 
         @dataclass
         class SafetyStatus(ClusterAttributeDescriptor):

@@ -18,7 +18,7 @@ import {
     SoftwareUpdateManager,
     Timestamp,
 } from "@matter/main";
-import { VendorInfo } from "@matter/main/protocol";
+import { VendorInfo, DclCertificateService } from "@matter/main/protocol";
 import { VendorId } from "@matter/main/types";
 import { CommissioningController } from "@project-chip/matter.js";
 import { Readable } from "node:stream";
@@ -181,6 +181,10 @@ export class MatterController {
         legacyCommissionedDates?: Map<string, Timestamp>,
     ) {
         this.#legacyCommissionedDates = legacyCommissionedDates?.size ? legacyCommissionedDates : undefined;
+
+        // Initialize the DclCertificateService on teh root environment
+        new DclCertificateService(this.#env.root, { fetchTestCertificates: this.#enableTestNetDcl });
+
         this.#controllerInstance = new CommissioningController({
             environment: {
                 environment: this.#env,
@@ -192,6 +196,8 @@ export class MatterController {
             adminFabricId: fabricId !== undefined ? FabricId(fabricId) : undefined,
             rootNodeId: NodeId(112233), // TODO Remove when we switch to random IDs
             enableOtaProvider: !this.#disableOtaProvider,
+            tcp: true,
+            transportPreference: "tcp",
             basicInformation: {
                 vendorName: "Open Home Foundation",
                 productName: "OHF Matter Server",
@@ -216,10 +222,6 @@ export class MatterController {
             );
 
             this.#commandHandler.events.started.once(async () => {
-                this.#controllerInstance!.node.behaviors.require(DclBehavior, {
-                    fetchTestCertificates: this.#enableTestNetDcl,
-                });
-
                 const initPromises = new Array<Promise<unknown>>();
 
                 if (this.#legacyCommissionedDates !== undefined) {

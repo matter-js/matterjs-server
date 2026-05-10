@@ -7,6 +7,14 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
+## **WORK IN PROGRESS**
+
+- Breaking: Enables strict validation of Attestation and Certificates at commissioning like the Python server.
+- Feature: Updates the Matter version to be compatible with Matter 1.5.1
+- Feature: Enables Matter TCP support when devices support it (likely very few devices)
+- Feature: Updates the generated Python client classes to match Matter 1.5.1
+- Fix: Ensures that also official test certificates are initialized correctly when DCL-Testnet-flag is enabled
+
 ## 0.6.8 (2026-05-08)
 
 - Fix: Fixes setting ACLs (really)

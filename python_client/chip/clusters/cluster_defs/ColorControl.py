@@ -70,7 +70,7 @@ class ColorControl(Cluster):
                 ClusterObjectFieldDescriptor(Label="colorLoopTime", Tag=0x00004004, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="colorLoopStartEnhancedHue", Tag=0x00004005, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="colorLoopStoredEnhancedHue", Tag=0x00004006, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="colorCapabilities", Tag=0x0000400A, Type=Globals.Bitmaps.map16),
+                ClusterObjectFieldDescriptor(Label="colorCapabilities", Tag=0x0000400A, Type=ColorControl.Bitmaps.ColorCapabilitiesBitmap),
                 ClusterObjectFieldDescriptor(Label="colorTempPhysicalMinMireds", Tag=0x0000400B, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="colorTempPhysicalMaxMireds", Tag=0x0000400C, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="coupleColorTempToLevelMinMireds", Tag=0x0000400D, Type=typing.Optional[uint]),
@@ -130,7 +130,7 @@ class ColorControl(Cluster):
     colorLoopTime: typing.Optional[uint] = None
     colorLoopStartEnhancedHue: typing.Optional[uint] = None
     colorLoopStoredEnhancedHue: typing.Optional[uint] = None
-    colorCapabilities: Globals.Bitmaps.map16 = 0
+    colorCapabilities: ColorControl.Bitmaps.ColorCapabilitiesBitmap = 0
     colorTempPhysicalMinMireds: typing.Optional[uint] = None
     colorTempPhysicalMaxMireds: typing.Optional[uint] = None
     coupleColorTempToLevelMinMireds: typing.Optional[uint] = None
@@ -227,6 +227,13 @@ class ColorControl(Cluster):
 
     class Bitmaps:
         class Feature(IntFlag):
+            kHueAndSaturation = 0x1
+            kEnhancedHue = 0x2
+            kColorLoop = 0x4
+            kXy = 0x8
+            kColorTemperature = 0x10
+
+        class ColorCapabilitiesBitmap(IntFlag):
             kHueAndSaturation = 0x1
             kEnhancedHue = 0x2
             kColorLoop = 0x4
@@ -1463,9 +1470,9 @@ class ColorControl(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=Globals.Bitmaps.map16)
+                return ClusterObjectFieldDescriptor(Type=ColorControl.Bitmaps.ColorCapabilitiesBitmap)
 
-            value: Globals.Bitmaps.map16 = 0
+            value: ColorControl.Bitmaps.ColorCapabilitiesBitmap = 0
 
         @dataclass
         class ColorTempPhysicalMinMireds(ClusterAttributeDescriptor):

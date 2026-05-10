@@ -1,4 +1,4 @@
-"""RvcCleanMode cluster definition (auto-generated, DO NOT edit)."""
+"""CommodityMetering cluster definition (auto-generated, DO NOT edit)."""
 
 from __future__ import annotations
 
@@ -12,20 +12,21 @@ from ...tlv import float32, uint
 from ..ClusterObjects import (Cluster, ClusterAttributeDescriptor, ClusterCommand, ClusterEvent, ClusterObject,
                               ClusterObjectDescriptor, ClusterObjectFieldDescriptor)
 from ..Types import Nullable, NullValue
+from .Globals import Globals
 
 
 @dataclass
-class RvcCleanMode(Cluster):
-    id: typing.ClassVar[int] = 0x00000055
+class CommodityMetering(Cluster):
+    id: typing.ClassVar[int] = 0x00000B07
 
     @ChipUtility.classproperty
     def descriptor(cls) -> ClusterObjectDescriptor:
         return ClusterObjectDescriptor(
             Fields=[
-                ClusterObjectFieldDescriptor(Label="supportedModes", Tag=0x00000000, Type=typing.List[RvcCleanMode.Structs.ModeOptionStruct]),
-                ClusterObjectFieldDescriptor(Label="currentMode", Tag=0x00000001, Type=uint),
-                ClusterObjectFieldDescriptor(Label="startUpMode", Tag=0x00000002, Type=typing.Union[None, Nullable, uint]),
-                ClusterObjectFieldDescriptor(Label="onMode", Tag=0x00000003, Type=typing.Union[None, Nullable, uint]),
+                ClusterObjectFieldDescriptor(Label="meteredQuantity", Tag=0x00000000, Type=typing.Union[Nullable, typing.List[CommodityMetering.Structs.MeteredQuantityStruct]]),
+                ClusterObjectFieldDescriptor(Label="meteredQuantityTimestamp", Tag=0x00000001, Type=typing.Union[Nullable, uint]),
+                ClusterObjectFieldDescriptor(Label="tariffUnit", Tag=0x00000002, Type=typing.Union[Nullable, Globals.Enums.TariffUnitEnum]),
+                ClusterObjectFieldDescriptor(Label="maximumMeteredQuantities", Tag=0x00000003, Type=typing.Union[Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="eventList", Tag=0x0000FFFA, Type=typing.List[uint]),
@@ -34,10 +35,10 @@ class RvcCleanMode(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    supportedModes: typing.List[RvcCleanMode.Structs.ModeOptionStruct] = field(default_factory=lambda: [])
-    currentMode: uint = 0
-    startUpMode: typing.Union[None, Nullable, uint] = None
-    onMode: typing.Union[None, Nullable, uint] = None
+    meteredQuantity: typing.Union[Nullable, typing.List[CommodityMetering.Structs.MeteredQuantityStruct]] = NullValue
+    meteredQuantityTimestamp: typing.Union[Nullable, uint] = NullValue
+    tariffUnit: typing.Union[Nullable, Globals.Enums.TariffUnitEnum] = NullValue
+    maximumMeteredQuantities: typing.Union[Nullable, uint] = NullValue
     generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
     acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
     eventList: typing.List[uint] = field(default_factory=lambda: [])
@@ -45,111 +46,26 @@ class RvcCleanMode(Cluster):
     featureMap: uint = 0
     clusterRevision: uint = 0
 
-    class Enums:
-        class ModeChangeStatus(MatterIntEnum):
-            kCleaningInProgress = 0x40
-            # All received enum values that are not listed above will be mapped
-            # to kUnknownEnumValue. This is a helper enum value that should only
-            # be used by code to process how it handles receiving an unknown
-            # enum value. This specific value should never be transmitted.
-            kUnknownEnumValue = 65
-
-        class ModeTag(MatterIntEnum):
-            kAuto = 0x00
-            kQuick = 0x01
-            kQuiet = 0x02
-            kLowNoise = 0x03
-            kLowEnergy = 0x04
-            kVacation = 0x05
-            kMin = 0x06
-            kMax = 0x07
-            kNight = 0x08
-            kDay = 0x09
-            kDeepClean = 0x4000
-            kVacuum = 0x4001
-            kMop = 0x4002
-            kVacuumThenMop = 0x4003
-            # All received enum values that are not listed above will be mapped
-            # to kUnknownEnumValue. This is a helper enum value that should only
-            # be used by code to process how it handles receiving an unknown
-            # enum value. This specific value should never be transmitted.
-            kUnknownEnumValue = 16388
-
-    class Bitmaps:
-        class Feature(IntFlag):
-            kOnOff = 0x1
-            kDirectModeChange = 0x100000
-
     class Structs:
         @dataclass
-        class ModeOptionStruct(ClusterObject):
+        class MeteredQuantityStruct(ClusterObject):
             @ChipUtility.classproperty
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="label", Tag=0, Type=str),
-                        ClusterObjectFieldDescriptor(Label="mode", Tag=1, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="modeTags", Tag=2, Type=typing.List[RvcCleanMode.Structs.ModeTagStruct]),
+                        ClusterObjectFieldDescriptor(Label="tariffComponentIDs", Tag=0, Type=typing.List[uint]),
+                        ClusterObjectFieldDescriptor(Label="quantity", Tag=1, Type=int),
                     ])
 
-            label: str = ""
-            mode: uint = 0
-            modeTags: typing.List[RvcCleanMode.Structs.ModeTagStruct] = field(default_factory=lambda: [])
-
-        @dataclass
-        class ModeTagStruct(ClusterObject):
-            @ChipUtility.classproperty
-            def descriptor(cls) -> ClusterObjectDescriptor:
-                return ClusterObjectDescriptor(
-                    Fields=[
-                        ClusterObjectFieldDescriptor(Label="mfgCode", Tag=0, Type=typing.Optional[uint]),
-                        ClusterObjectFieldDescriptor(Label="value", Tag=1, Type=RvcCleanMode.Enums.ModeTag),
-                    ])
-
-            mfgCode: typing.Optional[uint] = None
-            value: RvcCleanMode.Enums.ModeTag = 0
-
-    class Commands:
-        @dataclass
-        class ChangeToMode(ClusterCommand):
-            cluster_id: typing.ClassVar[int] = 0x00000055
-            command_id: typing.ClassVar[int] = 0x00000000
-            is_client: typing.ClassVar[bool] = True
-            response_type: typing.ClassVar[typing.Optional[str]] = 'ChangeToModeResponse'
-
-            @ChipUtility.classproperty
-            def descriptor(cls) -> ClusterObjectDescriptor:
-                return ClusterObjectDescriptor(
-                    Fields=[
-                        ClusterObjectFieldDescriptor(Label="newMode", Tag=0, Type=uint),
-                    ])
-
-            newMode: uint = 0
-
-        @dataclass
-        class ChangeToModeResponse(ClusterCommand):
-            cluster_id: typing.ClassVar[int] = 0x00000055
-            command_id: typing.ClassVar[int] = 0x00000001
-            is_client: typing.ClassVar[bool] = False
-            response_type: typing.ClassVar[typing.Optional[str]] = None
-
-            @ChipUtility.classproperty
-            def descriptor(cls) -> ClusterObjectDescriptor:
-                return ClusterObjectDescriptor(
-                    Fields=[
-                        ClusterObjectFieldDescriptor(Label="status", Tag=0, Type=RvcCleanMode.Enums.ModeChangeStatus),
-                        ClusterObjectFieldDescriptor(Label="statusText", Tag=1, Type=str),
-                    ])
-
-            status: RvcCleanMode.Enums.ModeChangeStatus = 0
-            statusText: str = ""
+            tariffComponentIDs: typing.List[uint] = field(default_factory=lambda: [])
+            quantity: int = 0
 
     class Attributes:
         @dataclass
-        class SupportedModes(ClusterAttributeDescriptor):
+        class MeteredQuantity(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x00000055
+                return 0x00000B07
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
@@ -157,15 +73,15 @@ class RvcCleanMode(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.List[RvcCleanMode.Structs.ModeOptionStruct])
+                return ClusterObjectFieldDescriptor(Type=typing.Union[Nullable, typing.List[CommodityMetering.Structs.MeteredQuantityStruct]])
 
-            value: typing.List[RvcCleanMode.Structs.ModeOptionStruct] = field(default_factory=lambda: [])
+            value: typing.Union[Nullable, typing.List[CommodityMetering.Structs.MeteredQuantityStruct]] = NullValue
 
         @dataclass
-        class CurrentMode(ClusterAttributeDescriptor):
+        class MeteredQuantityTimestamp(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x00000055
+                return 0x00000B07
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
@@ -173,15 +89,15 @@ class RvcCleanMode(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=uint)
+                return ClusterObjectFieldDescriptor(Type=typing.Union[Nullable, uint])
 
-            value: uint = 0
+            value: typing.Union[Nullable, uint] = NullValue
 
         @dataclass
-        class StartUpMode(ClusterAttributeDescriptor):
+        class TariffUnit(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x00000055
+                return 0x00000B07
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
@@ -189,15 +105,15 @@ class RvcCleanMode(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
+                return ClusterObjectFieldDescriptor(Type=typing.Union[Nullable, Globals.Enums.TariffUnitEnum])
 
-            value: typing.Union[None, Nullable, uint] = None
+            value: typing.Union[Nullable, Globals.Enums.TariffUnitEnum] = NullValue
 
         @dataclass
-        class OnMode(ClusterAttributeDescriptor):
+        class MaximumMeteredQuantities(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x00000055
+                return 0x00000B07
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
@@ -205,15 +121,15 @@ class RvcCleanMode(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
+                return ClusterObjectFieldDescriptor(Type=typing.Union[Nullable, uint])
 
-            value: typing.Union[None, Nullable, uint] = None
+            value: typing.Union[Nullable, uint] = NullValue
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x00000055
+                return 0x00000B07
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
@@ -229,7 +145,7 @@ class RvcCleanMode(Cluster):
         class AcceptedCommandList(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x00000055
+                return 0x00000B07
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
@@ -245,7 +161,7 @@ class RvcCleanMode(Cluster):
         class EventList(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x00000055
+                return 0x00000B07
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
@@ -261,7 +177,7 @@ class RvcCleanMode(Cluster):
         class AttributeList(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x00000055
+                return 0x00000B07
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
@@ -277,7 +193,7 @@ class RvcCleanMode(Cluster):
         class FeatureMap(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x00000055
+                return 0x00000B07
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
@@ -293,7 +209,7 @@ class RvcCleanMode(Cluster):
         class ClusterRevision(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x00000055
+                return 0x00000B07
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:

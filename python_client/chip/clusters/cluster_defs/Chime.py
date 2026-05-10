@@ -1,4 +1,4 @@
-"""RvcCleanMode cluster definition (auto-generated, DO NOT edit)."""
+"""Chime cluster definition (auto-generated, DO NOT edit)."""
 
 from __future__ import annotations
 
@@ -15,17 +15,16 @@ from ..Types import Nullable, NullValue
 
 
 @dataclass
-class RvcCleanMode(Cluster):
-    id: typing.ClassVar[int] = 0x00000055
+class Chime(Cluster):
+    id: typing.ClassVar[int] = 0x00000556
 
     @ChipUtility.classproperty
     def descriptor(cls) -> ClusterObjectDescriptor:
         return ClusterObjectDescriptor(
             Fields=[
-                ClusterObjectFieldDescriptor(Label="supportedModes", Tag=0x00000000, Type=typing.List[RvcCleanMode.Structs.ModeOptionStruct]),
-                ClusterObjectFieldDescriptor(Label="currentMode", Tag=0x00000001, Type=uint),
-                ClusterObjectFieldDescriptor(Label="startUpMode", Tag=0x00000002, Type=typing.Union[None, Nullable, uint]),
-                ClusterObjectFieldDescriptor(Label="onMode", Tag=0x00000003, Type=typing.Union[None, Nullable, uint]),
+                ClusterObjectFieldDescriptor(Label="installedChimeSounds", Tag=0x00000000, Type=typing.List[Chime.Structs.ChimeSoundStruct]),
+                ClusterObjectFieldDescriptor(Label="selectedChime", Tag=0x00000001, Type=uint),
+                ClusterObjectFieldDescriptor(Label="enabled", Tag=0x00000002, Type=bool),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="eventList", Tag=0x0000FFFA, Type=typing.List[uint]),
@@ -34,10 +33,9 @@ class RvcCleanMode(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    supportedModes: typing.List[RvcCleanMode.Structs.ModeOptionStruct] = field(default_factory=lambda: [])
-    currentMode: uint = 0
-    startUpMode: typing.Union[None, Nullable, uint] = None
-    onMode: typing.Union[None, Nullable, uint] = None
+    installedChimeSounds: typing.List[Chime.Structs.ChimeSoundStruct] = field(default_factory=lambda: [])
+    selectedChime: uint = 0
+    enabled: bool = False
     generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
     acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
     eventList: typing.List[uint] = field(default_factory=lambda: [])
@@ -45,111 +43,43 @@ class RvcCleanMode(Cluster):
     featureMap: uint = 0
     clusterRevision: uint = 0
 
-    class Enums:
-        class ModeChangeStatus(MatterIntEnum):
-            kCleaningInProgress = 0x40
-            # All received enum values that are not listed above will be mapped
-            # to kUnknownEnumValue. This is a helper enum value that should only
-            # be used by code to process how it handles receiving an unknown
-            # enum value. This specific value should never be transmitted.
-            kUnknownEnumValue = 65
-
-        class ModeTag(MatterIntEnum):
-            kAuto = 0x00
-            kQuick = 0x01
-            kQuiet = 0x02
-            kLowNoise = 0x03
-            kLowEnergy = 0x04
-            kVacation = 0x05
-            kMin = 0x06
-            kMax = 0x07
-            kNight = 0x08
-            kDay = 0x09
-            kDeepClean = 0x4000
-            kVacuum = 0x4001
-            kMop = 0x4002
-            kVacuumThenMop = 0x4003
-            # All received enum values that are not listed above will be mapped
-            # to kUnknownEnumValue. This is a helper enum value that should only
-            # be used by code to process how it handles receiving an unknown
-            # enum value. This specific value should never be transmitted.
-            kUnknownEnumValue = 16388
-
-    class Bitmaps:
-        class Feature(IntFlag):
-            kOnOff = 0x1
-            kDirectModeChange = 0x100000
-
     class Structs:
         @dataclass
-        class ModeOptionStruct(ClusterObject):
+        class ChimeSoundStruct(ClusterObject):
             @ChipUtility.classproperty
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="label", Tag=0, Type=str),
-                        ClusterObjectFieldDescriptor(Label="mode", Tag=1, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="modeTags", Tag=2, Type=typing.List[RvcCleanMode.Structs.ModeTagStruct]),
+                        ClusterObjectFieldDescriptor(Label="chimeID", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="name", Tag=1, Type=str),
                     ])
 
-            label: str = ""
-            mode: uint = 0
-            modeTags: typing.List[RvcCleanMode.Structs.ModeTagStruct] = field(default_factory=lambda: [])
-
-        @dataclass
-        class ModeTagStruct(ClusterObject):
-            @ChipUtility.classproperty
-            def descriptor(cls) -> ClusterObjectDescriptor:
-                return ClusterObjectDescriptor(
-                    Fields=[
-                        ClusterObjectFieldDescriptor(Label="mfgCode", Tag=0, Type=typing.Optional[uint]),
-                        ClusterObjectFieldDescriptor(Label="value", Tag=1, Type=RvcCleanMode.Enums.ModeTag),
-                    ])
-
-            mfgCode: typing.Optional[uint] = None
-            value: RvcCleanMode.Enums.ModeTag = 0
+            chimeID: uint = 0
+            name: str = ""
 
     class Commands:
         @dataclass
-        class ChangeToMode(ClusterCommand):
-            cluster_id: typing.ClassVar[int] = 0x00000055
+        class PlayChimeSound(ClusterCommand):
+            cluster_id: typing.ClassVar[int] = 0x00000556
             command_id: typing.ClassVar[int] = 0x00000000
             is_client: typing.ClassVar[bool] = True
-            response_type: typing.ClassVar[typing.Optional[str]] = 'ChangeToModeResponse'
-
-            @ChipUtility.classproperty
-            def descriptor(cls) -> ClusterObjectDescriptor:
-                return ClusterObjectDescriptor(
-                    Fields=[
-                        ClusterObjectFieldDescriptor(Label="newMode", Tag=0, Type=uint),
-                    ])
-
-            newMode: uint = 0
-
-        @dataclass
-        class ChangeToModeResponse(ClusterCommand):
-            cluster_id: typing.ClassVar[int] = 0x00000055
-            command_id: typing.ClassVar[int] = 0x00000001
-            is_client: typing.ClassVar[bool] = False
             response_type: typing.ClassVar[typing.Optional[str]] = None
 
             @ChipUtility.classproperty
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="status", Tag=0, Type=RvcCleanMode.Enums.ModeChangeStatus),
-                        ClusterObjectFieldDescriptor(Label="statusText", Tag=1, Type=str),
+                        ClusterObjectFieldDescriptor(Label="chimeID", Tag=0, Type=typing.Optional[uint]),
                     ])
 
-            status: RvcCleanMode.Enums.ModeChangeStatus = 0
-            statusText: str = ""
+            chimeID: typing.Optional[uint] = None
 
     class Attributes:
         @dataclass
-        class SupportedModes(ClusterAttributeDescriptor):
+        class InstalledChimeSounds(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x00000055
+                return 0x00000556
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
@@ -157,15 +87,15 @@ class RvcCleanMode(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.List[RvcCleanMode.Structs.ModeOptionStruct])
+                return ClusterObjectFieldDescriptor(Type=typing.List[Chime.Structs.ChimeSoundStruct])
 
-            value: typing.List[RvcCleanMode.Structs.ModeOptionStruct] = field(default_factory=lambda: [])
+            value: typing.List[Chime.Structs.ChimeSoundStruct] = field(default_factory=lambda: [])
 
         @dataclass
-        class CurrentMode(ClusterAttributeDescriptor):
+        class SelectedChime(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x00000055
+                return 0x00000556
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
@@ -178,10 +108,10 @@ class RvcCleanMode(Cluster):
             value: uint = 0
 
         @dataclass
-        class StartUpMode(ClusterAttributeDescriptor):
+        class Enabled(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x00000055
+                return 0x00000556
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
@@ -189,31 +119,15 @@ class RvcCleanMode(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
+                return ClusterObjectFieldDescriptor(Type=bool)
 
-            value: typing.Union[None, Nullable, uint] = None
-
-        @dataclass
-        class OnMode(ClusterAttributeDescriptor):
-            @ChipUtility.classproperty
-            def cluster_id(cls) -> int:
-                return 0x00000055
-
-            @ChipUtility.classproperty
-            def attribute_id(cls) -> int:
-                return 0x00000003
-
-            @ChipUtility.classproperty
-            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
-
-            value: typing.Union[None, Nullable, uint] = None
+            value: bool = False
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x00000055
+                return 0x00000556
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
@@ -229,7 +143,7 @@ class RvcCleanMode(Cluster):
         class AcceptedCommandList(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x00000055
+                return 0x00000556
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
@@ -245,7 +159,7 @@ class RvcCleanMode(Cluster):
         class EventList(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x00000055
+                return 0x00000556
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
@@ -261,7 +175,7 @@ class RvcCleanMode(Cluster):
         class AttributeList(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x00000055
+                return 0x00000556
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
@@ -277,7 +191,7 @@ class RvcCleanMode(Cluster):
         class FeatureMap(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x00000055
+                return 0x00000556
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
@@ -293,7 +207,7 @@ class RvcCleanMode(Cluster):
         class ClusterRevision(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x00000055
+                return 0x00000556
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
@@ -304,3 +218,23 @@ class RvcCleanMode(Cluster):
                 return ClusterObjectFieldDescriptor(Type=uint)
 
             value: uint = 0
+
+    class Events:
+        @dataclass
+        class ChimeStartedPlaying(ClusterEvent):
+            @ChipUtility.classproperty
+            def cluster_id(cls) -> int:
+                return 0x00000556
+
+            @ChipUtility.classproperty
+            def event_id(cls) -> int:
+                return 0x00000000
+
+            @ChipUtility.classproperty
+            def descriptor(cls) -> ClusterObjectDescriptor:
+                return ClusterObjectDescriptor(
+                    Fields=[
+                        ClusterObjectFieldDescriptor(Label="chimeID", Tag=0, Type=uint),
+                    ])
+
+            chimeID: uint = 0

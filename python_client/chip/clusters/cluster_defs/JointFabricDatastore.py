@@ -438,7 +438,7 @@ class JointFabricDatastore(Cluster):
                         ClusterObjectFieldDescriptor(Label="groupKeySetID", Tag=2, Type=typing.Union[Nullable, uint]),
                         ClusterObjectFieldDescriptor(Label="groupCat", Tag=3, Type=typing.Union[Nullable, uint]),
                         ClusterObjectFieldDescriptor(Label="groupCatVersion", Tag=4, Type=typing.Union[Nullable, uint]),
-                        ClusterObjectFieldDescriptor(Label="groupPermission", Tag=5, Type=JointFabricDatastore.Enums.DatastoreAccessControlEntryPrivilegeEnum),
+                        ClusterObjectFieldDescriptor(Label="groupPermission", Tag=5, Type=typing.Union[Nullable, JointFabricDatastore.Enums.DatastoreAccessControlEntryPrivilegeEnum]),
                     ])
 
             groupID: uint = 0
@@ -446,7 +446,7 @@ class JointFabricDatastore(Cluster):
             groupKeySetID: typing.Union[Nullable, uint] = NullValue
             groupCat: typing.Union[Nullable, uint] = NullValue
             groupCatVersion: typing.Union[Nullable, uint] = NullValue
-            groupPermission: JointFabricDatastore.Enums.DatastoreAccessControlEntryPrivilegeEnum = 0
+            groupPermission: typing.Union[Nullable, JointFabricDatastore.Enums.DatastoreAccessControlEntryPrivilegeEnum] = NullValue
 
         @dataclass
         class RemoveGroup(ClusterCommand):

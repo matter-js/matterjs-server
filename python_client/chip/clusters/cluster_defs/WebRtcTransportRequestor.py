@@ -1,4 +1,4 @@
-"""PowerTopology cluster definition (auto-generated, DO NOT edit)."""
+"""WebRtcTransportRequestor cluster definition (auto-generated, DO NOT edit)."""
 
 from __future__ import annotations
 
@@ -12,18 +12,18 @@ from ...tlv import float32, uint
 from ..ClusterObjects import (Cluster, ClusterAttributeDescriptor, ClusterCommand, ClusterEvent, ClusterObject,
                               ClusterObjectDescriptor, ClusterObjectFieldDescriptor)
 from ..Types import Nullable, NullValue
+from .WebRtcTransportDefinitions import WebRtcTransportDefinitions
 
 
 @dataclass
-class PowerTopology(Cluster):
-    id: typing.ClassVar[int] = 0x0000009C
+class WebRtcTransportRequestor(Cluster):
+    id: typing.ClassVar[int] = 0x00000554
 
     @ChipUtility.classproperty
     def descriptor(cls) -> ClusterObjectDescriptor:
         return ClusterObjectDescriptor(
             Fields=[
-                ClusterObjectFieldDescriptor(Label="availableEndpoints", Tag=0x00000000, Type=typing.Optional[typing.List[uint]]),
-                ClusterObjectFieldDescriptor(Label="activeEndpoints", Tag=0x00000001, Type=typing.Optional[typing.List[uint]]),
+                ClusterObjectFieldDescriptor(Label="currentSessions", Tag=0x00000000, Type=typing.List[WebRtcTransportDefinitions.Structs.WebRTCSessionStruct]),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="eventList", Tag=0x0000FFFA, Type=typing.List[uint]),
@@ -32,8 +32,7 @@ class PowerTopology(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    availableEndpoints: typing.Optional[typing.List[uint]] = None
-    activeEndpoints: typing.Optional[typing.List[uint]] = None
+    currentSessions: typing.List[WebRtcTransportDefinitions.Structs.WebRTCSessionStruct] = field(default_factory=lambda: [])
     generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
     acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
     eventList: typing.List[uint] = field(default_factory=lambda: [])
@@ -41,37 +40,89 @@ class PowerTopology(Cluster):
     featureMap: uint = 0
     clusterRevision: uint = 0
 
-    class Bitmaps:
-        class Feature(IntFlag):
-            kNodeTopology = 0x1
-            kTreeTopology = 0x2
-            kSetTopology = 0x4
-            kDynamicPowerFlow = 0x8
-
-    class Structs:
+    class Commands:
         @dataclass
-        class CircuitNodeStruct(ClusterObject):
+        class Offer(ClusterCommand):
+            cluster_id: typing.ClassVar[int] = 0x00000554
+            command_id: typing.ClassVar[int] = 0x00000000
+            is_client: typing.ClassVar[bool] = True
+            response_type: typing.ClassVar[typing.Optional[str]] = None
+
             @ChipUtility.classproperty
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="node", Tag=1, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="endpoint", Tag=2, Type=typing.Optional[uint]),
-                        ClusterObjectFieldDescriptor(Label="label", Tag=3, Type=typing.Optional[str]),
-                        ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=254, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="webRtcSessionID", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="sdp", Tag=1, Type=str),
+                        ClusterObjectFieldDescriptor(Label="iceServers", Tag=2, Type=typing.Optional[typing.List[WebRtcTransportDefinitions.Structs.ICEServerStruct]]),
+                        ClusterObjectFieldDescriptor(Label="iceTransportPolicy", Tag=3, Type=typing.Optional[str]),
                     ])
 
-            node: uint = 0
-            endpoint: typing.Optional[uint] = None
-            label: typing.Optional[str] = None
-            fabricIndex: uint = 0
+            webRtcSessionID: uint = 0
+            sdp: str = ""
+            iceServers: typing.Optional[typing.List[WebRtcTransportDefinitions.Structs.ICEServerStruct]] = None
+            iceTransportPolicy: typing.Optional[str] = None
+
+        @dataclass
+        class Answer(ClusterCommand):
+            cluster_id: typing.ClassVar[int] = 0x00000554
+            command_id: typing.ClassVar[int] = 0x00000001
+            is_client: typing.ClassVar[bool] = True
+            response_type: typing.ClassVar[typing.Optional[str]] = None
+
+            @ChipUtility.classproperty
+            def descriptor(cls) -> ClusterObjectDescriptor:
+                return ClusterObjectDescriptor(
+                    Fields=[
+                        ClusterObjectFieldDescriptor(Label="webRtcSessionID", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="sdp", Tag=1, Type=str),
+                    ])
+
+            webRtcSessionID: uint = 0
+            sdp: str = ""
+
+        @dataclass
+        class IceCandidates(ClusterCommand):
+            cluster_id: typing.ClassVar[int] = 0x00000554
+            command_id: typing.ClassVar[int] = 0x00000002
+            is_client: typing.ClassVar[bool] = True
+            response_type: typing.ClassVar[typing.Optional[str]] = None
+
+            @ChipUtility.classproperty
+            def descriptor(cls) -> ClusterObjectDescriptor:
+                return ClusterObjectDescriptor(
+                    Fields=[
+                        ClusterObjectFieldDescriptor(Label="webRtcSessionID", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="iceCandidates", Tag=1, Type=typing.List[WebRtcTransportDefinitions.Structs.ICECandidateStruct]),
+                    ])
+
+            webRtcSessionID: uint = 0
+            iceCandidates: typing.List[WebRtcTransportDefinitions.Structs.ICECandidateStruct] = field(default_factory=lambda: [])
+
+        @dataclass
+        class End(ClusterCommand):
+            cluster_id: typing.ClassVar[int] = 0x00000554
+            command_id: typing.ClassVar[int] = 0x00000003
+            is_client: typing.ClassVar[bool] = True
+            response_type: typing.ClassVar[typing.Optional[str]] = None
+
+            @ChipUtility.classproperty
+            def descriptor(cls) -> ClusterObjectDescriptor:
+                return ClusterObjectDescriptor(
+                    Fields=[
+                        ClusterObjectFieldDescriptor(Label="webRtcSessionID", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="reason", Tag=1, Type=WebRtcTransportDefinitions.Enums.WebRTCEndReasonEnum),
+                    ])
+
+            webRtcSessionID: uint = 0
+            reason: WebRtcTransportDefinitions.Enums.WebRTCEndReasonEnum = 0
 
     class Attributes:
         @dataclass
-        class AvailableEndpoints(ClusterAttributeDescriptor):
+        class CurrentSessions(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x0000009C
+                return 0x00000554
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
@@ -79,31 +130,15 @@ class PowerTopology(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[uint]])
+                return ClusterObjectFieldDescriptor(Type=typing.List[WebRtcTransportDefinitions.Structs.WebRTCSessionStruct])
 
-            value: typing.Optional[typing.List[uint]] = None
-
-        @dataclass
-        class ActiveEndpoints(ClusterAttributeDescriptor):
-            @ChipUtility.classproperty
-            def cluster_id(cls) -> int:
-                return 0x0000009C
-
-            @ChipUtility.classproperty
-            def attribute_id(cls) -> int:
-                return 0x00000001
-
-            @ChipUtility.classproperty
-            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[uint]])
-
-            value: typing.Optional[typing.List[uint]] = None
+            value: typing.List[WebRtcTransportDefinitions.Structs.WebRTCSessionStruct] = field(default_factory=lambda: [])
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x0000009C
+                return 0x00000554
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
@@ -119,7 +154,7 @@ class PowerTopology(Cluster):
         class AcceptedCommandList(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x0000009C
+                return 0x00000554
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
@@ -135,7 +170,7 @@ class PowerTopology(Cluster):
         class EventList(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x0000009C
+                return 0x00000554
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
@@ -151,7 +186,7 @@ class PowerTopology(Cluster):
         class AttributeList(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x0000009C
+                return 0x00000554
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
@@ -167,7 +202,7 @@ class PowerTopology(Cluster):
         class FeatureMap(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x0000009C
+                return 0x00000554
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
@@ -183,7 +218,7 @@ class PowerTopology(Cluster):
         class ClusterRevision(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x0000009C
+                return 0x00000554
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:

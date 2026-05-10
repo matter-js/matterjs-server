@@ -15,11 +15,19 @@ from .Binding import Binding
 from .BooleanState import BooleanState
 from .BooleanStateConfiguration import BooleanStateConfiguration
 from .BridgedDeviceBasicInformation import BridgedDeviceBasicInformation
+from .CameraAvSettingsUserLevelManagement import CameraAvSettingsUserLevelManagement
+from .CameraAvStreamManagement import CameraAvStreamManagement
 from .CarbonDioxideConcentrationMeasurement import CarbonDioxideConcentrationMeasurement
 from .CarbonMonoxideConcentrationMeasurement import CarbonMonoxideConcentrationMeasurement
 from .Channel import Channel
+from .Chime import Chime
+from .ClosureControl import ClosureControl
+from .ClosureDimension import ClosureDimension
 from .ColorControl import ColorControl
 from .CommissionerControl import CommissionerControl
+from .CommodityMetering import CommodityMetering
+from .CommodityPrice import CommodityPrice
+from .CommodityTariff import CommodityTariff
 from .ContentAppObserver import ContentAppObserver
 from .ContentControl import ContentControl
 from .ContentLauncher import ContentLauncher
@@ -33,6 +41,7 @@ from .DoorLock import DoorLock
 from .DraftElectricalMeasurementCluster import DraftElectricalMeasurementCluster
 from .EcosystemInformation import EcosystemInformation
 from .ElectricalEnergyMeasurement import ElectricalEnergyMeasurement
+from .ElectricalGridConditions import ElectricalGridConditions
 from .ElectricalPowerMeasurement import ElectricalPowerMeasurement
 from .EnergyEvse import EnergyEvse
 from .EnergyEvseMode import EnergyEvseMode
@@ -65,6 +74,7 @@ from .LowPower import LowPower
 from .MediaInput import MediaInput
 from .MediaPlayback import MediaPlayback
 from .Messages import Messages
+from .MeterIdentification import MeterIdentification
 from .MicrowaveOvenControl import MicrowaveOvenControl
 from .MicrowaveOvenMode import MicrowaveOvenMode
 from .ModeSelect import ModeSelect
@@ -88,6 +98,7 @@ from .PowerSourceConfiguration import PowerSourceConfiguration
 from .PowerTopology import PowerTopology
 from .PressureMeasurement import PressureMeasurement
 from .PumpConfigurationAndControl import PumpConfigurationAndControl
+from .PushAvStreamTransport import PushAvStreamTransport
 from .RadonConcentrationMeasurement import RadonConcentrationMeasurement
 from .RefrigeratorAlarm import RefrigeratorAlarm
 from .RefrigeratorAndTemperatureControlledCabinetMode import RefrigeratorAndTemperatureControlledCabinetMode
@@ -99,6 +110,7 @@ from .ScenesManagement import ScenesManagement
 from .ServiceArea import ServiceArea
 from .SmokeCoAlarm import SmokeCoAlarm
 from .SoftwareDiagnostics import SoftwareDiagnostics
+from .SoilMeasurement import SoilMeasurement
 from .Switch import Switch
 from .TargetNavigator import TargetNavigator
 from .TemperatureControl import TemperatureControl
@@ -111,6 +123,8 @@ from .ThreadNetworkDiagnostics import ThreadNetworkDiagnostics
 from .ThreadNetworkDirectory import ThreadNetworkDirectory
 from .TimeFormatLocalization import TimeFormatLocalization
 from .TimeSynchronization import TimeSynchronization
+from .TlsCertificateManagement import TlsCertificateManagement
+from .TlsClientManagement import TlsClientManagement
 from .TotalVolatileOrganicCompoundsConcentrationMeasurement import TotalVolatileOrganicCompoundsConcentrationMeasurement
 from .UnitLocalization import UnitLocalization
 from .UserLabel import UserLabel
@@ -119,9 +133,13 @@ from .WakeOnLan import WakeOnLan
 from .WaterHeaterManagement import WaterHeaterManagement
 from .WaterHeaterMode import WaterHeaterMode
 from .WaterTankLevelMonitoring import WaterTankLevelMonitoring
+from .WebRtcTransportDefinitions import WebRtcTransportDefinitions
+from .WebRtcTransportProvider import WebRtcTransportProvider
+from .WebRtcTransportRequestor import WebRtcTransportRequestor
 from .WiFiNetworkDiagnostics import WiFiNetworkDiagnostics
 from .WiFiNetworkManagement import WiFiNetworkManagement
 from .WindowCovering import WindowCovering
+from .ZoneManagement import ZoneManagement
 
 __all__ = [
     "Globals",
@@ -139,11 +157,19 @@ __all__ = [
     "BooleanState",
     "BooleanStateConfiguration",
     "BridgedDeviceBasicInformation",
+    "CameraAvSettingsUserLevelManagement",
+    "CameraAvStreamManagement",
     "CarbonDioxideConcentrationMeasurement",
     "CarbonMonoxideConcentrationMeasurement",
     "Channel",
+    "Chime",
+    "ClosureControl",
+    "ClosureDimension",
     "ColorControl",
     "CommissionerControl",
+    "CommodityMetering",
+    "CommodityPrice",
+    "CommodityTariff",
     "ContentAppObserver",
     "ContentControl",
     "ContentLauncher",
@@ -157,6 +183,7 @@ __all__ = [
     "DraftElectricalMeasurementCluster",
     "EcosystemInformation",
     "ElectricalEnergyMeasurement",
+    "ElectricalGridConditions",
     "ElectricalPowerMeasurement",
     "EnergyEvse",
     "EnergyEvseMode",
@@ -189,6 +216,7 @@ __all__ = [
     "MediaInput",
     "MediaPlayback",
     "Messages",
+    "MeterIdentification",
     "MicrowaveOvenControl",
     "MicrowaveOvenMode",
     "ModeSelect",
@@ -212,6 +240,7 @@ __all__ = [
     "PowerTopology",
     "PressureMeasurement",
     "PumpConfigurationAndControl",
+    "PushAvStreamTransport",
     "RadonConcentrationMeasurement",
     "RefrigeratorAlarm",
     "RefrigeratorAndTemperatureControlledCabinetMode",
@@ -223,6 +252,7 @@ __all__ = [
     "ServiceArea",
     "SmokeCoAlarm",
     "SoftwareDiagnostics",
+    "SoilMeasurement",
     "Switch",
     "TargetNavigator",
     "TemperatureControl",
@@ -235,6 +265,8 @@ __all__ = [
     "ThreadNetworkDirectory",
     "TimeFormatLocalization",
     "TimeSynchronization",
+    "TlsCertificateManagement",
+    "TlsClientManagement",
     "TotalVolatileOrganicCompoundsConcentrationMeasurement",
     "UnitLocalization",
     "UserLabel",
@@ -243,8 +275,12 @@ __all__ = [
     "WaterHeaterManagement",
     "WaterHeaterMode",
     "WaterTankLevelMonitoring",
+    "WebRtcTransportDefinitions",
+    "WebRtcTransportProvider",
+    "WebRtcTransportRequestor",
     "WiFiNetworkDiagnostics",
     "WiFiNetworkManagement",
     "WindowCovering",
+    "ZoneManagement",
 ]
 

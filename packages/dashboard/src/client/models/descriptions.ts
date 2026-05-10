@@ -123,6 +123,10 @@ export const device_types: Record<number, DeviceType> = {
         "id": 45,
         "label": "Air Purifier"
     },
+    "64": {
+        "id": 64,
+        "label": "Irrigation System"
+    },
     "65": {
         "id": 65,
         "label": "Water Freeze Detector"
@@ -138,6 +142,10 @@ export const device_types: Record<number, DeviceType> = {
     "68": {
         "id": 68,
         "label": "Rain Sensor"
+    },
+    "69": {
+        "id": 69,
+        "label": "Soil Sensor"
     },
     "112": {
         "id": 112,
@@ -195,6 +203,10 @@ export const device_types: Record<number, DeviceType> = {
         "id": 144,
         "label": "Network Infrastructure Manager"
     },
+    "145": {
+        "id": 145,
+        "label": "Thread Border Router"
+    },
     "256": {
         "id": 256,
         "label": "On Off Light"
@@ -251,6 +263,42 @@ export const device_types: Record<number, DeviceType> = {
         "id": 304,
         "label": "Joint Fabric Administrator"
     },
+    "320": {
+        "id": 320,
+        "label": "Intercom"
+    },
+    "321": {
+        "id": 321,
+        "label": "Audio Doorbell"
+    },
+    "322": {
+        "id": 322,
+        "label": "Camera"
+    },
+    "323": {
+        "id": 323,
+        "label": "Video Doorbell"
+    },
+    "324": {
+        "id": 324,
+        "label": "Floodlight Camera"
+    },
+    "325": {
+        "id": 325,
+        "label": "Snapshot Camera"
+    },
+    "326": {
+        "id": 326,
+        "label": "Chime"
+    },
+    "327": {
+        "id": 327,
+        "label": "Camera Controller"
+    },
+    "328": {
+        "id": 328,
+        "label": "Doorbell"
+    },
     "514": {
         "id": 514,
         "label": "Window Covering"
@@ -258,6 +306,18 @@ export const device_types: Record<number, DeviceType> = {
     "515": {
         "id": 515,
         "label": "Window Covering Controller"
+    },
+    "560": {
+        "id": 560,
+        "label": "Closure"
+    },
+    "561": {
+        "id": 561,
+        "label": "Closure Panel"
+    },
+    "574": {
+        "id": 574,
+        "label": "Closure Controller"
     },
     "769": {
         "id": 769,
@@ -310,6 +370,22 @@ export const device_types: Record<number, DeviceType> = {
     "1296": {
         "id": 1296,
         "label": "Electrical Sensor"
+    },
+    "1297": {
+        "id": 1297,
+        "label": "Electrical Utility Meter"
+    },
+    "1298": {
+        "id": 1298,
+        "label": "Meter Reference Point"
+    },
+    "1299": {
+        "id": 1299,
+        "label": "Electrical Energy Tariff"
+    },
+    "1300": {
+        "id": 1300,
+        "label": "Electrical Meter"
     },
     "2112": {
         "id": 2112,
@@ -1343,7 +1419,7 @@ export const clusters: Record<number, ClusterDescription> = {
                 "id": 18,
                 "cluster_id": 40,
                 "label": "UniqueId",
-                "type": "string",
+                "type": "Optional[string]",
                 "writable": false
             },
             "19": {
@@ -1364,14 +1440,14 @@ export const clusters: Record<number, ClusterDescription> = {
                 "id": 21,
                 "cluster_id": 40,
                 "label": "SpecificationVersion",
-                "type": "uint32",
+                "type": "Optional[uint32]",
                 "writable": false
             },
             "22": {
                 "id": 22,
                 "cluster_id": 40,
                 "label": "MaxPathsPerInvoke",
-                "type": "uint16",
+                "type": "Optional[uint16]",
                 "writable": false
             },
             "24": {
@@ -2175,6 +2251,27 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 48,
                 "label": "TcUpdateDeadline",
                 "type": "Optional[Nullable[uint32]]",
+                "writable": false
+            },
+            "10": {
+                "id": 10,
+                "cluster_id": 48,
+                "label": "RecoveryIdentifier",
+                "type": "Optional[bytes]",
+                "writable": false
+            },
+            "11": {
+                "id": 11,
+                "cluster_id": 48,
+                "label": "NetworkRecoveryReason",
+                "type": "Optional[Nullable[NetworkRecoveryReasonEnum]]",
+                "writable": false
+            },
+            "12": {
+                "id": 12,
+                "cluster_id": 48,
+                "label": "IsCommissioningWithoutPower",
+                "type": "Optional[bool]",
                 "writable": false
             },
             "65528": {
@@ -3770,7 +3867,7 @@ export const clusters: Record<number, ClusterDescription> = {
                 "id": 18,
                 "cluster_id": 57,
                 "label": "UniqueId",
-                "type": "string",
+                "type": "Optional[string]",
                 "writable": false
             },
             "19": {
@@ -7412,6 +7509,96 @@ export const clusters: Record<number, ClusterDescription> = {
             }
         }
     },
+    "149": {
+        "id": 149,
+        "label": "CommodityPrice",
+        "attributes": {
+            "0": {
+                "id": 0,
+                "cluster_id": 149,
+                "label": "TariffUnit",
+                "type": "TariffUnitEnum",
+                "writable": false
+            },
+            "1": {
+                "id": 1,
+                "cluster_id": 149,
+                "label": "Currency",
+                "type": "Nullable[currency]",
+                "writable": false
+            },
+            "2": {
+                "id": 2,
+                "cluster_id": 149,
+                "label": "CurrentPrice",
+                "type": "Nullable[CommodityPriceStruct]",
+                "writable": false
+            },
+            "3": {
+                "id": 3,
+                "cluster_id": 149,
+                "label": "PriceForecast",
+                "type": "List[CommodityPriceStruct]",
+                "writable": false
+            },
+            "65528": {
+                "id": 65528,
+                "cluster_id": 149,
+                "label": "GeneratedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65529": {
+                "id": 65529,
+                "cluster_id": 149,
+                "label": "AcceptedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65530": {
+                "id": 65530,
+                "cluster_id": 149,
+                "label": "EventList",
+                "type": "Optional[unknown]",
+                "writable": true
+            },
+            "65531": {
+                "id": 65531,
+                "cluster_id": 149,
+                "label": "AttributeList",
+                "type": "List[attrib-id]",
+                "writable": false
+            },
+            "65532": {
+                "id": 65532,
+                "cluster_id": 149,
+                "label": "FeatureMap",
+                "type": "FeatureMap",
+                "writable": false
+            },
+            "65533": {
+                "id": 65533,
+                "cluster_id": 149,
+                "label": "ClusterRevision",
+                "type": "ClusterRevision",
+                "writable": false
+            }
+        },
+        "commands": {
+            "0": {
+                "id": 0,
+                "cluster_id": 149,
+                "name": "GetDetailedPriceRequest",
+                "label": "Get Detailed Price Request"
+            },
+            "2": {
+                "id": 2,
+                "cluster_id": 149,
+                "name": "GetDetailedForecastRequest",
+                "label": "Get Detailed Forecast Request"
+            }
+        }
+    },
     "151": {
         "id": 151,
         "label": "Messages",
@@ -8294,6 +8481,76 @@ export const clusters: Record<number, ClusterDescription> = {
             }
         }
     },
+    "160": {
+        "id": 160,
+        "label": "ElectricalGridConditions",
+        "attributes": {
+            "0": {
+                "id": 0,
+                "cluster_id": 160,
+                "label": "LocalGenerationAvailable",
+                "type": "Nullable[bool]",
+                "writable": true
+            },
+            "1": {
+                "id": 1,
+                "cluster_id": 160,
+                "label": "CurrentConditions",
+                "type": "Nullable[ElectricalGridConditionsStruct]",
+                "writable": false
+            },
+            "2": {
+                "id": 2,
+                "cluster_id": 160,
+                "label": "ForecastConditions",
+                "type": "List[ElectricalGridConditionsStruct]",
+                "writable": false
+            },
+            "65528": {
+                "id": 65528,
+                "cluster_id": 160,
+                "label": "GeneratedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65529": {
+                "id": 65529,
+                "cluster_id": 160,
+                "label": "AcceptedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65530": {
+                "id": 65530,
+                "cluster_id": 160,
+                "label": "EventList",
+                "type": "Optional[unknown]",
+                "writable": true
+            },
+            "65531": {
+                "id": 65531,
+                "cluster_id": 160,
+                "label": "AttributeList",
+                "type": "List[attrib-id]",
+                "writable": false
+            },
+            "65532": {
+                "id": 65532,
+                "cluster_id": 160,
+                "label": "FeatureMap",
+                "type": "FeatureMap",
+                "writable": false
+            },
+            "65533": {
+                "id": 65533,
+                "cluster_id": 160,
+                "label": "ClusterRevision",
+                "type": "ClusterRevision",
+                "writable": false
+            }
+        },
+        "commands": {}
+    },
     "257": {
         "id": 257,
         "label": "DoorLock",
@@ -8688,42 +8945,6 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "UnlockWithTimeout",
                 "label": "Unlock With Timeout"
             },
-            "5": {
-                "id": 5,
-                "cluster_id": 257,
-                "name": "SetPinCode",
-                "label": "Set Pin Code"
-            },
-            "6": {
-                "id": 6,
-                "cluster_id": 257,
-                "name": "GetPinCode",
-                "label": "Get Pin Code"
-            },
-            "7": {
-                "id": 7,
-                "cluster_id": 257,
-                "name": "ClearPinCode",
-                "label": "Clear Pin Code"
-            },
-            "8": {
-                "id": 8,
-                "cluster_id": 257,
-                "name": "ClearAllPinCodes",
-                "label": "Clear All Pin Codes"
-            },
-            "9": {
-                "id": 9,
-                "cluster_id": 257,
-                "name": "SetUserStatus",
-                "label": "Set User Status"
-            },
-            "10": {
-                "id": 10,
-                "cluster_id": 257,
-                "name": "GetUserStatus",
-                "label": "Get User Status"
-            },
             "11": {
                 "id": 11,
                 "cluster_id": 257,
@@ -8777,42 +8998,6 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 257,
                 "name": "ClearHolidaySchedule",
                 "label": "Clear Holiday Schedule"
-            },
-            "20": {
-                "id": 20,
-                "cluster_id": 257,
-                "name": "SetUserType",
-                "label": "Set User Type"
-            },
-            "21": {
-                "id": 21,
-                "cluster_id": 257,
-                "name": "GetUserType",
-                "label": "Get User Type"
-            },
-            "22": {
-                "id": 22,
-                "cluster_id": 257,
-                "name": "SetRfidCode",
-                "label": "Set Rfid Code"
-            },
-            "23": {
-                "id": 23,
-                "cluster_id": 257,
-                "name": "GetRfidCode",
-                "label": "Get Rfid Code"
-            },
-            "24": {
-                "id": 24,
-                "cluster_id": 257,
-                "name": "ClearRfidCode",
-                "label": "Clear Rfid Code"
-            },
-            "25": {
-                "id": 25,
-                "cluster_id": 257,
-                "name": "ClearAllRfidCodes",
-                "label": "Clear All Rfid Codes"
             },
             "26": {
                 "id": 26,
@@ -8879,34 +9064,6 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 258,
                 "label": "Type",
                 "type": "TypeEnum",
-                "writable": false
-            },
-            "1": {
-                "id": 1,
-                "cluster_id": 258,
-                "label": "PhysicalClosedLimitLift",
-                "type": "Optional[uint16]",
-                "writable": false
-            },
-            "2": {
-                "id": 2,
-                "cluster_id": 258,
-                "label": "PhysicalClosedLimitTilt",
-                "type": "Optional[uint16]",
-                "writable": false
-            },
-            "3": {
-                "id": 3,
-                "cluster_id": 258,
-                "label": "CurrentPositionLift",
-                "type": "Optional[Nullable[uint16]]",
-                "writable": false
-            },
-            "4": {
-                "id": 4,
-                "cluster_id": 258,
-                "label": "CurrentPositionTilt",
-                "type": "Optional[Nullable[uint16]]",
                 "writable": false
             },
             "5": {
@@ -8986,74 +9143,11 @@ export const clusters: Record<number, ClusterDescription> = {
                 "type": "Optional[Nullable[percent100ths]]",
                 "writable": false
             },
-            "16": {
-                "id": 16,
-                "cluster_id": 258,
-                "label": "InstalledOpenLimitLift",
-                "type": "Optional[uint16]",
-                "writable": false
-            },
-            "17": {
-                "id": 17,
-                "cluster_id": 258,
-                "label": "InstalledClosedLimitLift",
-                "type": "Optional[uint16]",
-                "writable": false
-            },
-            "18": {
-                "id": 18,
-                "cluster_id": 258,
-                "label": "InstalledOpenLimitTilt",
-                "type": "Optional[uint16]",
-                "writable": false
-            },
-            "19": {
-                "id": 19,
-                "cluster_id": 258,
-                "label": "InstalledClosedLimitTilt",
-                "type": "Optional[uint16]",
-                "writable": false
-            },
-            "20": {
-                "id": 20,
-                "cluster_id": 258,
-                "label": "VelocityLift",
-                "type": "Optional[unknown]",
-                "writable": true
-            },
-            "21": {
-                "id": 21,
-                "cluster_id": 258,
-                "label": "AccelerationTimeLift",
-                "type": "Optional[unknown]",
-                "writable": true
-            },
-            "22": {
-                "id": 22,
-                "cluster_id": 258,
-                "label": "DecelerationTimeLift",
-                "type": "Optional[unknown]",
-                "writable": true
-            },
             "23": {
                 "id": 23,
                 "cluster_id": 258,
                 "label": "Mode",
                 "type": "ModeBitmap",
-                "writable": true
-            },
-            "24": {
-                "id": 24,
-                "cluster_id": 258,
-                "label": "IntermediateSetpointsLift",
-                "type": "Optional[unknown]",
-                "writable": true
-            },
-            "25": {
-                "id": 25,
-                "cluster_id": 258,
-                "label": "IntermediateSetpointsTilt",
-                "type": "Optional[unknown]",
                 "writable": true
             },
             "26": {
@@ -9125,29 +9219,273 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "StopMotion",
                 "label": "Stop Motion"
             },
-            "4": {
-                "id": 4,
-                "cluster_id": 258,
-                "name": "GoToLiftValue",
-                "label": "Go To Lift Value"
-            },
             "5": {
                 "id": 5,
                 "cluster_id": 258,
                 "name": "GoToLiftPercentage",
                 "label": "Go To Lift Percentage"
             },
-            "7": {
-                "id": 7,
-                "cluster_id": 258,
-                "name": "GoToTiltValue",
-                "label": "Go To Tilt Value"
-            },
             "8": {
                 "id": 8,
                 "cluster_id": 258,
                 "name": "GoToTiltPercentage",
                 "label": "Go To Tilt Percentage"
+            }
+        }
+    },
+    "260": {
+        "id": 260,
+        "label": "ClosureControl",
+        "attributes": {
+            "0": {
+                "id": 0,
+                "cluster_id": 260,
+                "label": "CountdownTime",
+                "type": "Optional[Nullable[elapsed-s]]",
+                "writable": false
+            },
+            "1": {
+                "id": 1,
+                "cluster_id": 260,
+                "label": "MainState",
+                "type": "MainStateEnum",
+                "writable": false
+            },
+            "2": {
+                "id": 2,
+                "cluster_id": 260,
+                "label": "CurrentErrorList",
+                "type": "List[ClosureErrorEnum]",
+                "writable": false
+            },
+            "3": {
+                "id": 3,
+                "cluster_id": 260,
+                "label": "OverallCurrentState",
+                "type": "Nullable[OverallCurrentStateStruct]",
+                "writable": false
+            },
+            "4": {
+                "id": 4,
+                "cluster_id": 260,
+                "label": "OverallTargetState",
+                "type": "Nullable[OverallTargetStateStruct]",
+                "writable": false
+            },
+            "5": {
+                "id": 5,
+                "cluster_id": 260,
+                "label": "LatchControlModes",
+                "type": "Optional[LatchControlModesBitmap]",
+                "writable": false
+            },
+            "65528": {
+                "id": 65528,
+                "cluster_id": 260,
+                "label": "GeneratedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65529": {
+                "id": 65529,
+                "cluster_id": 260,
+                "label": "AcceptedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65530": {
+                "id": 65530,
+                "cluster_id": 260,
+                "label": "EventList",
+                "type": "Optional[unknown]",
+                "writable": true
+            },
+            "65531": {
+                "id": 65531,
+                "cluster_id": 260,
+                "label": "AttributeList",
+                "type": "List[attrib-id]",
+                "writable": false
+            },
+            "65532": {
+                "id": 65532,
+                "cluster_id": 260,
+                "label": "FeatureMap",
+                "type": "FeatureMap",
+                "writable": false
+            },
+            "65533": {
+                "id": 65533,
+                "cluster_id": 260,
+                "label": "ClusterRevision",
+                "type": "ClusterRevision",
+                "writable": false
+            }
+        },
+        "commands": {
+            "0": {
+                "id": 0,
+                "cluster_id": 260,
+                "name": "Stop",
+                "label": "Stop"
+            },
+            "1": {
+                "id": 1,
+                "cluster_id": 260,
+                "name": "MoveTo",
+                "label": "Move To"
+            },
+            "2": {
+                "id": 2,
+                "cluster_id": 260,
+                "name": "Calibrate",
+                "label": "Calibrate"
+            }
+        }
+    },
+    "261": {
+        "id": 261,
+        "label": "ClosureDimension",
+        "attributes": {
+            "0": {
+                "id": 0,
+                "cluster_id": 261,
+                "label": "CurrentState",
+                "type": "Nullable[DimensionStateStruct]",
+                "writable": false
+            },
+            "1": {
+                "id": 1,
+                "cluster_id": 261,
+                "label": "TargetState",
+                "type": "Nullable[DimensionStateStruct]",
+                "writable": false
+            },
+            "2": {
+                "id": 2,
+                "cluster_id": 261,
+                "label": "Resolution",
+                "type": "Optional[percent100ths]",
+                "writable": false
+            },
+            "3": {
+                "id": 3,
+                "cluster_id": 261,
+                "label": "StepValue",
+                "type": "Optional[percent100ths]",
+                "writable": false
+            },
+            "4": {
+                "id": 4,
+                "cluster_id": 261,
+                "label": "Unit",
+                "type": "Optional[ClosureUnitEnum]",
+                "writable": false
+            },
+            "5": {
+                "id": 5,
+                "cluster_id": 261,
+                "label": "UnitRange",
+                "type": "Optional[Nullable[UnitRangeStruct]]",
+                "writable": false
+            },
+            "6": {
+                "id": 6,
+                "cluster_id": 261,
+                "label": "LimitRange",
+                "type": "Optional[RangePercent100thsStruct]",
+                "writable": false
+            },
+            "7": {
+                "id": 7,
+                "cluster_id": 261,
+                "label": "TranslationDirection",
+                "type": "Optional[TranslationDirectionEnum]",
+                "writable": false
+            },
+            "8": {
+                "id": 8,
+                "cluster_id": 261,
+                "label": "RotationAxis",
+                "type": "Optional[RotationAxisEnum]",
+                "writable": false
+            },
+            "9": {
+                "id": 9,
+                "cluster_id": 261,
+                "label": "Overflow",
+                "type": "Optional[OverflowEnum]",
+                "writable": false
+            },
+            "10": {
+                "id": 10,
+                "cluster_id": 261,
+                "label": "ModulationType",
+                "type": "Optional[ModulationTypeEnum]",
+                "writable": false
+            },
+            "11": {
+                "id": 11,
+                "cluster_id": 261,
+                "label": "LatchControlModes",
+                "type": "Optional[LatchControlModesBitmap]",
+                "writable": false
+            },
+            "65528": {
+                "id": 65528,
+                "cluster_id": 261,
+                "label": "GeneratedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65529": {
+                "id": 65529,
+                "cluster_id": 261,
+                "label": "AcceptedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65530": {
+                "id": 65530,
+                "cluster_id": 261,
+                "label": "EventList",
+                "type": "Optional[unknown]",
+                "writable": true
+            },
+            "65531": {
+                "id": 65531,
+                "cluster_id": 261,
+                "label": "AttributeList",
+                "type": "List[attrib-id]",
+                "writable": false
+            },
+            "65532": {
+                "id": 65532,
+                "cluster_id": 261,
+                "label": "FeatureMap",
+                "type": "FeatureMap",
+                "writable": false
+            },
+            "65533": {
+                "id": 65533,
+                "cluster_id": 261,
+                "label": "ClusterRevision",
+                "type": "ClusterRevision",
+                "writable": false
+            }
+        },
+        "commands": {
+            "0": {
+                "id": 0,
+                "cluster_id": 261,
+                "name": "SetTarget",
+                "label": "Set Target"
+            },
+            "1": {
+                "id": 1,
+                "cluster_id": 261,
+                "name": "Step",
+                "label": "Step"
             }
         }
     },
@@ -9529,21 +9867,21 @@ export const clusters: Record<number, ClusterDescription> = {
                 "id": 7,
                 "cluster_id": 513,
                 "label": "PiCoolingDemand",
-                "type": "Optional[uint8]",
-                "writable": false
+                "type": "Optional[unknown]",
+                "writable": true
             },
             "8": {
                 "id": 8,
                 "cluster_id": 513,
                 "label": "PiHeatingDemand",
-                "type": "Optional[uint8]",
-                "writable": false
+                "type": "Optional[unknown]",
+                "writable": true
             },
             "9": {
                 "id": 9,
                 "cluster_id": 513,
                 "label": "HvacSystemTypeConfiguration",
-                "type": "Optional[HVACSystemTypeBitmap]",
+                "type": "Optional[unknown]",
                 "writable": true
             },
             "16": {
@@ -9644,27 +9982,6 @@ export const clusters: Record<number, ClusterDescription> = {
                 "type": "Optional[ThermostatRunningModeEnum]",
                 "writable": false
             },
-            "32": {
-                "id": 32,
-                "cluster_id": 513,
-                "label": "StartOfWeek",
-                "type": "Optional[StartOfWeekEnum]",
-                "writable": false
-            },
-            "33": {
-                "id": 33,
-                "cluster_id": 513,
-                "label": "NumberOfWeeklyTransitions",
-                "type": "Optional[uint8]",
-                "writable": false
-            },
-            "34": {
-                "id": 34,
-                "cluster_id": 513,
-                "label": "NumberOfDailyTransitions",
-                "type": "Optional[uint8]",
-                "writable": false
-            },
             "35": {
                 "id": 35,
                 "cluster_id": 513,
@@ -9683,7 +10000,7 @@ export const clusters: Record<number, ClusterDescription> = {
                 "id": 37,
                 "cluster_id": 513,
                 "label": "ThermostatProgrammingOperationMode",
-                "type": "Optional[ProgrammingOperationModeBitmap]",
+                "type": "Optional[unknown]",
                 "writable": true
             },
             "41": {
@@ -9718,43 +10035,43 @@ export const clusters: Record<number, ClusterDescription> = {
                 "id": 52,
                 "cluster_id": 513,
                 "label": "OccupiedSetback",
-                "type": "Optional[Nullable[UnsignedTemperature]]",
+                "type": "Optional[unknown]",
                 "writable": true
             },
             "53": {
                 "id": 53,
                 "cluster_id": 513,
                 "label": "OccupiedSetbackMin",
-                "type": "Optional[Nullable[UnsignedTemperature]]",
-                "writable": false
+                "type": "Optional[unknown]",
+                "writable": true
             },
             "54": {
                 "id": 54,
                 "cluster_id": 513,
                 "label": "OccupiedSetbackMax",
-                "type": "Optional[Nullable[UnsignedTemperature]]",
-                "writable": false
+                "type": "Optional[unknown]",
+                "writable": true
             },
             "55": {
                 "id": 55,
                 "cluster_id": 513,
                 "label": "UnoccupiedSetback",
-                "type": "Optional[Nullable[UnsignedTemperature]]",
+                "type": "Optional[unknown]",
                 "writable": true
             },
             "56": {
                 "id": 56,
                 "cluster_id": 513,
                 "label": "UnoccupiedSetbackMin",
-                "type": "Optional[Nullable[UnsignedTemperature]]",
-                "writable": false
+                "type": "Optional[unknown]",
+                "writable": true
             },
             "57": {
                 "id": 57,
                 "cluster_id": 513,
                 "label": "UnoccupiedSetbackMax",
-                "type": "Optional[Nullable[UnsignedTemperature]]",
-                "writable": false
+                "type": "Optional[unknown]",
+                "writable": true
             },
             "58": {
                 "id": 58,
@@ -9945,24 +10262,6 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 513,
                 "name": "SetpointRaiseLower",
                 "label": "Setpoint Raise Lower"
-            },
-            "1": {
-                "id": 1,
-                "cluster_id": 513,
-                "name": "SetWeeklySchedule",
-                "label": "Set Weekly Schedule"
-            },
-            "2": {
-                "id": 2,
-                "cluster_id": 513,
-                "name": "GetWeeklySchedule",
-                "label": "Get Weekly Schedule"
-            },
-            "3": {
-                "id": 3,
-                "cluster_id": 513,
-                "name": "ClearWeeklySchedule",
-                "label": "Clear Weekly Schedule"
             },
             "5": {
                 "id": 5,
@@ -10406,77 +10705,77 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 768,
                 "label": "WhitePointX",
                 "type": "Optional[uint16]",
-                "writable": true
+                "writable": false
             },
             "49": {
                 "id": 49,
                 "cluster_id": 768,
                 "label": "WhitePointY",
                 "type": "Optional[uint16]",
-                "writable": true
+                "writable": false
             },
             "50": {
                 "id": 50,
                 "cluster_id": 768,
                 "label": "ColorPointRx",
                 "type": "Optional[uint16]",
-                "writable": true
+                "writable": false
             },
             "51": {
                 "id": 51,
                 "cluster_id": 768,
                 "label": "ColorPointRy",
                 "type": "Optional[uint16]",
-                "writable": true
+                "writable": false
             },
             "52": {
                 "id": 52,
                 "cluster_id": 768,
                 "label": "ColorPointRIntensity",
                 "type": "Optional[Nullable[uint8]]",
-                "writable": true
+                "writable": false
             },
             "54": {
                 "id": 54,
                 "cluster_id": 768,
                 "label": "ColorPointGx",
                 "type": "Optional[uint16]",
-                "writable": true
+                "writable": false
             },
             "55": {
                 "id": 55,
                 "cluster_id": 768,
                 "label": "ColorPointGy",
                 "type": "Optional[uint16]",
-                "writable": true
+                "writable": false
             },
             "56": {
                 "id": 56,
                 "cluster_id": 768,
                 "label": "ColorPointGIntensity",
                 "type": "Optional[Nullable[uint8]]",
-                "writable": true
+                "writable": false
             },
             "58": {
                 "id": 58,
                 "cluster_id": 768,
                 "label": "ColorPointBx",
                 "type": "Optional[uint16]",
-                "writable": true
+                "writable": false
             },
             "59": {
                 "id": 59,
                 "cluster_id": 768,
                 "label": "ColorPointBy",
                 "type": "Optional[uint16]",
-                "writable": true
+                "writable": false
             },
             "60": {
                 "id": 60,
                 "cluster_id": 768,
                 "label": "ColorPointBIntensity",
                 "type": "Optional[Nullable[uint8]]",
-                "writable": true
+                "writable": false
             },
             "16384": {
                 "id": 16384,
@@ -10531,7 +10830,7 @@ export const clusters: Record<number, ClusterDescription> = {
                 "id": 16394,
                 "cluster_id": 768,
                 "label": "ColorCapabilities",
-                "type": "map16",
+                "type": "ColorCapabilitiesBitmap",
                 "writable": false
             },
             "16395": {
@@ -12556,6 +12855,69 @@ export const clusters: Record<number, ClusterDescription> = {
         },
         "commands": {}
     },
+    "1072": {
+        "id": 1072,
+        "label": "SoilMeasurement",
+        "attributes": {
+            "0": {
+                "id": 0,
+                "cluster_id": 1072,
+                "label": "SoilMoistureMeasurementLimits",
+                "type": "MeasurementAccuracyStruct",
+                "writable": false
+            },
+            "1": {
+                "id": 1,
+                "cluster_id": 1072,
+                "label": "SoilMoistureMeasuredValue",
+                "type": "Nullable[percent]",
+                "writable": false
+            },
+            "65528": {
+                "id": 65528,
+                "cluster_id": 1072,
+                "label": "GeneratedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65529": {
+                "id": 65529,
+                "cluster_id": 1072,
+                "label": "AcceptedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65530": {
+                "id": 65530,
+                "cluster_id": 1072,
+                "label": "EventList",
+                "type": "Optional[unknown]",
+                "writable": true
+            },
+            "65531": {
+                "id": 65531,
+                "cluster_id": 1072,
+                "label": "AttributeList",
+                "type": "List[attrib-id]",
+                "writable": false
+            },
+            "65532": {
+                "id": 65532,
+                "cluster_id": 1072,
+                "label": "FeatureMap",
+                "type": "map32",
+                "writable": false
+            },
+            "65533": {
+                "id": 65533,
+                "cluster_id": 1072,
+                "label": "ClusterRevision",
+                "type": "ClusterRevision",
+                "writable": false
+            }
+        },
+        "commands": {}
+    },
     "1105": {
         "id": 1105,
         "label": "WiFiNetworkManagement",
@@ -14168,6 +14530,1234 @@ export const clusters: Record<number, ClusterDescription> = {
             }
         }
     },
+    "1360": {
+        "id": 1360,
+        "label": "ZoneManagement",
+        "attributes": {
+            "0": {
+                "id": 0,
+                "cluster_id": 1360,
+                "label": "MaxUserDefinedZones",
+                "type": "Optional[uint8]",
+                "writable": false
+            },
+            "1": {
+                "id": 1,
+                "cluster_id": 1360,
+                "label": "MaxZones",
+                "type": "uint8",
+                "writable": false
+            },
+            "2": {
+                "id": 2,
+                "cluster_id": 1360,
+                "label": "Zones",
+                "type": "List[ZoneInformationStruct]",
+                "writable": false
+            },
+            "3": {
+                "id": 3,
+                "cluster_id": 1360,
+                "label": "Triggers",
+                "type": "List[ZoneTriggerControlStruct]",
+                "writable": false
+            },
+            "4": {
+                "id": 4,
+                "cluster_id": 1360,
+                "label": "SensitivityMax",
+                "type": "uint8",
+                "writable": false
+            },
+            "5": {
+                "id": 5,
+                "cluster_id": 1360,
+                "label": "Sensitivity",
+                "type": "Optional[uint8]",
+                "writable": true
+            },
+            "6": {
+                "id": 6,
+                "cluster_id": 1360,
+                "label": "TwoDCartesianMax",
+                "type": "Optional[TwoDCartesianVertexStruct]",
+                "writable": false
+            },
+            "65528": {
+                "id": 65528,
+                "cluster_id": 1360,
+                "label": "GeneratedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65529": {
+                "id": 65529,
+                "cluster_id": 1360,
+                "label": "AcceptedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65530": {
+                "id": 65530,
+                "cluster_id": 1360,
+                "label": "EventList",
+                "type": "Optional[unknown]",
+                "writable": true
+            },
+            "65531": {
+                "id": 65531,
+                "cluster_id": 1360,
+                "label": "AttributeList",
+                "type": "List[attrib-id]",
+                "writable": false
+            },
+            "65532": {
+                "id": 65532,
+                "cluster_id": 1360,
+                "label": "FeatureMap",
+                "type": "FeatureMap",
+                "writable": false
+            },
+            "65533": {
+                "id": 65533,
+                "cluster_id": 1360,
+                "label": "ClusterRevision",
+                "type": "ClusterRevision",
+                "writable": false
+            }
+        },
+        "commands": {
+            "0": {
+                "id": 0,
+                "cluster_id": 1360,
+                "name": "CreateTwoDCartesianZone",
+                "label": "Create Two Dcartesian Zone"
+            },
+            "2": {
+                "id": 2,
+                "cluster_id": 1360,
+                "name": "UpdateTwoDCartesianZone",
+                "label": "Update Two Dcartesian Zone"
+            },
+            "3": {
+                "id": 3,
+                "cluster_id": 1360,
+                "name": "RemoveZone",
+                "label": "Remove Zone"
+            },
+            "4": {
+                "id": 4,
+                "cluster_id": 1360,
+                "name": "CreateOrUpdateTrigger",
+                "label": "Create Or Update Trigger"
+            },
+            "5": {
+                "id": 5,
+                "cluster_id": 1360,
+                "name": "RemoveTrigger",
+                "label": "Remove Trigger"
+            }
+        }
+    },
+    "1361": {
+        "id": 1361,
+        "label": "CameraAvStreamManagement",
+        "attributes": {
+            "0": {
+                "id": 0,
+                "cluster_id": 1361,
+                "label": "MaxConcurrentEncoders",
+                "type": "Optional[uint8]",
+                "writable": false
+            },
+            "1": {
+                "id": 1,
+                "cluster_id": 1361,
+                "label": "MaxEncodedPixelRate",
+                "type": "Optional[uint32]",
+                "writable": false
+            },
+            "2": {
+                "id": 2,
+                "cluster_id": 1361,
+                "label": "VideoSensorParams",
+                "type": "Optional[VideoSensorParamsStruct]",
+                "writable": false
+            },
+            "3": {
+                "id": 3,
+                "cluster_id": 1361,
+                "label": "NightVisionUsesInfrared",
+                "type": "Optional[bool]",
+                "writable": false
+            },
+            "4": {
+                "id": 4,
+                "cluster_id": 1361,
+                "label": "MinViewportResolution",
+                "type": "Optional[VideoResolutionStruct]",
+                "writable": false
+            },
+            "5": {
+                "id": 5,
+                "cluster_id": 1361,
+                "label": "RateDistortionTradeOffPoints",
+                "type": "List[RateDistortionTradeOffPointsStruct]",
+                "writable": false
+            },
+            "6": {
+                "id": 6,
+                "cluster_id": 1361,
+                "label": "MaxContentBufferSize",
+                "type": "uint32",
+                "writable": false
+            },
+            "7": {
+                "id": 7,
+                "cluster_id": 1361,
+                "label": "MicrophoneCapabilities",
+                "type": "Optional[AudioCapabilitiesStruct]",
+                "writable": false
+            },
+            "8": {
+                "id": 8,
+                "cluster_id": 1361,
+                "label": "SpeakerCapabilities",
+                "type": "Optional[AudioCapabilitiesStruct]",
+                "writable": false
+            },
+            "9": {
+                "id": 9,
+                "cluster_id": 1361,
+                "label": "TwoWayTalkSupport",
+                "type": "Optional[TwoWayTalkSupportTypeEnum]",
+                "writable": false
+            },
+            "10": {
+                "id": 10,
+                "cluster_id": 1361,
+                "label": "SnapshotCapabilities",
+                "type": "List[SnapshotCapabilitiesStruct]",
+                "writable": false
+            },
+            "11": {
+                "id": 11,
+                "cluster_id": 1361,
+                "label": "MaxNetworkBandwidth",
+                "type": "uint32",
+                "writable": false
+            },
+            "12": {
+                "id": 12,
+                "cluster_id": 1361,
+                "label": "CurrentFrameRate",
+                "type": "Optional[uint16]",
+                "writable": false
+            },
+            "13": {
+                "id": 13,
+                "cluster_id": 1361,
+                "label": "HdrModeEnabled",
+                "type": "Optional[bool]",
+                "writable": true
+            },
+            "14": {
+                "id": 14,
+                "cluster_id": 1361,
+                "label": "SupportedStreamUsages",
+                "type": "List[StreamUsageEnum]",
+                "writable": false
+            },
+            "15": {
+                "id": 15,
+                "cluster_id": 1361,
+                "label": "AllocatedVideoStreams",
+                "type": "List[VideoStreamStruct]",
+                "writable": false
+            },
+            "16": {
+                "id": 16,
+                "cluster_id": 1361,
+                "label": "AllocatedAudioStreams",
+                "type": "List[AudioStreamStruct]",
+                "writable": false
+            },
+            "17": {
+                "id": 17,
+                "cluster_id": 1361,
+                "label": "AllocatedSnapshotStreams",
+                "type": "List[SnapshotStreamStruct]",
+                "writable": false
+            },
+            "18": {
+                "id": 18,
+                "cluster_id": 1361,
+                "label": "StreamUsagePriorities",
+                "type": "List[StreamUsageEnum]",
+                "writable": false
+            },
+            "19": {
+                "id": 19,
+                "cluster_id": 1361,
+                "label": "SoftRecordingPrivacyModeEnabled",
+                "type": "Optional[bool]",
+                "writable": true
+            },
+            "20": {
+                "id": 20,
+                "cluster_id": 1361,
+                "label": "SoftLivestreamPrivacyModeEnabled",
+                "type": "Optional[bool]",
+                "writable": true
+            },
+            "21": {
+                "id": 21,
+                "cluster_id": 1361,
+                "label": "HardPrivacyModeOn",
+                "type": "Optional[bool]",
+                "writable": false
+            },
+            "22": {
+                "id": 22,
+                "cluster_id": 1361,
+                "label": "NightVision",
+                "type": "Optional[TriStateAutoEnum]",
+                "writable": true
+            },
+            "23": {
+                "id": 23,
+                "cluster_id": 1361,
+                "label": "NightVisionIllum",
+                "type": "Optional[TriStateAutoEnum]",
+                "writable": true
+            },
+            "24": {
+                "id": 24,
+                "cluster_id": 1361,
+                "label": "Viewport",
+                "type": "Optional[ViewportStruct]",
+                "writable": true
+            },
+            "25": {
+                "id": 25,
+                "cluster_id": 1361,
+                "label": "SpeakerMuted",
+                "type": "Optional[bool]",
+                "writable": true
+            },
+            "26": {
+                "id": 26,
+                "cluster_id": 1361,
+                "label": "SpeakerVolumeLevel",
+                "type": "Optional[uint8]",
+                "writable": true
+            },
+            "27": {
+                "id": 27,
+                "cluster_id": 1361,
+                "label": "SpeakerMaxLevel",
+                "type": "Optional[uint8]",
+                "writable": false
+            },
+            "28": {
+                "id": 28,
+                "cluster_id": 1361,
+                "label": "SpeakerMinLevel",
+                "type": "Optional[uint8]",
+                "writable": false
+            },
+            "29": {
+                "id": 29,
+                "cluster_id": 1361,
+                "label": "MicrophoneMuted",
+                "type": "Optional[bool]",
+                "writable": true
+            },
+            "30": {
+                "id": 30,
+                "cluster_id": 1361,
+                "label": "MicrophoneVolumeLevel",
+                "type": "Optional[uint8]",
+                "writable": true
+            },
+            "31": {
+                "id": 31,
+                "cluster_id": 1361,
+                "label": "MicrophoneMaxLevel",
+                "type": "Optional[uint8]",
+                "writable": false
+            },
+            "32": {
+                "id": 32,
+                "cluster_id": 1361,
+                "label": "MicrophoneMinLevel",
+                "type": "Optional[uint8]",
+                "writable": false
+            },
+            "33": {
+                "id": 33,
+                "cluster_id": 1361,
+                "label": "MicrophoneAgcEnabled",
+                "type": "Optional[bool]",
+                "writable": true
+            },
+            "34": {
+                "id": 34,
+                "cluster_id": 1361,
+                "label": "ImageRotation",
+                "type": "Optional[uint16]",
+                "writable": true
+            },
+            "35": {
+                "id": 35,
+                "cluster_id": 1361,
+                "label": "ImageFlipHorizontal",
+                "type": "Optional[bool]",
+                "writable": true
+            },
+            "36": {
+                "id": 36,
+                "cluster_id": 1361,
+                "label": "ImageFlipVertical",
+                "type": "Optional[bool]",
+                "writable": true
+            },
+            "37": {
+                "id": 37,
+                "cluster_id": 1361,
+                "label": "LocalVideoRecordingEnabled",
+                "type": "Optional[bool]",
+                "writable": true
+            },
+            "38": {
+                "id": 38,
+                "cluster_id": 1361,
+                "label": "LocalSnapshotRecordingEnabled",
+                "type": "Optional[bool]",
+                "writable": true
+            },
+            "39": {
+                "id": 39,
+                "cluster_id": 1361,
+                "label": "StatusLightEnabled",
+                "type": "Optional[bool]",
+                "writable": true
+            },
+            "40": {
+                "id": 40,
+                "cluster_id": 1361,
+                "label": "StatusLightBrightness",
+                "type": "Optional[ThreeLevelAutoEnum]",
+                "writable": true
+            },
+            "65528": {
+                "id": 65528,
+                "cluster_id": 1361,
+                "label": "GeneratedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65529": {
+                "id": 65529,
+                "cluster_id": 1361,
+                "label": "AcceptedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65530": {
+                "id": 65530,
+                "cluster_id": 1361,
+                "label": "EventList",
+                "type": "Optional[unknown]",
+                "writable": true
+            },
+            "65531": {
+                "id": 65531,
+                "cluster_id": 1361,
+                "label": "AttributeList",
+                "type": "List[attrib-id]",
+                "writable": false
+            },
+            "65532": {
+                "id": 65532,
+                "cluster_id": 1361,
+                "label": "FeatureMap",
+                "type": "FeatureMap",
+                "writable": false
+            },
+            "65533": {
+                "id": 65533,
+                "cluster_id": 1361,
+                "label": "ClusterRevision",
+                "type": "ClusterRevision",
+                "writable": false
+            }
+        },
+        "commands": {
+            "0": {
+                "id": 0,
+                "cluster_id": 1361,
+                "name": "AudioStreamAllocate",
+                "label": "Audio Stream Allocate"
+            },
+            "2": {
+                "id": 2,
+                "cluster_id": 1361,
+                "name": "AudioStreamDeallocate",
+                "label": "Audio Stream Deallocate"
+            },
+            "3": {
+                "id": 3,
+                "cluster_id": 1361,
+                "name": "VideoStreamAllocate",
+                "label": "Video Stream Allocate"
+            },
+            "5": {
+                "id": 5,
+                "cluster_id": 1361,
+                "name": "VideoStreamModify",
+                "label": "Video Stream Modify"
+            },
+            "6": {
+                "id": 6,
+                "cluster_id": 1361,
+                "name": "VideoStreamDeallocate",
+                "label": "Video Stream Deallocate"
+            },
+            "7": {
+                "id": 7,
+                "cluster_id": 1361,
+                "name": "SnapshotStreamAllocate",
+                "label": "Snapshot Stream Allocate"
+            },
+            "9": {
+                "id": 9,
+                "cluster_id": 1361,
+                "name": "SnapshotStreamModify",
+                "label": "Snapshot Stream Modify"
+            },
+            "10": {
+                "id": 10,
+                "cluster_id": 1361,
+                "name": "SnapshotStreamDeallocate",
+                "label": "Snapshot Stream Deallocate"
+            },
+            "11": {
+                "id": 11,
+                "cluster_id": 1361,
+                "name": "SetStreamPriorities",
+                "label": "Set Stream Priorities"
+            },
+            "12": {
+                "id": 12,
+                "cluster_id": 1361,
+                "name": "CaptureSnapshot",
+                "label": "Capture Snapshot"
+            }
+        }
+    },
+    "1362": {
+        "id": 1362,
+        "label": "CameraAvSettingsUserLevelManagement",
+        "attributes": {
+            "0": {
+                "id": 0,
+                "cluster_id": 1362,
+                "label": "MptzPosition",
+                "type": "Optional[MPTZStruct]",
+                "writable": false
+            },
+            "1": {
+                "id": 1,
+                "cluster_id": 1362,
+                "label": "MaxPresets",
+                "type": "Optional[uint8]",
+                "writable": false
+            },
+            "2": {
+                "id": 2,
+                "cluster_id": 1362,
+                "label": "MptzPresets",
+                "type": "List[MPTZPresetStruct]",
+                "writable": false
+            },
+            "3": {
+                "id": 3,
+                "cluster_id": 1362,
+                "label": "DptzStreams",
+                "type": "List[DPTZStruct]",
+                "writable": false
+            },
+            "4": {
+                "id": 4,
+                "cluster_id": 1362,
+                "label": "ZoomMax",
+                "type": "Optional[uint8]",
+                "writable": false
+            },
+            "5": {
+                "id": 5,
+                "cluster_id": 1362,
+                "label": "TiltMin",
+                "type": "Optional[int16]",
+                "writable": false
+            },
+            "6": {
+                "id": 6,
+                "cluster_id": 1362,
+                "label": "TiltMax",
+                "type": "Optional[int16]",
+                "writable": false
+            },
+            "7": {
+                "id": 7,
+                "cluster_id": 1362,
+                "label": "PanMin",
+                "type": "Optional[int16]",
+                "writable": false
+            },
+            "8": {
+                "id": 8,
+                "cluster_id": 1362,
+                "label": "PanMax",
+                "type": "Optional[int16]",
+                "writable": false
+            },
+            "9": {
+                "id": 9,
+                "cluster_id": 1362,
+                "label": "MovementState",
+                "type": "Optional[PhysicalMovementEnum]",
+                "writable": false
+            },
+            "65528": {
+                "id": 65528,
+                "cluster_id": 1362,
+                "label": "GeneratedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65529": {
+                "id": 65529,
+                "cluster_id": 1362,
+                "label": "AcceptedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65530": {
+                "id": 65530,
+                "cluster_id": 1362,
+                "label": "EventList",
+                "type": "Optional[unknown]",
+                "writable": true
+            },
+            "65531": {
+                "id": 65531,
+                "cluster_id": 1362,
+                "label": "AttributeList",
+                "type": "List[attrib-id]",
+                "writable": false
+            },
+            "65532": {
+                "id": 65532,
+                "cluster_id": 1362,
+                "label": "FeatureMap",
+                "type": "FeatureMap",
+                "writable": false
+            },
+            "65533": {
+                "id": 65533,
+                "cluster_id": 1362,
+                "label": "ClusterRevision",
+                "type": "ClusterRevision",
+                "writable": false
+            }
+        },
+        "commands": {
+            "0": {
+                "id": 0,
+                "cluster_id": 1362,
+                "name": "MptzSetPosition",
+                "label": "Mptz Set Position"
+            },
+            "1": {
+                "id": 1,
+                "cluster_id": 1362,
+                "name": "MptzRelativeMove",
+                "label": "Mptz Relative Move"
+            },
+            "2": {
+                "id": 2,
+                "cluster_id": 1362,
+                "name": "MptzMoveToPreset",
+                "label": "Mptz Move To Preset"
+            },
+            "3": {
+                "id": 3,
+                "cluster_id": 1362,
+                "name": "MptzSavePreset",
+                "label": "Mptz Save Preset"
+            },
+            "4": {
+                "id": 4,
+                "cluster_id": 1362,
+                "name": "MptzRemovePreset",
+                "label": "Mptz Remove Preset"
+            },
+            "5": {
+                "id": 5,
+                "cluster_id": 1362,
+                "name": "DptzSetViewport",
+                "label": "Dptz Set Viewport"
+            },
+            "6": {
+                "id": 6,
+                "cluster_id": 1362,
+                "name": "DptzRelativeMove",
+                "label": "Dptz Relative Move"
+            }
+        }
+    },
+    "1363": {
+        "id": 1363,
+        "label": "WebRtcTransportProvider",
+        "attributes": {
+            "0": {
+                "id": 0,
+                "cluster_id": 1363,
+                "label": "CurrentSessions",
+                "type": "List[WebRtcTransportDefinitions.WebRTCSessionStruct]",
+                "writable": false
+            },
+            "65528": {
+                "id": 65528,
+                "cluster_id": 1363,
+                "label": "GeneratedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65529": {
+                "id": 65529,
+                "cluster_id": 1363,
+                "label": "AcceptedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65530": {
+                "id": 65530,
+                "cluster_id": 1363,
+                "label": "EventList",
+                "type": "Optional[unknown]",
+                "writable": true
+            },
+            "65531": {
+                "id": 65531,
+                "cluster_id": 1363,
+                "label": "AttributeList",
+                "type": "List[attrib-id]",
+                "writable": false
+            },
+            "65532": {
+                "id": 65532,
+                "cluster_id": 1363,
+                "label": "FeatureMap",
+                "type": "FeatureMap",
+                "writable": false
+            },
+            "65533": {
+                "id": 65533,
+                "cluster_id": 1363,
+                "label": "ClusterRevision",
+                "type": "ClusterRevision",
+                "writable": false
+            }
+        },
+        "commands": {
+            "0": {
+                "id": 0,
+                "cluster_id": 1363,
+                "name": "SolicitOffer",
+                "label": "Solicit Offer"
+            },
+            "2": {
+                "id": 2,
+                "cluster_id": 1363,
+                "name": "ProvideOffer",
+                "label": "Provide Offer"
+            },
+            "4": {
+                "id": 4,
+                "cluster_id": 1363,
+                "name": "ProvideAnswer",
+                "label": "Provide Answer"
+            },
+            "5": {
+                "id": 5,
+                "cluster_id": 1363,
+                "name": "ProvideIceCandidates",
+                "label": "Provide Ice Candidates"
+            },
+            "6": {
+                "id": 6,
+                "cluster_id": 1363,
+                "name": "EndSession",
+                "label": "End Session"
+            }
+        }
+    },
+    "1364": {
+        "id": 1364,
+        "label": "WebRtcTransportRequestor",
+        "attributes": {
+            "0": {
+                "id": 0,
+                "cluster_id": 1364,
+                "label": "CurrentSessions",
+                "type": "List[WebRtcTransportDefinitions.WebRTCSessionStruct]",
+                "writable": false
+            },
+            "65528": {
+                "id": 65528,
+                "cluster_id": 1364,
+                "label": "GeneratedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65529": {
+                "id": 65529,
+                "cluster_id": 1364,
+                "label": "AcceptedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65530": {
+                "id": 65530,
+                "cluster_id": 1364,
+                "label": "EventList",
+                "type": "Optional[unknown]",
+                "writable": true
+            },
+            "65531": {
+                "id": 65531,
+                "cluster_id": 1364,
+                "label": "AttributeList",
+                "type": "List[attrib-id]",
+                "writable": false
+            },
+            "65532": {
+                "id": 65532,
+                "cluster_id": 1364,
+                "label": "FeatureMap",
+                "type": "map32",
+                "writable": false
+            },
+            "65533": {
+                "id": 65533,
+                "cluster_id": 1364,
+                "label": "ClusterRevision",
+                "type": "ClusterRevision",
+                "writable": false
+            }
+        },
+        "commands": {
+            "0": {
+                "id": 0,
+                "cluster_id": 1364,
+                "name": "Offer",
+                "label": "Offer"
+            },
+            "1": {
+                "id": 1,
+                "cluster_id": 1364,
+                "name": "Answer",
+                "label": "Answer"
+            },
+            "2": {
+                "id": 2,
+                "cluster_id": 1364,
+                "name": "IceCandidates",
+                "label": "Ice Candidates"
+            },
+            "3": {
+                "id": 3,
+                "cluster_id": 1364,
+                "name": "End",
+                "label": "End"
+            }
+        }
+    },
+    "1365": {
+        "id": 1365,
+        "label": "PushAvStreamTransport",
+        "attributes": {
+            "0": {
+                "id": 0,
+                "cluster_id": 1365,
+                "label": "SupportedFormats",
+                "type": "List[SupportedFormatStruct]",
+                "writable": false
+            },
+            "1": {
+                "id": 1,
+                "cluster_id": 1365,
+                "label": "CurrentConnections",
+                "type": "List[TransportConfigurationStruct]",
+                "writable": false
+            },
+            "65528": {
+                "id": 65528,
+                "cluster_id": 1365,
+                "label": "GeneratedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65529": {
+                "id": 65529,
+                "cluster_id": 1365,
+                "label": "AcceptedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65530": {
+                "id": 65530,
+                "cluster_id": 1365,
+                "label": "EventList",
+                "type": "Optional[unknown]",
+                "writable": true
+            },
+            "65531": {
+                "id": 65531,
+                "cluster_id": 1365,
+                "label": "AttributeList",
+                "type": "List[attrib-id]",
+                "writable": false
+            },
+            "65532": {
+                "id": 65532,
+                "cluster_id": 1365,
+                "label": "FeatureMap",
+                "type": "FeatureMap",
+                "writable": false
+            },
+            "65533": {
+                "id": 65533,
+                "cluster_id": 1365,
+                "label": "ClusterRevision",
+                "type": "ClusterRevision",
+                "writable": false
+            }
+        },
+        "commands": {
+            "0": {
+                "id": 0,
+                "cluster_id": 1365,
+                "name": "AllocatePushTransport",
+                "label": "Allocate Push Transport"
+            },
+            "2": {
+                "id": 2,
+                "cluster_id": 1365,
+                "name": "DeallocatePushTransport",
+                "label": "Deallocate Push Transport"
+            },
+            "3": {
+                "id": 3,
+                "cluster_id": 1365,
+                "name": "ModifyPushTransport",
+                "label": "Modify Push Transport"
+            },
+            "4": {
+                "id": 4,
+                "cluster_id": 1365,
+                "name": "SetTransportStatus",
+                "label": "Set Transport Status"
+            },
+            "5": {
+                "id": 5,
+                "cluster_id": 1365,
+                "name": "ManuallyTriggerTransport",
+                "label": "Manually Trigger Transport"
+            },
+            "6": {
+                "id": 6,
+                "cluster_id": 1365,
+                "name": "FindTransport",
+                "label": "Find Transport"
+            }
+        }
+    },
+    "1366": {
+        "id": 1366,
+        "label": "Chime",
+        "attributes": {
+            "0": {
+                "id": 0,
+                "cluster_id": 1366,
+                "label": "InstalledChimeSounds",
+                "type": "List[ChimeSoundStruct]",
+                "writable": false
+            },
+            "1": {
+                "id": 1,
+                "cluster_id": 1366,
+                "label": "SelectedChime",
+                "type": "uint8",
+                "writable": true
+            },
+            "2": {
+                "id": 2,
+                "cluster_id": 1366,
+                "label": "Enabled",
+                "type": "bool",
+                "writable": true
+            },
+            "65528": {
+                "id": 65528,
+                "cluster_id": 1366,
+                "label": "GeneratedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65529": {
+                "id": 65529,
+                "cluster_id": 1366,
+                "label": "AcceptedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65530": {
+                "id": 65530,
+                "cluster_id": 1366,
+                "label": "EventList",
+                "type": "Optional[unknown]",
+                "writable": true
+            },
+            "65531": {
+                "id": 65531,
+                "cluster_id": 1366,
+                "label": "AttributeList",
+                "type": "List[attrib-id]",
+                "writable": false
+            },
+            "65532": {
+                "id": 65532,
+                "cluster_id": 1366,
+                "label": "FeatureMap",
+                "type": "map32",
+                "writable": false
+            },
+            "65533": {
+                "id": 65533,
+                "cluster_id": 1366,
+                "label": "ClusterRevision",
+                "type": "ClusterRevision",
+                "writable": false
+            }
+        },
+        "commands": {
+            "0": {
+                "id": 0,
+                "cluster_id": 1366,
+                "name": "PlayChimeSound",
+                "label": "Play Chime Sound"
+            }
+        }
+    },
+    "1792": {
+        "id": 1792,
+        "label": "CommodityTariff",
+        "attributes": {
+            "0": {
+                "id": 0,
+                "cluster_id": 1792,
+                "label": "TariffInfo",
+                "type": "Nullable[TariffInformationStruct]",
+                "writable": false
+            },
+            "1": {
+                "id": 1,
+                "cluster_id": 1792,
+                "label": "TariffUnit",
+                "type": "Nullable[TariffUnitEnum]",
+                "writable": false
+            },
+            "2": {
+                "id": 2,
+                "cluster_id": 1792,
+                "label": "StartDate",
+                "type": "Nullable[epoch-s]",
+                "writable": false
+            },
+            "3": {
+                "id": 3,
+                "cluster_id": 1792,
+                "label": "DayEntries",
+                "type": "List[DayEntryStruct]",
+                "writable": false
+            },
+            "4": {
+                "id": 4,
+                "cluster_id": 1792,
+                "label": "DayPatterns",
+                "type": "List[DayPatternStruct]",
+                "writable": false
+            },
+            "5": {
+                "id": 5,
+                "cluster_id": 1792,
+                "label": "CalendarPeriods",
+                "type": "List[CalendarPeriodStruct]",
+                "writable": false
+            },
+            "6": {
+                "id": 6,
+                "cluster_id": 1792,
+                "label": "IndividualDays",
+                "type": "List[DayStruct]",
+                "writable": false
+            },
+            "7": {
+                "id": 7,
+                "cluster_id": 1792,
+                "label": "CurrentDay",
+                "type": "Nullable[DayStruct]",
+                "writable": false
+            },
+            "8": {
+                "id": 8,
+                "cluster_id": 1792,
+                "label": "NextDay",
+                "type": "Nullable[DayStruct]",
+                "writable": false
+            },
+            "9": {
+                "id": 9,
+                "cluster_id": 1792,
+                "label": "CurrentDayEntry",
+                "type": "Nullable[DayEntryStruct]",
+                "writable": false
+            },
+            "10": {
+                "id": 10,
+                "cluster_id": 1792,
+                "label": "CurrentDayEntryDate",
+                "type": "Nullable[epoch-s]",
+                "writable": false
+            },
+            "11": {
+                "id": 11,
+                "cluster_id": 1792,
+                "label": "NextDayEntry",
+                "type": "Nullable[DayEntryStruct]",
+                "writable": false
+            },
+            "12": {
+                "id": 12,
+                "cluster_id": 1792,
+                "label": "NextDayEntryDate",
+                "type": "Nullable[epoch-s]",
+                "writable": false
+            },
+            "13": {
+                "id": 13,
+                "cluster_id": 1792,
+                "label": "TariffComponents",
+                "type": "List[TariffComponentStruct]",
+                "writable": false
+            },
+            "14": {
+                "id": 14,
+                "cluster_id": 1792,
+                "label": "TariffPeriods",
+                "type": "List[TariffPeriodStruct]",
+                "writable": false
+            },
+            "15": {
+                "id": 15,
+                "cluster_id": 1792,
+                "label": "CurrentTariffComponents",
+                "type": "List[TariffComponentStruct]",
+                "writable": false
+            },
+            "16": {
+                "id": 16,
+                "cluster_id": 1792,
+                "label": "NextTariffComponents",
+                "type": "List[TariffComponentStruct]",
+                "writable": false
+            },
+            "17": {
+                "id": 17,
+                "cluster_id": 1792,
+                "label": "DefaultRandomizationOffset",
+                "type": "Optional[Nullable[int16]]",
+                "writable": false
+            },
+            "18": {
+                "id": 18,
+                "cluster_id": 1792,
+                "label": "DefaultRandomizationType",
+                "type": "Optional[Nullable[DayEntryRandomizationTypeEnum]]",
+                "writable": false
+            },
+            "65528": {
+                "id": 65528,
+                "cluster_id": 1792,
+                "label": "GeneratedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65529": {
+                "id": 65529,
+                "cluster_id": 1792,
+                "label": "AcceptedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65530": {
+                "id": 65530,
+                "cluster_id": 1792,
+                "label": "EventList",
+                "type": "Optional[unknown]",
+                "writable": true
+            },
+            "65531": {
+                "id": 65531,
+                "cluster_id": 1792,
+                "label": "AttributeList",
+                "type": "List[attrib-id]",
+                "writable": false
+            },
+            "65532": {
+                "id": 65532,
+                "cluster_id": 1792,
+                "label": "FeatureMap",
+                "type": "FeatureMap",
+                "writable": false
+            },
+            "65533": {
+                "id": 65533,
+                "cluster_id": 1792,
+                "label": "ClusterRevision",
+                "type": "ClusterRevision",
+                "writable": false
+            }
+        },
+        "commands": {
+            "0": {
+                "id": 0,
+                "cluster_id": 1792,
+                "name": "GetTariffComponent",
+                "label": "Get Tariff Component"
+            },
+            "1": {
+                "id": 1,
+                "cluster_id": 1792,
+                "name": "GetDayEntry",
+                "label": "Get Day Entry"
+            }
+        }
+    },
     "1872": {
         "id": 1872,
         "label": "EcosystemInformation",
@@ -14661,6 +16251,220 @@ export const clusters: Record<number, ClusterDescription> = {
             }
         }
     },
+    "2049": {
+        "id": 2049,
+        "label": "TlsCertificateManagement",
+        "attributes": {
+            "0": {
+                "id": 0,
+                "cluster_id": 2049,
+                "label": "MaxRootCertificates",
+                "type": "uint8",
+                "writable": false
+            },
+            "1": {
+                "id": 1,
+                "cluster_id": 2049,
+                "label": "ProvisionedRootCertificates",
+                "type": "List[TLSCertStruct]",
+                "writable": false
+            },
+            "2": {
+                "id": 2,
+                "cluster_id": 2049,
+                "label": "MaxClientCertificates",
+                "type": "uint8",
+                "writable": false
+            },
+            "3": {
+                "id": 3,
+                "cluster_id": 2049,
+                "label": "ProvisionedClientCertificates",
+                "type": "List[TLSClientCertificateDetailStruct]",
+                "writable": false
+            },
+            "65528": {
+                "id": 65528,
+                "cluster_id": 2049,
+                "label": "GeneratedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65529": {
+                "id": 65529,
+                "cluster_id": 2049,
+                "label": "AcceptedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65530": {
+                "id": 65530,
+                "cluster_id": 2049,
+                "label": "EventList",
+                "type": "Optional[unknown]",
+                "writable": true
+            },
+            "65531": {
+                "id": 65531,
+                "cluster_id": 2049,
+                "label": "AttributeList",
+                "type": "List[attrib-id]",
+                "writable": false
+            },
+            "65532": {
+                "id": 65532,
+                "cluster_id": 2049,
+                "label": "FeatureMap",
+                "type": "map32",
+                "writable": false
+            },
+            "65533": {
+                "id": 65533,
+                "cluster_id": 2049,
+                "label": "ClusterRevision",
+                "type": "ClusterRevision",
+                "writable": false
+            }
+        },
+        "commands": {
+            "0": {
+                "id": 0,
+                "cluster_id": 2049,
+                "name": "ProvisionRootCertificate",
+                "label": "Provision Root Certificate"
+            },
+            "2": {
+                "id": 2,
+                "cluster_id": 2049,
+                "name": "FindRootCertificate",
+                "label": "Find Root Certificate"
+            },
+            "4": {
+                "id": 4,
+                "cluster_id": 2049,
+                "name": "LookupRootCertificate",
+                "label": "Lookup Root Certificate"
+            },
+            "6": {
+                "id": 6,
+                "cluster_id": 2049,
+                "name": "RemoveRootCertificate",
+                "label": "Remove Root Certificate"
+            },
+            "7": {
+                "id": 7,
+                "cluster_id": 2049,
+                "name": "ClientCsr",
+                "label": "Client Csr"
+            },
+            "9": {
+                "id": 9,
+                "cluster_id": 2049,
+                "name": "ProvisionClientCertificate",
+                "label": "Provision Client Certificate"
+            },
+            "10": {
+                "id": 10,
+                "cluster_id": 2049,
+                "name": "FindClientCertificate",
+                "label": "Find Client Certificate"
+            },
+            "12": {
+                "id": 12,
+                "cluster_id": 2049,
+                "name": "LookupClientCertificate",
+                "label": "Lookup Client Certificate"
+            },
+            "14": {
+                "id": 14,
+                "cluster_id": 2049,
+                "name": "RemoveClientCertificate",
+                "label": "Remove Client Certificate"
+            }
+        }
+    },
+    "2050": {
+        "id": 2050,
+        "label": "TlsClientManagement",
+        "attributes": {
+            "0": {
+                "id": 0,
+                "cluster_id": 2050,
+                "label": "MaxProvisioned",
+                "type": "uint8",
+                "writable": false
+            },
+            "1": {
+                "id": 1,
+                "cluster_id": 2050,
+                "label": "ProvisionedEndpoints",
+                "type": "List[TLSEndpointStruct]",
+                "writable": false
+            },
+            "65528": {
+                "id": 65528,
+                "cluster_id": 2050,
+                "label": "GeneratedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65529": {
+                "id": 65529,
+                "cluster_id": 2050,
+                "label": "AcceptedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65530": {
+                "id": 65530,
+                "cluster_id": 2050,
+                "label": "EventList",
+                "type": "Optional[unknown]",
+                "writable": true
+            },
+            "65531": {
+                "id": 65531,
+                "cluster_id": 2050,
+                "label": "AttributeList",
+                "type": "List[attrib-id]",
+                "writable": false
+            },
+            "65532": {
+                "id": 65532,
+                "cluster_id": 2050,
+                "label": "FeatureMap",
+                "type": "map32",
+                "writable": false
+            },
+            "65533": {
+                "id": 65533,
+                "cluster_id": 2050,
+                "label": "ClusterRevision",
+                "type": "ClusterRevision",
+                "writable": false
+            }
+        },
+        "commands": {
+            "0": {
+                "id": 0,
+                "cluster_id": 2050,
+                "name": "ProvisionEndpoint",
+                "label": "Provision Endpoint"
+            },
+            "2": {
+                "id": 2,
+                "cluster_id": 2050,
+                "name": "FindEndpoint",
+                "label": "Find Endpoint"
+            },
+            "4": {
+                "id": 4,
+                "cluster_id": 2050,
+                "name": "RemoveEndpoint",
+                "label": "Remove Endpoint"
+            }
+        }
+    },
     "2820": {
         "id": 2820,
         "label": "DraftElectricalMeasurementCluster",
@@ -14768,6 +16572,167 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 2820,
                 "label": "ClusterRevision",
                 "type": "uint16",
+                "writable": false
+            }
+        },
+        "commands": {}
+    },
+    "2822": {
+        "id": 2822,
+        "label": "MeterIdentification",
+        "attributes": {
+            "0": {
+                "id": 0,
+                "cluster_id": 2822,
+                "label": "MeterType",
+                "type": "Nullable[MeterTypeEnum]",
+                "writable": false
+            },
+            "1": {
+                "id": 1,
+                "cluster_id": 2822,
+                "label": "PointOfDelivery",
+                "type": "Nullable[string]",
+                "writable": false
+            },
+            "2": {
+                "id": 2,
+                "cluster_id": 2822,
+                "label": "MeterSerialNumber",
+                "type": "Nullable[string]",
+                "writable": false
+            },
+            "3": {
+                "id": 3,
+                "cluster_id": 2822,
+                "label": "ProtocolVersion",
+                "type": "Optional[Nullable[string]]",
+                "writable": false
+            },
+            "4": {
+                "id": 4,
+                "cluster_id": 2822,
+                "label": "PowerThreshold",
+                "type": "Optional[Nullable[PowerThresholdStruct]]",
+                "writable": false
+            },
+            "65528": {
+                "id": 65528,
+                "cluster_id": 2822,
+                "label": "GeneratedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65529": {
+                "id": 65529,
+                "cluster_id": 2822,
+                "label": "AcceptedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65530": {
+                "id": 65530,
+                "cluster_id": 2822,
+                "label": "EventList",
+                "type": "Optional[unknown]",
+                "writable": true
+            },
+            "65531": {
+                "id": 65531,
+                "cluster_id": 2822,
+                "label": "AttributeList",
+                "type": "List[attrib-id]",
+                "writable": false
+            },
+            "65532": {
+                "id": 65532,
+                "cluster_id": 2822,
+                "label": "FeatureMap",
+                "type": "FeatureMap",
+                "writable": false
+            },
+            "65533": {
+                "id": 65533,
+                "cluster_id": 2822,
+                "label": "ClusterRevision",
+                "type": "ClusterRevision",
+                "writable": false
+            }
+        },
+        "commands": {}
+    },
+    "2823": {
+        "id": 2823,
+        "label": "CommodityMetering",
+        "attributes": {
+            "0": {
+                "id": 0,
+                "cluster_id": 2823,
+                "label": "MeteredQuantity",
+                "type": "List[MeteredQuantityStruct]",
+                "writable": false
+            },
+            "1": {
+                "id": 1,
+                "cluster_id": 2823,
+                "label": "MeteredQuantityTimestamp",
+                "type": "Nullable[epoch-s]",
+                "writable": false
+            },
+            "2": {
+                "id": 2,
+                "cluster_id": 2823,
+                "label": "TariffUnit",
+                "type": "Nullable[TariffUnitEnum]",
+                "writable": false
+            },
+            "3": {
+                "id": 3,
+                "cluster_id": 2823,
+                "label": "MaximumMeteredQuantities",
+                "type": "Nullable[uint16]",
+                "writable": false
+            },
+            "65528": {
+                "id": 65528,
+                "cluster_id": 2823,
+                "label": "GeneratedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65529": {
+                "id": 65529,
+                "cluster_id": 2823,
+                "label": "AcceptedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65530": {
+                "id": 65530,
+                "cluster_id": 2823,
+                "label": "EventList",
+                "type": "Optional[unknown]",
+                "writable": true
+            },
+            "65531": {
+                "id": 65531,
+                "cluster_id": 2823,
+                "label": "AttributeList",
+                "type": "List[attrib-id]",
+                "writable": false
+            },
+            "65532": {
+                "id": 65532,
+                "cluster_id": 2823,
+                "label": "FeatureMap",
+                "type": "map32",
+                "writable": false
+            },
+            "65533": {
+                "id": 65533,
+                "cluster_id": 2823,
+                "label": "ClusterRevision",
+                "type": "ClusterRevision",
                 "writable": false
             }
         },

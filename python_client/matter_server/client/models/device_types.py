@@ -68,6 +68,19 @@ class AirQualitySensor(DeviceType):
     }
 
 
+fully ok class AudioDoorbell(DeviceType):
+    device_type: int = 0x0141
+    clusters: set[type[Cluster]] = {
+        all_clusters.CameraAvStreamManagement,
+        all_clusters.Descriptor,
+        all_clusters.Identify,
+        all_clusters.PushAvStreamTransport,
+        all_clusters.Switch,
+        all_clusters.WebRtcTransportProvider,
+        all_clusters.WebRtcTransportRequestor,
+    }
+
+
 class BasicVideoPlayer(DeviceType):
     device_type: int = 0x0028
     clusters: set[type[Cluster]] = {
@@ -106,6 +119,29 @@ class BridgedNode(DeviceType):
     }
 
 
+class CameraController(DeviceType):
+    device_type: int = 0x0147
+    clusters: set[type[Cluster]] = {
+        all_clusters.Descriptor,
+        all_clusters.WebRtcTransportRequestor,
+    }
+
+
+class Camera(DeviceType):
+    device_type: int = 0x0142
+    clusters: set[type[Cluster]] = {
+        all_clusters.CameraAvSettingsUserLevelManagement,
+        all_clusters.CameraAvStreamManagement,
+        all_clusters.Descriptor,
+        all_clusters.Identify,
+        all_clusters.OccupancySensing,
+        all_clusters.PushAvStreamTransport,
+        all_clusters.WebRtcTransportProvider,
+        all_clusters.WebRtcTransportRequestor,
+        all_clusters.ZoneManagement,
+    }
+
+
 class CastingVideoClient(DeviceType):
     device_type: int = 0x0029
     clusters: set[type[Cluster]] = {
@@ -132,6 +168,43 @@ class CastingVideoPlayer(DeviceType):
         all_clusters.OnOff,
         all_clusters.TargetNavigator,
         all_clusters.WakeOnLan,
+    }
+
+
+class Chime(DeviceType):
+    device_type: int = 0x0146
+    clusters: set[type[Cluster]] = {
+        all_clusters.Chime,
+        all_clusters.Descriptor,
+        all_clusters.Identify,
+    }
+
+
+class ClosureController(DeviceType):
+    device_type: int = 0x023E
+    clusters: set[type[Cluster]] = {
+        all_clusters.Descriptor,
+    }
+
+
+class Closure(DeviceType):
+    device_type: int = 0x0230
+    clusters: set[type[Cluster]] = {
+        all_clusters.ClosureControl,
+        all_clusters.ClosureDimension,
+        all_clusters.Descriptor,
+        all_clusters.Identify,
+        all_clusters.WindowCovering,
+    }
+
+
+class ClosurePanel(DeviceType):
+    device_type: int = 0x0231
+    clusters: set[type[Cluster]] = {
+        all_clusters.ClosureControl,
+        all_clusters.ClosureDimension,
+        all_clusters.Descriptor,
+        all_clusters.WindowCovering,
     }
 
 
@@ -172,7 +245,6 @@ class ContentApp(DeviceType):
         all_clusters.AccountLogin,
         all_clusters.ApplicationBasic,
         all_clusters.ApplicationLauncher,
-        all_clusters.Binding,
         all_clusters.Channel,
         all_clusters.ContentLauncher,
         all_clusters.Descriptor,
@@ -267,7 +339,6 @@ class DoorLockController(DeviceType):
     device_type: int = 0x000B
     clusters: set[type[Cluster]] = {
         all_clusters.Descriptor,
-        all_clusters.TimeSynchronization,
     }
 
 
@@ -282,6 +353,35 @@ class DoorLock(DeviceType):
     }
 
 
+class Doorbell(DeviceType):
+    device_type: int = 0x0148
+    clusters: set[type[Cluster]] = {
+        all_clusters.Descriptor,
+        all_clusters.Identify,
+        all_clusters.Switch,
+    }
+
+
+class ElectricalEnergyTariff(DeviceType):
+    device_type: int = 0x0513
+    clusters: set[type[Cluster]] = {
+        all_clusters.CommodityPrice,
+        all_clusters.CommodityTariff,
+        all_clusters.Descriptor,
+        all_clusters.ElectricalGridConditions,
+    }
+
+
+class ElectricalMeter(DeviceType):
+    device_type: int = 0x0514
+    clusters: set[type[Cluster]] = {
+        all_clusters.CommodityMetering,
+        all_clusters.Descriptor,
+        all_clusters.ElectricalEnergyMeasurement,
+        all_clusters.ElectricalPowerMeasurement,
+    }
+
+
 class ElectricalSensor(DeviceType):
     device_type: int = 0x0510
     clusters: set[type[Cluster]] = {
@@ -289,6 +389,14 @@ class ElectricalSensor(DeviceType):
         all_clusters.ElectricalEnergyMeasurement,
         all_clusters.ElectricalPowerMeasurement,
         all_clusters.PowerTopology,
+    }
+
+
+class ElectricalUtilityMeter(DeviceType):
+    device_type: int = 0x0511
+    clusters: set[type[Cluster]] = {
+        all_clusters.Descriptor,
+        all_clusters.MeterIdentification,
     }
 
 
@@ -338,6 +446,13 @@ class Fan(DeviceType):
     }
 
 
+class FloodlightCamera(DeviceType):
+    device_type: int = 0x0144
+    clusters: set[type[Cluster]] = {
+        all_clusters.Descriptor,
+    }
+
+
 class FlowSensor(DeviceType):
     device_type: int = 0x0306
     clusters: set[type[Cluster]] = {
@@ -370,6 +485,28 @@ class HumiditySensor(DeviceType):
         all_clusters.Descriptor,
         all_clusters.Identify,
         all_clusters.RelativeHumidityMeasurement,
+    }
+
+
+class Intercom(DeviceType):
+    device_type: int = 0x0140
+    clusters: set[type[Cluster]] = {
+        all_clusters.CameraAvSettingsUserLevelManagement,
+        all_clusters.CameraAvStreamManagement,
+        all_clusters.Descriptor,
+        all_clusters.Identify,
+        all_clusters.WebRtcTransportProvider,
+        all_clusters.WebRtcTransportRequestor,
+    }
+
+
+class IrrigationSystem(DeviceType):
+    device_type: int = 0x0040
+    clusters: set[type[Cluster]] = {
+        all_clusters.Descriptor,
+        all_clusters.FlowMeasurement,
+        all_clusters.Identify,
+        all_clusters.OperationalState,
     }
 
 
@@ -414,6 +551,14 @@ class LightSensor(DeviceType):
         all_clusters.Descriptor,
         all_clusters.Identify,
         all_clusters.IlluminanceMeasurement,
+    }
+
+
+class MeterReferencePoint(DeviceType):
+    device_type: int = 0x0512
+    clusters: set[type[Cluster]] = {
+        all_clusters.Descriptor,
+        all_clusters.Identify,
     }
 
 
@@ -622,9 +767,11 @@ class RoboticVacuumCleaner(DeviceType):
 class RoomAirConditioner(DeviceType):
     device_type: int = 0x0072
     clusters: set[type[Cluster]] = {
+        all_clusters.ActivatedCarbonFilterMonitoring,
         all_clusters.Descriptor,
         all_clusters.FanControl,
         all_clusters.Groups,
+        all_clusters.HepaFilterMonitoring,
         all_clusters.Identify,
         all_clusters.OnOff,
         all_clusters.RelativeHumidityMeasurement,
@@ -656,6 +803,8 @@ class RootNode(DeviceType):
         all_clusters.ThreadNetworkDiagnostics,
         all_clusters.TimeFormatLocalization,
         all_clusters.TimeSynchronization,
+        all_clusters.TlsCertificateManagement,
+        all_clusters.TlsClientManagement,
         all_clusters.UnitLocalization,
         all_clusters.WiFiNetworkDiagnostics,
     }
@@ -681,6 +830,28 @@ class SmokeCoAlarm(DeviceType):
         all_clusters.Identify,
         all_clusters.RelativeHumidityMeasurement,
         all_clusters.SmokeCoAlarm,
+        all_clusters.TemperatureMeasurement,
+    }
+
+
+class SnapshotCamera(DeviceType):
+    device_type: int = 0x0145
+    clusters: set[type[Cluster]] = {
+        all_clusters.CameraAvSettingsUserLevelManagement,
+        all_clusters.CameraAvStreamManagement,
+        all_clusters.Descriptor,
+        all_clusters.Identify,
+        all_clusters.OccupancySensing,
+        all_clusters.ZoneManagement,
+    }
+
+
+class SoilSensor(DeviceType):
+    device_type: int = 0x0045
+    clusters: set[type[Cluster]] = {
+        all_clusters.Descriptor,
+        all_clusters.Identify,
+        all_clusters.SoilMeasurement,
         all_clusters.TemperatureMeasurement,
     }
 
@@ -720,6 +891,7 @@ class TemperatureSensor(DeviceType):
         all_clusters.Descriptor,
         all_clusters.Identify,
         all_clusters.TemperatureMeasurement,
+        all_clusters.ThermostatUserInterfaceConfiguration,
     }
 
 
@@ -739,6 +911,23 @@ class Thermostat(DeviceType):
         all_clusters.Identify,
         all_clusters.Thermostat,
         all_clusters.ThermostatUserInterfaceConfiguration,
+    }
+
+
+class ThreadBorderRouter(DeviceType):
+    device_type: int = 0x0091
+    clusters: set[type[Cluster]] = {
+        all_clusters.Descriptor,
+        all_clusters.ThreadBorderRouterManagement,
+        all_clusters.ThreadNetworkDiagnostics,
+        all_clusters.ThreadNetworkDirectory,
+    }
+
+
+class VideoDoorbell(DeviceType):
+    device_type: int = 0x0143
+    clusters: set[type[Cluster]] = {
+        all_clusters.Descriptor,
     }
 
 
@@ -801,6 +990,8 @@ class WindowCoveringController(DeviceType):
 class WindowCovering(DeviceType):
     device_type: int = 0x0202
     clusters: set[type[Cluster]] = {
+        all_clusters.ClosureControl,
+        all_clusters.ClosureDimension,
         all_clusters.Descriptor,
         all_clusters.Groups,
         all_clusters.Identify,

@@ -18,13 +18,11 @@
 
 // Include custom cluster definitions in the model (registers them in Matter)
 import "@matter-server/custom-clusters";
-
 // Import normal dependencies
-import { AttributeModel, ClusterModel, CommandModel, EventModel, Matter, ValueModel } from "@matter/main/model";
+import { AttributeModel, ClusterModel, CommandModel, EventModel, Matter, Model, ValueModel } from "@matter/main/model";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-
 // Also import the class names to identify which clusters are custom
 import * as CustomClusterClasses from "../../packages/custom-clusters/dist/esm/clusters/index.js";
 
@@ -72,61 +70,61 @@ const objectsDir = join(pythonClientDir, "chip", "clusters", "cluster_defs");
 const ACRONYMS = [
     // Compound acronyms first as a precaution
     "SNTPNTS", // e.g. kNonMatterSNTPNTS — before SNTP and NTP
-    "NTPNTS",  // e.g. kNonMatterNTPNTS  — before NTP
-    "BLEUWB",  // e.g. kAliroBLEUWB      — before BLE and UWB
-    "HVAC",    // e.g. HVACSystemTypeConfiguration — before AC
-    "ICAC",    // e.g. IcacCertificate             — before AC
-    "DAC",     // e.g. kDACCertificate              — before AC
-    "MAC",     // e.g. MACAddress, kMACCounts       — before AC
-    "EVSE",    // e.g. kEVSEStopped                 — before EV
-    "RFID",    // e.g. RfidCredential               — before RF
-    "PIR",     // e.g. PIROccupiedToUnoccupiedDelay — before PI
-    "IPV",     // e.g. kIPV6Failed                  — before IP
+    "NTPNTS", // e.g. kNonMatterNTPNTS  — before NTP
+    "BLEUWB", // e.g. kAliroBLEUWB      — before BLE and UWB
+    "HVAC", // e.g. HVACSystemTypeConfiguration — before AC
+    "ICAC", // e.g. IcacCertificate             — before AC
+    "DAC", // e.g. kDACCertificate              — before AC
+    "MAC", // e.g. MACAddress, kMACCounts       — before AC
+    "EVSE", // e.g. kEVSEStopped                 — before EV
+    "RFID", // e.g. RfidCredential               — before RF
+    "PIR", // e.g. PIROccupiedToUnoccupiedDelay — before PI
+    "IPV", // e.g. kIPV6Failed                  — before IP
     // Standard acronyms (alphabetical within groups for readability)
-    "ANSI",    // e.g. BatANSIDesignation
+    "ANSI", // e.g. BatANSIDesignation
     // "ARL" intentionally omitted — old pkg has both CommissioningARL (needs ARL) and Arl attr (must stay Arl)
     // "ACL" intentionally omitted — chip SDK uses Acl for the AccessControl attribute (not ACL)
-    "BDX",     // e.g. kBDXAsynchronous, kBDXSynchronous
-    "BLE",     // e.g. kBLEFault
-    "CEC",     // e.g. CEC key codes
-    "CO",      // e.g. kCOAlarm
-    "CSR",     // e.g. CSR elements
-    "DNS",     // e.g. SupportsDNSResolve
-    "DST",     // e.g. DSTOffset
-    "ESA",     // e.g. ESAType, ESAState, ESACanGenerate
-    "EV",      // e.g. kEVConnected, kEVStopped
-    "GHG",     // e.g. kGHGEmissions
-    "ICD",     // e.g. ICDCounter
-    "IEC",     // e.g. BatIECDesignation
-    "IP",      // e.g. kIPBindFailed, kIPV6Failed
-    "LED",     // e.g. LED indicators
-    "MLE",     // e.g. kMLECounts
-    "NFC",     // e.g. kNFCFault
-    "NOC",     // e.g. NOCStruct, kInvalidNOC
-    "SNTP",    // e.g. kMatterSNTP — before NTP (NTP is a suffix of SNTP)
-    "NTP",     // e.g. NTPClient, NTPServer
-    "OTA",     // e.g. AnnounceOTAProvider
-    "PAI",     // e.g. kPAICertificate
+    "BDX", // e.g. kBDXAsynchronous, kBDXSynchronous
+    "BLE", // e.g. kBLEFault
+    "CEC", // e.g. CEC key codes
+    "CO", // e.g. kCOAlarm
+    "CSR", // e.g. CSR elements
+    "DNS", // e.g. SupportsDNSResolve
+    "DST", // e.g. DSTOffset
+    "ESA", // e.g. ESAType, ESAState, ESACanGenerate
+    "EV", // e.g. kEVConnected, kEVStopped
+    "GHG", // e.g. kGHGEmissions
+    "ICD", // e.g. ICDCounter
+    "IEC", // e.g. BatIECDesignation
+    "IP", // e.g. kIPBindFailed, kIPV6Failed
+    "LED", // e.g. LED indicators
+    "MLE", // e.g. kMLECounts
+    "NFC", // e.g. kNFCFault
+    "NOC", // e.g. NOCStruct, kInvalidNOC
+    "SNTP", // e.g. kMatterSNTP — before NTP (NTP is a suffix of SNTP)
+    "NTP", // e.g. NTPClient, NTPServer
+    "OTA", // e.g. AnnounceOTAProvider
+    "PAI", // e.g. kPAICertificate
     // "PAN" intentionally omitted — causes regressions for PanId attrs in ThreadNetworkDiagnostics
-    "PHY",     // e.g. PHYRate
-    "PIN",     // e.g. kPINManagement
-    "PI",      // e.g. PICoolingDemand, PIHeatingDemand
-    "PV",      // e.g. kSolarPV
-    "PAKE",    // e.g. PAKEPasscodeVerifier (add before any future PA entry)
-    "IPK",     // e.g. IPKValue (Identity Protection Key)
-    "LQI",     // e.g. LQIIn, LQIOut (Thread Link Quality Indicator)
+    "PHY", // e.g. PHYRate
+    "PIN", // e.g. kPINManagement
+    "PI", // e.g. PICoolingDemand, PIHeatingDemand
+    "PV", // e.g. kSolarPV
+    "PAKE", // e.g. PAKEPasscodeVerifier (add before any future PA entry)
+    "IPK", // e.g. IPKValue (Identity Protection Key)
+    "LQI", // e.g. LQIIn, LQIOut (Thread Link Quality Indicator)
     // BX/BY/GX/GY/RX/RY intentionally omitted from ACRONYMS — too broad (would turn "ByNumber" → "BYNumber").
     // ColorPoint coordinate attributes are handled via FIELD_NAME_OVERRIDES instead.
-    "URI",     // e.g. imageURI
-    "RF",      // e.g. kRFSensing
-    "RMS",     // e.g. RMSCurrent, RMSVoltage, RMSPower
-    "UTC",     // e.g. UTCTime — before TC (TC is a suffix of UTC)
-    "TC",      // e.g. kRequiredTCNotAccepted
-    "URL",     // e.g. kURLPlayback
-    "UWB",     // e.g. AliroBLEUWB protocol versions
-    "VID",     // e.g. VendorID
-    "AC",      // e.g. ACCapacity, ACType — after HVAC, ICAC, DAC, MAC
-    "ID",      // e.g. VendorID, NetworkID
+    "URI", // e.g. imageURI
+    "RF", // e.g. kRFSensing
+    "RMS", // e.g. RMSCurrent, RMSVoltage, RMSPower
+    "UTC", // e.g. UTCTime — before TC (TC is a suffix of UTC)
+    "TC", // e.g. kRequiredTCNotAccepted
+    "URL", // e.g. kURLPlayback
+    "UWB", // e.g. AliroBLEUWB protocol versions
+    "VID", // e.g. VendorID
+    "AC", // e.g. ACCapacity, ACType — after HVAC, ICAC, DAC, MAC
+    "ID", // e.g. VendorID, NetworkID
 ];
 
 /**
@@ -235,59 +233,59 @@ const K_VALUE_OVERRIDES: Record<string, string> = {
  */
 const FIELD_NAME_OVERRIDES: Record<string, string> = {
     // --- ID suffix: old chip SDK kept lowercase "Id" (not "ID") for these ---
-    Id:                          "id",
+    Id: "id",
     // Note: GroupId intentionally NOT overridden — most places use "groupID" (with uppercase ID).
     // Only GroupKeyManagement structs use "groupId" which is a minor inconsistency.
-    PanId:                       "panId",
-    ExtendedPanId:               "extendedPanId",
-    LeaderRouterId:              "leaderRouterId",
-    PartitionId:                 "partitionId",
-    PartitionIdChangeCount:      "partitionIdChangeCount",
-    RouterId:                    "routerId",
-    ExtendedPanIdPresent:        "extendedPanIdPresent",
-    PanIdPresent:                "panIdPresent",
-    AdminVendorId:               "adminVendorId",
+    PanId: "panId",
+    ExtendedPanId: "extendedPanId",
+    LeaderRouterId: "leaderRouterId",
+    PartitionId: "partitionId",
+    PartitionIdChangeCount: "partitionIdChangeCount",
+    RouterId: "routerId",
+    ExtendedPanIdPresent: "extendedPanIdPresent",
+    PanIdPresent: "panIdPresent",
+    AdminVendorId: "adminVendorId",
 
     // --- NOC struct: old chip SDK used fully lowercase (no acronym expansion) ---
-    Icac:                        "icac",
-    Noc:                         "noc",
+    Icac: "icac",
+    Noc: "noc",
 
     // --- MLE: old chip SDK kept mle lowercase in mid-word position ---
-    MleFrameCounter:             "mleFrameCounter",
+    MleFrameCounter: "mleFrameCounter",
 
     // --- URL vs Url: old chip SDK kept "Url" (not "URL") for these specific fields ---
-    DvbiUrl:                     "dvbiUrl",
-    PosterArtUrl:                "posterArtUrl",
-    ThumbnailUrl:                "thumbnailUrl",
+    DvbiUrl: "dvbiUrl",
+    PosterArtUrl: "posterArtUrl",
+    ThumbnailUrl: "thumbnailUrl",
 
     // --- ARL: intentionally not in ACRONYMS (breaks Arl attribute) ---
-    CommissioningArl:            "commissioningARL",
+    CommissioningArl: "commissioningARL",
     // Note: chip SDK uppercases URL here (unlike dvbiUrl/posterArtUrl which keep "Url")
-    ArlRequestFlowUrl:           "ARLRequestFlowUrl",
+    ArlRequestFlowUrl: "ARLRequestFlowUrl",
 
     // --- LQI: CHIP SDK keeps lowercase "lqi" in struct fields ---
-    Lqi:                         "lqi",
+    Lqi: "lqi",
 
     // --- CA: not in ACRONYMS (would conflict with ICAC/DAC/MAC handling) ---
-    RootCaCertificate:           "rootCACertificate",
+    RootCaCertificate: "rootCACertificate",
 
     // --- Watermark: matter.js spells as one word, chip SDK as two ---
-    Watermark:                   "waterMark",
+    Watermark: "waterMark",
 
     // --- NOCSR: not a standalone acronym in ACRONYMS ---
-    NocsrElements:               "NOCSRElements",
+    NocsrElements: "NOCSRElements",
 
     // --- DraftElectricalMeasurementCluster: custom cluster uses "ac"/"rms" not "AC"/"RMS" ---
     // Ac* are safe as global overrides (only this cluster has them).
     // Rms* must be cluster-qualified because standard clusters use "RMS" (uppercase).
-    AcVoltageMultiplier:         "acVoltageMultiplier",
-    AcVoltageDivisor:            "acVoltageDivisor",
-    AcCurrentMultiplier:         "acCurrentMultiplier",
-    AcCurrentDivisor:            "acCurrentDivisor",
-    AcPowerMultiplier:           "acPowerMultiplier",
-    AcPowerDivisor:              "acPowerDivisor",
-    "DraftElectricalMeasurementCluster.RmsVoltage":  "rmsVoltage",
-    "DraftElectricalMeasurementCluster.RmsCurrent":  "rmsCurrent",
+    AcVoltageMultiplier: "acVoltageMultiplier",
+    AcVoltageDivisor: "acVoltageDivisor",
+    AcCurrentMultiplier: "acCurrentMultiplier",
+    AcCurrentDivisor: "acCurrentDivisor",
+    AcPowerMultiplier: "acPowerMultiplier",
+    AcPowerDivisor: "acPowerDivisor",
+    "DraftElectricalMeasurementCluster.RmsVoltage": "rmsVoltage",
+    "DraftElectricalMeasurementCluster.RmsCurrent": "rmsCurrent",
 
     // --- DoorLock quirks ---
     // Note: chip SDK lowercases "for" here (requirePINforRemoteOperation — not a typo)
@@ -295,22 +293,22 @@ const FIELD_NAME_OVERRIDES: Record<string, string> = {
     // post-toChipName version (RequirePINForRemoteOperation).
     RequirePinForRemoteOperation: "requirePINforRemoteOperation",
     // Note: chip SDK lowercases the "f" in "format" here (ACCapacityformat — chip SDK quirk)
-    AcCapacityFormat:            "ACCapacityformat",
+    AcCapacityFormat: "ACCapacityformat",
 
     // --- IPv4/IPv6: old chip SDK used "IPv4"/"IPv6" (capital I, lowercase v) ---
     // Key must match the Matter.js model name (IPv4Addresses), not post-toChipName
-    IPv4Addresses:               "IPv4Addresses",
-    IPv6Addresses:               "IPv6Addresses",
+    IPv4Addresses: "IPv4Addresses",
+    IPv6Addresses: "IPv6Addresses",
     OffPremiseServicesReachableIPv4: "offPremiseServicesReachableIPv4",
     OffPremiseServicesReachableIPv6: "offPremiseServicesReachableIPv6",
 
     // --- ColorControl chromaticity coordinates: old chip SDK kept uppercase XY suffix ---
-    ColorPointBx:                "colorPointBX",
-    ColorPointBy:                "colorPointBY",
-    ColorPointGx:                "colorPointGX",
-    ColorPointGy:                "colorPointGY",
-    ColorPointRx:                "colorPointRX",
-    ColorPointRy:                "colorPointRY",
+    ColorPointBx: "colorPointBX",
+    ColorPointBy: "colorPointBY",
+    ColorPointGx: "colorPointGX",
+    ColorPointGy: "colorPointGY",
+    ColorPointRx: "colorPointRX",
+    ColorPointRy: "colorPointRY",
 };
 
 /**
@@ -321,87 +319,87 @@ const FIELD_NAME_OVERRIDES: Record<string, string> = {
  */
 const CLASS_NAME_OVERRIDES: Record<string, string> = {
     // --- ARL: not in ACRONYMS (breaks field name), but class name needs uppercase ARL ---
-    CommissioningArl:            "CommissioningARL",
+    CommissioningArl: "CommissioningARL",
 
     // --- AdminVendorId: CHIP SDK keeps "Id" (not "ID") in the class name ---
-    AdminVendorId:               "AdminVendorId",
+    AdminVendorId: "AdminVendorId",
 
     // --- ColorControl chromaticity coordinates: CHIP SDK keeps uppercase XY suffix ---
-    ColorPointBx:                "ColorPointBX",
-    ColorPointBy:                "ColorPointBY",
-    ColorPointGx:                "ColorPointGX",
-    ColorPointGy:                "ColorPointGY",
-    ColorPointRx:                "ColorPointRX",
-    ColorPointRy:                "ColorPointRY",
+    ColorPointBx: "ColorPointBX",
+    ColorPointBy: "ColorPointBY",
+    ColorPointGx: "ColorPointGX",
+    ColorPointGy: "ColorPointGY",
+    ColorPointRx: "ColorPointRX",
+    ColorPointRy: "ColorPointRY",
 
     // --- DoorLock: CHIP SDK keeps lowercase "for" in class name ---
     RequirePinForRemoteOperation: "RequirePINforRemoteOperation",
 
     // --- EnergyEvse event: CHIP SDK uses "Rfid" not "RFID" ---
-    Rfid:                        "Rfid",
+    Rfid: "Rfid",
 
     // --- IcdManagement: CHIP SDK uses "BackOff" (two words) ---
-    MaximumCheckInBackoff:       "MaximumCheckInBackOff",
+    MaximumCheckInBackoff: "MaximumCheckInBackOff",
 
     // --- JointFabricAdministrator commands: CHIP SDK expands ICAC+CSR ---
-    IcaccsrRequest:              "ICACCSRRequest",
-    IcaccsrResponse:             "ICACCSRResponse",
+    IcaccsrRequest: "ICACCSRRequest",
+    IcaccsrResponse: "ICACCSRResponse",
 
     // --- JointFabricDatastore: CHIP SDK expands ACL ---
-    AddAclToNode:                "AddACLToNode",
-    RemoveAclFromNode:           "RemoveACLFromNode",
-    AnchorRootCa:                "AnchorRootCA",
-    NodeAclList:                 "NodeACLList",
+    AddAclToNode: "AddACLToNode",
+    RemoveAclFromNode: "RemoveACLFromNode",
+    AnchorRootCa: "AnchorRootCA",
+    NodeAclList: "NodeACLList",
 
     // --- Thermostat: CHIP SDK uses lowercase "format" (quirk) ---
-    AcCapacityFormat:            "ACCapacityformat",
+    AcCapacityFormat: "ACCapacityformat",
 
     // --- ThreadNetworkDiagnostics: CHIP SDK keeps "Id" (not "ID") for these ---
-    ExtendedPanId:               "ExtendedPanId",
-    LeaderRouterId:              "LeaderRouterId",
-    PanId:                       "PanId",
-    PartitionId:                 "PartitionId",
-    PartitionIdChangeCount:      "PartitionIdChangeCount",
+    ExtendedPanId: "ExtendedPanId",
+    LeaderRouterId: "LeaderRouterId",
+    PanId: "PanId",
+    PartitionId: "PartitionId",
+    PartitionIdChangeCount: "PartitionIdChangeCount",
 
     // --- Enum suffix stripping: CHIP SDK omits "Enum" suffix for some enum class names ---
     // Note: StatusCodeEnum is cluster-dependent (some keep suffix, some strip it).
     // Use "ClusterName.ClassName" keys for cluster-specific overrides below.
-    ModeTagEnum:                 "ModeTag",
-    SelectAreasStatusEnum:       "SelectAreasStatus",
-    SkipAreaStatusEnum:          "SkipAreaStatus",
+    ModeTagEnum: "ModeTag",
+    SelectAreasStatusEnum: "SelectAreasStatus",
+    SkipAreaStatusEnum: "SkipAreaStatus",
 
     // --- WindowCovering: CHIP SDK strips Enum/Bitmap suffixes ---
-    TypeEnum:                    "Type",
-    EndProductTypeEnum:          "EndProductType",
-    ModeBitmap:                  "Mode",
-    ConfigStatusBitmap:          "ConfigStatus",
-    OperationalStatusBitmap:     "OperationalStatus",
-    SafetyStatusBitmap:          "SafetyStatus",
+    TypeEnum: "Type",
+    EndProductTypeEnum: "EndProductType",
+    ModeBitmap: "Mode",
+    ConfigStatusBitmap: "ConfigStatus",
+    OperationalStatusBitmap: "OperationalStatus",
+    SafetyStatusBitmap: "SafetyStatus",
 
     // --- DraftElectricalMeasurementCluster: custom cluster keeps "Ac"/"Rms" not "AC"/"RMS" ---
     // Ac* are safe as global overrides (only this cluster has them).
     // Rms* must be cluster-qualified because standard clusters use "RMS" (uppercase).
-    AcVoltageMultiplier:         "AcVoltageMultiplier",
-    AcVoltageDivisor:            "AcVoltageDivisor",
-    AcCurrentMultiplier:         "AcCurrentMultiplier",
-    AcCurrentDivisor:            "AcCurrentDivisor",
-    AcPowerMultiplier:           "AcPowerMultiplier",
-    AcPowerDivisor:              "AcPowerDivisor",
-    "DraftElectricalMeasurementCluster.RmsVoltage":  "RmsVoltage",
-    "DraftElectricalMeasurementCluster.RmsCurrent":  "RmsCurrent",
+    AcVoltageMultiplier: "AcVoltageMultiplier",
+    AcVoltageDivisor: "AcVoltageDivisor",
+    AcCurrentMultiplier: "AcCurrentMultiplier",
+    AcCurrentDivisor: "AcCurrentDivisor",
+    AcPowerMultiplier: "AcPowerMultiplier",
+    AcPowerDivisor: "AcPowerDivisor",
+    "DraftElectricalMeasurementCluster.RmsVoltage": "RmsVoltage",
+    "DraftElectricalMeasurementCluster.RmsCurrent": "RmsCurrent",
 
     // --- DoorLock: CHIP SDK uses legacy "Dl" prefixed names for some enums ---
     // Missing members for DlStatus are injected via EXTRA_ENUM_MEMBERS.
-    "DoorLock.LockStateEnum":    "DlLockState",
-    "DoorLock.LockTypeEnum":     "DlLockType",
-    "DoorLock.StatusCodeEnum":   "DlStatus",
+    "DoorLock.LockStateEnum": "DlLockState",
+    "DoorLock.LockTypeEnum": "DlLockType",
+    "DoorLock.StatusCodeEnum": "DlStatus",
 
     // --- Cluster-specific overrides (key format: "ClusterName.ClassName") ---
     // StatusCodeEnum: stripped in some clusters, kept in others
     "AdministratorCommissioning.StatusCodeEnum": "StatusCode",
-    "RvcCleanMode.StatusCodeEnum":               "StatusCode",
-    "RvcRunMode.StatusCodeEnum":                  "StatusCode",
-    "TimeSynchronization.StatusCodeEnum":         "StatusCode",
+    "RvcCleanMode.StatusCodeEnum": "StatusCode",
+    "RvcRunMode.StatusCodeEnum": "StatusCode",
+    "TimeSynchronization.StatusCodeEnum": "StatusCode",
 };
 
 /**
@@ -417,7 +415,7 @@ const EXTRA_ENUM_MEMBERS: Record<string, Array<{ kName: string; value: number }>
         { kName: "kFailure", value: 0x01 },
         { kName: "kInvalidField", value: 0x85 },
         { kName: "kResourceExhausted", value: 0x89 },
-        { kName: "kNotFound", value: 0x8B },
+        { kName: "kNotFound", value: 0x8b },
     ],
 };
 
@@ -653,8 +651,30 @@ function resolveScalarType(
             const qualifiedName = `${otherCluster}.${getCategoryForMetatype(info.metatype)}.${toChipClassName(dtName, otherCluster)}`;
             return typeForCategory(info.metatype, qualifiedName);
         }
-        // Fallback - assume enum
-        return { annotation: `${otherCluster}.Enums.${toChipClassName(dtName, otherCluster)}`, defaultValue: "0", needsFactory: false };
+        // Type alias not registered as enum/bitmap/struct (e.g. uint16 alias like
+        // CameraAvStreamManagement.VideoStreamID). Resolve via the alias's underlying
+        // base type so it becomes a primitive instead of a non-existent namespace ref.
+        // Limit recursion to primitive metatypes so a non-primitive (array, etc.)
+        // alias surfaces as a visible error instead of silently producing `uint`.
+        const dtModel = findClusterDatatype(otherCluster, dtName);
+        if (dtModel) {
+            const baseMetatype = dtModel.effectiveMetatype;
+            const isPrimitiveAlias =
+                baseMetatype === "integer" ||
+                baseMetatype === "boolean" ||
+                baseMetatype === "string" ||
+                baseMetatype === "bytes" ||
+                baseMetatype === "float";
+            if (dtModel.type !== undefined && isPrimitiveAlias) {
+                return resolveScalarType(dtModel.type, baseMetatype, otherCluster, knownDatatypes);
+            }
+        }
+        // Last-resort fallback (kept for safety; should not normally trigger)
+        return {
+            annotation: `${otherCluster}.Enums.${toChipClassName(dtName, otherCluster)}`,
+            defaultValue: "0",
+            needsFactory: false,
+        };
     }
 
     // Check if it's a local datatype reference
@@ -725,10 +745,14 @@ function resolvePrimitiveByName(type: string): PythonType {
 
 function getCategoryForMetatype(metatype: string): string {
     switch (metatype) {
-        case "enum": return "Enums";
-        case "bitmap": return "Bitmaps";
-        case "object": return "Structs";
-        default: return "Enums";
+        case "enum":
+            return "Enums";
+        case "bitmap":
+            return "Bitmaps";
+        case "object":
+            return "Structs";
+        default:
+            return "Enums";
     }
 }
 
@@ -739,10 +763,67 @@ function typeForCategory(metatype: string, qualifiedName: string): PythonType {
         case "bitmap":
             return { annotation: qualifiedName, defaultValue: "0", needsFactory: false };
         case "object":
-            return { annotation: qualifiedName, defaultValue: `field(default_factory=lambda: ${qualifiedName}())`, needsFactory: true };
+            return {
+                annotation: qualifiedName,
+                defaultValue: `field(default_factory=lambda: ${qualifiedName}())`,
+                needsFactory: true,
+            };
         default:
             return { annotation: qualifiedName, defaultValue: "0", needsFactory: false };
     }
+}
+
+// ============================================================================
+// Definitions clusters
+// ============================================================================
+
+/**
+ * Some Matter clusters in matter.js have no cluster id and exist only to define
+ * shared datatypes that other (id-having) clusters reference cross-cluster
+ * (e.g., `WebRtcTransportDefinitions` provides `WebRTCSessionStruct` to both
+ * `WebRtcTransportProvider` and `WebRtcTransportRequestor`).
+ *
+ * These need their own Python module so cross-cluster imports resolve. Pure
+ * abstract base clusters (AlarmBase, ModeBase, ...) also have no id but are
+ * inlined into derived clusters via `cluster.type` and are NOT cross-referenced,
+ * so they are excluded.
+ */
+function getReferencedDefinitionsClusters(): Set<string> {
+    const idLess = new Set(Matter.clusters.filter(c => c.id === undefined).map(c => c.name));
+    if (idLess.size === 0) return new Set();
+
+    const referenced = new Set<string>();
+    function walk(node: Model): void {
+        const t = node.type;
+        if (t && t.includes(".")) {
+            const otherCluster = t.split(".")[0];
+            if (idLess.has(otherCluster)) {
+                referenced.add(otherCluster);
+            }
+        }
+        for (const child of node.children) {
+            walk(child);
+        }
+    }
+    for (const cluster of Matter.clusters) {
+        if (cluster.id === undefined) continue;
+        walk(cluster);
+    }
+    return referenced;
+}
+
+const DEFINITIONS_CLUSTERS = getReferencedDefinitionsClusters();
+
+function isDefinitionsCluster(c: ClusterModel): boolean {
+    return DEFINITIONS_CLUSTERS.has(c.name);
+}
+
+/** Find a datatype in a cluster (including those inherited from a base cluster). */
+function findClusterDatatype(otherCluster: string, dtName: string): ValueModel | undefined {
+    const cluster = Matter.clusters.find(c => c.name === otherCluster);
+    if (!cluster) return undefined;
+    const { datatypes } = resolveClusterChildren(cluster);
+    return datatypes.find(d => d.name === dtName);
 }
 
 // ============================================================================
@@ -761,18 +842,10 @@ function resolveClusterChildren(cluster: ClusterModel): {
     events: EventModel[];
 } {
     // Collect local children first
-    const localDatatypeNames = new Set(
-        cluster.children.filter(c => c.tag === "datatype").map(c => c.name),
-    );
-    const localCommandNames = new Set(
-        cluster.children.filter(c => c.tag === "command").map(c => c.name),
-    );
-    const localAttrNames = new Set(
-        cluster.children.filter(c => c.tag === "attribute").map(c => c.name),
-    );
-    const localEventNames = new Set(
-        cluster.children.filter(c => c.tag === "event").map(c => c.name),
-    );
+    const localDatatypeNames = new Set(cluster.children.filter(c => c.tag === "datatype").map(c => c.name));
+    const localCommandNames = new Set(cluster.children.filter(c => c.tag === "command").map(c => c.name));
+    const localAttrNames = new Set(cluster.children.filter(c => c.tag === "attribute").map(c => c.name));
+    const localEventNames = new Set(cluster.children.filter(c => c.tag === "event").map(c => c.name));
 
     const datatypes = [...cluster.children.filter(c => c.tag === "datatype")] as ValueModel[];
     const commands: CommandModel[] = [...cluster.children.filter(c => c.tag === "command")] as CommandModel[];
@@ -846,16 +919,21 @@ function buildDatatypeRegistry(): Map<string, { metatype: string; clusterName: s
         }
     }
 
-    // Per-cluster datatypes (including inherited ones from base clusters)
+    // Per-cluster datatypes (including inherited ones from base clusters).
+    // Also include id-less "definitions" clusters whose types are referenced
+    // cross-cluster (e.g. WebRtcTransportDefinitions).
     for (const cluster of Matter.clusters) {
-        if (cluster.id === undefined) continue;
+        if (cluster.id === undefined && !isDefinitionsCluster(cluster)) continue;
         const { datatypes } = resolveClusterChildren(cluster);
         for (const dt of datatypes) {
             const metatype = dt.effectiveMetatype;
             if (metatype === "enum" || metatype === "bitmap" || metatype === "object") {
                 registry.set(`${cluster.name}.${dt.name}`, { metatype, clusterName: cluster.name });
                 if (dt.name.endsWith("Enum") && metatype === "enum") {
-                    registry.set(`${cluster.name}.${stripEnumSuffix(dt.name)}`, { metatype, clusterName: cluster.name });
+                    registry.set(`${cluster.name}.${stripEnumSuffix(dt.name)}`, {
+                        metatype,
+                        clusterName: cluster.name,
+                    });
                 }
             }
         }
@@ -872,8 +950,12 @@ class PythonWriter {
     private lines: string[] = [];
     private indent = 0;
 
-    pushIndent(): void { this.indent++; }
-    popIndent(): void { this.indent--; }
+    pushIndent(): void {
+        this.indent++;
+    }
+    popIndent(): void {
+        this.indent--;
+    }
 
     line(text = ""): void {
         if (text === "") {
@@ -903,6 +985,27 @@ interface ClusterGenResult {
     crossClusterImports: Set<string>;
 }
 
+/** Add cross-cluster cluster names referenced by `annotation` to `imports`. */
+function trackCrossClusterImport(annotation: string, ownClusterName: string, imports: Set<string>): void {
+    // Match "OtherCluster.Enums.SomeName" or "OtherCluster.Structs.SomeName"
+    const match = annotation.match(/^(\w+)\.(?:Enums|Structs|Bitmaps)\./);
+    if (match && match[1] !== ownClusterName) {
+        imports.add(match[1]);
+    }
+    // Also check inside typing wrappers
+    const innerMatches = annotation.match(
+        /(?:typing\.(?:List|Optional|Union)\[.*?)(\w+)\.(?:Enums|Structs|Bitmaps)\./g,
+    );
+    if (innerMatches) {
+        for (const m of innerMatches) {
+            const nameMatch = m.match(/(\w+)\.(?:Enums|Structs|Bitmaps)\./);
+            if (nameMatch && nameMatch[1] !== ownClusterName) {
+                imports.add(nameMatch[1]);
+            }
+        }
+    }
+}
+
 function generateClusterFile(
     cluster: ClusterModel,
     datatypeRegistry: Map<string, { metatype: string; clusterName: string }>,
@@ -921,9 +1024,15 @@ function generateClusterFile(
     const structs: ValueModel[] = [];
     for (const dt of resolved.datatypes) {
         switch (dt.effectiveMetatype) {
-            case "enum": enums.push(dt); break;
-            case "bitmap": bitmaps.push(dt); break;
-            case "object": structs.push(dt); break;
+            case "enum":
+                enums.push(dt);
+                break;
+            case "bitmap":
+                bitmaps.push(dt);
+                break;
+            case "object":
+                structs.push(dt);
+                break;
         }
     }
 
@@ -940,12 +1049,14 @@ function generateClusterFile(
     // Sort by attribute ID to match CHIP SDK ordering.
     const globalAttrIds = new Set([65528, 65529, 65530, 65531, 65532, 65533]);
     const seenAttrIds = new Set<number>();
-    const clusterSpecificAttrs = resolved.attributes.filter(c => {
-        if (c.id === undefined || globalAttrIds.has(c.id)) return false;
-        if (seenAttrIds.has(c.id)) return false;
-        seenAttrIds.add(c.id);
-        return true;
-    }).sort((a, b) => (a.id ?? 0) - (b.id ?? 0));
+    const clusterSpecificAttrs = resolved.attributes
+        .filter(c => {
+            if (c.id === undefined || globalAttrIds.has(c.id)) return false;
+            if (seenAttrIds.has(c.id)) return false;
+            seenAttrIds.add(c.id);
+            return true;
+        })
+        .sort((a, b) => (a.id ?? 0) - (b.id ?? 0));
 
     // Collect events (from resolved, which includes inherited)
     const events = resolved.events;
@@ -953,27 +1064,8 @@ function generateClusterFile(
     // Helper to resolve type and track cross-cluster imports
     function resolveType(model: ValueModel): PythonType {
         const result = resolvePythonType(model, clusterName, datatypeRegistry);
-        // Check for cross-cluster references in the annotation
-        trackCrossClusterImport(result.annotation);
+        trackCrossClusterImport(result.annotation, clusterName, crossClusterImports);
         return result;
-    }
-
-    function trackCrossClusterImport(annotation: string) {
-        // Match patterns like "OtherCluster.Enums.SomeName" or "OtherCluster.Structs.SomeName"
-        const match = annotation.match(/^(\w+)\.(?:Enums|Structs|Bitmaps)\./);
-        if (match && match[1] !== clusterName) {
-            crossClusterImports.add(match[1]);
-        }
-        // Also check inside typing wrappers
-        const innerMatch = annotation.match(/(?:typing\.(?:List|Optional|Union)\[.*?)(\w+)\.(?:Enums|Structs|Bitmaps)\./g);
-        if (innerMatch) {
-            for (const m of innerMatch) {
-                const nameMatch = m.match(/(\w+)\.(?:Enums|Structs|Bitmaps)\./);
-                if (nameMatch && nameMatch[1] !== clusterName) {
-                    crossClusterImports.add(nameMatch[1]);
-                }
-            }
-        }
     }
 
     // ---- Header / imports ----
@@ -988,7 +1080,9 @@ function generateClusterFile(
     w.line("from ... import ChipUtility");
     w.line("from ...clusters.enum import MatterIntEnum");
     w.line("from ...tlv import float32, uint");
-    w.line("from ..ClusterObjects import (Cluster, ClusterAttributeDescriptor, ClusterCommand, ClusterEvent, ClusterObject,");
+    w.line(
+        "from ..ClusterObjects import (Cluster, ClusterAttributeDescriptor, ClusterCommand, ClusterEvent, ClusterObject,",
+    );
     w.line("                              ClusterObjectDescriptor, ClusterObjectFieldDescriptor)");
     w.line("from ..Types import Nullable, NullValue");
 
@@ -1018,7 +1112,9 @@ function generateClusterFile(
     // Cluster-specific attributes
     for (const attr of clusterSpecificAttrs) {
         const pyType = resolveType(attr);
-        w.line(`ClusterObjectFieldDescriptor(Label="${toCamelCase(attr.name, clusterName)}", Tag=${hex8(attr.id!)}, Type=${pyType.annotation}),`);
+        w.line(
+            `ClusterObjectFieldDescriptor(Label="${toCamelCase(attr.name, clusterName)}", Tag=${hex8(attr.id!)}, Type=${pyType.annotation}),`,
+        );
     }
     // Global attributes (always present)
     w.line(`ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),`);
@@ -1142,7 +1238,14 @@ function generateClusterFile(
     w.pushIndent();
 
     for (let i = 0; i < clusterSpecificAttrs.length; i++) {
-        generateAttribute(w, clusterSpecificAttrs[i] as AttributeModel, clusterName, clusterId, datatypeRegistry, resolveType);
+        generateAttribute(
+            w,
+            clusterSpecificAttrs[i] as AttributeModel,
+            clusterName,
+            clusterId,
+            datatypeRegistry,
+            resolveType,
+        );
         if (i < clusterSpecificAttrs.length - 1) {
             w.blankLine();
         }
@@ -1152,17 +1255,17 @@ function generateClusterFile(
     if (clusterSpecificAttrs.length > 0) {
         w.blankLine();
     }
-    generateGlobalAttribute(w, "GeneratedCommandList", 0xFFF8, "typing.List[uint]", clusterId);
+    generateGlobalAttribute(w, "GeneratedCommandList", 0xfff8, "typing.List[uint]", clusterId);
     w.blankLine();
-    generateGlobalAttribute(w, "AcceptedCommandList", 0xFFF9, "typing.List[uint]", clusterId);
+    generateGlobalAttribute(w, "AcceptedCommandList", 0xfff9, "typing.List[uint]", clusterId);
     w.blankLine();
-    generateGlobalAttribute(w, "EventList", 0xFFFA, "typing.List[uint]", clusterId);
+    generateGlobalAttribute(w, "EventList", 0xfffa, "typing.List[uint]", clusterId);
     w.blankLine();
-    generateGlobalAttribute(w, "AttributeList", 0xFFFB, "typing.List[uint]", clusterId);
+    generateGlobalAttribute(w, "AttributeList", 0xfffb, "typing.List[uint]", clusterId);
     w.blankLine();
-    generateGlobalAttribute(w, "FeatureMap", 0xFFFC, "uint", clusterId);
+    generateGlobalAttribute(w, "FeatureMap", 0xfffc, "uint", clusterId);
     w.blankLine();
-    generateGlobalAttribute(w, "ClusterRevision", 0xFFFD, "uint", clusterId);
+    generateGlobalAttribute(w, "ClusterRevision", 0xfffd, "uint", clusterId);
 
     w.popIndent();
 
@@ -1185,9 +1288,136 @@ function generateClusterFile(
     // Now resolve cross-cluster imports and insert them
     let content = w.toString();
     if (crossClusterImports.size > 0) {
-        const importLines = Array.from(crossClusterImports).sort().map(
-            name => `from .${name} import ${name}`
-        ).join("\n");
+        const importLines = Array.from(crossClusterImports)
+            .sort()
+            .map(name => `from .${name} import ${name}`)
+            .join("\n");
+        content = content.replace(importInsertionPoint, importLines);
+    } else {
+        content = content.replace(importInsertionPoint + "\n", "");
+    }
+
+    return {
+        fileName: `${clusterName}.py`,
+        className: clusterName,
+        content,
+        crossClusterImports,
+    };
+}
+
+/**
+ * Generate a Python module for an id-less "definitions" cluster.
+ *
+ * These clusters expose only shared datatypes (no attributes/commands/events
+ * of their own), so the generated module is a plain namespace class with the
+ * familiar `Enums` / `Bitmaps` / `Structs` sub-namespaces but no `Cluster`
+ * base class, no `id`, and no descriptor.
+ */
+function generateDefinitionsClusterFile(
+    cluster: ClusterModel,
+    datatypeRegistry: Map<string, { metatype: string; clusterName: string }>,
+): ClusterGenResult {
+    const w = new PythonWriter();
+    const clusterName = cluster.name;
+    const crossClusterImports = new Set<string>();
+
+    const resolved = resolveClusterChildren(cluster);
+
+    const enums: ValueModel[] = [];
+    const bitmaps: ValueModel[] = [];
+    const structs: ValueModel[] = [];
+    for (const dt of resolved.datatypes) {
+        switch (dt.effectiveMetatype) {
+            case "enum":
+                enums.push(dt);
+                break;
+            case "bitmap":
+                bitmaps.push(dt);
+                break;
+            case "object":
+                structs.push(dt);
+                break;
+        }
+    }
+
+    function resolveType(model: ValueModel): PythonType {
+        const result = resolvePythonType(model, clusterName, datatypeRegistry);
+        trackCrossClusterImport(result.annotation, clusterName, crossClusterImports);
+        return result;
+    }
+
+    w.line(`"""${clusterName} shared datatype definitions (auto-generated, DO NOT edit)."""`);
+    w.blankLine();
+    w.line("from __future__ import annotations");
+    w.blankLine();
+    w.line("import typing");
+    w.line("from dataclasses import dataclass, field");
+    w.line("from enum import IntFlag");
+    w.blankLine();
+    w.line("from ... import ChipUtility");
+    w.line("from ...clusters.enum import MatterIntEnum");
+    w.line("from ...tlv import float32, uint");
+    w.line("from ..ClusterObjects import (ClusterObject,");
+    w.line("                              ClusterObjectDescriptor, ClusterObjectFieldDescriptor)");
+    w.line("from ..Types import Nullable, NullValue");
+
+    const importInsertionPoint = "# CROSS_CLUSTER_IMPORTS_PLACEHOLDER";
+    w.line(importInsertionPoint);
+    w.blankLine();
+    w.blankLine();
+
+    w.line(`class ${clusterName}:`);
+    w.pushIndent();
+
+    let needsContent = false;
+
+    if (enums.length > 0) {
+        needsContent = true;
+        w.line("class Enums:");
+        w.pushIndent();
+        for (let i = 0; i < enums.length; i++) {
+            generateEnum(w, enums[i], clusterName);
+            if (i < enums.length - 1) w.blankLine();
+        }
+        w.popIndent();
+    }
+
+    if (bitmaps.length > 0) {
+        if (needsContent) w.blankLine();
+        needsContent = true;
+        w.line("class Bitmaps:");
+        w.pushIndent();
+        for (let i = 0; i < bitmaps.length; i++) {
+            generateBitmap(w, bitmaps[i], clusterName);
+            if (i < bitmaps.length - 1) w.blankLine();
+        }
+        w.popIndent();
+    }
+
+    if (structs.length > 0) {
+        if (needsContent) w.blankLine();
+        needsContent = true;
+        w.line("class Structs:");
+        w.pushIndent();
+        for (let i = 0; i < structs.length; i++) {
+            generateStruct(w, structs[i], clusterName, datatypeRegistry, resolveType);
+            if (i < structs.length - 1) w.blankLine();
+        }
+        w.popIndent();
+    }
+
+    if (!needsContent) {
+        w.line("pass");
+    }
+
+    w.popIndent();
+
+    let content = w.toString();
+    if (crossClusterImports.size > 0) {
+        const importLines = Array.from(crossClusterImports)
+            .sort()
+            .map(name => `from .${name} import ${name}`)
+            .join("\n");
         content = content.replace(importInsertionPoint, importLines);
     } else {
         content = content.replace(importInsertionPoint + "\n", "");
@@ -1311,7 +1541,9 @@ function generateStruct(
         const vm = m as ValueModel;
         const pyType = resolveType(vm);
         const tag = m.id ?? 0;
-        w.line(`ClusterObjectFieldDescriptor(Label="${toCamelCase(m.name, clusterName)}", Tag=${tag}, Type=${pyType.annotation}),`);
+        w.line(
+            `ClusterObjectFieldDescriptor(Label="${toCamelCase(m.name, clusterName)}", Tag=${tag}, Type=${pyType.annotation}),`,
+        );
     }
 
     w.popIndent();
@@ -1389,7 +1621,9 @@ function generateCommand(
     for (const f of fields) {
         const vm = f as ValueModel;
         const pyType = resolveType(vm);
-        w.line(`ClusterObjectFieldDescriptor(Label="${toCamelCase(f.name, clusterName)}", Tag=${f.id ?? 0}, Type=${pyType.annotation}),`);
+        w.line(
+            `ClusterObjectFieldDescriptor(Label="${toCamelCase(f.name, clusterName)}", Tag=${f.id ?? 0}, Type=${pyType.annotation}),`,
+        );
     }
 
     w.popIndent();
@@ -1542,7 +1776,9 @@ function generateEvent(
     for (const f of fields) {
         const vm = f as ValueModel;
         const pyType = resolveType(vm);
-        w.line(`ClusterObjectFieldDescriptor(Label="${toCamelCase(f.name, clusterName)}", Tag=${f.id ?? 0}, Type=${pyType.annotation}),`);
+        w.line(
+            `ClusterObjectFieldDescriptor(Label="${toCamelCase(f.name, clusterName)}", Tag=${f.id ?? 0}, Type=${pyType.annotation}),`,
+        );
     }
 
     w.popIndent();
@@ -1567,9 +1803,7 @@ function generateEvent(
 // Globals generation (non-Cluster class for global types)
 // ============================================================================
 
-function generateGlobalsFile(
-    datatypeRegistry: Map<string, { metatype: string; clusterName: string }>,
-): string {
+function generateGlobalsFile(datatypeRegistry: Map<string, { metatype: string; clusterName: string }>): string {
     const w = new PythonWriter();
 
     w.line('"""Global datatypes shared across clusters (auto-generated, DO NOT edit)."""');
@@ -1593,7 +1827,9 @@ function generateGlobalsFile(
     w.pushIndent();
 
     // Global enums
-    const globalEnums = Matter.children.filter(c => c.tag === "datatype" && (c as ValueModel).effectiveMetatype === "enum");
+    const globalEnums = Matter.children.filter(
+        c => c.tag === "datatype" && (c as ValueModel).effectiveMetatype === "enum",
+    );
     if (globalEnums.length > 0) {
         w.line("class Enums:");
         w.pushIndent();
@@ -1605,7 +1841,9 @@ function generateGlobalsFile(
     }
 
     // Global bitmaps
-    const globalBitmaps = Matter.children.filter(c => c.tag === "datatype" && (c as ValueModel).effectiveMetatype === "bitmap");
+    const globalBitmaps = Matter.children.filter(
+        c => c.tag === "datatype" && (c as ValueModel).effectiveMetatype === "bitmap",
+    );
     if (globalBitmaps.length > 0) {
         w.blankLine();
         w.line("class Bitmaps:");
@@ -1618,7 +1856,9 @@ function generateGlobalsFile(
     }
 
     // Global structs
-    const globalStructs = Matter.children.filter(c => c.tag === "datatype" && (c as ValueModel).effectiveMetatype === "object");
+    const globalStructs = Matter.children.filter(
+        c => c.tag === "datatype" && (c as ValueModel).effectiveMetatype === "object",
+    );
     if (globalStructs.length > 0) {
         w.blankLine();
         w.line("class Structs:");
@@ -1646,7 +1886,7 @@ function generateObjectsReexport(clusterNames: string[]): string {
     w.line('"""');
     w.line(" Cluster object definitions.");
     w.line(" This file is auto-generated, DO NOT edit.");
-    w.line(' Users can import chip.clusters.Objects to get all cluster definitions.');
+    w.line(" Users can import chip.clusters.Objects to get all cluster definitions.");
     w.line('"""');
     w.blankLine();
     w.line("# Re-export all cluster classes from per-cluster files");
@@ -1771,9 +2011,7 @@ function generateDeviceTypes(): string {
         const name = dt.name;
 
         // Get required server clusters
-        const requirements = dt.children.filter(c =>
-            c.tag === "requirement" && (c as any).element === "serverCluster"
-        );
+        const requirements = dt.children.filter(c => c.tag === "requirement" && (c as any).element === "serverCluster");
 
         const clusterRefs: string[] = [];
         for (const req of requirements) {
@@ -1830,7 +2068,8 @@ function main(): void {
     const globalsContent = generateGlobalsFile(datatypeRegistry);
     writeFileSync(join(objectsDir, "Globals.py"), globalsContent);
 
-    // Generate per-cluster files
+    // Generate per-cluster files (id-having clusters + id-less "definitions"
+    // clusters that are referenced cross-cluster, e.g. WebRtcTransportDefinitions)
     const results: ClusterGenResult[] = [];
     const clusters = Matter.clusters.filter(c => c.id !== undefined);
 
@@ -1842,6 +2081,20 @@ function main(): void {
             writeFileSync(join(objectsDir, result.fileName), result.content);
         } catch (e) {
             console.error(`Error generating ${cluster.name}:`, e);
+        }
+    }
+
+    const definitionsClusters = Matter.clusters.filter(isDefinitionsCluster);
+    if (definitionsClusters.length > 0) {
+        console.log(`Generating ${definitionsClusters.length} definitions cluster file(s)...`);
+        for (const cluster of definitionsClusters) {
+            try {
+                const result = generateDefinitionsClusterFile(cluster, datatypeRegistry);
+                results.push(result);
+                writeFileSync(join(objectsDir, result.fileName), result.content);
+            } catch (e) {
+                console.error(`Error generating ${cluster.name}:`, e);
+            }
         }
     }
 
@@ -1898,13 +2151,12 @@ function main(): void {
     customLines.push("]");
     customLines.push("");
 
-    writeFileSync(
-        join(pythonClientDir, "matter_server", "common", "custom_clusters.py"),
-        customLines.join("\n"),
-    );
+    writeFileSync(join(pythonClientDir, "matter_server", "common", "custom_clusters.py"), customLines.join("\n"));
     console.log(`  Generated custom_clusters.py with ${customResults.length} cluster re-exports`);
 
-    console.log(`Done! Generated ${results.length} cluster files + Globals + Objects.py + device_types.py + custom_clusters.py`);
+    console.log(
+        `Done! Generated ${results.length} cluster files + Globals + Objects.py + device_types.py + custom_clusters.py`,
+    );
 }
 
 main();

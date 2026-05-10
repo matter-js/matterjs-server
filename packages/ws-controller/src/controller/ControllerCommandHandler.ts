@@ -21,7 +21,6 @@ import {
     Observable,
     Seconds,
     ServerAddress,
-    ServerAddressUdp,
     SoftwareUpdateInfo,
     SoftwareUpdateManager,
     Time,
@@ -44,7 +43,6 @@ import {
     PeerAddress,
     Read,
     Specifier,
-    SupportedTransportsSchema,
     PeerSet,
 } from "@matter/main/protocol";
 import {
@@ -827,6 +825,20 @@ export class ControllerCommandHandler {
                 regulatoryCountryCode: "XX",
                 wifiNetwork,
                 threadNetwork,
+                onAttestationFailure: findings => {
+                    let accept = true;
+                    for (const f of findings) {
+                        if (f.level === "error") {
+                            accept = false;
+                        }
+                        logger.info(
+                            `Attestation finding ${accept ? "accepted" : "rejected"} (${f.level}):`,
+                            f.type,
+                            f.message,
+                        );
+                    }
+                    return accept;
+                },
             },
             discovery: {
                 knownAddress,
@@ -901,12 +913,12 @@ export class ControllerCommandHandler {
             return [];
         }
         return [latestDiscovery].map(({ DT, DN, CM, D, RI, PH, PI, T, VP, deviceIdentifier, addresses, SII, SAI }) => {
-            const { tcpClient: supportsTcpClient, tcpServer: supportsTcpServer } = SupportedTransportsSchema.decode(
-                T ?? 0,
-            );
+            const supportsTcpClient = T?.tcpClient ?? false;
+            const supportsTcpServer = T?.tcpServer ?? false;
             const vendorId = VP === undefined ? -1 : VP.includes("+") ? parseInt(VP.split("+")[0]) : parseInt(VP);
             const productId = VP === undefined ? -1 : VP.includes("+") ? parseInt(VP.split("+")[1]) : -1;
-            const port = addresses.length ? (addresses[0] as ServerAddressUdp).port : 0;
+            const firstAddress = addresses[0];
+            const port = firstAddress && ServerAddress.isIp(firstAddress) ? firstAddress.port : 0;
             const numIPs = addresses.length;
             return {
                 commissioningMode: CM,
@@ -926,7 +938,7 @@ export class ControllerCommandHandler {
                 vendorId,
                 supportsTcpServer,
                 supportsTcpClient,
-                addresses: (addresses.filter(({ type }) => type === "udp") as ServerAddressUdp[]).map(({ ip }) => ip),
+                addresses: addresses.filter(ServerAddress.isIp).map(({ ip }) => ip),
                 mrpSessionIdleInterval: SII,
                 mrpSessionActiveInterval: SAI,
             };
@@ -948,7 +960,7 @@ export class ControllerCommandHandler {
             }
         }
         if (peer) {
-            const sessionIp = peer.newestSession?.channel.networkAddress?.ip;
+            const sessionIp = peer.newestSession()?.channel.networkAddress?.ip;
             if (sessionIp) {
                 addresses.add(sessionIp);
             }
@@ -958,9 +970,7 @@ export class ControllerCommandHandler {
         const node = this.#nodes.get(nodeId);
         const commissioningAddresses = node.node.maybeStateOf(CommissioningClient)?.addresses;
         if (commissioningAddresses !== undefined && commissioningAddresses.length > 0) {
-            const fallbackAddresses = commissioningAddresses
-                .filter((addr): addr is ServerAddressUdp => addr.type === "udp")
-                .map(addr => addr.ip);
+            const fallbackAddresses = commissioningAddresses.filter(ServerAddress.isIp).map(addr => addr.ip);
             for (const address of fallbackAddresses) {
                 addresses.add(address);
             }
