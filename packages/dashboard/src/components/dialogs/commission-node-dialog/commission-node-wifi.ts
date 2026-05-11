@@ -22,7 +22,8 @@ import "../../ha-svg-icon.js";
 export class CommissionNodeWifi extends LitElement {
     static override styles = css`
         .cred-chip {
-            display: inline-flex;
+            display: flex;
+            width: fit-content;
             align-items: center;
             gap: 6px;
             background: var(--md-sys-color-surface-container);
