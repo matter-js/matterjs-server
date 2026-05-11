@@ -558,6 +558,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             min_supported_schema_version: SCHEMA_VERSION,
             sdk_version: `matter-server/${this.#serverVersion} (matter.js/${MATTER_VERSION})`,
             wifi_credentials_set: !!(this.#config.wifiSsid && this.#config.wifiCredentials),
+            wifi_ssid: this.#config.wifiSsid && this.#config.wifiCredentials ? this.#config.wifiSsid : undefined,
             thread_credentials_set: !!this.#config.threadDataset,
             bluetooth_enabled: this.#commandHandler.bleEnabled,
         };

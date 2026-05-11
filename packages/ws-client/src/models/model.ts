@@ -312,6 +312,7 @@ export interface ServerInfoMessage {
     min_supported_schema_version: number;
     sdk_version: string;
     wifi_credentials_set: boolean;
+    wifi_ssid?: string;
     thread_credentials_set: boolean;
     bluetooth_enabled: boolean;
 }
