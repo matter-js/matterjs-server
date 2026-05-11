@@ -65,6 +65,7 @@ export function startServer(
     storagePath: string,
     logFilePath?: string,
     logLevel = process.env.MATTER_LOG_LEVEL ?? "info",
+    enableTestNetDcl = true,
 ): ChildProcess {
     const args = [
         "--enable-source-maps",
@@ -72,8 +73,10 @@ export function startServer(
         `--storage-path=${storagePath}`,
         `--log-level=${logLevel}`,
         `--port=${SERVER_PORT}`,
-        "--enable-test-net-dcl",
     ];
+    if (enableTestNetDcl) {
+        args.push("--enable-test-net-dcl");
+    }
     if (logFilePath !== undefined) {
         args.push(`--log-file=${logFilePath}`);
     }

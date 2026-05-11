@@ -197,7 +197,11 @@ export class MatterTestClient extends MatterClient {
      * Send a command and expect it to fail with a specific error code.
      * Uses a separate raw WebSocket connection to capture the full error response.
      */
-    async sendCommandExpectError(command: string, args: Record<string, unknown>): Promise<ServerErrorResponse> {
+    async sendCommandExpectError(
+        command: string,
+        args: Record<string, unknown>,
+        timeoutMs = 10_000,
+    ): Promise<ServerErrorResponse> {
         // Create a temporary raw WebSocket connection for this test
         const url = this.connection.ws_server_url;
 
@@ -209,7 +213,7 @@ export class MatterTestClient extends MatterClient {
             const timeout = setTimeout(() => {
                 ws.close();
                 reject(new Error(`Timeout waiting for error response to ${command}`));
-            }, 10_000);
+            }, timeoutMs);
 
             ws.onopen = () => {
                 // Wait for server info first, then send command
