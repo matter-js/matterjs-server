@@ -34,6 +34,8 @@ export class SettingsDialog extends LitElement {
 
     private _unsubscribeDev?: () => void;
 
+    @property({ attribute: false }) public scrollToSection?: string;
+
     @state() private _expandedRow: "wifi" | "thread" | null = null;
     @state() private _credLoading = false;
     @state() private _showPassword = false;
@@ -52,6 +54,18 @@ export class SettingsDialog extends LitElement {
     override disconnectedCallback() {
         super.disconnectedCallback();
         this._unsubscribeDev?.();
+    }
+
+    override firstUpdated() {
+        const knownSections = new Set(["network-credentials"]);
+        if (this.scrollToSection && knownSections.has(this.scrollToSection)) {
+            requestAnimationFrame(() => {
+                this.renderRoot.querySelector(`#${this.scrollToSection}`)?.scrollIntoView({
+                    behavior: "smooth",
+                    block: "start",
+                });
+            });
+        }
     }
 
     private _close() {
@@ -197,7 +211,7 @@ export class SettingsDialog extends LitElement {
 
                     <md-divider></md-divider>
 
-                    <section class="section">
+                    <section id="network-credentials" class="section">
                         <h3 class="section-title">Network credentials</h3>
 
                         <div class="cred-row">

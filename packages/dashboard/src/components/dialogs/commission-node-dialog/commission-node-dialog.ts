@@ -88,7 +88,7 @@ export class ComissionNodeDialog extends LitElement {
 
     private _requestSettings() {
         import("../settings/show-settings-dialog.js").then(({ showSettingsDialog }) => {
-            showSettingsDialog(this.client);
+            showSettingsDialog(this.client, "network-credentials");
         });
         this._close();
     }

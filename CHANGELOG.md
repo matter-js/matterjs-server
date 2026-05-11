@@ -13,7 +13,10 @@ This page shows a detailed overview of the changes between versions without the 
 - Feature: Updates the Matter version to be compatible with Matter 1.5.1
 - Feature: Enables Matter TCP support when devices support it (likely very few devices)
 - Feature: Updates the generated Python client classes to match Matter 1.5.1
+- Feature: Enhances the Dashboard UI to allow to clear and change the Wifi/Thread credentials
 - Fix: Ensures that also official test certificates are initialized correctly when DCL-Testnet-flag is enabled
+- Fix: Update matter.js to the latest 0.17.0-nightly
+    - Fixes write encoding for some cases of nullable attributes
 
 ## 0.6.8 (2026-05-08)
 
