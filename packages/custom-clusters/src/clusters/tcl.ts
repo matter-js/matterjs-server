@@ -56,10 +56,20 @@ export class TclDehumidifierCluster {
 
     /**
      * Active error codes. The device emits a literal JSON-encoded string here
-     * (e.g. `"[]"` or `"[3]"`), not a Matter list TLV — confirmed by reads on
+     * (e.g. `"[]"` or `"[5]"`), not a Matter list TLV — confirmed by reads on
      * H50D44W firmware 1.0. Treating the attribute as a string preserves what
      * the device actually puts on the wire; consumers JSON-parse it if they
      * want a numeric list.
+     *
+     * Empirically verified code semantics on H50D44W firmware 1.0:
+     *
+     * - `5` — water bucket full. Verified 2026-05-11 by cycling the bucket
+     *   and watching this attribute toggle `"[]"` ↔ `"[5]"`. The dedicated
+     *   {@link waterBucketFull} bool (attr 3) does **not** flip on this
+     *   device, so code 5 is the only reliable bucket-full signal.
+     *
+     * Other codes will likely surface over time (filter alert, defrost,
+     * sensor fault, …); document them here as they're identified.
      */
     @attribute(0x0005, string)
     errorCodes?: string;
