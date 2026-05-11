@@ -657,7 +657,8 @@ export class ControllerCommandHandler {
 
         value = convertWebSocketTagBasedToMatter(value, attributeModel, clusterEntry.model);
 
-        logger.info("Writing attribute", attributeId, "with value", value);
+        const attributeName = attributeModel.propertyName;
+        logger.info(`Writing attribute ${clusterId}.${attributeName} (${clusterId}.${attributeId}) with value`, value);
         const { status, clusterStatus } = await this.#writeAttribute(
             nodeId,
             endpointId,
