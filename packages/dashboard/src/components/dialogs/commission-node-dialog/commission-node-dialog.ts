@@ -24,7 +24,11 @@ export class ComissionNodeDialog extends LitElement {
         return html`
             <md-dialog open @cancel=${preventDefault} @closed=${this._handleClosed}>
                 <div slot="headline">Commission node</div>
-                <div slot="content" @node-commissioned=${this._nodeCommissioned}>
+                <div
+                    slot="content"
+                    @node-commissioned=${this._nodeCommissioned}
+                    @request-settings=${this._requestSettings}
+                >
                     ${!this._mode
                         ? html`<md-list>
                               <md-list-item
@@ -82,6 +86,13 @@ export class ComissionNodeDialog extends LitElement {
         this._close();
     }
 
+    private _requestSettings() {
+        import("../settings/show-settings-dialog.js").then(({ showSettingsDialog }) => {
+            showSettingsDialog(this.client);
+        });
+        this._close();
+    }
+
     private _close() {
         this.shadowRoot!.querySelector<MdDialog>("md-dialog")!.close();
     }
@@ -98,5 +109,6 @@ declare global {
 
     interface HASSDomEvents {
         "node-commissioned": MatterNode;
+        "request-settings": Record<string, never>;
     }
 }

@@ -9,15 +9,47 @@ import "@material/web/progress/circular-progress";
 import "@material/web/textfield/outlined-text-field";
 import type { MdOutlinedTextField } from "@material/web/textfield/outlined-text-field.js";
 import { MatterClient } from "@matter-server/ws-client";
-import { LitElement, html, nothing } from "lit";
+import { mdiAccessPoint } from "@mdi/js";
+import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
 import { clientContext } from "../../../client/client-context.js";
 import { handleAsync } from "../../../util/async-handler.js";
 import { fireEvent } from "../../../util/fire_event.js";
 import { showAlertDialog } from "../../dialog-box/show-dialog-box.js";
+import "../../ha-svg-icon.js";
 
 @customElement("commission-node-thread")
 export class CommissionNodeThread extends LitElement {
+    static override styles = css`
+        .cred-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: var(--md-sys-color-surface-container);
+            color: var(--md-sys-color-on-surface-variant);
+            border-radius: 16px;
+            padding: 4px 10px 4px 6px;
+            font-size: 0.85em;
+            margin-bottom: 12px;
+        }
+        .cred-chip ha-svg-icon {
+            width: 18px;
+            height: 18px;
+            flex-shrink: 0;
+        }
+        .cred-chip .sep {
+            opacity: 0.5;
+        }
+        .cred-chip .edit-link {
+            cursor: pointer;
+            color: var(--md-sys-color-primary);
+            background: none;
+            border: none;
+            padding: 0;
+            font: inherit;
+            font-size: inherit;
+        }
+    `;
     @consume({ context: clientContext, subscribe: true })
     @property({ attribute: false })
     public client!: MatterClient;
@@ -44,7 +76,15 @@ export class CommissionNodeThread extends LitElement {
                     >Set Thread Dataset</md-outlined-button
                 >${this._loading ? html` <md-circular-progress indeterminate></md-circular-progress> ` : nothing}`;
         }
-        return html`<md-outlined-text-field label="Pairing code" .disabled="${this._loading}"> </md-outlined-text-field>
+        return html`<div class="cred-chip">
+                <ha-svg-icon .path=${mdiAccessPoint}></ha-svg-icon>
+                <span>Thread network set</span>
+                <span class="sep">·</span>
+                <button class="edit-link" @click=${() => fireEvent(this, "request-settings", {})}>
+                    Edit in Settings
+                </button>
+            </div>
+            <md-outlined-text-field label="Pairing code" .disabled="${this._loading}"> </md-outlined-text-field>
             <br />
             <br />
             <md-outlined-button @click=${handleAsync(() => this._commissionNode())} .disabled="${this._loading}"
@@ -85,5 +125,11 @@ export class CommissionNodeThread extends LitElement {
         } finally {
             this._loading = false;
         }
+    }
+}
+
+declare global {
+    interface HASSDomEvents {
+        "request-settings": Record<string, never>;
     }
 }
