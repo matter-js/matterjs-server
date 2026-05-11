@@ -831,12 +831,9 @@ export class ControllerCommandHandler {
                         if (f.level === "error") {
                             accept = false;
                         }
-                        logger.info(
-                            `Attestation finding ${accept ? "accepted" : "rejected"} (${f.level}):`,
-                            f.type,
-                            f.message,
-                        );
+                        logger.info(`Attestation finding (${f.level}):`, f.type, f.message);
                     }
+                    logger.info(`Attestation ${accept ? "accepted" : "rejected"}`);
                     return accept;
                 },
             },

@@ -233,13 +233,6 @@ class ColorControl(Cluster):
             kXy = 0x8
             kColorTemperature = 0x10
 
-        class ColorCapabilitiesBitmap(IntFlag):
-            kHueAndSaturation = 0x1
-            kEnhancedHue = 0x2
-            kColorLoop = 0x4
-            kXy = 0x8
-            kColorTemperature = 0x10
-
         class OptionsBitmap(IntFlag):
             kExecuteIfOff = 0x1
 

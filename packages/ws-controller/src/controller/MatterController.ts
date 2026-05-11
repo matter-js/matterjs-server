@@ -182,7 +182,7 @@ export class MatterController {
     ) {
         this.#legacyCommissionedDates = legacyCommissionedDates?.size ? legacyCommissionedDates : undefined;
 
-        // Initialize the DclCertificateService on teh root environment
+        // Initialize the DclCertificateService on the root environment, will automatically be used
         new DclCertificateService(this.#env.root, { fetchTestCertificates: this.#enableTestNetDcl });
 
         this.#controllerInstance = new CommissioningController({

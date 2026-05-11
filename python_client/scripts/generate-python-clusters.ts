@@ -1160,7 +1160,10 @@ function generateClusterFile(
 
     // ---- Bitmaps section ----
     const extraBitmaps = EXTRA_BITMAPS[clusterName] || [];
-    const hasBitmaps = bitmaps.length > 0 || features.length > 0 || extraBitmaps.length > 0;
+    // EXTRA_BITMAPS take precedence — skip model bitmaps that are explicitly overridden
+    const extraBitmapNames = new Set(extraBitmaps.map(eb => eb.name));
+    const modelBitmaps = bitmaps.filter(b => !extraBitmapNames.has(b.name));
+    const hasBitmaps = modelBitmaps.length > 0 || features.length > 0 || extraBitmaps.length > 0;
     if (hasBitmaps) {
         w.blankLine();
         w.line("class Bitmaps:");
@@ -1176,14 +1179,14 @@ function generateClusterFile(
                 w.line(`${toKName(f.title || f.name)} = 0x${flagValue.toString(16).toUpperCase()}`);
             }
             w.popIndent();
-            if (bitmaps.length > 0) {
+            if (modelBitmaps.length > 0 || extraBitmaps.length > 0) {
                 w.blankLine();
             }
         }
 
-        for (let i = 0; i < bitmaps.length; i++) {
-            generateBitmap(w, bitmaps[i], clusterName);
-            if (i < bitmaps.length - 1 || extraBitmaps.length > 0) {
+        for (let i = 0; i < modelBitmaps.length; i++) {
+            generateBitmap(w, modelBitmaps[i], clusterName);
+            if (i < modelBitmaps.length - 1 || extraBitmaps.length > 0) {
                 w.blankLine();
             }
         }
