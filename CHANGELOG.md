@@ -15,6 +15,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Feature: Updates the generated Python client classes to match Matter 1.5.1
 - Feature: Enhances the Dashboard UI to allow to clear and change the Wifi/Thread credentials
 - Feature: (iamadamreed) Adds TCL custom cluster
+- Feature: (burmistrzak) Adds "window open mode" attribute for Eve custom cluster
 - Fix: Ensures that also official test certificates are initialized correctly when DCL-Testnet-flag is enabled
 - Fix: Update matter.js to the latest 0.17.0-nightly
     - Fixes write encoding for some cases of nullable attributes

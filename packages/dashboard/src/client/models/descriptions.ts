@@ -17174,7 +17174,7 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 319486977,
                 "label": "WindowOpenMode",
                 "type": "Optional[bool]",
-                "writable": false
+                "writable": true
             },
             "319422488": {
                 "id": 319422488,
