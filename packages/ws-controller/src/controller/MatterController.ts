@@ -235,7 +235,7 @@ export class MatterController {
 
                 // Start loading and initialization of meta data
                 initPromises.push(this.vendorInfoService());
-                initPromises.push(this.certificateService());
+                // initPromises.push(this.certificateService()); // postponed to commissioning needs
 
                 if (!this.#disableOtaProvider && this.#enableTestNetDcl) {
                     initPromises.push(this.#enableTestOtaImages());
@@ -331,6 +331,7 @@ export class MatterController {
     }
 
     async stop() {
+        await this.certificateService(); // Ensure it was initialized so that shutdown works
         await this.#borderRouterDiscovery.stop();
         await this.#commandHandler?.close(); // This closes also the controller instance if started
     }

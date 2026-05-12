@@ -638,6 +638,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
             }
         }
 
+        // Ensure certificates are loaded and initialized
+        await this.#controller.certificateService();
+
         await this.#config.set({
             nextNodeId: typeof nextNodeId === "bigint" ? nextNodeId + 1n : nextNodeId + 1,
         });
@@ -694,6 +697,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 commissionRequest = { ...baseRequest, passcode: setup_pin_code };
                 break;
         }
+
+        // Ensure certificates are loaded and initialized
+        await this.#controller.certificateService();
 
         await this.#config.set({
             nextNodeId: typeof nextNodeId === "bigint" ? nextNodeId + 1n : nextNodeId + 1,
