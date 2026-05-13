@@ -9,7 +9,7 @@ import "@material/web/button/filled-button.js";
 import "@material/web/button/text-button.js";
 import "@material/web/iconbutton/icon-button.js";
 import type { MatterClient } from "@matter-server/ws-client";
-import { mdiClose } from "@mdi/js";
+import { mdiCamera, mdiClose } from "@mdi/js";
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { createRef, ref } from "lit/directives/ref.js";
@@ -31,12 +31,17 @@ export class CameraOverlay extends LitElement {
 
     @state() private _state: StreamState = "idle";
     @state() private _errorMessage: string | null = null;
+    @state() private _snapshotDataUri: string | null = null;
+    @state() private _snapshotResolution: { width: number; height: number } | null = null;
+    @state() private _snapshotBusy = false;
+    @state() private _snapshotError: string | null = null;
 
     private _streamViewRef = createRef<WebRtcStreamView>();
 
     private _close(): void {
         const view = this._streamViewRef.value;
         if (view) {
+            void view.deallocateSnapshot();
             void view.stop();
         }
         this.remove();
@@ -61,6 +66,30 @@ export class CameraOverlay extends LitElement {
         }
     }
 
+    private async _onSnapshot(): Promise<void> {
+        const view = this._streamViewRef.value;
+        if (!view) return;
+        this._snapshotBusy = true;
+        this._snapshotError = null;
+        try {
+            const { dataUri, resolution } = await view.takeSnapshot();
+            this._snapshotDataUri = dataUri;
+            this._snapshotResolution = resolution;
+        } catch (e) {
+            this._snapshotError = e instanceof Error ? e.message : String(e);
+        } finally {
+            this._snapshotBusy = false;
+        }
+    }
+
+    private _downloadSnapshot(): void {
+        if (!this._snapshotDataUri) return;
+        const a = document.createElement("a");
+        a.href = this._snapshotDataUri;
+        a.download = `snapshot-node${this.nodeId}-ep${this.endpointId}-${Date.now()}.jpg`;
+        a.click();
+    }
+
     override render() {
         const canStart = this._state === "idle" || this._state === "error";
 
@@ -83,6 +112,29 @@ export class CameraOverlay extends LitElement {
                               @streamstate=${this._onStreamState}
                           ></webrtc-stream-view>`
                         : html`<div class="status error">No Matter client available.</div>`}
+                    ${this._snapshotDataUri
+                        ? html`
+                              <div class="snapshot-preview">
+                                  <img
+                                      src=${this._snapshotDataUri}
+                                      @click=${this._downloadSnapshot}
+                                      title="Click to download${this._snapshotResolution
+                                          ? ` (${this._snapshotResolution.width}×${this._snapshotResolution.height})`
+                                          : ""}"
+                                      alt="Snapshot"
+                                  />
+                                  <md-icon-button
+                                      @click=${() => {
+                                          this._snapshotDataUri = null;
+                                      }}
+                                      aria-label="Close snapshot"
+                                  >
+                                      <ha-svg-icon .path=${mdiClose}></ha-svg-icon>
+                                  </md-icon-button>
+                              </div>
+                          `
+                        : nothing}
+                    ${this._snapshotError ? html`<div class="snapshot-error">${this._snapshotError}</div>` : nothing}
                 </main>
                 <footer>
                     ${this._state === "connecting" ? html`<span class="footer-status">Connecting…</span>` : nothing}
@@ -97,6 +149,14 @@ export class CameraOverlay extends LitElement {
                     ${this._state === "streaming"
                         ? html`<md-filled-button @click=${this._stop}>End</md-filled-button>`
                         : nothing}
+                    <md-text-button
+                        @click=${this._onSnapshot}
+                        ?disabled=${this._snapshotBusy || !this.client}
+                        aria-label="Take snapshot"
+                    >
+                        <ha-svg-icon .path=${mdiCamera} slot="icon"></ha-svg-icon>
+                        ${this._snapshotBusy ? "Capturing…" : "Snapshot"}
+                    </md-text-button>
                     <md-text-button @click=${this._close}>Close</md-text-button>
                 </footer>
             </div>
@@ -138,6 +198,7 @@ export class CameraOverlay extends LitElement {
             display: block;
             background: black;
             min-height: 0;
+            position: relative;
         }
         webrtc-stream-view {
             width: 100%;
@@ -147,6 +208,40 @@ export class CameraOverlay extends LitElement {
             color: var(--danger-color);
             text-align: center;
             padding: 16px;
+        }
+        .snapshot-preview {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            max-width: 200px;
+            background: var(--md-sys-color-surface-container);
+            border: 1px solid var(--md-sys-color-outline-variant);
+            border-radius: 4px;
+            padding: 4px;
+            display: grid;
+            grid-template-columns: 1fr auto;
+            align-items: start;
+            gap: 4px;
+            z-index: 10;
+        }
+        .snapshot-preview img {
+            max-width: 100%;
+            cursor: pointer;
+            display: block;
+            border-radius: 2px;
+        }
+        .snapshot-error {
+            position: absolute;
+            bottom: 8px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: var(--danger-color);
+            background: var(--md-sys-color-surface-container);
+            border-radius: 4px;
+            padding: 6px 12px;
+            font-size: 0.875rem;
+            z-index: 10;
+            white-space: nowrap;
         }
         footer {
             padding: 8px 16px;

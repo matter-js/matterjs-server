@@ -54,6 +54,91 @@ function parseStreamAllocate(value: unknown, idKey: "videoStreamId" | "audioStre
     return pickNumber(obj, idKey, upperKey);
 }
 
+// AttributesData is { [path: string]: value }; extract the first (and only) path's value.
+function extractAttributeValue(attributesData: unknown): unknown {
+    const obj = asObject(attributesData);
+    if (!obj) return attributesData;
+    const vals = Object.values(obj);
+    return vals.length > 0 ? vals[0] : null;
+}
+
+function parseAllocatedSnapshotStreams(value: unknown): number[] {
+    const list = extractAttributeValue(value);
+    if (!Array.isArray(list)) return [];
+    const ids = new Array<number>();
+    for (const item of list) {
+        const entry = asObject(item);
+        const id = entry ? pickNumber(entry, "snapshotStreamId", "snapshotStreamID") : null;
+        if (id !== null) ids.push(id);
+    }
+    return ids;
+}
+
+function parseSnapshotAllocateResponse(value: unknown): number | null {
+    const obj = asObject(value);
+    if (!obj) return null;
+    return pickNumber(obj, "snapshotStreamId", "snapshotStreamID");
+}
+
+interface SnapshotCapability {
+    resolution: { width: number; height: number };
+    maxFrameRate: number;
+    imageCodec: number;
+}
+
+function parseSnapshotCapabilities(value: unknown): SnapshotCapability {
+    const raw = extractAttributeValue(value);
+    const list = Array.isArray(raw) ? raw : null;
+    const first = list?.[0];
+    const cap = asObject(first);
+    if (!cap) throw new Error("Camera reports no snapshot capabilities");
+    const res = asObject(cap["resolution"]);
+    const width = res ? pickNumber(res, "width") : null;
+    const height = res ? pickNumber(res, "height") : null;
+    const maxFrameRate = pickNumber(cap, "maxFrameRate", "max_frame_rate");
+    const imageCodec = pickNumber(cap, "imageCodec", "image_codec");
+    if (width === null || height === null || maxFrameRate === null || imageCodec === null) {
+        throw new Error("Camera reports no snapshot capabilities");
+    }
+    return { resolution: { width, height }, maxFrameRate, imageCodec };
+}
+
+interface CaptureSnapshotResult {
+    dataBase64: string;
+    imageCodec: number;
+    resolution: { width: number; height: number };
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+    // Chunked to avoid stack overflow when spreading large arrays into String.fromCharCode.
+    const CHUNK = 8192;
+    let binary = "";
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+    }
+    return btoa(binary);
+}
+
+function parseDataToBase64(data: unknown): string {
+    if (typeof data === "string") return data;
+    if (data instanceof Uint8Array) return bytesToBase64(data);
+    if (data instanceof ArrayBuffer) return bytesToBase64(new Uint8Array(data));
+    if (Array.isArray(data)) return bytesToBase64(new Uint8Array(data as number[]));
+    throw new Error(`Unexpected snapshot data shape: ${typeof data}`);
+}
+
+function parseCaptureSnapshotResponse(value: unknown): CaptureSnapshotResult {
+    const obj = asObject(value);
+    if (!obj) throw new Error("CaptureSnapshot returned no response");
+    const data = obj["data"];
+    if (data == null) throw new Error("CaptureSnapshot response missing data field");
+    const imageCodec = pickNumber(obj, "imageCodec", "image_codec") ?? 0;
+    const res = asObject(obj["resolution"]);
+    const width = res ? (pickNumber(res, "width") ?? 0) : 0;
+    const height = res ? (pickNumber(res, "height") ?? 0) : 0;
+    return { dataBase64: parseDataToBase64(data), imageCodec, resolution: { width, height } };
+}
+
 function parseProvideOfferResponse(value: unknown): ProvideOfferResponse | null {
     const obj = asObject(value);
     if (!obj) return null;
@@ -81,6 +166,8 @@ export class WebRtcStreamView extends LitElement {
     @state() private _state: StreamState = "idle";
     @state() private _errorMessage: string | null = null;
 
+    private _snapshotStreamId: number | null = null;
+
     @query("video") private _video?: HTMLVideoElement;
 
     private _pc: RTCPeerConnection | null = null;
@@ -100,6 +187,7 @@ export class WebRtcStreamView extends LitElement {
 
     override disconnectedCallback() {
         super.disconnectedCallback();
+        void this.deallocateSnapshot();
         void this.stop();
     }
 
@@ -288,6 +376,8 @@ export class WebRtcStreamView extends LitElement {
             }
         }
 
+        await this.deallocateSnapshot();
+
         const video = this._video;
         if (video && video.srcObject) {
             video.srcObject = null;
@@ -314,6 +404,87 @@ export class WebRtcStreamView extends LitElement {
             this._fireStateChange("idle", null);
         }
         this._stopping = false;
+    }
+
+    async takeSnapshot(): Promise<{ dataUri: string; resolution: { width: number; height: number } }> {
+        if (!this.client) throw new Error("Matter client not available");
+        const streamId = await this._ensureSnapshotStream();
+        const response = await this.client.deviceCommand(
+            this.nodeId,
+            this.endpointId,
+            CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID,
+            "CaptureSnapshot",
+            { snapshotStreamId: streamId },
+        );
+        const parsed = parseCaptureSnapshotResponse(response);
+        const mimeType = parsed.imageCodec === 0 ? "jpeg" : "png";
+        return {
+            dataUri: `data:image/${mimeType};base64,${parsed.dataBase64}`,
+            resolution: parsed.resolution,
+        };
+    }
+
+    async deallocateSnapshot(): Promise<void> {
+        if (this._snapshotStreamId === null) return;
+        const id = this._snapshotStreamId;
+        this._snapshotStreamId = null;
+        try {
+            await this.client?.deviceCommand(
+                this.nodeId,
+                this.endpointId,
+                CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID,
+                "SnapshotStreamDeallocate",
+                { snapshotStreamId: id },
+            );
+        } catch (e) {
+            console.warn("SnapshotStreamDeallocate failed (continuing):", e);
+        }
+    }
+
+    private async _ensureSnapshotStream(): Promise<number> {
+        if (this._snapshotStreamId !== null) return this._snapshotStreamId;
+        if (!this.client) throw new Error("Matter client not available");
+
+        try {
+            const allocated = await this.client.sendCommand("read_attribute", 0, {
+                node_id: this.nodeId,
+                attribute_path: `${this.endpointId}/${CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID}/AllocatedSnapshotStreams`,
+            });
+            const existing = parseAllocatedSnapshotStreams(allocated);
+            if (existing.length > 0) {
+                this._snapshotStreamId = existing[0];
+                return this._snapshotStreamId;
+            }
+        } catch (e) {
+            console.info("Could not read AllocatedSnapshotStreams; will allocate fresh:", e);
+        }
+
+        const capsResp = await this.client.sendCommand("read_attribute", 0, {
+            node_id: this.nodeId,
+            attribute_path: `${this.endpointId}/${CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID}/SnapshotCapabilities`,
+        });
+        const cap = parseSnapshotCapabilities(capsResp);
+
+        const response = await this.client.deviceCommand(
+            this.nodeId,
+            this.endpointId,
+            CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID,
+            "SnapshotStreamAllocate",
+            {
+                imageCodec: cap.imageCodec,
+                frameRate: cap.maxFrameRate,
+                minResolution: cap.resolution,
+                maxResolution: cap.resolution,
+                quality: 90,
+                bitRate: 1_000_000,
+            },
+        );
+        const snapshotStreamId = parseSnapshotAllocateResponse(response);
+        if (snapshotStreamId === null) {
+            throw new Error("SnapshotStreamAllocate did not return a snapshot stream id");
+        }
+        this._snapshotStreamId = snapshotStreamId;
+        return this._snapshotStreamId;
     }
 
     private async _onWebRtcCallback(data: WebRtcCallbackData): Promise<void> {
