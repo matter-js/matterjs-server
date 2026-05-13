@@ -9,6 +9,7 @@
  */
 
 // Export controller components
+export * from "./controller/behaviors/WebRtcTransportRequestorServer.js";
 export * from "./controller/ControllerCommandHandler.js";
 export * from "./controller/LegacyDataInjector.js";
 export * from "./controller/MatterController.js";
