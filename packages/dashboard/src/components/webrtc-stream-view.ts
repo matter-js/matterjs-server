@@ -15,7 +15,7 @@ import type {
 import { LitElement, css, html } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
 import { clientContext } from "../client/client-context.js";
-import { asObject, extractAttributeValue, pickNumber } from "../util/attribute-shapes.js";
+import { asObject, pickNumber } from "../util/attribute-shapes.js";
 
 // Spec values from @matter/types globals/StreamUsage.ts and
 // web-rtc-transport-definitions.ts WebRtcEndReason. Kept inline to avoid a new
@@ -42,18 +42,6 @@ function parseStreamAllocate(value: unknown, idKey: "videoStreamId" | "audioStre
     return pickNumber(obj, idKey);
 }
 
-function parseAllocatedSnapshotStreams(value: unknown): number[] {
-    const list = extractAttributeValue(value);
-    if (!Array.isArray(list)) return [];
-    const ids = new Array<number>();
-    for (const item of list) {
-        const entry = asObject(item);
-        const id = entry ? pickNumber(entry, "snapshotStreamId") : null;
-        if (id !== null) ids.push(id);
-    }
-    return ids;
-}
-
 function parseSnapshotAllocateResponse(value: unknown): number | null {
     const obj = asObject(value);
     if (!obj) return null;
@@ -66,11 +54,8 @@ interface SnapshotCapability {
     imageCodec: number;
 }
 
-function parseSnapshotCapabilities(value: unknown): SnapshotCapability {
-    const raw = extractAttributeValue(value);
-    const list = Array.isArray(raw) ? raw : null;
-    const first = list?.[0];
-    const cap = asObject(first);
+function parseSnapshotCapabilitiesFromList(list: unknown[]): SnapshotCapability {
+    const cap = asObject(list[0]);
     if (!cap) throw new Error("Camera reports no snapshot capabilities");
     const res = asObject(cap["resolution"]);
     const width = res ? pickNumber(res, "width") : null;
@@ -232,8 +217,7 @@ export class WebRtcStreamView extends LitElement {
                     maxResolution,
                     minBitRate: 10000,
                     maxBitRate: 10000,
-                    minKeyFrameInterval: 4000,
-                    maxKeyFrameInterval: 4000,
+                    keyFrameInterval: 4000,
                 },
             );
             const videoStreamId = parseStreamAllocate(videoAlloc, "videoStreamId");
@@ -427,25 +411,25 @@ export class WebRtcStreamView extends LitElement {
         if (this._snapshotStreamId !== null) return this._snapshotStreamId;
         if (!this.client) throw new Error("Matter client not available");
 
-        try {
-            const allocated = await this.client.sendCommand("read_attribute", 0, {
-                node_id: this.nodeId,
-                attribute_path: `${this.endpointId}/${CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID}/AllocatedSnapshotStreams`,
-            });
-            const existing = parseAllocatedSnapshotStreams(allocated);
-            if (existing.length > 0) {
-                this._snapshotStreamId = existing[0];
-                return this._snapshotStreamId;
+        const node = this.client.nodes[String(this.nodeId)];
+
+        // AllocatedSnapshotStreams (attr id 17) — reuse existing stream if camera already allocated one
+        const allocatedRaw = node?.attributes[`${this.endpointId}/${CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID}/17`];
+        if (Array.isArray(allocatedRaw) && allocatedRaw.length > 0) {
+            const entry = asObject(allocatedRaw[0]);
+            const id = entry ? pickNumber(entry, "snapshotStreamId") : null;
+            if (id !== null) {
+                this._snapshotStreamId = id;
+                return id;
             }
-        } catch (e) {
-            console.info("Could not read AllocatedSnapshotStreams; will allocate fresh:", e);
         }
 
-        const capsResp = await this.client.sendCommand("read_attribute", 0, {
-            node_id: this.nodeId,
-            attribute_path: `${this.endpointId}/${CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID}/SnapshotCapabilities`,
-        });
-        const cap = parseSnapshotCapabilities(capsResp);
+        // SnapshotCapabilities (attr id 10) — read capabilities from cache to allocate a new stream
+        const capsRaw = node?.attributes[`${this.endpointId}/${CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID}/10`];
+        if (!Array.isArray(capsRaw) || capsRaw.length === 0) {
+            throw new Error("Camera snapshot capabilities not available in cache; interview the device first");
+        }
+        const cap = parseSnapshotCapabilitiesFromList(capsRaw);
 
         const response = await this.client.deviceCommand(
             this.nodeId,

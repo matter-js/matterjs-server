@@ -15,7 +15,6 @@ import { LitElement, css, html } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { guard } from "lit/directives/guard.js";
 import { DeviceType, clusters, device_types } from "../client/models/descriptions.js";
-import "../components/camera-live-view-button.js";
 import "../components/ha-svg-icon";
 import { formatHex, formatNodeAddress, getEffectiveFabricIndex } from "../util/format_hex.js";
 import { notFoundStyles } from "../util/shared-styles.js";
@@ -82,12 +81,6 @@ class MatterEndpointView extends LitElement {
                 .backButton=${`#node/${this.node.node_id}`}
                 .client=${this.client}
             ></dashboard-header>
-
-            <camera-live-view-button
-                .nodeId=${this.node.node_id}
-                .endpointId=${this.endpoint}
-                .deviceTypes=${getEndpointDeviceTypes(this.node, this.endpoint).map(d => d.id)}
-            ></camera-live-view-button>
 
             <!-- node details section -->
             <div class="container">

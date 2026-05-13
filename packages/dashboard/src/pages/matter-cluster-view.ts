@@ -20,7 +20,6 @@ import { clusters } from "../client/models/descriptions.js";
 import { showAlertDialog } from "../components/dialog-box/show-dialog-box.js";
 import { showAttributeWriteDialog } from "../components/dialogs/dev/show-attribute-write-dialog.js";
 import { showCommandInvokeDialog } from "../components/dialogs/dev/show-command-invoke-dialog.js";
-import "../components/camera-live-view-button.js";
 import "../components/ha-svg-icon";
 import "../pages/components/node-details";
 // Cluster command components (auto-register on import)
@@ -29,7 +28,6 @@ import { formatHex, formatNodeAddress, getEffectiveFabricIndex } from "../util/f
 import { notFoundStyles } from "../util/shared-styles.js";
 import { getClusterCommandsTag } from "./cluster-commands/index.js";
 import { bindingContext } from "./components/context.js";
-import { getEndpointDeviceTypes } from "./matter-endpoint-view.js";
 
 declare global {
     interface HTMLElementTagNameMap {
@@ -134,12 +132,6 @@ class MatterClusterView extends LitElement {
                 .backButton=${`#node/${this.node.node_id}/${this.endpoint}`}
                 .client=${this.client}
             ></dashboard-header>
-
-            <camera-live-view-button
-                .nodeId=${this.node.node_id}
-                .endpointId=${this.endpoint}
-                .deviceTypes=${getEndpointDeviceTypes(this.node, this.endpoint).map(d => d.id)}
-            ></camera-live-view-button>
 
             <!-- node details section -->
             <div class="container">

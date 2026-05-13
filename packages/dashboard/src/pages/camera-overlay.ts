@@ -20,7 +20,7 @@ import { CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID } from "../components/webrtc-str
 import "../components/ha-svg-icon.js";
 import "../components/webrtc-stream-view.js";
 import type { WebRtcStreamView } from "../components/webrtc-stream-view.js";
-import { asObject, extractAttributeList, extractAttributeValue, pickNumber } from "../util/attribute-shapes.js";
+import { asObject, pickNumber } from "../util/attribute-shapes.js";
 
 type StreamState = "idle" | "connecting" | "streaming" | "error";
 
@@ -58,98 +58,48 @@ export class CameraOverlay extends LitElement {
     private _streamViewRef = createRef<WebRtcStreamView>();
 
     override firstUpdated(): void {
-        void this._initResolutions();
+        this._initResolutions();
     }
 
-    private async _initResolutions(): Promise<void> {
-        try {
-            this._resolutions = await this._loadResolutions();
-            this._selectedResolution = this._resolutions[0] ?? null;
-        } finally {
-            this._resolutionsLoading = false;
-        }
+    private _initResolutions(): void {
+        this._resolutions = this._loadResolutions();
+        this._selectedResolution = this._resolutions[0] ?? null;
+        this._resolutionsLoading = false;
     }
 
-    private async _readAvsmAttribute(name: string): Promise<unknown> {
-        if (!this.client) return undefined;
-        return await this.client.sendCommand("read_attribute", 0, {
-            node_id: this.nodeId,
-            attribute_path: `${this.endpointId}/${CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID}/${name}`,
-        });
+    private _readCachedAvsmAttribute(attributeId: number): unknown {
+        const node = this.client?.nodes[String(this.nodeId)];
+        if (!node) return undefined;
+        return node.attributes[`${this.endpointId}/${CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID}/${attributeId}`];
     }
 
-    private async _loadResolutions(): Promise<Resolution[]> {
-        // 1. RateDistortionTradeOffPoints — richest capability source
-        try {
-            const raw = await this._readAvsmAttribute("RateDistortionTradeOffPoints");
-            const list = extractAttributeList(raw);
-            if (list.length > 0) {
-                const seen = new Map<string, Resolution>();
-                for (const item of list) {
-                    const resObj = asObject(item)?.["resolution"];
-                    const res = asObject(resObj);
-                    if (!res) continue;
-                    const w = pickNumber(res, "width");
-                    const h = pickNumber(res, "height");
-                    if (w !== null && h !== null) {
-                        const key = `${w}x${h}`;
-                        if (!seen.has(key)) seen.set(key, { width: w, height: h });
-                    }
+    private _loadResolutions(): Resolution[] {
+        // 1. RateDistortionTradeOffPoints (attr id 5) — richest capability source
+        const rdtRaw = this._readCachedAvsmAttribute(5);
+        if (Array.isArray(rdtRaw) && rdtRaw.length > 0) {
+            const seen = new Map<string, Resolution>();
+            for (const item of rdtRaw) {
+                const resObj = asObject(item)?.["resolution"];
+                const res = asObject(resObj);
+                if (!res) continue;
+                const w = pickNumber(res, "width");
+                const h = pickNumber(res, "height");
+                if (w !== null && h !== null) {
+                    const key = `${w}x${h}`;
+                    if (!seen.has(key)) seen.set(key, { width: w, height: h });
                 }
-                const results = [...seen.values()].sort((a, b) => b.width * b.height - a.width * a.height);
-                if (results.length > 0) return results;
             }
-        } catch (e) {
-            console.info("RateDistortionTradeOffPoints read failed; trying next capability source", e);
+            const results = [...seen.values()].sort((a, b) => b.width * b.height - a.width * a.height);
+            if (results.length > 0) return results;
         }
 
-        // 2. Viewports — list of rect viewports projected to width/height
-        try {
-            const raw = await this._readAvsmAttribute("Viewports");
-            const list = extractAttributeList(raw);
-            if (list.length > 0) {
-                const seen = new Map<string, Resolution>();
-                for (const item of list) {
-                    const vp = asObject(item);
-                    if (!vp) continue;
-                    const x1 = pickNumber(vp, "x1");
-                    const y1 = pickNumber(vp, "y1");
-                    const x2 = pickNumber(vp, "x2");
-                    const y2 = pickNumber(vp, "y2");
-                    if (x1 !== null && y1 !== null && x2 !== null && y2 !== null) {
-                        const w = x2 - x1;
-                        const h = y2 - y1;
-                        if (w > 0 && h > 0) {
-                            const key = `${w}x${h}`;
-                            if (!seen.has(key)) seen.set(key, { width: w, height: h });
-                        }
-                    }
-                }
-                const results = [...seen.values()].sort((a, b) => b.width * b.height - a.width * a.height);
-                if (results.length > 0) return results;
-            }
-        } catch (e) {
-            console.info("Viewports read failed; trying next capability source", e);
-        }
-
-        // 3. MinViewport — single viewport struct
-        try {
-            const raw = await this._readAvsmAttribute("MinViewport");
-            const val = extractAttributeValue(raw);
-            const vp = asObject(val);
-            if (vp) {
-                const x1 = pickNumber(vp, "x1");
-                const y1 = pickNumber(vp, "y1");
-                const x2 = pickNumber(vp, "x2");
-                const y2 = pickNumber(vp, "y2");
-                if (x1 !== null && y1 !== null && x2 !== null && y2 !== null) {
-                    const w = x2 - x1;
-                    const h = y2 - y1;
-                    if (w > 0 && h > 0) return [{ width: w, height: h }];
-                }
-            }
-        } catch (e) {
-            console.info("MinViewport read failed; using HA-style defaults", e);
+        // 2. MinViewportResolution (attr id 4) — single VideoResolution struct {width, height}
+        const minVpRaw = this._readCachedAvsmAttribute(4);
+        const minVp = asObject(minVpRaw);
+        if (minVp) {
+            const w = pickNumber(minVp, "width");
+            const h = pickNumber(minVp, "height");
+            if (w !== null && h !== null && w > 0 && h > 0) return [{ width: w, height: h }];
         }
 
         return HA_DEFAULT_RESOLUTIONS;

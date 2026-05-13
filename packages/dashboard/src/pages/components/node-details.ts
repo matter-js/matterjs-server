@@ -13,7 +13,7 @@ import "@material/web/list/list";
 import "@material/web/list/list-item";
 import { consume } from "@lit/context";
 import { MatterClient, MatterNode, UpdateSource } from "@matter-server/ws-client";
-import { mdiChatProcessing, mdiLink, mdiShareVariant, mdiTrashCan, mdiUpdate } from "@mdi/js";
+import { mdiChatProcessing, mdiLink, mdiShareVariant, mdiTrashCan, mdiUpdate, mdiVideo } from "@mdi/js";
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { DeviceType } from "../../client/models/descriptions.js";
@@ -21,6 +21,7 @@ import { showAlertDialog, showPromptDialog } from "../../components/dialog-box/s
 import { showNodeBindingDialog } from "../../components/dialogs/binding/show-node-binding-dialog.js";
 import { handleAsync } from "../../util/async-handler.js";
 import "../../components/ha-svg-icon";
+import "../camera-overlay.js";
 import { getDeviceIcon } from "../../util/device-icons.js";
 import { getEndpointDeviceTypes } from "../matter-endpoint-view.js";
 import { bindingContext } from "./context.js";
@@ -74,6 +75,8 @@ export class NodeDetails extends LitElement {
         if (!this.node) return html``;
 
         const bindings = this.node.attributes[this.endpoint + "/30/0"];
+        const deviceTypeIds = getEndpointDeviceTypes(this.node, this.endpoint).map(d => d.id);
+        const isCamera = deviceTypeIds.includes(0x0142) || deviceTypeIds.includes(0x0143);
 
         return html`
             <md-list>
@@ -129,6 +132,14 @@ export class NodeDetails extends LitElement {
                               : html`<md-outlined-button @click=${handleAsync(() => this._searchUpdate())}
                                     >Update<ha-svg-icon slot="icon" .path=${mdiUpdate}></ha-svg-icon
                                 ></md-outlined-button>`}
+                        ${isCamera
+                            ? html`
+                                  <md-outlined-button @click=${() => this._openCameraOverlay()}>
+                                      Live View
+                                      <ha-svg-icon slot="icon" .path=${mdiVideo}></ha-svg-icon>
+                                  </md-outlined-button>
+                              `
+                            : nothing}
                         ${bindings
                             ? html`
                                   <md-outlined-button @click=${handleAsync(() => this._binding())}>
@@ -202,6 +213,18 @@ export class NodeDetails extends LitElement {
             showNodeBindingDialog(this.client, this.node!, this.endpoint);
         } catch (err: unknown) {
             console.error("Binding error:", err);
+        }
+    }
+
+    private _openCameraOverlay(): void {
+        const overlay = document.createElement("camera-overlay");
+        overlay.nodeId = Number(this.node!.node_id);
+        overlay.endpointId = this.endpoint;
+        const root = document.querySelector("matter-dashboard-app");
+        if (root) {
+            root.renderRoot.appendChild(overlay);
+        } else {
+            document.body.appendChild(overlay);
         }
     }
 
