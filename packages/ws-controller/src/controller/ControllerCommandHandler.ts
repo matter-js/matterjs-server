@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import type { WebRtcCallbackData } from "@matter-server/ws-client";
 import {
     Abort,
     AsyncObservable,
@@ -36,6 +37,8 @@ import {
     GeneralCommissioning,
     OperationalCredentials,
 } from "@matter/main/clusters";
+import { WebRtcTransportDefinitions } from "@matter/main/clusters/web-rtc-transport-definitions";
+import { WebRtcTransportProvider } from "@matter/main/clusters/web-rtc-transport-provider";
 import {
     DecodedAttributeReportValue,
     DecodedEventReportValue,
@@ -59,6 +62,8 @@ import {
     StatusResponseError,
     VendorId,
 } from "@matter/main/types";
+import { Endpoint } from "@matter/node";
+import { CameraControllerDevice } from "@matter/node/devices/camera-controller";
 import { CommissioningController, NodeCommissioningOptions } from "@project-chip/matter.js";
 import { NodeStates } from "@project-chip/matter.js/device";
 import { ClusterMap, ClusterMapEntry, GlobalAttributes } from "../model/ModelMapper.js";
@@ -96,8 +101,10 @@ import {
 } from "../types/WebSocketMessageTypes.js";
 import { formatNodeId } from "../util/formatNodeId.js";
 import { pingIp } from "../util/network.js";
+import { WebRtcTransportRequestorServer } from "./behaviors/WebRtcTransportRequestorServer.js";
 import { CustomClusterPoller } from "./CustomClusterPoller.js";
 import { Nodes } from "./Nodes.js";
+import { attachWebRtcCallbackBridge } from "./WebRtcCallbackBridge.js";
 
 const logger = Logger.get("ControllerCommandHandler");
 
@@ -171,6 +178,7 @@ export class ControllerCommandHandler {
         nodeDecommissioned: new Observable<[nodeId: NodeId]>(),
         nodeEndpointAdded: new Observable<[nodeId: NodeId, endpointId: EndpointNumber]>(),
         nodeEndpointRemoved: new Observable<[nodeId: NodeId, endpointId: EndpointNumber]>(),
+        webrtcCallback: new Observable<[WebRtcCallbackData]>(),
     };
     #peers?: PeerSet;
 
@@ -238,6 +246,7 @@ export class ControllerCommandHandler {
         }
 
         await this.events.started.emit();
+        await this.#setupWebRtcCallbackBridge();
     }
 
     /**
@@ -280,6 +289,85 @@ export class ControllerCommandHandler {
         } catch (error) {
             logger.warn("Failed to setup OTA event handlers:", error);
         }
+    }
+
+    async #setupWebRtcCallbackBridge() {
+        try {
+            await this.#cameraControllerEndpoint().act(agent => {
+                attachWebRtcCallbackBridge(agent.get(WebRtcTransportRequestorServer).events, data =>
+                    this.events.webrtcCallback.emit(data),
+                );
+            });
+            logger.info("WebRTC callback bridge wired");
+        } catch (error) {
+            logger.warn("Failed to setup WebRTC callback bridge:", error);
+        }
+    }
+
+    #cameraControllerEndpoint(): Endpoint<typeof CameraControllerDevice> {
+        return this.#controller.node.endpoints.for("camera-controller") as Endpoint<typeof CameraControllerDevice>;
+    }
+
+    /** `originatingEndpointId` is server-injected; any client-supplied value in `payload` is overwritten. */
+    async sendWebRtcProviderCommand(args: {
+        nodeId: NodeId;
+        endpointId: EndpointNumber;
+        commandName: "ProvideOffer" | "SolicitOffer";
+        payload: Record<string, unknown>;
+    }): Promise<WebRtcTransportProvider.ProvideOfferResponse | WebRtcTransportProvider.SolicitOfferResponse> {
+        const { nodeId, endpointId, commandName, payload } = args;
+
+        if (commandName !== "ProvideOffer" && commandName !== "SolicitOffer") {
+            throw ServerError.invalidArguments(
+                `Unsupported WebRTC provider command "${commandName}"; expected ProvideOffer or SolicitOffer`,
+            );
+        }
+
+        const requestorEndpoint = this.#cameraControllerEndpoint();
+        const originatingEndpointId = EndpointNumber(requestorEndpoint.number);
+        const fabricIndex = this.#controller.fabric.fabricIndex;
+
+        const node = this.#nodes.get(nodeId);
+
+        const fields: Record<string, unknown> = {
+            ...payload,
+            originatingEndpointId,
+        };
+        const command = commandName === "ProvideOffer" ? "provideOffer" : "solicitOffer";
+
+        const response = (await this.#invokeCommand(node.node, {
+            endpoint: endpointId,
+            cluster: WebRtcTransportProvider,
+            command,
+            fields,
+        })) as WebRtcTransportProvider.ProvideOfferResponse | WebRtcTransportProvider.SolicitOfferResponse | undefined;
+
+        if (response === undefined || typeof response.webRtcSessionId !== "number") {
+            throw ServerError.sdkStackError(
+                `${commandName} did not return a WebRTCSessionID for node ${this.formatNode(nodeId)}`,
+            );
+        }
+
+        const streamUsage = payload.streamUsage as WebRtcTransportDefinitions.WebRtcSession["streamUsage"];
+        const metadataEnabled = (payload.metadataEnabled as boolean | undefined) ?? false;
+        const videoStreams = response.videoStreamId != null ? [response.videoStreamId] : new Array<number>();
+        const audioStreams = response.audioStreamId != null ? [response.audioStreamId] : new Array<number>();
+        const session: WebRtcTransportDefinitions.WebRtcSession = {
+            id: response.webRtcSessionId,
+            peerNodeId: nodeId,
+            peerEndpointId: endpointId,
+            streamUsage,
+            metadataEnabled,
+            videoStreams,
+            audioStreams,
+            fabricIndex,
+        };
+
+        await requestorEndpoint.act(agent => {
+            agent.get(WebRtcTransportRequestorServer).upsertSession(session);
+        });
+
+        return response;
     }
 
     async close() {
