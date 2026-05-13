@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { provide } from "@lit/context";
 import "@material/web/button/outlined-button";
 import "@material/web/divider/divider";
 import "@material/web/iconbutton/icon-button";
@@ -18,6 +19,7 @@ import { DeviceType, clusters, device_types } from "../client/models/description
 import "../components/ha-svg-icon";
 import { formatHex, formatNodeAddress, getEffectiveFabricIndex } from "../util/format_hex.js";
 import { notFoundStyles } from "../util/shared-styles.js";
+import { bindingContext } from "./components/context.js";
 
 declare global {
     interface HTMLElementTagNameMap {
@@ -53,8 +55,9 @@ class MatterEndpointView extends LitElement {
     @property()
     public node?: MatterNode;
 
+    @provide({ context: bindingContext })
     @property()
-    public endpoint?: number;
+    public endpoint!: number;
 
     override render() {
         if (!this.node || this.endpoint == undefined) {
@@ -104,7 +107,7 @@ class MatterEndpointView extends LitElement {
                         </div>
                     </md-list-item>
                     ${guard([this.node?.attributes.length], () =>
-                        getUniqueClusters(this.node!, this.endpoint!).map(cluster => {
+                        getUniqueClusters(this.node!, this.endpoint).map(cluster => {
                             return html`
                                 <md-list-item
                                     type="link"

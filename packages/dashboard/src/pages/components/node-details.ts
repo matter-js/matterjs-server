@@ -134,7 +134,10 @@ export class NodeDetails extends LitElement {
                                 ></md-outlined-button>`}
                         ${isCamera
                             ? html`
-                                  <md-outlined-button @click=${() => this._openCameraOverlay()}>
+                                  <md-outlined-button
+                                      @click=${() => this._openCameraOverlay()}
+                                      ?disabled=${!this.node.available}
+                                  >
                                       Live View
                                       <ha-svg-icon slot="icon" .path=${mdiVideo}></ha-svg-icon>
                                   </md-outlined-button>
