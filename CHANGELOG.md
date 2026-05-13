@@ -24,9 +24,8 @@ This page shows a detailed overview of the changes between versions without the 
     - Make scanNetwork failures non-fatal for commissioning
     - Ensures re-subscriptions from the device to reset the device state to "Connected"
 - Internal: Move Thread Border Router discovery into the new `@matter-server/thread-br` package. The class is renamed from `BorderRouterDiscovery` to `BorderRouterRegistry`; behaviour is unchanged. `BorderRouterEntry` is now sourced from `@matter-server/thread-br` and re-exported from `@matter-server/ws-client` so the wire format and dashboard imports are unchanged. Foundation for upcoming MeshCoP / OTBR REST diagnostic queries.
-- Internal: `@matter-server/thread-br` package gained Phase 5–8 diagnostic primitives: `DiagnosticSource` interface, `MeshCopDiagnosticSource`, `OtbrRestDiagnosticSource`, BR selection / per-network mutex / source strategy, and OTBR REST adapter.
+- Internal: `@matter-server/thread-br` package gained diagnostic primitives: `DiagnosticSource` interface, `MeshCopDiagnosticSource`, `OtbrRestDiagnosticSource`, BR selection / per-network mutex / source strategy, OTBR REST adapter, and `connectMeshcop` factory.
 - Internal: New `ThreadDiagnosticsService` in `@matter-server/ws-controller` provides per-extPanId cache (1h TTL), source selection (REST > MeshCoP > none), per-network mutex, and event emission.
-- Internal: MeshCoP source factory in `MatterController` is currently a stub; live integration with DTLS socket + CoAP client + Commissioner is a Phase 9 follow-up before real-device smoke testing.
 
 ## 0.6.8 (2026-05-08)
 
