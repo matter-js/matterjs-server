@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING, Any, Final, Self, cast
+from typing import TYPE_CHECKING, Any, Final, Literal, Self, cast
 import uuid
 
 from chip.clusters import Objects as Clusters
@@ -545,6 +545,26 @@ class MatterClient:
             node_id=node_id,
             software_version=software_version,
             require_schema=10,
+        )
+
+    async def send_webrtc_provider_command(
+        self,
+        node_id: int,
+        endpoint_id: int,
+        command_name: Literal["ProvideOffer", "SolicitOffer"],
+        payload: dict,
+    ) -> dict:
+        """Invoke a WebRTCTransportProvider command on a commissioned camera.
+
+        The server hard-codes the cluster id (0x0553) and injects
+        originatingEndpointId — payload should omit both.
+        """
+        return await self.send_command(
+            APICommand.SEND_WEBRTC_PROVIDER_COMMAND,
+            node_id=node_id,
+            endpoint_id=endpoint_id,
+            command_name=command_name,
+            payload=payload,
         )
 
     def _prepare_message(

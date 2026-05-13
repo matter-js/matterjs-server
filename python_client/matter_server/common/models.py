@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime  # noqa: TC003
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 # Enums and constants
 
@@ -23,6 +23,7 @@ class EventType(Enum):
     SERVER_INFO_UPDATED = "server_info_updated"
     ENDPOINT_ADDED = "endpoint_added"
     ENDPOINT_REMOVED = "endpoint_removed"
+    WEBRTC_CALLBACK = "webrtc_callback"
 
 
 class APICommand(str, Enum):
@@ -55,6 +56,7 @@ class APICommand(str, Enum):
     SET_DEFAULT_FABRIC_LABEL = "set_default_fabric_label"
     SET_ACL_ENTRY = "set_acl_entry"
     SET_NODE_BINDING = "set_node_binding"
+    SEND_WEBRTC_PROVIDER_COMMAND = "send_webrtc_provider_command"
 
 
 EventCallBackType = Callable[[EventType, Any], None]
@@ -107,6 +109,37 @@ class MatterNodeEvent:
     timestamp: int
     timestamp_type: int
     data: dict[str, Any] | None
+
+
+WebRTCEventType = Literal["offer", "answer", "ice_candidates", "end"]
+
+
+@dataclass
+class WebRTCIceCandidate:
+    """ICE candidate carried inside a webrtc_callback.ice_candidates event."""
+
+    candidate: str
+    sdpMid: str | None = None
+    sdpMLineIndex: int | None = None
+
+
+@dataclass
+class WebRTCCallbackData:
+    """Payload of a webrtc_callback event.
+
+    `data` shape varies by event_type:
+      - "offer": {"sdp": str, "ice_servers": list | None, "ice_transport_policy": str | None}
+      - "answer": {"sdp": str}
+      - "ice_candidates": {"ice_candidates": list[WebRTCIceCandidate]}
+      - "end": {"reason": int}
+    """
+
+    event_type: WebRTCEventType
+    webrtc_session_id: int
+    node_id: int
+    endpoint_id: int
+    fabric_index: int
+    data: dict | None
 
 
 @dataclass
