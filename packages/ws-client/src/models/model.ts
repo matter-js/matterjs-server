@@ -90,14 +90,18 @@ export interface WebRtcEndData {
     reason: number;
 }
 
-export interface WebRtcCallbackData {
-    event_type: WebRtcEventType;
+interface WebRtcCallbackBase {
     webrtc_session_id: number;
     node_id: number | bigint;
     endpoint_id: number;
     fabric_index: number;
-    data: WebRtcOfferData | WebRtcAnswerData | WebRtcIceCandidatesData | WebRtcEndData | null;
 }
+
+export type WebRtcCallbackData =
+    | (WebRtcCallbackBase & { event_type: "offer"; data: WebRtcOfferData | null })
+    | (WebRtcCallbackBase & { event_type: "answer"; data: WebRtcAnswerData | null })
+    | (WebRtcCallbackBase & { event_type: "ice_candidates"; data: WebRtcIceCandidatesData | null })
+    | (WebRtcCallbackBase & { event_type: "end"; data: WebRtcEndData | null });
 
 export interface APICommands {
     start_listening: {

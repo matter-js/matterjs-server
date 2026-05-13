@@ -20,6 +20,7 @@ import {
     MatterSoftwareVersion,
     NodePingResult,
     SuccessResultMessage,
+    WebRtcCallbackData,
 } from "./models/model.js";
 import { MatterNode } from "./models/node.js";
 
@@ -54,6 +55,7 @@ export class MatterClient {
     // Start with random offset for defense-in-depth and easier debugging across sessions
     private msgId = Math.floor(Math.random() * 0x7fffffff);
     private eventListeners: Record<string, Array<() => void>> = {};
+    private webrtcCallbackListeners: Array<(data: WebRtcCallbackData) => void> = [];
 
     /**
      * Create a new MatterClient.
@@ -82,6 +84,17 @@ export class MatterClient {
         this.eventListeners[event].push(listener);
         return () => {
             this.eventListeners[event] = this.eventListeners[event].filter(l => l !== listener);
+        };
+    }
+
+    /**
+     * Subscribe to webrtc_callback events with the typed payload.
+     * Returns an unsubscribe function.
+     */
+    addWebRtcCallbackListener(listener: (data: WebRtcCallbackData) => void): () => void {
+        this.webrtcCallbackListeners.push(listener);
+        return () => {
+            this.webrtcCallbackListeners = this.webrtcCallbackListeners.filter(l => l !== listener);
         };
     }
 
@@ -291,6 +304,21 @@ export class MatterClient {
                 payload,
                 response_type: null,
             },
+            timeout,
+        );
+    }
+
+    async sendWebRtcProviderCommand(
+        nodeId: number | bigint,
+        endpointId: number,
+        commandName: "ProvideOffer" | "SolicitOffer",
+        payload: Record<string, unknown>,
+        timeout?: number,
+    ): Promise<unknown> {
+        return await this.sendCommand(
+            "send_webrtc_provider_command",
+            0,
+            { node_id: nodeId, endpoint_id: endpointId, command_name: commandName, payload },
             timeout,
         );
     }
@@ -561,6 +589,13 @@ export class MatterClient {
         if (event.event === "server_shutdown") {
             this.fireEvent("server_shutdown");
             this.disconnect();
+            return;
+        }
+
+        if (event.event === "webrtc_callback") {
+            for (const listener of this.webrtcCallbackListeners) {
+                listener(event.data);
+            }
             return;
         }
     }
