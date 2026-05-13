@@ -64,6 +64,41 @@ export interface BorderRouterEntry {
     lastSeen: number;
 }
 
+export type WebRtcEventType = "offer" | "answer" | "ice_candidates" | "end";
+
+export interface WebRtcIceCandidate {
+    candidate: string;
+    sdpMid: string | null;
+    sdpMLineIndex: number | null;
+}
+
+export interface WebRtcOfferData {
+    sdp: string;
+    ice_servers?: unknown[];
+    ice_transport_policy?: string;
+}
+
+export interface WebRtcAnswerData {
+    sdp: string;
+}
+
+export interface WebRtcIceCandidatesData {
+    ice_candidates: WebRtcIceCandidate[];
+}
+
+export interface WebRtcEndData {
+    reason: number;
+}
+
+export interface WebRtcCallbackData {
+    event_type: WebRtcEventType;
+    webrtc_session_id: number;
+    node_id: number | bigint;
+    endpoint_id: number;
+    fabric_index: number;
+    data: WebRtcOfferData | WebRtcAnswerData | WebRtcIceCandidatesData | WebRtcEndData | null;
+}
+
 export interface APICommands {
     start_listening: {
         requestArgs: Record<string, never>;
@@ -159,6 +194,15 @@ export interface APICommands {
             response_type: unknown;
             timed_request_timeout_ms?: number | null;
             interaction_timeout_ms?: number | null;
+        };
+        response: unknown;
+    };
+    send_webrtc_provider_command: {
+        requestArgs: {
+            node_id: number | bigint;
+            endpoint_id: number;
+            command_name: "ProvideOffer" | "SolicitOffer";
+            payload: Record<string, unknown>;
         };
         response: unknown;
     };
@@ -354,6 +398,9 @@ export interface APIEvents {
     server_info_updated: {
         data: ServerInfoMessage;
     };
+    webrtc_callback: {
+        data: WebRtcCallbackData;
+    };
 }
 
 /** All known event type names */
@@ -395,6 +442,10 @@ interface ServerEventInfoUpdated {
     event: "server_info_updated";
     data: ServerInfoMessage;
 }
+interface ServerEventWebRtcCallback {
+    event: "webrtc_callback";
+    data: WebRtcCallbackData;
+}
 
 export type EventMessage =
     | ServerEventNodeAdded
@@ -405,7 +456,8 @@ export type EventMessage =
     | ServerEventServerShutdown
     | ServerEventEndpointAdded
     | ServerEventEndpointRemoved
-    | ServerEventInfoUpdated;
+    | ServerEventInfoUpdated
+    | ServerEventWebRtcCallback;
 
 export interface ResultMessageBase {
     message_id: string;
