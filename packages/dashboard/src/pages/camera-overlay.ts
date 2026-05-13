@@ -229,7 +229,7 @@ export class CameraOverlay extends LitElement {
                 <footer>
                     ${this._closing ? html`<span class="footer-status">Closing…</span>` : nothing}
                     ${!this._closing && this._state === "connecting"
-                        ? html`<span class="footer-status">Connecting…</span>`
+                        ? html`<span class="footer-status">Waiting for camera response…</span>`
                         : nothing}
                     ${!this._closing && this._state === "error" && this._errorMessage
                         ? html`<span class="footer-status error">${this._errorMessage}</span>`
