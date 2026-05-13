@@ -479,6 +479,12 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 case "set_thread_dataset":
                     result = await this.#handleSetThreadDataset(args);
                     break;
+                case "remove_wifi_credentials":
+                    result = await this.#handleRemoveWifiCredentials();
+                    break;
+                case "remove_thread_dataset":
+                    result = await this.#handleRemoveThreadDataset();
+                    break;
                 case "get_thread_border_routers":
                     result = this.#controller.borderRouters.list();
                     break;
@@ -570,6 +576,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             min_supported_schema_version: SCHEMA_VERSION,
             sdk_version: `matter-server/${this.#serverVersion} (matter.js/${MATTER_VERSION})`,
             wifi_credentials_set: !!(this.#config.wifiSsid && this.#config.wifiCredentials),
+            wifi_ssid: this.#config.wifiSsid && this.#config.wifiCredentials ? this.#config.wifiSsid : undefined,
             thread_credentials_set: !!this.#config.threadDataset,
             bluetooth_enabled: this.#commandHandler.bleEnabled,
         };
@@ -643,6 +650,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
             }
         }
 
+        // Ensure certificates are loaded and initialized
+        await this.#controller.certificateService();
+
         await this.#config.set({
             nextNodeId: typeof nextNodeId === "bigint" ? nextNodeId + 1n : nextNodeId + 1,
         });
@@ -699,6 +709,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 commissionRequest = { ...baseRequest, passcode: setup_pin_code };
                 break;
         }
+
+        // Ensure certificates are loaded and initialized
+        await this.#controller.certificateService();
 
         await this.#config.set({
             nextNodeId: typeof nextNodeId === "bigint" ? nextNodeId + 1n : nextNodeId + 1,
@@ -952,6 +965,26 @@ export class WebSocketControllerHandler implements WebServerHandler {
             force: args.force,
         });
         return batch === undefined ? undefined : serializeBatch(batch);
+    }
+
+    async #handleRemoveWifiCredentials(): Promise<ResponseOf<"remove_wifi_credentials">> {
+        await this.#config.removeWifiCredentials();
+        try {
+            await this.#broadcastServerInfoUpdated();
+        } catch (error) {
+            logger.warn("Failed to broadcast server info update", error);
+        }
+        return {};
+    }
+
+    async #handleRemoveThreadDataset(): Promise<ResponseOf<"remove_thread_dataset">> {
+        await this.#config.removeThreadDataset();
+        try {
+            await this.#broadcastServerInfoUpdated();
+        } catch (error) {
+            logger.warn("Failed to broadcast server info update", error);
+        }
+        return {};
     }
 
     async #handleOpenCommissioningWindow(

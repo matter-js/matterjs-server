@@ -179,6 +179,14 @@ class MatterClient:
         """Set Thread Operational dataset in the stack."""
         await self.send_command(APICommand.SET_THREAD_DATASET, dataset=dataset)
 
+    async def remove_wifi_credentials(self) -> None:
+        """Remove any stored WiFi credentials from the server."""
+        await self.send_command(APICommand.REMOVE_WIFI_CREDENTIALS)
+
+    async def remove_thread_dataset(self) -> None:
+        """Remove the stored Thread Operational dataset from the server."""
+        await self.send_command(APICommand.REMOVE_THREAD_DATASET)
+
     async def open_commissioning_window(
         self,
         node_id: int,

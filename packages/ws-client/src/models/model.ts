@@ -191,6 +191,14 @@ export interface APICommands {
         requestArgs: { dataset: string };
         response: Record<string, never>;
     };
+    remove_wifi_credentials: {
+        requestArgs: Record<string, never>;
+        response: Record<string, never>;
+    };
+    remove_thread_dataset: {
+        requestArgs: Record<string, never>;
+        response: Record<string, never>;
+    };
     get_thread_border_routers: {
         requestArgs: Record<string, never>;
         response: BorderRouterEntry[];
@@ -394,6 +402,7 @@ export interface ServerInfoMessage {
     min_supported_schema_version: number;
     sdk_version: string;
     wifi_credentials_set: boolean;
+    wifi_ssid?: string;
     thread_credentials_set: boolean;
     bluetooth_enabled: boolean;
 }

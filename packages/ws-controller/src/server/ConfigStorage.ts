@@ -114,6 +114,26 @@ export class ConfigStorage {
         }
     }
 
+    async removeWifiCredentials() {
+        if (!this.#configStore) {
+            throw new Error("Storage not open");
+        }
+        this.#data.wifiSsid = undefined;
+        this.#data.wifiCredentials = undefined;
+        await this.#configStore.delete("wifiSsid");
+        await this.#configStore.delete("wifiCredentials");
+        logger.info("Removed WiFi credentials");
+    }
+
+    async removeThreadDataset() {
+        if (!this.#configStore) {
+            throw new Error("Storage not open");
+        }
+        this.#data.threadDataset = undefined;
+        await this.#configStore.delete("threadDataset");
+        logger.info("Removed Thread dataset");
+    }
+
     async close() {
         if (this.#storage) {
             await this.#storage.close();

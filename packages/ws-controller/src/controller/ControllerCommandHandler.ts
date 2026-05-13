@@ -21,7 +21,6 @@ import {
     Observable,
     Seconds,
     ServerAddress,
-    ServerAddressUdp,
     SoftwareUpdateInfo,
     SoftwareUpdateManager,
     Time,
@@ -44,7 +43,6 @@ import {
     PeerAddress,
     Read,
     Specifier,
-    SupportedTransportsSchema,
     PeerSet,
 } from "@matter/main/protocol";
 import {
@@ -659,7 +657,8 @@ export class ControllerCommandHandler {
 
         value = convertWebSocketTagBasedToMatter(value, attributeModel, clusterEntry.model);
 
-        logger.info("Writing attribute", attributeId, "with value", value);
+        const attributeName = attributeModel.propertyName;
+        logger.info(`Writing attribute ${clusterId}.${attributeName} (${clusterId}.${attributeId}) with value`, value);
         const { status, clusterStatus } = await this.#writeAttribute(
             nodeId,
             endpointId,
@@ -827,6 +826,17 @@ export class ControllerCommandHandler {
                 regulatoryCountryCode: "XX",
                 wifiNetwork,
                 threadNetwork,
+                onAttestationFailure: findings => {
+                    let accept = true;
+                    for (const f of findings) {
+                        if (f.level === "error") {
+                            accept = false;
+                        }
+                        logger.info(`Attestation finding (${f.level}):`, f.type, f.message);
+                    }
+                    logger.info(`Attestation ${accept ? "accepted" : "rejected"}`);
+                    return accept;
+                },
             },
             discovery: {
                 knownAddress,
@@ -901,12 +911,12 @@ export class ControllerCommandHandler {
             return [];
         }
         return [latestDiscovery].map(({ DT, DN, CM, D, RI, PH, PI, T, VP, deviceIdentifier, addresses, SII, SAI }) => {
-            const { tcpClient: supportsTcpClient, tcpServer: supportsTcpServer } = SupportedTransportsSchema.decode(
-                T ?? 0,
-            );
+            const supportsTcpClient = T?.tcpClient ?? false;
+            const supportsTcpServer = T?.tcpServer ?? false;
             const vendorId = VP === undefined ? -1 : VP.includes("+") ? parseInt(VP.split("+")[0]) : parseInt(VP);
             const productId = VP === undefined ? -1 : VP.includes("+") ? parseInt(VP.split("+")[1]) : -1;
-            const port = addresses.length ? (addresses[0] as ServerAddressUdp).port : 0;
+            const firstAddress = addresses[0];
+            const port = firstAddress && ServerAddress.isIp(firstAddress) ? firstAddress.port : 0;
             const numIPs = addresses.length;
             return {
                 commissioningMode: CM,
@@ -926,7 +936,7 @@ export class ControllerCommandHandler {
                 vendorId,
                 supportsTcpServer,
                 supportsTcpClient,
-                addresses: (addresses.filter(({ type }) => type === "udp") as ServerAddressUdp[]).map(({ ip }) => ip),
+                addresses: addresses.filter(ServerAddress.isIp).map(({ ip }) => ip),
                 mrpSessionIdleInterval: SII,
                 mrpSessionActiveInterval: SAI,
             };
@@ -948,7 +958,7 @@ export class ControllerCommandHandler {
             }
         }
         if (peer) {
-            const sessionIp = peer.newestSession?.channel.networkAddress?.ip;
+            const sessionIp = peer.newestSession()?.channel.networkAddress?.ip;
             if (sessionIp) {
                 addresses.add(sessionIp);
             }
@@ -958,9 +968,7 @@ export class ControllerCommandHandler {
         const node = this.#nodes.get(nodeId);
         const commissioningAddresses = node.node.maybeStateOf(CommissioningClient)?.addresses;
         if (commissioningAddresses !== undefined && commissioningAddresses.length > 0) {
-            const fallbackAddresses = commissioningAddresses
-                .filter((addr): addr is ServerAddressUdp => addr.type === "udp")
-                .map(addr => addr.ip);
+            const fallbackAddresses = commissioningAddresses.filter(ServerAddress.isIp).map(addr => addr.ip);
             for (const address of fallbackAddresses) {
                 addresses.add(address);
             }
@@ -1118,10 +1126,24 @@ export class ControllerCommandHandler {
     }
 
     /**
+     * Fabric index assigned to this controller on the peer.
+     * Some peers reject the NO_FABRIC (0) sentinel inside fabric-scoped list entries
+     * even though the spec allows server-side auto-fill, so we send the resolved index.
+     */
+    #currentFabricIndex(nodeId: NodeId): FabricIndex {
+        const state = this.#nodes
+            .get(nodeId)
+            .node.endpoints.for(EndpointNumber(0))
+            .maybeStateOf(OperationalCredentialsClient);
+        return state?.currentFabricIndex ?? FabricIndex.NO_FABRIC;
+    }
+
+    /**
      * Set Access Control List entries on a node.
      * Writes to the ACL attribute on the AccessControl cluster (endpoint 0).
      */
     async setAclEntry(nodeId: NodeId, entries: AccessControlEntry[]): Promise<AttributeWriteResult[] | null> {
+        const fabricIndex = this.#currentFabricIndex(nodeId);
         const aclEntries: AccessControl.AccessControlEntry[] = entries.map(entry => ({
             privilege: entry.privilege as AccessControl.AccessControlEntryPrivilege,
             authMode: entry.auth_mode as AccessControl.AccessControlEntryAuthMode,
@@ -1132,7 +1154,7 @@ export class ControllerCommandHandler {
                     endpoint: t.endpoint !== null ? EndpointNumber(t.endpoint) : null,
                     deviceType: t.device_type !== null ? DeviceTypeId(t.device_type) : null,
                 })) ?? null,
-            fabricIndex: FabricIndex.NO_FABRIC,
+            fabricIndex,
         }));
 
         logger.info("Setting ACL entries", aclEntries);
@@ -1155,12 +1177,13 @@ export class ControllerCommandHandler {
         endpointId: EndpointNumber,
         bindings: BindingTarget[],
     ): Promise<AttributeWriteResult[] | null> {
+        const fabricIndex = this.#currentFabricIndex(nodeId);
         const bindingEntries: Binding.Target[] = bindings.map(binding => ({
             node: binding.node !== null ? NodeId(binding.node) : undefined,
             group: binding.group !== null ? GroupId(binding.group) : undefined,
             endpoint: binding.endpoint !== null ? EndpointNumber(binding.endpoint) : undefined,
             cluster: binding.cluster !== null ? ClusterId(binding.cluster) : undefined,
-            fabricIndex: FabricIndex.NO_FABRIC,
+            fabricIndex,
         }));
 
         logger.info("Setting bindings on endpoint", endpointId, bindingEntries);

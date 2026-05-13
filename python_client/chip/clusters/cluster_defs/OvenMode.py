@@ -67,11 +67,14 @@ class OvenMode(Cluster):
             kWarming = 0x4007
             kProofing = 0x4008
             kSteam = 0x4009
+            kAirFry = 0x400A
+            kAirSousVide = 0x400B
+            kFrozenFood = 0x400C
             # All received enum values that are not listed above will be mapped
             # to kUnknownEnumValue. This is a helper enum value that should only
             # be used by code to process how it handles receiving an unknown
             # enum value. This specific value should never be transmitted.
-            kUnknownEnumValue = 16394
+            kUnknownEnumValue = 16397
 
         class ModeChangeStatus(MatterIntEnum):
             kSuccess = 0x00

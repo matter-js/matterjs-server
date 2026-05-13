@@ -10,6 +10,7 @@
 
 import { ChildProcess, spawn } from "child_process";
 import { mkdir, rm } from "fs/promises";
+import nodeProcess from "node:process";
 import { tmpdir } from "os";
 import { join } from "path";
 import WebSocket from "ws";
@@ -65,6 +66,7 @@ export function startServer(
     storagePath: string,
     logFilePath?: string,
     logLevel = process.env.MATTER_LOG_LEVEL ?? "info",
+    enableTestNetDcl = true,
 ): ChildProcess {
     const args = [
         "--enable-source-maps",
@@ -73,11 +75,15 @@ export function startServer(
         `--log-level=${logLevel}`,
         `--port=${SERVER_PORT}`,
     ];
+    if (enableTestNetDcl) {
+        args.push("--enable-test-net-dcl");
+    }
     if (logFilePath !== undefined) {
         args.push(`--log-file=${logFilePath}`);
     }
     const serverProcess = spawn("node", args, {
         cwd: process.cwd(),
+        detached: true,
         stdio: ["pipe", "pipe", "pipe"],
     });
 
@@ -100,6 +106,7 @@ export function startTestDevice(storagePath: string): ChildProcess {
         ["tsx", "test/fixtures/TestLightDevice.ts", `--storage-path=${storagePath}`, `--port=${DEVICE_PORT}`],
         {
             cwd: process.cwd(),
+            detached: true, // own process group so all npx/tsx/node children are killed together
             stdio: ["pipe", "pipe", "pipe"],
         },
     );
@@ -165,42 +172,50 @@ export function waitForDeviceReady(process: ChildProcess, timeoutMs = 30_000): P
 }
 
 /**
- * Gracefully kills a process and waits for it to exit.
- * Also removes all event listeners to allow clean process exit.
+ * Gracefully kills a process (and its process group if detached) and waits for exit.
  */
-export async function killProcess(process: ChildProcess | undefined, timeoutMs = 2_000): Promise<void> {
-    if (!process || process.exitCode !== null) {
-        console.log("[killProcess] Process already exited");
-        // Process doesn't exist or already exited - just clean up listeners
-        if (process) {
-            process.stdout?.removeAllListeners();
-            process.stderr?.removeAllListeners();
-            process.removeAllListeners();
+export async function killProcess(childProcess: ChildProcess | undefined, timeoutMs = 2_000): Promise<void> {
+    if (!childProcess || childProcess.exitCode !== null) {
+        if (childProcess) {
+            childProcess.stdout?.removeAllListeners();
+            childProcess.stderr?.removeAllListeners();
+            childProcess.removeAllListeners();
         }
         return;
     }
 
-    return await new Promise<void>(resolve => {
-        const timeout = setTimeout(() => {
-            // Force kill if graceful shutdown takes too long
-            if (process.exitCode === null) {
-                console.log("[killProcess] Forcing SIGKILL after timeout");
-                process.kill("SIGKILL");
+    await new Promise<void>(resolve => {
+        // Kill the whole process group so npx/tsx children don't outlive the parent.
+        const sendSignal = (signal: "SIGINT" | "SIGKILL") => {
+            if (childProcess.pid) {
+                try {
+                    nodeProcess.kill(-childProcess.pid, signal);
+                } catch {
+                    childProcess.kill(signal);
+                }
+            } else {
+                childProcess.kill(signal);
             }
-            cleanup();
-        }, timeoutMs);
+        };
 
-        const cleanup = () => {
-            console.log("[killProcess] Cleaning up listeners");
+        const cleanup = async () => {
             clearTimeout(timeout);
-            // Remove all listeners to allow clean process exit
-            process.stdout?.removeAllListeners();
-            process.stderr?.removeAllListeners();
-            process.removeAllListeners();
+            childProcess.stdout?.removeAllListeners();
+            childProcess.stderr?.removeAllListeners();
+            childProcess.removeAllListeners();
+            // Brief settle so the OS reclaims port bindings before the caller proceeds.
+            await new Promise(r => setTimeout(r, 200));
             resolve();
         };
 
-        process.once("exit", cleanup);
-        process.kill("SIGINT");
+        const timeout = setTimeout(() => {
+            if (childProcess.exitCode === null) {
+                sendSignal("SIGKILL");
+            }
+            void cleanup();
+        }, timeoutMs);
+
+        childProcess.once("exit", () => void cleanup());
+        sendSignal("SIGINT");
     });
 }

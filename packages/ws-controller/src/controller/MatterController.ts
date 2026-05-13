@@ -26,7 +26,7 @@ import {
     SoftwareUpdateManager,
     Timestamp,
 } from "@matter/main";
-import { VendorInfo } from "@matter/main/protocol";
+import { VendorInfo, DclCertificateService } from "@matter/main/protocol";
 import { VendorId } from "@matter/main/types";
 import { CommissioningController } from "@project-chip/matter.js";
 import { Readable } from "node:stream";
@@ -245,6 +245,10 @@ export class MatterController {
         legacyCommissionedDates?: Map<string, Timestamp>,
     ) {
         this.#legacyCommissionedDates = legacyCommissionedDates?.size ? legacyCommissionedDates : undefined;
+
+        // Initialize the DclCertificateService on the root environment, will automatically be used
+        new DclCertificateService(this.#env.root, { fetchTestCertificates: this.#enableTestNetDcl });
+
         this.#controllerInstance = new CommissioningController({
             environment: {
                 environment: this.#env,
@@ -256,6 +260,8 @@ export class MatterController {
             adminFabricId: fabricId !== undefined ? FabricId(fabricId) : undefined,
             rootNodeId: NodeId(112233), // TODO Remove when we switch to random IDs
             enableOtaProvider: !this.#disableOtaProvider,
+            tcp: true,
+            transportPreference: "tcp",
             basicInformation: {
                 vendorName: "Open Home Foundation",
                 productName: "OHF Matter Server",
@@ -280,7 +286,8 @@ export class MatterController {
             );
 
             this.#commandHandler.events.started.once(async () => {
-                this.#controllerInstance!.node.behaviors.require(DclBehavior, {
+                this.#controllerInstance!.node.behaviors.require(DclBehavior);
+                await this.#controllerInstance!.node.setStateOf(DclBehavior, {
                     fetchTestCertificates: this.#enableTestNetDcl,
                 });
 
@@ -292,7 +299,7 @@ export class MatterController {
 
                 // Start loading and initialization of meta data
                 initPromises.push(this.vendorInfoService());
-                initPromises.push(this.certificateService());
+                // initPromises.push(this.certificateService()); // postponed to commissioning needs
 
                 if (!this.#disableOtaProvider && this.#enableTestNetDcl) {
                     initPromises.push(this.#enableTestOtaImages());
@@ -402,6 +409,7 @@ export class MatterController {
     }
 
     async stop() {
+        await this.certificateService(); // Ensure it was initialized so that shutdown works
         await this.#borderRouterRegistry.stop();
         await this.#commandHandler?.close(); // This closes also the controller instance if started
     }
