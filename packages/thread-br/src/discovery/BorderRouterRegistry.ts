@@ -370,11 +370,19 @@ export class BorderRouterRegistry {
                 if (mn !== undefined) entry.modelName = mn;
                 const tv = params.get("tv");
                 if (tv !== undefined) entry.threadVersion = tv;
+                const sv = params.get("sv");
+                if (sv !== undefined) entry.swVersion = sv;
+                const rv = params.get("rv");
+                if (rv !== undefined) entry.recordVersion = rv;
                 // dd (border-agent ID) is variable-width per spec; xa/xp/at = 8 bytes,
                 // pt/sb = 4 bytes (Thread MeshCoP). Reject malformed lengths for fixed
                 // fields so a malformed broadcaster can't pollute the snapshot.
-                const dd = rawHex(params.raw("dd"));
-                if (dd !== undefined) entry.borderAgentIdHex = dd;
+                // OpenThread upstream uses `ai`; some BRs (Apple variants) use `dd`.
+                // Prefer `ai` when both present.
+                const aiHex = rawHex(params.raw("ai"));
+                const ddHex = rawHex(params.raw("dd"));
+                const borderAgentIdHex = aiHex ?? ddHex;
+                if (borderAgentIdHex !== undefined) entry.borderAgentIdHex = borderAgentIdHex;
                 const sb = rawHex(params.raw("sb"), 4);
                 if (sb !== undefined) entry.stateBitmapHex = sb;
                 const at = rawHex(params.raw("at"), 8);

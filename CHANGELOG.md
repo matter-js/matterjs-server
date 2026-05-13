@@ -16,6 +16,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Feature: Enhances the Dashboard UI to allow to clear and change the Wifi/Thread credentials
 - Feature: (iamadamreed) Adds TCL custom cluster
 - Feature: (burmistrzak) Adds "window open mode" attribute for Eve custom cluster
+- Feature: Surface mDNS TXT keys `sv` (software version) and `rv` (record version) on Border Router cards. The existing `borderAgentIdHex` field now also populates from the `ai` TXT key (OpenThread upstream spec), with `dd` as a fallback (legacy/Apple variant). The `id` TXT key is deferred until a real-world sample with a confirmed meaning is available.
 - Feature: Add `get_thread_diagnostics` WS command and `thread_diagnostics_updated` WS event for per-Thread-network diagnostic batches collected from Border Routers via MeshCoP (commissioner + CoAP) or OTBR REST. Batches are cached server-side per extPanId with a 1h TTL. The OTBR REST transport is auto-detected via probe and used when reachable; otherwise MeshCoP is used.
 - Fix: Ensures that also official test certificates are initialized correctly when DCL-Testnet-flag is enabled
 - Fix: Update matter.js to the latest 0.17.0-nightly

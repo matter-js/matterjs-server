@@ -776,6 +776,81 @@ describe("BorderRouterRegistry", () => {
             expect(innerRegistry.list()).to.deep.equal([]);
             expect(innerRegistry.get("AABBCCDDEEFF0011")).to.equal(undefined);
         });
+
+        it("parses sv (software version) from meshcop TXT", async () => {
+            await innerRegistry.start();
+            stub.makeTarget("Kuche.local.", ["192.168.1.10"]);
+            const inst = stub.makeInstance("Kuche._meshcop._udp.local", {
+                txt: { xa: "aabbccddeeff0011", sv: "1.2.3-build" },
+                srvTarget: "Kuche.local.",
+                srvPort: 49154,
+            });
+            stub.discover(inst);
+
+            const e = innerRegistry.get("AABBCCDDEEFF0011");
+            expect(e).to.not.equal(undefined);
+            expect(e!.swVersion).to.equal("1.2.3-build");
+        });
+
+        it("parses rv (record version) from meshcop TXT", async () => {
+            await innerRegistry.start();
+            stub.makeTarget("Kuche.local.", ["192.168.1.10"]);
+            const inst = stub.makeInstance("Kuche._meshcop._udp.local", {
+                txt: { xa: "aabbccddeeff0011", rv: "1" },
+                srvTarget: "Kuche.local.",
+                srvPort: 49154,
+            });
+            stub.discover(inst);
+
+            const e = innerRegistry.get("AABBCCDDEEFF0011");
+            expect(e).to.not.equal(undefined);
+            expect(e!.recordVersion).to.equal("1");
+        });
+
+        it("prefers ai over dd for borderAgentIdHex when both present", async () => {
+            await innerRegistry.start();
+            stub.makeTarget("Kuche.local.", ["192.168.1.10"]);
+            const inst = stub.makeInstance("Kuche._meshcop._udp.local", {
+                txt: { xa: "aabbccddeeff0011", ai: "112233", dd: "445566" },
+                srvTarget: "Kuche.local.",
+                srvPort: 49154,
+            });
+            stub.discover(inst);
+
+            const e = innerRegistry.get("AABBCCDDEEFF0011");
+            expect(e).to.not.equal(undefined);
+            expect(e!.borderAgentIdHex).to.equal("112233".toUpperCase());
+        });
+
+        it("falls back to dd when ai is absent", async () => {
+            await innerRegistry.start();
+            stub.makeTarget("Kuche.local.", ["192.168.1.10"]);
+            const inst = stub.makeInstance("Kuche._meshcop._udp.local", {
+                txt: { xa: "aabbccddeeff0011", dd: "aabb" },
+                srvTarget: "Kuche.local.",
+                srvPort: 49154,
+            });
+            stub.discover(inst);
+
+            const e = innerRegistry.get("AABBCCDDEEFF0011");
+            expect(e).to.not.equal(undefined);
+            expect(e!.borderAgentIdHex).to.equal("AABB");
+        });
+
+        it("falls back to ai when dd is absent", async () => {
+            await innerRegistry.start();
+            stub.makeTarget("Kuche.local.", ["192.168.1.10"]);
+            const inst = stub.makeInstance("Kuche._meshcop._udp.local", {
+                txt: { xa: "aabbccddeeff0011", ai: "ccdd" },
+                srvTarget: "Kuche.local.",
+                srvPort: 49154,
+            });
+            stub.discover(inst);
+
+            const e = innerRegistry.get("AABBCCDDEEFF0011");
+            expect(e).to.not.equal(undefined);
+            expect(e!.borderAgentIdHex).to.equal("CCDD");
+        });
     });
 });
 
@@ -858,7 +933,7 @@ class StubDnssdParameters {
     }
 }
 
-const BINARY_TXT_KEYS = new Set(["xa", "xp", "at", "pt", "dd", "sb"]);
+const BINARY_TXT_KEYS = new Set(["xa", "xp", "at", "pt", "dd", "sb", "ai"]);
 
 class StubDnssdName {
     readonly parameters = new StubDnssdParameters();

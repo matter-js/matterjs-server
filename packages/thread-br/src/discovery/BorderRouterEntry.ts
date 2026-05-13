@@ -33,7 +33,11 @@ export interface BorderRouterEntry {
     trelPort?: number;
     /** Thread version, e.g. "1.3.0" (`_meshcop` TXT "tv"). */
     threadVersion?: string;
-    /** Border agent ID hex (`_meshcop` TXT "dd"); not always present. */
+    /** Software/firmware version of the Border Router (`_meshcop` TXT "sv"). Vendor-extension. */
+    swVersion?: string;
+    /** MeshCoP TXT record format version (`_meshcop` TXT "rv"). */
+    recordVersion?: string;
+    /** Border agent ID hex (`_meshcop` TXT "dd" or "ai"); not always present. */
     borderAgentIdHex?: string;
     /** Raw 4-byte state bitmap as hex (`_meshcop` TXT "sb"). Flag parsing left to dashboard. */
     stateBitmapHex?: string;

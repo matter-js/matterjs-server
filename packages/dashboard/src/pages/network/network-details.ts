@@ -562,6 +562,22 @@ export class NetworkDetails extends LitElement {
                       </div>
                   `
                 : nothing}
+            ${br.swVersion
+                ? html`
+                      <div class="info-row">
+                          <span class="label">SW version:</span>
+                          <span class="value">${br.swVersion}</span>
+                      </div>
+                  `
+                : nothing}
+            ${br.recordVersion
+                ? html`
+                      <div class="info-row">
+                          <span class="label">Record version:</span>
+                          <span class="value">${br.recordVersion}</span>
+                      </div>
+                  `
+                : nothing}
             ${includeExtAddr
                 ? html`
                       <div class="info-row">
