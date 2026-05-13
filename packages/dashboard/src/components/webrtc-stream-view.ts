@@ -22,7 +22,7 @@ import { clientContext } from "../client/client-context.js";
 const STREAM_USAGE_LIVE_VIEW = 3;
 const END_REASON_USER_HANGUP = 2;
 
-const CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID = 0x551;
+export const CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID = 0x551;
 const WEBRTC_TRANSPORT_PROVIDER_CLUSTER_ID = 0x553;
 
 const DEFAULT_MAX_RESOLUTION = { width: 1920, height: 1080 };
@@ -235,7 +235,8 @@ export class WebRtcStreamView extends LitElement {
                 }
             };
 
-            const videoResolution = this.resolution ?? DEFAULT_MAX_RESOLUTION;
+            const minResolution = this.resolution ?? DEFAULT_MIN_RESOLUTION;
+            const maxResolution = this.resolution ?? DEFAULT_MAX_RESOLUTION;
             const videoAlloc = await this.client.deviceCommand(
                 this.nodeId,
                 this.endpointId,
@@ -246,8 +247,8 @@ export class WebRtcStreamView extends LitElement {
                     videoCodec: 0,
                     minFrameRate: 30,
                     maxFrameRate: 120,
-                    minResolution: DEFAULT_MIN_RESOLUTION,
-                    maxResolution: videoResolution,
+                    minResolution,
+                    maxResolution,
                     minBitRate: 10000,
                     maxBitRate: 10000,
                     minKeyFrameInterval: 4000,
