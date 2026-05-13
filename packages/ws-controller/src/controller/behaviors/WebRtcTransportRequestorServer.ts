@@ -5,7 +5,7 @@
  */
 
 import { Observable } from "@matter/general";
-import { Node } from "@matter/main";
+import { Logger, Node } from "@matter/main";
 import type { ServerNode } from "@matter/main";
 import { AccessControlServer } from "@matter/node/behaviors/access-control";
 import { WebRtcTransportRequestorBehavior } from "@matter/node/behaviors/web-rtc-transport-requestor";
@@ -16,6 +16,8 @@ import { WebRtcTransportDefinitions } from "@matter/types/clusters/web-rtc-trans
 import { WebRtcTransportRequestor } from "@matter/types/clusters/web-rtc-transport-requestor";
 
 type WebRtcSession = WebRtcTransportDefinitions.WebRtcSession;
+
+const logger = Logger.get("WebRtcTransportRequestorServer");
 
 export class WebRtcTransportRequestorServer extends WebRtcTransportRequestorBehavior {
     declare state: WebRtcTransportRequestorServer.State;
@@ -41,16 +43,21 @@ export class WebRtcTransportRequestorServer extends WebRtcTransportRequestorBeha
     }
 
     override async offer(request: WebRtcTransportRequestor.OfferRequest): Promise<void> {
+        logger.info(`incoming Offer webRtcSessionId=${request.webRtcSessionId} sdpLen=${request.sdp.length}`);
         const session = this.#findSessionStrict(request.webRtcSessionId);
         this.events.offer.emit(session, request);
     }
 
     override async answer(request: WebRtcTransportRequestor.AnswerRequest): Promise<void> {
+        logger.info(`incoming Answer webRtcSessionId=${request.webRtcSessionId} sdpLen=${request.sdp.length}`);
         const session = this.#findSessionStrict(request.webRtcSessionId);
         this.events.answer.emit(session, request.sdp);
     }
 
     override async iceCandidates(request: WebRtcTransportRequestor.IceCandidatesRequest): Promise<void> {
+        logger.info(
+            `incoming ICECandidates webRtcSessionId=${request.webRtcSessionId} count=${request.iceCandidates.length}`,
+        );
         if (request.iceCandidates.length === 0) {
             throw new StatusResponseError("ICE candidates list must not be empty", Status.InvalidCommand);
         }
@@ -59,6 +66,7 @@ export class WebRtcTransportRequestorServer extends WebRtcTransportRequestorBeha
     }
 
     override async end(request: WebRtcTransportRequestor.EndRequest): Promise<void> {
+        logger.info(`incoming End webRtcSessionId=${request.webRtcSessionId} reason=${request.reason}`);
         const session = this.#findSessionStrict(request.webRtcSessionId);
         this.removeSession(request.webRtcSessionId);
         this.events.end.emit(session, request.reason);
@@ -66,6 +74,9 @@ export class WebRtcTransportRequestorServer extends WebRtcTransportRequestorBeha
 
     override async initialize() {
         const node = Node.forEndpoint(this.endpoint) as ServerNode;
+        logger.info(
+            `initialized on endpoint=${this.endpoint.number} (id="${this.endpoint.id}") cluster=0x${WebRtcTransportRequestor.id.toString(16)}`,
+        );
         this.reactTo(node.lifecycle.online, this.#nodeOnline);
         if (node.lifecycle.isOnline) {
             await this.#nodeOnline();

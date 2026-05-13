@@ -363,6 +363,9 @@ export class ControllerCommandHandler {
             fabricIndex,
         };
 
+        logger.info(
+            `upserting WebRTC session id=${session.id} peerNodeId=${nodeId} peerEndpointId=${endpointId} fabricIndex=${fabricIndex} streamUsage=${streamUsage} originatingEndpointId=${originatingEndpointId}`,
+        );
         await requestorEndpoint.act(agent => {
             agent.get(WebRtcTransportRequestorServer).upsertSession(session);
         });
