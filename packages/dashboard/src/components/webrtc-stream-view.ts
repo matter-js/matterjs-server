@@ -54,18 +54,37 @@ interface SnapshotCapability {
     imageCodec: number;
 }
 
+const SNAPSHOT_DEFAULTS: SnapshotCapability = {
+    resolution: { width: 1920, height: 1080 },
+    maxFrameRate: 30,
+    imageCodec: 0,
+};
+
 function parseSnapshotCapabilitiesFromList(list: unknown[]): SnapshotCapability {
-    const cap = asObject(list[0]);
-    if (!cap) throw new Error("Camera reports no snapshot capabilities");
-    const res = asObject(cap["resolution"]);
-    const width = res ? pickNumber(res, "width") : null;
-    const height = res ? pickNumber(res, "height") : null;
-    const maxFrameRate = pickNumber(cap, "maxFrameRate");
-    const imageCodec = pickNumber(cap, "imageCodec");
-    if (width === null || height === null || maxFrameRate === null || imageCodec === null) {
-        throw new Error("Camera reports no snapshot capabilities");
-    }
-    return { resolution: { width, height }, maxFrameRate, imageCodec };
+    // SnapshotCapabilitiesStruct field IDs per Matter 1.5.1 §11.2.6.9:
+    // 0=resolution (VideoResolutionStruct {0=width, 1=height}), 1=maxFrameRate, 2=imageCodec.
+    // Cached attributes are tag-based (numeric keys); read_attribute responses are name-based.
+    // Prefer the highest-resolution entry — Aqara G350 ships [VGA, 1080p] and 1080p is the useful one.
+    const candidates = list.map(asObject).filter((c): c is Record<string, unknown> => c !== undefined);
+    if (candidates.length === 0) return SNAPSHOT_DEFAULTS;
+    const parsed = candidates.map(cap => {
+        const res = asObject(cap["resolution"] ?? cap["0"]);
+        const width = res ? pickNumber(res, "width", "0") : null;
+        const height = res ? pickNumber(res, "height", "1") : null;
+        const maxFrameRate = pickNumber(cap, "maxFrameRate", "1");
+        const imageCodec = pickNumber(cap, "imageCodec", "2");
+        return {
+            resolution: {
+                width: width ?? SNAPSHOT_DEFAULTS.resolution.width,
+                height: height ?? SNAPSHOT_DEFAULTS.resolution.height,
+            },
+            maxFrameRate: maxFrameRate ?? SNAPSHOT_DEFAULTS.maxFrameRate,
+            imageCodec: imageCodec ?? SNAPSHOT_DEFAULTS.imageCodec,
+        };
+    });
+    return parsed.reduce((best, cur) =>
+        cur.resolution.width * cur.resolution.height > best.resolution.width * best.resolution.height ? cur : best,
+    );
 }
 
 interface CaptureSnapshotResult {
@@ -457,7 +476,7 @@ export class WebRtcStreamView extends LitElement {
         const cap: SnapshotCapability =
             Array.isArray(capsRaw) && capsRaw.length > 0
                 ? parseSnapshotCapabilitiesFromList(capsRaw)
-                : { resolution: { width: 1920, height: 1080 }, maxFrameRate: 30, imageCodec: 0 };
+                : SNAPSHOT_DEFAULTS;
 
         const response = await this.client.deviceCommand(
             this.nodeId,
