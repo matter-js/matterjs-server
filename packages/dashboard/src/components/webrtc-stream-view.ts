@@ -186,12 +186,28 @@ export class WebRtcStreamView extends LitElement {
             pc.addTransceiver("audio", { direction: "recvonly" });
 
             pc.onicecandidate = ev => {
-                if (ev.candidate === null) return;
+                if (ev.candidate === null) {
+                    console.log("[webrtc-stream-view] local ICE gathering complete");
+                    return;
+                }
+                console.log("[webrtc-stream-view] local ICE candidate", ev.candidate.candidate, {
+                    queued: !this._answerReceived,
+                    queueDepth: this._localIceQueue.length,
+                });
                 if (!this._answerReceived) {
                     this._localIceQueue.push(ev.candidate);
                     return;
                 }
                 void this._sendLocalIceCandidates([ev.candidate]);
+            };
+            pc.oniceconnectionstatechange = () => {
+                console.log("[webrtc-stream-view] iceConnectionState ->", pc.iceConnectionState);
+            };
+            pc.onconnectionstatechange = () => {
+                console.log("[webrtc-stream-view] connectionState ->", pc.connectionState);
+            };
+            pc.onsignalingstatechange = () => {
+                console.log("[webrtc-stream-view] signalingState ->", pc.signalingState);
             };
 
             pc.ontrack = ev => {
@@ -258,6 +274,14 @@ export class WebRtcStreamView extends LitElement {
                 throw new Error("Failed to create local SDP offer");
             }
 
+            console.log("[webrtc-stream-view] sending ProvideOffer", {
+                nodeId: this.nodeId,
+                endpointId: this.endpointId,
+                videoStreamId: this._videoStreamId,
+                audioStreamId: this._audioStreamId,
+                streamUsage: STREAM_USAGE_LIVE_VIEW,
+                sdpLength: sdp.length,
+            });
             const offerResponse = await this.client.sendWebRtcProviderCommand(
                 this.nodeId,
                 this.endpointId,
@@ -270,11 +294,13 @@ export class WebRtcStreamView extends LitElement {
                     audioStreamId: this._audioStreamId,
                 },
             );
+            console.log("[webrtc-stream-view] ProvideOffer response", offerResponse);
             const parsed = parseProvideOfferResponse(offerResponse);
             if (parsed === null) {
                 throw new Error("ProvideOffer response missing webRtcSessionId");
             }
             this._webRtcSessionId = parsed.webRtcSessionId;
+            console.log("[webrtc-stream-view] webRtcSessionId established", this._webRtcSessionId);
 
             const buffered = this._preSessionQueue;
             this._preSessionQueue = [];
@@ -454,15 +480,37 @@ export class WebRtcStreamView extends LitElement {
     }
 
     private async _onWebRtcCallback(data: WebRtcCallbackData): Promise<void> {
+        console.log("[webrtc-stream-view] webrtc_callback received", {
+            event_type: data.event_type,
+            webrtc_session_id: data.webrtc_session_id,
+            node_id: data.node_id,
+            endpoint_id: data.endpoint_id,
+            fabric_index: data.fabric_index,
+            myNodeId: this.nodeId,
+            myEndpointId: this.endpointId,
+            mySessionId: this._webRtcSessionId,
+        });
         if (this._webRtcSessionId === null) {
             if (Number(data.node_id) === Number(this.nodeId) && data.endpoint_id === this.endpointId) {
                 this._preSessionQueue.push(data);
+                console.log("[webrtc-stream-view] queued pre-session callback");
+            } else {
+                console.log("[webrtc-stream-view] dropped pre-session callback (different node/endpoint)");
             }
             return;
         }
-        if (data.webrtc_session_id !== this._webRtcSessionId) return;
-        if (Number(data.node_id) !== Number(this.nodeId)) return;
-        if (data.endpoint_id !== this.endpointId) return;
+        if (data.webrtc_session_id !== this._webRtcSessionId) {
+            console.log("[webrtc-stream-view] dropped: session id mismatch");
+            return;
+        }
+        if (Number(data.node_id) !== Number(this.nodeId)) {
+            console.log("[webrtc-stream-view] dropped: node id mismatch");
+            return;
+        }
+        if (data.endpoint_id !== this.endpointId) {
+            console.log("[webrtc-stream-view] dropped: endpoint id mismatch");
+            return;
+        }
 
         switch (data.event_type) {
             case "answer":

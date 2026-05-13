@@ -762,12 +762,24 @@ export class ControllerCommandHandler {
         request: Invoke.ConcreteCommandRequest<C>,
         options: Omit<Invoke.Definition, "commands"> = {},
     ) {
-        for await (const data of node.interaction.invoke(
-            Invoke({
-                commands: [request],
-                ...options,
-            }),
-        )) {
+        const invoke = Invoke({
+            commands: [request],
+            ...options,
+        });
+        // Commands with Large Message Quality ("L") must route over TCP because the payload can
+        // exceed the IPv6 MTU (WebRTC ProvideOffer / ProvideICECandidates carry kilobyte-scale SDP).
+        // matter.js does not auto-detect this; resolve the command model from the cluster schema and
+        // set the flag explicitly.
+        const clusterSchema = (
+            request.cluster as {
+                schema?: { commands?: Array<{ propertyName?: string; effectiveQuality?: { largeMessage?: boolean } }> };
+            }
+        ).schema;
+        const commandModel = clusterSchema?.commands?.find(c => c.propertyName === request.command);
+        if (commandModel?.effectiveQuality?.largeMessage) {
+            invoke.largeMessage = true;
+        }
+        for await (const data of node.interaction.invoke(invoke)) {
             for (const entry of data) {
                 // We send only one command, so we only get one response back
                 switch (entry.kind) {

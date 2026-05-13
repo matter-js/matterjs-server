@@ -55,6 +55,17 @@ export class CameraOverlay extends LitElement {
     @state() private _resolutionsLoading = true;
     @state() private _closing = false;
 
+    private get _snapshotSupported(): boolean {
+        const node = this.client?.nodes[String(this.nodeId)];
+        const caps = node?.attributes[`${this.endpointId}/1361/10`];
+        if (!Array.isArray(caps) || caps.length === 0) return false;
+        // AcceptedCommandList (0xfff9 = 65529) must include CaptureSnapshot (0x0c = 12) —
+        // some cameras advertise SnapshotCapabilities but reject the command.
+        const accepted = node?.attributes[`${this.endpointId}/1361/65529`];
+        if (!Array.isArray(accepted)) return false;
+        return accepted.includes(12);
+    }
+
     private _streamViewRef = createRef<WebRtcStreamView>();
 
     override firstUpdated(): void {
@@ -253,14 +264,16 @@ export class CameraOverlay extends LitElement {
                     ${this._state === "streaming"
                         ? html`<md-filled-button @click=${this._stop}>End</md-filled-button>`
                         : nothing}
-                    <md-text-button
-                        @click=${this._onSnapshot}
-                        ?disabled=${this._snapshotBusy || !this.client}
-                        aria-label="Take snapshot"
-                    >
-                        <ha-svg-icon .path=${mdiCamera} slot="icon"></ha-svg-icon>
-                        ${this._snapshotBusy ? "Capturing…" : "Snapshot"}
-                    </md-text-button>
+                    ${this._snapshotSupported
+                        ? html`<md-text-button
+                              @click=${this._onSnapshot}
+                              ?disabled=${this._snapshotBusy || !this.client}
+                              aria-label="Take snapshot"
+                          >
+                              <ha-svg-icon .path=${mdiCamera} slot="icon"></ha-svg-icon>
+                              ${this._snapshotBusy ? "Capturing…" : "Snapshot"}
+                          </md-text-button>`
+                        : nothing}
                     <md-text-button @click=${this._close} ?disabled=${this._closing}>Close</md-text-button>
                 </footer>
             </div>
