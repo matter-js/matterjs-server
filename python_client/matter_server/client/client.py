@@ -553,19 +553,20 @@ class MatterClient:
         endpoint_id: int,
         command_name: Literal["ProvideOffer", "SolicitOffer"],
         payload: dict,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Invoke a WebRTCTransportProvider command on a commissioned camera.
 
         The server hard-codes the cluster id (0x0553) and injects
         originatingEndpointId — payload should omit both.
         """
-        return await self.send_command(
+        response = await self.send_command(
             APICommand.SEND_WEBRTC_PROVIDER_COMMAND,
             node_id=node_id,
             endpoint_id=endpoint_id,
             command_name=command_name,
             payload=payload,
         )
+        return cast(dict[str, Any], response)
 
     def _prepare_message(
         self,
