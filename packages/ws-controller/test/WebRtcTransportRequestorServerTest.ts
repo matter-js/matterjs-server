@@ -41,7 +41,7 @@ async function createTestNode() {
 
     const node = new ServerNode(ServerNode.RootEndpoint, { environment: env });
     await node.add({
-        id: "camera",
+        id: "camera-controller",
         type: CameraControllerDevice.with(WebRtcTransportRequestorServer),
     });
     await node.start();
@@ -86,7 +86,7 @@ describe("WebRtcTransportRequestorServer", () => {
 
         beforeEach(async () => {
             node = await createTestNode();
-            cameraEndpoint = node.parts.get("camera");
+            cameraEndpoint = node.parts.get("camera-controller");
         });
 
         afterEach(async () => {
@@ -167,7 +167,7 @@ describe("WebRtcTransportRequestorServer", () => {
 
         beforeEach(async () => {
             node = await createTestNode();
-            cameraEndpoint = node.parts.get("camera");
+            cameraEndpoint = node.parts.get("camera-controller");
 
             const session = makeSession({ id: SESSION_ID, peerNodeId: PEER_NODE, fabricIndex: FABRIC });
             await cameraEndpoint!.act(agent => {
@@ -361,7 +361,7 @@ describe("WebRtcTransportRequestorServer", () => {
         it("ACL install adds one entry on first online", async () => {
             await addFabricToNode(node);
 
-            const cameraEndpoint = node.parts.get("camera");
+            const cameraEndpoint = node.parts.get("camera-controller");
             const acl = node.stateOf(AccessControlServer).acl;
             const entry = acl.find(
                 e =>
@@ -377,7 +377,7 @@ describe("WebRtcTransportRequestorServer", () => {
         it("does not duplicate the entry across repeated online events", async () => {
             await addFabricToNode(node);
 
-            const cameraEndpoint = node.parts.get("camera");
+            const cameraEndpoint = node.parts.get("camera-controller");
             await cameraEndpoint!.act(agent => agent.get(WebRtcTransportRequestorServer).initialize());
 
             const acl = node.stateOf(AccessControlServer).acl;

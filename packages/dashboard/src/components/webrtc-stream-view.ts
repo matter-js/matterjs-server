@@ -15,6 +15,7 @@ import type {
 import { LitElement, css, html } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
 import { clientContext } from "../client/client-context.js";
+import { asObject, extractAttributeValue, pickNumber } from "../util/attribute-shapes.js";
 
 // Spec values from @matter/types globals/StreamUsage.ts and
 // web-rtc-transport-definitions.ts WebRtcEndReason. Kept inline to avoid a new
@@ -22,6 +23,7 @@ import { clientContext } from "../client/client-context.js";
 const STREAM_USAGE_LIVE_VIEW = 3;
 const END_REASON_USER_HANGUP = 2;
 
+// Hardcoded to avoid pulling full cluster schema into the dashboard bundle.
 export const CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID = 0x551;
 const WEBRTC_TRANSPORT_PROVIDER_CLUSTER_ID = 0x553;
 
@@ -34,32 +36,10 @@ interface ProvideOfferResponse {
     audioStreamId: number | null;
 }
 
-function asObject(value: unknown): Record<string, unknown> | null {
-    return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
-}
-
-function pickNumber(obj: Record<string, unknown>, ...keys: string[]): number | null {
-    for (const k of keys) {
-        const v = obj[k];
-        if (typeof v === "number" && Number.isFinite(v)) return v;
-    }
-    return null;
-}
-
 function parseStreamAllocate(value: unknown, idKey: "videoStreamId" | "audioStreamId"): number | null {
     const obj = asObject(value);
     if (!obj) return null;
-    // Server may return either { videoStreamId } or { videoStreamID } depending on serializer.
-    const upperKey = idKey === "videoStreamId" ? "videoStreamID" : "audioStreamID";
-    return pickNumber(obj, idKey, upperKey);
-}
-
-// AttributesData is { [path: string]: value }; extract the first (and only) path's value.
-function extractAttributeValue(attributesData: unknown): unknown {
-    const obj = asObject(attributesData);
-    if (!obj) return attributesData;
-    const vals = Object.values(obj);
-    return vals.length > 0 ? vals[0] : null;
+    return pickNumber(obj, idKey);
 }
 
 function parseAllocatedSnapshotStreams(value: unknown): number[] {
@@ -68,7 +48,7 @@ function parseAllocatedSnapshotStreams(value: unknown): number[] {
     const ids = new Array<number>();
     for (const item of list) {
         const entry = asObject(item);
-        const id = entry ? pickNumber(entry, "snapshotStreamId", "snapshotStreamID") : null;
+        const id = entry ? pickNumber(entry, "snapshotStreamId") : null;
         if (id !== null) ids.push(id);
     }
     return ids;
@@ -77,7 +57,7 @@ function parseAllocatedSnapshotStreams(value: unknown): number[] {
 function parseSnapshotAllocateResponse(value: unknown): number | null {
     const obj = asObject(value);
     if (!obj) return null;
-    return pickNumber(obj, "snapshotStreamId", "snapshotStreamID");
+    return pickNumber(obj, "snapshotStreamId");
 }
 
 interface SnapshotCapability {
@@ -95,8 +75,8 @@ function parseSnapshotCapabilities(value: unknown): SnapshotCapability {
     const res = asObject(cap["resolution"]);
     const width = res ? pickNumber(res, "width") : null;
     const height = res ? pickNumber(res, "height") : null;
-    const maxFrameRate = pickNumber(cap, "maxFrameRate", "max_frame_rate");
-    const imageCodec = pickNumber(cap, "imageCodec", "image_codec");
+    const maxFrameRate = pickNumber(cap, "maxFrameRate");
+    const imageCodec = pickNumber(cap, "imageCodec");
     if (width === null || height === null || maxFrameRate === null || imageCodec === null) {
         throw new Error("Camera reports no snapshot capabilities");
     }
@@ -132,7 +112,7 @@ function parseCaptureSnapshotResponse(value: unknown): CaptureSnapshotResult {
     if (!obj) throw new Error("CaptureSnapshot returned no response");
     const data = obj["data"];
     if (data == null) throw new Error("CaptureSnapshot response missing data field");
-    const imageCodec = pickNumber(obj, "imageCodec", "image_codec") ?? 0;
+    const imageCodec = pickNumber(obj, "imageCodec") ?? 0;
     const res = asObject(obj["resolution"]);
     const width = res ? (pickNumber(res, "width") ?? 0) : 0;
     const height = res ? (pickNumber(res, "height") ?? 0) : 0;
@@ -142,7 +122,7 @@ function parseCaptureSnapshotResponse(value: unknown): CaptureSnapshotResult {
 function parseProvideOfferResponse(value: unknown): ProvideOfferResponse | null {
     const obj = asObject(value);
     if (!obj) return null;
-    const sessionId = pickNumber(obj, "webRtcSessionId", "webRtcSessionID", "webrtc_session_id");
+    const sessionId = pickNumber(obj, "webRtcSessionId");
     if (sessionId === null) return null;
     return {
         webRtcSessionId: sessionId,
@@ -157,7 +137,7 @@ type StreamState = "idle" | "connecting" | "streaming" | "error";
 export class WebRtcStreamView extends LitElement {
     @consume({ context: clientContext, subscribe: true })
     @property({ attribute: false })
-    client!: MatterClient;
+    client?: MatterClient;
 
     @property({ type: Number }) nodeId!: number;
     @property({ type: Number }) endpointId!: number;
@@ -203,6 +183,7 @@ export class WebRtcStreamView extends LitElement {
     }
 
     async start(): Promise<void> {
+        if (!this.client) throw new Error("Matter client not available");
         if (this._state === "connecting" || this._state === "streaming") return;
 
         this._fireStateChange("connecting", null);
@@ -338,7 +319,7 @@ export class WebRtcStreamView extends LitElement {
         const initiatedEnd = sessionId !== null && !this._endReceivedFromPeer;
         if (initiatedEnd) {
             try {
-                await this.client.deviceCommand(
+                await this.client?.deviceCommand(
                     this.nodeId,
                     this.endpointId,
                     WEBRTC_TRANSPORT_PROVIDER_CLUSTER_ID,
@@ -352,7 +333,7 @@ export class WebRtcStreamView extends LitElement {
 
         if (this._videoStreamId !== null) {
             try {
-                await this.client.deviceCommand(
+                await this.client?.deviceCommand(
                     this.nodeId,
                     this.endpointId,
                     CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID,
@@ -365,7 +346,7 @@ export class WebRtcStreamView extends LitElement {
         }
         if (this._audioStreamId !== null) {
             try {
-                await this.client.deviceCommand(
+                await this.client?.deviceCommand(
                     this.nodeId,
                     this.endpointId,
                     CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID,
@@ -510,7 +491,7 @@ export class WebRtcStreamView extends LitElement {
                 this._handleEnd(data.data);
                 return;
             case "offer":
-                console.info("WebRTC re-offer received; ignoring (not handled in v1)", data);
+                console.info("WebRTC re-offer received; renegotiation unsupported", data);
                 return;
         }
     }
@@ -555,7 +536,7 @@ export class WebRtcStreamView extends LitElement {
     }
 
     private async _sendLocalIceCandidates(candidates: RTCIceCandidate[]): Promise<void> {
-        if (this._webRtcSessionId === null || candidates.length === 0) return;
+        if (!this.client || this._webRtcSessionId === null || candidates.length === 0) return;
         try {
             await this.client.deviceCommand(
                 this.nodeId,

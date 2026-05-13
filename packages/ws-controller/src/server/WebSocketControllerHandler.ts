@@ -146,7 +146,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
         // WebRTC callbacks fan out to every connected client, so subscribe once at the server
         // level rather than per-connection.
-        this.#serverObservers.on(this.#commandHandler.events.webrtcCallback, data => {
+        this.#serverObservers.on(this.#commandHandler.events.webRtcCallback, data => {
             this.#broadcastEvent("webrtc_callback", data);
         });
 

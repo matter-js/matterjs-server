@@ -16,10 +16,11 @@ import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { createRef, ref } from "lit/directives/ref.js";
 import { clientContext } from "../client/client-context.js";
+import { CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID } from "../components/webrtc-stream-view.js";
 import "../components/ha-svg-icon.js";
 import "../components/webrtc-stream-view.js";
-import { CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID } from "../components/webrtc-stream-view.js";
 import type { WebRtcStreamView } from "../components/webrtc-stream-view.js";
+import { asObject, extractAttributeList, extractAttributeValue, pickNumber } from "../util/attribute-shapes.js";
 
 type StreamState = "idle" | "connecting" | "streaming" | "error";
 
@@ -52,6 +53,7 @@ export class CameraOverlay extends LitElement {
     @state() private _resolutions: Resolution[] = [];
     @state() private _selectedResolution: Resolution | null = null;
     @state() private _resolutionsLoading = true;
+    @state() private _closing = false;
 
     private _streamViewRef = createRef<WebRtcStreamView>();
 
@@ -153,11 +155,16 @@ export class CameraOverlay extends LitElement {
         return HA_DEFAULT_RESOLUTIONS;
     }
 
-    private _close(): void {
+    private async _close(): Promise<void> {
         const view = this._streamViewRef.value;
         if (view) {
-            void view.deallocateSnapshot();
-            void view.stop();
+            this._closing = true;
+            try {
+                await view.stop();
+                await view.deallocateSnapshot();
+            } finally {
+                this._closing = false;
+            }
         }
         this.remove();
     }
@@ -216,10 +223,10 @@ export class CameraOverlay extends LitElement {
         const canStart = this._state === "idle" || this._state === "error";
 
         return html`
-            <div class="backdrop" @click=${this._close}></div>
+            <div class="backdrop" @click=${this._closing ? undefined : this._close}></div>
             <div class="frame" @click=${(e: Event) => e.stopPropagation()}>
                 <header>
-                    <md-icon-button @click=${this._close} aria-label="Close">
+                    <md-icon-button @click=${this._close} ?disabled=${this._closing} aria-label="Close">
                         <ha-svg-icon .path=${mdiClose}></ha-svg-icon>
                     </md-icon-button>
                     <span>Node ${this.nodeId} • Endpoint ${this.endpointId}</span>
@@ -259,8 +266,11 @@ export class CameraOverlay extends LitElement {
                     ${this._snapshotError ? html`<div class="snapshot-error">${this._snapshotError}</div>` : nothing}
                 </main>
                 <footer>
-                    ${this._state === "connecting" ? html`<span class="footer-status">Connecting…</span>` : nothing}
-                    ${this._state === "error" && this._errorMessage
+                    ${this._closing ? html`<span class="footer-status">Closing…</span>` : nothing}
+                    ${!this._closing && this._state === "connecting"
+                        ? html`<span class="footer-status">Connecting…</span>`
+                        : nothing}
+                    ${!this._closing && this._state === "error" && this._errorMessage
                         ? html`<span class="footer-status error">${this._errorMessage}</span>`
                         : nothing}
                     ${canStart && this._resolutions.length > 0
@@ -301,7 +311,7 @@ export class CameraOverlay extends LitElement {
                         <ha-svg-icon .path=${mdiCamera} slot="icon"></ha-svg-icon>
                         ${this._snapshotBusy ? "Capturing…" : "Snapshot"}
                     </md-text-button>
-                    <md-text-button @click=${this._close}>Close</md-text-button>
+                    <md-text-button @click=${this._close} ?disabled=${this._closing}>Close</md-text-button>
                 </footer>
             </div>
         `;
@@ -405,30 +415,6 @@ export class CameraOverlay extends LitElement {
             font-style: normal;
         }
     `;
-}
-
-function asObject(value: unknown): Record<string, unknown> | null {
-    return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
-}
-
-function pickNumber(obj: Record<string, unknown>, ...keys: string[]): number | null {
-    for (const k of keys) {
-        const v = obj[k];
-        if (typeof v === "number" && Number.isFinite(v)) return v;
-    }
-    return null;
-}
-
-function extractAttributeValue(attributesData: unknown): unknown {
-    const obj = asObject(attributesData);
-    if (!obj) return attributesData;
-    const vals = Object.values(obj);
-    return vals.length > 0 ? vals[0] : null;
-}
-
-function extractAttributeList(attributesData: unknown): unknown[] {
-    const val = extractAttributeValue(attributesData);
-    return Array.isArray(val) ? val : [];
 }
 
 declare global {

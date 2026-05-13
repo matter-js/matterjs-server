@@ -178,7 +178,7 @@ export class ControllerCommandHandler {
         nodeDecommissioned: new Observable<[nodeId: NodeId]>(),
         nodeEndpointAdded: new Observable<[nodeId: NodeId, endpointId: EndpointNumber]>(),
         nodeEndpointRemoved: new Observable<[nodeId: NodeId, endpointId: EndpointNumber]>(),
-        webrtcCallback: new Observable<[WebRtcCallbackData]>(),
+        webRtcCallback: new Observable<[WebRtcCallbackData]>(),
     };
     #peers?: PeerSet;
 
@@ -295,7 +295,7 @@ export class ControllerCommandHandler {
         try {
             await this.#cameraControllerEndpoint().act(agent => {
                 attachWebRtcCallbackBridge(agent.get(WebRtcTransportRequestorServer).events, data =>
-                    this.events.webrtcCallback.emit(data),
+                    this.events.webRtcCallback.emit(data),
                 );
             });
             logger.info("WebRTC callback bridge wired");

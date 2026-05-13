@@ -37,7 +37,7 @@ async function createTestNode() {
 
     const node = new ServerNode(ServerNode.RootEndpoint, { environment: env });
     await node.add({
-        id: "camera",
+        id: "camera-controller",
         type: CameraControllerDevice.with(WebRtcTransportRequestorServer),
     });
     await node.start();
@@ -61,14 +61,14 @@ function makeSession(overrides: Partial<WebRtcSession> = {}): WebRtcSession {
     };
 }
 
-describe("ControllerCommandHandler WebRTC bridge", () => {
+describe("WebRtcCallbackBridge", () => {
     let node: ServerNode;
     let cameraEndpoint: ReturnType<(typeof node)["parts"]["get"]>;
     let recorded: WebRtcCallbackData[];
 
     beforeEach(async () => {
         node = await createTestNode();
-        cameraEndpoint = node.parts.get("camera");
+        cameraEndpoint = node.parts.get("camera-controller");
         recorded = [];
         await cameraEndpoint!.act(agent => {
             attachWebRtcCallbackBridge(agent.get(WebRtcTransportRequestorServer).events, data => {
