@@ -151,6 +151,7 @@ export class WebRtcStreamView extends LitElement {
     @state() private _errorMessage: string | null = null;
 
     private _snapshotStreamId: number | null = null;
+    private _snapshotResolution: { width: number; height: number } | null = null;
 
     @query("video") private _video?: HTMLVideoElement;
 
@@ -238,23 +239,45 @@ export class WebRtcStreamView extends LitElement {
 
             const minResolution = this.resolution ?? DEFAULT_MIN_RESOLUTION;
             const maxResolution = this.resolution ?? DEFAULT_MAX_RESOLUTION;
-            const videoAlloc = await this.client.deviceCommand(
-                this.nodeId,
-                this.endpointId,
-                CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID,
-                "VideoStreamAllocate",
-                {
-                    streamUsage: STREAM_USAGE_LIVE_VIEW,
-                    videoCodec: 0,
-                    minFrameRate: 30,
-                    maxFrameRate: 120,
-                    minResolution,
-                    maxResolution,
-                    minBitRate: 10000,
-                    maxBitRate: 10000,
-                    keyFrameInterval: 4000,
-                },
-            );
+            const videoAllocPayload = {
+                streamUsage: STREAM_USAGE_LIVE_VIEW,
+                videoCodec: 0,
+                minFrameRate: 30,
+                maxFrameRate: 120,
+                minResolution,
+                maxResolution,
+                minBitRate: 10000,
+                maxBitRate: 10000,
+                keyFrameInterval: 4000,
+            };
+            let videoAlloc: unknown;
+            try {
+                videoAlloc = await this.client.deviceCommand(
+                    this.nodeId,
+                    this.endpointId,
+                    CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID,
+                    "VideoStreamAllocate",
+                    videoAllocPayload,
+                );
+            } catch (err) {
+                // Cameras with shared encoder pools (Aqara G350) refuse VideoStreamAllocate
+                // while a snapshot stream is held. Detect ResourceExhausted (Matter Status 137),
+                // free the snapshot stream, retry once.
+                const message = err instanceof Error ? err.message : String(err);
+                const isResourceExhausted = message.includes("Resource exhausted") || message.includes("(code 137)");
+                if (!isResourceExhausted || this._snapshotStreamId === null) throw err;
+                console.info(
+                    "[webrtc-stream-view] VideoStreamAllocate ResourceExhausted; freeing snapshot stream and retrying",
+                );
+                await this.deallocateSnapshot();
+                videoAlloc = await this.client.deviceCommand(
+                    this.nodeId,
+                    this.endpointId,
+                    CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID,
+                    "VideoStreamAllocate",
+                    videoAllocPayload,
+                );
+            }
             const videoStreamId = parseStreamAllocate(videoAlloc, "videoStreamId");
             if (videoStreamId === null) {
                 throw new Error("VideoStreamAllocate did not return a videoStreamId");
@@ -420,12 +443,13 @@ export class WebRtcStreamView extends LitElement {
     async takeSnapshot(): Promise<{ dataUri: string; resolution: { width: number; height: number } }> {
         if (!this.client) throw new Error("Matter client not available");
         const streamId = await this._ensureSnapshotStream();
+        const requestedResolution = this._snapshotResolution ?? SNAPSHOT_DEFAULTS.resolution;
         const response = await this.client.deviceCommand(
             this.nodeId,
             this.endpointId,
             CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID,
             "CaptureSnapshot",
-            { snapshotStreamId: streamId },
+            { snapshotStreamId: streamId, requestedResolution },
         );
         const parsed = parseCaptureSnapshotResponse(response);
         const mimeType = parsed.imageCodec === 0 ? "jpeg" : "png";
@@ -439,6 +463,7 @@ export class WebRtcStreamView extends LitElement {
         if (this._snapshotStreamId === null) return;
         const id = this._snapshotStreamId;
         this._snapshotStreamId = null;
+        this._snapshotResolution = null;
         try {
             await this.client?.deviceCommand(
                 this.nodeId,
@@ -485,11 +510,10 @@ export class WebRtcStreamView extends LitElement {
             "SnapshotStreamAllocate",
             {
                 imageCodec: cap.imageCodec,
-                frameRate: cap.maxFrameRate,
+                maxFrameRate: cap.maxFrameRate,
                 minResolution: cap.resolution,
                 maxResolution: cap.resolution,
                 quality: 90,
-                bitRate: 1_000_000,
             },
         );
         const snapshotStreamId = parseSnapshotAllocateResponse(response);
@@ -497,6 +521,7 @@ export class WebRtcStreamView extends LitElement {
             throw new Error("SnapshotStreamAllocate did not return a snapshot stream id");
         }
         this._snapshotStreamId = snapshotStreamId;
+        this._snapshotResolution = cap.resolution;
         return this._snapshotStreamId;
     }
 
