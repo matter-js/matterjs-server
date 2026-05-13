@@ -37,6 +37,8 @@ class APICommand(str, Enum):
     COMMISSION_ON_NETWORK = "commission_on_network"
     SET_WIFI_CREDENTIALS = "set_wifi_credentials"
     SET_THREAD_DATASET = "set_thread_dataset"
+    REMOVE_WIFI_CREDENTIALS = "remove_wifi_credentials"
+    REMOVE_THREAD_DATASET = "remove_thread_dataset"
     OPEN_COMMISSIONING_WINDOW = "open_commissioning_window"
     DISCOVER = "discover"
     INTERVIEW_NODE = "interview_node"
@@ -173,6 +175,7 @@ class ServerInfoMessage:
     wifi_credentials_set: bool
     thread_credentials_set: bool
     bluetooth_enabled: bool
+    wifi_ssid: str | None = None
 
 
 MessageType = (

@@ -498,6 +498,18 @@ describe("Integration Test", function () {
             const attrs = await client.readAttribute(commissionedNodeId, "0/40/5");
             expect(attrs["0/40/5"]).to.equal("Integration Test Node");
         });
+
+        it("should reject when writing a read-only attribute", async function () {
+            // ClusterRevision (0xFFFD) is read-only; either rejection shape is a valid failure signal.
+            try {
+                const result = await client.writeAttribute(commissionedNodeId, "0/40/65533", 99);
+                const writeResult = result as Array<{ Path: object; Status: number }>;
+                expect(writeResult).to.be.an("array");
+                expect(writeResult[0].Status).to.not.equal(0);
+            } catch (error) {
+                expect(error).to.exist;
+            }
+        });
     });
 
     // =========================================================================

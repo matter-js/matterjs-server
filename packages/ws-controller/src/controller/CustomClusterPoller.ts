@@ -10,8 +10,10 @@
  * a custom cluster without standard Matter subscription support.
  */
 
-import { CancelablePromise, Duration, Logger, Millis, NodeId, Time, Timer } from "@matter/main";
+import { CancelablePromise, Duration, Logger, Millis, Time, Timer } from "@matter/main";
+import { PeerAddress, PeerAddressMap } from "@matter/main/protocol";
 import { AttributesData } from "../types/CommandHandler.js";
+import { formatNodeId } from "../util/formatNodeId.js";
 
 const logger = Logger.get("CustomClusterPoller");
 
@@ -42,8 +44,12 @@ const MAX_INITIAL_DELAY_MS = 30_000;
 type AttributePath = string;
 
 export interface NodeAttributeReader {
-    handleReadAttributes(nodeId: NodeId, attributePaths: string[], fabricFiltered?: boolean): Promise<AttributesData>;
-    nodeConnected(nodeId: NodeId): boolean;
+    handleReadAttributes(
+        peer: PeerAddress,
+        attributePaths: string[],
+        fabricFiltered?: boolean,
+    ): Promise<AttributesData>;
+    nodeConnected(peer: PeerAddress): boolean;
 }
 
 /**
@@ -112,7 +118,7 @@ export function checkPolledAttributes(attributes: AttributesData): Set<Attribute
  * Manages polling of custom cluster attributes for multiple nodes.
  */
 export class CustomClusterPoller {
-    #polledAttributes = new Map<NodeId, Set<AttributePath>>();
+    #polledAttributes = new PeerAddressMap<Set<AttributePath>>();
     #pollerTimer: Timer;
     #attributeReader: NodeAttributeReader;
     #isPolling = false;
@@ -130,18 +136,18 @@ export class CustomClusterPoller {
      * Register a node for polling if it has custom attributes that need polling.
      * Call this after a node is connected and its attributes are available.
      */
-    registerNode(nodeId: NodeId, attributes: AttributesData): void {
+    registerNode(peer: PeerAddress, attributes: AttributesData): void {
         const attributesToPoll = checkPolledAttributes(attributes);
 
         if (attributesToPoll.size === 0) {
             // Remove from polling if it was previously registered
-            this.unregisterNode(nodeId);
+            this.unregisterNode(peer);
             return;
         }
 
-        this.#polledAttributes.set(nodeId, attributesToPoll);
+        this.#polledAttributes.set(peer, attributesToPoll);
         logger.info(
-            `Registered node ${nodeId} for custom attribute polling: ${Array.from(attributesToPoll).join(", ")}`,
+            `Registered node ${formatNodeId(peer)} for custom attribute polling: ${Array.from(attributesToPoll).join(", ")}`,
         );
 
         // Start the poller if not already running
@@ -151,9 +157,9 @@ export class CustomClusterPoller {
     /**
      * Unregister a node from polling (e.g., when decommissioned or disconnected).
      */
-    unregisterNode(nodeId: NodeId): void {
-        if (this.#polledAttributes.delete(nodeId)) {
-            logger.info(`Unregistered node ${nodeId} from custom attribute polling`);
+    unregisterNode(peer: PeerAddress): void {
+        if (this.#polledAttributes.delete(peer)) {
+            logger.info(`Unregistered node ${formatNodeId(peer)} from custom attribute polling`);
         }
         if (this.#polledAttributes.size === 0) {
             this.#pollerTimer.stop();
@@ -217,13 +223,13 @@ export class CustomClusterPoller {
                 if (this.#closed) {
                     break;
                 }
-                const [nodeId, attributePaths] = entries[i];
-                if (!this.#polledAttributes.has(nodeId)) {
+                const [peer, attributePaths] = entries[i];
+                if (!this.#polledAttributes.has(peer)) {
                     // Node was removed, so skip it
                     continue;
                 }
                 polledNodes++;
-                await this.#pollNode(nodeId, attributePaths);
+                await this.#pollNode(peer, attributePaths);
                 // Small delay between nodes to avoid overwhelming the network
                 // Only add this delay if there are more nodes remaining to be polled
                 if (i < entries.length - 1) {
@@ -249,25 +255,25 @@ export class CustomClusterPoller {
      * Poll a single node for its custom attributes.
      * The read will automatically trigger change events through the normal attribute flow.
      */
-    async #pollNode(nodeId: NodeId, attributePaths: Set<AttributePath>): Promise<void> {
-        if (!this.#attributeReader.nodeConnected(nodeId)) {
-            logger.debug(`Node ${nodeId} not connected, skipping custom attribute polling`);
+    async #pollNode(peer: PeerAddress, attributePaths: Set<AttributePath>): Promise<void> {
+        if (!this.#attributeReader.nodeConnected(peer)) {
+            logger.debug(`Node ${formatNodeId(peer)} not connected, skipping custom attribute polling`);
             return;
         }
         const paths = Array.from(attributePaths);
-        logger.debug(`Polling ${paths.length} custom attributes for node ${nodeId}`);
+        logger.debug(`Polling ${paths.length} custom attributes for node ${formatNodeId(peer)}`);
 
         try {
             // Read with fabricFiltered=true as per Eve's requirements
             // This automatically updates the attribute cache and triggers change events
-            const readPromise = this.#attributeReader.handleReadAttributes(nodeId, paths, true);
+            const readPromise = this.#attributeReader.handleReadAttributes(peer, paths, true);
             this.#currentReadPromise = readPromise.then(
                 () => {},
                 () => {},
             );
             await readPromise;
         } catch (error) {
-            logger.warn(`Failed to poll custom attributes for node ${nodeId}: `, error);
+            logger.warn(`Failed to poll custom attributes for node ${formatNodeId(peer)}: `, error);
         } finally {
             this.#currentReadPromise = undefined;
         }

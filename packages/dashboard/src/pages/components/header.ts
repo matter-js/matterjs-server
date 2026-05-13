@@ -13,8 +13,9 @@ import { MatterClient } from "@matter-server/ws-client";
 import { mdiArrowLeft, mdiBrightnessAuto, mdiCog, mdiLogout, mdiWeatherNight, mdiWeatherSunny } from "@mdi/js";
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
-import { showLogLevelDialog } from "../../components/dialogs/settings/show-log-level-dialog.js";
+import { showSettingsDialog } from "../../components/dialogs/settings/show-settings-dialog.js";
 import "../../components/ha-svg-icon";
+import { DevModeService } from "../../util/dev-mode-service.js";
 import { reducedMotionStyles } from "../../util/shared-styles.js";
 import { EffectiveTheme, ThemePreference, ThemeService } from "../../util/theme-service.js";
 
@@ -38,8 +39,10 @@ export class DashboardHeader extends LitElement {
 
     @state() private _themePreference: ThemePreference = ThemeService.preference;
     @state() private _effectiveTheme: EffectiveTheme = ThemeService.effectiveTheme;
+    @state() private _devMode = DevModeService.active;
 
     private _unsubscribeTheme?: () => void;
+    private _unsubscribeDevMode?: () => void;
 
     override connectedCallback() {
         super.connectedCallback();
@@ -47,11 +50,15 @@ export class DashboardHeader extends LitElement {
             this._effectiveTheme = theme;
             this._themePreference = ThemeService.preference;
         });
+        this._unsubscribeDevMode = DevModeService.subscribe(active => {
+            this._devMode = active;
+        });
     }
 
     override disconnectedCallback() {
         super.disconnectedCallback();
         this._unsubscribeTheme?.();
+        this._unsubscribeDevMode?.();
     }
 
     private _cycleTheme() {
@@ -60,7 +67,7 @@ export class DashboardHeader extends LitElement {
 
     private _openSettings() {
         if (this.client) {
-            showLogLevelDialog(this.client);
+            showSettingsDialog(this.client);
         }
     }
 
@@ -150,10 +157,23 @@ export class DashboardHeader extends LitElement {
                             </md-icon-button>
                         `;
                     })}
+                    <!-- dev-mode badge (only when dev mode is active and a client exists) -->
+                    ${this._devMode && this.client
+                        ? html`
+                              <button
+                                  class="dev-badge"
+                                  @click=${this._openSettings}
+                                  title="Developer mode active — click to open settings"
+                                  aria-label="Developer mode active — click to open settings"
+                              >
+                                  DEV
+                              </button>
+                          `
+                        : nothing}
                     <!-- settings button (only when connected) -->
                     ${this.client
                         ? html`
-                              <md-icon-button @click=${this._openSettings} title="Server Settings">
+                              <md-icon-button @click=${this._openSettings} title="Settings">
                                   <ha-svg-icon .path=${mdiCog}></ha-svg-icon>
                               </md-icon-button>
                           `
@@ -239,6 +259,30 @@ export class DashboardHeader extends LitElement {
                 .nav-tabs {
                     display: none;
                 }
+            }
+
+            .dev-badge {
+                font-family: var(--monospace-font);
+                font-size: 0.7rem;
+                font-weight: 600;
+                letter-spacing: 0.08em;
+                padding: 4px 8px;
+                margin-right: 8px;
+                border-radius: 4px;
+                background: var(--dev-color);
+                color: var(--dev-on-color);
+                border: none;
+                cursor: pointer;
+                line-height: 1;
+            }
+
+            .dev-badge:hover {
+                background: color-mix(in srgb, var(--dev-color) 88%, white);
+            }
+
+            .dev-badge:focus-visible {
+                outline: 2px solid var(--dev-on-color);
+                outline-offset: 2px;
             }
         `,
     ];

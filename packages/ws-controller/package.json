@@ -13,22 +13,33 @@
     },
     "author": "Apollon77",
     "main": "dist/esm/index.js",
+    "exports": {
+        ".": {
+            "dev-types": {
+                "types": "./src/index.ts"
+            },
+            "import": {
+                "types": "./dist/esm/index.d.ts",
+                "default": "./dist/esm/index.js"
+            }
+        }
+    },
     "scripts": {
-        "clean": "matter-build clean",
-        "build": "matter-build",
-        "build-clean": "matter-build --clean",
+        "clean": "nacho-build clean",
+        "build": "nacho-build",
+        "build-clean": "nacho-build --clean",
         "test": "matter-test --force-exit"
     },
     "engines": {
         "node": ">=20.19.0 <22.0.0 || >=22.13.0"
     },
     "optionalDependencies": {
-        "@matter/nodejs-ble": "0.17.0-alpha.0-20260415-d9b8bc8d3"
+        "@matter/nodejs-ble": "0.17.0-alpha.0-20260512-576f5796c"
     },
     "dependencies": {
-        "@matter/main": "0.17.0-alpha.0-20260415-d9b8bc8d3",
+        "@matter/main": "0.17.0-alpha.0-20260512-576f5796c",
         "@matter-server/ws-client": "*",
-        "@project-chip/matter.js": "0.17.0-alpha.0-20260415-d9b8bc8d3",
+        "@project-chip/matter.js": "0.17.0-alpha.0-20260512-576f5796c",
         "ws": "^8.20.0"
     },
     "devDependencies": {

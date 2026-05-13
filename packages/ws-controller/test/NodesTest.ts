@@ -5,10 +5,12 @@
  */
 
 import { NodeId } from "@matter/main";
+import { EndpointNumber } from "@matter/main/types";
 import { NodeStates } from "@project-chip/matter.js/device";
 import { Nodes } from "../src/controller/Nodes.js";
 
 const TEST_NODE_ID = NodeId(1);
+const OTHER_NODE_ID = NodeId(2);
 
 describe("Nodes", () => {
     describe("isNodeAvailable", () => {
@@ -193,6 +195,51 @@ describe("Nodes", () => {
 
             nodes.delete(TEST_NODE_ID);
             expect(nodes.isAvailable(TEST_NODE_ID)).to.equal(false);
+        });
+
+        it("clears queued endpoint additions", () => {
+            const nodes = new Nodes();
+            nodes.queueEndpointAdded(TEST_NODE_ID, EndpointNumber(32));
+            nodes.delete(TEST_NODE_ID);
+            expect(nodes.drainPendingEndpointAdds(TEST_NODE_ID)).to.deep.equal([]);
+        });
+    });
+
+    describe("pending endpoint adds", () => {
+        let nodes: Nodes;
+
+        beforeEach(() => {
+            nodes = new Nodes();
+        });
+
+        it("returns an empty array when nothing is queued", () => {
+            expect(nodes.drainPendingEndpointAdds(TEST_NODE_ID)).to.deep.equal([]);
+        });
+
+        it("preserves insertion order across multiple queues", () => {
+            nodes.queueEndpointAdded(TEST_NODE_ID, EndpointNumber(32));
+            nodes.queueEndpointAdded(TEST_NODE_ID, EndpointNumber(33));
+            nodes.queueEndpointAdded(TEST_NODE_ID, EndpointNumber(34));
+
+            expect(nodes.drainPendingEndpointAdds(TEST_NODE_ID)).to.deep.equal([
+                EndpointNumber(32),
+                EndpointNumber(33),
+                EndpointNumber(34),
+            ]);
+        });
+
+        it("clears the queue after draining", () => {
+            nodes.queueEndpointAdded(TEST_NODE_ID, EndpointNumber(32));
+            nodes.drainPendingEndpointAdds(TEST_NODE_ID);
+            expect(nodes.drainPendingEndpointAdds(TEST_NODE_ID)).to.deep.equal([]);
+        });
+
+        it("isolates queues per node", () => {
+            nodes.queueEndpointAdded(TEST_NODE_ID, EndpointNumber(1));
+            nodes.queueEndpointAdded(OTHER_NODE_ID, EndpointNumber(2));
+
+            expect(nodes.drainPendingEndpointAdds(TEST_NODE_ID)).to.deep.equal([EndpointNumber(1)]);
+            expect(nodes.drainPendingEndpointAdds(OTHER_NODE_ID)).to.deep.equal([EndpointNumber(2)]);
         });
     });
 });

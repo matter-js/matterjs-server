@@ -5,20 +5,17 @@
  */
 
 import { NodeId } from "@matter/main";
-import { ClusterClientObj } from "@matter/main/protocol";
-import { ClusterId, ClusterType, EndpointNumber } from "@matter/main/types";
-import { InteractionClient } from "@project-chip/matter.js/cluster";
+import { EndpointNumber } from "@matter/main/types";
 import { NodeStates, PairedNode } from "@project-chip/matter.js/device";
 import { ServerError } from "../types/WebSocketMessageTypes.js";
 import { AttributeDataCache } from "./AttributeDataCache.js";
 
 /**
- * Manages node storage and provides access to nodes and their clients.
+ * Manages node storage and tracks per-node availability.
  *
  * This class handles:
  * - Storage of PairedNode instances
  * - Node retrieval and existence checking
- * - Access to interaction clients and cluster clients
  * - Attribute data caching
  * - Connection state tracking for availability debouncing
  */
@@ -29,6 +26,13 @@ export class Nodes {
     #previousStates = new Map<NodeId, NodeStates>();
     /** Cached availability so serialization and event paths always agree */
     #lastAvailability = new Map<NodeId, boolean>();
+    /**
+     * Endpoint additions queued until the next nodeStructureChanged for that node.
+     * Preserves the wire contract used by python-matter-server: endpoint_added must
+     * arrive AFTER a node_updated that already carries the new endpoint, so consumers
+     * (e.g., Home Assistant) can resolve node.endpoints[endpoint_id] in their callback.
+     */
+    #pendingEndpointAdds = new Map<NodeId, EndpointNumber[]>();
 
     /**
      * Get the attribute cache instance.
@@ -78,6 +82,32 @@ export class Nodes {
         this.#attributeCache.delete(nodeId);
         this.#previousStates.delete(nodeId);
         this.#lastAvailability.delete(nodeId);
+        this.#pendingEndpointAdds.delete(nodeId);
+    }
+
+    /**
+     * Buffer an endpoint_added until the next nodeStructureChanged for that node.
+     */
+    queueEndpointAdded(nodeId: NodeId, endpointId: EndpointNumber): void {
+        let queue = this.#pendingEndpointAdds.get(nodeId);
+        if (queue === undefined) {
+            queue = [];
+            this.#pendingEndpointAdds.set(nodeId, queue);
+        }
+        queue.push(endpointId);
+    }
+
+    /**
+     * Take ownership of buffered endpoint additions for a node and clear the queue.
+     * Returned array is in insertion order; an empty array is returned if nothing is queued.
+     */
+    drainPendingEndpointAdds(nodeId: NodeId): EndpointNumber[] {
+        const queue = this.#pendingEndpointAdds.get(nodeId);
+        if (queue === undefined || queue.length === 0) {
+            return [];
+        }
+        this.#pendingEndpointAdds.delete(nodeId);
+        return queue;
     }
 
     /**
@@ -155,48 +185,5 @@ export class Nodes {
      */
     isAvailable(nodeId: NodeId): boolean {
         return this.#lastAvailability.get(nodeId) ?? false;
-    }
-
-    /**
-     * Get the interaction client for a node.
-     */
-    interactionClientFor(nodeId: NodeId): InteractionClient {
-        return this.get(nodeId).getInteractionClient();
-    }
-
-    /**
-     * Get a cluster client by cluster ID for a specific endpoint on a node.
-     * @throws Error if endpoint or cluster not found
-     * TODO: Migrate to new node API
-     */
-    clusterClientByIdFor(nodeId: NodeId, endpointId: EndpointNumber, clusterId: ClusterId): ClusterClientObj<any> {
-        const node = this.get(nodeId);
-
-        const endpoint = endpointId === 0 ? node.getRootEndpoint() : node.getDeviceById(endpointId);
-
-        if (endpoint === undefined) {
-            throw ServerError.invalidArguments(`Endpoint ${endpointId} on node ${nodeId} not found`);
-        }
-
-        const client = endpoint.getClusterClientById(clusterId);
-
-        if (client === undefined) {
-            throw ServerError.invalidArguments(
-                `Cluster ${clusterId} on endpoint ${endpointId} on node ${nodeId} not found`,
-            );
-        }
-
-        return client;
-    }
-
-    /**
-     * Get a typed cluster client for a specific endpoint on a node.
-     */
-    clusterClientFor<const T extends ClusterType>(
-        nodeId: NodeId,
-        endpointId: EndpointNumber,
-        cluster: T,
-    ): ClusterClientObj<T["Typing"]> {
-        return this.clusterClientByIdFor(nodeId, endpointId, cluster.id!) as ClusterClientObj<T["Typing"]>;
     }
 }

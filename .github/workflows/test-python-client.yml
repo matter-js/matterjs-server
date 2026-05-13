@@ -2,23 +2,43 @@ name: Test Python Client
 
 on:
   push:
-    paths:
-      - "python_client/**"
-      - "packages/ws-client/test/MockMatterServer.ts"
-      - "packages/matter-server/test/**"
+    branches: [ "main" ]
   pull_request:
-    paths:
-      - "python_client/**"
-      - "packages/ws-client/test/MockMatterServer.ts"
-      - "packages/matter-server/test/**"
+    branches: [ "main" ]
+  merge_group:
+
+# Cancel previous PR/branch runs when a new commit is pushed
+concurrency:
+  group: ${{ github.ref }}-python-client
+  cancel-in-progress: true
 
 env:
   PYTHON_VERSION: "3.12"
   NODE_VERSION: "22"
 
 jobs:
+  check-changes:
+    name: Check for relevant changes
+    runs-on: ubuntu-latest
+    outputs:
+      should-run: ${{ steps.changes.outputs.python-client }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v4
+        id: changes
+        with:
+          filters: |
+            python-client:
+              - "python_client/**"
+              - "packages/ws-client/test/MockMatterServer.ts"
+              - "packages/matter-server/test/**"
+              - "packages/**/package.json"
+              - ".github/workflows/test-python-client.yml"
+
   lint:
     name: Python client linting and type checks
+    needs: check-changes
+    if: needs.check-changes.outputs.should-run == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -44,7 +64,8 @@ jobs:
 
   unit-tests:
     name: Python client unit tests
-    needs: lint
+    needs: [ check-changes, lint ]
+    if: needs.check-changes.outputs.should-run == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -73,7 +94,8 @@ jobs:
 
   integration-tests:
     name: Python client integration tests
-    needs: lint
+    needs: [ check-changes, lint ]
+    if: needs.check-changes.outputs.should-run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

@@ -84,6 +84,7 @@ class RvcRunMode(Cluster):
     class Bitmaps:
         class Feature(IntFlag):
             kOnOff = 0x1
+            kDirectModeChange = 0x100000
 
     class Structs:
         @dataclass

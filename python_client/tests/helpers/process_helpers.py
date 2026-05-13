@@ -49,23 +49,29 @@ def cleanup_temp_storage(server_path: str, device_path: str) -> None:
             shutil.rmtree(path)
 
 
-def start_server(storage_path: str) -> subprocess.Popen:
+def start_server(storage_path: str, enable_test_net_dcl: bool = True) -> subprocess.Popen:
     """Start the Matter.js server process.
 
     Args:
         storage_path: Path to the temporary storage directory for server state.
+        enable_test_net_dcl: Pass --enable-test-net-dcl so the server accepts test
+            PAA certificates. Required when commissioning the TestLightDevice (which
+            uses a test PAA). Set to False to test that commissioning fails without it.
 
     Returns:
         The subprocess.Popen handle for the running server.
     """
     server_script = REPO_ROOT / "packages" / "matter-server" / "dist" / "esm" / "MatterServer.js"
+    args = [
+        "node",
+        "--enable-source-maps",
+        str(server_script),
+        f"--storage-path={storage_path}",
+    ]
+    if enable_test_net_dcl:
+        args.append("--enable-test-net-dcl")
     return subprocess.Popen(
-        [
-            "node",
-            "--enable-source-maps",
-            str(server_script),
-            f"--storage-path={storage_path}",
-        ],
+        args,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,

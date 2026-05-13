@@ -9,19 +9,18 @@ import {
     AsyncObservable,
     camelize,
     ClientNode,
-    ClientNodeInteraction,
     CommissioningClient,
     FabricId,
     FabricIndex,
     isObject,
     Logger,
+    MatterAggregateError,
     Millis,
     Minutes,
     NodeId,
     Observable,
     Seconds,
     ServerAddress,
-    ServerAddressUdp,
     SoftwareUpdateInfo,
     SoftwareUpdateManager,
     Time,
@@ -44,7 +43,6 @@ import {
     PeerAddress,
     Read,
     Specifier,
-    SupportedTransportsSchema,
     PeerSet,
 } from "@matter/main/protocol";
 import {
@@ -84,12 +82,6 @@ import {
     MatterNodeData,
     OpenCommissioningWindowRequest,
     OpenCommissioningWindowResponse,
-    ReadEventRequest,
-    ReadEventResponse,
-    SubscribeAttributeRequest,
-    SubscribeAttributeResponse,
-    SubscribeEventRequest,
-    SubscribeEventResponse,
     WriteAttributeRequest,
 } from "../types/CommandHandler.js";
 import {
@@ -117,10 +109,7 @@ const RECONNECT_TIMEOUT = Minutes(3);
  * BasicInformation (0x28) covers firmware version, product name, etc.
  * BridgedDeviceBasicInformation (0x39) covers the same for bridged child nodes.
  */
-const FULL_UPDATE_CLUSTER_IDS = new Set<ClusterId>([
-    BasicInformation.Cluster.id,
-    BridgedDeviceBasicInformation.Cluster.id,
-]);
+const FULL_UPDATE_CLUSTER_IDS = new Set<ClusterId>([BasicInformation.id, BridgedDeviceBasicInformation.id]);
 
 /**
  * Determine the Matter specification version from cached attributes.
@@ -158,8 +147,8 @@ export class ControllerCommandHandler {
     #controller: CommissioningController;
     #started = false;
     #connected = false;
-    #bleEnabled = false;
-    #otaEnabled = false;
+    readonly #bleEnabled: boolean;
+    readonly #otaEnabled: boolean;
     /** Node management and attribute cache */
     #nodes = new Nodes();
     /** Cache of available updates keyed by nodeId */
@@ -195,10 +184,25 @@ export class ControllerCommandHandler {
         // Initialize custom cluster poller for Eve energy attributes etc.
         // Reads automatically trigger change events through the normal attribute flow
         this.#customClusterPoller = new CustomClusterPoller({
-            nodeConnected: nodeId => !!(this.#nodes.has(nodeId) && this.#nodes.get(nodeId).isConnected),
-            handleReadAttributes: (nodeId, paths, fabricFiltered) =>
-                this.handleReadAttributes(nodeId, paths, fabricFiltered),
+            nodeConnected: peer => !!(this.#nodes.has(peer.nodeId) && this.#nodes.get(peer.nodeId).isConnected),
+            handleReadAttributes: (peer, paths, fabricFiltered) =>
+                this.handleReadAttributes(peer.nodeId, paths, fabricFiltered),
         });
+    }
+
+    /**
+     * Build the canonical PeerAddress for the given node on this controller's fabric.
+     *
+     * Throws if the controller's fabric is not yet resolved. Callers must run after
+     * controller start; a silent fallback would intern PeerAddressMap entries under the
+     * wrong fabric index and leak poller registrations.
+     */
+    #peerOf(nodeId: NodeId): PeerAddress {
+        const fabric = this.#controller.fabric;
+        if (fabric === undefined) {
+            throw new Error(`Cannot resolve PeerAddress for node ${nodeId}: controller fabric is not initialized`);
+        }
+        return PeerAddress({ fabricIndex: fabric.fabricIndex, nodeId });
     }
 
     /**
@@ -261,14 +265,14 @@ export class ControllerCommandHandler {
             // Handle updateAvailable events - cache the update info
             softwareUpdateManagerEvents.updateAvailable.on(
                 (peerAddress: PeerAddress, updateDetails: SoftwareUpdateInfo) => {
-                    logger.info(`Update available for node ${peerAddress.nodeId}:`, updateDetails);
+                    logger.info(`Update available for node ${this.formatNode(peerAddress.nodeId)}:`, updateDetails);
                     this.#availableUpdates.set(peerAddress.nodeId, updateDetails);
                 },
             );
 
             // Handle updateDone events - clear the cached update info
             softwareUpdateManagerEvents.updateDone.on((peerAddress: PeerAddress) => {
-                logger.info(`Update done for node ${peerAddress.nodeId}`);
+                logger.info(`Update done for node ${this.formatNode(peerAddress.nodeId)}`);
                 this.#availableUpdates.delete(peerAddress.nodeId);
             });
 
@@ -322,7 +326,7 @@ export class ControllerCommandHandler {
                 attributeCache.update(node);
                 const attributes = attributeCache.get(nodeId);
                 if (attributes) {
-                    this.#customClusterPoller.registerNode(nodeId, attributes);
+                    this.#customClusterPoller.registerNode(this.#peerOf(nodeId), attributes);
                 }
             }
 
@@ -368,10 +372,18 @@ export class ControllerCommandHandler {
                 attributeCache.update(node);
             }
             basicInfoChangedInBatch = false;
+            // Emit node_updated first so consumers see the new endpoint in node.endpoints,
+            // then drain any endpoint_added events queued since the previous structure change.
             this.events.nodeStructureChanged.emit(nodeId);
+            for (const endpointId of this.#nodes.drainPendingEndpointAdds(nodeId)) {
+                this.events.nodeEndpointAdded.emit(nodeId, endpointId);
+            }
         });
-        node.events.decommissioned.on(() => this.events.nodeDecommissioned.emit(nodeId));
-        node.events.nodeEndpointAdded.on(endpointId => this.events.nodeEndpointAdded.emit(nodeId, endpointId));
+        node.events.decommissioned.on(() => {
+            this.#cleanupNodeAfterRemoval(nodeId);
+            this.events.nodeDecommissioned.emit(nodeId);
+        });
+        node.events.nodeEndpointAdded.on(endpointId => this.#nodes.queueEndpointAdded(nodeId, endpointId));
         node.events.nodeEndpointRemoved.on(endpointId => this.events.nodeEndpointRemoved.emit(nodeId, endpointId));
 
         // Store the node for direct access
@@ -385,7 +397,7 @@ export class ControllerCommandHandler {
             // Register for custom cluster polling (e.g., Eve energy)
             const attributes = attributeCache.get(nodeId);
             if (attributes) {
-                this.#customClusterPoller.registerNode(nodeId, attributes);
+                this.#customClusterPoller.registerNode(this.#peerOf(nodeId), attributes);
             }
         }
 
@@ -465,7 +477,7 @@ export class ControllerCommandHandler {
             }),
             includeKnownVersions: true, // do not send DataVersionFilters, so we do a new clean read
         };
-        for await (const _chunk of (node.node.interaction as ClientNodeInteraction).read(read));
+        for await (const _chunk of node.node.interaction.read(read));
     }
 
     /**
@@ -517,42 +529,44 @@ export class ControllerCommandHandler {
         fabricFiltered = false,
     ): Promise<AttributesData> {
         const result: AttributesData = {};
-        const client = this.#nodes.interactionClientFor(nodeId);
+        const node = this.#nodes.get(nodeId);
         const batchSize = 9;
-
-        // Parse all paths (wildcards become undefined for that component)
         const parsedPaths = attributePaths.map(path => splitAttributePath(path));
 
-        // Process in batches of up to 9
         for (let i = 0; i < parsedPaths.length; i += batchSize) {
             const batch = parsedPaths.slice(i, i + batchSize);
-            const attributes = batch.map(({ endpointId, clusterId, attributeId }) => ({
-                endpointId: endpointId !== undefined ? EndpointNumber(endpointId) : undefined,
-                clusterId: clusterId !== undefined ? ClusterId(clusterId) : undefined,
-                attributeId: attributeId !== undefined ? AttributeId(attributeId) : undefined,
-            }));
+            const readRequest = {
+                ...Read({
+                    fabricFilter: fabricFiltered,
+                    attributes: batch.map(({ endpointId, clusterId, attributeId }) => ({
+                        endpointId: endpointId !== undefined ? EndpointNumber(endpointId) : undefined,
+                        clusterId: clusterId !== undefined ? ClusterId(clusterId) : undefined,
+                        attributeId: attributeId !== undefined ? AttributeId(attributeId) : undefined,
+                    })),
+                }),
+                includeKnownVersions: true,
+            };
 
-            const { attributeData, attributeStatus } = await client.getMultipleAttributesAndStatus({
-                attributes,
-                isFabricFiltered: fabricFiltered,
-            });
-
-            for (const { path: attrPath, value } of attributeData) {
-                const { pathStr, value: wsValue } = this.#convertAttributeToWebSocket(
-                    {
-                        endpointId: EndpointNumber(attrPath.endpointId),
-                        clusterId: ClusterId(attrPath.clusterId),
-                        attributeId: attrPath.attributeId,
-                    },
-                    value,
-                );
-                result[pathStr] = wsValue;
-            }
-
-            if (attributeStatus && attributeStatus.length > 0) {
-                for (const { path: attrPath, status } of attributeStatus) {
-                    const pathStr = buildAttributePath(attrPath.endpointId, attrPath.clusterId, attrPath.attributeId);
-                    logger.warn(`Failed to read attribute ${pathStr}: status=${status}`);
+            for await (const chunk of node.node.interaction.read(readRequest)) {
+                for (const entry of chunk) {
+                    if (entry.kind === "attr-value") {
+                        const { pathStr, value: wsValue } = this.#convertAttributeToWebSocket(
+                            {
+                                endpointId: EndpointNumber(entry.path.endpointId),
+                                clusterId: ClusterId(entry.path.clusterId),
+                                attributeId: entry.path.attributeId,
+                            },
+                            entry.value,
+                        );
+                        result[pathStr] = wsValue;
+                    } else if (entry.kind === "attr-status") {
+                        const pathStr = buildAttributePath(
+                            entry.path.endpointId,
+                            entry.path.clusterId,
+                            entry.path.attributeId,
+                        );
+                        logger.warn(`Failed to read attribute ${pathStr}: status=${entry.status}`);
+                    }
                 }
             }
         }
@@ -583,6 +597,47 @@ export class ControllerCommandHandler {
     }
 
     /**
+     * Write a single attribute on a remote node. Uses `setStateOf(string, ...)` (not `set({...})`)
+     * because peer cluster behaviors are dynamically registered and aren't on the agent's cached property getters.
+     */
+    async #writeAttribute(
+        nodeId: NodeId,
+        endpointId: EndpointNumber,
+        clusterId: ClusterId,
+        attributeName: string,
+        value: unknown,
+    ): Promise<{ status: number; clusterStatus?: number }> {
+        const node = this.#nodes.get(nodeId);
+        const clusterEntry = ClusterMap[clusterId];
+        if (!clusterEntry) {
+            throw ServerError.invalidArguments(`Cluster Id "${clusterId}" unknown`);
+        }
+        const clusterProperty = clusterEntry.model.propertyName;
+
+        try {
+            await node.node.endpoints.for(endpointId).setStateOf(clusterProperty, { [attributeName]: value });
+            return { status: 0 };
+        } catch (error) {
+            if (error instanceof MatterAggregateError) {
+                const first = error.errors.find((e): e is StatusResponseError => e instanceof StatusResponseError);
+                if (first !== undefined) {
+                    const dropped = error.errors.filter(e => e !== first);
+                    if (dropped.length > 0) {
+                        logger.info(
+                            `Write aggregate: reporting first error, dropping ${dropped.length} additional`,
+                            dropped,
+                        );
+                    }
+                    return { status: first.code, clusterStatus: first.clusterCode };
+                }
+                throw error;
+            }
+            StatusResponseError.accept(error);
+            return { status: error.code, clusterStatus: error.clusterCode };
+        }
+    }
+
+    /**
      * Set the fabric label. Pass null or empty string to reset to "Home".
      * Note: matter.js requires non-empty labels (1-32 chars), so null/empty resets to default.
      */
@@ -590,169 +645,28 @@ export class ControllerCommandHandler {
         await this.#controller.updateFabricLabel(label);
     }
 
-    disconnectNode(nodeId: NodeId) {
-        return this.#controller.disconnectNode(nodeId, true);
-    }
-
-    async handleReadEvent(data: ReadEventRequest): Promise<ReadEventResponse> {
-        const { nodeId, endpointId, clusterId, eventId, eventMin } = data;
-        const client = this.#nodes.interactionClientFor(nodeId);
-        const { eventData, eventStatus } = await client.getMultipleEventsAndStatus({
-            events: [
-                {
-                    endpointId,
-                    clusterId,
-                    eventId,
-                },
-            ],
-            eventFilters: eventMin ? [{ eventMin }] : undefined,
-        });
-
-        return {
-            values: eventData.flatMap(({ path: { endpointId, clusterId, eventId }, events }) =>
-                events.map(({ eventNumber, data }) => ({
-                    eventId,
-                    clusterId,
-                    endpointId,
-                    eventNumber,
-                    value: data,
-                })),
-            ),
-            status: eventStatus?.map(({ path: { endpointId, clusterId, eventId }, status, clusterStatus }) => ({
-                clusterId,
-                endpointId,
-                eventId,
-                status,
-                clusterStatus,
-            })),
-        };
-    }
-
-    async handleSubscribeAttribute(data: SubscribeAttributeRequest): Promise<SubscribeAttributeResponse> {
-        const { nodeId, endpointId, clusterId, attributeId, minInterval, maxInterval, changeListener } = data;
-        const client = this.#nodes.interactionClientFor(nodeId);
-        const updated = Observable<[void]>();
-        let ignoreData = true; // We ignore data coming in during initial seeding
-        const { attributeReports = [] } = await client.subscribeMultipleAttributesAndEvents({
-            attributes: [
-                {
-                    endpointId,
-                    clusterId,
-                    attributeId,
-                },
-            ],
-            minIntervalFloorSeconds: minInterval,
-            maxIntervalCeilingSeconds: maxInterval,
-            attributeListener: data => {
-                if (ignoreData) return;
-                changeListener({
-                    attributeId: data.path.attributeId,
-                    clusterId: data.path.clusterId,
-                    endpointId: data.path.endpointId,
-                    dataVersion: data.version,
-                    value: data.value,
-                });
-            },
-            updateReceived: () => {
-                updated.emit();
-            },
-            keepSubscriptions: false,
-        });
-        ignoreData = false;
-
-        return {
-            values: attributeReports.map(
-                ({ path: { endpointId, clusterId, attributeId }, value, version: dataVersion }) => ({
-                    attributeId,
-                    clusterId,
-                    endpointId,
-                    dataVersion,
-                    value,
-                }),
-            ),
-            updated,
-        };
-    }
-
-    async handleSubscribeEvent(data: SubscribeEventRequest): Promise<SubscribeEventResponse> {
-        const { nodeId, endpointId, clusterId, eventId, minInterval, maxInterval, changeListener } = data;
-        const client = this.#nodes.interactionClientFor(nodeId);
-        const updated = Observable<[void]>();
-        let ignoreData = true; // We ignore data coming in during initial seeding
-        const { eventReports = [] } = await client.subscribeMultipleAttributesAndEvents({
-            events: [
-                {
-                    endpointId,
-                    clusterId,
-                    eventId,
-                },
-            ],
-            minIntervalFloorSeconds: minInterval,
-            maxIntervalCeilingSeconds: maxInterval,
-            eventListener: data => {
-                if (ignoreData) return;
-                data.events.forEach(event =>
-                    changeListener({
-                        eventId: data.path.eventId,
-                        clusterId: data.path.clusterId,
-                        endpointId: data.path.endpointId,
-                        eventNumber: event.eventNumber,
-                        value: event.data,
-                    }),
-                );
-            },
-            updateReceived: () => {
-                updated.emit();
-            },
-            keepSubscriptions: false,
-        });
-        ignoreData = false;
-
-        return {
-            values: eventReports.flatMap(({ path: { endpointId, clusterId, eventId }, events }) =>
-                events.map(({ eventNumber, data }) => ({
-                    eventId,
-                    clusterId,
-                    endpointId,
-                    eventNumber,
-                    value: data,
-                })),
-            ),
-            updated,
-        };
-    }
-
     async handleWriteAttribute(data: WriteAttributeRequest): Promise<AttributeResponseStatus> {
         const { nodeId, endpointId, clusterId, attributeId } = data;
         let { value } = data;
 
-        const client = this.#nodes.clusterClientByIdFor(nodeId, endpointId, clusterId);
-
         const clusterEntry = ClusterMap[clusterId];
-        const model = clusterEntry?.attributes[attributeId];
-        if (model && clusterEntry) {
-            value = convertWebSocketTagBasedToMatter(value, model, clusterEntry.model);
+        const attributeModel = clusterEntry?.attributes[attributeId];
+        if (!clusterEntry || !attributeModel) {
+            throw ServerError.invalidArguments(`Attribute ${attributeId} on cluster ${clusterId} unknown`);
         }
 
-        logger.info("Writing attribute", attributeId, "with value", value);
-        try {
-            await client.attributes[attributeId].set(value);
-            return {
-                attributeId,
-                clusterId,
-                endpointId,
-                status: 0,
-            };
-        } catch (error) {
-            StatusResponseError.accept(error);
-            return {
-                attributeId,
-                clusterId,
-                endpointId,
-                status: error.code,
-                clusterStatus: error.clusterCode,
-            };
-        }
+        value = convertWebSocketTagBasedToMatter(value, attributeModel, clusterEntry.model);
+
+        const attributeName = attributeModel.propertyName;
+        logger.info(`Writing attribute ${clusterId}.${attributeName} (${clusterId}.${attributeId}) with value`, value);
+        const { status, clusterStatus } = await this.#writeAttribute(
+            nodeId,
+            endpointId,
+            clusterId,
+            attributeModel.propertyName,
+            value,
+        );
+        return { attributeId, clusterId, endpointId, status, clusterStatus };
     }
 
     async #invokeCommand<const C extends Specifier.ClusterLike>(
@@ -905,13 +819,24 @@ export class ControllerCommandHandler {
         }
 
         const { onNetworkOnly, wifiCredentials: wifiNetwork, threadCredentials: threadNetwork } = data;
-        const options = {
+        return {
             commissioning: {
                 nodeId: data.nodeId,
                 regulatoryLocation: GeneralCommissioning.RegulatoryLocationType.IndoorOutdoor,
                 regulatoryCountryCode: "XX",
                 wifiNetwork,
                 threadNetwork,
+                onAttestationFailure: findings => {
+                    let accept = true;
+                    for (const f of findings) {
+                        if (f.level === "error") {
+                            accept = false;
+                        }
+                        logger.info(`Attestation finding (${f.level}):`, f.type, f.message);
+                    }
+                    logger.info(`Attestation ${accept ? "accepted" : "rejected"}`);
+                    return accept;
+                },
             },
             discovery: {
                 knownAddress,
@@ -930,7 +855,6 @@ export class ControllerCommandHandler {
             },
             passcode,
         };
-        return options;
     }
 
     async commissionNode(data: CommissioningRequest): Promise<CommissioningResponse> {
@@ -987,12 +911,12 @@ export class ControllerCommandHandler {
             return [];
         }
         return [latestDiscovery].map(({ DT, DN, CM, D, RI, PH, PI, T, VP, deviceIdentifier, addresses, SII, SAI }) => {
-            const { tcpClient: supportsTcpClient, tcpServer: supportsTcpServer } = SupportedTransportsSchema.decode(
-                T ?? 0,
-            );
+            const supportsTcpClient = T?.tcpClient ?? false;
+            const supportsTcpServer = T?.tcpServer ?? false;
             const vendorId = VP === undefined ? -1 : VP.includes("+") ? parseInt(VP.split("+")[0]) : parseInt(VP);
             const productId = VP === undefined ? -1 : VP.includes("+") ? parseInt(VP.split("+")[1]) : -1;
-            const port = addresses.length ? (addresses[0] as ServerAddressUdp).port : 0;
+            const firstAddress = addresses[0];
+            const port = firstAddress && ServerAddress.isIp(firstAddress) ? firstAddress.port : 0;
             const numIPs = addresses.length;
             return {
                 commissioningMode: CM,
@@ -1012,7 +936,7 @@ export class ControllerCommandHandler {
                 vendorId,
                 supportsTcpServer,
                 supportsTcpClient,
-                addresses: (addresses.filter(({ type }) => type === "udp") as ServerAddressUdp[]).map(({ ip }) => ip),
+                addresses: addresses.filter(ServerAddress.isIp).map(({ ip }) => ip),
                 mrpSessionIdleInterval: SII,
                 mrpSessionActiveInterval: SAI,
             };
@@ -1034,7 +958,7 @@ export class ControllerCommandHandler {
             }
         }
         if (peer) {
-            const sessionIp = peer.newestSession?.channel.networkAddress?.ip;
+            const sessionIp = peer.newestSession()?.channel.networkAddress?.ip;
             if (sessionIp) {
                 addresses.add(sessionIp);
             }
@@ -1044,9 +968,7 @@ export class ControllerCommandHandler {
         const node = this.#nodes.get(nodeId);
         const commissioningAddresses = node.node.maybeStateOf(CommissioningClient)?.addresses;
         if (commissioningAddresses !== undefined && commissioningAddresses.length > 0) {
-            const fallbackAddresses = commissioningAddresses
-                .filter((addr): addr is ServerAddressUdp => addr.type === "udp")
-                .map(addr => addr.ip);
+            const fallbackAddresses = commissioningAddresses.filter(ServerAddress.isIp).map(addr => addr.ip);
             for (const address of fallbackAddresses) {
                 addresses.add(address);
             }
@@ -1140,12 +1062,21 @@ export class ControllerCommandHandler {
             throw ServerError.nodeNotExists(nodeId);
         }
         await this.#controller.removeNode(nodeId, !!node?.isConnected);
+        this.#cleanupNodeAfterRemoval(nodeId);
+    }
+
+    /**
+     * Drop all references to a removed node so subsequent reads don't reach a
+     * destroyed PairedNode. Idempotent — both the `decommissioned` listener
+     * (external fabric leave) and `decommissionNode` invoke it, and the
+     * listener may have run first.
+     */
+    #cleanupNodeAfterRemoval(nodeId: NodeId) {
         this.#reconnectTimers.get(nodeId)?.stop();
         this.#reconnectTimers.delete(nodeId);
-        // Remove node from storage (also clears attribute cache)
         this.#nodes.delete(nodeId);
-        // Unregister from custom cluster polling
-        this.#customClusterPoller.unregisterNode(nodeId);
+        this.#customClusterPoller.unregisterNode(this.#peerOf(nodeId));
+        this.#availableUpdates.delete(nodeId);
     }
 
     async openCommissioningWindow(data: OpenCommissioningWindowRequest): Promise<OpenCommissioningWindowResponse> {
@@ -1165,14 +1096,14 @@ export class ControllerCommandHandler {
                 },
                 Read.Attribute({
                     endpoint: EndpointNumber(0),
-                    cluster: OperationalCredentials.Complete,
+                    cluster: OperationalCredentials,
                     attributes: "fabrics",
                 }),
             ),
             includeKnownVersions: true, // we want to read from device
         };
 
-        for await (const chunk of (node.node.interaction as ClientNodeInteraction).read(read)) {
+        for await (const chunk of node.node.interaction.read(read)) {
             for (const attr of chunk) {
                 if (attr.kind === "attr-value" && Array.isArray(attr.value)) {
                     // We only expect one array response
@@ -1195,14 +1126,24 @@ export class ControllerCommandHandler {
     }
 
     /**
+     * Fabric index assigned to this controller on the peer.
+     * Some peers reject the NO_FABRIC (0) sentinel inside fabric-scoped list entries
+     * even though the spec allows server-side auto-fill, so we send the resolved index.
+     */
+    #currentFabricIndex(nodeId: NodeId): FabricIndex {
+        const state = this.#nodes
+            .get(nodeId)
+            .node.endpoints.for(EndpointNumber(0))
+            .maybeStateOf(OperationalCredentialsClient);
+        return state?.currentFabricIndex ?? FabricIndex.NO_FABRIC;
+    }
+
+    /**
      * Set Access Control List entries on a node.
      * Writes to the ACL attribute on the AccessControl cluster (endpoint 0).
-     * TODO Migrate to new Node API
      */
     async setAclEntry(nodeId: NodeId, entries: AccessControlEntry[]): Promise<AttributeWriteResult[] | null> {
-        const client = this.#nodes.clusterClientFor(nodeId, EndpointNumber(0), AccessControl.Cluster);
-
-        // Convert from WebSocket format (snake_case) to Matter.js format (camelCase)
+        const fabricIndex = this.#currentFabricIndex(nodeId);
         const aclEntries: AccessControl.AccessControlEntry[] = entries.map(entry => ({
             privilege: entry.privilege as AccessControl.AccessControlEntryPrivilege,
             authMode: entry.auth_mode as AccessControl.AccessControlEntryAuthMode,
@@ -1213,86 +1154,47 @@ export class ControllerCommandHandler {
                     endpoint: t.endpoint !== null ? EndpointNumber(t.endpoint) : null,
                     deviceType: t.device_type !== null ? DeviceTypeId(t.device_type) : null,
                 })) ?? null,
-            fabricIndex: FabricIndex.OMIT_FABRIC,
+            fabricIndex,
         }));
 
         logger.info("Setting ACL entries", aclEntries);
 
-        try {
-            await client.setAclAttribute(aclEntries);
-            return [
-                {
-                    path: {
-                        endpoint_id: 0,
-                        cluster_id: AccessControl.Cluster.id,
-                        attribute_id: 0, // ACL attribute ID
-                    },
-                    status: 0,
-                },
-            ];
-        } catch (error) {
-            StatusResponseError.accept(error);
-            return [
-                {
-                    path: {
-                        endpoint_id: 0,
-                        cluster_id: AccessControl.Cluster.id,
-                        attribute_id: 0,
-                    },
-                    status: error.code,
-                },
-            ];
-        }
+        const { status } = await this.#writeAttribute(nodeId, EndpointNumber(0), AccessControl.id, "acl", aclEntries);
+        return [
+            {
+                path: { endpoint_id: 0, cluster_id: AccessControl.id, attribute_id: 0 },
+                status,
+            },
+        ];
     }
 
     /**
      * Set bindings on a specific endpoint of a node.
      * Writes to the Binding attribute on the Binding cluster.
-     * TODO Migrate to new Node API
      */
     async setNodeBinding(
         nodeId: NodeId,
         endpointId: EndpointNumber,
         bindings: BindingTarget[],
     ): Promise<AttributeWriteResult[] | null> {
-        const client = this.#nodes.clusterClientFor(nodeId, endpointId, Binding.Cluster);
-
-        // Convert from WebSocket format to Matter.js format
+        const fabricIndex = this.#currentFabricIndex(nodeId);
         const bindingEntries: Binding.Target[] = bindings.map(binding => ({
             node: binding.node !== null ? NodeId(binding.node) : undefined,
             group: binding.group !== null ? GroupId(binding.group) : undefined,
             endpoint: binding.endpoint !== null ? EndpointNumber(binding.endpoint) : undefined,
             cluster: binding.cluster !== null ? ClusterId(binding.cluster) : undefined,
-            fabricIndex: FabricIndex.OMIT_FABRIC,
+            fabricIndex,
         }));
 
         logger.info("Setting bindings on endpoint", endpointId, bindingEntries);
 
-        try {
-            await client.attributes.binding.set(bindingEntries);
-            return [
-                {
-                    path: {
-                        endpoint_id: endpointId,
-                        cluster_id: Binding.Cluster.id,
-                        attribute_id: 0, // Binding attribute ID
-                    },
-                    status: 0,
-                },
-            ];
-        } catch (error) {
-            StatusResponseError.accept(error);
-            return [
-                {
-                    path: {
-                        endpoint_id: endpointId,
-                        cluster_id: Binding.Cluster.id,
-                        attribute_id: 0,
-                    },
-                    status: error.code,
-                },
-            ];
-        }
+        const { status } = await this.#writeAttribute(nodeId, endpointId, Binding.id, "binding", bindingEntries);
+        return [
+            {
+                path: { endpoint_id: endpointId, cluster_id: Binding.id, attribute_id: 0 },
+                status,
+            },
+        ];
     }
 
     /**

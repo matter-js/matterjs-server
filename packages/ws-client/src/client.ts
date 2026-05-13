@@ -113,6 +113,14 @@ export class MatterClient {
         await this.sendCommand("set_thread_dataset", 0, { dataset }, timeout);
     }
 
+    async removeWifiCredentials(timeout?: number): Promise<void> {
+        await this.sendCommand("remove_wifi_credentials", 0, {}, timeout);
+    }
+
+    async removeThreadDataset(timeout?: number): Promise<void> {
+        await this.sendCommand("remove_thread_dataset", 0, {}, timeout);
+    }
+
     async openCommissioningWindow(
         nodeId: number | bigint,
         windowTimeout?: number,

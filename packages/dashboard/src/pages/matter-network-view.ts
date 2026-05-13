@@ -5,7 +5,7 @@
  */
 
 import type { MatterClient, MatterNode } from "@matter-server/ws-client";
-import { mdiFitToScreen, mdiMagnifyMinus, mdiMagnifyPlus, mdiPause, mdiPlay } from "@mdi/js";
+import { mdiEyeOff, mdiFitToScreen, mdiMagnifyMinus, mdiMagnifyPlus, mdiPause, mdiPlay } from "@mdi/js";
 import { css, html, LitElement } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
 import "../components/ha-svg-icon";
@@ -13,6 +13,7 @@ import { reducedMotionStyles } from "../util/shared-styles.js";
 import "./components/footer";
 import "./components/header";
 import type { ActiveView } from "./components/header.js";
+import { BorderRouterStore } from "./network/border-router-store.js";
 import "./network/device-panel";
 import "./network/network-details";
 import "./network/thread-graph";
@@ -25,6 +26,15 @@ declare global {
         "matter-network-view": MatterNetworkView;
     }
 }
+
+type HideOptionKey = "_hideOfflineNodes" | "_hideWeakSignalEdges" | "_hideMediumSignalEdges" | "_hideStrongSignalEdges";
+
+const HIDE_OPTIONS: readonly { key: HideOptionKey; label: string }[] = [
+    { key: "_hideOfflineNodes", label: "Offline nodes" },
+    { key: "_hideWeakSignalEdges", label: "Weak signal edges" },
+    { key: "_hideMediumSignalEdges", label: "Medium signal edges" },
+    { key: "_hideStrongSignalEdges", label: "Strong signal edges" },
+];
 
 @customElement("matter-network-view")
 class MatterNetworkView extends LitElement {
@@ -61,6 +71,24 @@ class MatterNetworkView extends LitElement {
     @state()
     private _threadAddressSearchStatus: "idle" | "found" | "not-found" = "idle";
 
+    @state()
+    private _borderRouterStore = new BorderRouterStore();
+
+    @state()
+    private _showHideMenu = false;
+
+    @state()
+    private _hideOfflineNodes = false;
+
+    @state()
+    private _hideWeakSignalEdges = false;
+
+    @state()
+    private _hideMediumSignalEdges = false;
+
+    @state()
+    private _hideStrongSignalEdges = false;
+
     private _initialSelectionApplied = false;
     private _selectRetryTimer?: ReturnType<typeof setTimeout>;
 
@@ -78,8 +106,28 @@ class MatterNetworkView extends LitElement {
         }
     }
 
+    private async _refreshBorderRouters(): Promise<void> {
+        try {
+            await this._borderRouterStore.refresh(this.client);
+            this.requestUpdate();
+        } catch (err) {
+            console.warn("Failed to refresh border router store:", err);
+        }
+    }
+
+    private _handleConnectionsUpdated(): void {
+        // Skip the BR snapshot refresh when the user updated a WiFi node — the dialog fires
+        // the same event for both network types but BR data is Thread-only.
+        if (this.networkType !== "thread") return;
+        void this._refreshBorderRouters();
+    }
+
     override updated(changedProperties: Map<string, unknown>): void {
         super.updated(changedProperties);
+
+        if (changedProperties.has("networkType") && this.networkType === "thread") {
+            void this._refreshBorderRouters();
+        }
 
         // After render, select the node in the graph
         if (!this._initialSelectionApplied && this.initialSelectedNodeId !== null) {
@@ -89,8 +137,16 @@ class MatterNetworkView extends LitElement {
         }
     }
 
+    override connectedCallback(): void {
+        super.connectedCallback();
+        document.addEventListener("click", this._documentClickHandler);
+        document.addEventListener("keydown", this._documentKeyHandler);
+    }
+
     override disconnectedCallback(): void {
         super.disconnectedCallback();
+        document.removeEventListener("click", this._documentClickHandler);
+        document.removeEventListener("keydown", this._documentKeyHandler);
         if (this._selectRetryTimer) {
             clearTimeout(this._selectRetryTimer);
         }
@@ -116,6 +172,12 @@ class MatterNetworkView extends LitElement {
 
     private _handleDetailsClose(): void {
         this._selectedNodeId = null;
+        // Tell the graph to deselect and clear highlights
+        if (this.networkType === "thread") {
+            this._threadGraph?.deselectAll();
+        } else {
+            this._wifiGraph?.deselectAll();
+        }
     }
 
     private _handleSelectNode(event: CustomEvent<{ nodeId: number | string }>): void {
@@ -151,6 +213,31 @@ class MatterNetworkView extends LitElement {
         } else {
             this._wifiGraph?.zoomOut();
         }
+    }
+
+    private _handleToggleHideMenu(): void {
+        this._showHideMenu = !this._showHideMenu;
+    }
+
+    private readonly _documentClickHandler = (event: MouseEvent): void => {
+        const path = event.composedPath();
+        if (!path.some(el => el instanceof HTMLElement && el.classList.contains("hide-menu-container"))) {
+            this._showHideMenu = false;
+        }
+    };
+
+    private readonly _documentKeyHandler = (event: KeyboardEvent): void => {
+        if (event.key === "Escape" && this._showHideMenu) {
+            this._showHideMenu = false;
+        }
+    };
+
+    private _handleToggleHideOption(option: HideOptionKey): void {
+        this[option] = !this[option];
+    }
+
+    private _isAnyHideOptionActive(): boolean {
+        return HIDE_OPTIONS.some(option => this[option.key]);
     }
 
     private _handleTogglePhysics(): void {
@@ -231,6 +318,41 @@ class MatterNetworkView extends LitElement {
                             <button class="control-button" @click=${this._handleFitToScreen} title="Fit to screen">
                                 <ha-svg-icon .path=${mdiFitToScreen}></ha-svg-icon>
                             </button>
+                            <div class="hide-menu-container">
+                                <button
+                                    class="control-button ${this._isAnyHideOptionActive() ? "active" : ""}"
+                                    @click=${this._handleToggleHideMenu}
+                                    title="Hide options"
+                                    aria-haspopup="true"
+                                    aria-expanded=${this._showHideMenu}
+                                    aria-controls="hide-options-menu"
+                                >
+                                    <ha-svg-icon .path=${mdiEyeOff}></ha-svg-icon>
+                                </button>
+                                ${this._showHideMenu
+                                    ? html`
+                                          <div
+                                              id="hide-options-menu"
+                                              class="hide-dropdown"
+                                              role="group"
+                                              aria-label="Hide options"
+                                          >
+                                              ${HIDE_OPTIONS.map(
+                                                  option => html`
+                                                      <label class="hide-option">
+                                                          <input
+                                                              type="checkbox"
+                                                              .checked=${this[option.key]}
+                                                              @change=${() => this._handleToggleHideOption(option.key)}
+                                                          />
+                                                          <span>${option.label}</span>
+                                                      </label>
+                                                  `,
+                                              )}
+                                          </div>
+                                      `
+                                    : ""}
+                            </div>
                             <button
                                 class="control-button ${this._physicsEnabled ? "" : "active"}"
                                 @click=${this._handleTogglePhysics}
@@ -250,6 +372,11 @@ class MatterNetworkView extends LitElement {
                       </div>`}
                 <thread-graph
                     .nodes=${this.nodes}
+                    .borderRouters=${this._borderRouterStore.entries}
+                    .hideOfflineNodes=${this._hideOfflineNodes}
+                    .hideWeakSignalEdges=${this._hideWeakSignalEdges}
+                    .hideMediumSignalEdges=${this._hideMediumSignalEdges}
+                    .hideStrongSignalEdges=${this._hideStrongSignalEdges}
                     @node-selected=${this._handleNodeSelected}
                     @physics-changed=${this._handlePhysicsChanged}
                 ></thread-graph>
@@ -294,6 +421,7 @@ class MatterNetworkView extends LitElement {
         const showSidebar = this._selectedNodeId !== null;
         const unknownDevices = this._threadGraph?.unknownDevicesMap ?? new Map();
         const wifiAccessPoints = this._wifiGraph?.wifiAccessPointsMap ?? new Map();
+        const threadEdgePairs = this._threadGraph?.edgePairs ?? new Map();
 
         return html`
             <dashboard-header
@@ -314,9 +442,16 @@ class MatterNetworkView extends LitElement {
                         .selectedNodeId=${this._selectedNodeId}
                         .nodes=${this.nodes}
                         .unknownDevices=${unknownDevices}
+                        .borderRouters=${this._borderRouterStore.entries}
                         .wifiAccessPoints=${wifiAccessPoints}
+                        .threadEdgePairs=${threadEdgePairs}
+                        .hideOfflineNodes=${this._hideOfflineNodes}
+                        .hideWeakSignalEdges=${this._hideWeakSignalEdges}
+                        .hideMediumSignalEdges=${this._hideMediumSignalEdges}
+                        .hideStrongSignalEdges=${this._hideStrongSignalEdges}
                         @close=${this._handleDetailsClose}
                         @select-node=${this._handleSelectNode}
+                        @connections-updated=${this._handleConnectionsUpdated}
                     ></network-details>
                 </aside>
             </div>
@@ -478,6 +613,47 @@ class MatterNetworkView extends LitElement {
 
             .control-button.active ha-svg-icon {
                 --icon-primary-color: var(--md-sys-color-on-primary-container, #21005d);
+            }
+
+            .hide-menu-container {
+                position: relative;
+            }
+
+            .hide-dropdown {
+                position: absolute;
+                top: calc(100% + 4px);
+                right: 0;
+                background: var(--md-sys-color-surface-container, #fff);
+                border: 1px solid var(--md-sys-color-outline-variant, #ccc);
+                border-radius: 4px;
+                box-shadow: var(--md-sys-elevation-level2, 0 2px 6px var(--md-sys-color-shadow, rgba(0, 0, 0, 0.15)));
+                min-width: 150px;
+                z-index: 100;
+                padding: 4px 0;
+            }
+
+            .hide-option {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding: 8px 12px;
+                cursor: pointer;
+                color: var(--md-sys-color-on-surface, #1c1b1f);
+                font-size: 0.9rem;
+                user-select: none;
+            }
+
+            .hide-option:hover {
+                background-color: var(--md-sys-color-surface-container-high, #e8e8e8);
+            }
+
+            .hide-option input[type="checkbox"] {
+                cursor: pointer;
+                margin: 0;
+            }
+
+            .hide-option span {
+                flex: 1;
             }
 
             .graph-section thread-graph,

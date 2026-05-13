@@ -164,7 +164,7 @@ async function start() {
     );
 
     if (!cliOptions.disableOta) {
-        controller.commandHandler?.events.started.once(async () => await initializeOta(controller, cliOptions));
+        controller.commandHandler.events.started.once(async () => await initializeOta(controller, cliOptions));
     }
 
     // Subscribe to node events for legacy data file updates
@@ -215,6 +215,9 @@ async function stop() {
         return;
     }
     stopping = true;
+
+    // Must run before any await.
+    server?.initiateShutdown();
 
     // Wait for start() to finish (or fail) before tearing down, so we don't
     // race against in-flight initialization that could re-create resources.

@@ -23,7 +23,7 @@ WORKDIR /app
 
 # Copy package files first for better caching
 COPY package*.json ./
-COPY packages/tools/package*.json ./packages/tools/
+COPY tsc ./tsc/
 COPY packages/custom-clusters/package*.json ./packages/custom-clusters/
 COPY packages/ws-controller/package*.json ./packages/ws-controller/
 COPY packages/ws-client/package*.json ./packages/ws-client/

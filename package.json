@@ -1,9 +1,15 @@
 {
     "name": "matterjs-server-monorepo",
     "private": true,
-    "type": "module",
+    "homepage": "https://github.com/matter-js/matterjs-server",
+    "bugs": {
+        "url": "https://github.com/matter-js/matterjs-server/issues"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/matter-js/matterjs-server.git"
+    },
     "workspaces": [
-        "packages/tools",
         "packages/custom-clusters",
         "packages/ws-controller",
         "packages/ws-client",
@@ -11,20 +17,13 @@
         "packages/ble-proxy",
         "packages/matter-server"
     ],
-    "bugs": {
-        "url": "https://github.com/matter-js/matterjs-server/issues"
-    },
-    "homepage": "https://github.com/matter-js/matterjs-server",
-    "repository": {
-        "type": "git",
-        "url": "git+https://github.com/matter-js/matterjs-server.git"
-    },
+    "type": "module",
     "scripts": {
         "prepare": "npm run build-clean",
-        "clean": "node packages/tools/bin/build.js clean",
-        "build-only": "node packages/tools/bin/build.js",
+        "clean": "nacho-build clean",
+        "build-only": "nacho-build",
         "build": "npm run build-only && npm run generate --workspaces --if-present && npm run build-only && npm run bundle --workspaces --if-present",
-        "version": "node packages/tools/bin/version.js",
+        "version": "nacho-build version",
         "build-clean": "npm run clean && npm run build",
         "lint": "oxlint --type-aware",
         "lint-fix": "oxlint --fix --type-aware",
@@ -46,21 +45,22 @@
         "python:test-all": "cd python_client && .venv/bin/pytest tests/ -v",
         "python:build": "cd python_client && .venv/bin/pip install build && .venv/bin/python -m build"
     },
+    "devDependencies": {
+        "@matter/testing": "0.17.0-alpha.0-20260512-576f5796c",
+        "@nacho-iot/js-tools": "^0.1.7",
+        "@types/mocha": "^10.0.10",
+        "glob": "^13.0.6",
+        "globals": "^17.5.0",
+        "oxfmt": "^0.49.0",
+        "oxlint": "^1.63.0",
+        "oxlint-tsgolint": "^0.22.0",
+        "tsx": "^4.21.0",
+        "typescript": "~6.0.3"
+    },
     "overrides": {
         "mocha": {
             "diff": "^8.0.3",
             "serialize-javascript": "^7.0.4"
         }
-    },
-    "devDependencies": {
-        "@matter/testing": "0.17.0-alpha.0-20260415-d9b8bc8d3",
-        "@types/mocha": "^10.0.10",
-        "glob": "^13.0.6",
-        "globals": "^17.5.0",
-        "oxfmt": "^0.45.0",
-        "oxlint": "^1.60.0",
-        "oxlint-tsgolint": "^0.21.0",
-        "tsx": "^4.21.0",
-        "typescript": "~5.9.3"
     }
 }

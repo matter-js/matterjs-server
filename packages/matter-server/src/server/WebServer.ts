@@ -66,6 +66,12 @@ export class WebServer {
         });
     }
 
+    initiateShutdown(): void {
+        for (const handler of this.#handlers) {
+            handler.initiateShutdown?.();
+        }
+    }
+
     async stop() {
         console.log("Stopping webserver...");
         // Unregister handlers first (closes WebSocket connections)

@@ -41,6 +41,7 @@ class EveCluster(Cluster):
                 ClusterObjectFieldDescriptor(Label="altitude", Tag=0x130A0013, Type=typing.Optional[float32]),
                 ClusterObjectFieldDescriptor(Label="pressure", Tag=0x130A0014, Type=typing.Optional[float32]),
                 ClusterObjectFieldDescriptor(Label="weatherTrend", Tag=0x130A0015, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="windowOpenMode", Tag=0x130A0017, Type=typing.Optional[bool]),
                 ClusterObjectFieldDescriptor(Label="valvePosition", Tag=0x130A0018, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
@@ -69,6 +70,7 @@ class EveCluster(Cluster):
     altitude: typing.Optional[float32] = None
     pressure: typing.Optional[float32] = None
     weatherTrend: typing.Optional[uint] = None
+    windowOpenMode: typing.Optional[bool] = None
     valvePosition: typing.Optional[uint] = None
     generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
     acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
@@ -381,6 +383,22 @@ class EveCluster(Cluster):
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
             value: typing.Optional[uint] = None
+
+        @dataclass
+        class WindowOpenMode(ClusterAttributeDescriptor):
+            @ChipUtility.classproperty
+            def cluster_id(cls) -> int:
+                return 0x130AFC01
+
+            @ChipUtility.classproperty
+            def attribute_id(cls) -> int:
+                return 0x130A0017
+
+            @ChipUtility.classproperty
+            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[bool])
+
+            value: typing.Optional[bool] = None
 
         @dataclass
         class ValvePosition(ClusterAttributeDescriptor):

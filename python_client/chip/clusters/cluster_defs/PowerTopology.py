@@ -48,6 +48,24 @@ class PowerTopology(Cluster):
             kSetTopology = 0x4
             kDynamicPowerFlow = 0x8
 
+    class Structs:
+        @dataclass
+        class CircuitNodeStruct(ClusterObject):
+            @ChipUtility.classproperty
+            def descriptor(cls) -> ClusterObjectDescriptor:
+                return ClusterObjectDescriptor(
+                    Fields=[
+                        ClusterObjectFieldDescriptor(Label="node", Tag=1, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="endpoint", Tag=2, Type=typing.Optional[uint]),
+                        ClusterObjectFieldDescriptor(Label="label", Tag=3, Type=typing.Optional[str]),
+                        ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=254, Type=uint),
+                    ])
+
+            node: uint = 0
+            endpoint: typing.Optional[uint] = None
+            label: typing.Optional[str] = None
+            fabricIndex: uint = 0
+
     class Attributes:
         @dataclass
         class AvailableEndpoints(ClusterAttributeDescriptor):

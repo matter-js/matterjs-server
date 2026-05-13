@@ -7,7 +7,6 @@
 import type { MatterNode } from "@matter-server/ws-client";
 import { LitElement, css } from "lit";
 import { property, state } from "lit/decorators.js";
-// @ts-expect-error vis-network doesn't have proper type declarations for standalone export
 import { DataSet, Network } from "vis-network/standalone";
 import { getCssVar } from "../../util/shared-styles.js";
 import { ThemeService } from "../../util/theme-service.js";
@@ -217,6 +216,7 @@ export abstract class BaseNetworkGraph extends LitElement {
             edges: {
                 width: 2,
                 smooth: {
+                    enabled: true,
                     type: "continuous",
                     roundness: 0.5,
                 },
@@ -404,6 +404,16 @@ export abstract class BaseNetworkGraph extends LitElement {
                 easingFunction: "easeInOutQuad",
             },
         });
+    }
+
+    /**
+     * Deselects all nodes, clears highlights, and restores default styling.
+     */
+    public deselectAll(): void {
+        if (!this._network) return;
+        this._selectedNodeId = null;
+        this._network.unselectAll();
+        this._clearHighlights();
     }
 
     protected _dispatchNodeSelected(nodeId: number | string | null): void {

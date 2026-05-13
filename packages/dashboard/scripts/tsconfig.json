@@ -1,5 +1,5 @@
 {
-    "extends": "../../tools/tsc/tsconfig.lib.json",
+    "extends": "../../../tsc/tsconfig.lib.json",
     "compilerOptions": {
         "types": ["globals", "node"],
         "experimentalDecorators": true,

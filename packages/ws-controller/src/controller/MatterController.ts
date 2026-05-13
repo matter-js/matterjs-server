@@ -18,18 +18,38 @@ import {
     SoftwareUpdateManager,
     Timestamp,
 } from "@matter/main";
-import { VendorInfo } from "@matter/main/protocol";
+import { VendorInfo, DclCertificateService } from "@matter/main/protocol";
 import { VendorId } from "@matter/main/types";
 import { CommissioningController } from "@project-chip/matter.js";
 import { Readable } from "node:stream";
 import { ConfigStorage } from "../server/ConfigStorage.js";
+import { BorderRouterDiscovery } from "./BorderRouterDiscovery.js";
 import { ControllerCommandHandler } from "./ControllerCommandHandler.js";
 import { LegacyDataInjector, LegacyServerData } from "./LegacyDataInjector.js";
 import { resolveServerId } from "./ServerIdResolver.js";
-// Register BLE
-import "@matter/nodejs-ble";
 
 const logger = Logger.get("MatterController");
+
+let bleSupportLoaded: Promise<void> | undefined;
+
+// Lazy-load the optional `@matter/nodejs-ble` so a missing install only fails when BLE is enabled.
+async function loadBleSupport(environment: Environment): Promise<void> {
+    if (!environment.vars.get("ble.enable", false)) return;
+    if (bleSupportLoaded === undefined) {
+        bleSupportLoaded = (async () => {
+            try {
+                await import("@matter/nodejs-ble");
+            } catch (error) {
+                logger.error(
+                    `Failed to load '@matter/nodejs-ble'. Disable BLE or ensure the package is installed.`,
+                    error,
+                );
+                throw error;
+            }
+        })();
+    }
+    return bleSupportLoaded;
+}
 
 export async function computeCompressedNodeId(
     crypto: Crypto,
@@ -75,6 +95,7 @@ export class MatterController {
     #legacyCommissionedDates?: Map<string, Timestamp>;
     #enableTestNetDcl = false;
     #disableOtaProvider = true;
+    readonly #borderRouterDiscovery: BorderRouterDiscovery;
 
     static async create(
         environment: Environment,
@@ -82,6 +103,8 @@ export class MatterController {
         options: MatterControllerOptions,
         legacyData?: LegacyServerData,
     ) {
+        await loadBleSupport(environment);
+
         // Resolve the server ID to use
         const serverId = await resolveServerId(
             environment,
@@ -144,6 +167,7 @@ export class MatterController {
 
     constructor(environment: Environment, config: ConfigStorage, options: MatterControllerOptions, serverId: string) {
         this.#env = environment;
+        this.#borderRouterDiscovery = new BorderRouterDiscovery(this.#env);
         this.#config = config;
         this.#serverId = serverId;
         this.#serverVersion = options.serverVersion ?? "0.0.0";
@@ -157,6 +181,10 @@ export class MatterController {
         legacyCommissionedDates?: Map<string, Timestamp>,
     ) {
         this.#legacyCommissionedDates = legacyCommissionedDates?.size ? legacyCommissionedDates : undefined;
+
+        // Initialize the DclCertificateService on the root environment, will automatically be used
+        new DclCertificateService(this.#env.root, { fetchTestCertificates: this.#enableTestNetDcl });
+
         this.#controllerInstance = new CommissioningController({
             environment: {
                 environment: this.#env,
@@ -168,6 +196,8 @@ export class MatterController {
             adminFabricId: fabricId !== undefined ? FabricId(fabricId) : undefined,
             rootNodeId: NodeId(112233), // TODO Remove when we switch to random IDs
             enableOtaProvider: !this.#disableOtaProvider,
+            tcp: true,
+            transportPreference: "tcp",
             basicInformation: {
                 vendorName: "Open Home Foundation",
                 productName: "OHF Matter Server",
@@ -192,7 +222,8 @@ export class MatterController {
             );
 
             this.#commandHandler.events.started.once(async () => {
-                this.#controllerInstance!.node.behaviors.require(DclBehavior, {
+                this.#controllerInstance!.node.behaviors.require(DclBehavior);
+                await this.#controllerInstance!.node.setStateOf(DclBehavior, {
                     fetchTestCertificates: this.#enableTestNetDcl,
                 });
 
@@ -204,11 +235,13 @@ export class MatterController {
 
                 // Start loading and initialization of meta data
                 initPromises.push(this.vendorInfoService());
-                initPromises.push(this.certificateService());
+                // initPromises.push(this.certificateService()); // postponed to commissioning needs
 
                 if (!this.#disableOtaProvider && this.#enableTestNetDcl) {
                     initPromises.push(this.#enableTestOtaImages());
                 }
+
+                initPromises.push(this.#borderRouterDiscovery.start());
 
                 try {
                     await MatterAggregateError.allSettled(initPromises);
@@ -219,6 +252,10 @@ export class MatterController {
         }
 
         return this.#commandHandler;
+    }
+
+    get borderRouters(): BorderRouterDiscovery {
+        return this.#borderRouterDiscovery;
     }
 
     /**
@@ -294,6 +331,8 @@ export class MatterController {
     }
 
     async stop() {
+        await this.certificateService(); // Ensure it was initialized so that shutdown works
+        await this.#borderRouterDiscovery.stop();
         await this.#commandHandler?.close(); // This closes also the controller instance if started
     }
 

@@ -13,12 +13,14 @@
 import { Environment, ServerNode } from "@matter/main";
 import { OnOffLightDevice } from "@matter/main/devices/on-off-light";
 import { VendorId } from "@matter/main/types";
-import { DEVICE_DISCRIMINATOR, DEVICE_PASSCODE, MANUAL_PAIRING_CODE } from "../helpers/ProcessHelpers.js";
+import { DEVICE_DISCRIMINATOR, DEVICE_PASSCODE, DEVICE_PORT, MANUAL_PAIRING_CODE } from "../helpers/ProcessHelpers.js";
 
-// Parse CLI args for storage path
+// Parse CLI args for storage path + listen port
 const args = process.argv.slice(2);
 const storagePathArg = args.find(a => a.startsWith("--storage-path="));
 const storagePath = storagePathArg?.split("=")[1] ?? ".device-storage";
+const portArg = args.find(a => a.startsWith("--port="));
+const port = portArg !== undefined ? Number.parseInt(portArg.split("=")[1], 10) : DEVICE_PORT;
 
 // Configure environment with storage path
 const env = Environment.default;
@@ -27,7 +29,7 @@ env.vars.set("storage.path", storagePath);
 // Create device with fixed pairing codes for test predictability
 const node = await ServerNode.create({
     network: {
-        port: 5540,
+        port,
     },
 
     commissioning: {

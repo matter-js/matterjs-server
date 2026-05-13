@@ -83,6 +83,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
     #serverVersion: string;
     #wss?: WebSocketServer;
     #closed = false;
+    #shuttingDown = false;
     /** Circular buffer for recent node events (max 25) */
     #eventHistory: MatterNodeEvent[] = [];
     /** Track when each node was last interviewed (connected) - keyed by nodeId */
@@ -134,11 +135,22 @@ export class WebSocketControllerHandler implements WebServerHandler {
         return [...this.#eventHistory];
     }
 
+    initiateShutdown(): void {
+        this.#shuttingDown = true;
+    }
+
     async register(server: HttpServer) {
         logger.info(`Starting server: matter-server/${this.#serverVersion} (matter.js/${MATTER_VERSION})`);
         const wss = (this.#wss = new WebSocketServer({ server: server, path: "/ws" }));
         wss.on("connection", ws => {
-            if (this.#closed) return;
+            if (this.#closed || this.#shuttingDown) {
+                try {
+                    ws.close(1001, "server shutting down");
+                } catch {
+                    // ignore
+                }
+                return;
+            }
 
             const connId = generateConnectionId();
             logger.info(`[${connId}] WebSocket connection established`);
@@ -147,7 +159,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             const observers = new ObserverGroup();
 
             const sendNodeDetailsEvent = <E extends EventTypes>(eventName: E, nodeId: NodeId) => {
-                if (this.#closed || !listening) return;
+                if (this.#closed || this.#shuttingDown || !listening) return;
 
                 switch (eventName) {
                     case "node_added":
@@ -177,7 +189,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
             // Register all event listeners using ObserverGroup for easy cleanup
             observers.on(this.#commandHandler.events.attributeChanged, (nodeId, data) => {
-                if (this.#closed || !listening) return;
+                if (this.#closed || this.#shuttingDown || !listening) return;
                 const { endpointId, clusterId, attributeId } = data.path;
                 const pathStr = `${endpointId}/${clusterId}/${attributeId}`;
                 const clusterData = ClusterMap[clusterId];
@@ -195,7 +207,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             });
 
             observers.on(this.#commandHandler.events.eventChanged, (nodeId, data) => {
-                if (this.#closed || !listening) return;
+                if (this.#closed || this.#shuttingDown || !listening) return;
                 const { path, events } = data;
                 const { endpointId, clusterId, eventId } = path;
                 const clusterData = ClusterMap[clusterId];
@@ -274,7 +286,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             });
 
             observers.on(this.#commandHandler.events.nodeEndpointAdded, (nodeId, endpointId) => {
-                if (this.#closed || !listening) return;
+                if (this.#closed || this.#shuttingDown || !listening) return;
                 logger.info(
                     `[${connId}] Sending endpoint_added event for Node ${this.#commandHandler.formatNode(nodeId)} endpoint ${endpointId}`,
                 );
@@ -284,7 +296,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             });
 
             observers.on(this.#commandHandler.events.nodeEndpointRemoved, (nodeId, endpointId) => {
-                if (this.#closed || !listening) return;
+                if (this.#closed || this.#shuttingDown || !listening) return;
                 logger.info(
                     `[${connId}] Sending endpoint_removed event for Node ${this.#commandHandler.formatNode(nodeId)} endpoint ${endpointId}`,
                 );
@@ -298,13 +310,13 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
             // Register test node event listeners
             observers.on(this.#testNodeHandler.nodeAdded, (_nodeId, testNode) => {
-                if (this.#closed || !listening) return;
+                if (this.#closed || this.#shuttingDown || !listening) return;
                 logger.info(`[${connId}] Sending node_added event for test node ${testNode.node_id}`);
                 ws.send(toBigIntAwareJson({ event: "node_added", data: testNode }));
             });
 
             observers.on(this.#testNodeHandler.nodeRemoved, nodeId => {
-                if (this.#closed || !listening) return;
+                if (this.#closed || this.#shuttingDown || !listening) return;
                 logger.info(`[${connId}] Sending node_removed event for test node ${formatNodeId(nodeId)}`);
                 ws.send(toBigIntAwareJson({ event: "node_removed", data: nodeId }));
             });
@@ -458,6 +470,15 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 case "set_thread_dataset":
                     result = await this.#handleSetThreadDataset(args);
                     break;
+                case "remove_wifi_credentials":
+                    result = await this.#handleRemoveWifiCredentials();
+                    break;
+                case "remove_thread_dataset":
+                    result = await this.#handleRemoveThreadDataset();
+                    break;
+                case "get_thread_border_routers":
+                    result = this.#controller.borderRouters.list();
+                    break;
                 case "open_commissioning_window":
                     result = await this.#handleOpenCommissioningWindow(args);
                     break;
@@ -543,6 +564,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             min_supported_schema_version: SCHEMA_VERSION,
             sdk_version: `matter-server/${this.#serverVersion} (matter.js/${MATTER_VERSION})`,
             wifi_credentials_set: !!(this.#config.wifiSsid && this.#config.wifiCredentials),
+            wifi_ssid: this.#config.wifiSsid && this.#config.wifiCredentials ? this.#config.wifiSsid : undefined,
             thread_credentials_set: !!this.#config.threadDataset,
             bluetooth_enabled: this.#commandHandler.bleEnabled,
         };
@@ -552,7 +574,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
      * Broadcast an event to all connected WebSocket clients.
      */
     #broadcastEvent(event: string, data: unknown) {
-        if (!this.#wss || this.#closed) return;
+        if (!this.#wss || this.#closed || this.#shuttingDown) return;
         const message = toBigIntAwareJson({ event, data });
         this.#wss.clients.forEach(client => {
             if (client.readyState === 1 /* WebSocket.OPEN */) {
@@ -616,6 +638,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
             }
         }
 
+        // Ensure certificates are loaded and initialized
+        await this.#controller.certificateService();
+
         await this.#config.set({
             nextNodeId: typeof nextNodeId === "bigint" ? nextNodeId + 1n : nextNodeId + 1,
         });
@@ -645,7 +670,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
         const baseRequest = {
             nodeId: NodeId(nextNodeId),
             onNetworkOnly: true, // commission_on_network is always network-only
-            knownAddress: ip_addr ? { ip: ip_addr, port: 5540 } : undefined,
+            // Ignore fe80 addresses and better do generic discovery because could be from mobile devices
+            knownAddress: ip_addr && !ip_addr.startsWith("fe80") ? { ip: ip_addr, port: 5540 } : undefined,
         };
 
         switch (filter_type) {
@@ -671,6 +697,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 commissionRequest = { ...baseRequest, passcode: setup_pin_code };
                 break;
         }
+
+        // Ensure certificates are loaded and initialized
+        await this.#controller.certificateService();
 
         await this.#config.set({
             nextNodeId: typeof nextNodeId === "bigint" ? nextNodeId + 1n : nextNodeId + 1,
@@ -903,6 +932,26 @@ export class WebSocketControllerHandler implements WebServerHandler {
         }
         await this.#config.set({ threadDataset: dataset });
         // Broadcast server_info_updated event to notify clients of credential change
+        try {
+            await this.#broadcastServerInfoUpdated();
+        } catch (error) {
+            logger.warn("Failed to broadcast server info update", error);
+        }
+        return {};
+    }
+
+    async #handleRemoveWifiCredentials(): Promise<ResponseOf<"remove_wifi_credentials">> {
+        await this.#config.removeWifiCredentials();
+        try {
+            await this.#broadcastServerInfoUpdated();
+        } catch (error) {
+            logger.warn("Failed to broadcast server info update", error);
+        }
+        return {};
+    }
+
+    async #handleRemoveThreadDataset(): Promise<ResponseOf<"remove_thread_dataset">> {
+        await this.#config.removeThreadDataset();
         try {
             await this.#broadcastServerInfoUpdated();
         } catch (error) {

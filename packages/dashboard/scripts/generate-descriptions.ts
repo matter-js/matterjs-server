@@ -5,7 +5,7 @@
  */
 
 import { decamelize } from "@matter/main";
-import { AttributeModel, Matter } from "@matter/main/model";
+import { AttributeModel, CommandModel, Matter } from "@matter/main/model";
 import { writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -39,12 +39,21 @@ interface ClusterAttributeDescription {
     cluster_id: number;
     label: string;
     type: string;
+    writable: boolean;
+}
+
+interface ClusterCommandDescription {
+    id: number;
+    cluster_id: number;
+    name: string;
+    label: string;
 }
 
 interface ClusterDescription {
     id: number;
     label: string;
     attributes: { [attribute_id: string]: ClusterAttributeDescription };
+    commands: { [command_id: string]: ClusterCommandDescription };
 }
 
 /**
@@ -110,6 +119,7 @@ function generateDescriptions(): string {
         if (cluster.id === undefined) continue;
 
         const attributes: { [id: string]: ClusterAttributeDescription } = {};
+        const commands: { [id: string]: ClusterCommandDescription } = {};
 
         for (const ace of cluster.allAces) {
             if (ace instanceof AttributeModel && ace.id !== undefined) {
@@ -118,6 +128,14 @@ function generateDescriptions(): string {
                     cluster_id: cluster.id,
                     label: toLabel(ace.name),
                     type: getTypeString(ace),
+                    writable: ace.writable,
+                };
+            } else if (ace instanceof CommandModel && ace.id !== undefined && ace.isRequest) {
+                commands[ace.id] = {
+                    id: ace.id,
+                    cluster_id: cluster.id,
+                    name: ace.name,
+                    label: toLabel(ace.name, true),
                 };
             }
         }
@@ -126,6 +144,7 @@ function generateDescriptions(): string {
             id: cluster.id,
             label: toLabel(cluster.name),
             attributes,
+            commands,
         };
     }
 
@@ -146,12 +165,21 @@ export interface ClusterAttributeDescription {
     cluster_id: number;
     label: string;
     type: string;
+    writable: boolean;
+}
+
+export interface ClusterCommandDescription {
+    id: number;
+    cluster_id: number;
+    name: string;
+    label: string;
 }
 
 export interface ClusterDescription {
     id: number;
     label: string;
     attributes: { [attribute_id: string]: ClusterAttributeDescription };
+    commands: { [command_id: string]: ClusterCommandDescription };
 }
 
 export const device_types: Record<number, DeviceType> = ${JSON.stringify(deviceTypes, null, 4)};
