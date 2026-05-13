@@ -450,12 +450,14 @@ export class WebRtcStreamView extends LitElement {
             }
         }
 
-        // SnapshotCapabilities (attr id 10) — read capabilities from cache to allocate a new stream
+        // SnapshotCapabilities (attr id 10) — preferred source. Aqara G350 advertises SNP via
+        // FeatureMap bit 2 but ships an empty capabilities list, so fall back to sensible
+        // defaults (matching the resolution range our VideoStream uses) when the list is empty.
         const capsRaw = node?.attributes[`${this.endpointId}/${CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID}/10`];
-        if (!Array.isArray(capsRaw) || capsRaw.length === 0) {
-            throw new Error("Camera snapshot capabilities not available in cache; interview the device first");
-        }
-        const cap = parseSnapshotCapabilitiesFromList(capsRaw);
+        const cap: SnapshotCapability =
+            Array.isArray(capsRaw) && capsRaw.length > 0
+                ? parseSnapshotCapabilitiesFromList(capsRaw)
+                : { resolution: { width: 1920, height: 1080 }, maxFrameRate: 30, imageCodec: 0 };
 
         const response = await this.client.deviceCommand(
             this.nodeId,

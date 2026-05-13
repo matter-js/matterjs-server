@@ -57,13 +57,16 @@ export class CameraOverlay extends LitElement {
 
     private get _snapshotSupported(): boolean {
         const node = this.client?.nodes[String(this.nodeId)];
-        const caps = node?.attributes[`${this.endpointId}/1361/10`];
-        if (!Array.isArray(caps) || caps.length === 0) return false;
-        // AcceptedCommandList (0xfff9 = 65529) must include CaptureSnapshot (0x0c = 12) —
-        // some cameras advertise SnapshotCapabilities but reject the command.
+        // CaptureSnapshot (cmd 12) must appear in AcceptedCommandList (attr 0xfff9 = 65529).
         const accepted = node?.attributes[`${this.endpointId}/1361/65529`];
-        if (!Array.isArray(accepted)) return false;
-        return accepted.includes(12);
+        if (!Array.isArray(accepted) || !accepted.includes(12)) return false;
+        // FeatureMap (attr 0xfffc = 65532) bit 2 (SNP) advertises snapshot support — some cameras
+        // set the bit but leave SnapshotCapabilities empty, so the feature bit is the authoritative
+        // signal and SnapshotCapabilities a hint we fall back from.
+        const featureMap = node?.attributes[`${this.endpointId}/1361/65532`];
+        if (typeof featureMap === "number" && (featureMap & 0x04) !== 0) return true;
+        const caps = node?.attributes[`${this.endpointId}/1361/10`];
+        return Array.isArray(caps) && caps.length > 0;
     }
 
     private _streamViewRef = createRef<WebRtcStreamView>();
