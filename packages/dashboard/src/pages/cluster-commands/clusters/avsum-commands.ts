@@ -36,6 +36,10 @@ class AvsumClusterCommands extends BaseClusterCommands {
     override disconnectedCallback() {
         super.disconnectedCallback();
         this._unsubscribeNodes?.();
+        if (this._toastTimer) {
+            clearTimeout(this._toastTimer);
+            this._toastTimer = undefined;
+        }
     }
 
     override render() {
@@ -95,7 +99,7 @@ class AvsumClusterCommands extends BaseClusterCommands {
                                   >
                                       <ha-svg-icon .path=${mdiArrowLeft}></ha-svg-icon>
                                   </md-outlined-icon-button>
-                                  <md-outlined-icon-button disabled title="Center (no spec command)">
+                                  <md-outlined-icon-button disabled>
                                       <ha-svg-icon .path=${mdiCircleMedium}></ha-svg-icon>
                                   </md-outlined-icon-button>
                                   <md-outlined-icon-button
@@ -169,7 +173,7 @@ class AvsumClusterCommands extends BaseClusterCommands {
     }
 
     private _stepFromEvent(e: MouseEvent, base: number): number {
-        return e.shiftKey ? Math.sign(base) || 1 : base;
+        return e.shiftKey ? Math.sign(base) : base;
     }
 
     private async _move(delta: { panDelta?: number; tiltDelta?: number; zoomDelta?: number }) {
