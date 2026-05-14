@@ -12,6 +12,7 @@ import {
     mdiArrowRight,
     mdiArrowUp,
     mdiCircleMedium,
+    mdiContentSaveOutline,
     mdiMinus,
     mdiPencil,
     mdiPlus,
@@ -206,7 +207,7 @@ class AvsumClusterCommands extends BaseClusterCommands {
                                                       title="Overwrite with current MPTZ"
                                                       @click=${handleAsync(() => this._savePresetUpdate(p.presetId))}
                                                   >
-                                                      <ha-svg-icon .path=${mdiArrowUp}></ha-svg-icon>
+                                                      <ha-svg-icon .path=${mdiContentSaveOutline}></ha-svg-icon>
                                                   </md-outlined-icon-button>
                                                   <md-outlined-icon-button
                                                       title="Rename"
@@ -307,16 +308,15 @@ class AvsumClusterCommands extends BaseClusterCommands {
     private async _savePresetUpdate(presetId: number) {
         if (!this.node) return;
         const preset = readPresets(this.node, this.endpoint).items.find(p => p.presetId === presetId);
-        const name = preset?.name ?? "";
+        if (!preset) return;
         try {
-            await savePreset(this.client, this.node.node_id, this.endpoint, name, presetId);
+            await savePreset(this.client, this.node.node_id, this.endpoint, preset.name, presetId);
         } catch (err) {
             showAlertDialog({ title: "Update failed", text: err instanceof Error ? err.message : String(err) });
         }
     }
 
     private async _renamePreset(presetId: number, currentName: string) {
-        // showPromptDialog is boolean-only; fall back to window.prompt for string input.
         const next = window.prompt("New name (max 32 chars)", currentName);
         if (typeof next !== "string" || !next.trim()) return;
         try {
