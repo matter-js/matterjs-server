@@ -17,10 +17,12 @@ import { customElement, property, state } from "lit/decorators.js";
 import { createRef, ref } from "lit/directives/ref.js";
 import { clientContext } from "../client/client-context.js";
 import { CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID } from "../components/webrtc-stream-view.js";
+import "../components/avsum-ptz-strip.js";
 import "../components/ha-svg-icon.js";
 import "../components/webrtc-stream-view.js";
 import type { WebRtcStreamView } from "../components/webrtc-stream-view.js";
 import { asObject, pickNumber } from "../util/attribute-shapes.js";
+import { hasAvsumOnEndpoint } from "../util/avsum.js";
 
 type StreamState = "idle" | "connecting" | "streaming" | "error";
 
@@ -119,6 +121,28 @@ export class CameraOverlay extends LitElement {
         return HA_DEFAULT_RESOLUTIONS;
     }
 
+    private _getSensorSize(): { width: number; height: number } | null {
+        const node = this.client?.nodes[String(this.nodeId)];
+        if (!node) return null;
+        const raw = node.attributes[`${this.endpointId}/1361/7`];
+        const obj = asObject(raw);
+        if (!obj) return null;
+        const w = pickNumber(obj, "sensorWidth", "0");
+        const h = pickNumber(obj, "sensorHeight", "1");
+        if (w === null || h === null) return null;
+        return { width: w, height: h };
+    }
+
+    private _getActiveVideoStreamId(): number | null {
+        return this._streamViewRef.value?.videoStreamId ?? null;
+    }
+
+    private _avsumPresent(): boolean {
+        const node = this.client?.nodes[String(this.nodeId)];
+        if (!node) return false;
+        return hasAvsumOnEndpoint(node, this.endpointId);
+    }
+
     private async _close(): Promise<void> {
         const view = this._streamViewRef.value;
         if (view) {
@@ -195,6 +219,14 @@ export class CameraOverlay extends LitElement {
                     </md-icon-button>
                     <span>Node ${this.nodeId} • Endpoint ${this.endpointId}</span>
                 </header>
+                ${this._avsumPresent()
+                    ? html`<avsum-ptz-strip
+                          .nodeId=${this.nodeId}
+                          .endpointId=${this.endpointId}
+                          .activeVideoStreamId=${this._getActiveVideoStreamId()}
+                          .sensorSize=${this._getSensorSize()}
+                      ></avsum-ptz-strip>`
+                    : nothing}
                 <main>
                     ${this.client
                         ? html`<webrtc-stream-view
@@ -303,7 +335,7 @@ export class CameraOverlay extends LitElement {
             background: var(--md-sys-color-surface);
             color: var(--md-sys-color-on-surface);
             display: grid;
-            grid-template-rows: auto 1fr auto;
+            grid-template-rows: auto auto 1fr auto;
             border-radius: 8px;
             overflow: hidden;
         }

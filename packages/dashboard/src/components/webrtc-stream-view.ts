@@ -170,6 +170,10 @@ export class WebRtcStreamView extends LitElement {
         return this._state;
     }
 
+    get videoStreamId(): number | null {
+        return this._videoStreamId;
+    }
+
     override disconnectedCallback() {
         super.disconnectedCallback();
         void this.deallocateSnapshot();
