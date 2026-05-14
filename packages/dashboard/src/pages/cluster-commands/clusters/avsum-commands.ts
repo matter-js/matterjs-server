@@ -26,6 +26,7 @@ import { handleAsync, handleAsyncEvent } from "../../../util/async-handler.js";
 import {
     AVSUM_CLUSTER_ID,
     moveToPreset,
+    readDptzStreams,
     readFeatures,
     readMovementState,
     readPosition,
@@ -245,6 +246,15 @@ class AvsumClusterCommands extends BaseClusterCommands {
                                       </details>
                                   </div>
                               `;
+                          })()
+                        : nothing}
+                    ${features.dptz
+                        ? (() => {
+                              const streams = readDptzStreams(this.node, this.endpoint);
+                              return html`<div class="dptz-note">
+                                  Digital PTZ: <b>${streams.length}</b> active stream${streams.length === 1 ? "" : "s"}
+                                  <span class="muted small">(controls available during live view)</span>
+                              </div>`;
                           })()
                         : nothing}
                 </div>
@@ -506,6 +516,16 @@ class AvsumClusterCommands extends BaseClusterCommands {
                 color: var(--md-sys-color-on-surface);
                 font-family: inherit;
                 font-size: 0.85rem;
+            }
+            .dptz-note {
+                margin-top: 12px;
+                padding: 8px 12px;
+                background: var(--md-sys-color-surface-container);
+                border-radius: 4px;
+                font-size: 0.85rem;
+            }
+            .dptz-note b {
+                font-weight: 500;
             }
         `,
     ];
