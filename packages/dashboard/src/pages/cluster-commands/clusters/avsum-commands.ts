@@ -49,13 +49,13 @@ class AvsumClusterCommands extends BaseClusterCommands {
                               >`
                             : nothing}
                         ${features.mPan && ranges.panMin !== null && ranges.panMax !== null
-                            ? html`<span class="range">P [${ranges.panMin}, ${ranges.panMax}]</span>`
+                            ? html`<span class="range">P [${ranges.panMin}°, ${ranges.panMax}°]</span>`
                             : nothing}
                         ${features.mTilt && ranges.tiltMin !== null && ranges.tiltMax !== null
-                            ? html`<span class="range">T [${ranges.tiltMin}, ${ranges.tiltMax}]</span>`
+                            ? html`<span class="range">T [${ranges.tiltMin}°, ${ranges.tiltMax}°]</span>`
                             : nothing}
                         ${features.mZoom && ranges.zoomMax !== null
-                            ? html`<span class="range">Z [1, ${ranges.zoomMax}]</span>`
+                            ? html`<span class="range">Z [1×, ${ranges.zoomMax}×]</span>`
                             : nothing}
                     </div>
                 </div>
