@@ -11,7 +11,7 @@ import { mdiArrowDown, mdiArrowLeft, mdiArrowRight, mdiArrowUp, mdiMinus, mdiPlu
 import { css, html, LitElement, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { clientContext } from "../client/client-context.js";
-import { handleAsyncEvent } from "../util/async-handler.js";
+import { handleAsync, handleAsyncEvent } from "../util/async-handler.js";
 import {
     dptzRelativeMove,
     hasAvsumOnEndpoint,
@@ -36,7 +36,6 @@ export class AvsumPtzStrip extends LitElement {
     @property({ type: Number }) endpointId!: number;
     /** Active VideoStreamID for DPTZ moves; required when DPTZ is selected mode. */
     @property({ type: Number, attribute: false }) activeVideoStreamId: number | null = null;
-    /** Sensor size for DeltaX/Y default (10% of width/height). */
     @property({ type: Object, attribute: false }) sensorSize: { width: number; height: number } | null = null;
 
     @state() private _mode: MoveMode = "mech";
@@ -171,7 +170,7 @@ export class AvsumPtzStrip extends LitElement {
                                   class="chip"
                                   title="p=${p.settings.pan ?? 0}° · t=${p.settings.tilt ?? 0}° · z=${p.settings.zoom ??
                                   1}×"
-                                  @click=${handleAsyncEvent(() => this._handleGoPreset(p.presetId))}
+                                  @click=${handleAsync(() => this._handleGoPreset(p.presetId))}
                               >
                                   ${p.name}
                               </button>`,
@@ -224,11 +223,13 @@ export class AvsumPtzStrip extends LitElement {
                 await relativeMove(this.client, this.nodeId, this.endpointId, delta);
             } else {
                 if (this.activeVideoStreamId === null) return;
-                const dx = this.sensorSize ? Math.round(this.sensorSize.width * 0.1) : 100;
-                const dy = this.sensorSize ? Math.round(this.sensorSize.height * 0.1) : 100;
+                // step magnitude (10 or 1) scales the sensor-relative pixel delta so Shift gives 1% nudges.
+                const scale = step / 10;
+                const dx = this.sensorSize ? Math.round(this.sensorSize.width * 0.1 * scale) : Math.round(100 * scale);
+                const dy = this.sensorSize ? Math.round(this.sensorSize.height * 0.1 * scale) : Math.round(100 * scale);
                 const delta: { deltaX?: number; deltaY?: number; zoomDelta?: number } = {};
-                if (axis === "pan") delta.deltaX = step > 0 ? dx : -dx;
-                else if (axis === "tilt") delta.deltaY = step > 0 ? dy : -dy;
+                if (axis === "pan") delta.deltaX = dx;
+                else if (axis === "tilt") delta.deltaY = dy;
                 else delta.zoomDelta = step;
                 await dptzRelativeMove(this.client, this.nodeId, this.endpointId, this.activeVideoStreamId, delta);
             }
