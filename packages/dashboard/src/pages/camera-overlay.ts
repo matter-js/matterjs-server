@@ -56,6 +56,7 @@ export class CameraOverlay extends LitElement {
     @state() private _selectedResolution: Resolution | null = null;
     @state() private _resolutionsLoading = true;
     @state() private _closing = false;
+    @state() private _activeVideoStreamId: number | null = null;
 
     private get _snapshotSupported(): boolean {
         const node = this.client?.nodes[String(this.nodeId)];
@@ -133,10 +134,6 @@ export class CameraOverlay extends LitElement {
         return { width: w, height: h };
     }
 
-    private _getActiveVideoStreamId(): number | null {
-        return this._streamViewRef.value?.videoStreamId ?? null;
-    }
-
     private _avsumPresent(): boolean {
         const node = this.client?.nodes[String(this.nodeId)];
         if (!node) return false;
@@ -160,6 +157,7 @@ export class CameraOverlay extends LitElement {
     private _onStreamState(ev: CustomEvent<{ state: StreamState; errorMessage: string | null }>): void {
         this._state = ev.detail.state;
         this._errorMessage = ev.detail.errorMessage;
+        this._activeVideoStreamId = this._streamViewRef.value?.videoStreamId ?? null;
     }
 
     private _start(): void {
@@ -223,7 +221,7 @@ export class CameraOverlay extends LitElement {
                     ? html`<avsum-ptz-strip
                           .nodeId=${this.nodeId}
                           .endpointId=${this.endpointId}
-                          .activeVideoStreamId=${this._getActiveVideoStreamId()}
+                          .activeVideoStreamId=${this._activeVideoStreamId}
                           .sensorSize=${this._getSensorSize()}
                       ></avsum-ptz-strip>`
                     : nothing}
