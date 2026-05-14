@@ -237,8 +237,11 @@ export class AvsumPtzStrip extends LitElement {
             const msg = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
             if (msg.includes("busy")) {
                 this._toast = "Camera busy";
-                this._scheduleToastClear();
+            } else {
+                console.warn("PTZ move failed:", err);
+                this._toast = "Move failed";
             }
+            this._scheduleToastClear();
         }
     }
 
@@ -250,11 +253,13 @@ export class AvsumPtzStrip extends LitElement {
             const msg = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
             if (msg.includes("busy")) {
                 this._toast = "Camera busy";
-                this._scheduleToastClear();
             } else if (msg.includes("not_found")) {
                 this._toast = "Preset removed";
-                this._scheduleToastClear();
+            } else {
+                console.warn("Preset move failed:", err);
+                this._toast = "Move failed";
             }
+            this._scheduleToastClear();
         }
     }
 

@@ -46,9 +46,11 @@ class AvsumClusterCommands extends BaseClusterCommands {
     private _toastTimer?: ReturnType<typeof setTimeout>;
     @state() private _newPresetName = "";
 
-    override connectedCallback() {
-        super.connectedCallback();
-        this._unsubscribeNodes = this.client.addEventListener("nodes_changed", () => this.requestUpdate());
+    override updated(changedProperties: Map<string, unknown>) {
+        super.updated(changedProperties);
+        if (changedProperties.has("client") && this.client && !this._unsubscribeNodes) {
+            this._unsubscribeNodes = this.client.addEventListener("nodes_changed", () => this.requestUpdate());
+        }
     }
 
     override disconnectedCallback() {
@@ -101,6 +103,7 @@ class AvsumClusterCommands extends BaseClusterCommands {
                                   <md-outlined-icon-button
                                       ?disabled=${!features.mTilt || movement === "moving"}
                                       title="Tilt up (Shift = fine)"
+                                      aria-label="Tilt up"
                                       @click=${handleAsyncEvent((e: MouseEvent) =>
                                           this._move({ tiltDelta: this._stepFromEvent(e, 10) }),
                                       )}
@@ -111,18 +114,20 @@ class AvsumClusterCommands extends BaseClusterCommands {
                                   <md-outlined-icon-button
                                       ?disabled=${!features.mPan || movement === "moving"}
                                       title="Pan left (Shift = fine)"
+                                      aria-label="Pan left"
                                       @click=${handleAsyncEvent((e: MouseEvent) =>
                                           this._move({ panDelta: this._stepFromEvent(e, -10) }),
                                       )}
                                   >
                                       <ha-svg-icon .path=${mdiArrowLeft}></ha-svg-icon>
                                   </md-outlined-icon-button>
-                                  <md-outlined-icon-button disabled>
+                                  <span class="dpad-center" aria-hidden="true">
                                       <ha-svg-icon .path=${mdiCircleMedium}></ha-svg-icon>
-                                  </md-outlined-icon-button>
+                                  </span>
                                   <md-outlined-icon-button
                                       ?disabled=${!features.mPan || movement === "moving"}
                                       title="Pan right (Shift = fine)"
+                                      aria-label="Pan right"
                                       @click=${handleAsyncEvent((e: MouseEvent) =>
                                           this._move({ panDelta: this._stepFromEvent(e, 10) }),
                                       )}
@@ -133,6 +138,7 @@ class AvsumClusterCommands extends BaseClusterCommands {
                                   <md-outlined-icon-button
                                       ?disabled=${!features.mTilt || movement === "moving"}
                                       title="Tilt down (Shift = fine)"
+                                      aria-label="Tilt down"
                                       @click=${handleAsyncEvent((e: MouseEvent) =>
                                           this._move({ tiltDelta: this._stepFromEvent(e, -10) }),
                                       )}
@@ -146,6 +152,7 @@ class AvsumClusterCommands extends BaseClusterCommands {
                                         <md-outlined-icon-button
                                             ?disabled=${movement === "moving"}
                                             title="Zoom in (Shift = fine)"
+                                            aria-label="Zoom in"
                                             @click=${handleAsyncEvent((e: MouseEvent) =>
                                                 this._move({ zoomDelta: this._stepFromEvent(e, 10) }),
                                             )}
@@ -156,6 +163,7 @@ class AvsumClusterCommands extends BaseClusterCommands {
                                         <md-outlined-icon-button
                                             ?disabled=${movement === "moving"}
                                             title="Zoom out (Shift = fine)"
+                                            aria-label="Zoom out"
                                             @click=${handleAsyncEvent((e: MouseEvent) =>
                                                 this._move({ zoomDelta: this._stepFromEvent(e, -10) }),
                                             )}
@@ -211,7 +219,8 @@ class AvsumClusterCommands extends BaseClusterCommands {
                                                       <ha-svg-icon .path=${mdiContentSaveOutline}></ha-svg-icon>
                                                   </md-outlined-icon-button>
                                                   <md-outlined-icon-button
-                                                      title="Rename"
+                                                      title="Rename (also overwrites position with current MPTZ)"
+                                                      aria-label="Rename preset"
                                                       @click=${handleAsync(() =>
                                                           this._renamePreset(p.presetId, p.name),
                                                       )}
@@ -413,6 +422,12 @@ class AvsumClusterCommands extends BaseClusterCommands {
                 grid-template-columns: 40px 40px 40px;
                 grid-template-rows: 40px 40px 40px;
                 gap: 4px;
+            }
+            .dpad-center {
+                display: grid;
+                place-items: center;
+                color: var(--md-sys-color-on-surface-variant);
+                opacity: 0.4;
             }
             .zoom-col {
                 display: flex;

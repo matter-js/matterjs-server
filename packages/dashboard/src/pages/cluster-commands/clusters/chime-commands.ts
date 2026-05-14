@@ -34,28 +34,30 @@ class ChimeClusterCommands extends BaseClusterCommands {
     private _unsubscribeNodes?: () => void;
     private _unsubscribeEvents?: () => void;
 
-    override connectedCallback() {
-        super.connectedCallback();
-        this._unsubscribeNodes = this.client.addEventListener("nodes_changed", () => {
-            this.requestUpdate();
-        });
-        this._unsubscribeEvents = this.client.addNodeEventListener(ev => {
-            if (
-                ev.cluster_id !== CHIME_CLUSTER_ID ||
-                ev.endpoint_id !== this.endpoint ||
-                String(ev.node_id) !== String(this.node.node_id) ||
-                ev.event_id !== 0
-            ) {
-                return;
-            }
-            const raw = ev.data;
-            if (raw === null || typeof raw !== "object") return;
-            const d = raw as Record<string, unknown>;
-            const named = d["chimeID"];
-            const tagged = d["0"];
-            const chimeId = typeof named === "number" ? named : typeof tagged === "number" ? tagged : null;
-            if (chimeId !== null) this.onChimeStartedPlaying(chimeId);
-        });
+    override updated(changedProperties: Map<string, unknown>) {
+        super.updated(changedProperties);
+        if (changedProperties.has("client") && this.client && !this._unsubscribeNodes) {
+            this._unsubscribeNodes = this.client.addEventListener("nodes_changed", () => {
+                this.requestUpdate();
+            });
+            this._unsubscribeEvents = this.client.addNodeEventListener(ev => {
+                if (
+                    ev.cluster_id !== CHIME_CLUSTER_ID ||
+                    ev.endpoint_id !== this.endpoint ||
+                    String(ev.node_id) !== String(this.node.node_id) ||
+                    ev.event_id !== 0
+                ) {
+                    return;
+                }
+                const raw = ev.data;
+                if (raw === null || typeof raw !== "object") return;
+                const d = raw as Record<string, unknown>;
+                const named = d["chimeID"];
+                const tagged = d["0"];
+                const chimeId = typeof named === "number" ? named : typeof tagged === "number" ? tagged : null;
+                if (chimeId !== null) this.onChimeStartedPlaying(chimeId);
+            });
+        }
     }
 
     override disconnectedCallback() {
