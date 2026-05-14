@@ -16,6 +16,11 @@ export function pickNumber(obj: Record<string, unknown>, ...keys: string[]): num
     return null;
 }
 
+export function pickString(obj: Record<string, unknown>, key: string): string | null {
+    const v = obj[key];
+    return typeof v === "string" ? v : null;
+}
+
 export function extractAttributeValue(attributesData: unknown): unknown {
     const obj = asObject(attributesData);
     if (!obj) return attributesData;
