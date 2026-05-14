@@ -32,17 +32,31 @@ class ChimeClusterCommands extends BaseClusterCommands {
     @state() private _lastPlayed: { chimeId: number; at: number } | null = null;
     @state() private _playDisabledUntil = 0;
     private _unsubscribeNodes?: () => void;
+    private _unsubscribeEvents?: () => void;
 
     override connectedCallback() {
         super.connectedCallback();
         this._unsubscribeNodes = this.client.addEventListener("nodes_changed", () => {
             this.requestUpdate();
         });
+        this._unsubscribeEvents = this.client.addNodeEventListener(ev => {
+            if (
+                ev.cluster_id === CHIME_CLUSTER_ID &&
+                ev.endpoint_id === this.endpoint &&
+                String(ev.node_id) === String(this.node.node_id) &&
+                ev.event_id === 0
+            ) {
+                const data = ev.data as { chimeID?: number; "0"?: number } | null | undefined;
+                const chimeId = data?.chimeID ?? data?.["0"];
+                if (typeof chimeId === "number") this.onChimeStartedPlaying(chimeId);
+            }
+        });
     }
 
     override disconnectedCallback() {
         super.disconnectedCallback();
         this._unsubscribeNodes?.();
+        this._unsubscribeEvents?.();
         this._lastPlayed = null;
     }
 

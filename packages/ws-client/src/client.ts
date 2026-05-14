@@ -17,6 +17,7 @@ import {
     LogLevelResponse,
     LogLevelString,
     MatterFabricData,
+    MatterNodeEvent,
     MatterSoftwareVersion,
     NodePingResult,
     SuccessResultMessage,
@@ -56,6 +57,7 @@ export class MatterClient {
     private msgId = Math.floor(Math.random() * 0x7fffffff);
     private eventListeners: Record<string, Array<() => void>> = {};
     private webrtcCallbackListeners: Array<(data: WebRtcCallbackData) => void> = [];
+    private nodeEventListeners: Array<(event: MatterNodeEvent) => void> = [];
 
     /**
      * Create a new MatterClient.
@@ -95,6 +97,17 @@ export class MatterClient {
         this.webrtcCallbackListeners.push(listener);
         return () => {
             this.webrtcCallbackListeners = this.webrtcCallbackListeners.filter(l => l !== listener);
+        };
+    }
+
+    /**
+     * Subscribe to node_event events with the typed payload.
+     * Returns an unsubscribe function.
+     */
+    addNodeEventListener(listener: (event: MatterNodeEvent) => void): () => void {
+        this.nodeEventListeners.push(listener);
+        return () => {
+            this.nodeEventListeners = this.nodeEventListeners.filter(l => l !== listener);
         };
     }
 
@@ -594,6 +607,13 @@ export class MatterClient {
 
         if (event.event === "webrtc_callback") {
             for (const listener of this.webrtcCallbackListeners) {
+                listener(event.data);
+            }
+            return;
+        }
+
+        if (event.event === "node_event") {
+            for (const listener of this.nodeEventListeners) {
                 listener(event.data);
             }
             return;
