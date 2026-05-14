@@ -100,10 +100,6 @@ export class MatterClient {
         };
     }
 
-    /**
-     * Subscribe to node_event events with the typed payload.
-     * Returns an unsubscribe function.
-     */
     addNodeEventListener(listener: (event: MatterNodeEvent) => void): () => void {
         this.nodeEventListeners.push(listener);
         return () => {
