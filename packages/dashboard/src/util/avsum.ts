@@ -206,7 +206,6 @@ export async function dptzRelativeMove(
     });
 }
 
-/** Returns true when AVSUM cluster has any attribute cached on this endpoint. */
 export function hasAvsumOnEndpoint(node: MatterNode, endpoint: number): boolean {
     const prefix = `${endpoint}/${AVSUM_CLUSTER_ID}/`;
     return Object.keys(node.attributes).some(k => k.startsWith(prefix));
