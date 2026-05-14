@@ -5,7 +5,6 @@
  */
 
 import "@material/web/button/filled-button";
-import "@material/web/button/text-button";
 import "@material/web/iconbutton/icon-button";
 import "@material/web/select/outlined-select";
 import "@material/web/select/select-option";
@@ -36,13 +35,9 @@ class ChimeClusterCommands extends BaseClusterCommands {
 
     override connectedCallback() {
         super.connectedCallback();
-        // Re-render when node attributes change (Selected/Enabled writes echo back).
         this._unsubscribeNodes = this.client.addEventListener("nodes_changed", () => {
             this.requestUpdate();
         });
-        // ChimeStartedPlaying event arrives via existing pipeline (verified in plan task 12).
-        // Subscribe via the client's raw-event hook if exposed; until then this listener stays
-        // dormant — event-driven update lives in Task 12 after verification.
     }
 
     override disconnectedCallback() {
@@ -161,7 +156,7 @@ class ChimeClusterCommands extends BaseClusterCommands {
         `;
     }
 
-    /** Public — called by Task 12 wiring once event channel verified. */
+    /** Called by the event wiring layer when a ChimeStartedPlaying event arrives. */
     public onChimeStartedPlaying(chimeId: number): void {
         this._lastPlayed = { chimeId, at: Date.now() };
     }
