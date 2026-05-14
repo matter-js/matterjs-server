@@ -27,11 +27,10 @@ function readAttr(node: MatterNode, endpoint: number, attrId: number): unknown {
 export function readSounds(node: MatterNode, endpoint: number): ChimeSound[] {
     const raw = readAttr(node, endpoint, ATTR_INSTALLED_SOUNDS);
     if (!Array.isArray(raw)) return [];
-    const out: ChimeSound[] = [];
+    const out = new Array<ChimeSound>();
     for (const item of raw) {
         const obj = asObject(item);
         if (!obj) continue;
-        // Spec field IDs: 0 = ChimeID, 1 = Name. Matter codec may surface as "0"/"1" or as named keys.
         const id = pickNumber(obj, "chimeId") ?? pickNumber(obj, "0");
         const name = pickString(obj, "name") ?? pickString(obj, "1");
         if (id !== null && name !== null) out.push({ chimeId: id, name });
