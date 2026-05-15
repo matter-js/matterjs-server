@@ -19,6 +19,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Feature: Adds experimental camera Live View support — WebRTC streaming with snapshot capture, exposed via a Live View button on Camera and Video Doorbell device types.
 - Feature: Adds experimental Dashboard UI for the Camera AV Settings User Level Management cluster (MPTZ controls, presets, DPTZ stream info) plus a compact PTZ strip in the live-view overlay.
 - Feature: Adds experimental Dashboard UI for the Chime cluster (sound selection, play, last-played event readout).
+- Fix: When creating Bindings via Dashboard use the correct permission level ("Operate") instead of "Administrator"
 - Fix: Ensures that also official test certificates are initialized correctly when DCL-Testnet-flag is enabled
 - Fix: Fixed some edge cases in the "Node available" logic to ensure it correctly reflects the node stats
 - Fix: Update matter.js to the latest 0.17.0-nightly
