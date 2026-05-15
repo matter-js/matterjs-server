@@ -43,7 +43,7 @@ export class CameraOverlay extends LitElement {
     @property({ attribute: false })
     client?: MatterClient;
 
-    @property({ type: Number }) nodeId!: number;
+    @property({ attribute: false }) nodeId!: number | bigint;
     @property({ type: Number }) endpointId!: number;
 
     @state() private _state: StreamState = "idle";

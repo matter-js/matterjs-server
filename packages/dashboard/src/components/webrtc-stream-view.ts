@@ -143,7 +143,7 @@ export class WebRtcStreamView extends LitElement {
     @property({ attribute: false })
     client?: MatterClient;
 
-    @property({ type: Number }) nodeId!: number;
+    @property({ attribute: false }) nodeId!: number | bigint;
     @property({ type: Number }) endpointId!: number;
     @property({ type: Object }) resolution: { width: number; height: number } | null = null;
 
@@ -544,7 +544,7 @@ export class WebRtcStreamView extends LitElement {
             mySessionId: this._webRtcSessionId,
         });
         if (this._webRtcSessionId === null) {
-            if (Number(data.node_id) === Number(this.nodeId) && data.endpoint_id === this.endpointId) {
+            if (String(data.node_id) === String(this.nodeId) && data.endpoint_id === this.endpointId) {
                 this._preSessionQueue.push(data);
                 console.log("[webrtc-stream-view] queued pre-session callback");
             } else {
@@ -556,7 +556,7 @@ export class WebRtcStreamView extends LitElement {
             console.log("[webrtc-stream-view] dropped: session id mismatch");
             return;
         }
-        if (Number(data.node_id) !== Number(this.nodeId)) {
+        if (String(data.node_id) !== String(this.nodeId)) {
             console.log("[webrtc-stream-view] dropped: node id mismatch");
             return;
         }

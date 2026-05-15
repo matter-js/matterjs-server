@@ -32,7 +32,7 @@ export class AvsumPtzStrip extends LitElement {
     @property({ attribute: false })
     client?: MatterClient;
 
-    @property({ type: Number }) nodeId!: number;
+    @property({ attribute: false }) nodeId!: number | bigint;
     @property({ type: Number }) endpointId!: number;
     /** Active VideoStreamID for DPTZ moves; required when DPTZ is selected mode. */
     @property({ type: Number, attribute: false }) activeVideoStreamId: number | null = null;
