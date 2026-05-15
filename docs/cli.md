@@ -33,6 +33,7 @@ npm run server -- --bluetooth-adapter 0
 | --log-file            | string       | null             | No       | Log file path incl. filename, e.g. `/data/matter-server.log` |
 | --primary-interface   | string       | null             | No       | Primary network interface for link-local addresses           |
 | --enable-test-net-dcl | boolean flag | false            | No       | Enable test-net DCL certificates                             |
+| --disable-dcl-seed    | boolean flag | false            | No       | Disable bundled offline DCL seed (PAA roots, CD signers, vendors); rely on network DCL only |
 | --bluetooth-adapter   | integer      | null             | No       | Bluetooth adapter HCI ID (e.g., 0 for hci0)                  |
 | --disable-ota         | boolean flag | false            | No       | Disable OTA update functionality                             |
 | --ota-provider-dir    | string       | null             | No       | Directory for OTA Provider files                             |
