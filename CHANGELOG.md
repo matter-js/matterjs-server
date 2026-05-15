@@ -17,6 +17,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Feature: (iamadamreed) Adds TCL custom cluster
 - Feature: (burmistrzak) Adds "window open mode" attribute for Eve custom cluster
 - Fix: Ensures that also official test certificates are initialized correctly when DCL-Testnet-flag is enabled
+- Fix: Fixed some edge cases in the "Node available" logic to ensure it correctly reflects the node stats
 - Fix: Update matter.js to the latest 0.17.0-nightly
     - Fixes write encoding for some cases of nullable attributes
     - Make scanNetwork failures non-fatal for commissioning
