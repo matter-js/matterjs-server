@@ -189,7 +189,14 @@ export class WebRtcStreamView extends LitElement {
 
     override render() {
         return html`
-            <video autoplay playsinline ?hidden=${this._state !== "streaming"}></video>
+            <video
+                autoplay
+                playsinline
+                muted
+                disablepictureinpicture
+                disableremoteplayback
+                ?hidden=${this._state !== "streaming"}
+            ></video>
             ${this._state === "idle" ? html`<div class="status">Ready</div>` : null}
             ${this._state === "connecting" ? html`<div class="status">Connecting…</div>` : null}
             ${this._state === "error"
