@@ -349,11 +349,11 @@ export class CameraOverlay extends LitElement {
         .frame {
             position: relative;
             width: min(80vw, 1200px);
-            max-height: 90vh;
+            height: min(80vh, 800px);
             background: var(--md-sys-color-surface);
             color: var(--md-sys-color-on-surface);
             display: grid;
-            grid-template-rows: auto auto auto auto;
+            grid-template-rows: auto auto 1fr auto;
             border-radius: 8px;
             overflow: hidden;
         }
@@ -370,7 +370,6 @@ export class CameraOverlay extends LitElement {
             background: black;
             position: relative;
             overflow: hidden;
-            aspect-ratio: 16 / 9;
             min-height: 0;
         }
         webrtc-stream-view {
