@@ -22,22 +22,23 @@ npm run server -- --bluetooth-adapter 0
 
 ## Complete Argument Specification
 
-| Argument              | Type         | Default          | Required | Description                                                  |
-|-----------------------|--------------|------------------|----------|--------------------------------------------------------------|
-| --vendorid            | integer      | 0xFFF1 (65521)   | No       | Vendor ID for the Fabric                                     |
-| --fabricid            | integer      | (random)         | No       | Fabric ID for the Fabric (random if not specified)           |
-| --storage-path        | string       | ~/.matter_server | No       | Storage path to keep persistent data                         |
-| --port                | integer      | 5580             | No       | TCP Port for WebSocket server                                |
-| --listen-address      | string[]     | null (bind all)  | No       | IP address(es) to bind WebSocket server. Repeatable.         |
-| --log-level           | enum         | "info"           | No       | Global logging level                                         |
-| --log-file            | string       | null             | No       | Log file path incl. filename, e.g. `/data/matter-server.log` |
-| --primary-interface   | string       | null             | No       | Primary network interface for link-local addresses           |
-| --enable-test-net-dcl | boolean flag | false            | No       | Enable test-net DCL certificates                             |
-| --bluetooth-adapter   | integer      | null             | No       | Bluetooth adapter HCI ID (e.g., 0 for hci0)                  |
-| --disable-ota         | boolean flag | false            | No       | Disable OTA update functionality                             |
-| --ota-provider-dir    | string       | null             | No       | Directory for OTA Provider files                             |
-| --disable-dashboard   | boolean flag | false            | No       | Disable the web dashboard                                    |
-| --production-mode     | boolean flag | false            | No       | Force dashboard production mode (for reverse proxy)          |
+| Argument              | Type         | Default          | Required | Description                                                                                 |
+| --------------------- | ------------ | ---------------- | -------- | ------------------------------------------------------------------------------------------- |
+| --vendorid            | integer      | 0xFFF1 (65521)   | No       | Vendor ID for the Fabric                                                                    |
+| --fabricid            | integer      | (random)         | No       | Fabric ID for the Fabric (random if not specified)                                          |
+| --storage-path        | string       | ~/.matter_server | No       | Storage path to keep persistent data                                                        |
+| --port                | integer      | 5580             | No       | TCP Port for WebSocket server                                                               |
+| --listen-address      | string[]     | null (bind all)  | No       | IP address(es) to bind WebSocket server. Repeatable.                                        |
+| --log-level           | enum         | "info"           | No       | Global logging level                                                                        |
+| --log-file            | string       | null             | No       | Log file path incl. filename, e.g. `/data/matter-server.log`                                |
+| --primary-interface   | string       | null             | No       | Primary network interface for link-local addresses                                          |
+| --enable-test-net-dcl | boolean flag | false            | No       | Enable test-net DCL certificates                                                            |
+| --disable-dcl-seed    | boolean flag | false            | No       | Disable bundled offline DCL seed (PAA roots, CD signers, vendors); rely on network DCL only |
+| --bluetooth-adapter   | integer      | null             | No       | Bluetooth adapter HCI ID (e.g., 0 for hci0)                                                 |
+| --disable-ota         | boolean flag | false            | No       | Disable OTA update functionality                                                            |
+| --ota-provider-dir    | string       | null             | No       | Directory for OTA Provider files                                                            |
+| --disable-dashboard   | boolean flag | false            | No       | Disable the web dashboard                                                                   |
+| --production-mode     | boolean flag | false            | No       | Force dashboard production mode (for reverse proxy)                                         |
 
 > **Log rotation:** `--log-file` must be a full file path including the filename. The log is rotated
 > every 24 hours, and on each startup: backups are shifted (`.6`→`.7`, …, `.1`→`.2`, current→`.1`),
@@ -54,21 +55,21 @@ npm run server -- --bluetooth-adapter 0
 ### Behavioral Differences from Python Matter Server
 
 | Option     | Python Default | Matter.js Default | Notes                                                   |
-|------------|----------------|-------------------|---------------------------------------------------------|
+| ---------- | -------------- | ----------------- | ------------------------------------------------------- |
 | --fabricid | 1              | (random)          | Matter.js generates a random fabric ID if not specified |
 
 ### Deprecated Options (were used in Python Matter Server)
 
 The following Python Matter Server options are **not supported** in the Matter.js implementation:
 
-| Option                        | Reason Not Applicable                                         |
-|-------------------------------|---------------------------------------------------------------|
-| --log-level-sdk               | Matter.js uses unified logging (use --log-level instead)      |
-| --paa-root-cert-dir           | Handled internally by matter.js DCL client                    |
-| --log-node-ids                | Not supported in matter.js logging infrastructure             |
-| --disable-server-interactions | Not applicable to matter.js architecture                      |
+| Option                        | Reason Not Applicable                                    |
+| ----------------------------- | -------------------------------------------------------- |
+| --log-level-sdk               | Matter.js uses unified logging (use --log-level instead) |
+| --paa-root-cert-dir           | Handled internally by matter.js DCL client               |
+| --log-node-ids                | Not supported in matter.js logging infrastructure        |
+| --disable-server-interactions | Not applicable to matter.js architecture                 |
 
-### Advanced matter.js Configuration
+## Advanced matter.js Configuration
 
 The underlying matter.js library exposes additional configuration options via `MATTER_*` environment
 variables. These follow the pattern `MATTER_<KEY>` where the key maps to a dot-notation config path
@@ -92,6 +93,7 @@ and the
 ## Enum Values
 
 **--log-level** (case-insensitive):
+
 - critical
 - error
 - warning
@@ -104,6 +106,7 @@ and the
 ## Multi-Value Arguments
 
 **--listen-address** - Repeatable flag pattern:
+
 ```bash
 npm run server -- --listen-address 192.168.1.100 --listen-address "::1"
 ```
@@ -128,6 +131,7 @@ ls /sys/class/bluetooth/
 ```
 
 The number after `hci` is the ID to use:
+
 - `hci0` → `--bluetooth-adapter 0`
 - `hci1` → `--bluetooth-adapter 1`
 
@@ -143,11 +147,13 @@ npm run server -- --bluetooth-adapter 0
 This is different from Thread Border Routers which use serial device paths (e.g., `/dev/ttyUSB0`). BLE commissioning uses the system's Bluetooth HCI interface.
 
 ---
+
 ## Storage Format
 
 Matter.js uses its own native storage format but supports migration from Python Matter Server.
 
 On startup, legacy Python storage files are read and migrated when needed:
+
 - `chip.json` - Chip configuration (fabric credentials)
 - `{fabricId}.json` - Node data and vendor info
 

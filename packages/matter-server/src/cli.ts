@@ -54,6 +54,7 @@ export interface CliOptions {
 
     // Certificate configuration
     enableTestNetDcl: boolean;
+    disableDclSeed: boolean;
 
     // Bluetooth configuration
     bluetoothAdapter: number | null;
@@ -152,6 +153,16 @@ export function parseCliArgs(argv?: string[]): CliOptions {
                 .env("ENABLE_TEST_NET_DCL"),
         )
         .addOption(
+            new Option(
+                "--disable-dcl-seed [value]",
+                "Disable bundled offline DCL seed (PAA roots, CD signers, vendors); rely on network DCL only",
+            )
+                .argParser(parseBooleanEnv)
+                .preset(true)
+                .default(false)
+                .env("DISABLE_DCL_SEED"),
+        )
+        .addOption(
             new Option("--bluetooth-adapter <id>", "Bluetooth adapter HCI ID (e.g., 0 for hci0)")
                 .argParser(parseIntOption)
                 .env("BLUETOOTH_ADAPTER"),
@@ -242,6 +253,7 @@ export function parseCliArgs(argv?: string[]): CliOptions {
         logFile: opts.logFile ?? null,
         primaryInterface: opts.primaryInterface ?? null,
         enableTestNetDcl: opts.enableTestNetDcl,
+        disableDclSeed: opts.disableDclSeed,
         bluetoothAdapter: opts.bluetoothAdapter ?? null,
         disableOta: opts.disableOta,
         otaProviderDir: opts.otaProviderDir ?? null,
