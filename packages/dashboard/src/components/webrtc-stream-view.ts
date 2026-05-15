@@ -756,7 +756,8 @@ export class WebRtcStreamView extends LitElement {
 
     static override styles = css`
         :host {
-            display: block;
+            display: flex;
+            flex-direction: column;
             width: 100%;
             height: 100%;
             background: black;
@@ -764,8 +765,9 @@ export class WebRtcStreamView extends LitElement {
         }
         video {
             display: block;
+            flex: 1 1 0;
+            min-height: 0;
             width: 100%;
-            height: 100%;
             object-fit: contain;
             background: black;
         }
@@ -773,8 +775,8 @@ export class WebRtcStreamView extends LitElement {
             display: none;
         }
         .placeholder {
-            position: absolute;
-            inset: 0;
+            flex: 1 1 0;
+            min-height: 0;
             display: flex;
             flex-direction: column;
             align-items: center;

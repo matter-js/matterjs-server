@@ -373,7 +373,7 @@ export class CameraOverlay extends LitElement {
             min-height: 0;
         }
         webrtc-stream-view {
-            flex: 1 1 auto;
+            flex: 1 1 0;
             min-height: 0;
             width: 100%;
         }
