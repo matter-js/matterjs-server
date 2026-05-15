@@ -135,7 +135,7 @@ describe("Nodes", () => {
             expect(nodes.isAvailable(TEST_NODE_ID)).to.equal(true);
         });
 
-        it("emits offline when debounce drops while still non-Connected", () => {
+        it("stays unavailable across non-Connected state changes after forceUnavailable", () => {
             nodes.seedState(TEST_NODE_ID, NodeStates.Connected);
             nodes.processStateChange(TEST_NODE_ID, NodeStates.Reconnecting, true);
 

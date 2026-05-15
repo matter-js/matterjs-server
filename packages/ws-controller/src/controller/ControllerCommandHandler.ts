@@ -339,7 +339,7 @@ export class ControllerCommandHandler {
                     this.#reconnectTimers.delete(nodeId);
                     if (this.#nodes.forceUnavailable(nodeId)) {
                         logger.info(
-                            `Node ${this.formatNode(nodeId)} still reconnecting after timeout, marking unavailable`,
+                            `Node ${this.formatNode(nodeId)} offline grace period expired, marking unavailable`,
                         );
                         this.events.nodeAvailabilityChanged.emit(nodeId, false);
                     }
