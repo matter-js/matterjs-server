@@ -263,9 +263,17 @@ export class WebRtcStreamView extends LitElement {
                     streams: ev.streams.length,
                 });
                 const video = this._video;
-                if (!video) console.warn("[webrtc-stream-view] ontrack fired but <video> query is null");
-                if (video && ev.streams[0]) {
-                    video.srcObject = ev.streams[0];
+                if (!video) {
+                    console.warn("[webrtc-stream-view] ontrack fired but <video> query is null");
+                    return;
+                }
+                const stream = ev.streams[0];
+                if (!stream) return;
+                // Both video and audio ontracks reference the same bundled MediaStream.
+                // Reassigning srcObject to a stream that's already attached can reset
+                // playback in Firefox, so only set when the reference actually changes.
+                if (video.srcObject !== stream) {
+                    video.srcObject = stream;
                 }
             };
 
@@ -744,6 +752,7 @@ export class WebRtcStreamView extends LitElement {
             position: relative;
         }
         video {
+            display: block;
             width: 100%;
             height: 100%;
             object-fit: contain;
