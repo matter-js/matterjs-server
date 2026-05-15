@@ -181,6 +181,14 @@ export class WebRtcStreamView extends LitElement {
         return this._videoStreamId;
     }
 
+    get muted(): boolean {
+        return this._video?.muted ?? true;
+    }
+
+    setMuted(muted: boolean): void {
+        if (this._video) this._video.muted = muted;
+    }
+
     override disconnectedCallback() {
         super.disconnectedCallback();
         void this.deallocateSnapshot();
@@ -249,7 +257,13 @@ export class WebRtcStreamView extends LitElement {
             };
 
             pc.ontrack = ev => {
+                console.log("[webrtc-stream-view] ontrack", {
+                    kind: ev.track.kind,
+                    readyState: ev.track.readyState,
+                    streams: ev.streams.length,
+                });
                 const video = this._video;
+                if (!video) console.warn("[webrtc-stream-view] ontrack fired but <video> query is null");
                 if (video && ev.streams[0]) {
                     video.srcObject = ev.streams[0];
                 }

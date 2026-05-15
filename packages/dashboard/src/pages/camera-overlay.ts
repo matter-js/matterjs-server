@@ -11,7 +11,7 @@ import "@material/web/iconbutton/icon-button.js";
 import "@material/web/select/outlined-select.js";
 import "@material/web/select/select-option.js";
 import type { MatterClient } from "@matter-server/ws-client";
-import { mdiCamera, mdiClose } from "@mdi/js";
+import { mdiCamera, mdiClose, mdiVolumeHigh, mdiVolumeOff } from "@mdi/js";
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { createRef, ref } from "lit/directives/ref.js";
@@ -57,6 +57,7 @@ export class CameraOverlay extends LitElement {
     @state() private _resolutionsLoading = true;
     @state() private _closing = false;
     @state() private _activeVideoStreamId: number | null = null;
+    @state() private _muted = true;
 
     private get _snapshotSupported(): boolean {
         const node = this.client?.nodes[String(this.nodeId)];
@@ -172,6 +173,14 @@ export class CameraOverlay extends LitElement {
         if (view) {
             void view.stop();
         }
+    }
+
+    private _toggleMute(): void {
+        const view = this._streamViewRef.value;
+        if (!view) return;
+        const next = !this._muted;
+        view.setMuted(next);
+        this._muted = next;
     }
 
     private async _onSnapshot(): Promise<void> {
@@ -295,7 +304,14 @@ export class CameraOverlay extends LitElement {
                           </md-filled-button>`
                         : nothing}
                     ${this._state === "streaming"
-                        ? html`<md-filled-button @click=${this._stop}>End</md-filled-button>`
+                        ? html`<md-filled-button @click=${this._stop}>End</md-filled-button>
+                              <md-text-button @click=${this._toggleMute} aria-label=${this._muted ? "Unmute" : "Mute"}>
+                                  <ha-svg-icon
+                                      slot="icon"
+                                      .path=${this._muted ? mdiVolumeOff : mdiVolumeHigh}
+                                  ></ha-svg-icon>
+                                  ${this._muted ? "Unmute" : "Mute"}
+                              </md-text-button>`
                         : nothing}
                     ${this._snapshotSupported
                         ? html`<md-text-button
@@ -345,14 +361,17 @@ export class CameraOverlay extends LitElement {
             border-bottom: 1px solid var(--md-sys-color-outline-variant);
         }
         main {
-            display: block;
+            display: flex;
+            flex-direction: column;
             background: black;
             min-height: 0;
             position: relative;
+            overflow: hidden;
         }
         webrtc-stream-view {
+            flex: 1 1 auto;
+            min-height: 0;
             width: 100%;
-            height: 100%;
         }
         .status.error {
             color: var(--danger-color);
