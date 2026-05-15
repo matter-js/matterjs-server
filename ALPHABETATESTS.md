@@ -1,4 +1,4 @@
-# Alpha/Beta Test of the New Matter Server
+# Beta Test of the New Matter Server
 
 ## Overview of Test Phases and Their Goals
 
@@ -8,18 +8,18 @@ This test phase involves a separate installation of the new Matter Server and do
 Please see detailed instructions [below](#manual-test-instructions).
 
 The main goals of this phase are to:
-* Validate the basic functionality of the new Matter Server based on matter.js
-* Ensure that the migration from the python-matter-server storage format to the matter.js format works as expected
-* Verify that the server connects to all online nodes in the fabric, subscribes to all data, and works as expected
-* Confirm that the dashboard shows the correct values for all nodes and works correctly, including OTA, binding setup, and device management (commission, remove nodes)
-* Verify that when adding or removing nodes, the `<long-number>.json` file gets updated
-* (If possible) Add the temporary server location as a Home Assistant Matter integration to a (test?) HA instance and validate functionality there too (all entities are discovered correctly, data updates, etc.)
-* (If possible) After deleting/adding nodes in the Matter Server, copy back the `<long-number>.json` to the Python server, and new nodes should connect there too and show up in HA; deleted nodes should disappear from HA
+
+- Validate the basic functionality of the new Matter Server based on matter.js
+- Ensure that the migration from the python-matter-server storage format to the matter.js format works as expected
+- Verify that the server connects to all online nodes in the fabric, subscribes to all data, and works as expected
+- Confirm that the dashboard shows the correct values for all nodes and works correctly, including OTA, binding setup, and device management (commission, remove nodes)
+- Verify that when adding or removing nodes, the `<long-number>.json` file gets updated
+- (If possible) Add the temporary server location as a Home Assistant Matter integration to a (test?) HA instance and validate functionality there too (all entities are discovered correctly, data updates, etc.)
+- (If possible) After deleting/adding nodes in the Matter Server, copy back the `<long-number>.json` to the Python server, and new nodes should connect there too and show up in HA; deleted nodes should disappear from HA
 
 ### Phase 2: Official Release for all "Beta" HA Addon Users (released 22.01.2026)
 
 The Matter Server add-on version 8.2.0 was released with a beta toggle for the Matter.js-based server. All users of the HA add-on who enable "Beta" will use this as their main Matter Server. If issues occur, it can be switched back to the python-matter-server by disabling the beta version in the HA add-on.
-
 
 ### Phase 3: Official Release for all "Stable" HA Addon Users
 
@@ -92,8 +92,8 @@ This step is optional because the server can also be started without migrating a
 
 1. Create a directory for the data files, e.g., `mkdir ~/matter-data` or `mkdir ./.matter-data`
 2. Get the python-matter-server data files (`chip.json` and `<long-number>.json`) from your Home Assistant installation or python-matter-server installation
-   * If you run Home Assistant OS or Supervised, you can use the SSH add-on to get access to the filesystem
-   * Find the running Docker container for the python-matter-server (`docker ps`), list the files in the container (`docker exec -it <container-id> ls /data/`) and copy them to your host (`docker cp <container-id>:/data/chip.json ./chip.json` and `docker cp <container-id>:/data/<long-number>.json ./<long-number>.json`)
+    - If you run Home Assistant OS or Supervised, you can use the SSH add-on to get access to the filesystem
+    - Find the running Docker container for the python-matter-server (`docker ps`), list the files in the container (`docker exec -it <container-id> ls /data/`) and copy them to your host (`docker cp <container-id>:/data/chip.json ./chip.json` and `docker cp <container-id>:/data/<long-number>.json ./<long-number>.json`)
 3. Copy the files to the created directory
 
 #### Step 3: Starting the Server
@@ -129,10 +129,10 @@ matter.js uses a filesystem-based key/value store to persist all data.
 
 The following directories will be created in the `data` directory you specify and should not be accessed directly:
 
-* `server`: All node data is stored in files in this directory – one file per storage key. This allows the OS to best optimize data access and I/O operations.
-* `ota`: The OTA update files are stored in this directory using a specific naming scheme. Please do not store your own files there; see the [CLI documentation](./docs/cli.md) for instructions and use your own directory to add custom OTA files. They will automatically be imported from there.
-* `certificates`: Downloaded Matter certificate chains used to validate devices when commissioning them.
-* `vendors`: Downloaded list of Matter vendors
+- `server`: All node data is stored in files in this directory – one file per storage key. This allows the OS to best optimize data access and I/O operations.
+- `ota`: The OTA update files are stored in this directory using a specific naming scheme. Please do not store your own files there; see the [CLI documentation](./docs/cli.md) for instructions and use your own directory to add custom OTA files. They will automatically be imported from there.
+- `certificates`: Downloaded Matter certificate chains used to validate devices when commissioning them.
+- `vendors`: Downloaded list of Matter vendors
 
 ### How does the migration work exactly?
 

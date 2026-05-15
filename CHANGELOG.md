@@ -13,6 +13,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Feature: Updates the Matter version to be compatible with Matter 1.5.1
 - Feature: Enables Matter TCP support when devices support it (likely very few devices)
 - Feature: Updates the generated Python client classes to match Matter 1.5.1
+- Feature: Seeds Certificates and Vendor Information to allow basic functionality also without internet access
 - Feature: Enhances the Dashboard UI to allow to clear and change the Wifi/Thread credentials
 - Feature: (iamadamreed) Adds TCL custom cluster
 - Feature: (burmistrzak) Adds "window open mode" attribute for Eve custom cluster

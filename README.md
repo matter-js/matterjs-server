@@ -5,7 +5,7 @@
 > [!WARNING]
 > This is an Beta version of a matter.js-based controller with a [Python Matter Server](https://github.com/matter-js/python-matter-server) compatible WebSocket interface.
 > This version is not yet officially re-certified by the CSA, but will be in the future.
-> 
+>
 > Please refer to the [Beta testing instructions](ALPHABETATESTS.md) how to test this version.
 
 The Open Home Foundation Matter Server serves as the foundation to provide Matter support to [Home Assistant](https://home-assistant.io) but its universal approach makes it suitable to be used in other projects too.
@@ -19,21 +19,22 @@ The current version of the server supports Matter 1.4.2 and is a drop-in replace
 The Home Assistant integration is based on the Python bindings of the Python Matter Server v8.1.2, which uses a Matter-SDK version 1.4.2 (from 30.06.2025).
 
 This repository consists of multiple packages that are provided in the `packages` directory:
-* `matter-server`: The OHF Matter Server using the below packages to provide functionality on a webserver (published to npmjs as `matter-server`)
-* `ws-controller`: The WebSocket-based Matter Controller implementation using matter.js (published to npmjs as `@matter-server/ws-controller`)
-* `ws-client`: A WebSocket client library for connecting to the Matter Server (usable in browser and Node.js) (published to npmjs as `@matter-server/ws-client`)
-* `custom-clusters`: A set of community-provided custom Matter clusters used by the Matter Server (published to npmjs as `@matter-server/custom-clusters`)
-* `dashboard`: A dashboard to interact with the Matter Server and show node detailed data (published to npmjs as `@matter-server/dashboard`)
 
-## Alpha/Beta testing instructions
+- `matter-server`: The OHF Matter Server using the below packages to provide functionality on a webserver (published to npmjs as `matter-server`)
+- `ws-controller`: The WebSocket-based Matter Controller implementation using matter.js (published to npmjs as `@matter-server/ws-controller`)
+- `ws-client`: A WebSocket client library for connecting to the Matter Server (usable in browser and Node.js) (published to npmjs as `@matter-server/ws-client`)
+- `custom-clusters`: A set of community-provided custom Matter clusters used by the Matter Server (published to npmjs as `@matter-server/custom-clusters`)
+- `dashboard`: A dashboard to interact with the Matter Server and show node detailed data (published to npmjs as `@matter-server/dashboard`)
+
+## Beta testing instructions
 
 As mentioned above the enw Matter server is currently in a Testing phase.
 
-Please see the [Alpha/Beta testing instructions](ALPHABETATESTS.md) for more information.
+Please see the [Beta testing instructions](ALPHABETATESTS.md) for more information.
 
 ## Support
 
-During the Alpha/Beta phase of the matter.js-based Matter server, we enabled issue creation for this version via GitHub issues. If you use the Python Matter server and your issue is not related to a Migration-issue from/to matter.js-Server, please use the options listed below.
+During the Beta phase of the matter.js-based Matter server, we enabled issue creation for this version via GitHub issues. If you use the Python Matter server and your issue is not related to a Migration-issue from/to matter.js-Server, please use the options listed below.
 
 For users of Home Assistant, seek support in the official Home Assistant support channels.
 
@@ -63,25 +64,28 @@ A preconfigured [dev container](.devcontainer/) is available with all required t
 - For running the Matter Server as a standalone docker container, see our instructions [here](docs/docker.md).
 
 ### Manual installation (from npm)
-* Ensure to have Node.js 20.x, 22.x, or 24.x installed (22.x recommended)
-* `npm install matter-server`
-* `npx matter-server` or alternatively `cd node_modules/matter-server && npm run server`
+
+- Ensure to have Node.js 20.x, 22.x, or 24.x installed (22.x recommended)
+- `npm install matter-server`
+- `npx matter-server` or alternatively `cd node_modules/matter-server && npm run server`
 
 If you want to provide more parameters when using "npm run" (not needed when using npx!) use an extra "--" to separate parameters, see below.
 
 ### Manual installation (for local development)
-* clone the repository
-* `npm i` in the root directory to install npm dependencies and do initial build
-* (`npm run build`) if ever needed after changing code
-* `npm run server` to start it
+
+- clone the repository
+- `npm i` in the root directory to install npm dependencies and do initial build
+- (`npm run build`) if ever needed after changing code
+- `npm run server` to start it
 
 The server is started on port localhost:5580 and listens fpr WS on "/ws"
 
 Configure the HA instance against this server and have fun :-)
 
 ### Tips
-* to control the storage directory use `--storage-path data` as parameter to use local dir `data` for storage
-* to limit network interfaces (especially good idea on Macs sometimes) use `--primary-interface en0`
+
+- to control the storage directory use `--storage-path data` as parameter to use local dir `data` for storage
+- to limit network interfaces (especially good idea on Macs sometimes) use `--primary-interface en0`
 
 So as example to do both use `npm run server -- --storage-path data --primary-interface en0` (note the extra "--" to pass parameters to the script).
 
@@ -113,6 +117,19 @@ It was in general tested with a simply slight bulb on network.
 
 Ble and Wifi should work when server gets startes with `--ble` flag, but Wifi only will work. For Thread Matter.js currently requires a network Name which is not provided.
 
+## Internet access requirements
+
+Ideally, the Matter server has access to the internet which is needed for the following functionalities:
+
+- Checking Device Attestation (validity of certification) and Certificates and Certificate Revocations during the commissioning process (requires access to the CSA DCL - Distributed Compliance Ledger)
+- Checking Certification status during the commissioning process (requires access to the CSA DCL)
+- Collecting Vendor Information to lookup the Vendor ID (requires access to the CSA DCL)
+- Checking for OTA device updates (requires access to the CSA DCL)
+- Download OTA device updates (requires access to vendor specific Download locations returned by the CSA DCL)
+
+Without Internet access no OTA update checks or OTA update download is possible. You can still add [OTA files manually to the server](#importing-custom-ota-firmware-files).
+For Certificates, Certification verifications, and vendor lookup the server uses a package of seed data and will (if not disabled, see above) pre-install data from the time from release of this matter server version. These data might be outdated and certificates might be missing depending on your devices, which could lead to errors when you try to commission devices.
+
 ## Dashboard Network Visualization
 
 The dashboard includes interactive network topology graphs for Thread and WiFi networks, accessible via the navigation tabs. These graphs are only available on screens wider than 768px and are hidden on mobile devices.
@@ -123,9 +140,9 @@ Displays the Thread mesh network topology showing how your Thread devices connec
 
 - **Device nodes** with icons based on device type (lights, sensors, plugs, etc.)
 - **Mesh connections** between Thread devices with signal strength indicated by color:
-  - Green: Strong signal (> -70 dBm)
-  - Orange: Medium signal (-85 to -70 dBm)
-  - Red: Weak signal (< -85 dBm)
+    - Green: Strong signal (> -70 dBm)
+    - Orange: Medium signal (-85 to -70 dBm)
+    - Red: Weak signal (< -85 dBm)
 - **Thread roles**: Leader, Router, End Device, Sleepy End Device
 - **Border Routers**: External devices identified via mDNS (`_meshcop._udp` + `_trel._udp`) are rendered with a router icon and a two-line label showing the device hostname and the Thread network name. Click a Border Router node to see its full mDNS-derived details — vendor, model, Thread version, hostname, IP addresses, MeshCoP/TREL ports, extended PAN ID, partition ID, active timestamp, state bitmap, border-agent ID, and which commissioned nodes report it as a neighbor.
 - **Unknown / External devices**: Thread routers that appear in commissioned-node neighbor tables but cannot be matched to a known Border Router are shown with a question-mark icon and dashed edges. When their Thread network can be resolved (because at least one Border Router on the same extended PAN ID is known via mDNS), the network name is shown as a second line on the label and in the details panel.
@@ -198,6 +215,7 @@ npx matter-server --enable-test-net-dcl --ota-provider-dir /path/to/ota-files
 ```
 
 Or using environment variables (useful for Docker):
+
 ```bash
 export ENABLE_TEST_NET_DCL=true
 export OTA_PROVIDER_DIR=/path/to/ota-files
@@ -216,7 +234,7 @@ npx matter-server
 This implementation aims to be API-compatible with the [Python Matter Server](https://github.com/home-assistant-libs/python-matter-server), but there are some intentional differences:
 
 | Feature                 | Python Matter Server                                       | Matter.js Server                                                                                           |
-|-------------------------|------------------------------------------------------------|------------------------------------------------------------------------------------------------------------|
+| ----------------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | Test Node IDs           | `>= 900000`                                                | `>= 0xFFFF_FFFE_0000_0000` (NodeId range for temporary local NodeIds outside official operational NodeIds) |
 | Fabric Label            | Accepts null/empty to clear                                | Resets to "Home" when null/empty                                                                           |
 | Storage Format          | Single `chip.json` and `{fabricId}.json` file              | matter.js native storage (migration supported)                                                             |
