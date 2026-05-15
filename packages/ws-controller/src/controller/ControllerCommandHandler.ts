@@ -101,7 +101,7 @@ import { Nodes } from "./Nodes.js";
 
 const logger = Logger.get("ControllerCommandHandler");
 
-/** After this duration in Reconnecting state, declare the node unavailable */
+/** Grace period after leaving Connected before a node is declared unavailable. */
 const RECONNECT_TIMEOUT = Minutes(3);
 
 /**
@@ -298,16 +298,12 @@ export class ControllerCommandHandler {
         const node = await this.#controller.getNode(nodeId);
         const attributeCache = this.#nodes.attributeCache;
 
-        // Wire all Events to the Event emitters
-        // Track if a BasicInformation or BridgedDeviceBasicInformation attribute changed during
-        // a subscription batch. When the batch ends (connectionAlive), emit a full node_updated.
+        // Defer the full node_updated until the subscription batch ends (connectionAlive)
+        // so consumers see one update per batch rather than one per attribute.
         let basicInfoChangedInBatch = false;
         node.events.attributeChanged.on(data => {
-            // Update the attribute cache with the new value in WebSocket format
             attributeCache.updateAttribute(nodeId, data);
-            // Then emit the event for listeners
             this.events.attributeChanged.emit(nodeId, data);
-            // Mark for full node_updated if any BasicInformation cluster attribute changed
             if (FULL_UPDATE_CLUSTER_IDS.has(data.path.clusterId)) {
                 basicInfoChangedInBatch = true;
             }
@@ -321,7 +317,6 @@ export class ControllerCommandHandler {
         });
         node.events.eventTriggered.on(data => this.events.eventChanged.emit(nodeId, data));
         node.events.stateChanged.on(state => {
-            // Only refresh cache on Connected state
             if (state === NodeStates.Connected) {
                 attributeCache.update(node);
                 const attributes = attributeCache.get(nodeId);
@@ -330,35 +325,35 @@ export class ControllerCommandHandler {
                 }
             }
 
-            // Manage reconnect timer
-            if (state === NodeStates.Reconnecting) {
-                if (!this.#reconnectTimers.has(nodeId)) {
-                    const timer = Time.getTimer(`reconnect-timeout-${nodeId}`, RECONNECT_TIMEOUT, () => {
-                        this.#reconnectTimers.delete(nodeId);
-                        if (this.#nodes.forceUnavailable(nodeId)) {
-                            logger.info(
-                                `Node ${this.formatNode(nodeId)} still reconnecting after timeout, marking unavailable`,
-                            );
-                            this.events.nodeAvailabilityChanged.emit(nodeId, false);
-                        }
-                    });
-                    timer.utility = true;
-                    timer.start();
-                    this.#reconnectTimers.set(nodeId, timer);
-                }
-            } else {
-                // Any non-Reconnecting state clears the timer
+            // Arm on Connected->Reconnecting only; keep running across later
+            // non-Connected states; cancel on return to Connected.
+            if (state === NodeStates.Connected) {
                 this.#reconnectTimers.get(nodeId)?.stop();
                 this.#reconnectTimers.delete(nodeId);
+            } else if (
+                state === NodeStates.Reconnecting &&
+                !this.#reconnectTimers.has(nodeId) &&
+                this.#nodes.isAvailable(nodeId)
+            ) {
+                const timer = Time.getTimer(`reconnect-timeout-${nodeId}`, RECONNECT_TIMEOUT, () => {
+                    this.#reconnectTimers.delete(nodeId);
+                    if (this.#nodes.forceUnavailable(nodeId)) {
+                        logger.info(
+                            `Node ${this.formatNode(nodeId)} still reconnecting after timeout, marking unavailable`,
+                        );
+                        this.events.nodeAvailabilityChanged.emit(nodeId, false);
+                    }
+                });
+                timer.utility = true;
+                timer.start();
+                this.#reconnectTimers.set(nodeId, timer);
             }
 
-            // Process state change and check if availability changed
-            const result = this.#nodes.processStateChange(nodeId, state);
+            const debouncePending = this.#reconnectTimers.has(nodeId);
+            const result = this.#nodes.processStateChange(nodeId, state, debouncePending);
 
-            // Emit state changed event
             this.events.nodeStateChanged.emit(nodeId, state);
 
-            // Emit availability changed if it actually changed
             if (result.availabilityChanged) {
                 logger.info(
                     `Node ${this.formatNode(nodeId)} availability changed to ${result.available} (state: ${NodeStates[state]})`,
@@ -367,13 +362,10 @@ export class ControllerCommandHandler {
             }
         });
         node.events.structureChanged.on(() => {
-            // Structure changed means endpoints may have been added/removed, refresh cache
             if (node.isConnected) {
                 attributeCache.update(node);
             }
             basicInfoChangedInBatch = false;
-            // Emit node_updated first so consumers see the new endpoint in node.endpoints,
-            // then drain any endpoint_added events queued since the previous structure change.
             this.events.nodeStructureChanged.emit(nodeId);
             for (const endpointId of this.#nodes.drainPendingEndpointAdds(nodeId)) {
                 this.events.nodeEndpointAdded.emit(nodeId, endpointId);
@@ -386,15 +378,12 @@ export class ControllerCommandHandler {
         node.events.nodeEndpointAdded.on(endpointId => this.#nodes.queueEndpointAdded(nodeId, endpointId));
         node.events.nodeEndpointRemoved.on(endpointId => this.events.nodeEndpointRemoved.emit(nodeId, endpointId));
 
-        // Store the node for direct access
         this.#nodes.set(nodeId, node);
 
         this.#nodes.seedState(nodeId, node.connectionState);
 
-        // Initialize attribute cache if node is already initialized
         if (node.initialized) {
             attributeCache.add(node);
-            // Register for custom cluster polling (e.g., Eve energy)
             const attributes = attributeCache.get(nodeId);
             if (attributes) {
                 this.#customClusterPoller.registerNode(this.#peerOf(nodeId), attributes);
