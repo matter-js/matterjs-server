@@ -158,7 +158,11 @@ export class CameraOverlay extends LitElement {
     private _onStreamState(ev: CustomEvent<{ state: StreamState; errorMessage: string | null }>): void {
         this._state = ev.detail.state;
         this._errorMessage = ev.detail.errorMessage;
-        this._activeVideoStreamId = this._streamViewRef.value?.videoStreamId ?? null;
+        // Only expose the underlying VideoStreamID to the AVSUM strip while actively
+        // streaming. Other states would surface a stale id (during error/idle the
+        // stream is being torn down) or a not-yet-allocated null (during connecting).
+        this._activeVideoStreamId =
+            ev.detail.state === "streaming" ? (this._streamViewRef.value?.videoStreamId ?? null) : null;
     }
 
     private _start(): void {

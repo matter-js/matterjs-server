@@ -396,9 +396,6 @@ export class WebRtcStreamView extends LitElement {
             }
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
-            // Clear stream id before notifying error so listeners observing videoStreamId during the
-            // error state-change snapshot don't see a stale id pointing at a no-longer-allocated stream.
-            this._videoStreamId = null;
             this._fireStateChange("error", message);
             await this.stop();
         }
@@ -651,7 +648,6 @@ export class WebRtcStreamView extends LitElement {
             this._fireStateChange("streaming", null);
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
-            this._videoStreamId = null;
             this._fireStateChange("error", `Failed to apply answer: ${message}`);
             await this.stop();
         }
