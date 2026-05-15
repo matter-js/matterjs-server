@@ -12,10 +12,12 @@ import type {
     WebRtcIceCandidatesData,
     WebRtcEndData,
 } from "@matter-server/ws-client";
+import { mdiAlertCircleOutline, mdiVideoOutline } from "@mdi/js";
 import { LitElement, css, html } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
 import { clientContext } from "../client/client-context.js";
 import { asObject, pickNumber } from "../util/attribute-shapes.js";
+import "./ha-svg-icon.js";
 
 // Spec values from @matter/types globals/StreamUsage.ts and
 // web-rtc-transport-definitions.ts WebRtcEndReason. Kept inline to avoid a new
@@ -205,10 +207,23 @@ export class WebRtcStreamView extends LitElement {
                 disableremoteplayback
                 ?hidden=${this._state !== "streaming"}
             ></video>
-            ${this._state === "idle" ? html`<div class="status">Ready</div>` : null}
-            ${this._state === "connecting" ? html`<div class="status">Connecting…</div>` : null}
+            ${this._state === "idle"
+                ? html`<div class="placeholder">
+                      <ha-svg-icon class="placeholder-icon" .path=${mdiVideoOutline}></ha-svg-icon>
+                      <div class="placeholder-text">Click <b>Start</b> to begin streaming</div>
+                  </div>`
+                : null}
+            ${this._state === "connecting"
+                ? html`<div class="placeholder">
+                      <div class="spinner"></div>
+                      <div class="placeholder-text">Connecting…</div>
+                  </div>`
+                : null}
             ${this._state === "error"
-                ? html`<div class="status error">${this._errorMessage ?? "Stream error"}</div>`
+                ? html`<div class="placeholder error">
+                      <ha-svg-icon class="placeholder-icon" .path=${mdiAlertCircleOutline}></ha-svg-icon>
+                      <div class="placeholder-text">${this._errorMessage ?? "Stream error"}</div>
+                  </div>`
                 : null}
         `;
     }
@@ -757,17 +772,53 @@ export class WebRtcStreamView extends LitElement {
         video[hidden] {
             display: none;
         }
-        .status {
+        .placeholder {
             position: absolute;
             inset: 0;
-            display: grid;
-            place-items: center;
-            color: var(--md-sys-color-on-surface-variant);
-            font-style: italic;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            color: rgba(255, 255, 255, 0.6);
+            text-align: center;
+            padding: 24px;
         }
-        .status.error {
-            color: var(--danger-color);
-            font-style: normal;
+        .placeholder-icon {
+            --icon-primary-color: rgba(255, 255, 255, 0.3);
+            width: 64px;
+            height: 64px;
+        }
+        .placeholder-text {
+            font-size: 0.95rem;
+        }
+        .placeholder-text b {
+            color: rgba(255, 255, 255, 0.85);
+            font-weight: 500;
+        }
+        .placeholder.error {
+            color: var(--danger-color, #ff6b6b);
+        }
+        .placeholder.error .placeholder-icon {
+            --icon-primary-color: var(--danger-color, #ff6b6b);
+        }
+        .spinner {
+            width: 32px;
+            height: 32px;
+            border: 3px solid rgba(255, 255, 255, 0.15);
+            border-top-color: rgba(255, 255, 255, 0.7);
+            border-radius: 50%;
+            animation: spin 0.9s linear infinite;
+        }
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .spinner {
+                animation: none;
+            }
         }
     `;
 }
