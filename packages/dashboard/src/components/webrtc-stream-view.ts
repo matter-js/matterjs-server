@@ -611,7 +611,8 @@ export class WebRtcStreamView extends LitElement {
     private async _handleAnswer(data: WebRtcAnswerData | null): Promise<void> {
         if (!this._pc || !data) return;
         try {
-            await this._pc.setRemoteDescription({ type: "answer", sdp: data.sdp });
+            const sdp = this._sanitizeAnswerSdp(data.sdp);
+            await this._pc.setRemoteDescription({ type: "answer", sdp });
             this._answerReceived = true;
             const queue = this._localIceQueue;
             this._localIceQueue = [];
@@ -625,6 +626,37 @@ export class WebRtcStreamView extends LitElement {
             this._fireStateChange("error", `Failed to apply answer: ${message}`);
             await this.stop();
         }
+    }
+
+    /**
+     * Some Matter cameras (notably the matter.js camera-controller example app) answer
+     * `a=sendrecv` on audio m-lines even when our offer is `a=recvonly`. Per RFC 3264 the
+     * only valid mirror of recvonly is sendonly; sendrecv triggers
+     * "Answer tried to set recv when offer did not set send" in setRemoteDescription.
+     * We add both video and audio transceivers as recvonly, so any sendrecv answer must
+     * be coerced to sendonly to apply cleanly.
+     */
+    private _sanitizeAnswerSdp(sdp: string): string {
+        const lines = sdp.split(/\r\n|\n/);
+        let inMediaSection = false;
+        let mutated = false;
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            if (line.startsWith("m=")) {
+                inMediaSection = true;
+                continue;
+            }
+            if (inMediaSection && line === "a=sendrecv") {
+                lines[i] = "a=sendonly";
+                mutated = true;
+            }
+        }
+        if (mutated) {
+            console.warn(
+                "[webrtc-stream-view] coerced a=sendrecv -> a=sendonly in answer (offer was recvonly on all m-lines)",
+            );
+        }
+        return lines.join("\r\n");
     }
 
     private async _handleRemoteIceCandidates(data: WebRtcIceCandidatesData | null): Promise<void> {
