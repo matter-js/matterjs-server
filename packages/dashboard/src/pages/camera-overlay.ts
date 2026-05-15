@@ -354,8 +354,21 @@ export class CameraOverlay extends LitElement {
             color: var(--md-sys-color-on-surface);
             display: grid;
             grid-template-rows: auto auto 1fr auto;
+            grid-template-areas: "header" "strip" "main" "footer";
             border-radius: 8px;
             overflow: hidden;
+        }
+        header {
+            grid-area: header;
+        }
+        avsum-ptz-strip {
+            grid-area: strip;
+        }
+        main {
+            grid-area: main;
+        }
+        footer {
+            grid-area: footer;
         }
         header {
             display: flex;
