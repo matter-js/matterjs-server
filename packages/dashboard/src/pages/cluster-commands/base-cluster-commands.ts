@@ -45,6 +45,7 @@ export abstract class BaseClusterCommands extends LitElement {
         css`
             :host {
                 display: block;
+                color: var(--md-sys-color-on-surface);
             }
 
             details.command-panel {

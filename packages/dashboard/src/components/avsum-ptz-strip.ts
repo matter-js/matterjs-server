@@ -161,6 +161,9 @@ export class AvsumPtzStrip extends LitElement {
                                     </button>
                                 </div>`
                               : nothing}
+                          ${effective === "digital" && this.activeVideoStreamId === null
+                              ? html`<span class="mode-hint">Start stream to enable DPTZ</span>`
+                              : nothing}
                       </div>`
                     : nothing}
                 ${features.mPresets && presets.length > 0
@@ -314,7 +317,7 @@ export class AvsumPtzStrip extends LitElement {
             height: 32px;
         }
         md-icon-button[disabled] {
-            opacity: 0.3;
+            opacity: 0.45;
         }
         .mode-toggle {
             display: flex;
@@ -334,6 +337,11 @@ export class AvsumPtzStrip extends LitElement {
         .mode-toggle button.active {
             background: rgba(255, 255, 255, 0.2);
             color: white;
+        }
+        .mode-hint {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 0.7rem;
+            font-style: italic;
         }
         .presets {
             flex-wrap: wrap;

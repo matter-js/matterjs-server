@@ -394,6 +394,7 @@ class MatterClusterView extends LitElement {
             :host {
                 display: block;
                 background-color: var(--md-sys-color-background);
+                color: var(--md-sys-color-on-background);
             }
 
             .header {
