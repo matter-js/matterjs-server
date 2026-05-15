@@ -417,8 +417,12 @@ class AvsumClusterCommands extends BaseClusterCommands {
                 gap: 24px;
                 padding: 12px 0;
             }
+            md-outlined-icon-button {
+                --md-outlined-icon-button-icon-color: var(--md-sys-color-on-surface);
+                --md-outlined-icon-button-outline-color: var(--md-sys-color-outline);
+            }
             md-outlined-icon-button[disabled] {
-                opacity: 0.45;
+                opacity: 0.6;
             }
             .dpad-grid {
                 display: grid;

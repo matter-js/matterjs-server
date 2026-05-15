@@ -317,7 +317,7 @@ export class AvsumPtzStrip extends LitElement {
             height: 32px;
         }
         md-icon-button[disabled] {
-            opacity: 0.45;
+            opacity: 0.55;
         }
         .mode-toggle {
             display: flex;
