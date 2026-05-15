@@ -1,17 +1,23 @@
 {
     "name": "@matter-server/ws-controller",
     "version": "0.0.0-git",
-    "type": "module",
     "description": "matter.js based Matter controller library",
+    "homepage": "https://github.com/matter-js/matterjs-server",
     "bugs": {
         "url": "https://github.com/matter-js/matterjs-server/issues"
     },
-    "homepage": "https://github.com/matter-js/matterjs-server",
+    "author": "Apollon77",
     "repository": {
         "type": "git",
         "url": "git+https://github.com/matter-js/matterjs-server.git"
     },
-    "author": "Apollon77",
+    "files": [
+        "dist/**/*",
+        "src/**/*",
+        "LICENSE",
+        "README.md"
+    ],
+    "type": "module",
     "main": "dist/esm/index.js",
     "exports": {
         ".": {
@@ -24,21 +30,19 @@
             }
         }
     },
+    "publishConfig": {
+        "access": "public"
+    },
     "scripts": {
         "clean": "nacho-build clean",
         "build": "nacho-build",
         "build-clean": "nacho-build --clean",
         "test": "matter-test --force-exit"
     },
-    "engines": {
-        "node": ">=20.19.0 <22.0.0 || >=22.13.0"
-    },
-    "optionalDependencies": {
-        "@matter/nodejs-ble": "0.17.0-alpha.0-20260515-6eb5f8476"
-    },
     "dependencies": {
-        "@matter/main": "0.17.0-alpha.0-20260515-6eb5f8476",
         "@matter-server/ws-client": "*",
+        "@matter/dcl-data": ">=2026.5.1-5.1",
+        "@matter/main": "0.17.0-alpha.0-20260515-6eb5f8476",
         "@project-chip/matter.js": "0.17.0-alpha.0-20260515-6eb5f8476",
         "ws": "^8.20.0"
     },
@@ -46,13 +50,10 @@
         "@types/node": "^25.6.0",
         "@types/ws": "^8.18.1"
     },
-    "files": [
-        "dist/**/*",
-        "src/**/*",
-        "LICENSE",
-        "README.md"
-    ],
-    "publishConfig": {
-        "access": "public"
+    "optionalDependencies": {
+        "@matter/nodejs-ble": "0.17.0-alpha.0-20260515-6eb5f8476"
+    },
+    "engines": {
+        "node": ">=20.19.0 <22.0.0 || >=22.13.0"
     }
 }

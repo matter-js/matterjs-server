@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { cdSigners, paaRoots, vendors } from "@matter/dcl-data/node";
 import {
     Bytes,
     CommissioningClient,
@@ -18,7 +19,7 @@ import {
     SoftwareUpdateManager,
     Timestamp,
 } from "@matter/main";
-import { VendorInfo, DclCertificateService } from "@matter/main/protocol";
+import { VendorInfo, DclCertificateService, DclVendorInfoService } from "@matter/main/protocol";
 import { VendorId } from "@matter/main/types";
 import { Endpoint } from "@matter/node";
 import { CameraControllerDevice } from "@matter/node/devices/camera-controller";
@@ -65,6 +66,8 @@ export async function computeCompressedNodeId(
 export interface MatterControllerOptions {
     enableTestNetDcl?: boolean;
     disableOtaProvider?: boolean;
+    /** Disable bundled offline DCL seed data (PAA roots, CD signers, vendors). When true, only network DCL is used. */
+    disableDclSeed?: boolean;
     /** Server ID for storage. Default is "server", but may be "server-<hex(fabricId)>-<hex(vendorId)>" for multi-fabric support */
     serverId?: string;
     /** Server version string (e.g., "0.2.10" or "0.2.10-alpha.0"). Used for BasicInformation cluster. */
@@ -98,6 +101,7 @@ export class MatterController {
     #legacyCommissionedDates?: Map<string, Timestamp>;
     #enableTestNetDcl = false;
     #disableOtaProvider = true;
+    #disableDclSeed = false;
     readonly #borderRouterDiscovery: BorderRouterDiscovery;
     #webRtcRequestor?: Endpoint<typeof CameraControllerDevice>;
 
@@ -177,6 +181,7 @@ export class MatterController {
         this.#serverVersion = options.serverVersion ?? "0.0.0";
         this.#enableTestNetDcl = options.enableTestNetDcl ?? this.#enableTestNetDcl;
         this.#disableOtaProvider = options.disableOtaProvider ?? this.#disableOtaProvider;
+        this.#disableDclSeed = options.disableDclSeed ?? this.#disableDclSeed;
     }
 
     protected async initialize(
@@ -186,8 +191,22 @@ export class MatterController {
     ) {
         this.#legacyCommissionedDates = legacyCommissionedDates?.size ? legacyCommissionedDates : undefined;
 
-        // Initialize the DclCertificateService on the root environment, will automatically be used
-        new DclCertificateService(this.#env.root, { fetchTestCertificates: this.#enableTestNetDcl });
+        // Register DCL services on the root environment; DclBehavior picks them up.
+        // When seeding is enabled (default), pre-populate from the bundled offline snapshot so
+        // commissioning works without internet access.
+        const includeTest = this.#enableTestNetDcl;
+        if (this.#disableDclSeed) {
+            new DclCertificateService(this.#env.root, { fetchTestCertificates: includeTest });
+        } else {
+            new DclCertificateService(this.#env.root, {
+                fetchTestCertificates: includeTest,
+                seed: {
+                    paaRoots: paaRoots({ includeTest }),
+                    cdSigners: cdSigners({ includeTest }),
+                },
+            });
+            new DclVendorInfoService(this.#env.root, { seed: { vendors: vendors({ includeTest }) } });
+        }
 
         this.#controllerInstance = new CommissioningController({
             environment: {

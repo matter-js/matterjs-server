@@ -149,6 +149,7 @@ async function start() {
         {
             enableTestNetDcl: cliOptions.enableTestNetDcl,
             disableOtaProvider: cliOptions.disableOta,
+            disableDclSeed: cliOptions.disableDclSeed,
             serverId: legacyData.serverId,
             serverVersion: MATTER_SERVER_VERSION,
         },
