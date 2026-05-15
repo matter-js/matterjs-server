@@ -32,9 +32,9 @@ const WEBRTC_TRANSPORT_PROVIDER_CLUSTER_ID = 0x553;
 // AVSM FeatureMap bits (spec §11.2.4): WMARK=6 enables watermark overlay,
 // OSD=7 enables on-screen display. When advertised, VideoStreamAllocate and
 // SnapshotStreamAllocate REQUIRE watermarkEnabled / osdEnabled fields.
-const AVSM_FEAT_WMARK = 1 << 6;
-const AVSM_FEAT_OSD = 1 << 7;
-const AVSM_FEATURE_MAP_ATTR_ID = 0xfffc;
+export const AVSM_FEAT_WMARK = 1 << 6;
+export const AVSM_FEAT_OSD = 1 << 7;
+export const AVSM_FEATURE_MAP_ATTR_ID = 0xfffc;
 
 const DEFAULT_MAX_RESOLUTION = { width: 1920, height: 1080 };
 const DEFAULT_MIN_RESOLUTION = { width: 640, height: 480 };
@@ -155,6 +155,9 @@ export class WebRtcStreamView extends LitElement {
     @property({ attribute: false }) nodeId!: number | bigint;
     @property({ type: Number }) endpointId!: number;
     @property({ type: Object }) resolution: { width: number; height: number } | null = null;
+
+    @property({ type: Boolean }) watermarkEnabled = false;
+    @property({ type: Boolean }) osdEnabled = false;
 
     @state() private _state: StreamState = "idle";
     @state() private _errorMessage: string | null = null;
@@ -306,8 +309,8 @@ export class WebRtcStreamView extends LitElement {
                 maxBitRate: 10000,
                 keyFrameInterval: 4000,
             };
-            if (avsmFeatures.wmark) videoAllocPayload.watermarkEnabled = false;
-            if (avsmFeatures.osd) videoAllocPayload.osdEnabled = false;
+            if (avsmFeatures.wmark) videoAllocPayload.watermarkEnabled = this.watermarkEnabled;
+            if (avsmFeatures.osd) videoAllocPayload.osdEnabled = this.osdEnabled;
             let videoAlloc: unknown;
             try {
                 videoAlloc = await this.client.deviceCommand(
@@ -582,8 +585,8 @@ export class WebRtcStreamView extends LitElement {
             maxResolution: cap.resolution,
             quality: 90,
         };
-        if (avsmFeatures.wmark) snapshotAllocPayload.watermarkEnabled = false;
-        if (avsmFeatures.osd) snapshotAllocPayload.osdEnabled = false;
+        if (avsmFeatures.wmark) snapshotAllocPayload.watermarkEnabled = this.watermarkEnabled;
+        if (avsmFeatures.osd) snapshotAllocPayload.osdEnabled = this.osdEnabled;
         const response = await this.client.deviceCommand(
             this.nodeId,
             this.endpointId,

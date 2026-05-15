@@ -16,7 +16,12 @@ import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { createRef, ref } from "lit/directives/ref.js";
 import { clientContext } from "../client/client-context.js";
-import { CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID } from "../components/webrtc-stream-view.js";
+import {
+    AVSM_FEAT_OSD,
+    AVSM_FEAT_WMARK,
+    AVSM_FEATURE_MAP_ATTR_ID,
+    CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID,
+} from "../components/webrtc-stream-view.js";
 import "../components/avsum-ptz-strip.js";
 import "../components/ha-svg-icon.js";
 import "../components/webrtc-stream-view.js";
@@ -58,6 +63,8 @@ export class CameraOverlay extends LitElement {
     @state() private _closing = false;
     @state() private _activeVideoStreamId: number | null = null;
     @state() private _muted = true;
+    @state() private _watermarkEnabled = false;
+    @state() private _osdEnabled = false;
 
     private get _snapshotSupported(): boolean {
         const node = this.client?.nodes[String(this.nodeId)];
@@ -133,6 +140,19 @@ export class CameraOverlay extends LitElement {
         const h = pickNumber(obj, "sensorHeight", "1");
         if (w === null || h === null) return null;
         return { width: w, height: h };
+    }
+
+    private _avsmFeatures(): { wmark: boolean; osd: boolean } {
+        const node = this.client?.nodes[String(this.nodeId)];
+        const raw =
+            node?.attributes[
+                `${this.endpointId}/${CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID}/${AVSM_FEATURE_MAP_ATTR_ID}`
+            ];
+        const bits = typeof raw === "number" ? raw : 0;
+        return {
+            wmark: (bits & AVSM_FEAT_WMARK) !== 0,
+            osd: (bits & AVSM_FEAT_OSD) !== 0,
+        };
     }
 
     private _avsumPresent(): boolean {
@@ -245,6 +265,8 @@ export class CameraOverlay extends LitElement {
                               .nodeId=${this.nodeId}
                               .endpointId=${this.endpointId}
                               .resolution=${this._selectedResolution}
+                              .watermarkEnabled=${this._watermarkEnabled}
+                              .osdEnabled=${this._osdEnabled}
                               @streamstate=${this._onStreamState}
                           ></webrtc-stream-view>`
                         : html`<div class="status error">No Matter client available.</div>`}
@@ -298,6 +320,27 @@ export class CameraOverlay extends LitElement {
                                   )}
                               </md-outlined-select>
                           `
+                        : nothing}
+                    ${canStart && this._avsmFeatures().wmark
+                        ? html`<label class="overlay-toggle">
+                              <input
+                                  type="checkbox"
+                                  ?checked=${this._watermarkEnabled}
+                                  @change=${(e: Event) =>
+                                      (this._watermarkEnabled = (e.target as HTMLInputElement).checked)}
+                              />
+                              Watermark
+                          </label>`
+                        : nothing}
+                    ${canStart && this._avsmFeatures().osd
+                        ? html`<label class="overlay-toggle">
+                              <input
+                                  type="checkbox"
+                                  ?checked=${this._osdEnabled}
+                                  @change=${(e: Event) => (this._osdEnabled = (e.target as HTMLInputElement).checked)}
+                              />
+                              OSD
+                          </label>`
                         : nothing}
                     ${canStart
                         ? html`<md-filled-button
@@ -394,6 +437,19 @@ export class CameraOverlay extends LitElement {
             color: var(--danger-color);
             text-align: center;
             padding: 16px;
+        }
+        .overlay-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.85rem;
+            color: var(--md-sys-color-on-surface-variant);
+            user-select: none;
+            cursor: pointer;
+        }
+        .overlay-toggle input[type="checkbox"] {
+            accent-color: var(--md-sys-color-primary);
+            margin: 0;
         }
         .snapshot-preview {
             position: absolute;
