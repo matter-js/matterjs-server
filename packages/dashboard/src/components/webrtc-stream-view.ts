@@ -27,6 +27,13 @@ const END_REASON_USER_HANGUP = 2;
 export const CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID = 0x551;
 const WEBRTC_TRANSPORT_PROVIDER_CLUSTER_ID = 0x553;
 
+// AVSM FeatureMap bits (spec §11.2.4): WMARK=6 enables watermark overlay,
+// OSD=7 enables on-screen display. When advertised, VideoStreamAllocate and
+// SnapshotStreamAllocate REQUIRE watermarkEnabled / osdEnabled fields.
+const AVSM_FEAT_WMARK = 1 << 6;
+const AVSM_FEAT_OSD = 1 << 7;
+const AVSM_FEATURE_MAP_ATTR_ID = 0xfffc;
+
 const DEFAULT_MAX_RESOLUTION = { width: 1920, height: 1080 };
 const DEFAULT_MIN_RESOLUTION = { width: 640, height: 480 };
 
@@ -243,7 +250,8 @@ export class WebRtcStreamView extends LitElement {
 
             const minResolution = this.resolution ?? DEFAULT_MIN_RESOLUTION;
             const maxResolution = this.resolution ?? DEFAULT_MAX_RESOLUTION;
-            const videoAllocPayload = {
+            const avsmFeatures = this._readAvsmFeatures();
+            const videoAllocPayload: Record<string, unknown> = {
                 streamUsage: STREAM_USAGE_LIVE_VIEW,
                 videoCodec: 0,
                 minFrameRate: 30,
@@ -254,6 +262,8 @@ export class WebRtcStreamView extends LitElement {
                 maxBitRate: 10000,
                 keyFrameInterval: 4000,
             };
+            if (avsmFeatures.wmark) videoAllocPayload.watermarkEnabled = false;
+            if (avsmFeatures.osd) videoAllocPayload.osdEnabled = false;
             let videoAlloc: unknown;
             try {
                 videoAlloc = await this.client.deviceCommand(
@@ -466,6 +476,19 @@ export class WebRtcStreamView extends LitElement {
         };
     }
 
+    private _readAvsmFeatures(): { wmark: boolean; osd: boolean } {
+        const node = this.client?.nodes[String(this.nodeId)];
+        const raw =
+            node?.attributes[
+                `${this.endpointId}/${CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID}/${AVSM_FEATURE_MAP_ATTR_ID}`
+            ];
+        const bits = typeof raw === "number" ? raw : 0;
+        return {
+            wmark: (bits & AVSM_FEAT_WMARK) !== 0,
+            osd: (bits & AVSM_FEAT_OSD) !== 0,
+        };
+    }
+
     async deallocateSnapshot(): Promise<void> {
         if (this._snapshotStreamId === null) return;
         const id = this._snapshotStreamId;
@@ -510,18 +533,22 @@ export class WebRtcStreamView extends LitElement {
                 ? parseSnapshotCapabilitiesFromList(capsRaw)
                 : SNAPSHOT_DEFAULTS;
 
+        const avsmFeatures = this._readAvsmFeatures();
+        const snapshotAllocPayload: Record<string, unknown> = {
+            imageCodec: cap.imageCodec,
+            maxFrameRate: cap.maxFrameRate,
+            minResolution: cap.resolution,
+            maxResolution: cap.resolution,
+            quality: 90,
+        };
+        if (avsmFeatures.wmark) snapshotAllocPayload.watermarkEnabled = false;
+        if (avsmFeatures.osd) snapshotAllocPayload.osdEnabled = false;
         const response = await this.client.deviceCommand(
             this.nodeId,
             this.endpointId,
             CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID,
             "SnapshotStreamAllocate",
-            {
-                imageCodec: cap.imageCodec,
-                maxFrameRate: cap.maxFrameRate,
-                minResolution: cap.resolution,
-                maxResolution: cap.resolution,
-                quality: 90,
-            },
+            snapshotAllocPayload,
         );
         const snapshotStreamId = parseSnapshotAllocateResponse(response);
         if (snapshotStreamId === null) {
