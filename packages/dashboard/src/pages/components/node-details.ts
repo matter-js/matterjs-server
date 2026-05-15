@@ -221,7 +221,7 @@ export class NodeDetails extends LitElement {
 
     private _openCameraOverlay(): void {
         const overlay = document.createElement("camera-overlay");
-        overlay.nodeId = Number(this.node!.node_id);
+        overlay.nodeId = this.node!.node_id;
         overlay.endpointId = this.endpoint;
         const root = document.querySelector("matter-dashboard-app");
         if (root) {
