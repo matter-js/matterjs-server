@@ -99,8 +99,8 @@ import { pingIp } from "../util/network.js";
 import { WebRtcTransportRequestorServer } from "./behaviors/WebRtcTransportRequestorServer.js";
 import { CustomClusterPoller } from "./CustomClusterPoller.js";
 import { Nodes } from "./Nodes.js";
-import { attachWebRtcCallbackBridge } from "./WebRtcCallbackBridge.js";
 import { TimeSyncManager } from "./TimeSyncManager.js";
+import { attachWebRtcCallbackBridge } from "./WebRtcCallbackBridge.js";
 
 const logger = Logger.get("ControllerCommandHandler");
 
