@@ -30,7 +30,7 @@ import "./log-level-section.js";
 @customElement("settings-dialog")
 export class SettingsDialog extends LitElement {
     @consume({ context: clientContext })
-    public client?: MatterClient;
+    public client!: MatterClient;
 
     @consume({ context: tickContext, subscribe: true })
     protected _tick = 0;
