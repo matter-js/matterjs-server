@@ -65,6 +65,8 @@ export class CameraOverlay extends LitElement {
     @state() private _muted = true;
     @state() private _watermarkEnabled = false;
     @state() private _osdEnabled = false;
+    @state() private _snapshotResolutions: Resolution[] = [];
+    @state() private _selectedSnapshotResolution: Resolution | null = null;
 
     private get _snapshotSupported(): boolean {
         const node = this.client?.nodes[String(this.nodeId)];
@@ -89,7 +91,35 @@ export class CameraOverlay extends LitElement {
     private _initResolutions(): void {
         this._resolutions = this._loadResolutions();
         this._selectedResolution = this._resolutions[0] ?? null;
+        this._snapshotResolutions = this._loadSnapshotResolutions();
+        this._selectedSnapshotResolution = this._snapshotResolutions[0] ?? null;
         this._resolutionsLoading = false;
+    }
+
+    private _loadSnapshotResolutions(): Resolution[] {
+        const raw = this._readCachedAvsmAttribute(10);
+        if (!Array.isArray(raw)) return [];
+        const seen = new Map<string, Resolution>();
+        for (const item of raw) {
+            const obj = asObject(item);
+            if (!obj) continue;
+            const res = asObject(obj["resolution"] ?? obj["0"]);
+            if (!res) continue;
+            const w = pickNumber(res, "width", "0");
+            const h = pickNumber(res, "height", "1");
+            if (w !== null && h !== null) {
+                const key = `${w}x${h}`;
+                if (!seen.has(key)) seen.set(key, { width: w, height: h });
+            }
+        }
+        return [...seen.values()].sort((a, b) => b.width * b.height - a.width * a.height);
+    }
+
+    private _onSnapshotResolutionChange(ev: Event): void {
+        const value = (ev.target as HTMLSelectElement).value;
+        const [w, h] = value.split("x").map(Number);
+        if (!Number.isFinite(w) || !Number.isFinite(h)) return;
+        this._selectedSnapshotResolution = { width: w, height: h };
     }
 
     private _readCachedAvsmAttribute(attributeId: number): unknown {
@@ -267,6 +297,7 @@ export class CameraOverlay extends LitElement {
                               .resolution=${this._selectedResolution}
                               .watermarkEnabled=${this._watermarkEnabled}
                               .osdEnabled=${this._osdEnabled}
+                              .snapshotResolution=${this._selectedSnapshotResolution}
                               @streamstate=${this._onStreamState}
                           ></webrtc-stream-view>`
                         : html`<div class="status error">No Matter client available.</div>`}
@@ -312,6 +343,25 @@ export class CameraOverlay extends LitElement {
                                   @change=${this._onResolutionChange}
                               >
                                   ${this._resolutions.map(
+                                      r => html`
+                                          <md-select-option value=${`${r.width}x${r.height}`}>
+                                              <div slot="headline">${r.width}×${r.height}</div>
+                                          </md-select-option>
+                                      `,
+                                  )}
+                              </md-outlined-select>
+                          `
+                        : nothing}
+                    ${canStart && this._snapshotSupported && this._snapshotResolutions.length > 0
+                        ? html`
+                              <md-outlined-select
+                                  label="Snapshot"
+                                  .value=${this._selectedSnapshotResolution
+                                      ? `${this._selectedSnapshotResolution.width}x${this._selectedSnapshotResolution.height}`
+                                      : ""}
+                                  @change=${this._onSnapshotResolutionChange}
+                              >
+                                  ${this._snapshotResolutions.map(
                                       r => html`
                                           <md-select-option value=${`${r.width}x${r.height}`}>
                                               <div slot="headline">${r.width}×${r.height}</div>
