@@ -20,33 +20,35 @@ describe("Nodes", () => {
             nodes = new Nodes();
         });
 
-        it("returns true when Connected", () => {
+        it("returns true when Connected (no debounce)", () => {
             expect(nodes.isNodeAvailable(NodeStates.Connected)).to.equal(true);
         });
 
-        it("returns true when Reconnecting from Connected (debounce)", () => {
-            expect(nodes.isNodeAvailable(NodeStates.Reconnecting, NodeStates.Connected)).to.equal(true);
+        it("returns true when Connected even if debounce pending", () => {
+            expect(nodes.isNodeAvailable(NodeStates.Connected, true)).to.equal(true);
         });
 
-        it("returns false when Reconnecting from WaitingForDeviceDiscovery", () => {
-            expect(nodes.isNodeAvailable(NodeStates.Reconnecting, NodeStates.WaitingForDeviceDiscovery)).to.equal(
-                false,
-            );
+        it("returns true when Reconnecting with debounce pending", () => {
+            expect(nodes.isNodeAvailable(NodeStates.Reconnecting, true)).to.equal(true);
         });
 
-        it("returns false when Reconnecting with no previous state", () => {
+        it("returns true when WaitingForDeviceDiscovery with debounce pending", () => {
+            expect(nodes.isNodeAvailable(NodeStates.WaitingForDeviceDiscovery, true)).to.equal(true);
+        });
+
+        it("returns true when Disconnected with debounce pending", () => {
+            expect(nodes.isNodeAvailable(NodeStates.Disconnected, true)).to.equal(true);
+        });
+
+        it("returns false when Reconnecting without debounce", () => {
             expect(nodes.isNodeAvailable(NodeStates.Reconnecting)).to.equal(false);
         });
 
-        it("returns false when Disconnected", () => {
+        it("returns false when Disconnected without debounce", () => {
             expect(nodes.isNodeAvailable(NodeStates.Disconnected)).to.equal(false);
         });
 
-        it("returns false when Disconnected even if previously Connected", () => {
-            expect(nodes.isNodeAvailable(NodeStates.Disconnected, NodeStates.Connected)).to.equal(false);
-        });
-
-        it("returns false when WaitingForDeviceDiscovery", () => {
+        it("returns false when WaitingForDeviceDiscovery without debounce", () => {
             expect(nodes.isNodeAvailable(NodeStates.WaitingForDeviceDiscovery)).to.equal(false);
         });
     });
@@ -58,18 +60,18 @@ describe("Nodes", () => {
             nodes = new Nodes();
         });
 
-        it("reports unavailable when Connected -> Disconnected", () => {
+        it("reports unavailable when Connected -> Disconnected (no debounce)", () => {
             nodes.seedState(TEST_NODE_ID, NodeStates.Connected);
-            const result = nodes.processStateChange(TEST_NODE_ID, NodeStates.Disconnected);
+            const result = nodes.processStateChange(TEST_NODE_ID, NodeStates.Disconnected, false);
             expect(result.availabilityChanged).to.equal(true);
             if (result.availabilityChanged) {
                 expect(result.available).to.equal(false);
             }
         });
 
-        it("reports unavailable when Connected -> WaitingForDeviceDiscovery", () => {
+        it("reports unavailable when Connected -> WaitingForDeviceDiscovery (no debounce)", () => {
             nodes.seedState(TEST_NODE_ID, NodeStates.Connected);
-            const result = nodes.processStateChange(TEST_NODE_ID, NodeStates.WaitingForDeviceDiscovery);
+            const result = nodes.processStateChange(TEST_NODE_ID, NodeStates.WaitingForDeviceDiscovery, false);
             expect(result.availabilityChanged).to.equal(true);
             if (result.availabilityChanged) {
                 expect(result.available).to.equal(false);
@@ -78,54 +80,90 @@ describe("Nodes", () => {
 
         it("reports available when Disconnected -> Connected", () => {
             nodes.seedState(TEST_NODE_ID, NodeStates.Disconnected);
-            const result = nodes.processStateChange(TEST_NODE_ID, NodeStates.Connected);
+            const result = nodes.processStateChange(TEST_NODE_ID, NodeStates.Connected, false);
             expect(result.availabilityChanged).to.equal(true);
             if (result.availabilityChanged) {
                 expect(result.available).to.equal(true);
             }
         });
 
-        it("does NOT report change when Connected -> Reconnecting (debounce)", () => {
+        it("does NOT report change when Connected -> Reconnecting with debounce pending", () => {
             nodes.seedState(TEST_NODE_ID, NodeStates.Connected);
-            const result = nodes.processStateChange(TEST_NODE_ID, NodeStates.Reconnecting);
+            const result = nodes.processStateChange(TEST_NODE_ID, NodeStates.Reconnecting, true);
             expect(result.availabilityChanged).to.equal(false);
+            expect(nodes.isAvailable(TEST_NODE_ID)).to.equal(true);
+        });
+
+        it("does NOT report change when Reconnecting -> WaitingForDeviceDiscovery with debounce pending", () => {
+            nodes.seedState(TEST_NODE_ID, NodeStates.Connected);
+            nodes.processStateChange(TEST_NODE_ID, NodeStates.Reconnecting, true);
+            const result = nodes.processStateChange(TEST_NODE_ID, NodeStates.WaitingForDeviceDiscovery, true);
+            expect(result.availabilityChanged).to.equal(false);
+            expect(nodes.isAvailable(TEST_NODE_ID)).to.equal(true);
         });
 
         it("does NOT report change when unavailable -> another unavailable", () => {
             nodes.seedState(TEST_NODE_ID, NodeStates.Disconnected);
-            const result = nodes.processStateChange(TEST_NODE_ID, NodeStates.WaitingForDeviceDiscovery);
+            const result = nodes.processStateChange(TEST_NODE_ID, NodeStates.WaitingForDeviceDiscovery, false);
             expect(result.availabilityChanged).to.equal(false);
         });
 
         it("reports available on Connected for unseeded node", () => {
-            const result = nodes.processStateChange(TEST_NODE_ID, NodeStates.Connected);
+            const result = nodes.processStateChange(TEST_NODE_ID, NodeStates.Connected, false);
             expect(result.availabilityChanged).to.equal(true);
             if (result.availabilityChanged) {
                 expect(result.available).to.equal(true);
             }
         });
 
-        it("handles full lifecycle: Connected -> Reconnecting -> Disconnected -> Connected", () => {
+        it("Connected -> Reconnecting -> WaitingForDeviceDiscovery stays available while timer armed", () => {
             nodes.seedState(TEST_NODE_ID, NodeStates.Connected);
 
-            // Connected -> Reconnecting: debounced, still available, no change
-            const r1 = nodes.processStateChange(TEST_NODE_ID, NodeStates.Reconnecting);
+            // Connected -> Reconnecting: timer armed, debounced, still available
+            const r1 = nodes.processStateChange(TEST_NODE_ID, NodeStates.Reconnecting, true);
             expect(r1.availabilityChanged).to.equal(false);
             expect(nodes.isAvailable(TEST_NODE_ID)).to.equal(true);
 
-            // Reconnecting -> Disconnected: now unavailable
-            const r2 = nodes.processStateChange(TEST_NODE_ID, NodeStates.Disconnected);
-            expect(r2.availabilityChanged).to.equal(true);
-            if (r2.availabilityChanged) {
-                expect(r2.available).to.equal(false);
-            }
+            // Reconnecting -> WaitingForDeviceDiscovery (timer still armed): still available
+            const r2 = nodes.processStateChange(TEST_NODE_ID, NodeStates.WaitingForDeviceDiscovery, true);
+            expect(r2.availabilityChanged).to.equal(false);
+            expect(nodes.isAvailable(TEST_NODE_ID)).to.equal(true);
 
-            // Disconnected -> Connected: available again
-            const r3 = nodes.processStateChange(TEST_NODE_ID, NodeStates.Connected);
-            expect(r3.availabilityChanged).to.equal(true);
-            if (r3.availabilityChanged) {
-                expect(r3.available).to.equal(true);
-            }
+            // WaitingForDeviceDiscovery -> Connected: timer cleared, stays available
+            const r3 = nodes.processStateChange(TEST_NODE_ID, NodeStates.Connected, false);
+            expect(r3.availabilityChanged).to.equal(false);
+            expect(nodes.isAvailable(TEST_NODE_ID)).to.equal(true);
+        });
+
+        it("stays unavailable across non-Connected state changes after forceUnavailable", () => {
+            nodes.seedState(TEST_NODE_ID, NodeStates.Connected);
+            nodes.processStateChange(TEST_NODE_ID, NodeStates.Reconnecting, true);
+
+            // Timer expiry simulated by forceUnavailable, then next state change has debouncePending=false
+            nodes.forceUnavailable(TEST_NODE_ID);
+            const result = nodes.processStateChange(TEST_NODE_ID, NodeStates.WaitingForDeviceDiscovery, false);
+            // wasAvailable already false (forceUnavailable) -> no further change
+            expect(result.availabilityChanged).to.equal(false);
+            expect(nodes.isAvailable(TEST_NODE_ID)).to.equal(false);
+        });
+
+        it("full lifecycle: Connected -> Reconnecting -> Disconnected -> Connected", () => {
+            nodes.seedState(TEST_NODE_ID, NodeStates.Connected);
+
+            // Connected -> Reconnecting: timer armed, no change
+            const r1 = nodes.processStateChange(TEST_NODE_ID, NodeStates.Reconnecting, true);
+            expect(r1.availabilityChanged).to.equal(false);
+            expect(nodes.isAvailable(TEST_NODE_ID)).to.equal(true);
+
+            // Reconnecting -> Disconnected with debounce still pending: no change
+            const r2 = nodes.processStateChange(TEST_NODE_ID, NodeStates.Disconnected, true);
+            expect(r2.availabilityChanged).to.equal(false);
+            expect(nodes.isAvailable(TEST_NODE_ID)).to.equal(true);
+
+            // Disconnected -> Connected: timer cleared, stays available
+            const r3 = nodes.processStateChange(TEST_NODE_ID, NodeStates.Connected, false);
+            expect(r3.availabilityChanged).to.equal(false);
+            expect(nodes.isAvailable(TEST_NODE_ID)).to.equal(true);
         });
     });
 
@@ -172,13 +210,12 @@ describe("Nodes", () => {
             nodes.seedState(TEST_NODE_ID, NodeStates.Connected);
             expect(nodes.isAvailable(TEST_NODE_ID)).to.equal(true);
 
-            // Transition to Reconnecting - debounced, still available
-            const result = nodes.processStateChange(TEST_NODE_ID, NodeStates.Reconnecting);
+            // Transition to Reconnecting with debounce armed: still available
+            const result = nodes.processStateChange(TEST_NODE_ID, NodeStates.Reconnecting, true);
             expect(result.availabilityChanged).to.equal(false);
 
-            // The core bug fix: isAvailable returns the CACHED value (true)
-            // rather than recomputing from live state (Reconnecting without
-            // previous-state context would give false)
+            // isAvailable returns the CACHED debounced value without needing
+            // to know the live debounce state.
             expect(nodes.isAvailable(TEST_NODE_ID)).to.equal(true);
         });
 

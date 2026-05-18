@@ -16474,63 +16474,63 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 2820,
                 "label": "RmsVoltage",
                 "type": "Optional[unknown]",
-                "writable": true
+                "writable": false
             },
             "1288": {
                 "id": 1288,
                 "cluster_id": 2820,
                 "label": "RmsCurrent",
                 "type": "Optional[unknown]",
-                "writable": true
+                "writable": false
             },
             "1291": {
                 "id": 1291,
                 "cluster_id": 2820,
                 "label": "ActivePower",
                 "type": "Optional[unknown]",
-                "writable": true
+                "writable": false
             },
             "1536": {
                 "id": 1536,
                 "cluster_id": 2820,
                 "label": "AcVoltageMultiplier",
                 "type": "Optional[unknown]",
-                "writable": true
+                "writable": false
             },
             "1537": {
                 "id": 1537,
                 "cluster_id": 2820,
                 "label": "AcVoltageDivisor",
                 "type": "Optional[unknown]",
-                "writable": true
+                "writable": false
             },
             "1538": {
                 "id": 1538,
                 "cluster_id": 2820,
                 "label": "AcCurrentMultiplier",
                 "type": "Optional[unknown]",
-                "writable": true
+                "writable": false
             },
             "1539": {
                 "id": 1539,
                 "cluster_id": 2820,
                 "label": "AcCurrentDivisor",
                 "type": "Optional[unknown]",
-                "writable": true
+                "writable": false
             },
             "1540": {
                 "id": 1540,
                 "cluster_id": 2820,
                 "label": "AcPowerMultiplier",
                 "type": "Optional[unknown]",
-                "writable": true
+                "writable": false
             },
             "1541": {
                 "id": 1541,
                 "cluster_id": 2820,
                 "label": "AcPowerDivisor",
                 "type": "Optional[unknown]",
-                "writable": true
+                "writable": false
             },
             "65528": {
                 "id": 65528,
@@ -16747,28 +16747,28 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 302775297,
                 "label": "TamperAlarm",
                 "type": "Optional[unknown]",
-                "writable": true
+                "writable": false
             },
             "17": {
                 "id": 17,
                 "cluster_id": 302775297,
                 "label": "PreheatingState",
                 "type": "Optional[unknown]",
-                "writable": true
+                "writable": false
             },
             "18": {
                 "id": 18,
                 "cluster_id": 302775297,
                 "label": "NoDisturbingState",
                 "type": "Optional[unknown]",
-                "writable": true
+                "writable": false
             },
             "19": {
                 "id": 19,
                 "cluster_id": 302775297,
                 "label": "SensorType",
                 "type": "Optional[unknown]",
-                "writable": true
+                "writable": false
             },
             "20": {
                 "id": 20,
@@ -16964,28 +16964,28 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 308149265,
                 "label": "WattAccumulated",
                 "type": "Optional[unknown]",
-                "writable": true
+                "writable": false
             },
             "308084770": {
                 "id": 308084770,
                 "cluster_id": 308149265,
                 "label": "Current",
                 "type": "Optional[unknown]",
-                "writable": true
+                "writable": false
             },
             "308084771": {
                 "id": 308084771,
                 "cluster_id": 308149265,
                 "label": "Watt",
                 "type": "Optional[unknown]",
-                "writable": true
+                "writable": false
             },
             "308084772": {
                 "id": 308084772,
                 "cluster_id": 308149265,
                 "label": "Voltage",
                 "type": "Optional[unknown]",
-                "writable": true
+                "writable": false
             }
         },
         "commands": {}
@@ -17041,7 +17041,7 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 319486977,
                 "label": "GetConfig",
                 "type": "Optional[bytes]",
-                "writable": true
+                "writable": false
             },
             "319422465": {
                 "id": 319422465,
@@ -17055,84 +17055,84 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 319486977,
                 "label": "LoggingMetadata",
                 "type": "Optional[bytes]",
-                "writable": true
+                "writable": false
             },
             "319422467": {
                 "id": 319422467,
                 "cluster_id": 319486977,
                 "label": "LoggingData",
                 "type": "Optional[bytes]",
-                "writable": true
+                "writable": false
             },
             "319422470": {
                 "id": 319422470,
                 "cluster_id": 319486977,
                 "label": "TimesOpened",
                 "type": "Optional[unknown]",
-                "writable": true
+                "writable": false
             },
             "319422471": {
                 "id": 319422471,
                 "cluster_id": 319486977,
                 "label": "LastEventTime",
                 "type": "Optional[unknown]",
-                "writable": true
+                "writable": false
             },
             "319422472": {
                 "id": 319422472,
                 "cluster_id": 319486977,
                 "label": "Voltage",
                 "type": "Optional[unknown]",
-                "writable": true
+                "writable": false
             },
             "319422473": {
                 "id": 319422473,
                 "cluster_id": 319486977,
                 "label": "Current",
                 "type": "Optional[unknown]",
-                "writable": true
+                "writable": false
             },
             "319422474": {
                 "id": 319422474,
                 "cluster_id": 319486977,
                 "label": "Watt",
                 "type": "Optional[unknown]",
-                "writable": true
+                "writable": false
             },
             "319422475": {
                 "id": 319422475,
                 "cluster_id": 319486977,
                 "label": "WattAccumulated",
                 "type": "Optional[unknown]",
-                "writable": true
+                "writable": false
             },
             "319422476": {
                 "id": 319422476,
                 "cluster_id": 319486977,
                 "label": "StatusFault",
                 "type": "Optional[unknown]",
-                "writable": true
+                "writable": false
             },
             "319422477": {
                 "id": 319422477,
                 "cluster_id": 319486977,
                 "label": "MotionSensitivity",
                 "type": "Optional[unknown]",
-                "writable": true
+                "writable": false
             },
             "319422478": {
                 "id": 319422478,
                 "cluster_id": 319486977,
                 "label": "WattAccumulatedControlPoint",
                 "type": "Optional[unknown]",
-                "writable": true
+                "writable": false
             },
             "319422480": {
                 "id": 319422480,
                 "cluster_id": 319486977,
                 "label": "ObstructionDetected",
                 "type": "Optional[bool]",
-                "writable": true
+                "writable": false
             },
             "319422481": {
                 "id": 319422481,
@@ -17146,42 +17146,42 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 319486977,
                 "label": "Rloc16",
                 "type": "Optional[unknown]",
-                "writable": true
+                "writable": false
             },
             "319422483": {
                 "id": 319422483,
                 "cluster_id": 319486977,
                 "label": "Altitude",
                 "type": "Optional[unknown]",
-                "writable": true
+                "writable": false
             },
             "319422484": {
                 "id": 319422484,
                 "cluster_id": 319486977,
                 "label": "Pressure",
                 "type": "Optional[unknown]",
-                "writable": true
+                "writable": false
             },
             "319422485": {
                 "id": 319422485,
                 "cluster_id": 319486977,
                 "label": "WeatherTrend",
                 "type": "Optional[unknown]",
-                "writable": true
+                "writable": false
             },
             "319422487": {
                 "id": 319422487,
                 "cluster_id": 319486977,
                 "label": "WindowOpenMode",
                 "type": "Optional[bool]",
-                "writable": true
+                "writable": false
             },
             "319422488": {
                 "id": 319422488,
                 "cluster_id": 319486977,
                 "label": "ValvePosition",
                 "type": "Optional[unknown]",
-                "writable": true
+                "writable": false
             }
         },
         "commands": {}
@@ -17195,28 +17195,28 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 319683586,
                 "label": "CurrentSummationDelivered",
                 "type": "Optional[unknown]",
-                "writable": true
+                "writable": false
             },
             "769": {
                 "id": 769,
                 "cluster_id": 319683586,
                 "label": "Multiplier",
                 "type": "Optional[unknown]",
-                "writable": true
+                "writable": false
             },
             "770": {
                 "id": 770,
                 "cluster_id": 319683586,
                 "label": "Divisor",
                 "type": "Optional[unknown]",
-                "writable": true
+                "writable": false
             },
             "1024": {
                 "id": 1024,
                 "cluster_id": 319683586,
                 "label": "InstantaneousDemand",
                 "type": "Optional[unknown]",
-                "writable": true
+                "writable": false
             },
             "65528": {
                 "id": 65528,
@@ -17286,35 +17286,35 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 322239491,
                 "label": "CurrentHumidity",
                 "type": "Optional[unknown]",
-                "writable": true
+                "writable": false
             },
             "3": {
                 "id": 3,
                 "cluster_id": 322239491,
                 "label": "WaterBucketFull",
                 "type": "Optional[bool]",
-                "writable": true
+                "writable": false
             },
             "4": {
                 "id": 4,
                 "cluster_id": 322239491,
                 "label": "FilterAlert",
                 "type": "Optional[bool]",
-                "writable": true
+                "writable": false
             },
             "5": {
                 "id": 5,
                 "cluster_id": 322239491,
                 "label": "ErrorCodes",
                 "type": "Optional[string]",
-                "writable": true
+                "writable": false
             },
             "6": {
                 "id": 6,
                 "cluster_id": 322239491,
                 "label": "FeatureSet",
                 "type": "Optional[string]",
-                "writable": true
+                "writable": false
             },
             "65528": {
                 "id": 65528,

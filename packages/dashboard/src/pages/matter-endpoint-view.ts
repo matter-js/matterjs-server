@@ -4,20 +4,24 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { provide } from "@lit/context";
 import "@material/web/button/outlined-button";
 import "@material/web/divider/divider";
 import "@material/web/iconbutton/icon-button";
 import "@material/web/list/list";
 import "@material/web/list/list-item";
+import { consume } from "@lit/context";
 import { MatterClient, MatterNode, isTestNodeId } from "@matter-server/ws-client";
 import { mdiAlertCircleOutline, mdiChevronRight } from "@mdi/js";
 import { LitElement, css, html } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { guard } from "lit/directives/guard.js";
+import { clientContext, tickContext } from "../client/client-context.js";
 import { DeviceType, clusters, device_types } from "../client/models/descriptions.js";
 import "../components/ha-svg-icon";
 import { formatHex, formatNodeAddress, getEffectiveFabricIndex } from "../util/format_hex.js";
 import { notFoundStyles } from "../util/shared-styles.js";
+import { bindingContext } from "./components/context.js";
 
 declare global {
     interface HTMLElementTagNameMap {
@@ -48,18 +52,23 @@ export function getEndpointDeviceTypes(node: MatterNode, endpoint: number): Devi
 
 @customElement("matter-endpoint-view")
 class MatterEndpointView extends LitElement {
+    @consume({ context: clientContext })
     public client!: MatterClient;
+
+    @consume({ context: tickContext, subscribe: true })
+    protected _tick = 0;
 
     @property()
     public node?: MatterNode;
 
+    @provide({ context: bindingContext })
     @property()
-    public endpoint?: number;
+    public endpoint!: number;
 
     override render() {
         if (!this.node || this.endpoint == undefined) {
             return html`
-                <dashboard-header title="Not found" .client=${this.client} backButton="#"></dashboard-header>
+                <dashboard-header title="Not found" backButton="#"></dashboard-header>
                 <div class="not-found">
                     <ha-svg-icon .path=${mdiAlertCircleOutline}></ha-svg-icon>
                     <p>Node or endpoint not found</p>
@@ -79,12 +88,11 @@ class MatterEndpointView extends LitElement {
             <dashboard-header
                 .title=${`Node ${this.node.node_id} ${nodeHex}  |  Endpoint ${this.endpoint}`}
                 .backButton=${`#node/${this.node.node_id}`}
-                .client=${this.client}
             ></dashboard-header>
 
             <!-- node details section -->
             <div class="container">
-                <node-details .node=${this.node} .client=${this.client}></node-details>
+                <node-details .node=${this.node}></node-details>
             </div>
 
             <!-- Endpoint clusters listing -->
@@ -104,7 +112,7 @@ class MatterEndpointView extends LitElement {
                         </div>
                     </md-list-item>
                     ${guard([this.node?.attributes.length], () =>
-                        getUniqueClusters(this.node!, this.endpoint!).map(cluster => {
+                        getUniqueClusters(this.node!, this.endpoint).map(cluster => {
                             return html`
                                 <md-list-item
                                     type="link"

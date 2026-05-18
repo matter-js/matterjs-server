@@ -9,11 +9,13 @@ import "@material/web/divider/divider";
 import "@material/web/iconbutton/icon-button";
 import "@material/web/list/list";
 import "@material/web/list/list-item";
+import { consume } from "@lit/context";
 import { isTestNodeId, MatterClient, MatterNode } from "@matter-server/ws-client";
 import { mdiAlertCircleOutline, mdiChevronRight, mdiGraphOutline } from "@mdi/js";
 import { css, html, LitElement } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { guard } from "lit/directives/guard.js";
+import { clientContext, tickContext } from "../client/client-context.js";
 import "../components/ha-svg-icon";
 import { getDeviceIcon, getEndpointIcon } from "../util/device-icons.js";
 import { formatNodeAddress, getEffectiveFabricIndex } from "../util/format_hex.js";
@@ -38,7 +40,11 @@ function getUniqueEndpoints(node: MatterNode) {
 
 @customElement("matter-node-view")
 class MatterNodeView extends LitElement {
+    @consume({ context: clientContext })
     public client!: MatterClient;
+
+    @consume({ context: tickContext, subscribe: true })
+    protected _tick = 0;
 
     @property()
     public node?: MatterNode;
@@ -46,7 +52,7 @@ class MatterNodeView extends LitElement {
     override render() {
         if (!this.node) {
             return html`
-                <dashboard-header title="Node not found" .client=${this.client} backButton="#"></dashboard-header>
+                <dashboard-header title="Node not found" backButton="#"></dashboard-header>
                 <div class="not-found">
                     <ha-svg-icon .path=${mdiAlertCircleOutline}></ha-svg-icon>
                     <p>Node not found</p>
@@ -70,11 +76,7 @@ class MatterNodeView extends LitElement {
         const nodeHex = formatNodeAddress(fabricIndex, this.node.node_id);
 
         return html`
-            <dashboard-header
-                .title=${`Node ${this.node.node_id} ${nodeHex}`}
-                .client=${this.client}
-                backButton="#"
-            ></dashboard-header>
+            <dashboard-header .title=${`Node ${this.node.node_id} ${nodeHex}`} backButton="#"></dashboard-header>
 
             <!-- node details section -->
             <div class="container">
@@ -90,7 +92,7 @@ class MatterNodeView extends LitElement {
                           `
                         : ""}
                 </div>
-                <node-details .node=${this.node} .client=${this.client}></node-details>
+                <node-details .node=${this.node}></node-details>
             </div>
 
             <!-- Node Endpoints listing -->

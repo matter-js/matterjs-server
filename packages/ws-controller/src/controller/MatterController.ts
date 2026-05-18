@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { cdSigners, paaRoots, vendors } from "@matter/dcl-data/node";
 import {
     Bytes,
     CommissioningClient,
@@ -15,14 +16,18 @@ import {
     Logger,
     MatterAggregateError,
     NodeId,
+    SharedEnvironmentServices,
     SoftwareUpdateManager,
     Timestamp,
 } from "@matter/main";
-import { VendorInfo, DclCertificateService } from "@matter/main/protocol";
+import { VendorInfo, DclCertificateService, DclVendorInfoService } from "@matter/main/protocol";
 import { VendorId } from "@matter/main/types";
+import { Endpoint } from "@matter/node";
+import { CameraControllerDevice } from "@matter/node/devices/camera-controller";
 import { CommissioningController } from "@project-chip/matter.js";
 import { Readable } from "node:stream";
 import { ConfigStorage } from "../server/ConfigStorage.js";
+import { WebRtcTransportRequestorServer } from "./behaviors/WebRtcTransportRequestorServer.js";
 import { BorderRouterDiscovery } from "./BorderRouterDiscovery.js";
 import { ControllerCommandHandler } from "./ControllerCommandHandler.js";
 import { LegacyDataInjector, LegacyServerData } from "./LegacyDataInjector.js";
@@ -62,6 +67,8 @@ export async function computeCompressedNodeId(
 export interface MatterControllerOptions {
     enableTestNetDcl?: boolean;
     disableOtaProvider?: boolean;
+    /** Disable bundled offline DCL seed data (PAA roots, CD signers, vendors). When true, only network DCL is used. */
+    disableDclSeed?: boolean;
     /** Server ID for storage. Default is "server", but may be "server-<hex(fabricId)>-<hex(vendorId)>" for multi-fabric support */
     serverId?: string;
     /** Server version string (e.g., "0.2.10" or "0.2.10-alpha.0"). Used for BasicInformation cluster. */
@@ -95,7 +102,10 @@ export class MatterController {
     #legacyCommissionedDates?: Map<string, Timestamp>;
     #enableTestNetDcl = false;
     #disableOtaProvider = true;
+    #disableDclSeed = false;
     readonly #borderRouterDiscovery: BorderRouterDiscovery;
+    #webRtcRequestor?: Endpoint<typeof CameraControllerDevice>;
+    #services: SharedEnvironmentServices;
 
     static async create(
         environment: Environment,
@@ -173,6 +183,8 @@ export class MatterController {
         this.#serverVersion = options.serverVersion ?? "0.0.0";
         this.#enableTestNetDcl = options.enableTestNetDcl ?? this.#enableTestNetDcl;
         this.#disableOtaProvider = options.disableOtaProvider ?? this.#disableOtaProvider;
+        this.#disableDclSeed = options.disableDclSeed ?? this.#disableDclSeed;
+        this.#services = this.#env.asDependent();
     }
 
     protected async initialize(
@@ -182,8 +194,24 @@ export class MatterController {
     ) {
         this.#legacyCommissionedDates = legacyCommissionedDates?.size ? legacyCommissionedDates : undefined;
 
-        // Initialize the DclCertificateService on the root environment, will automatically be used
-        new DclCertificateService(this.#env.root, { fetchTestCertificates: this.#enableTestNetDcl });
+        // Register DCL services on the root environment; DclBehavior picks them up.
+        // When seeding is enabled (default), pre-populate from the bundled offline snapshot so
+        // commissioning works without internet access.
+        const includeTest = this.#enableTestNetDcl;
+        if (this.#disableDclSeed) {
+            new DclCertificateService(this.#env.root, { fetchTestCertificates: includeTest });
+        } else {
+            new DclCertificateService(this.#env.root, {
+                fetchTestCertificates: includeTest,
+                seed: {
+                    paaRoots: paaRoots({ includeTest }),
+                    cdSigners: cdSigners({ includeTest }),
+                },
+            });
+            new DclVendorInfoService(this.#env.root, { seed: { vendors: vendors({ includeTest }) } });
+            this.#services.get(DclVendorInfoService);
+        }
+        this.#services.get(DclCertificateService);
 
         this.#controllerInstance = new CommissioningController({
             environment: {
@@ -242,6 +270,7 @@ export class MatterController {
                 }
 
                 initPromises.push(this.#borderRouterDiscovery.start());
+                initPromises.push(this.#enableWebRtcRequestor());
 
                 try {
                     await MatterAggregateError.allSettled(initPromises);
@@ -256,6 +285,27 @@ export class MatterController {
 
     get borderRouters(): BorderRouterDiscovery {
         return this.#borderRouterDiscovery;
+    }
+
+    get webRtcRequestor(): Endpoint<typeof CameraControllerDevice> {
+        if (!this.#webRtcRequestor) {
+            throw new Error("WebRTC requestor endpoint not initialized");
+        }
+        return this.#webRtcRequestor;
+    }
+
+    async #enableWebRtcRequestor(): Promise<void> {
+        if (!this.#controllerInstance) {
+            throw new Error("Controller not started");
+        }
+        const node = this.#controllerInstance.node;
+        if (node.endpoints.has("camera-controller")) {
+            this.#webRtcRequestor = node.endpoints.for("camera-controller") as Endpoint<typeof CameraControllerDevice>;
+            return;
+        }
+        this.#webRtcRequestor = await node.add(
+            new Endpoint(CameraControllerDevice.with(WebRtcTransportRequestorServer), { id: "camera-controller" }),
+        );
     }
 
     /**
@@ -331,9 +381,9 @@ export class MatterController {
     }
 
     async stop() {
-        await this.certificateService(); // Ensure it was initialized so that shutdown works
         await this.#borderRouterDiscovery.stop();
         await this.#commandHandler?.close(); // This closes also the controller instance if started
+        await this.#services.close();
     }
 
     /**

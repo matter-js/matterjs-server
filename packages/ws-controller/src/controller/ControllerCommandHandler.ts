@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import type { WebRtcCallbackData } from "@matter-server/ws-client";
 import {
     Abort,
     AsyncObservable,
@@ -36,6 +37,8 @@ import {
     GeneralCommissioning,
     OperationalCredentials,
 } from "@matter/main/clusters";
+import { WebRtcTransportDefinitions } from "@matter/main/clusters/web-rtc-transport-definitions";
+import { WebRtcTransportProvider } from "@matter/main/clusters/web-rtc-transport-provider";
 import {
     DecodedAttributeReportValue,
     DecodedEventReportValue,
@@ -59,6 +62,8 @@ import {
     StatusResponseError,
     VendorId,
 } from "@matter/main/types";
+import { Endpoint } from "@matter/node";
+import { CameraControllerDevice } from "@matter/node/devices/camera-controller";
 import { CommissioningController, NodeCommissioningOptions } from "@project-chip/matter.js";
 import { NodeStates } from "@project-chip/matter.js/device";
 import { ClusterMap, ClusterMapEntry, GlobalAttributes } from "../model/ModelMapper.js";
@@ -96,12 +101,14 @@ import {
 } from "../types/WebSocketMessageTypes.js";
 import { formatNodeId } from "../util/formatNodeId.js";
 import { pingIp } from "../util/network.js";
+import { WebRtcTransportRequestorServer } from "./behaviors/WebRtcTransportRequestorServer.js";
 import { CustomClusterPoller } from "./CustomClusterPoller.js";
 import { Nodes } from "./Nodes.js";
+import { attachWebRtcCallbackBridge } from "./WebRtcCallbackBridge.js";
 
 const logger = Logger.get("ControllerCommandHandler");
 
-/** After this duration in Reconnecting state, declare the node unavailable */
+/** Grace period after leaving Connected before a node is declared unavailable. */
 const RECONNECT_TIMEOUT = Minutes(3);
 
 /**
@@ -171,6 +178,7 @@ export class ControllerCommandHandler {
         nodeDecommissioned: new Observable<[nodeId: NodeId]>(),
         nodeEndpointAdded: new Observable<[nodeId: NodeId, endpointId: EndpointNumber]>(),
         nodeEndpointRemoved: new Observable<[nodeId: NodeId, endpointId: EndpointNumber]>(),
+        webRtcCallback: new Observable<[WebRtcCallbackData]>(),
     };
     #peers?: PeerSet;
 
@@ -238,6 +246,7 @@ export class ControllerCommandHandler {
         }
 
         await this.events.started.emit();
+        await this.#setupWebRtcCallbackBridge();
     }
 
     /**
@@ -282,6 +291,88 @@ export class ControllerCommandHandler {
         }
     }
 
+    async #setupWebRtcCallbackBridge() {
+        try {
+            await this.#cameraControllerEndpoint().act(agent => {
+                attachWebRtcCallbackBridge(agent.get(WebRtcTransportRequestorServer).events, data =>
+                    this.events.webRtcCallback.emit(data),
+                );
+            });
+            logger.info("WebRTC callback bridge wired");
+        } catch (error) {
+            logger.warn("Failed to setup WebRTC callback bridge:", error);
+        }
+    }
+
+    #cameraControllerEndpoint(): Endpoint<typeof CameraControllerDevice> {
+        return this.#controller.node.endpoints.for("camera-controller") as Endpoint<typeof CameraControllerDevice>;
+    }
+
+    /** `originatingEndpointId` is server-injected; any client-supplied value in `payload` is overwritten. */
+    async sendWebRtcProviderCommand(args: {
+        nodeId: NodeId;
+        endpointId: EndpointNumber;
+        commandName: "ProvideOffer" | "SolicitOffer";
+        payload: Record<string, unknown>;
+    }): Promise<WebRtcTransportProvider.ProvideOfferResponse | WebRtcTransportProvider.SolicitOfferResponse> {
+        const { nodeId, endpointId, commandName, payload } = args;
+
+        if (commandName !== "ProvideOffer" && commandName !== "SolicitOffer") {
+            throw ServerError.invalidArguments(
+                `Unsupported WebRTC provider command "${commandName}"; expected ProvideOffer or SolicitOffer`,
+            );
+        }
+
+        const requestorEndpoint = this.#cameraControllerEndpoint();
+        const originatingEndpointId = EndpointNumber(requestorEndpoint.number);
+        const fabricIndex = this.#controller.fabric.fabricIndex;
+
+        const node = this.#nodes.get(nodeId);
+
+        const fields: Record<string, unknown> = {
+            ...payload,
+            originatingEndpointId,
+        };
+        const command = commandName === "ProvideOffer" ? "provideOffer" : "solicitOffer";
+
+        const response = (await this.#invokeCommand(node.node, {
+            endpoint: endpointId,
+            cluster: WebRtcTransportProvider,
+            command,
+            fields,
+        })) as WebRtcTransportProvider.ProvideOfferResponse | WebRtcTransportProvider.SolicitOfferResponse | undefined;
+
+        if (response === undefined || typeof response.webRtcSessionId !== "number") {
+            throw ServerError.sdkStackError(
+                `${commandName} did not return a WebRTCSessionID for node ${this.formatNode(nodeId)}`,
+            );
+        }
+
+        const streamUsage = payload.streamUsage as WebRtcTransportDefinitions.WebRtcSession["streamUsage"];
+        const metadataEnabled = (payload.metadataEnabled as boolean | undefined) ?? false;
+        const videoStreams = response.videoStreamId != null ? [response.videoStreamId] : new Array<number>();
+        const audioStreams = response.audioStreamId != null ? [response.audioStreamId] : new Array<number>();
+        const session: WebRtcTransportDefinitions.WebRtcSession = {
+            id: response.webRtcSessionId,
+            peerNodeId: nodeId,
+            peerEndpointId: endpointId,
+            streamUsage,
+            metadataEnabled,
+            videoStreams,
+            audioStreams,
+            fabricIndex,
+        };
+
+        logger.info(
+            `upserting WebRTC session id=${session.id} peerNodeId=${nodeId} peerEndpointId=${endpointId} fabricIndex=${fabricIndex} streamUsage=${streamUsage} originatingEndpointId=${originatingEndpointId}`,
+        );
+        await requestorEndpoint.act(agent => {
+            agent.get(WebRtcTransportRequestorServer).upsertSession(session);
+        });
+
+        return response;
+    }
+
     async close() {
         for (const timer of this.#reconnectTimers.values()) {
             timer.stop();
@@ -298,16 +389,12 @@ export class ControllerCommandHandler {
         const node = await this.#controller.getNode(nodeId);
         const attributeCache = this.#nodes.attributeCache;
 
-        // Wire all Events to the Event emitters
-        // Track if a BasicInformation or BridgedDeviceBasicInformation attribute changed during
-        // a subscription batch. When the batch ends (connectionAlive), emit a full node_updated.
+        // Defer the full node_updated until the subscription batch ends (connectionAlive)
+        // so consumers see one update per batch rather than one per attribute.
         let basicInfoChangedInBatch = false;
         node.events.attributeChanged.on(data => {
-            // Update the attribute cache with the new value in WebSocket format
             attributeCache.updateAttribute(nodeId, data);
-            // Then emit the event for listeners
             this.events.attributeChanged.emit(nodeId, data);
-            // Mark for full node_updated if any BasicInformation cluster attribute changed
             if (FULL_UPDATE_CLUSTER_IDS.has(data.path.clusterId)) {
                 basicInfoChangedInBatch = true;
             }
@@ -321,7 +408,6 @@ export class ControllerCommandHandler {
         });
         node.events.eventTriggered.on(data => this.events.eventChanged.emit(nodeId, data));
         node.events.stateChanged.on(state => {
-            // Only refresh cache on Connected state
             if (state === NodeStates.Connected) {
                 attributeCache.update(node);
                 const attributes = attributeCache.get(nodeId);
@@ -330,35 +416,35 @@ export class ControllerCommandHandler {
                 }
             }
 
-            // Manage reconnect timer
-            if (state === NodeStates.Reconnecting) {
-                if (!this.#reconnectTimers.has(nodeId)) {
-                    const timer = Time.getTimer(`reconnect-timeout-${nodeId}`, RECONNECT_TIMEOUT, () => {
-                        this.#reconnectTimers.delete(nodeId);
-                        if (this.#nodes.forceUnavailable(nodeId)) {
-                            logger.info(
-                                `Node ${this.formatNode(nodeId)} still reconnecting after timeout, marking unavailable`,
-                            );
-                            this.events.nodeAvailabilityChanged.emit(nodeId, false);
-                        }
-                    });
-                    timer.utility = true;
-                    timer.start();
-                    this.#reconnectTimers.set(nodeId, timer);
-                }
-            } else {
-                // Any non-Reconnecting state clears the timer
+            // Arm on Connected->Reconnecting only; keep running across later
+            // non-Connected states; cancel on return to Connected.
+            if (state === NodeStates.Connected) {
                 this.#reconnectTimers.get(nodeId)?.stop();
                 this.#reconnectTimers.delete(nodeId);
+            } else if (
+                state === NodeStates.Reconnecting &&
+                !this.#reconnectTimers.has(nodeId) &&
+                this.#nodes.isAvailable(nodeId)
+            ) {
+                const timer = Time.getTimer(`reconnect-timeout-${nodeId}`, RECONNECT_TIMEOUT, () => {
+                    this.#reconnectTimers.delete(nodeId);
+                    if (this.#nodes.forceUnavailable(nodeId)) {
+                        logger.info(
+                            `Node ${this.formatNode(nodeId)} offline grace period expired, marking unavailable`,
+                        );
+                        this.events.nodeAvailabilityChanged.emit(nodeId, false);
+                    }
+                });
+                timer.utility = true;
+                timer.start();
+                this.#reconnectTimers.set(nodeId, timer);
             }
 
-            // Process state change and check if availability changed
-            const result = this.#nodes.processStateChange(nodeId, state);
+            const debouncePending = this.#reconnectTimers.has(nodeId);
+            const result = this.#nodes.processStateChange(nodeId, state, debouncePending);
 
-            // Emit state changed event
             this.events.nodeStateChanged.emit(nodeId, state);
 
-            // Emit availability changed if it actually changed
             if (result.availabilityChanged) {
                 logger.info(
                     `Node ${this.formatNode(nodeId)} availability changed to ${result.available} (state: ${NodeStates[state]})`,
@@ -367,13 +453,10 @@ export class ControllerCommandHandler {
             }
         });
         node.events.structureChanged.on(() => {
-            // Structure changed means endpoints may have been added/removed, refresh cache
             if (node.isConnected) {
                 attributeCache.update(node);
             }
             basicInfoChangedInBatch = false;
-            // Emit node_updated first so consumers see the new endpoint in node.endpoints,
-            // then drain any endpoint_added events queued since the previous structure change.
             this.events.nodeStructureChanged.emit(nodeId);
             for (const endpointId of this.#nodes.drainPendingEndpointAdds(nodeId)) {
                 this.events.nodeEndpointAdded.emit(nodeId, endpointId);
@@ -386,15 +469,12 @@ export class ControllerCommandHandler {
         node.events.nodeEndpointAdded.on(endpointId => this.#nodes.queueEndpointAdded(nodeId, endpointId));
         node.events.nodeEndpointRemoved.on(endpointId => this.events.nodeEndpointRemoved.emit(nodeId, endpointId));
 
-        // Store the node for direct access
         this.#nodes.set(nodeId, node);
 
         this.#nodes.seedState(nodeId, node.connectionState);
 
-        // Initialize attribute cache if node is already initialized
         if (node.initialized) {
             attributeCache.add(node);
-            // Register for custom cluster polling (e.g., Eve energy)
             const attributes = attributeCache.get(nodeId);
             if (attributes) {
                 this.#customClusterPoller.registerNode(this.#peerOf(nodeId), attributes);
@@ -674,12 +754,11 @@ export class ControllerCommandHandler {
         request: Invoke.ConcreteCommandRequest<C>,
         options: Omit<Invoke.Definition, "commands"> = {},
     ) {
-        for await (const data of node.interaction.invoke(
-            Invoke({
-                commands: [request],
-                ...options,
-            }),
-        )) {
+        const invoke = Invoke({
+            commands: [request],
+            ...options,
+        });
+        for await (const data of node.interaction.invoke(invoke)) {
             for (const entry of data) {
                 // We send only one command, so we only get one response back
                 switch (entry.kind) {
