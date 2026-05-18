@@ -5,6 +5,7 @@
  */
 
 import { Logger } from "@matter/main";
+import { MatterBle } from "@matter/main/protocol";
 import type { BleProxyHandler } from "./BleProxyHandler.js";
 import { BleProxyCommand, BleProxyEvent, type DeviceDiscoveredData } from "./BleProxyProtocol.js";
 
@@ -96,11 +97,17 @@ export class ProxyBleClient {
     #handleDeviceDiscovered(data: DeviceDiscoveredData): void {
         const { address, name, rssi, connectable, service_data } = data;
 
-        // Convert service_data from Record<string, base64> to Map<string, Uint8Array>
+        // service_data keys may arrive in any UUID form the proxy client chose: noble's compact
+        // 32-char form, ESPHome's dashed form, or the 16-bit short form "fff6"/"FFF6". Accept all.
         const serviceData = new Map<string, Uint8Array>();
+        let matterServiceData: Uint8Array | undefined;
         if (service_data) {
             for (const [uuid, base64Value] of Object.entries(service_data)) {
-                serviceData.set(uuid, Buffer.from(base64Value, "base64"));
+                const bytes = Buffer.from(base64Value, "base64");
+                serviceData.set(uuid, bytes);
+                if (MatterBle.isServiceUuid(uuid)) {
+                    matterServiceData = bytes;
+                }
             }
         }
 
@@ -117,8 +124,6 @@ export class ProxyBleClient {
             return;
         }
 
-        // Extract Matter service data (fff6)
-        const matterServiceData = serviceData.get("fff6");
         if (matterServiceData === undefined || matterServiceData.length !== 8) {
             logger.debug(`Peripheral ${address} does not advertise valid Matter service data, ignoring`);
             return;

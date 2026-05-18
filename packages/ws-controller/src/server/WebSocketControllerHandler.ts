@@ -85,6 +85,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
     #closed = false;
     #shuttingDown = false;
     #serverObservers = new ObserverGroup();
+    #removeUpgradeListener?: () => void;
     /** Circular buffer for recent node events (max 25) */
     #eventHistory: MatterNodeEvent[] = [];
     /** Track when each node was last interviewed (connected) - keyed by nodeId */
@@ -142,7 +143,25 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
     async register(server: HttpServer) {
         logger.info(`Starting server: matter-server/${this.#serverVersion} (matter.js/${MATTER_VERSION})`);
-        const wss = (this.#wss = new WebSocketServer({ server: server, path: "/ws" }));
+        // Use noServer mode with a path-filtered upgrade listener.
+        // ws 8.x calls handleUpgrade unconditionally from its own upgrade listener, which
+        // sends HTTP 400 for non-matching paths and destroys the socket — breaking other
+        // WebSocket endpoints on the same server. By handling upgrade ourselves we only
+        // call handleUpgrade when the path actually matches.
+        const wss = (this.#wss = new WebSocketServer({ noServer: true }));
+        const upgradeHandler = (req: { url?: string }, socket: unknown, head: unknown) => {
+            const path = req.url?.split("?")[0];
+            if (path === "/ws") {
+                wss.handleUpgrade(
+                    req as Parameters<typeof wss.handleUpgrade>[0],
+                    socket as Parameters<typeof wss.handleUpgrade>[1],
+                    head as Parameters<typeof wss.handleUpgrade>[2],
+                    ws => wss.emit("connection", ws, req),
+                );
+            }
+        };
+        server.on("upgrade", upgradeHandler);
+        this.#removeUpgradeListener = () => server.removeListener("upgrade", upgradeHandler);
 
         // WebRTC callbacks fan out to every connected client, so subscribe once at the server
         // level rather than per-connection.
@@ -381,6 +400,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
         this.#closed = true;
         this.#serverObservers.close();
+        this.#removeUpgradeListener?.();
         // Send server_shutdown event to all connected clients before closing
         const shutdownMessage = toBigIntAwareJson({ event: "server_shutdown", data: {} });
         this.#wss.clients.forEach(client => {

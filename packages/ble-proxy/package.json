@@ -14,21 +14,21 @@
     "author": "Open Home Foundation",
     "main": "dist/esm/index.js",
     "scripts": {
-        "clean": "matter-build clean",
-        "build": "matter-build",
-        "build-clean": "matter-build --clean",
-        "noble-ble-proxy": "matter-run src/example/noble-ble-proxy.ts"
+        "clean": "nacho-build clean",
+        "build": "nacho-build",
+        "build-clean": "nacho-build --clean",
+        "noble-ble-proxy": "nacho-run src/example/noble-ble-proxy.ts"
     },
     "engines": {
         "node": ">=20.19.0 <22.0.0 || >=22.13.0"
     },
     "dependencies": {
-        "@matter/main": "0.17.0-alpha.0-20260304-444297156",
+        "@matter/main": "0.17.0-alpha.0-20260518-7f13c7285",
         "@matter-server/ws-controller": "*",
         "ws": "^8.19.0"
     },
     "optionalDependencies": {
-        "@matter/nodejs-ble": "0.17.0-alpha.0-20260304-444297156"
+        "@matter/nodejs-ble": "0.17.0-alpha.0-20260518-7f13c7285"
     },
     "devDependencies": {
         "@types/node": "^25.0.10",

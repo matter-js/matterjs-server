@@ -37,6 +37,7 @@ const HANDSHAKE_TIMEOUT_MS = 10_000;
  */
 export class BleProxyHandler implements WebServerHandler {
     #wss?: WebSocketServer;
+    #removeUpgradeListener?: () => void;
     #client?: WebSocket;
     #handshakeComplete = false;
     #pendingCommands = new Map<
@@ -58,7 +59,25 @@ export class BleProxyHandler implements WebServerHandler {
     }
 
     async register(server: HttpServer): Promise<void> {
-        const wss = (this.#wss = new WebSocketServer({ server, path: "/ble" }));
+        // Use noServer mode with a path-filtered upgrade listener.
+        // ws 8.x calls handleUpgrade unconditionally from its own upgrade listener, which
+        // sends HTTP 400 for non-matching paths and destroys the socket — breaking other
+        // WebSocket endpoints on the same server.
+        const wss = (this.#wss = new WebSocketServer({ noServer: true }));
+        const upgradeHandler = (req: { url?: string }, socket: unknown, head: unknown) => {
+            logger.debug(`Upgrade request received: ${req.url}`);
+            const path = req.url?.split("?")[0];
+            if (path === "/ble") {
+                wss.handleUpgrade(
+                    req as Parameters<typeof wss.handleUpgrade>[0],
+                    socket as Parameters<typeof wss.handleUpgrade>[1],
+                    head as Parameters<typeof wss.handleUpgrade>[2],
+                    ws => wss.emit("connection", ws, req),
+                );
+            }
+        };
+        server.on("upgrade", upgradeHandler);
+        this.#removeUpgradeListener = () => server.removeListener("upgrade", upgradeHandler);
         logger.info("BLE proxy WebSocket endpoint registered on /ble");
 
         wss.on("connection", ws => {
@@ -113,6 +132,7 @@ export class BleProxyHandler implements WebServerHandler {
         }
 
         this.#closed = true;
+        this.#removeUpgradeListener?.();
 
         // Close the connected client
         if (this.#client && this.#client.readyState === WebSocket.OPEN) {

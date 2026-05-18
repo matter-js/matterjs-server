@@ -4,18 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import {
-    ChannelType,
-    createPromise,
-    Diagnostic,
-    Duration,
-    Logger,
-    Millis,
-    Seconds,
-    Time,
-    Timer,
-    Timespan,
-} from "@matter/main";
+import { ChannelType, createPromise, Diagnostic, Duration, Logger, Millis, Time, Timer, Timespan } from "@matter/main";
 import {
     BtpCodec,
     type CommissionableDevice,
@@ -228,40 +217,6 @@ export class ProxyBleScanner implements Scanner {
         return foundRecords;
     }
 
-    async findOperationalDevice(): Promise<undefined> {
-        logger.info("Skip BLE scan because scanning for operational devices is not supported");
-        return undefined;
-    }
-
-    getDiscoveredOperationalDevice(): undefined {
-        logger.info("Skip BLE scan because scanning for operational devices is not supported");
-        return undefined;
-    }
-
-    async findCommissionableDevices(
-        identifier: CommissionableDeviceIdentifiers,
-        timeout = Seconds(10),
-        ignoreExistingRecords = false,
-    ): Promise<CommissionableDevice[]> {
-        let storedRecords = this.#getCommissionableDevices(identifier);
-        if (ignoreExistingRecords) {
-            for (const record of storedRecords) {
-                this.#discoveredMatterDevices.delete(record.peripheral.address);
-            }
-            storedRecords = [];
-        }
-        if (storedRecords.length === 0) {
-            const queryKey = this.#buildCommissionableQueryIdentifier(identifier);
-
-            await this.#proxyClient.startScanning();
-            await this.#registerWaiterPromise(queryKey, timeout);
-
-            storedRecords = this.#getCommissionableDevices(identifier);
-            await this.#proxyClient.stopScanning();
-        }
-        return storedRecords.map(({ deviceData }) => deviceData);
-    }
-
     async findCommissionableDevicesContinuously(
         identifier: CommissionableDeviceIdentifiers,
         callback: (device: CommissionableDevice) => void,
@@ -323,8 +278,19 @@ export class ProxyBleScanner implements Scanner {
 
     async close() {
         this.#proxyClient.close();
-        [...this.#recordWaiters.keys()].forEach(queryId =>
-            this.#finishWaiter(queryId, !!this.#recordWaiters.get(queryId)?.timer),
-        );
+        const queryIds = [...this.#recordWaiters.keys()];
+
+        // The discovery loop reads `canceled` flipped by cancelSignal.then(...), itself a
+        // microtask. If we finished the waiter in the same tick the awaiter could resume FIRST,
+        // see canceled=false, and re-arm a fresh waiter — hanging shutdown forever. Fire all
+        // cancelResolvers first, yield a microtask so each cancelSignal.then handler runs and
+        // sets canceled=true, THEN unblock the awaiters.
+        for (const queryId of queryIds) {
+            this.#recordWaiters.get(queryId)?.cancelResolver?.();
+        }
+        await Promise.resolve();
+        for (const queryId of queryIds) {
+            this.#finishWaiter(queryId, true);
+        }
     }
 }

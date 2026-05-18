@@ -356,10 +356,10 @@ writes (e.g. BTP data on characteristic C1), use binary frames with opcode `0x01
 
 | Field                 | Type    | Required | Description                                       |
 |-----------------------|---------|----------|---------------------------------------------------|
-| `connection_handle`   | integer | yes      | Handle from `connect` response                    |
-| `characteristic_uuid` | string  | yes      | Characteristic UUID to write                      |
-| `value`               | string  | yes      | Base64-encoded value to write                     |
-| `response`            | boolean | no       | If true, use write-with-response (default: false) |
+| `connection_handle`   | integer | yes      | Handle from `connect` response                                                 |
+| `characteristic_uuid` | string  | yes      | Characteristic UUID to write                                                   |
+| `value`               | string  | yes      | Base64-encoded value to write                                                  |
+| `response`            | boolean | no       | `true` → ATT Write Request (acknowledged); `false` → Write Without Response. Default `false`. Matter BTP writes to C1 MUST set `true` (C1 typically does not advertise `write-without-response`). |
 
 **Result:** `{}` (empty)
 
@@ -468,9 +468,24 @@ Sent when a BLE device is discovered during scanning.
 | `service_uuids`     | string[] | no       | List of advertised service UUIDs                                             |
 
 **Notes:**
-- `service_data` keys are lowercase service UUIDs (short form: `"fff6"`)
-- For Matter device discovery, the critical field is `service_data["fff6"]` containing the
-  8-byte Matter BLE advertisement payload (discriminator, vendor/product ID, etc.)
+- `service_data` keys SHOULD be the 16-bit short form for standard Bluetooth UUIDs (e.g.
+  `"fff6"`). The server accepts any case and also accepts the full 128-bit form (with or
+  without dashes) and matches against the Matter Service UUID regardless.
+- For Matter device discovery, the critical field is service data keyed by the Matter
+  Service UUID (`fff6` / `0000fff6-0000-1000-8000-00805f9b34fb`), containing the 8-byte
+  Matter BLE advertisement payload (discriminator, vendor/product ID, etc.)
+
+### UUID format
+
+UUIDs in this protocol — service UUIDs, characteristic UUIDs, `service_data` keys, and the
+strings inside `service_uuids` — accept ANY of these forms. Implementations SHOULD send
+whatever is natural for their BLE stack; the server normalizes before comparison:
+
+- Short form for standard Bluetooth UUIDs: `"fff6"` or `"FFF6"`
+- 128-bit canonical form, either case: `"18EE2EF5-263D-4559-959F-4F9C429F9D11"` or
+  `"18ee2ef5-263d-4559-959f-4f9c429f9d11"`
+- 128-bit compact form (no dashes), either case: `"18ee2ef5263d4559959f4f9c429f9d11"` —
+  this is what `@stoprocent/noble` emits.
 
 ---
 
@@ -552,7 +567,9 @@ by the preceding JSON command:
 
 - **`WRITE_DATA` (0x01):** Writes to the characteristic most recently targeted by a
   `write_characteristic` JSON command for this connection handle. In practice, this is always
-  the Matter BTP characteristic C1 (`18EE2EF5-263D-4559-959F-4F9C429F9D11`).
+  the Matter BTP characteristic C1 (`18EE2EF5-263D-4559-959F-4F9C429F9D11`). Clients MUST use
+  ATT Write Request (with response) for these writes — same constraint as the initial
+  `write_characteristic` handshake on C1.
 
 - **`NOTIFICATION` (0x02):** Contains data from the characteristic most recently subscribed
   via `subscribe_characteristic` for this connection handle. In practice, this is always

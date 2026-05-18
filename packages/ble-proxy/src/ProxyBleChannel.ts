@@ -8,30 +8,15 @@ import {
     type Bytes,
     type Channel,
     ChannelType,
-    type ConnectionlessTransport,
     createPromise,
     InternalError,
     Logger,
     NetworkError,
-    type ServerAddress,
+    ServerAddress,
     Time,
+    type Transport,
 } from "@matter/main";
-import {
-    BLE_MATTER_C1_CHARACTERISTIC_UUID,
-    BLE_MATTER_C2_CHARACTERISTIC_UUID,
-    BLE_MATTER_C3_CHARACTERISTIC_UUID,
-    BLE_MATTER_SERVICE_UUID,
-    BLE_MATTER_SERVICE_UUID_SHORT,
-    BLE_MAXIMUM_BTP_MTU,
-    BleChannel,
-    BleError,
-    BTP_CONN_RSP_TIMEOUT,
-    BTP_MAXIMUM_WINDOW_SIZE,
-    BTP_SUPPORTED_VERSIONS,
-    BtpCodec,
-    BtpFlowError,
-    BtpSessionHandler,
-} from "@matter/main/protocol";
+import { BleChannel, BleError, BtpCodec, BtpFlowError, BtpSessionHandler, MatterBle } from "@matter/main/protocol";
 import type { BleProxyHandler } from "./BleProxyHandler.js";
 import { BinaryFrameOpcode, BleProxyCommand, BleProxyEvent } from "./BleProxyProtocol.js";
 import type { ProxyBleScanner } from "./ProxyBleScanner.js";
@@ -44,10 +29,33 @@ const BTP_HANDSHAKE_RESPONSE_OPCODE_2 = 0x6c;
 const BTP_HANDSHAKE_RESPONSE_LENGTH = 6;
 
 /**
+ * Normalize any UUID form sent by a proxy client to the canonical dashed-uppercase form used by
+ * Matter's MatterBle constants. Different BLE proxy clients deliver different formats:
+ *   - noble: 32 lowercase hex chars, no dashes ("18ee2ef5263d4559959f4f9c429f9d11")
+ *   - ESPHome / generic: dashed form, either case ("18EE2EF5-263D-4559-959F-4F9C429F9D11")
+ *   - 16-/32-bit short form ("fff6", "FFF6", "0000fff6") for standard service UUIDs
+ *
+ * All three round-trip to a comparable canonical string so command handlers stay format-agnostic.
+ */
+function toCanonicalUuid(uuid: string): string {
+    const upper = uuid.toUpperCase();
+    if (upper.length === 32) {
+        return [
+            upper.substring(0, 8),
+            upper.substring(8, 12),
+            upper.substring(12, 16),
+            upper.substring(16, 20),
+            upper.substring(20, 32),
+        ].join("-");
+    }
+    return upper;
+}
+
+/**
  * ConnectionlessTransport implementation that opens BLE channels through the proxy WebSocket.
  * Replaces NobleBleCentralInterface from @matter/nodejs-ble.
  */
-export class ProxyBleCentralInterface implements ConnectionlessTransport {
+export class ProxyBleCentralInterface implements Transport {
     readonly #bleScanner: ProxyBleScanner;
     readonly #handler: BleProxyHandler;
     #onMatterMessageListener: ((socket: Channel<Bytes>, data: Bytes) => void) | undefined;
@@ -62,8 +70,8 @@ export class ProxyBleCentralInterface implements ConnectionlessTransport {
         if (this.#closed) {
             throw new NetworkError("Network interface is closed");
         }
-        if (address.type !== "ble") {
-            throw new InternalError(`Unsupported address type ${address.type}.`);
+        if (!ServerAddress.isBle(address)) {
+            throw new InternalError(`Unsupported address type for BLE channel.`);
         }
         if (this.#onMatterMessageListener === undefined) {
             throw new InternalError("Network Interface was not added to the system yet.");
@@ -84,8 +92,8 @@ export class ProxyBleCentralInterface implements ConnectionlessTransport {
         });
 
         let mtu = peripheralMtu ?? 0;
-        if (mtu > BLE_MAXIMUM_BTP_MTU) {
-            mtu = BLE_MAXIMUM_BTP_MTU;
+        if (mtu > MatterBle.MAXIMUM_BTP_MTU) {
+            mtu = MatterBle.MAXIMUM_BTP_MTU;
         }
         logger.debug(`Connected to ${peripheralAddress}, handle=${connection_handle}, mtu=${mtu}`);
 
@@ -95,11 +103,7 @@ export class ProxyBleCentralInterface implements ConnectionlessTransport {
                 connection_handle,
             });
 
-            const matterService = services.find(
-                s =>
-                    s.uuid.toLowerCase() === BLE_MATTER_SERVICE_UUID_SHORT ||
-                    s.uuid.toUpperCase() === BLE_MATTER_SERVICE_UUID,
-            );
+            const matterService = services.find(s => MatterBle.isServiceUuid(s.uuid));
             if (!matterService) {
                 throw new BleError(`Peripheral ${peripheralAddress} does not have Matter BLE service`);
             }
@@ -115,12 +119,12 @@ export class ProxyBleCentralInterface implements ConnectionlessTransport {
             let c3Uuid: string | undefined;
 
             for (const char of characteristics) {
-                const uuid = char.uuid.toUpperCase();
-                if (uuid === BLE_MATTER_C1_CHARACTERISTIC_UUID) {
+                const canonical = toCanonicalUuid(char.uuid);
+                if (canonical === MatterBle.C1_CHARACTERISTIC_UUID) {
                     c1Uuid = char.uuid;
-                } else if (uuid === BLE_MATTER_C2_CHARACTERISTIC_UUID) {
+                } else if (canonical === MatterBle.C2_CHARACTERISTIC_UUID) {
                     c2Uuid = char.uuid;
-                } else if (uuid === BLE_MATTER_C3_CHARACTERISTIC_UUID) {
+                } else if (canonical === MatterBle.C3_CHARACTERISTIC_UUID) {
                     c3Uuid = char.uuid;
                 }
             }
@@ -140,18 +144,21 @@ export class ProxyBleCentralInterface implements ConnectionlessTransport {
                 // it's handled by matter.js commissioning flow internally
             }
 
-            // 5. Send BTP handshake request on C1
+            // 5. Send BTP handshake request on C1.
+            // Matter BTP spec: writes to C1 use ATT Write Request (with response). C1 typically
+            // does not advertise writeWithoutResponse, so a writeWithoutResponse is silently
+            // dropped or rejected by the peripheral and the BTP handshake response never comes.
             const btpHandshakeRequest = BtpCodec.encodeBtpHandshakeRequest({
-                versions: BTP_SUPPORTED_VERSIONS,
+                versions: MatterBle.BTP_SUPPORTED_VERSIONS,
                 attMtu: mtu,
-                clientWindowSize: BTP_MAXIMUM_WINDOW_SIZE,
+                clientWindowSize: MatterBle.BTP_MAXIMUM_WINDOW_SIZE,
             });
             logger.debug(`Sending BTP handshake request on C1`);
             await this.#handler.sendCommand(BleProxyCommand.WriteCharacteristic, {
                 connection_handle,
                 characteristic_uuid: c1Uuid,
                 value: Buffer.from(btpHandshakeRequest as ArrayBuffer).toString("base64"),
-                response: false,
+                response: true,
             });
 
             // 6. Subscribe to C2 for notifications
@@ -167,9 +174,13 @@ export class ProxyBleCentralInterface implements ConnectionlessTransport {
                 rejecter: handshakeRejecter,
             } = createPromise<Uint8Array>();
 
-            const btpHandshakeTimeout = Time.getTimer("BLE proxy handshake timeout", BTP_CONN_RSP_TIMEOUT, () => {
-                handshakeRejecter(new BleError(`BTP handshake response not received from ${peripheralAddress}`));
-            }).start();
+            const btpHandshakeTimeout = Time.getTimer(
+                "BLE proxy handshake timeout",
+                MatterBle.BTP_CONN_RSP_TIMEOUT,
+                () => {
+                    handshakeRejecter(new BleError(`BTP handshake response not received from ${peripheralAddress}`));
+                },
+            ).start();
 
             const handshakeObserver = (frame: { connectionHandle: number; opcode: number; payload: Uint8Array }) => {
                 if (frame.connectionHandle === connection_handle && frame.opcode === BinaryFrameOpcode.Notification) {
@@ -214,6 +225,7 @@ export class ProxyBleCentralInterface implements ConnectionlessTransport {
                 // Matter message callback
                 async (data: Bytes) => {
                     if (channelRef.channel) {
+                        channelRef.channel.pushMessage(data);
                         onMatterMessageListener(channelRef.channel, data);
                     }
                 },
@@ -231,7 +243,8 @@ export class ProxyBleCentralInterface implements ConnectionlessTransport {
             const eventObserver = (event: string, data: Record<string, unknown>) => {
                 if (
                     event === BleProxyEvent.Disconnected &&
-                    (data as { connection_handle: number }).connection_handle === connection_handle
+                    typeof data.connection_handle === "number" &&
+                    data.connection_handle === connection_handle
                 ) {
                     logger.info(`Peripheral ${peripheralAddress} disconnected unexpectedly`);
                     channelRef.channel?.markDisconnected();
@@ -260,7 +273,7 @@ export class ProxyBleCentralInterface implements ConnectionlessTransport {
         }
     }
 
-    onData(listener: (socket: Channel<Bytes>, data: Bytes) => void): ConnectionlessTransport.Listener {
+    onData(listener: (socket: Channel<Bytes>, data: Bytes) => void): Transport.Listener {
         this.#onMatterMessageListener = listener;
         return {
             close: async () => await this.close(),
@@ -285,12 +298,19 @@ export class ProxyBleChannel extends BleChannel<Bytes> {
     readonly #peripheralAddress: string;
     readonly #btpSession: BtpSessionHandler;
     readonly #cleanupObservers: () => void;
+    readonly #onBtpSessionClosed: () => void;
+    readonly #closeListeners = new Set<() => void>();
+    #iteratorQueue = new Array<Bytes>();
+    #iteratorWaiter?: (value: IteratorResult<Bytes>) => void;
+    #iteratorDone = false;
 
     constructor(peripheralAddress: string, btpSession: BtpSessionHandler, cleanupObservers: () => void) {
         super();
         this.#peripheralAddress = peripheralAddress;
         this.#btpSession = btpSession;
         this.#cleanupObservers = cleanupObservers;
+        this.#onBtpSessionClosed = () => this.emitClosed();
+        btpSession.closed.on(this.#onBtpSessionClosed);
     }
 
     get connected() {
@@ -299,6 +319,49 @@ export class ProxyBleChannel extends BleChannel<Bytes> {
 
     markDisconnected() {
         this.#connected = false;
+    }
+
+    pushMessage(data: Bytes): void {
+        if (this.#iteratorWaiter) {
+            const resolve = this.#iteratorWaiter;
+            this.#iteratorWaiter = undefined;
+            resolve({ value: data, done: false });
+        } else if (!this.#iteratorDone) {
+            this.#iteratorQueue.push(data);
+        }
+    }
+
+    onClose(listener: () => void): Transport.Listener {
+        this.#closeListeners.add(listener);
+        return {
+            close: async () => {
+                this.#closeListeners.delete(listener);
+            },
+        };
+    }
+
+    [Symbol.asyncIterator](): AsyncIterator<Bytes> {
+        return {
+            next: () => {
+                if (this.#iteratorQueue.length > 0) {
+                    return Promise.resolve({ value: this.#iteratorQueue.shift()!, done: false });
+                }
+                if (this.#iteratorDone || !this.#connected) {
+                    return Promise.resolve({ value: undefined as unknown as Bytes, done: true });
+                }
+                return new Promise<IteratorResult<Bytes>>(resolve => {
+                    this.#iteratorWaiter = resolve;
+                });
+            },
+        };
+    }
+
+    #terminateIterator(): void {
+        if (!this.#iteratorDone) {
+            this.#iteratorDone = true;
+            this.#iteratorWaiter?.({ value: undefined as unknown as Bytes, done: true });
+            this.#iteratorWaiter = undefined;
+        }
     }
 
     async send(data: Bytes) {
@@ -319,6 +382,12 @@ export class ProxyBleChannel extends BleChannel<Bytes> {
     async close() {
         this.#connected = false;
         this.#cleanupObservers();
+        this.#terminateIterator();
+        for (const listener of this.#closeListeners) {
+            listener();
+        }
+        this.#btpSession.closed.off(this.#onBtpSessionClosed);
         await this.#btpSession.close();
+        this.emitClosed();
     }
 }

@@ -9,9 +9,6 @@
     },
     "references": [
         {
-            "path": "../../ble-proxy/src"
-        },
-        {
             "path": "../../custom-clusters/src"
         },
         {
