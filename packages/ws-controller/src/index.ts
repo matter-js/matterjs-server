@@ -33,4 +33,4 @@ export { formatNodeId } from "./util/formatNodeId.js";
 export * from "./util/matterVersion.js";
 
 // Re-Export classes from matter.js
-export { Crypto, Environment, LogDestination, LogFormat, LogLevel, Logger } from "@matter/main";
+export { Crypto, Environment, LogDestination, LogFormat, LogLevel, Logger, StorageService } from "@matter/main";

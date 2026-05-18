@@ -42,8 +42,8 @@
     "dependencies": {
         "@matter-server/ws-client": "*",
         "@matter/dcl-data": ">=2026.5.1-5.1",
-        "@matter/main": "0.17.0-alpha.0-20260518-a855869ae",
-        "@project-chip/matter.js": "0.17.0-alpha.0-20260518-a855869ae",
+        "@matter/main": "0.17.0-alpha.0-20260518-7f13c7285",
+        "@project-chip/matter.js": "0.17.0-alpha.0-20260518-7f13c7285",
         "ws": "^8.20.0"
     },
     "devDependencies": {
@@ -51,7 +51,7 @@
         "@types/ws": "^8.18.1"
     },
     "optionalDependencies": {
-        "@matter/nodejs-ble": "0.17.0-alpha.0-20260518-a855869ae"
+        "@matter/nodejs-ble": "0.17.0-alpha.0-20260518-7f13c7285"
     },
     "engines": {
         "node": ">=20.19.0 <22.0.0 || >=22.13.0"

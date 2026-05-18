@@ -16,6 +16,7 @@ import {
     Logger,
     MatterAggregateError,
     NodeId,
+    SharedEnvironmentServices,
     SoftwareUpdateManager,
     Timestamp,
 } from "@matter/main";
@@ -104,6 +105,7 @@ export class MatterController {
     #disableDclSeed = false;
     readonly #borderRouterDiscovery: BorderRouterDiscovery;
     #webRtcRequestor?: Endpoint<typeof CameraControllerDevice>;
+    #services: SharedEnvironmentServices;
 
     static async create(
         environment: Environment,
@@ -182,6 +184,7 @@ export class MatterController {
         this.#enableTestNetDcl = options.enableTestNetDcl ?? this.#enableTestNetDcl;
         this.#disableOtaProvider = options.disableOtaProvider ?? this.#disableOtaProvider;
         this.#disableDclSeed = options.disableDclSeed ?? this.#disableDclSeed;
+        this.#services = this.#env.asDependent();
     }
 
     protected async initialize(
@@ -206,7 +209,9 @@ export class MatterController {
                 },
             });
             new DclVendorInfoService(this.#env.root, { seed: { vendors: vendors({ includeTest }) } });
+            this.#services.get(DclVendorInfoService);
         }
+        this.#services.get(DclCertificateService);
 
         this.#controllerInstance = new CommissioningController({
             environment: {
@@ -376,9 +381,9 @@ export class MatterController {
     }
 
     async stop() {
-        await this.certificateService(); // Ensure it was initialized so that shutdown works
         await this.#borderRouterDiscovery.stop();
         await this.#commandHandler?.close(); // This closes also the controller instance if started
+        await this.#services.close();
     }
 
     /**

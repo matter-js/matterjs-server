@@ -3,6 +3,9 @@
  * Copyright 2025-2026 Open Home Foundation
  * SPDX-License-Identifier: Apache-2.0
  */
+// Must be first: applies storage-driver process.env defaults before any matter.js
+// import (which loads NodeJsEnvironment and locks in baseline variables).
+import "./pre-init.js";
 // Register the custom clusters
 import "@matter-server/custom-clusters";
 // Standard imports
@@ -15,6 +18,7 @@ import {
     LogLevel,
     Logger,
     MatterController,
+    StorageService,
     WebServerHandler,
     WebSocketControllerHandler,
 } from "@matter-server/ws-controller";
@@ -61,6 +65,9 @@ logger.info(`Command line: ${process.argv.slice(2).join(" ") || "(no arguments)"
 
 const env = Environment.default;
 
+// matter-server is sole SIGINT/SIGTERM owner; matter.js's handler would race controller teardown.
+env.vars.set("runtime.signals", false);
+
 // Apply CLI options to environment variables
 env.vars.set("storage.path", cliOptions.storagePath);
 if (cliOptions.bluetoothAdapter !== null) {
@@ -71,6 +78,11 @@ if (cliOptions.bluetoothAdapter !== null) {
 if (cliOptions.primaryInterface) {
     env.vars.set("mdns.networkInterface", cliOptions.primaryInterface);
 }
+
+const storageService = env.get(StorageService);
+logger.info(
+    `Using storage drivers: kv=${storageService.configuredDriver}, blob=${storageService.configuredBlobDriver}`,
+);
 
 let controller: MatterController;
 let server: WebServer;
@@ -251,9 +263,11 @@ async function stop() {
 startCompleted = start().catch(async err => {
     if (!stopping) {
         console.error(err);
+        process.exitCode = 1;
     }
     await config?.close();
 });
 
 process.on("SIGINT", () => void stop().catch(err => console.error(err)));
 process.on("SIGTERM", () => void stop().catch(err => console.error(err)));
+process.on("SIGUSR2", () => env.diagnose());
