@@ -7,7 +7,7 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
-## **WORK IN PROGRESS**
+## 0.7.0 (2026-05-18)
 
 - IMPORTANT: The first start, when coming from any previous version, will take a bit because we migrate the storage to the new "WAL"-based storage format. This is a one-time migration that reduces disk usage and I/O.
 - Breaking: Enables strict validation of Attestation and Certificates at commissioning like the Python server (Test-DCL Mode also checks the official test certificates)
