@@ -27,7 +27,7 @@ import "../pages/components/node-details";
 import { DevModeService } from "../util/dev-mode-service.js";
 import { formatHex, formatNodeAddress, getEffectiveFabricIndex } from "../util/format_hex.js";
 import { notFoundStyles } from "../util/shared-styles.js";
-import { getClusterCommandsTag } from "./cluster-commands/index.js";
+import { BaseClusterCommands, getClusterCommandsTag } from "./cluster-commands/index.js";
 import { bindingContext } from "./components/context.js";
 
 declare global {
@@ -377,9 +377,9 @@ class MatterClusterView extends LitElement {
 
         // After render, find and configure the cluster commands component
         const container = this.shadowRoot?.getElementById("cluster-commands-container");
-        if (container) {
-            const commandsElement = container.firstElementChild as any;
-            if (commandsElement && this.node) {
+        if (container && this.node && this.endpoint !== undefined && this.cluster !== undefined) {
+            const commandsElement = container.firstElementChild;
+            if (commandsElement instanceof BaseClusterCommands) {
                 commandsElement.node = this.node;
                 commandsElement.endpoint = this.endpoint;
                 commandsElement.cluster = this.cluster;
