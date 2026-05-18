@@ -109,9 +109,10 @@ class MatterDashboardApp extends LitElement {
     private _connect() {
         this.client.startListening().then(
             () => {
-                this._state = "connected";
+                // Publish context before flipping state so the connected render sees a defined client.
                 this.clientProvider.setValue(this.client);
                 this.tickProvider.setValue(++this._tick);
+                this._state = "connected";
                 this._setupEventListeners();
             },
             (_err: MatterError) => {

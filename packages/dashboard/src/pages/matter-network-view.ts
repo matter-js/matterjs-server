@@ -9,7 +9,7 @@ import type { MatterClient, MatterNode } from "@matter-server/ws-client";
 import { mdiEyeOff, mdiFitToScreen, mdiMagnifyMinus, mdiMagnifyPlus, mdiPause, mdiPlay } from "@mdi/js";
 import { css, html, LitElement } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
-import { clientContext, tickContext } from "../client/client-context.js";
+import { clientContext } from "../client/client-context.js";
 import "../components/ha-svg-icon";
 import { reducedMotionStyles } from "../util/shared-styles.js";
 import "./components/footer";
@@ -42,9 +42,6 @@ const HIDE_OPTIONS: readonly { key: HideOptionKey; label: string }[] = [
 class MatterNetworkView extends LitElement {
     @consume({ context: clientContext })
     public client!: MatterClient;
-
-    @consume({ context: tickContext, subscribe: true })
-    protected _tick = 0;
 
     @property({ type: Object })
     public nodes: Record<string, MatterNode> = {};

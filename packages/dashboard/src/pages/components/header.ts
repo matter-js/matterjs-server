@@ -72,9 +72,7 @@ export class DashboardHeader extends LitElement {
     }
 
     private _openSettings() {
-        if (this.client) {
-            showSettingsDialog();
-        }
+        showSettingsDialog();
     }
 
     private _getThemeIcon(): string {
