@@ -9,8 +9,7 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## **WORK IN PROGRESS**
 
-- IMPORTANT: The first start, when coming from any previous version, will take a bit because we migrate the storage
-    - Changes default storage to the new "WAL" based storage to reduce disk usage and I/O; Requires one-time migration
+- IMPORTANT: The first start, when coming from any previous version, will take a bit because we migrate the storage to the new "WAL"-based storage format. This is a one-time migration that reduces disk usage and I/O.
 - Breaking: Enables strict validation of Attestation and Certificates at commissioning like the Python server (Test-DCL Mode also checks the official test certificates)
 - Feature: Updates the Matter version to be compatible with Matter 1.5.1
 - Feature: Enables Matter TCP support when devices support it (likely very few devices)
