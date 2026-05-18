@@ -6,11 +6,13 @@
 
 import "@material/web/button/text-button";
 import "@material/web/select/outlined-select";
-import type { MdOutlinedSelect } from "@material/web/select/outlined-select.js";
+import { consume } from "@lit/context";
 import "@material/web/select/select-option";
+import type { MdOutlinedSelect } from "@material/web/select/outlined-select.js";
 import { LogLevelString, MatterClient } from "@matter-server/ws-client";
 import { css, html, LitElement, nothing } from "lit";
-import { customElement, property, query, state } from "lit/decorators.js";
+import { customElement, query, state } from "lit/decorators.js";
+import { clientContext, tickContext } from "../../../client/client-context.js";
 import { fireAndForget, handleAsync } from "../../../util/async-handler.js";
 import { showAlertDialog } from "../../dialog-box/show-dialog-box.js";
 
@@ -28,8 +30,11 @@ const LOG_LEVELS: { value: LogLevelString; label: string }[] = [
  */
 @customElement("log-level-section")
 export class LogLevelSection extends LitElement {
-    @property({ attribute: false })
-    public client!: MatterClient;
+    @consume({ context: clientContext })
+    public client?: MatterClient;
+
+    @consume({ context: tickContext, subscribe: true })
+    protected _tick = 0;
 
     @state() private _consoleLevel: LogLevelString = "info";
     @state() private _fileLevel: LogLevelString | null = null;
@@ -48,6 +53,7 @@ export class LogLevelSection extends LitElement {
     }
 
     private async _loadLogLevels() {
+        if (!this.client) return;
         try {
             const result = await this.client.getLogLevel();
             this._consoleLevel = result.console_loglevel;
@@ -60,6 +66,7 @@ export class LogLevelSection extends LitElement {
     }
 
     private async _apply() {
+        if (!this.client) return;
         this._applying = true;
         try {
             const consoleLevel = this._consoleSelect.value as LogLevelString;

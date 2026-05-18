@@ -142,6 +142,45 @@ export interface ThreadDiagnosticsBatch {
     partialReason?: ThreadDiagnosticsPartialReason;
 }
 
+export type WebRtcEventType = "offer" | "answer" | "ice_candidates" | "end";
+
+export interface WebRtcIceCandidate {
+    candidate: string;
+    sdpMid: string | null;
+    sdpMLineIndex: number | null;
+}
+
+export interface WebRtcOfferData {
+    sdp: string;
+    ice_servers?: unknown[];
+    ice_transport_policy?: string;
+}
+
+export interface WebRtcAnswerData {
+    sdp: string;
+}
+
+export interface WebRtcIceCandidatesData {
+    ice_candidates: WebRtcIceCandidate[];
+}
+
+export interface WebRtcEndData {
+    reason: number;
+}
+
+interface WebRtcCallbackBase {
+    webrtc_session_id: number;
+    node_id: number | bigint;
+    endpoint_id: number;
+    fabric_index: number;
+}
+
+export type WebRtcCallbackData =
+    | (WebRtcCallbackBase & { event_type: "offer"; data: WebRtcOfferData | null })
+    | (WebRtcCallbackBase & { event_type: "answer"; data: WebRtcAnswerData | null })
+    | (WebRtcCallbackBase & { event_type: "ice_candidates"; data: WebRtcIceCandidatesData | null })
+    | (WebRtcCallbackBase & { event_type: "end"; data: WebRtcEndData | null });
+
 export interface APICommands {
     start_listening: {
         requestArgs: Record<string, never>;
@@ -241,6 +280,15 @@ export interface APICommands {
             response_type: unknown;
             timed_request_timeout_ms?: number | null;
             interaction_timeout_ms?: number | null;
+        };
+        response: unknown;
+    };
+    send_webrtc_provider_command: {
+        requestArgs: {
+            node_id: number | bigint;
+            endpoint_id: number;
+            command_name: "ProvideOffer" | "SolicitOffer";
+            payload: Record<string, unknown>;
         };
         response: unknown;
     };
@@ -439,6 +487,9 @@ export interface APIEvents {
     thread_diagnostics_updated: {
         data: ThreadDiagnosticsBatch;
     };
+    webrtc_callback: {
+        data: WebRtcCallbackData;
+    };
 }
 
 /** All known event type names */
@@ -484,6 +535,10 @@ interface ServerEventThreadDiagnosticsUpdated {
     event: "thread_diagnostics_updated";
     data: ThreadDiagnosticsBatch;
 }
+interface ServerEventWebRtcCallback {
+    event: "webrtc_callback";
+    data: WebRtcCallbackData;
+}
 
 export type EventMessage =
     | ServerEventNodeAdded
@@ -495,7 +550,8 @@ export type EventMessage =
     | ServerEventEndpointAdded
     | ServerEventEndpointRemoved
     | ServerEventInfoUpdated
-    | ServerEventThreadDiagnosticsUpdated;
+    | ServerEventThreadDiagnosticsUpdated
+    | ServerEventWebRtcCallback;
 
 export interface ResultMessageBase {
     message_id: string;

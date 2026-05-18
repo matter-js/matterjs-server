@@ -7,17 +7,13 @@
 import "@material/web/button/text-button";
 import "@material/web/dialog/dialog";
 import type { MdDialog } from "@material/web/dialog/dialog.js";
-import { MatterClient } from "@matter-server/ws-client";
 import { css, html, LitElement } from "lit";
-import { customElement, property } from "lit/decorators.js";
+import { customElement } from "lit/decorators.js";
 import { preventDefault } from "../../../util/prevent_default.js";
 import "./log-level-section.js";
 
 @customElement("log-level-dialog")
 export class LogLevelDialog extends LitElement {
-    @property({ attribute: false })
-    public client!: MatterClient;
-
     private _close() {
         this.shadowRoot!.querySelector<MdDialog>("md-dialog")!.close();
     }
@@ -35,10 +31,7 @@ export class LogLevelDialog extends LitElement {
             <md-dialog open @cancel=${preventDefault} @closed=${this._handleClosed}>
                 <div slot="headline">Server Log Settings</div>
                 <div slot="content">
-                    <log-level-section
-                        .client=${this.client}
-                        @log-level-applied=${this._handleApplied}
-                    ></log-level-section>
+                    <log-level-section @log-level-applied=${this._handleApplied}></log-level-section>
                 </div>
                 <div slot="actions">
                     <md-text-button @click=${this._close}>Close</md-text-button>

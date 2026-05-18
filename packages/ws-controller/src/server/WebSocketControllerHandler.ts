@@ -86,6 +86,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
     #wss?: WebSocketServer;
     #closed = false;
     #shuttingDown = false;
+    #serverObservers = new ObserverGroup();
     /** Circular buffer for recent node events (max 25) */
     #eventHistory: MatterNodeEvent[] = [];
     /** Track when each node was last interviewed (connected) - keyed by nodeId */
@@ -150,6 +151,11 @@ export class WebSocketControllerHandler implements WebServerHandler {
         this.#serviceObservers.on(this.#controller.threadDiagnostics.events.batchUpdated, batch => {
             this.#broadcastEvent("thread_diagnostics_updated", serializeBatch(batch));
         });
+
+        this.#serverObservers.on(this.#commandHandler.events.webRtcCallback, data => {
+            this.#broadcastEvent("webrtc_callback", data);
+        });
+
         wss.on("connection", ws => {
             if (this.#closed || this.#shuttingDown) {
                 try {
@@ -381,6 +387,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
         this.#closed = true;
         this.#serviceObservers.close();
+        this.#serverObservers.close();
         // Send server_shutdown event to all connected clients before closing
         const shutdownMessage = toBigIntAwareJson({ event: "server_shutdown", data: {} });
         this.#wss.clients.forEach(client => {
@@ -453,6 +460,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     break;
                 case "device_command":
                     result = await this.#handleDeviceCommand(args);
+                    break;
+                case "send_webrtc_provider_command":
+                    result = await this.#handleSendWebRtcProviderCommand(args);
                     break;
                 case "write_attribute":
                     result = await this.#handleWriteAttribute(args);
@@ -876,6 +886,18 @@ export class WebSocketControllerHandler implements WebServerHandler {
             return null;
         }
         return cmdResult;
+    }
+
+    async #handleSendWebRtcProviderCommand(
+        args: ArgsOf<"send_webrtc_provider_command">,
+    ): Promise<ResponseOf<"send_webrtc_provider_command">> {
+        const { node_id, endpoint_id, command_name, payload } = args;
+        return this.#commandHandler.sendWebRtcProviderCommand({
+            nodeId: NodeId(node_id),
+            endpointId: EndpointNumber(endpoint_id),
+            commandName: command_name,
+            payload,
+        });
     }
 
     async #handleInterviewNode(args: ArgsOf<"interview_node">): Promise<ResponseOf<"interview_node">> {

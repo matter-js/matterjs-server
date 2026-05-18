@@ -285,7 +285,7 @@ export class NodeBindingDialog extends LitElement {
 
         // Note: fabricIndex is assigned by the server based on the device's fabric table
         const acl_entry: AccessControlEntryStruct = {
-            privilege: 5,
+            privilege: 3,
             authMode: 2,
             subjects: [this.node!.node_id],
             targets: [targets],

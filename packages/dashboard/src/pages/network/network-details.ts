@@ -1309,7 +1309,6 @@ export class NetworkDetails extends LitElement {
                 ${this._showUpdateDialog
                     ? html`
                           <update-connections-dialog
-                              .client=${this.client}
                               .nodes=${this.nodes}
                               selectedNodeType="unknown"
                               .selectedNodeName=${this._getSelectedNodeName()}
@@ -1357,7 +1356,6 @@ export class NetworkDetails extends LitElement {
                 ${this._showUpdateDialog
                     ? html`
                           <update-connections-dialog
-                              .client=${this.client}
                               .nodes=${this.nodes}
                               selectedNodeType="unknown"
                               .selectedNodeName=${this._getSelectedNodeName()}
@@ -1435,7 +1433,6 @@ export class NetworkDetails extends LitElement {
             ${this._showUpdateDialog
                 ? html`
                       <update-connections-dialog
-                          .client=${this.client}
                           .nodes=${this.nodes}
                           .selectedNodeType=${nodeType}
                           .selectedNodeName=${this._getSelectedNodeName()}

@@ -17,10 +17,12 @@ import {
     LogLevelResponse,
     LogLevelString,
     MatterFabricData,
+    MatterNodeEvent,
     MatterSoftwareVersion,
     NodePingResult,
     SuccessResultMessage,
     ThreadDiagnosticsBatch,
+    WebRtcCallbackData,
 } from "./models/model.js";
 import { MatterNode } from "./models/node.js";
 
@@ -61,6 +63,8 @@ export class MatterClient {
     // Start with random offset for defense-in-depth and easier debugging across sessions
     private msgId = Math.floor(Math.random() * 0x7fffffff);
     private eventListeners: Record<string, Array<() => void>> = {};
+    private webrtcCallbackListeners: Array<(data: WebRtcCallbackData) => void> = [];
+    private nodeEventListeners: Array<(event: MatterNodeEvent) => void> = [];
 
     /**
      * Create a new MatterClient.
@@ -89,6 +93,24 @@ export class MatterClient {
         this.eventListeners[event].push(listener);
         return () => {
             this.eventListeners[event] = this.eventListeners[event].filter(l => l !== listener);
+        };
+    }
+
+    /**
+     * Subscribe to webrtc_callback events with the typed payload.
+     * Returns an unsubscribe function.
+     */
+    addWebRtcCallbackListener(listener: (data: WebRtcCallbackData) => void): () => void {
+        this.webrtcCallbackListeners.push(listener);
+        return () => {
+            this.webrtcCallbackListeners = this.webrtcCallbackListeners.filter(l => l !== listener);
+        };
+    }
+
+    addNodeEventListener(listener: (event: MatterNodeEvent) => void): () => void {
+        this.nodeEventListeners.push(listener);
+        return () => {
+            this.nodeEventListeners = this.nodeEventListeners.filter(l => l !== listener);
         };
     }
 
@@ -298,6 +320,21 @@ export class MatterClient {
                 payload,
                 response_type: null,
             },
+            timeout,
+        );
+    }
+
+    async sendWebRtcProviderCommand(
+        nodeId: number | bigint,
+        endpointId: number,
+        commandName: "ProvideOffer" | "SolicitOffer",
+        payload: Record<string, unknown>,
+        timeout?: number,
+    ): Promise<unknown> {
+        return await this.sendCommand(
+            "send_webrtc_provider_command",
+            0,
+            { node_id: nodeId, endpoint_id: endpointId, command_name: commandName, payload },
             timeout,
         );
     }
@@ -576,6 +613,20 @@ export class MatterClient {
             next.set(event.data.extPanIdHex.toUpperCase(), event.data);
             this.threadDiagnostics = next;
             this.fireEvent("thread_diagnostics_updated");
+            return;
+        }
+
+        if (event.event === "webrtc_callback") {
+            for (const listener of this.webrtcCallbackListeners) {
+                listener(event.data);
+            }
+            return;
+        }
+
+        if (event.event === "node_event") {
+            for (const listener of this.nodeEventListeners) {
+                listener(event.data);
+            }
             return;
         }
     }
