@@ -27,6 +27,7 @@ This page shows a detailed overview of the changes between versions without the 
     - Fixes write encoding for some cases of nullable attributes
     - Make scanNetwork failures non-fatal for commissioning
     - Ensures re-subscriptions from the device to reset the device state to "Connected"
+    - ... more optimizations and fixes
 
 ## 0.6.8 (2026-05-08)
 
