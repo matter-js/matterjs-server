@@ -11,12 +11,17 @@ import "@material/web/iconbutton/icon-button.js";
 import "@material/web/select/outlined-select.js";
 import "@material/web/select/select-option.js";
 import type { MatterClient } from "@matter-server/ws-client";
-import { mdiCamera, mdiClose } from "@mdi/js";
+import { mdiCamera, mdiClose, mdiVolumeHigh, mdiVolumeOff } from "@mdi/js";
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { createRef, ref } from "lit/directives/ref.js";
 import { clientContext } from "../client/client-context.js";
-import { CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID } from "../components/webrtc-stream-view.js";
+import {
+    AVSM_FEAT_OSD,
+    AVSM_FEAT_WMARK,
+    AVSM_FEATURE_MAP_ATTR_ID,
+    CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID,
+} from "../components/webrtc-stream-view.js";
 import "../components/avsum-ptz-strip.js";
 import "../components/ha-svg-icon.js";
 import "../components/webrtc-stream-view.js";
@@ -57,6 +62,11 @@ export class CameraOverlay extends LitElement {
     @state() private _resolutionsLoading = true;
     @state() private _closing = false;
     @state() private _activeVideoStreamId: number | null = null;
+    @state() private _muted = true;
+    @state() private _watermarkEnabled = false;
+    @state() private _osdEnabled = false;
+    @state() private _snapshotResolutions: Resolution[] = [];
+    @state() private _selectedSnapshotResolution: Resolution | null = null;
 
     private get _snapshotSupported(): boolean {
         const node = this.client?.nodes[String(this.nodeId)];
@@ -81,7 +91,35 @@ export class CameraOverlay extends LitElement {
     private _initResolutions(): void {
         this._resolutions = this._loadResolutions();
         this._selectedResolution = this._resolutions[0] ?? null;
+        this._snapshotResolutions = this._loadSnapshotResolutions();
+        this._selectedSnapshotResolution = this._snapshotResolutions[0] ?? null;
         this._resolutionsLoading = false;
+    }
+
+    private _loadSnapshotResolutions(): Resolution[] {
+        const raw = this._readCachedAvsmAttribute(10);
+        if (!Array.isArray(raw)) return [];
+        const seen = new Map<string, Resolution>();
+        for (const item of raw) {
+            const obj = asObject(item);
+            if (!obj) continue;
+            const res = asObject(obj["resolution"] ?? obj["0"]);
+            if (!res) continue;
+            const w = pickNumber(res, "width", "0");
+            const h = pickNumber(res, "height", "1");
+            if (w !== null && h !== null) {
+                const key = `${w}x${h}`;
+                if (!seen.has(key)) seen.set(key, { width: w, height: h });
+            }
+        }
+        return [...seen.values()].sort((a, b) => b.width * b.height - a.width * a.height);
+    }
+
+    private _onSnapshotResolutionChange(ev: Event): void {
+        const value = (ev.target as HTMLSelectElement).value;
+        const [w, h] = value.split("x").map(Number);
+        if (!Number.isFinite(w) || !Number.isFinite(h)) return;
+        this._selectedSnapshotResolution = { width: w, height: h };
     }
 
     private _readCachedAvsmAttribute(attributeId: number): unknown {
@@ -134,6 +172,19 @@ export class CameraOverlay extends LitElement {
         return { width: w, height: h };
     }
 
+    private _avsmFeatures(): { wmark: boolean; osd: boolean } {
+        const node = this.client?.nodes[String(this.nodeId)];
+        const raw =
+            node?.attributes[
+                `${this.endpointId}/${CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID}/${AVSM_FEATURE_MAP_ATTR_ID}`
+            ];
+        const bits = typeof raw === "number" ? raw : 0;
+        return {
+            wmark: (bits & AVSM_FEAT_WMARK) !== 0,
+            osd: (bits & AVSM_FEAT_OSD) !== 0,
+        };
+    }
+
     private _avsumPresent(): boolean {
         const node = this.client?.nodes[String(this.nodeId)];
         if (!node) return false;
@@ -157,7 +208,11 @@ export class CameraOverlay extends LitElement {
     private _onStreamState(ev: CustomEvent<{ state: StreamState; errorMessage: string | null }>): void {
         this._state = ev.detail.state;
         this._errorMessage = ev.detail.errorMessage;
-        this._activeVideoStreamId = this._streamViewRef.value?.videoStreamId ?? null;
+        // Only expose the underlying VideoStreamID to the AVSUM strip while actively
+        // streaming. Other states would surface a stale id (during error/idle the
+        // stream is being torn down) or a not-yet-allocated null (during connecting).
+        this._activeVideoStreamId =
+            ev.detail.state === "streaming" ? (this._streamViewRef.value?.videoStreamId ?? null) : null;
     }
 
     private _start(): void {
@@ -172,6 +227,14 @@ export class CameraOverlay extends LitElement {
         if (view) {
             void view.stop();
         }
+    }
+
+    private _toggleMute(): void {
+        const view = this._streamViewRef.value;
+        if (!view) return;
+        const next = !this._muted;
+        view.setMuted(next);
+        this._muted = next;
     }
 
     private async _onSnapshot(): Promise<void> {
@@ -232,6 +295,9 @@ export class CameraOverlay extends LitElement {
                               .nodeId=${this.nodeId}
                               .endpointId=${this.endpointId}
                               .resolution=${this._selectedResolution}
+                              .watermarkEnabled=${this._watermarkEnabled}
+                              .osdEnabled=${this._osdEnabled}
+                              .snapshotResolution=${this._selectedSnapshotResolution}
                               @streamstate=${this._onStreamState}
                           ></webrtc-stream-view>`
                         : html`<div class="status error">No Matter client available.</div>`}
@@ -286,6 +352,46 @@ export class CameraOverlay extends LitElement {
                               </md-outlined-select>
                           `
                         : nothing}
+                    ${canStart && this._snapshotSupported && this._snapshotResolutions.length > 0
+                        ? html`
+                              <md-outlined-select
+                                  label="Snapshot"
+                                  .value=${this._selectedSnapshotResolution
+                                      ? `${this._selectedSnapshotResolution.width}x${this._selectedSnapshotResolution.height}`
+                                      : ""}
+                                  @change=${this._onSnapshotResolutionChange}
+                              >
+                                  ${this._snapshotResolutions.map(
+                                      r => html`
+                                          <md-select-option value=${`${r.width}x${r.height}`}>
+                                              <div slot="headline">${r.width}×${r.height}</div>
+                                          </md-select-option>
+                                      `,
+                                  )}
+                              </md-outlined-select>
+                          `
+                        : nothing}
+                    ${canStart && this._avsmFeatures().wmark
+                        ? html`<label class="overlay-toggle">
+                              <input
+                                  type="checkbox"
+                                  ?checked=${this._watermarkEnabled}
+                                  @change=${(e: Event) =>
+                                      (this._watermarkEnabled = (e.target as HTMLInputElement).checked)}
+                              />
+                              Watermark
+                          </label>`
+                        : nothing}
+                    ${canStart && this._avsmFeatures().osd
+                        ? html`<label class="overlay-toggle">
+                              <input
+                                  type="checkbox"
+                                  ?checked=${this._osdEnabled}
+                                  @change=${(e: Event) => (this._osdEnabled = (e.target as HTMLInputElement).checked)}
+                              />
+                              OSD
+                          </label>`
+                        : nothing}
                     ${canStart
                         ? html`<md-filled-button
                               @click=${this._start}
@@ -295,7 +401,14 @@ export class CameraOverlay extends LitElement {
                           </md-filled-button>`
                         : nothing}
                     ${this._state === "streaming"
-                        ? html`<md-filled-button @click=${this._stop}>End</md-filled-button>`
+                        ? html`<md-filled-button @click=${this._stop}>End</md-filled-button>
+                              <md-text-button @click=${this._toggleMute} aria-label=${this._muted ? "Unmute" : "Mute"}>
+                                  <ha-svg-icon
+                                      slot="icon"
+                                      .path=${this._muted ? mdiVolumeOff : mdiVolumeHigh}
+                                  ></ha-svg-icon>
+                                  ${this._muted ? "Unmute" : "Mute"}
+                              </md-text-button>`
                         : nothing}
                     ${this._snapshotSupported
                         ? html`<md-text-button
@@ -334,8 +447,21 @@ export class CameraOverlay extends LitElement {
             color: var(--md-sys-color-on-surface);
             display: grid;
             grid-template-rows: auto auto 1fr auto;
+            grid-template-areas: "header" "strip" "main" "footer";
             border-radius: 8px;
             overflow: hidden;
+        }
+        header {
+            grid-area: header;
+        }
+        avsum-ptz-strip {
+            grid-area: strip;
+        }
+        main {
+            grid-area: main;
+        }
+        footer {
+            grid-area: footer;
         }
         header {
             display: flex;
@@ -345,19 +471,35 @@ export class CameraOverlay extends LitElement {
             border-bottom: 1px solid var(--md-sys-color-outline-variant);
         }
         main {
-            display: block;
+            display: flex;
+            flex-direction: column;
             background: black;
-            min-height: 0;
             position: relative;
+            overflow: hidden;
+            min-height: 0;
         }
         webrtc-stream-view {
+            flex: 1 1 0;
+            min-height: 0;
             width: 100%;
-            height: 100%;
         }
         .status.error {
             color: var(--danger-color);
             text-align: center;
             padding: 16px;
+        }
+        .overlay-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.85rem;
+            color: var(--md-sys-color-on-surface-variant);
+            user-select: none;
+            cursor: pointer;
+        }
+        .overlay-toggle input[type="checkbox"] {
+            accent-color: var(--md-sys-color-primary);
+            margin: 0;
         }
         .snapshot-preview {
             position: absolute;

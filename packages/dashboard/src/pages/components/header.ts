@@ -9,10 +9,12 @@ import "@material/web/divider/divider";
 import "@material/web/iconbutton/icon-button";
 import "@material/web/list/list";
 import "@material/web/list/list-item";
+import { consume } from "@lit/context";
 import { MatterClient } from "@matter-server/ws-client";
 import { mdiArrowLeft, mdiBrightnessAuto, mdiCog, mdiLogout, mdiWeatherNight, mdiWeatherSunny } from "@mdi/js";
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import { clientContext, tickContext } from "../../client/client-context.js";
 import { showSettingsDialog } from "../../components/dialogs/settings/show-settings-dialog.js";
 import "../../components/ha-svg-icon";
 import { DevModeService } from "../../util/dev-mode-service.js";
@@ -35,7 +37,11 @@ export class DashboardHeader extends LitElement {
     @property({ type: Boolean }) public hasThreadDevices?: boolean;
     @property({ type: Boolean }) public hasWifiDevices?: boolean;
 
+    @consume({ context: clientContext })
     public client?: MatterClient;
+
+    @consume({ context: tickContext, subscribe: true })
+    protected _tick = 0;
 
     @state() private _themePreference: ThemePreference = ThemeService.preference;
     @state() private _effectiveTheme: EffectiveTheme = ThemeService.effectiveTheme;
@@ -66,9 +72,7 @@ export class DashboardHeader extends LitElement {
     }
 
     private _openSettings() {
-        if (this.client) {
-            showSettingsDialog(this.client);
-        }
+        showSettingsDialog();
     }
 
     private _getThemeIcon(): string {

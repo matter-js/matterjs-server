@@ -14,6 +14,11 @@ import { readFile, writeFile } from "node:fs/promises";
 
 const MATTER_PACKAGES = ["@matter/", "@project-chip/matter.js"];
 
+// Matter.js packages whose versioning is independent of the matter.js core release
+// (e.g. @matter/dcl-data ships its own dataset versioning) and must NOT be rewritten
+// to the matter.js core version by sync-matterjs.
+const EXCLUDED_PACKAGES = new Set(["@matter/dcl-data"]);
+
 async function getVersionFromNpm(tag) {
     // Use @matter/main as the reference package for the version
     const cmd = `npm view @matter/main@${tag} version`;
@@ -26,6 +31,7 @@ async function getVersionFromNpm(tag) {
 }
 
 function isMatterPackage(packageName) {
+    if (EXCLUDED_PACKAGES.has(packageName)) return false;
     return MATTER_PACKAGES.some(prefix => packageName.startsWith(prefix));
 }
 

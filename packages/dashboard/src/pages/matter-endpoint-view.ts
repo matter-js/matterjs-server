@@ -10,11 +10,13 @@ import "@material/web/divider/divider";
 import "@material/web/iconbutton/icon-button";
 import "@material/web/list/list";
 import "@material/web/list/list-item";
+import { consume } from "@lit/context";
 import { MatterClient, MatterNode, isTestNodeId } from "@matter-server/ws-client";
 import { mdiAlertCircleOutline, mdiChevronRight } from "@mdi/js";
 import { LitElement, css, html } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { guard } from "lit/directives/guard.js";
+import { clientContext, tickContext } from "../client/client-context.js";
 import { DeviceType, clusters, device_types } from "../client/models/descriptions.js";
 import "../components/ha-svg-icon";
 import { formatHex, formatNodeAddress, getEffectiveFabricIndex } from "../util/format_hex.js";
@@ -50,7 +52,11 @@ export function getEndpointDeviceTypes(node: MatterNode, endpoint: number): Devi
 
 @customElement("matter-endpoint-view")
 class MatterEndpointView extends LitElement {
+    @consume({ context: clientContext })
     public client!: MatterClient;
+
+    @consume({ context: tickContext, subscribe: true })
+    protected _tick = 0;
 
     @property()
     public node?: MatterNode;
@@ -62,7 +68,7 @@ class MatterEndpointView extends LitElement {
     override render() {
         if (!this.node || this.endpoint == undefined) {
             return html`
-                <dashboard-header title="Not found" .client=${this.client} backButton="#"></dashboard-header>
+                <dashboard-header title="Not found" backButton="#"></dashboard-header>
                 <div class="not-found">
                     <ha-svg-icon .path=${mdiAlertCircleOutline}></ha-svg-icon>
                     <p>Node or endpoint not found</p>
@@ -82,12 +88,11 @@ class MatterEndpointView extends LitElement {
             <dashboard-header
                 .title=${`Node ${this.node.node_id} ${nodeHex}  |  Endpoint ${this.endpoint}`}
                 .backButton=${`#node/${this.node.node_id}`}
-                .client=${this.client}
             ></dashboard-header>
 
             <!-- node details section -->
             <div class="container">
-                <node-details .node=${this.node} .client=${this.client}></node-details>
+                <node-details .node=${this.node}></node-details>
             </div>
 
             <!-- Endpoint clusters listing -->

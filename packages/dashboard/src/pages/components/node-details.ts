@@ -16,6 +16,7 @@ import { MatterClient, MatterNode, UpdateSource } from "@matter-server/ws-client
 import { mdiChatProcessing, mdiLink, mdiShareVariant, mdiTrashCan, mdiUpdate, mdiVideo } from "@mdi/js";
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import { clientContext, tickContext } from "../../client/client-context.js";
 import { DeviceType } from "../../client/models/descriptions.js";
 import { showAlertDialog, showPromptDialog } from "../../components/dialog-box/show-dialog-box.js";
 import { showNodeBindingDialog } from "../../components/dialogs/binding/show-node-binding-dialog.js";
@@ -60,7 +61,11 @@ function getNodeDeviceTypes(node: MatterNode): DeviceType[] {
 
 @customElement("node-details")
 export class NodeDetails extends LitElement {
+    @consume({ context: clientContext })
     public client!: MatterClient;
+
+    @consume({ context: tickContext, subscribe: true })
+    protected _tick = 0;
 
     @property() public node?: MatterNode;
 
@@ -68,7 +73,6 @@ export class NodeDetails extends LitElement {
     private _updateInitiated: boolean = false;
 
     @consume({ context: bindingContext })
-    @property({ attribute: false })
     endpoint!: number;
 
     protected override render() {
@@ -213,7 +217,7 @@ export class NodeDetails extends LitElement {
 
     private async _binding() {
         try {
-            showNodeBindingDialog(this.client, this.node!, this.endpoint);
+            showNodeBindingDialog(this.node!, this.endpoint);
         } catch (err: unknown) {
             console.error("Binding error:", err);
         }
