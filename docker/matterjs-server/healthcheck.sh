@@ -6,7 +6,8 @@
 set -eu
 
 port="${PORT:-5580}"
-addr="${LISTEN_ADDRESS%%,*}"
+listen="${LISTEN_ADDRESS:-}"
+addr="${listen%%,*}"
 addr="${addr:-localhost}"
 
 case "$addr" in
