@@ -77,9 +77,13 @@ VOLUME ["/data"]
 # WebSocket API port
 EXPOSE 5580
 
+# Healthcheck script honours LISTEN_ADDRESS / PORT so it still works when the
+# server is bound to a non-localhost address. See script for limitations.
+COPY --chmod=0755 healthcheck.sh /usr/local/bin/healthcheck.sh
+
 # Health check - verify the server is responding
 HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --start-interval=5s --retries=3 \
-    CMD curl -f http://localhost:5580/health || exit 1
+    CMD ["/usr/local/bin/healthcheck.sh"]
 
 # Run the matter server directly (all config via environment variables)
 USER 1000:1000

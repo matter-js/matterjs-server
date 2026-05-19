@@ -45,9 +45,13 @@ VOLUME ["/data"]
 # WebSocket API port
 EXPOSE 5580
 
+# Healthcheck script honours LISTEN_ADDRESS / PORT so it still works when the
+# server is bound to a non-localhost address. See script for limitations.
+COPY --chmod=0755 docker/matterjs-server/healthcheck.sh /usr/local/bin/healthcheck.sh
+
 # Health check - verify the server is responding
 HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --start-interval=5s --retries=3 \
-    CMD curl -f http://localhost:5580/ || exit 1
+    CMD ["/usr/local/bin/healthcheck.sh"]
 
 # Run the matter server with data stored in /data
 # --enable-source-maps provides better stack traces in error logs
