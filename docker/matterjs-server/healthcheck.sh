@@ -15,4 +15,4 @@ case "$addr" in
     *)   url="http://$addr:${port}/health" ;;
 esac
 
-exec curl -fsS --no-progress-meter "$url"
+exec curl -fsS -o /dev/null -m 5 "$url"
