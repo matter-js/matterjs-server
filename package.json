@@ -43,7 +43,14 @@
         "python:lint-fix": "cd python_client && .venv/bin/ruff check . --exclude chip --fix --unsafe-fixes",
         "python:typecheck": "cd python_client && .venv/bin/mypy .",
         "python:test-all": "cd python_client && .venv/bin/pytest tests/ -v",
-        "python:build": "cd python_client && .venv/bin/pip install build && .venv/bin/python -m build"
+        "python:build": "cd python_client && .venv/bin/pip install build && .venv/bin/python -m build",
+        "python-ble-proxy:install": "cd python_ble_proxy && python3 -m venv .venv && .venv/bin/pip install -e '.[test]'",
+        "python-ble-proxy:test": "cd python_ble_proxy && .venv/bin/pytest tests/ -v",
+        "python-ble-proxy:lint": "cd python_ble_proxy && .venv/bin/ruff check .",
+        "python-ble-proxy:lint-fix": "cd python_ble_proxy && .venv/bin/ruff check . --fix --unsafe-fixes",
+        "python-ble-proxy:typecheck": "cd python_ble_proxy && .venv/bin/mypy .",
+        "python-ble-proxy:build": "cd python_ble_proxy && .venv/bin/pip install build && .venv/bin/python -m build",
+        "python-ble-proxy:run": "cd python_ble_proxy && { [ -x .venv/bin/matter-ble-proxy ] || (python3 -m venv .venv && .venv/bin/pip install -e .); } && .venv/bin/matter-ble-proxy"
     },
     "devDependencies": {
         "@matter/testing": "0.17.0-alpha.0-20260518-7f13c7285",

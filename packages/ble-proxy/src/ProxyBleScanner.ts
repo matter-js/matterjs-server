@@ -34,6 +34,7 @@ export class ProxyBleScanner implements Scanner {
     readonly type = ChannelType.BLE;
 
     readonly #proxyClient: ProxyBleClient;
+    #closed = false;
     readonly #recordWaiters = new Map<
         string,
         {
@@ -249,7 +250,7 @@ export class ProxyBleScanner implements Scanner {
             },
         );
 
-        while (!canceled) {
+        while (!canceled && !this.#closed) {
             this.#getCommissionableDevices(identifier).forEach(({ deviceData }) => {
                 const { deviceIdentifier } = deviceData;
                 if (!discoveredDevices.has(deviceIdentifier)) {
@@ -277,14 +278,17 @@ export class ProxyBleScanner implements Scanner {
     }
 
     async close() {
+        // Flip #closed first so the discovery loop's `while` condition fails on its next
+        // iteration even when commissioning supplied its own cancelSignal (which would leave
+        // the per-query cancelResolver undefined and our resolve-the-waiter trick alone
+        // unable to stop the loop).
+        this.#closed = true;
         this.#proxyClient.close();
         const queryIds = [...this.#recordWaiters.keys()];
 
-        // The discovery loop reads `canceled` flipped by cancelSignal.then(...), itself a
-        // microtask. If we finished the waiter in the same tick the awaiter could resume FIRST,
-        // see canceled=false, and re-arm a fresh waiter — hanging shutdown forever. Fire all
-        // cancelResolvers first, yield a microtask so each cancelSignal.then handler runs and
-        // sets canceled=true, THEN unblock the awaiters.
+        // Best-effort trip the per-query cancelSignal if it's one we created. Yields a microtask
+        // so the cancelSignal.then handler runs before we unblock the awaiter, otherwise the
+        // loop's local `canceled` would still read false on resume.
         for (const queryId of queryIds) {
             this.#recordWaiters.get(queryId)?.cancelResolver?.();
         }

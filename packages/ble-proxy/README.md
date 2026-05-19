@@ -12,6 +12,8 @@ Instead of requiring a Bluetooth adapter on the server host, a **proxy client** 
 
 The primary use case is Home Assistant (with local or ESPHome BLE proxies) acting as the proxy client. See the [BLE Proxy Protocol documentation](../../docs/ble-proxy-protocol.md) for the full protocol specification.
 
+For a Python implementation of the protocol (Bleak-based CLI + reusable library used by the Home Assistant Matter integration), see [`python_ble_proxy/`](../../python_ble_proxy/) and the [`matter-ble-proxy`](https://pypi.org/project/matter-ble-proxy/) package on PyPI.
+
 ## Enabling BLE Proxy Mode on the Server
 
 Start the Matter server with the `--ble-proxy` flag:
