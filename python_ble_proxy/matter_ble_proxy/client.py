@@ -286,9 +286,7 @@ class MatterBleProxy:
             return
 
         if _LOGGER.isEnabledFor(logging.INFO):
-            # Strip base64 payloads from `write_characteristic` and similar commands so
-            # the INFO log stays readable during BTP traffic. The full args are still
-            # visible at DEBUG via aiohttp's frame log.
+            # Strip base64 payloads from INFO logs; full args remain at DEBUG via aiohttp's frame log.
             summary = {k: v for k, v in args.items() if k not in {"value"}}
             _LOGGER.info("[←CMD] id=%s %s%s", cmd_id, command, f" {summary}" if summary else "")
 
@@ -326,20 +324,16 @@ class MatterBleProxy:
         service_uuids: list[str] = args.get("service_uuids", [])
         service_uuid_set = {_normalize_uuid(u) for u in service_uuids} if service_uuids else None
 
-        # Per-address fingerprint cache. Bleak callbacks fire on every received
-        # advertisement (Matter peripherals broadcast at ~10 Hz), but the server
-        # only needs to see one event per state change. Forwarding every ad would
-        # spam the WebSocket and serialize behind in-flight commands like connect.
+        # Matter peripherals broadcast at ~10 Hz; forwarding every ad would spam
+        # the WebSocket and serialize behind in-flight commands. Dedup by content.
         last_fingerprint: dict[str, tuple[str | None, bool, tuple[str, ...], tuple[tuple[str, bytes], ...]]] = {}
 
         def _on_advertisement(ad: AdvertisementData) -> None:
             if service_uuid_set is not None:
                 advertised = {_normalize_uuid(u) for u in ad.service_uuids}
-                # Also accept matches by service-data key, since some stacks only
-                # surface a service UUID via its service_data entry. Bleak emits the
-                # full canonical 128-bit form even for standard 16-bit UUIDs, while
-                # the server sends the short form; _normalize_uuid collapses both to
-                # the short form for standard Bluetooth Base UUIDs.
+                # Some stacks only surface the service UUID via its service_data key,
+                # so include those too. _normalize_uuid collapses Bleak's canonical
+                # 128-bit form and the server's short form to a comparable shape.
                 advertised.update(_normalize_uuid(k) for k in ad.service_data)
                 if not service_uuid_set.intersection(advertised):
                     return
@@ -446,9 +440,10 @@ class MatterBleProxy:
         if conn is None:
             await self._send_error(cmd_id, "not_connected", f"No connection with handle {args['connection_handle']}")
             return
-        # Bleak auto-discovers on connect, but `services` can be None if the cache hasn't
-        # populated yet or the connection broke between connect and this command.
-        services = conn.client.services
+        # Bleak's stub claims `services` is always populated after `connect()`, but in
+        # practice it can be `None` if the cache hasn't populated or the connection broke
+        # before this command; cast to Optional so the None guard isn't unreachable.
+        services: BleakGATTServiceCollection | None = conn.client.services
         if services is None:
             await self._send_error(cmd_id, "discover_failed", "Service discovery has not completed")
             return
