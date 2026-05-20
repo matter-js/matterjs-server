@@ -44,7 +44,7 @@
     "devDependencies": {
         "@types/express": "^5.0.6",
         "@types/node": "^25.6.0",
-        "@matter/nodejs": "0.17.0-alpha.0-20260518-7f13c7285",
+        "@matter/nodejs": "0.17.0-alpha.0-20260520-0ab980a16",
         "@matter/testing": "0.17.0-alpha.0-20260518-7f13c7285",
         "@matter-server/ws-client": "*"
     },
