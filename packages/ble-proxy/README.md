@@ -113,4 +113,4 @@ integrators that bring their own BLE source.
 
 ## Home Assistant Integration
 
-The Home Assistant Matter integration automatically connects to `/ble` when the server reports `bluetooth_enabled: true`. Start the server with `--ble-proxy` (or `ble_proxy: true` in the add-on config). No further HA-side configuration is needed.
+The Home Assistant Matter integration automatically connects to `/ble` when the server reports `ble_proxy_enabled: true`. Start the server with `--ble-proxy` (or `ble_proxy: true` in the add-on config). No further HA-side configuration is needed.
