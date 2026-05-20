@@ -70,6 +70,47 @@ Connected. BLE proxy active. Press Ctrl+C to stop.
 
 The proxy stays connected and handles BLE commissioning commands transparently whenever a commission-via-BLE is triggered.
 
+## Python Example Client
+
+The repository also ships a Python reference proxy client built on
+[Bleak](https://github.com/hbldh/bleak), published to PyPI as
+[`matter-ble-proxy`](https://pypi.org/project/matter-ble-proxy/). Same use
+cases as the Noble client; pick whichever stack you already have set up. The
+Home Assistant Matter integration consumes the library form of this package.
+
+### Prerequisites
+
+- Python 3.12+
+- A host with a Bluetooth adapter (Linux, macOS, or Windows — Bleak supports all three)
+- Server running with `--ble-proxy`
+
+### Running from a release
+
+```bash
+pip install matter-ble-proxy
+matter-ble-proxy --server ws://localhost:5580/ble
+```
+
+### Running from this repository
+
+```bash
+# Default: connect to ws://localhost:5580/ble
+npm run python-ble-proxy:run
+
+# Custom server URL
+npm run python-ble-proxy:run -- --server ws://192.168.1.100:5580/ble --log-level INFO
+```
+
+Once connected, you will see:
+
+```
+17:46:35.541 INFO matter_ble_proxy.cli: Connected. BLE proxy active. Press Ctrl+C to stop.
+```
+
+See [`python_ble_proxy/`](../../python_ble_proxy/) for the library API
+(`MatterBleProxy`, `BleScanSource`, `BleDeviceResolver`, ...) used by
+integrators that bring their own BLE source.
+
 ## Home Assistant Integration
 
 The Home Assistant Matter integration automatically connects to `/ble` when the server reports `bluetooth_enabled: true`. Start the server with `--ble-proxy` (or `ble_proxy: true` in the add-on config). No further HA-side configuration is needed.

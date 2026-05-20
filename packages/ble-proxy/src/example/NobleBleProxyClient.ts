@@ -136,7 +136,9 @@ export class NobleBleProxyClient {
 
                 // Handle command from server
                 if ("id" in msg && "command" in msg) {
-                    void this.#handleCommand(msg as CommandMessage);
+                    this.#handleCommand(msg as CommandMessage).catch(err =>
+                        error(`Unhandled error in command handler: ${(err as Error).message}`),
+                    );
                 }
             });
 
@@ -170,9 +172,13 @@ export class NobleBleProxyClient {
     close(): void {
         this.#closing = true;
         // Disconnect all BLE peripherals
-        for (const [, conn] of this.#connections) {
+        for (const [handle, conn] of this.#connections) {
             if (conn.peripheral.state === "connected") {
-                conn.peripheral.disconnectAsync().catch(() => {});
+                conn.peripheral
+                    .disconnectAsync()
+                    .catch(err =>
+                        warn(`[CONN] handle=${handle} disconnect during shutdown failed: ${(err as Error).message}`),
+                    );
             }
         }
         this.#connections.clear();
@@ -411,10 +417,18 @@ export class NobleBleProxyClient {
             }
             peripheral.removeListener("disconnect", disconnectListener);
             if (peripheral.state === "connected") {
-                peripheral.disconnectAsync().catch(() => {});
+                peripheral
+                    .disconnectAsync()
+                    .catch(disconnectErr =>
+                        warn(`[CONN] handle=${handle} cleanup disconnect failed: ${(disconnectErr as Error).message}`),
+                    );
             }
             // Always try to resume scanning so subsequent connect attempts still see devices.
-            this.#noble!.startScanningAsync(["fff6"], true).catch(() => {});
+            this.#noble!
+                .startScanningAsync(["fff6"], true)
+                .catch(scanErr =>
+                    warn(`[SCAN] failed to resume scanning after connect failure: ${(scanErr as Error).message}`),
+                );
             this.#sendError(id, "internal_error", reason);
         }
     }

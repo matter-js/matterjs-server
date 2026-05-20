@@ -218,8 +218,11 @@ export class ProxyBleCentralInterface implements Transport {
                     logger.debug(`Disconnecting from ${peripheralAddress} via proxy`);
                     try {
                         await this.#handler.sendCommand(BleProxyCommand.Disconnect, { connection_handle });
-                    } catch {
-                        // Ignore disconnect errors
+                    } catch (error) {
+                        logger.debug(
+                            `Peripheral ${peripheralAddress}: Error sending Disconnect to proxy client`,
+                            error,
+                        );
                     }
                 },
                 // Matter message callback
@@ -234,7 +237,11 @@ export class ProxyBleCentralInterface implements Transport {
             // 9. Wire up binary frame notifications to BTP session
             const binaryObserver = (frame: { connectionHandle: number; opcode: number; payload: Uint8Array }) => {
                 if (frame.connectionHandle === connection_handle && frame.opcode === BinaryFrameOpcode.Notification) {
-                    void btpSession.handleIncomingBleData(new Uint8Array(frame.payload));
+                    btpSession
+                        .handleIncomingBleData(new Uint8Array(frame.payload))
+                        .catch(error =>
+                            logger.warn(`Peripheral ${peripheralAddress}: Error handling incoming BLE data`, error),
+                        );
                 }
             };
             this.#handler.binaryFrameReceived.on(binaryObserver);
@@ -248,7 +255,9 @@ export class ProxyBleCentralInterface implements Transport {
                 ) {
                     logger.info(`Peripheral ${peripheralAddress} disconnected unexpectedly`);
                     channelRef.channel?.markDisconnected();
-                    void channelRef.channel?.close();
+                    channelRef.channel
+                        ?.close()
+                        .catch(error => logger.debug(`Peripheral ${peripheralAddress}: Error closing channel`, error));
                 }
             };
             this.#handler.eventReceived.on(eventObserver);
@@ -263,11 +272,11 @@ export class ProxyBleCentralInterface implements Transport {
             channelRef.channel = proxyChannel;
             return proxyChannel;
         } catch (error) {
-            // Clean up on failure
+            // Clean up on failure — best-effort tear-down of the peripheral on the proxy side
             try {
                 await this.#handler.sendCommand(BleProxyCommand.Disconnect, { connection_handle });
-            } catch {
-                // Ignore
+            } catch (cleanupError) {
+                logger.debug(`Peripheral ${peripheralAddress}: Error during connect-failure cleanup`, cleanupError);
             }
             throw error;
         }
