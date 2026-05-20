@@ -25,13 +25,13 @@
     "dependencies": {
         "@matter/main": "0.17.0-alpha.0-20260520-0ab980a16",
         "@matter-server/ws-controller": "*",
-        "ws": "^8.19.0"
+        "ws": "^8.20.1"
     },
     "optionalDependencies": {
         "@matter/nodejs-ble": "0.17.0-alpha.0-20260520-0ab980a16"
     },
     "devDependencies": {
-        "@types/node": "^25.0.10",
+        "@types/node": "^25.9.1",
         "@types/ws": "^8.18.1"
     },
     "files": [
