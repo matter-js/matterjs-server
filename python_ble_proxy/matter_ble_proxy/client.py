@@ -216,6 +216,20 @@ class MatterBleProxy:
             self._message_task.cancel()
             self._message_task = None
 
+        await self._release_ble_resources()
+
+        if self._ws is not None and not self._ws.closed:
+            await self._ws.close()
+        self._ws = None
+
+        if self._owns_session and self._session is not None and not self._session.closed:
+            await self._session.close()
+            self._session = None
+
+        self._closed_event.set()
+
+    async def _release_ble_resources(self) -> None:
+        """Stop scanning and disconnect all BLE peripherals. Idempotent."""
         if self._scanning:
             try:
                 await self._scan_source.stop()
@@ -231,16 +245,6 @@ class MatterBleProxy:
             except Exception:
                 _LOGGER.debug("Error disconnecting BLE client", exc_info=True)
         self._connections.clear()
-
-        if self._ws is not None and not self._ws.closed:
-            await self._ws.close()
-        self._ws = None
-
-        if self._owns_session and self._session is not None and not self._session.closed:
-            await self._session.close()
-            self._session = None
-
-        self._closed_event.set()
 
     async def run_until_closed(self) -> None:
         """Block until the WebSocket connection is closed."""
@@ -274,6 +278,9 @@ class MatterBleProxy:
             _LOGGER.exception("Error in BLE proxy message loop")
         finally:
             _LOGGER.warning("BLE proxy WebSocket connection ended")
+            # Release scan + peripherals so an unexpected WS close doesn't leave the
+            # adapter scanning or peripherals connected until the caller calls disconnect().
+            await self._release_ble_resources()
             self._closed_event.set()
 
     async def _handle_command(self, msg: dict[str, Any]) -> None:

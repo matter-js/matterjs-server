@@ -38,8 +38,11 @@ const logger = Logger.get("MatterController");
 let bleSupportLoaded: Promise<void> | undefined;
 
 // Lazy-load the optional `@matter/nodejs-ble` so a missing install only fails when BLE is enabled.
+// In `ble.proxy.enable` mode the proxy provides its own Ble implementation and the host does not
+// need a local BLE adapter or `@matter/nodejs-ble` — skip the import entirely.
 async function loadBleSupport(environment: Environment): Promise<void> {
     if (!environment.vars.get("ble.enable", false)) return;
+    if (environment.vars.get("ble.proxy.enable", false)) return;
     if (bleSupportLoaded === undefined) {
         bleSupportLoaded = (async () => {
             try {

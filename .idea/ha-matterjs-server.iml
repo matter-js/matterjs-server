@@ -2,7 +2,10 @@
 <module type="WEB_MODULE" version="4">
   <component name="NewModuleRootManager">
     <content url="file://$MODULE_DIR$">
+      <sourceFolder url="file://$MODULE_DIR$/packages/ble-proxy/test" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/packages/matter-server/test" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/packages/ws-client/test" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/packages/ws-controller/test" isTestSource="true" />
       <excludeFolder url="file://$MODULE_DIR$/.tmp" />
       <excludeFolder url="file://$MODULE_DIR$/temp" />
       <excludeFolder url="file://$MODULE_DIR$/tmp" />
@@ -20,6 +23,11 @@
       <excludeFolder url="file://$MODULE_DIR$/packages/ws-client/dist" />
       <excludeFolder url="file://$MODULE_DIR$/packages/ws-controller/build" />
       <excludeFolder url="file://$MODULE_DIR$/packages/ws-controller/dist" />
+      <excludeFolder url="file://$MODULE_DIR$/packages/ble-proxy/build" />
+      <excludeFolder url="file://$MODULE_DIR$/packages/ble-proxy/dist" />
+      <excludeFolder url="file://$MODULE_DIR$/packages/matter-server/node_modules" />
+      <excludeFolder url="file://$MODULE_DIR$/packages/ws-client/node_modules" />
+      <excludeFolder url="file://$MODULE_DIR$/packages/ws-controller/node_modules" />
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />

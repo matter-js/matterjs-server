@@ -195,17 +195,14 @@ async function start() {
         });
     }
 
-    // Register BLE proxy if enabled - register the Ble instance on the environment
-    // so matter.js uses it for commissioning, and add the handler for the /ble endpoint.
-    //
-    // We must override env.Ble *after* MatterController.create() because that call dynamically
-    // imports @matter/nodejs-ble whose install.js auto-installs NodeJsBle into env.Ble when
-    // ble.enable=true. The proxy implementation must win.
+    // Register the proxy Ble on the environment and the /ble WebSocket handler.
+    // Done after MatterController.create() because the controller's BLE bootstrap reads env.Ble
+    // and we want the proxy to win even if some path auto-installs a default.
     let bleProxyHandler: BleProxyHandler | undefined;
     if (cliOptions.bleProxy) {
         const existingBle = env.has(Ble) ? env.get(Ble) : undefined;
         if (existingBle) {
-            logger.info(`Replacing auto-installed BLE implementation (${existingBle.constructor.name}) with ProxyBle`);
+            logger.info(`Replacing existing BLE implementation (${existingBle.constructor.name}) with ProxyBle`);
         }
         bleProxyHandler = new BleProxyHandler();
         env.set(Ble, new ProxyBle(bleProxyHandler, env));

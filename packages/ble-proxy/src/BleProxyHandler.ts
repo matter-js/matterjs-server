@@ -37,7 +37,8 @@ const HANDSHAKE_TIMEOUT_MS = 10_000;
  */
 export class BleProxyHandler implements WebServerHandler {
     #wss?: WebSocketServer;
-    #removeUpgradeListener?: () => void;
+    /** Upgrade listener removers, one per HTTP server `register()` call (multi-bind). */
+    #removeUpgradeListeners: (() => void)[] = [];
     #client?: WebSocket;
     #handshakeComplete = false;
     #pendingCommands = new Map<
@@ -82,7 +83,7 @@ export class BleProxyHandler implements WebServerHandler {
             }
         };
         server.on("upgrade", upgradeHandler);
-        this.#removeUpgradeListener = () => server.removeListener("upgrade", upgradeHandler);
+        this.#removeUpgradeListeners.push(() => server.removeListener("upgrade", upgradeHandler));
         logger.info("BLE proxy WebSocket endpoint registered on /ble");
 
         wss.on("connection", ws => {
@@ -137,7 +138,8 @@ export class BleProxyHandler implements WebServerHandler {
         }
 
         this.#closed = true;
-        this.#removeUpgradeListener?.();
+        for (const remove of this.#removeUpgradeListeners) remove();
+        this.#removeUpgradeListeners = [];
 
         // Close the connected client
         if (this.#client && this.#client.readyState === WebSocket.OPEN) {

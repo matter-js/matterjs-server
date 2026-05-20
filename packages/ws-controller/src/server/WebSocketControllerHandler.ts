@@ -85,7 +85,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
     #closed = false;
     #shuttingDown = false;
     #serverObservers = new ObserverGroup();
-    #removeUpgradeListener?: () => void;
+    /** Upgrade listener removers, one per HTTP server `register()` call (multi-bind). */
+    #removeUpgradeListeners: (() => void)[] = [];
     /** Circular buffer for recent node events (max 25) */
     #eventHistory: MatterNodeEvent[] = [];
     /** Track when each node was last interviewed (connected) - keyed by nodeId */
@@ -166,7 +167,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             }
         };
         server.on("upgrade", upgradeHandler);
-        this.#removeUpgradeListener = () => server.removeListener("upgrade", upgradeHandler);
+        this.#removeUpgradeListeners.push(() => server.removeListener("upgrade", upgradeHandler));
 
         // WebRTC callbacks fan out to every connected client, so subscribe once at the server
         // level rather than per-connection.
@@ -405,7 +406,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
         this.#closed = true;
         this.#serverObservers.close();
-        this.#removeUpgradeListener?.();
+        for (const remove of this.#removeUpgradeListeners) remove();
+        this.#removeUpgradeListeners = [];
         // Send server_shutdown event to all connected clients before closing
         const shutdownMessage = toBigIntAwareJson({ event: "server_shutdown", data: {} });
         this.#wss.clients.forEach(client => {
