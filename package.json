@@ -49,7 +49,7 @@
         "@types/mocha": "^10.0.10",
         "glob": "^13.0.6",
         "globals": "^17.5.0",
-        "oxfmt": "^0.49.0",
+        "oxfmt": "^0.51.0",
         "oxlint": "^1.66.0",
         "oxlint-tsgolint": "^0.22.0",
         "tsx": "^4.22.3",
