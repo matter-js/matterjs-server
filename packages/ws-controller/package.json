@@ -43,7 +43,7 @@
         "@matter-server/ws-client": "*",
         "@matter/dcl-data": ">=2026.5.1-5.1",
         "@matter/main": "0.17.0-alpha.0-20260518-7f13c7285",
-        "@project-chip/matter.js": "0.17.0-alpha.0-20260518-7f13c7285",
+        "@project-chip/matter.js": "0.17.0-alpha.0-20260520-0ab980a16",
         "ws": "^8.20.0"
     },
     "devDependencies": {
