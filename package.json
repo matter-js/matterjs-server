@@ -31,7 +31,7 @@
         "format-verify": "oxfmt --check \"packages/**/*.ts\"",
         "test": "matter-test --force-exit",
         "relock": "node ./utils/relock.js && npm install",
-        "sync-matterjs": "node ./utils/sync-matterjs.js && npm run relock",
+        "sync-matterjs": "node ./utils/sync-matterjs.js",
         "server": "node --enable-source-maps packages/matter-server/dist/esm/MatterServer.js",
         "noble-ble-proxy": "npm run noble-ble-proxy -w packages/ble-proxy",
         "send-command": "node --enable-source-maps packages/ws-controller/dist/esm/example/send-command.js",
@@ -53,7 +53,7 @@
         "python-ble-proxy:run": "cd python_ble_proxy && { [ -x .venv/bin/matter-ble-proxy ] || (python3 -m venv .venv && .venv/bin/pip install -e .); } && .venv/bin/matter-ble-proxy"
     },
     "devDependencies": {
-        "@matter/testing": "0.17.0-alpha.0-20260520-0ab980a16",
+        "@matter/testing": "0.17.0",
         "@nacho-iot/js-tools": "^0.1.7",
         "@types/mocha": "^10.0.10",
         "glob": "^13.0.6",

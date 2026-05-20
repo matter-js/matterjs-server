@@ -149,7 +149,12 @@ export class WebSocketControllerHandler implements WebServerHandler {
         // sends HTTP 400 for non-matching paths and destroys the socket — breaking other
         // WebSocket endpoints on the same server. By handling upgrade ourselves we only
         // call handleUpgrade when the path actually matches.
-        const wss = (this.#wss = new WebSocketServer({ noServer: true }));
+        //
+        // Reuse a single WSS across all bound HTTP servers (multi-listen-address): create
+        // it once, then attach a per-server upgrade listener that forwards into it. That
+        // keeps `broadcast`, `unregister`, and the connection bookkeeping consistent.
+        const isFirstBind = this.#wss === undefined;
+        const wss = (this.#wss ??= new WebSocketServer({ noServer: true }));
         const upgradeHandler = (
             req: { url?: string; _matterHandledUpgrade?: boolean },
             socket: unknown,
@@ -168,6 +173,11 @@ export class WebSocketControllerHandler implements WebServerHandler {
         };
         server.on("upgrade", upgradeHandler);
         this.#removeUpgradeListeners.push(() => server.removeListener("upgrade", upgradeHandler));
+
+        if (!isFirstBind) {
+            // Connection + observer wiring below is shared state; only attach once across binds.
+            return;
+        }
 
         // WebRTC callbacks fan out to every connected client, so subscribe once at the server
         // level rather than per-connection.

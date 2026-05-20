@@ -63,6 +63,9 @@ export class BleProxyHandler implements WebServerHandler {
     /** Emitted when a binary frame is received from the BLE proxy client. */
     readonly binaryFrameReceived = new Observable<[frame: BinaryFrame]>();
 
+    /** Emitted once a proxy client has completed the handshake and `connected` is true. */
+    readonly connectionEstablished = new Observable<[]>();
+
     get connected(): boolean {
         return this.#handshakeComplete && this.#client?.readyState === WebSocket.OPEN;
     }
@@ -72,7 +75,11 @@ export class BleProxyHandler implements WebServerHandler {
         // ws 8.x calls handleUpgrade unconditionally from its own upgrade listener, which
         // sends HTTP 400 for non-matching paths and destroys the socket — breaking other
         // WebSocket endpoints on the same server.
-        const wss = (this.#wss = new WebSocketServer({ noServer: true }));
+        //
+        // Reuse a single WSS across all bound HTTP servers (multi-listen-address): create
+        // it once, then attach a per-server upgrade listener that forwards into it.
+        const isFirstBind = this.#wss === undefined;
+        const wss = (this.#wss ??= new WebSocketServer({ noServer: true }));
         const upgradeHandler = (
             req: { url?: string; _matterHandledUpgrade?: boolean },
             socket: unknown,
@@ -93,6 +100,10 @@ export class BleProxyHandler implements WebServerHandler {
         server.on("upgrade", upgradeHandler);
         this.#removeUpgradeListeners.push(() => server.removeListener("upgrade", upgradeHandler));
         logger.info("BLE proxy WebSocket endpoint registered on /ble");
+
+        if (!isFirstBind) {
+            return;
+        }
 
         wss.on("connection", ws => {
             if (this.#closed) {
@@ -292,6 +303,7 @@ export class BleProxyHandler implements WebServerHandler {
             }),
         );
         logger.info(`BLE proxy handshake complete (version ${BLE_PROXY_PROTOCOL_VERSION})`);
+        this.connectionEstablished.emit();
     }
 
     #handleResponse(msg: ResponseMessage): void {

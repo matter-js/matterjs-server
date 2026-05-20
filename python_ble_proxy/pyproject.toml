@@ -32,7 +32,7 @@ version = "0.0.0"
 "Changelog" = "https://github.com/matter-js/matterjs-server/blob/main/CHANGELOG.md"
 
 [project.scripts]
-matter-ble-proxy = "matter_ble_proxy.example.cli:main"
+matter-ble-proxy = "matter_ble_proxy.cli:main"
 
 [project.optional-dependencies]
 test = [

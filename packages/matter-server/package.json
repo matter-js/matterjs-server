@@ -34,7 +34,7 @@
         "node": ">=20.19.0 <22.0.0 || >=22.13.0"
     },
     "dependencies": {
-        "@matter/main": "0.17.0-alpha.0-20260520-0ab980a16",
+        "@matter/main": "0.17.0",
         "@matter-server/ble-proxy": "*",
         "@matter-server/ws-controller": "*",
         "@matter-server/dashboard": "*",
@@ -45,8 +45,8 @@
     "devDependencies": {
         "@types/express": "^5.0.6",
         "@types/node": "^25.9.1",
-        "@matter/nodejs": "0.17.0-alpha.0-20260520-0ab980a16",
-        "@matter/testing": "0.17.0-alpha.0-20260520-0ab980a16",
+        "@matter/nodejs": "0.17.0",
+        "@matter/testing": "0.17.0",
         "@matter-server/ws-client": "*"
     },
     "files": [

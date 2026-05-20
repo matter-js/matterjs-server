@@ -4,12 +4,20 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Logger } from "@matter/main";
-import { MatterBle } from "@matter/main/protocol";
+import { createPromise, Logger, Seconds, withTimeout } from "@matter/main";
+import { BleError, MatterBle } from "@matter/main/protocol";
 import type { BleProxyHandler } from "./BleProxyHandler.js";
 import { BleProxyCommand, BleProxyEvent, type DeviceDiscoveredData } from "./BleProxyProtocol.js";
 
 const logger = Logger.get("ProxyBleClient");
+
+/**
+ * Bounded wait for a proxy client to attach before starting a scan. Long enough
+ * that "start matter-server, then connect proxy" works, short enough that a
+ * misconfigured deployment surfaces a clear error instead of an opaque
+ * scan-never-returns hang on the caller side.
+ */
+const SCAN_CONNECT_WAIT = Seconds(30);
 
 /**
  * Represents a BLE peripheral discovered through the proxy.
@@ -62,8 +70,19 @@ export class ProxyBleClient {
         }
 
         if (!this.#handler.connected) {
-            logger.info("BLE proxy not connected, deferring scan start");
-            return;
+            logger.info(`BLE proxy not connected, waiting up to ${SCAN_CONNECT_WAIT}ms for client`);
+            const { promise, resolver } = createPromise<void>();
+            const onConnect = () => resolver();
+            this.#handler.connectionEstablished.on(onConnect);
+            try {
+                await withTimeout(SCAN_CONNECT_WAIT, promise);
+            } catch {
+                throw new BleError(
+                    `BLE proxy client did not connect within ${SCAN_CONNECT_WAIT}ms — cannot start scan`,
+                );
+            } finally {
+                this.#handler.connectionEstablished.off(onConnect);
+            }
         }
 
         logger.debug("Start BLE scanning via proxy ...");

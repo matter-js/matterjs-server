@@ -334,7 +334,7 @@ class MatterBleProxy:
 
         service_uuids: list[str] = args.get("service_uuids", [])
         service_uuid_set = {_normalize_uuid(u) for u in service_uuids} if service_uuids else None
-        allow_duplicates: bool = bool(args.get("allow_duplicates", False))
+        allow_duplicates: bool = bool(args.get("allow_duplicates", True))
 
         # When `allow_duplicates` is false, dedup by content fingerprint — Matter peripherals
         # broadcast at ~10 Hz and the server only needs state changes. When true, the server
