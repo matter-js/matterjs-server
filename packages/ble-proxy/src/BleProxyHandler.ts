@@ -5,7 +5,7 @@
  */
 
 import type { WebServerHandler } from "@matter-server/ws-controller";
-import { createPromise, Logger, Observable } from "@matter/main";
+import { createPromise, Logger, Observable, Seconds, Time, Timer, withTimeout } from "@matter/main";
 import type { createServer } from "node:http";
 import { WebSocket, WebSocketServer } from "ws";
 import {
@@ -26,7 +26,15 @@ type HttpServer = ReturnType<typeof createServer>;
 
 const logger = Logger.get("BleProxyHandler");
 
-const HANDSHAKE_TIMEOUT_MS = 10_000;
+const HANDSHAKE_TIMEOUT = Seconds(10);
+/**
+ * Default per-command timeout. Long enough to cover the slowest BLE
+ * commissioning ops (peripheral connect ≤ 30 s, service discovery on
+ * Android-side adapters can take several seconds), short enough that an
+ * unresponsive-but-still-connected proxy client doesn't hang commissioning
+ * indefinitely.
+ */
+const COMMAND_TIMEOUT = Seconds(60);
 
 /**
  * WebSocket server handler for the /ble BLE proxy endpoint.
@@ -102,13 +110,13 @@ export class BleProxyHandler implements WebServerHandler {
             this.#client = ws;
             this.#handshakeComplete = false;
 
-            const handshakeTimer = setTimeout(() => {
+            const handshakeTimer = Time.getTimer("BLE proxy handshake timeout", HANDSHAKE_TIMEOUT, () => {
                 if (!this.#handshakeComplete) {
                     logger.warn("BLE proxy handshake timeout - closing connection");
                     ws.close(4001, "Handshake timeout");
                     this.#cleanupClient();
                 }
-            }, HANDSHAKE_TIMEOUT_MS);
+            }).start();
 
             ws.on("message", (data, isBinary) => {
                 if (isBinary) {
@@ -119,14 +127,14 @@ export class BleProxyHandler implements WebServerHandler {
             });
 
             ws.on("close", () => {
-                clearTimeout(handshakeTimer);
+                handshakeTimer.stop();
                 logger.info("BLE proxy client disconnected");
                 this.#cleanupClient();
             });
 
             ws.on("error", err => {
                 logger.error("BLE proxy WebSocket error:", err);
-                clearTimeout(handshakeTimer);
+                handshakeTimer.stop();
                 this.#cleanupClient();
             });
         });
@@ -200,7 +208,9 @@ export class BleProxyHandler implements WebServerHandler {
             }
         });
 
-        return promise as Promise<BleProxyCommandMap[C]["result"]>;
+        return withTimeout(COMMAND_TIMEOUT, promise, () => this.#pendingCommands.delete(id)) as Promise<
+            BleProxyCommandMap[C]["result"]
+        >;
     }
 
     /**
@@ -214,7 +224,7 @@ export class BleProxyHandler implements WebServerHandler {
         this.#client.send(frame);
     }
 
-    #handleTextMessage(raw: string, handshakeTimer: NodeJS.Timeout): void {
+    #handleTextMessage(raw: string, handshakeTimer: Timer): void {
         let parsed: unknown;
         try {
             parsed = JSON.parse(raw);
@@ -246,7 +256,7 @@ export class BleProxyHandler implements WebServerHandler {
         logger.warn("Received unknown message from BLE proxy client:", msg);
     }
 
-    #handleHandshake(msg: Record<string, unknown>, handshakeTimer: NodeJS.Timeout): void {
+    #handleHandshake(msg: Record<string, unknown>, handshakeTimer: Timer): void {
         if (msg.type !== "hello") {
             logger.warn(`Expected hello message, got: ${JSON.stringify(msg)}`);
             this.#client?.close(4002, "Expected hello message");
@@ -255,7 +265,7 @@ export class BleProxyHandler implements WebServerHandler {
         }
 
         const hello = msg as unknown as HelloMessage;
-        clearTimeout(handshakeTimer);
+        handshakeTimer.stop();
 
         if (hello.version !== BLE_PROXY_PROTOCOL_VERSION) {
             logger.warn(

@@ -255,7 +255,11 @@ class MatterBleProxy:
     def _spawn_task(self, coro: Coroutine[Any, Any, Any]) -> asyncio.Task[Any]:
         if self._task_factory is not None:
             return self._task_factory(coro)
-        return asyncio.get_event_loop().create_task(coro)
+        # Prefer the loop captured at `connect()` time; `get_event_loop()` is deprecated in 3.12+
+        # and raises in threads without a running loop. Fall back to `get_running_loop()` for
+        # the (synchronous) call path that runs before `connect()` sets `self._loop`.
+        loop = self._loop or asyncio.get_running_loop()
+        return loop.create_task(coro)
 
     async def _message_loop(self) -> None:
         if self._ws is None:
@@ -330,9 +334,11 @@ class MatterBleProxy:
 
         service_uuids: list[str] = args.get("service_uuids", [])
         service_uuid_set = {_normalize_uuid(u) for u in service_uuids} if service_uuids else None
+        allow_duplicates: bool = bool(args.get("allow_duplicates", False))
 
-        # Matter peripherals broadcast at ~10 Hz; forwarding every ad would spam
-        # the WebSocket and serialize behind in-flight commands. Dedup by content.
+        # When `allow_duplicates` is false, dedup by content fingerprint — Matter peripherals
+        # broadcast at ~10 Hz and the server only needs state changes. When true, the server
+        # explicitly opts in to the full stream (e.g. to track RSSI updates).
         last_fingerprint: dict[str, tuple[str | None, bool, tuple[str, ...], tuple[tuple[str, bytes], ...]]] = {}
 
         def _on_advertisement(ad: AdvertisementData) -> None:
@@ -345,18 +351,18 @@ class MatterBleProxy:
                 if not service_uuid_set.intersection(advertised):
                     return
 
-            # Build a content-based fingerprint that intentionally ignores rssi.
-            # Two ads that differ only in signal strength are not interesting to
-            # the server's discovery loop.
-            fingerprint = (
-                ad.name,
-                ad.connectable,
-                tuple(sorted(ad.service_uuids)),
-                tuple(sorted(ad.service_data.items())),
-            )
-            if last_fingerprint.get(ad.address) == fingerprint:
-                return
-            last_fingerprint[ad.address] = fingerprint
+            if not allow_duplicates:
+                # Fingerprint intentionally ignores rssi — two ads differing only in signal
+                # strength are not interesting when duplicates are suppressed.
+                fingerprint = (
+                    ad.name,
+                    ad.connectable,
+                    tuple(sorted(ad.service_uuids)),
+                    tuple(sorted(ad.service_data.items())),
+                )
+                if last_fingerprint.get(ad.address) == fingerprint:
+                    return
+                last_fingerprint[ad.address] = fingerprint
 
             service_data: dict[str, str] = {
                 uuid: base64.b64encode(data).decode("ascii") for uuid, data in ad.service_data.items()
