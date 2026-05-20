@@ -7,6 +7,11 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
+## **WORK IN PROGRESS**
+
+- Feature: Added BLE proxy commissioning support (enabled with `--ble-proxy` CLI option)
+- Maintenance: Update matter.js to the official 0.17.0
+
 ## 0.7.0 (2026-05-18)
 
 - IMPORTANT: The first start, when coming from any previous version, will take a bit because we migrate the storage to the new "WAL"-based storage format. This is a one-time migration that reduces disk usage and I/O.
