@@ -62,7 +62,7 @@ export class ProxyBleClient {
         }
 
         if (!this.#handler.connected) {
-            logger.debug("BLE proxy not connected, deferring scan start");
+            logger.info("BLE proxy not connected, deferring scan start");
             return;
         }
 
