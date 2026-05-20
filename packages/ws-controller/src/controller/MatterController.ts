@@ -246,6 +246,7 @@ export class MatterController {
             this.#commandHandler = new ControllerCommandHandler(
                 this.#controllerInstance,
                 this.#env.vars.get("ble.enable", false),
+                this.#env.vars.get("ble.proxy.enable", false),
                 !this.#disableOtaProvider,
             );
 

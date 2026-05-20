@@ -446,9 +446,15 @@ class MatterBleProxy:
         if conn is None:
             await self._send_error(cmd_id, "not_connected", f"No connection with handle {args['connection_handle']}")
             return
-        conn.services = conn.client.services
-        services = [{"uuid": service.uuid} for service in conn.services]
-        await self._send_success(cmd_id, {"services": services})
+        # Bleak auto-discovers on connect, but `services` can be None if the cache hasn't
+        # populated yet or the connection broke between connect and this command.
+        services = conn.client.services
+        if services is None:
+            await self._send_error(cmd_id, "discover_failed", "Service discovery has not completed")
+            return
+        conn.services = services
+        services_list = [{"uuid": service.uuid} for service in services]
+        await self._send_success(cmd_id, {"services": services_list})
 
     async def _handle_discover_characteristics(self, cmd_id: int, args: dict[str, Any]) -> None:
         conn = self._get_connection(args["connection_handle"])

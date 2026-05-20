@@ -149,9 +149,14 @@ export class WebSocketControllerHandler implements WebServerHandler {
         // WebSocket endpoints on the same server. By handling upgrade ourselves we only
         // call handleUpgrade when the path actually matches.
         const wss = (this.#wss = new WebSocketServer({ noServer: true }));
-        const upgradeHandler = (req: { url?: string }, socket: unknown, head: unknown) => {
+        const upgradeHandler = (
+            req: { url?: string; _matterHandledUpgrade?: boolean },
+            socket: unknown,
+            head: unknown,
+        ) => {
             const path = req.url?.split("?")[0];
             if (path === "/ws") {
+                req._matterHandledUpgrade = true;
                 wss.handleUpgrade(
                     req as Parameters<typeof wss.handleUpgrade>[0],
                     socket as Parameters<typeof wss.handleUpgrade>[1],
@@ -599,6 +604,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             wifi_ssid: this.#config.wifiSsid && this.#config.wifiCredentials ? this.#config.wifiSsid : undefined,
             thread_credentials_set: !!this.#config.threadDataset,
             bluetooth_enabled: this.#commandHandler.bleEnabled,
+            ble_proxy_enabled: this.#commandHandler.bleProxyEnabled,
         };
     }
 

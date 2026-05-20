@@ -77,6 +77,7 @@ if (cliOptions.bleProxy) {
         logger.warn("--ble-proxy and --bluetooth-adapter are mutually exclusive. Using --ble-proxy.");
     }
     env.vars.set("ble.enable", true);
+    env.vars.set("ble.proxy.enable", true);
     logger.info("BLE proxy mode enabled");
 } else if (cliOptions.bluetoothAdapter !== null) {
     env.vars.set("ble.enable", true);

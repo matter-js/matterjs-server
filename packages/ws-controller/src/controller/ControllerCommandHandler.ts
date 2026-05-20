@@ -155,6 +155,7 @@ export class ControllerCommandHandler {
     #started = false;
     #connected = false;
     readonly #bleEnabled: boolean;
+    readonly #bleProxyEnabled: boolean;
     readonly #otaEnabled: boolean;
     /** Node management and attribute cache */
     #nodes = new Nodes();
@@ -182,11 +183,17 @@ export class ControllerCommandHandler {
     };
     #peers?: PeerSet;
 
-    constructor(controllerInstance: CommissioningController, bleEnabled: boolean, otaEnabled: boolean) {
+    constructor(
+        controllerInstance: CommissioningController,
+        bleEnabled: boolean,
+        bleProxyEnabled: boolean,
+        otaEnabled: boolean,
+    ) {
         this.#controller = controllerInstance;
 
         this.#bleEnabled = bleEnabled;
-        logger.info(`BLE is ${bleEnabled ? "enabled" : "disabled"}`);
+        this.#bleProxyEnabled = bleProxyEnabled;
+        logger.info(`BLE is ${bleEnabled ? "enabled" : "disabled"}${bleProxyEnabled ? " (proxy mode)" : ""}`);
         this.#otaEnabled = otaEnabled;
 
         // Initialize custom cluster poller for Eve energy attributes etc.
@@ -228,6 +235,10 @@ export class ControllerCommandHandler {
 
     get bleEnabled() {
         return this.#bleEnabled;
+    }
+
+    get bleProxyEnabled() {
+        return this.#bleProxyEnabled;
     }
 
     async start() {

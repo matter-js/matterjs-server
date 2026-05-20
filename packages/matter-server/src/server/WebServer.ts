@@ -37,6 +37,25 @@ export class WebServer {
                 await handler.register(server);
             }
 
+            // Fallback upgrade handler: handlers each register their own upgrade listener
+            // that only claims its path (e.g. /ws, /ble) and silently ignore others, so a
+            // request to an unknown path otherwise leaves the TCP socket open with no
+            // response. Handlers tag the request via `req._matterHandledUpgrade = true`
+            // when they claim an upgrade; this fallback runs after all listeners and 404s
+            // anything that nobody claimed.
+            server.on("upgrade", (req, socket) => {
+                setImmediate(() => {
+                    if (socket.destroyed) return;
+                    if ((req as { _matterHandledUpgrade?: boolean })._matterHandledUpgrade) return;
+                    try {
+                        socket.write("HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n");
+                    } catch {
+                        // socket already closing; destroy below
+                    }
+                    socket.destroy();
+                });
+            });
+
             // Start listening to this address
             await this.#startServer(server, host);
         }

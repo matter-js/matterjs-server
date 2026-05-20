@@ -197,8 +197,13 @@ export class ProxyBleCentralInterface implements Transport {
             };
             this.#handler.binaryFrameReceived.on(handshakeObserver);
 
-            const handshakeResponse = await handshakePromise;
-            this.#handler.binaryFrameReceived.off(handshakeObserver);
+            let handshakeResponse: Uint8Array;
+            try {
+                handshakeResponse = await handshakePromise;
+            } finally {
+                this.#handler.binaryFrameReceived.off(handshakeObserver);
+                btpHandshakeTimeout.stop();
+            }
 
             // 8. Create BTP session
             // Use a ref object so closures can access the channel after it's created

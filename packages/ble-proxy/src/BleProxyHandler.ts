@@ -64,10 +64,15 @@ export class BleProxyHandler implements WebServerHandler {
         // sends HTTP 400 for non-matching paths and destroys the socket — breaking other
         // WebSocket endpoints on the same server.
         const wss = (this.#wss = new WebSocketServer({ noServer: true }));
-        const upgradeHandler = (req: { url?: string }, socket: unknown, head: unknown) => {
+        const upgradeHandler = (
+            req: { url?: string; _matterHandledUpgrade?: boolean },
+            socket: unknown,
+            head: unknown,
+        ) => {
             logger.debug(`Upgrade request received: ${req.url}`);
             const path = req.url?.split("?")[0];
             if (path === "/ble") {
+                req._matterHandledUpgrade = true;
                 wss.handleUpgrade(
                     req as Parameters<typeof wss.handleUpgrade>[0],
                     socket as Parameters<typeof wss.handleUpgrade>[1],

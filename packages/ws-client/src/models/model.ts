@@ -371,6 +371,8 @@ export interface ServerInfoMessage {
     wifi_ssid?: string;
     thread_credentials_set: boolean;
     bluetooth_enabled: boolean;
+    /** True when BLE proxy mode is enabled (server exposes `/ble` WebSocket endpoint for a remote proxy client). Note: Only available with OHF Matter Server, not Python Matter Server. */
+    ble_proxy_enabled?: boolean;
 }
 
 /** WebSocket event types and their data payloads */
