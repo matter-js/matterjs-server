@@ -1,6 +1,6 @@
 # BLE Proxy WebSocket Protocol
 
-Version: 1.0 (Draft)
+Version: 1.0
 
 ## Overview
 

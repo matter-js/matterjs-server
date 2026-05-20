@@ -3,3 +3,6 @@ build/
 dist/
 /.*
 docs/plans/
+# AI-tooling scratch directories (memory, transcripts, plans). Keep local-only.
+superpowers/
+.superpowers/
