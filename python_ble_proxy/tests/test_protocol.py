@@ -35,11 +35,15 @@ def test_binary_frame_roundtrip():
 def test_normalize_uuid_short_forms_match():
     short = _normalize_uuid("fff6")
     short_upper = _normalize_uuid("FFF6")
+    padded_32bit = _normalize_uuid("0000fff6")
+    padded_32bit_upper = _normalize_uuid("0000FFF6")
     full_dashed = _normalize_uuid("0000fff6-0000-1000-8000-00805f9b34fb")
     full_dashed_upper = _normalize_uuid("0000FFF6-0000-1000-8000-00805F9B34FB")
     full_compact = _normalize_uuid("0000fff600001000800000805f9b34fb")
     assert short == "fff6"
-    assert short == short_upper == full_dashed == full_dashed_upper == full_compact
+    assert (
+        short == short_upper == padded_32bit == padded_32bit_upper == full_dashed == full_dashed_upper == full_compact
+    )
 
 
 def test_normalize_uuid_keeps_custom_uuids_compact():

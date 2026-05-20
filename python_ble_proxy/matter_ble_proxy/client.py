@@ -55,14 +55,18 @@ _BASE_UUID_TAIL = "00001000800000805f9b34fb"
 def _normalize_uuid(uuid: str) -> str:
     """Collapse standard Bluetooth UUIDs to their shortest comparable form.
 
-    Accepts short ("fff6", "FFF6"), canonical dashed ("0000FFF6-…"), or compact
-    32-char hex. For a UUID embedded in the Bluetooth Base, returns the short
-    hex form. Otherwise returns the compact lowercase hex. Different forms of
-    the same UUID always normalize to the same string.
+    Accepts short ("fff6", "FFF6"), 32-bit form ("0000fff6"), canonical dashed
+    ("0000FFF6-…"), or compact 32-char hex. For any form embedded in the
+    Bluetooth Base UUID, returns the short 16-bit hex. Otherwise returns the
+    compact lowercase hex. Equivalent representations always normalize equal.
     """
     compact = uuid.lower().replace("-", "")
+    # 128-bit canonical form wrapping a 16-bit base UUID (e.g. "0000fff6-0000-1000-8000-00805f9b34fb").
     if len(compact) == 32 and compact[8:] == _BASE_UUID_TAIL and compact.startswith("0000"):
         return compact[4:8]
+    # 32-bit form padded with leading zeros (e.g. "0000fff6"); the trailing 4 hex are the 16-bit UUID.
+    if len(compact) == 8 and compact.startswith("0000"):
+        return compact[4:]
     return compact
 
 
