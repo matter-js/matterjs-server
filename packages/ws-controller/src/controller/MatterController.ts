@@ -73,6 +73,8 @@ export interface MatterControllerOptions {
     serverId?: string;
     /** Server version string (e.g., "0.2.10" or "0.2.10-alpha.0"). Used for BasicInformation cluster. */
     serverVersion?: string;
+    /** Enable time synchronization for nodes with the TimeSynchronization cluster. Only enable when host NTP is reliable. */
+    enableTimeSync?: boolean;
 }
 
 /**
@@ -103,6 +105,7 @@ export class MatterController {
     #enableTestNetDcl = false;
     #disableOtaProvider = true;
     #disableDclSeed = false;
+    #enableTimeSync = false;
     readonly #borderRouterDiscovery: BorderRouterDiscovery;
     #webRtcRequestor?: Endpoint<typeof CameraControllerDevice>;
     #services: SharedEnvironmentServices;
@@ -184,6 +187,7 @@ export class MatterController {
         this.#enableTestNetDcl = options.enableTestNetDcl ?? this.#enableTestNetDcl;
         this.#disableOtaProvider = options.disableOtaProvider ?? this.#disableOtaProvider;
         this.#disableDclSeed = options.disableDclSeed ?? this.#disableDclSeed;
+        this.#enableTimeSync = options.enableTimeSync ?? this.#enableTimeSync;
         this.#services = this.#env.asDependent();
     }
 
@@ -247,6 +251,7 @@ export class MatterController {
                 this.#controllerInstance,
                 this.#env.vars.get("ble.enable", false),
                 !this.#disableOtaProvider,
+                this.#enableTimeSync,
             );
 
             this.#commandHandler.events.started.once(async () => {
