@@ -467,6 +467,109 @@ describe("ThreadDiagnosticsService", () => {
         expect(meshcopCalls).to.equal(1);
     });
 
+    it("auto-probes REST when no capability is registered and BR has routable addresses", async () => {
+        const probeCalls = new Array<{ host: string; port: number }>();
+        let restCalls = 0;
+        let meshcopCalls = 0;
+        const service = new ThreadDiagnosticsService({
+            borderRouters: brRegistryFrom(brsListing([makeBr({ addresses: ["fd00::1", "192.0.2.1"] })])),
+            credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
+            makeRestSource: () => {
+                restCalls += 1;
+                return syncRestSource([SAMPLE_NODE]);
+            },
+            makeMeshcopSource: async () => {
+                meshcopCalls += 1;
+                return meshcopHandle(syncMeshcopSource([]));
+            },
+            probeRest: async (host, port) => {
+                probeCalls.push({ host, port });
+                return makeCap();
+            },
+        });
+
+        const batch = await service.getOrFetch(EXT_PAN_HEX_LOWER);
+        expect(probeCalls).to.deep.equal([{ host: "fd00::1", port: 8081 }]);
+        expect(batch?.source).to.equal("otbr-rest");
+        expect(restCalls).to.equal(1);
+        expect(meshcopCalls).to.equal(0);
+    });
+
+    it("auto-probe skips link-local addresses", async () => {
+        const probeCalls = new Array<string>();
+        const service = new ThreadDiagnosticsService({
+            borderRouters: brRegistryFrom(brsListing([makeBr({ addresses: ["fe80::1", "fd00::1"] })])),
+            credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
+            makeRestSource: () => syncRestSource([]),
+            makeMeshcopSource: async () => meshcopHandle(syncMeshcopSource([])),
+            probeRest: async host => {
+                probeCalls.push(host);
+                return null;
+            },
+        });
+
+        await service.getOrFetch(EXT_PAN_HEX_LOWER);
+        expect(probeCalls).to.deep.equal(["fd00::1"]);
+    });
+
+    it("auto-probe falls back to MeshCoP when all probes return null", async () => {
+        let meshcopCalls = 0;
+        const service = new ThreadDiagnosticsService({
+            borderRouters: brRegistryFrom(brsListing([makeBr({ addresses: ["fd00::1"] })])),
+            credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
+            makeRestSource: () => syncRestSource([]),
+            makeMeshcopSource: async () => {
+                meshcopCalls += 1;
+                return meshcopHandle(syncMeshcopSource([SAMPLE_NODE]));
+            },
+            probeRest: async () => null,
+        });
+
+        const batch = await service.getOrFetch(EXT_PAN_HEX_LOWER);
+        expect(batch?.source).to.equal("meshcop");
+        expect(meshcopCalls).to.equal(1);
+    });
+
+    it("auto-probe is skipped within the cooldown window after a failed attempt", async () => {
+        let probeCalls = 0;
+        const service = new ThreadDiagnosticsService({
+            borderRouters: brRegistryFrom(brsListing([makeBr({ addresses: ["fd00::1"] })])),
+            credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
+            makeRestSource: () => syncRestSource([]),
+            makeMeshcopSource: async () => meshcopHandle(syncMeshcopSource([])),
+            restProbeCooldownMs: 60_000,
+            probeRest: async () => {
+                probeCalls += 1;
+                return null;
+            },
+        });
+
+        await service.getOrFetch(EXT_PAN_HEX_LOWER, { force: true });
+        await service.getOrFetch(EXT_PAN_HEX_LOWER, { force: true });
+
+        expect(probeCalls).to.equal(1);
+    });
+
+    it("auto-probe error from probeRest does not abort the fetch", async () => {
+        let meshcopCalls = 0;
+        const service = new ThreadDiagnosticsService({
+            borderRouters: brRegistryFrom(brsListing([makeBr({ addresses: ["fd00::1"] })])),
+            credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
+            makeRestSource: () => syncRestSource([]),
+            makeMeshcopSource: async () => {
+                meshcopCalls += 1;
+                return meshcopHandle(syncMeshcopSource([]));
+            },
+            probeRest: async () => {
+                throw new Error("simulated probe failure");
+            },
+        });
+
+        const batch = await service.getOrFetch(EXT_PAN_HEX_LOWER);
+        expect(batch?.source).to.equal("meshcop");
+        expect(meshcopCalls).to.equal(1);
+    });
+
     it("rejects invalid extPanId hex input", async () => {
         const service = new ThreadDiagnosticsService({
             borderRouters: brRegistryFrom(brsListing([])),
