@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { Logger } from "@matter/main";
 import { CoapClient } from "../coap/CoapClient.js";
 import { Commissioner } from "../commissioner/Commissioner.js";
 import type { ThreadNetworkCredentials } from "../credentials/ThreadNetworkCredentials.js";
@@ -12,6 +13,8 @@ import { createDtlsBackend, type DtlsBackendKind } from "../dtls/socket/createDt
 import type { DtlsBackend } from "../dtls/socket/DtlsBackend.js";
 import type { DiagnosticSource } from "./DiagnosticSource.js";
 import { MeshCopDiagnosticSource } from "./MeshCopDiagnosticSource.js";
+
+const logger = Logger.get("ConnectMeshcop");
 
 export interface ConnectMeshcopOpts {
     creds: ThreadNetworkCredentials;
@@ -47,6 +50,8 @@ export async function connectMeshcop(opts: ConnectMeshcopOpts): Promise<MeshcopH
         throw new Error("connectMeshcop: BR has no meshcopPort and no opts.port override");
     }
 
+    logger.info(`[ThreadDiag] connectMeshcop START ${address}:${port}`);
+    const dtlsStart = Date.now();
     const backend = opts.makeBackend?.() ?? createDtlsBackend({ kind: opts.backendKind ?? "noble" });
     const socket = await backend.connect({
         address,
@@ -54,6 +59,7 @@ export async function connectMeshcop(opts: ConnectMeshcopOpts): Promise<MeshcopH
         password: opts.creds.pskc,
         type: address.includes(":") ? "udp6" : "udp4",
     });
+    logger.info(`[ThreadDiag] DTLS handshake OK ${address}:${port} duration=${Date.now() - dtlsStart}ms`);
 
     try {
         const coap = new CoapClient(socket);
@@ -61,9 +67,13 @@ export async function connectMeshcop(opts: ConnectMeshcopOpts): Promise<MeshcopH
         const source = new MeshCopDiagnosticSource(commissioner, coap);
         return {
             source,
-            close: () => coap.close(),
+            close: async () => {
+                logger.info(`[ThreadDiag] connectMeshcop CLOSE ${address}:${port}`);
+                await coap.close();
+            },
         };
     } catch (err) {
+        logger.warn(`[ThreadDiag] connectMeshcop post-DTLS setup FAIL ${address}:${port}: ${err}`);
         await socket.close().catch(() => {});
         throw err;
     }

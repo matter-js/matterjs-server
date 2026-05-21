@@ -4,13 +4,15 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Bytes } from "@matter/main";
+import { Bytes, Logger } from "@matter/main";
 import type { DiagnosticResponse } from "../diagnostic/DiagnosticResponse.js";
 import type { DiagnosticSource } from "../diagnostic/DiagnosticSource.js";
 import type { OtbrRestCapability } from "./OtbrRestCapability.js";
 import type { OtbrRestClient } from "./OtbrRestClient.js";
 import { OtbrRestError } from "./OtbrRestError.js";
 import { translateNodeJson } from "./translation.js";
+
+const logger = Logger.get("OtbrRestDiagnosticSource");
 
 type ClientLike = Pick<OtbrRestClient, "getDiagnostics" | "getNode">;
 
@@ -60,7 +62,11 @@ export class OtbrRestDiagnosticSource implements DiagnosticSource {
         // diagnostics for the whole mesh and exposes the snapshot via
         // /diagnostics. tlvTypes is ignored for the same reason as
         // queryUnicast.
+        logger.info(`[ThreadDiag] REST GET /diagnostics ${this.#capability.baseUrl}`);
+        const start = Date.now();
         const list = await this.#client.getDiagnostics();
-        return list.map(entry => translateNodeJson(entry));
+        const decoded = list.map(entry => translateNodeJson(entry));
+        logger.info(`[ThreadDiag] REST /diagnostics OK nodes=${decoded.length} duration=${Date.now() - start}ms`);
+        return decoded;
     }
 }

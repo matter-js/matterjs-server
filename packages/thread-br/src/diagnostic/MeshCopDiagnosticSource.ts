@@ -84,13 +84,15 @@ export class MeshCopDiagnosticSource implements DiagnosticSource {
         // and the BR forwards /d/dq to its configured multicast scope. Per-scope routing requires
         // socket-level destination control (Phase 8).
         return this.#commissioner.withSession(async () => {
+            logger.info(`[ThreadDiag] queryMulticast START tlvs=${tlvTypes.length} collect=${collectMs}ms`);
+            const start = Date.now();
             const responses = new Array<DiagnosticResponse>();
             const unsubscribe = this.#coap.listen(["d", "da"], msg => {
                 if (msg.payload.length === 0) return;
                 try {
                     responses.push(decodeResponse(msg.payload));
                 } catch (err) {
-                    logger.warn("failed to decode .ans payload, dropping:", err);
+                    logger.warn("[ThreadDiag] failed to decode .ans payload, dropping:", err);
                 }
             });
             try {
@@ -105,6 +107,9 @@ export class MeshCopDiagnosticSource implements DiagnosticSource {
                 await new Promise<void>(r => setTimeout(r, collectMs));
             } finally {
                 unsubscribe();
+                logger.info(
+                    `[ThreadDiag] queryMulticast DONE responses=${responses.length} duration=${Date.now() - start}ms`,
+                );
             }
             return responses;
         });

@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Logger } from "@matter/main";
+import { Bytes, Logger } from "@matter/main";
 import type { OtbrRestCapability } from "./OtbrRestCapability.js";
 import { OtbrRestClient } from "./OtbrRestClient.js";
 import { OtbrRestError } from "./OtbrRestError.js";
@@ -32,12 +32,19 @@ export class OtbrRestProbe {
     ): Promise<OtbrRestCapability | null> {
         const client = new OtbrRestClient({ host, port, timeoutMs });
         const baseUrl = client.baseUrl;
+        logger.info(`[ThreadDiag] probe START ${baseUrl} timeout=${timeoutMs}ms`);
 
         const keyFormat = await detectCase(baseUrl, timeoutMs);
-        if (keyFormat === null) return null;
+        if (keyFormat === null) {
+            logger.info(`[ThreadDiag] probe MISS ${baseUrl} (case detect failed)`);
+            return null;
+        }
 
         try {
             const node = await client.getNode();
+            logger.info(
+                `[ThreadDiag] probe OK ${baseUrl} keyFormat=${keyFormat} xp=${Bytes.toHex(node.extPanId).toUpperCase()} network="${node.networkName}"`,
+            );
             return {
                 baseUrl,
                 keyFormat,
@@ -47,7 +54,7 @@ export class OtbrRestProbe {
             };
         } catch (err) {
             if (err instanceof OtbrRestError) {
-                logger.debug(`probe of ${baseUrl} rejected: /node ${err.code} (${err.message})`);
+                logger.info(`[ThreadDiag] probe MISS ${baseUrl} /node ${err.code} (${err.message})`);
                 return null;
             }
             throw err;
