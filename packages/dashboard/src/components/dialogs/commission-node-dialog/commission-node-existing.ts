@@ -28,6 +28,15 @@ export class CommissionNodeExisting extends LitElement {
     @query("md-outlined-text-field[label='Share code']")
     private _pairingCodeField!: MdOutlinedTextField;
 
+    protected override firstUpdated(): void {
+        void this._autofocusPairingCode().catch(err => console.warn("Autofocus failed:", err));
+    }
+
+    private async _autofocusPairingCode(): Promise<void> {
+        await this._pairingCodeField.updateComplete;
+        this._pairingCodeField.focus();
+    }
+
     protected override render() {
         return html`<md-outlined-text-field label="Share code" .disabled="${this._loading}"> </md-outlined-text-field>
             <br />

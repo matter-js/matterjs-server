@@ -65,6 +65,25 @@ export class CommissionNodeWifi extends LitElement {
     @query("md-outlined-text-field[label='Pairing code']")
     private _pairingCodeField!: MdOutlinedTextField;
 
+    private _pairingFocused = false;
+    private _credsFocused = false;
+
+    protected override updated(): void {
+        void this._maybeAutofocus().catch(err => console.warn("Autofocus failed:", err));
+    }
+
+    private async _maybeAutofocus(): Promise<void> {
+        if (this._pairingCodeField && !this._pairingFocused) {
+            this._pairingFocused = true;
+            await this._pairingCodeField.updateComplete;
+            this._pairingCodeField.focus();
+        } else if (this._ssidField && !this._credsFocused) {
+            this._credsFocused = true;
+            await this._ssidField.updateComplete;
+            this._ssidField.focus();
+        }
+    }
+
     protected override render() {
         if (!this.client.serverInfo.wifi_credentials_set) {
             return html`<md-outlined-text-field
