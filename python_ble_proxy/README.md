@@ -65,6 +65,23 @@ await proxy.disconnect()
 The default Bleak-backed implementations (`BleakScanSource`,
 `BleakDeviceResolver`) live in `matter_ble_proxy.bleak_backend`.
 
+### Reconnection
+
+`MatterBleProxy` does not reconnect on its own. When the WebSocket closes — server
+restart, network blip, or the caller calling `disconnect()` — `run_until_closed()`
+returns after the library releases all BLE resources (active scan stopped, every
+peripheral disconnected). The caller decides whether to reconnect:
+
+- The bundled CLI exits on disconnect; restart it manually.
+- Home Assistant ties the BLE proxy lifecycle to the matter-server WebSocket: when
+  HA reconnects to the matter-server it constructs and connects a fresh
+  `MatterBleProxy` for the new session.
+- A custom integration can wrap `connect()` + `run_until_closed()` in a retry loop
+  with whatever backoff and cancellation policy fits its supervisor.
+
+The library deliberately stays out of this decision so it can plug into hosts
+that already own reconnect logic (HA, systemd, etc.) without fighting them.
+
 ## Development
 
 This package lives inside the

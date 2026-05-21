@@ -561,9 +561,11 @@ class MatterBleProxy:
         await self._send_success(cmd_id)
 
     async def _handle_write_and_subscribe(self, cmd_id: int, args: dict[str, Any]) -> None:
-        """Atomic write-then-subscribe; eliminates the WS round-trip between Write Response
-        and CCCD enable that can lose an indication if the peripheral pushes it immediately
-        after Write Response (e.g. Matter BTP handshake response on C2).
+        """Atomic write-then-subscribe.
+
+        Eliminates the WS round-trip between Write Response and CCCD enable that can lose
+        an indication if the peripheral pushes it immediately after Write Response (e.g.
+        Matter BTP handshake response on C2).
         """
         conn = self._get_connection(args["connection_handle"])
         if conn is None:
