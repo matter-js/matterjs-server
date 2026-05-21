@@ -472,10 +472,12 @@ describe("ThreadDiagnosticsService", () => {
                 meshcopCalls += 1;
                 return meshcopHandle(syncMeshcopSource([]));
             },
+            // force=true triggers a re-probe; inject a no-op so the test stays isolated.
+            probeRest: async () => null,
         });
 
         service.registerRestCapability(EXT_PAN_HEX_LOWER, makeCap());
-        await service.getOrFetch(EXT_PAN_HEX_LOWER, { force: true });
+        await service.getOrFetch(EXT_PAN_HEX_LOWER);
         expect(restCalls).to.equal(1);
         expect(meshcopCalls).to.equal(0);
 
@@ -582,7 +584,7 @@ describe("ThreadDiagnosticsService", () => {
         expect(meshcopCalls).to.equal(1);
     });
 
-    it("force=true bypasses the cache but reuses an already-registered REST cap", async () => {
+    it("force=true bypasses the cache and re-probes REST (reload-button path)", async () => {
         let probeCalls = 0;
         let restCalls = 0;
         const stub = brsListing([makeBr({ addresses: ["fd00::1"] })]);
@@ -606,11 +608,39 @@ describe("ThreadDiagnosticsService", () => {
         const first = await service.getOrFetch(EXT_PAN_HEX_LOWER);
         expect(first?.source).to.equal("otbr-rest");
         expect(restCalls).to.equal(1);
+        expect(probeCalls).to.equal(1);
 
-        // force=true re-fetches via REST without re-probing.
+        // force=true re-probes so a BR that came online later (or whose REST
+        // endpoint has flipped) gets revalidated.
         const second = await service.getOrFetch(EXT_PAN_HEX_LOWER, { force: true });
         expect(second?.source).to.equal("otbr-rest");
         expect(restCalls).to.equal(2);
+        expect(probeCalls).to.equal(2);
+    });
+
+    it("does not re-probe on `updated` events; only `added` triggers eager probes", async () => {
+        let probeCalls = 0;
+        const stub = brsListing([makeBr({ addresses: ["fd00::1"] })]);
+        new ThreadDiagnosticsService({
+            borderRouters: brRegistryFrom(stub),
+            credentials: credsRegistryFrom(credsLookup(new Map())),
+            makeRestSource: () => syncRestSource([]),
+            makeMeshcopSource: async () => meshcopHandle(syncMeshcopSource([])),
+            probeRest: async () => {
+                probeCalls += 1;
+                return null;
+            },
+        });
+
+        stub.events.added.emit(makeBr({ addresses: ["fd00::1"] }));
+        await new Promise(r => setTimeout(r, 5));
+        expect(probeCalls).to.equal(1);
+
+        // mDNS TXT/A refresh — should not trigger a fresh probe storm.
+        for (let i = 0; i < 5; i++) {
+            stub.events.updated.emit(makeBr({ addresses: ["fd00::1"] }));
+        }
+        await new Promise(r => setTimeout(r, 5));
         expect(probeCalls).to.equal(1);
     });
 

@@ -98,10 +98,16 @@ export class ThreadDiagnosticsService {
     readonly #opts: ThreadDiagnosticsServiceOpts;
     readonly #cache = new Map<string, ThreadDiagnosticsBatch>();
     readonly #restCaps = new Map<string, OtbrRestCapability>();
-    /** In-flight probe promises keyed by extPanIdHex (lowercase). Lets concurrent
-     *  add/update events from peer BRs sharing the same xp collapse onto a single
-     *  probe instead of fanning out to N×addresses requests. */
+    /** In-flight probe promises keyed by extPanIdHex (lowercase). Coalesces
+     *  concurrent triggers that fire for the same xp within one event batch. */
     readonly #probesInFlight = new Map<string, Promise<void>>();
+    /** xps we've already attempted to probe at least once (success or failure).
+     *  Gates `updated`-event probes — mDNS refreshes TXT/A records frequently,
+     *  but a BR that didn't expose REST on first sight will not start exposing
+     *  it via a TXT update; spamming probes on every refresh is pure waste.
+     *  Cleared on `force=true` fetches and on `removed` events so re-discovery
+     *  can happen when the user explicitly asks. */
+    readonly #probeAttempted = new Set<string>();
     readonly #lockManager = new ExtPanIdLockManager();
     readonly #cacheTtlMs: number;
     readonly #collectMs: number;
@@ -117,14 +123,11 @@ export class ThreadDiagnosticsService {
         this.#restProbeTimeoutMs = opts.restProbeTimeoutMs ?? ThreadDiagnosticsService.DEFAULT_REST_PROBE_TIMEOUT_MS;
         this.#probeRest = opts.probeRest ?? ((host, port, timeoutMs) => OtbrRestProbe.probe(host, port, timeoutMs));
 
-        // Eagerly probe REST when BRs are discovered/updated and clean up REST caps when
-        // BRs vanish, so on-demand fetches don't pay the probe latency on the hot path.
-        // Probes are deduplicated by extPanId via `#probesInFlight` so repeated events
-        // from the same BR (or peer BRs on the same network) collapse onto one probe.
+        // Probe REST when a BR is first discovered. Deliberately not wired to
+        // `updated` — mDNS refreshes fire continuously and a BR that doesn't
+        // expose REST on first sight won't start exposing it via a TXT refresh.
+        // `force=true` on `getOrFetch` is the explicit re-probe path.
         opts.borderRouters.events.added.on(br => {
-            void this.#probeBrForRest(br);
-        });
-        opts.borderRouters.events.updated.on(br => {
             void this.#probeBrForRest(br);
         });
         opts.borderRouters.events.removed.on(br => {
@@ -185,9 +188,13 @@ export class ThreadDiagnosticsService {
             `[ThreadDiag] BR picked xp=${xp} network="${networkName}" host="${br.hostname ?? "?"}" candidates=${matchingBrs.length}`,
         );
 
-        // Force=true bypasses the cache only. We deliberately do not re-probe here —
-        // probes already fire eagerly on every BR add/update from the registry, so a
-        // freshly-online REST endpoint is picked up without dashboard interaction.
+        // force=true is the dashboard "reload" path. Re-probe REST so a BR that came
+        // online after first discovery (or whose REST cap was lost) gets rechecked.
+        if (force) {
+            this.#probeAttempted.delete(key);
+            this.#restCaps.delete(key);
+            await this.#probeBrForRest(br, { force: true });
+        }
 
         const batch = await this.#fetch(key, networkName, br, extPanIdBytes);
         return this.#publish(batch);
@@ -233,16 +240,16 @@ export class ThreadDiagnosticsService {
         const key = xp.toLowerCase();
         const force = opts?.force === true;
 
-        // Already have a capability for this network; skip unless caller forces a re-probe.
-        if (!force && this.#restCaps.has(key)) return;
-
-        // Coalesce concurrent triggers. mDNS adds + per-address updates + peer-BR events
-        // on the same xp can fire dozens of times within milliseconds; share one probe.
+        // Coalesce concurrent triggers. Peer BRs sharing the same xp emit
+        // separate `added` events; share one probe.
         const existing = this.#probesInFlight.get(key);
         if (existing !== undefined) {
             await existing;
             return;
         }
+
+        // Skip if we've already tried this xp. force=true bypasses (reload button).
+        if (!force && this.#probeAttempted.has(key)) return;
 
         const candidates = br.addresses.filter(addr => !isLinkLocal(addr));
         if (candidates.length === 0) return;
@@ -263,6 +270,7 @@ export class ThreadDiagnosticsService {
             } catch {
                 // AggregateError — every probe rejected. Normal when BR has no REST endpoint.
             }
+            this.#probeAttempted.add(key);
         })();
 
         this.#probesInFlight.set(key, run);
@@ -292,6 +300,9 @@ export class ThreadDiagnosticsService {
                 `[ThreadDiag] REST capability unregistered xp=${xp.toUpperCase()} (last BR for network removed)`,
             );
         }
+        // Clear probe-attempted marker so a future re-discovery (same xp coming back)
+        // will re-probe instead of relying on stale state.
+        this.#probeAttempted.delete(key);
     }
 
     async #runRest(extPanIdHex: string, networkName: string, cap: OtbrRestCapability): Promise<ThreadDiagnosticsBatch> {
