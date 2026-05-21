@@ -53,6 +53,7 @@ export class Commissioner {
             payload: LeadPet.buildRequest(Commissioner.COMMISSIONER_ID),
         });
 
+        logger.info(`[ThreadDiag] COMM_PET response code=${response.code} payloadLen=${response.payload.length}`);
         const parsed = LeadPet.parseResponse(response.payload);
 
         if (parsed.state === "accept") {
