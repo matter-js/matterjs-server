@@ -10,7 +10,9 @@ import { CoapMessage } from "./CoapMessage.js";
 
 const logger = Logger.get("CoapClient");
 
-/** Thrown when a CON request exhausts MAX_RETRANSMIT without receiving an ACK. */
+/** Thrown when a CON request exhausts MAX_RETRANSMIT without receiving an ACK,
+ *  or when an empty ACK is received but no separate response arrives within
+ *  {@link SEPARATE_RESPONSE_TIMEOUT_MS}. */
 export class CoapTimeoutError extends Error {
     constructor(messageId: number) {
         super(`CoAP CON messageId=${messageId} timed out after MAX_RETRANSMIT`);
@@ -22,15 +24,25 @@ export class CoapTimeoutError extends Error {
 const RFC_ACK_TIMEOUT_MS = 2_000;
 const RFC_ACK_RANDOM_FACTOR = 1.5;
 const MAX_RETRANSMIT = 4;
+/** Wait this long after an empty ACK (RFC 7252 §5.2.2 separate response) for the
+ *  matching response message to arrive. Spec EXCHANGE_LIFETIME is 247s; we use a
+ *  much tighter ceiling because Thread MeshCoP transactions are local-network
+ *  fast paths — a no-show after 30s indicates a dropped response, not network
+ *  delay. */
+const SEPARATE_RESPONSE_TIMEOUT_MS = 30_000;
 
 export interface CoapClientOpts {
     /** Override ACK_TIMEOUT for testing. Default: 2000ms per RFC 7252 §4.2. */
     ackTimeoutMs?: number;
+    /** Override the separate-response wait window. Default: 30000ms. */
+    separateResponseTimeoutMs?: number;
 }
 
-type PendingEntry = {
+type PendingState = {
     resolve: (msg: CoapMessage) => void;
     reject: (err: Error) => void;
+    tokenHex: string;
+    onEmptyAck: () => void;
 };
 
 type Listener = {
@@ -46,16 +58,32 @@ function pathsEqual(a: string[], b: string[]): boolean {
     return true;
 }
 
+function tokenHex(token: Uint8Array): string {
+    let out = "";
+    for (const b of token) {
+        out += b.toString(16).padStart(2, "0");
+    }
+    return out;
+}
+
 export class CoapClient {
     #messageId = Math.floor(Math.random() * 0x10000);
     #socket: DtlsSocket;
     #ackTimeoutMs: number;
-    #pending = new Map<number, PendingEntry>();
+    #separateResponseTimeoutMs: number;
+    /** Tracks the per-message-id retransmit slot. Removed once the BR ACKs the
+     *  request — either with a piggybacked response or an empty ACK announcing
+     *  a separate response. */
+    #pendingByMsgId = new Map<number, PendingState>();
+    /** Tracks the per-token response correlation slot. Removed only when the
+     *  response actually arrives (or the separate-response wait times out). */
+    #pendingByToken = new Map<string, PendingState>();
     #listeners = new Set<Listener>();
 
     constructor(socket: DtlsSocket, opts?: CoapClientOpts) {
         this.#socket = socket;
         this.#ackTimeoutMs = opts?.ackTimeoutMs ?? RFC_ACK_TIMEOUT_MS;
+        this.#separateResponseTimeoutMs = opts?.separateResponseTimeoutMs ?? SEPARATE_RESPONSE_TIMEOUT_MS;
         void this.#runRecvLoop();
     }
 
@@ -100,40 +128,35 @@ export class CoapClient {
     }
 
     async #sendCon(msg: CoapMessage): Promise<CoapMessage> {
-        if (this.#pending.has(msg.messageId)) {
+        if (this.#pendingByMsgId.has(msg.messageId)) {
             throw new Error(`CoapClient: messageId collision at ${msg.messageId} — too many concurrent CON requests`);
+        }
+        const reqTokenHex = tokenHex(msg.token);
+        if (this.#pendingByToken.has(reqTokenHex)) {
+            throw new Error(`CoapClient: token collision for ${reqTokenHex}`);
         }
 
         const encoded = CoapMessage.encode(msg);
 
         return new Promise<CoapMessage>((resolve, reject) => {
-            let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+            let retransmitTimer: ReturnType<typeof setTimeout> | undefined;
+            let separateTimer: ReturnType<typeof setTimeout> | undefined;
             let attempt = 0;
 
             const cleanup = (): void => {
-                if (timeoutHandle !== undefined) {
-                    clearTimeout(timeoutHandle);
-                    timeoutHandle = undefined;
+                if (retransmitTimer !== undefined) {
+                    clearTimeout(retransmitTimer);
+                    retransmitTimer = undefined;
                 }
-                this.#pending.delete(msg.messageId);
+                if (separateTimer !== undefined) {
+                    clearTimeout(separateTimer);
+                    separateTimer = undefined;
+                }
+                this.#pendingByMsgId.delete(msg.messageId);
+                this.#pendingByToken.delete(reqTokenHex);
             };
 
-            const scheduleRetransmit = (delayMs: number): void => {
-                timeoutHandle = setTimeout(() => {
-                    timeoutHandle = undefined;
-                    if (!this.#pending.has(msg.messageId)) return;
-                    if (attempt >= MAX_RETRANSMIT) {
-                        cleanup();
-                        reject(new CoapTimeoutError(msg.messageId));
-                        return;
-                    }
-                    attempt++;
-                    void this.#socket.send(encoded).catch(() => {});
-                    scheduleRetransmit(Math.min(delayMs * 2, this.#ackTimeoutMs * 2 ** MAX_RETRANSMIT));
-                }, delayMs);
-            };
-
-            this.#pending.set(msg.messageId, {
+            const state: PendingState = {
                 resolve: (response: CoapMessage) => {
                     cleanup();
                     resolve(response);
@@ -142,7 +165,37 @@ export class CoapClient {
                     cleanup();
                     reject(err);
                 },
-            });
+                tokenHex: reqTokenHex,
+                onEmptyAck: () => {
+                    // Stop retransmitting; the BR has accepted the request and will deliver
+                    // the response in a separate CON/NON message with the same token.
+                    if (retransmitTimer !== undefined) {
+                        clearTimeout(retransmitTimer);
+                        retransmitTimer = undefined;
+                    }
+                    this.#pendingByMsgId.delete(msg.messageId);
+                    separateTimer = setTimeout(() => {
+                        state.reject(new CoapTimeoutError(msg.messageId));
+                    }, this.#separateResponseTimeoutMs);
+                },
+            };
+
+            const scheduleRetransmit = (delayMs: number): void => {
+                retransmitTimer = setTimeout(() => {
+                    retransmitTimer = undefined;
+                    if (!this.#pendingByMsgId.has(msg.messageId)) return;
+                    if (attempt >= MAX_RETRANSMIT) {
+                        state.reject(new CoapTimeoutError(msg.messageId));
+                        return;
+                    }
+                    attempt++;
+                    void this.#socket.send(encoded).catch(() => {});
+                    scheduleRetransmit(Math.min(delayMs * 2, this.#ackTimeoutMs * 2 ** MAX_RETRANSMIT));
+                }, delayMs);
+            };
+
+            this.#pendingByMsgId.set(msg.messageId, state);
+            this.#pendingByToken.set(reqTokenHex, state);
 
             const initialDelay = this.#ackTimeoutMs * (1 + Math.random() * (RFC_ACK_RANDOM_FACTOR - 1.0));
             void this.#socket
@@ -151,8 +204,7 @@ export class CoapClient {
                     scheduleRetransmit(initialDelay);
                 })
                 .catch(err => {
-                    cleanup();
-                    reject(err instanceof Error ? err : new Error(String(err)));
+                    state.reject(err instanceof Error ? err : new Error(String(err)));
                 });
         });
     }
@@ -169,27 +221,85 @@ export class CoapClient {
                     break;
                 }
 
-                let response: CoapMessage;
+                let msg: CoapMessage;
                 try {
-                    response = CoapMessage.decode(bytes);
+                    msg = CoapMessage.decode(bytes);
                 } catch {
                     continue;
                 }
 
-                const pending = this.#pending.get(response.messageId);
-                if (pending !== undefined) {
-                    pending.resolve(response);
-                    continue;
-                }
-
-                this.#dispatchToListeners(response);
+                await this.#dispatchInbound(msg);
             }
         } finally {
             const err = socketError ?? new Error("CoapClient: socket closed");
-            for (const [, entry] of this.#pending) {
-                entry.reject(err);
+            // Reject all outstanding requests (both maps reference the same PendingState entries).
+            for (const state of this.#pendingByToken.values()) {
+                state.reject(err);
             }
-            this.#pending.clear();
+            this.#pendingByMsgId.clear();
+            this.#pendingByToken.clear();
+        }
+    }
+
+    async #dispatchInbound(msg: CoapMessage): Promise<void> {
+        if (msg.type === "ACK") {
+            const state = this.#pendingByMsgId.get(msg.messageId);
+            if (state === undefined) {
+                // Stray ACK (duplicate or for a request we no longer track) — ignore.
+                return;
+            }
+            const isEmptyAck = msg.code === "0.00" && msg.payload.length === 0;
+            if (isEmptyAck) {
+                // Separate response coming.
+                state.onEmptyAck();
+                return;
+            }
+            // Piggybacked response.
+            state.resolve(msg);
+            return;
+        }
+
+        if (msg.type === "RST") {
+            const state = this.#pendingByMsgId.get(msg.messageId);
+            if (state !== undefined) {
+                state.reject(new Error(`CoAP RST received for messageId=${msg.messageId}`));
+            }
+            return;
+        }
+
+        // CON or NON. Check token first so a separate response is routed back to the
+        // originating #sendCon call regardless of which Uri-Path the BR replied on.
+        const inboundTokenHex = tokenHex(msg.token);
+        const pending = this.#pendingByToken.get(inboundTokenHex);
+        if (pending !== undefined) {
+            if (msg.type === "CON") {
+                await this.#sendEmptyAck(msg.messageId);
+            }
+            pending.resolve(msg);
+            return;
+        }
+
+        // Not a response to any pending request. ACK incoming CONs (RFC 7252 §4.3)
+        // and dispatch to listeners (this is the multicast diagnostic-answer path).
+        if (msg.type === "CON") {
+            await this.#sendEmptyAck(msg.messageId);
+        }
+        this.#dispatchToListeners(msg);
+    }
+
+    async #sendEmptyAck(messageId: number): Promise<void> {
+        // RFC 7252 §4.1: Empty messages have Code 0.00, no Token, no options, no payload.
+        const ack: CoapMessage = {
+            type: "ACK",
+            code: "0.00",
+            messageId,
+            token: new Uint8Array(),
+            payload: new Uint8Array(),
+        };
+        try {
+            await this.#socket.send(CoapMessage.encode(ack));
+        } catch (err) {
+            logger.debug(`Failed to send ACK for messageId=${messageId}:`, err);
         }
     }
 

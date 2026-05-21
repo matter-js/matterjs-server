@@ -293,6 +293,151 @@ describe("CoapClient", () => {
         await client.close();
     });
 
+    it("resolves with separate CON response after empty ACK (RFC 7252 §5.2.2)", async () => {
+        const socket = new MockSocket();
+        const client = new CoapClient(socket, { ackTimeoutMs: 5_000 });
+
+        const reqPromise = client.request({
+            type: "CON",
+            code: "0.02",
+            uriPath: ["c", "cp"],
+            payload: new Uint8Array([0x0a, 0x03]),
+        });
+
+        await Promise.resolve();
+        const sentMsg = CoapMessage.decode(socket.sent[0]);
+
+        // Empty ACK: code=0.00, payload empty, same messageId — signals separate response.
+        socket.deliverMessage({
+            type: "ACK",
+            code: "0.00",
+            messageId: sentMsg.messageId,
+            token: new Uint8Array(),
+            payload: new Uint8Array(),
+        });
+
+        // Yield so #dispatchInbound runs.
+        await new Promise(r => setTimeout(r, 5));
+
+        // Separate response: CON with same token but new messageId.
+        const responsePayload = new Uint8Array([0xaa, 0xbb, 0xcc]);
+        socket.deliverMessage({
+            type: "CON",
+            code: "2.04",
+            messageId: 0xfa11,
+            token: sentMsg.token,
+            payload: responsePayload,
+        });
+
+        const response = await reqPromise;
+        expect(response.code).to.equal("2.04");
+        expect(response.payload).to.deep.equal(responsePayload);
+
+        // Verify we sent an ACK for the inbound CON.
+        await new Promise(r => setTimeout(r, 5));
+        const ackSent = socket.sent.slice(1).map(b => CoapMessage.decode(b));
+        const matchingAck = ackSent.find(m => m.type === "ACK" && m.messageId === 0xfa11);
+        expect(matchingAck).to.exist;
+        expect(matchingAck?.code).to.equal("0.00");
+
+        await client.close();
+    });
+
+    it("resolves with NON separate response after empty ACK without sending ACK back", async () => {
+        const socket = new MockSocket();
+        const client = new CoapClient(socket, { ackTimeoutMs: 5_000 });
+
+        const reqPromise = client.request({ type: "CON", code: "0.02", uriPath: ["c", "cp"] });
+
+        await Promise.resolve();
+        const sentMsg = CoapMessage.decode(socket.sent[0]);
+        const sentCount = socket.sent.length;
+
+        socket.deliverMessage({
+            type: "ACK",
+            code: "0.00",
+            messageId: sentMsg.messageId,
+            token: new Uint8Array(),
+            payload: new Uint8Array(),
+        });
+
+        await new Promise(r => setTimeout(r, 5));
+
+        socket.deliverMessage({
+            type: "NON",
+            code: "2.04",
+            messageId: 0xab12,
+            token: sentMsg.token,
+            payload: new Uint8Array([1, 2, 3]),
+        });
+
+        const response = await reqPromise;
+        expect(response.code).to.equal("2.04");
+        expect(response.type).to.equal("NON");
+        // No new sends after the NON response (NON does not require ACK).
+        await new Promise(r => setTimeout(r, 5));
+        expect(socket.sent.length).to.equal(sentCount);
+
+        await client.close();
+    });
+
+    it("times out if separate response never arrives", async () => {
+        const socket = new MockSocket();
+        const client = new CoapClient(socket, { ackTimeoutMs: 5_000, separateResponseTimeoutMs: 30 });
+
+        const reqPromise = client.request({ type: "CON", code: "0.02", uriPath: ["c", "cp"] });
+
+        await Promise.resolve();
+        const sentMsg = CoapMessage.decode(socket.sent[0]);
+
+        socket.deliverMessage({
+            type: "ACK",
+            code: "0.00",
+            messageId: sentMsg.messageId,
+            token: new Uint8Array(),
+            payload: new Uint8Array(),
+        });
+
+        try {
+            await reqPromise;
+            expect.fail("expected timeout");
+        } catch (err) {
+            expect(err).to.be.instanceOf(CoapTimeoutError);
+        }
+
+        await client.close();
+    });
+
+    it("auto-ACKs inbound CON dispatched to listeners", async () => {
+        const socket = new MockSocket();
+        const client = new CoapClient(socket);
+
+        const received = new Array<CoapMessage>();
+        client.listen(["d", "da"], msg => {
+            received.push(msg);
+        });
+
+        const inbound: CoapMessage = {
+            type: "CON",
+            code: "0.02",
+            messageId: 0xc010,
+            token: new Uint8Array([9, 9, 9, 9]),
+            uriPath: ["d", "da"],
+            payload: new Uint8Array([0xff]),
+        };
+        socket.deliverMessage(inbound);
+
+        await new Promise(r => setTimeout(r, 10));
+
+        expect(received).to.have.length(1);
+        const ackSent = socket.sent.map(b => CoapMessage.decode(b));
+        const ack = ackSent.find(m => m.type === "ACK" && m.messageId === 0xc010);
+        expect(ack).to.exist;
+        expect(ack?.code).to.equal("0.00");
+
+        await client.close();
+    });
+
     it("close() clears all listeners", async () => {
         const socket = new MockSocket();
         const client = new CoapClient(socket);
