@@ -331,7 +331,7 @@ export class BorderRouterRegistry {
             if (xaKey === undefined && source === "trel") {
                 // Thread §11.4.2: TREL DNS-SD instance name MUST be the 16-char upper-case
                 // hex EUI-64. Fall back to the instance name when the TXT xa is missing or
-                // malformed — covers vendors whose TREL TXT skips xa (e.g. some Apple BRs).
+                // malformed; vendor stays unknown until/unless a `_meshcop` record arrives.
                 xaKey = deriveXaFromTrelInstance(name.qname);
                 if (xaKey !== undefined) {
                     logger.info(
