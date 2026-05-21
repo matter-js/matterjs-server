@@ -1019,12 +1019,34 @@ export class WebSocketControllerHandler implements WebServerHandler {
         args: ArgsOf<"get_thread_diagnostics">,
     ): Promise<ResponseOf<"get_thread_diagnostics">> {
         if (args?.extPanId === undefined) {
+            this.#kickOffDiagnosticsForKnownNetworks();
             return this.#controller.threadDiagnostics.listCached().map(serializeBatch);
         }
         const batch = await this.#controller.threadDiagnostics.getOrFetch(args.extPanId.toLowerCase(), {
             force: args.force,
         });
         return batch === undefined ? undefined : serializeBatch(batch);
+    }
+
+    /**
+     * Fire-and-forget fetch for every distinct Thread network advertised by a
+     * discovered Border Router. Used by the no-args `get_thread_diagnostics`
+     * call so opening the Thread panel triggers a population pass without
+     * making the WS reply wait for every network. Batches are broadcast back
+     * via `thread_diagnostics_updated`.
+     */
+    #kickOffDiagnosticsForKnownNetworks(): void {
+        const seen = new Set<string>();
+        for (const br of this.#controller.borderRouters.list()) {
+            const xp = br.extendedPanIdHex;
+            if (xp === undefined) continue;
+            const key = xp.toLowerCase();
+            if (seen.has(key)) continue;
+            seen.add(key);
+            this.#controller.threadDiagnostics.getOrFetch(key).catch(err => {
+                logger.warn(`[ThreadDiag] background fetch xp=${xp.toUpperCase()} failed: ${err}`);
+            });
+        }
     }
 
     async #handleRemoveWifiCredentials(): Promise<ResponseOf<"remove_wifi_credentials">> {
