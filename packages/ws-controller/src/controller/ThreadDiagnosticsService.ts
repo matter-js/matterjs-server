@@ -51,7 +51,7 @@ export interface MeshcopSourceHandle {
 }
 
 export interface ThreadDiagnosticsServiceOpts {
-    borderRouters: Pick<BorderRouterRegistry, "list">;
+    borderRouters: Pick<BorderRouterRegistry, "list" | "events">;
     credentials: Pick<ThreadCredentialsRegistry, "getCredentials">;
     /**
      * Async factory that orchestrates DTLS + CoAP + Commissioner setup for a MeshCoP query.
@@ -68,8 +68,6 @@ export interface ThreadDiagnosticsServiceOpts {
     restProbePort?: number;
     /** OTBR REST probe timeout in ms. Defaults to 1500. */
     restProbeTimeoutMs?: number;
-    /** Minimum interval between probe attempts for the same xp. Defaults to 60000 ms. */
-    restProbeCooldownMs?: number;
     /** @internal — for testing. Override the probe factory. */
     probeRest?: (host: string, port: number, timeoutMs: number) => Promise<OtbrRestCapability | null>;
 }
@@ -92,7 +90,6 @@ export class ThreadDiagnosticsService {
     static readonly DEFAULT_COLLECT_MS = 3_000;
     static readonly DEFAULT_REST_PROBE_PORT = 8081;
     static readonly DEFAULT_REST_PROBE_TIMEOUT_MS = 1_500;
-    static readonly DEFAULT_REST_PROBE_COOLDOWN_MS = 60_000;
 
     readonly events = {
         batchUpdated: new Observable<[ThreadDiagnosticsBatch]>(),
@@ -101,13 +98,11 @@ export class ThreadDiagnosticsService {
     readonly #opts: ThreadDiagnosticsServiceOpts;
     readonly #cache = new Map<string, ThreadDiagnosticsBatch>();
     readonly #restCaps = new Map<string, OtbrRestCapability>();
-    readonly #probeAttempts = new Map<string, number>();
     readonly #lockManager = new ExtPanIdLockManager();
     readonly #cacheTtlMs: number;
     readonly #collectMs: number;
     readonly #restProbePort: number;
     readonly #restProbeTimeoutMs: number;
-    readonly #restProbeCooldownMs: number;
     readonly #probeRest: (host: string, port: number, timeoutMs: number) => Promise<OtbrRestCapability | null>;
 
     constructor(opts: ThreadDiagnosticsServiceOpts) {
@@ -116,8 +111,19 @@ export class ThreadDiagnosticsService {
         this.#collectMs = opts.collectMs ?? ThreadDiagnosticsService.DEFAULT_COLLECT_MS;
         this.#restProbePort = opts.restProbePort ?? ThreadDiagnosticsService.DEFAULT_REST_PROBE_PORT;
         this.#restProbeTimeoutMs = opts.restProbeTimeoutMs ?? ThreadDiagnosticsService.DEFAULT_REST_PROBE_TIMEOUT_MS;
-        this.#restProbeCooldownMs = opts.restProbeCooldownMs ?? ThreadDiagnosticsService.DEFAULT_REST_PROBE_COOLDOWN_MS;
         this.#probeRest = opts.probeRest ?? ((host, port, timeoutMs) => OtbrRestProbe.probe(host, port, timeoutMs));
+
+        // Eagerly probe REST when BRs are discovered/updated and clean up REST caps when
+        // BRs vanish, so on-demand fetches don't pay the probe latency on the hot path.
+        opts.borderRouters.events.added.on(br => {
+            void this.#probeBrForRest(br);
+        });
+        opts.borderRouters.events.updated.on(br => {
+            void this.#probeBrForRest(br);
+        });
+        opts.borderRouters.events.removed.on(br => {
+            this.#handleBrRemoved(br);
+        });
     }
 
     listCached(): ReadonlyArray<ThreadDiagnosticsBatch> {
@@ -172,6 +178,13 @@ export class ThreadDiagnosticsService {
         logger.info(
             `[ThreadDiag] BR picked xp=${xp} network="${networkName}" host="${br.hostname ?? "?"}" candidates=${matchingBrs.length}`,
         );
+
+        // Force=true means "do everything fresh", which includes re-probing REST in case
+        // the BR's REST endpoint has come online (or gone offline) since the last probe.
+        if (force) {
+            await this.#probeBrForRest(br);
+        }
+
         const batch = await this.#fetch(key, networkName, br, extPanIdBytes);
         return this.#publish(batch);
     }
@@ -184,9 +197,6 @@ export class ThreadDiagnosticsService {
     ): Promise<ThreadDiagnosticsBatch> {
         const xp = extPanIdHex.toUpperCase();
         return this.#lockManager.withLock(extPanIdBytes, async () => {
-            if (!this.#restCaps.has(extPanIdHex)) {
-                await this.#maybeProbeRest(extPanIdHex, br);
-            }
             const restCap = this.#restCaps.get(extPanIdHex);
             if (restCap !== undefined) {
                 logger.info(`[ThreadDiag] source=REST xp=${xp} baseUrl=${restCap.baseUrl}`);
@@ -203,23 +213,21 @@ export class ThreadDiagnosticsService {
     }
 
     /**
-     * Auto-detect REST capability by probing every routable BR address in
-     * parallel. The first successful probe wins and is cached. Skipped within
-     * `restProbeCooldownMs` of a prior attempt for the same extPanId.
-     * Link-local addresses are skipped — Node `fetch` has no scope-id support.
+     * Probe every routable BR address in parallel and register the first
+     * successful REST capability against the BR's extPanId. Triggered eagerly
+     * from `BorderRouterRegistry` `added`/`updated` events, plus on `force=true`
+     * fetches. Idempotent — replaces any existing capability for the xp.
      *
+     * Link-local addresses are skipped — Node `fetch` has no scope-id support.
      * Probes run concurrently so the worst-case wait per BR is the per-probe
      * timeout, not (timeout × address count). Losing probes finish in the
      * background but their results are ignored.
      */
-    async #maybeProbeRest(extPanIdHex: string, br: BorderRouterEntry): Promise<void> {
-        const last = this.#probeAttempts.get(extPanIdHex);
-        if (last !== undefined && Date.now() - last < this.#restProbeCooldownMs) {
-            return;
-        }
-        this.#probeAttempts.set(extPanIdHex, Date.now());
+    async #probeBrForRest(br: BorderRouterEntry): Promise<void> {
+        const xp = br.extendedPanIdHex;
+        if (xp === undefined) return;
+        const key = xp.toLowerCase();
 
-        const xp = extPanIdHex.toUpperCase();
         const candidates = br.addresses.filter(addr => !isLinkLocal(addr));
         if (candidates.length === 0) return;
 
@@ -233,10 +241,31 @@ export class ThreadDiagnosticsService {
 
         try {
             const cap = await Promise.any(probes);
-            this.#restCaps.set(extPanIdHex, cap);
-            logger.info(`[ThreadDiag] REST auto-registered xp=${xp} baseUrl=${cap.baseUrl}`);
+            this.#restCaps.set(key, cap);
+            logger.info(`[ThreadDiag] REST auto-registered xp=${xp.toUpperCase()} baseUrl=${cap.baseUrl}`);
         } catch {
             // AggregateError — every probe rejected. Normal when BR has no REST endpoint.
+        }
+    }
+
+    /**
+     * Cleanup hook for `BorderRouterRegistry.events.removed`. Drops the REST
+     * capability for an xp only when no other BR currently advertises the same
+     * network — otherwise a peer BR for the same Thread network is still
+     * available via REST.
+     */
+    #handleBrRemoved(removed: BorderRouterEntry): void {
+        const xp = removed.extendedPanIdHex;
+        if (xp === undefined) return;
+        const key = xp.toLowerCase();
+        const stillPresent = this.#opts.borderRouters
+            .list()
+            .some(br => br.extendedPanIdHex !== undefined && br.extendedPanIdHex.toLowerCase() === key);
+        if (stillPresent) return;
+        if (this.#restCaps.delete(key)) {
+            logger.info(
+                `[ThreadDiag] REST capability unregistered xp=${xp.toUpperCase()} (last BR for network removed)`,
+            );
         }
     }
 

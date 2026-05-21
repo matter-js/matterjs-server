@@ -4,7 +4,15 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Bytes, type DnsRecord, DnsRecordType, Environment, Logger, type SrvRecordValue } from "@matter/main";
+import {
+    Bytes,
+    type DnsRecord,
+    DnsRecordType,
+    Environment,
+    Logger,
+    Observable,
+    type SrvRecordValue,
+} from "@matter/main";
 import { MdnsService } from "@matter/main/protocol";
 import type { BorderRouterEntry } from "./BorderRouterEntry.js";
 import type { DiscoveredObserver, DnssdNameLike, DnssdNamesLike, NameObserver } from "./DnssdLikeTypes.js";
@@ -54,6 +62,19 @@ interface TargetTracking {
  * via {@link start} / {@link stop}.
  */
 export class BorderRouterRegistry {
+    /**
+     * Lifecycle events for registry entries. Each fires with an immutable snapshot of
+     * the entry. `updated` fires for any field change (TXT, addresses, ports); callers
+     * that only care about specific transitions must diff themselves. `removed` fires
+     * when a BR is pruned (24h stale or evicted under load); callers can use it to
+     * tear down per-BR side state (e.g. cached REST capabilities).
+     */
+    readonly events = {
+        added: new Observable<[BorderRouterEntry]>(),
+        updated: new Observable<[BorderRouterEntry]>(),
+        removed: new Observable<[BorderRouterEntry]>(),
+    };
+
     readonly #env: Environment;
     readonly #registry = new Map<string, BorderRouterEntry>();
     readonly #instanceObservers = new Map<string, InstanceTracking>();
@@ -158,10 +179,15 @@ export class BorderRouterRegistry {
 
     #pruneExpired(): void {
         const cutoff = Date.now() - STALE_RETENTION_MS;
+        const pruned = new Array<BorderRouterEntry>();
         for (const [xaKey, entry] of this.#registry) {
             if (entry.sources.length === 0 && entry.lastSeen < cutoff) {
                 this.#registry.delete(xaKey);
+                pruned.push(this.#snapshotEntry(entry));
             }
+        }
+        for (const entry of pruned) {
+            this.events.removed.emit(entry);
         }
     }
 
@@ -280,10 +306,15 @@ export class BorderRouterRegistry {
         if (!this.#started) return;
         try {
             const targetQname = target.qname.toLowerCase();
+            const updated = new Array<BorderRouterEntry>();
             for (const entry of this.#registry.values()) {
                 if (entry.hostname?.toLowerCase() === targetQname) {
                     entry.addresses = this.#sortAddresses(this.#collectAddresses(target));
+                    updated.push(this.#snapshotEntry(entry));
                 }
+            }
+            for (const entry of updated) {
+                this.events.updated.emit(entry);
             }
         } catch (e) {
             logger.debug("Error processing border router target change:", e);
@@ -296,7 +327,18 @@ export class BorderRouterRegistry {
 
         try {
             const params = name.parameters;
-            const xaKey = rawHex(params.raw("xa"), 8);
+            let xaKey = rawHex(params.raw("xa"), 8);
+            if (xaKey === undefined && source === "trel") {
+                // Thread §11.4.2: TREL DNS-SD instance name MUST be the 16-char upper-case
+                // hex EUI-64. Fall back to the instance name when the TXT xa is missing or
+                // malformed — covers vendors whose TREL TXT skips xa (e.g. some Apple BRs).
+                xaKey = deriveXaFromTrelInstance(name.qname);
+                if (xaKey !== undefined) {
+                    logger.info(
+                        `[ThreadDiag] TREL instance xa derived from instance name qname="${name.qname}" xa=${xaKey}`,
+                    );
+                }
+            }
             if (xaKey === undefined) {
                 const rawXa = params.raw("xa");
                 const xaInfo =
@@ -417,6 +459,9 @@ export class BorderRouterRegistry {
                     this.#evictOldest();
                 }
                 this.#registry.set(xaKey, entry);
+                this.events.added.emit(this.#snapshotEntry(entry));
+            } else {
+                this.events.updated.emit(this.#snapshotEntry(entry));
             }
 
             if (tracking !== undefined) {
@@ -533,7 +578,11 @@ export class BorderRouterRegistry {
         const evictKey = oldestStaleKey ?? oldestLiveKey;
         if (evictKey === undefined) return false;
 
+        const evicted = this.#registry.get(evictKey);
         this.#registry.delete(evictKey);
+        if (evicted !== undefined) {
+            this.events.removed.emit(this.#snapshotEntry(evicted));
+        }
 
         let releasedObservers = 0;
         for (const [instanceKey, tracking] of [...this.#instanceObservers]) {
@@ -579,4 +628,17 @@ function rawHex(bytes: Bytes | undefined, expectedByteLength?: number): string |
     if (bytes === undefined || bytes.byteLength === 0) return undefined;
     if (expectedByteLength !== undefined && bytes.byteLength !== expectedByteLength) return undefined;
     return Bytes.toHex(bytes).toUpperCase();
+}
+
+/**
+ * Extract the 16-char uppercase hex EUI-64 from a TREL service instance qname.
+ * Returns undefined if the instance label is not 16 hex characters. Per Thread
+ * spec §11.4.2 the instance name MUST be the EUI-64 in hex, so this is a safe
+ * fallback when the xa TXT key is missing.
+ */
+function deriveXaFromTrelInstance(qname: string): string | undefined {
+    const dot = qname.indexOf(".");
+    const label = dot === -1 ? qname : qname.slice(0, dot);
+    if (!/^[0-9a-fA-F]{16}$/.test(label)) return undefined;
+    return label.toUpperCase();
 }
