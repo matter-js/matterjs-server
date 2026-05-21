@@ -117,6 +117,22 @@ export class ThreadGraph extends BaseNetworkGraph {
         return undefined;
     }
 
+    /**
+     * True when the BR identified by graph node id `br_<extAddr>` has a recent
+     * non-partial diagnostic batch. Such BRs are "verified" — we successfully
+     * queried them via REST or MeshCoP — and edges to them should render solid
+     * (not dotted as for purely-inferred unknown devices).
+     */
+    private _brHasValidDiagnostic(graphNodeId: string): boolean {
+        if (!graphNodeId.startsWith("br_")) return false;
+        const extAddr = graphNodeId.slice(3).toUpperCase();
+        const br = this.borderRouters.get(extAddr);
+        const xp = br?.extendedPanIdHex;
+        if (xp === undefined) return false;
+        const batch = this.threadDiagnostics.get(xp.toUpperCase());
+        return batch !== undefined && batch.partialReason === undefined && batch.nodes.length > 0;
+    }
+
     override updated(changedProperties: Map<string, unknown>): void {
         super.updated(changedProperties);
 
@@ -330,7 +346,12 @@ export class ThreadGraph extends BaseNetworkGraph {
 
                 const fromId = String(conn.fromNodeId);
                 const toId = String(conn.toNodeId);
-                const isToUnknown = toId.startsWith("unknown_") || toId.startsWith("br_");
+                // A BR with a fresh non-partial diagnostic batch is "verified" — we
+                // talked to it (REST or MeshCoP) and got mesh data back. Treat it as
+                // known so edges aren't rendered dotted just because it isn't a
+                // commissioned Matter node.
+                const isToUnknown =
+                    toId.startsWith("unknown_") || (toId.startsWith("br_") && !this._brHasValidDiagnostic(toId));
                 const fromNode = this.nodes[fromId];
                 const toNode = this.nodes[toId];
                 const hasOfflineEndpoint = fromNode?.available === false || toNode?.available === false;

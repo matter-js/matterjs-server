@@ -392,6 +392,27 @@ export class ThreadDiagnosticsService {
         logger.info(
             `[ThreadDiag] publish xp=${batch.extPanIdHex.toUpperCase()} source=${batch.source} nodes=${batch.nodes.length}${batch.partialReason ? ` partial=${batch.partialReason}` : ""}`,
         );
+        if (batch.nodes.length > 0) {
+            let withConnectivity = 0;
+            let withRoute64 = 0;
+            let withChildTable = 0;
+            let totalRoute64Entries = 0;
+            let totalChildTableEntries = 0;
+            for (const n of batch.nodes) {
+                if (n.connectivity !== undefined) withConnectivity++;
+                if (n.route64 !== undefined) {
+                    withRoute64++;
+                    totalRoute64Entries += n.route64.entries.length;
+                }
+                if (n.childTable !== undefined) {
+                    withChildTable++;
+                    totalChildTableEntries += n.childTable.length;
+                }
+            }
+            logger.info(
+                `[ThreadDiag] batch contents xp=${batch.extPanIdHex.toUpperCase()} connectivity=${withConnectivity}/${batch.nodes.length} route64=${withRoute64}/${batch.nodes.length} (${totalRoute64Entries} entries) childTable=${withChildTable}/${batch.nodes.length} (${totalChildTableEntries} entries)`,
+            );
+        }
         this.events.batchUpdated.emit(batch);
         return batch;
     }
