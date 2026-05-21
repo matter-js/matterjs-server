@@ -128,6 +128,36 @@ export function getNetworkType(node: MatterNode): NetworkType {
     return "unknown";
 }
 
+// NetworkCommissioning ThreadVersion (attr 0x0A) follows the Thread spec
+// "Version TLV" mapping. Spec is open-ended; unknown values render with the
+// raw TLV so newer-than-table devices stay visible.
+const THREAD_VERSION_NAMES: Record<number, string> = {
+    1: "1.0",
+    2: "1.1",
+    3: "1.2",
+    4: "1.3",
+    5: "1.4",
+};
+
+/**
+ * Thread protocol version supported by the device's Thread interface.
+ * Uses NetworkCommissioning cluster (0x31/49) ThreadVersion attribute (0x0A/10).
+ */
+export function getThreadVersion(node: MatterNode): number | undefined {
+    const v = node.attributes["0/49/10"];
+    return typeof v === "number" ? v : undefined;
+}
+
+/**
+ * Human-readable Thread version string from the Version TLV value.
+ * Unmapped TLVs render as `Thread unknown (N)` so the raw value stays
+ * visible for diagnostics.
+ */
+export function formatThreadVersion(tlv: number): string {
+    const name = THREAD_VERSION_NAMES[tlv];
+    return name !== undefined ? `Thread ${name}` : `Thread unknown (${tlv})`;
+}
+
 /**
  * Categorizes nodes by their network type.
  * Node IDs are stored as strings to avoid BigInt precision loss.

@@ -25,6 +25,7 @@ import type { SignalLevel, ThreadEdgePair, ThreadExternalDevice } from "./networ
 import type { NodeConnection } from "./network-utils.js";
 import {
     decodeMeshcopStateBitmap,
+    formatThreadVersion,
     getDeviceName,
     getNetworkType,
     getNodeConnectionsFromPairs,
@@ -34,6 +35,7 @@ import {
     getThreadExtendedAddressHex,
     getThreadRole,
     getThreadRoleName,
+    getThreadVersion,
     getWiFiDiagnostics,
     getWiFiSecurityTypeName,
     getWiFiVersionName,
@@ -206,6 +208,7 @@ export class NetworkDetails extends LitElement {
         const threadRole = getThreadRole(node);
         const channel = getThreadChannel(node);
         const extAddressHex = getThreadExtendedAddressHex(node);
+        const threadVersion = getThreadVersion(node);
         // Get connections from edge pairs with the same filter pipeline as the graph
         const nodeId = String(node.node_id);
         const connections = getNodeConnectionsFromPairs(nodeId, this.threadEdgePairs, this.nodes, {
@@ -222,6 +225,14 @@ export class NetworkDetails extends LitElement {
                     <span class="label">Role:</span>
                     <span class="value">${getThreadRoleName(threadRole)}</span>
                 </div>
+                ${threadVersion !== undefined
+                    ? html`
+                          <div class="info-row">
+                              <span class="label">Thread version:</span>
+                              <span class="value">${formatThreadVersion(threadVersion)}</span>
+                          </div>
+                      `
+                    : nothing}
                 ${channel !== undefined
                     ? html`
                           <div class="info-row">

@@ -10,8 +10,11 @@ This page shows a detailed overview of the changes between versions without the 
 ## **WORK IN PROGRESS**
 
 - Feature: Added BLE proxy commissioning support (enabled with `--ble-proxy` CLI option)
+- Enhancement: Dashboard shows Thread protocol version on Thread node details
+- Enhancement: Dashboard always shows Thread/WiFi navigation tabs (removed small-screen gate)
 - Maintenance: Update matter.js to the official 0.17.0
 - Fix: Fix the Docker-Health-Checks when a custom Listen address was used
+- Fix: Dashboard auto-focuses pairing-code field when commission-node dialog opens
 
 ## 0.7.0 (2026-05-18)
 

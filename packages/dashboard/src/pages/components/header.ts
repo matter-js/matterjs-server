@@ -259,12 +259,6 @@ export class DashboardHeader extends LitElement {
                 border-bottom: 2px solid var(--md-sys-color-on-primary);
             }
 
-            @media (max-width: 768px) {
-                .nav-tabs {
-                    display: none;
-                }
-            }
-
             .dev-badge {
                 font-family: var(--monospace-font);
                 font-size: 0.7rem;
