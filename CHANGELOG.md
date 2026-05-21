@@ -7,7 +7,7 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
-## **WORK IN PROGRESS**
+## 0.7.1 (2026-05-21)
 
 - Feature: Added BLE proxy commissioning support (enabled with `--ble-proxy` CLI option)
 - Enhancement: Dashboard shows Thread protocol version on Thread node details
