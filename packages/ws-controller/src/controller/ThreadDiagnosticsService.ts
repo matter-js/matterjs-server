@@ -203,10 +203,14 @@ export class ThreadDiagnosticsService {
     }
 
     /**
-     * Auto-detect REST capability by probing each routable BR address on the
-     * configured REST port. First successful probe wins and is cached. Skipped
-     * within `restProbeCooldownMs` of a prior attempt for the same extPanId.
+     * Auto-detect REST capability by probing every routable BR address in
+     * parallel. The first successful probe wins and is cached. Skipped within
+     * `restProbeCooldownMs` of a prior attempt for the same extPanId.
      * Link-local addresses are skipped — Node `fetch` has no scope-id support.
+     *
+     * Probes run concurrently so the worst-case wait per BR is the per-probe
+     * timeout, not (timeout × address count). Losing probes finish in the
+     * background but their results are ignored.
      */
     async #maybeProbeRest(extPanIdHex: string, br: BorderRouterEntry): Promise<void> {
         const last = this.#probeAttempts.get(extPanIdHex);
@@ -216,18 +220,23 @@ export class ThreadDiagnosticsService {
         this.#probeAttempts.set(extPanIdHex, Date.now());
 
         const xp = extPanIdHex.toUpperCase();
-        for (const addr of br.addresses) {
-            if (isLinkLocal(addr)) continue;
-            try {
-                const cap = await this.#probeRest(addr, this.#restProbePort, this.#restProbeTimeoutMs);
-                if (cap !== null) {
-                    this.#restCaps.set(extPanIdHex, cap);
-                    logger.info(`[ThreadDiag] REST auto-registered xp=${xp} baseUrl=${cap.baseUrl}`);
-                    return;
-                }
-            } catch (err) {
-                logger.warn(`[ThreadDiag] probe threw xp=${xp} addr=${addr}: ${err}`);
+        const candidates = br.addresses.filter(addr => !isLinkLocal(addr));
+        if (candidates.length === 0) return;
+
+        const probes = candidates.map(async addr => {
+            const cap = await this.#probeRest(addr, this.#restProbePort, this.#restProbeTimeoutMs);
+            if (cap === null) {
+                throw new Error(`probe-miss for ${addr}`);
             }
+            return cap;
+        });
+
+        try {
+            const cap = await Promise.any(probes);
+            this.#restCaps.set(extPanIdHex, cap);
+            logger.info(`[ThreadDiag] REST auto-registered xp=${xp} baseUrl=${cap.baseUrl}`);
+        } catch {
+            // AggregateError — every probe rejected. Normal when BR has no REST endpoint.
         }
     }
 

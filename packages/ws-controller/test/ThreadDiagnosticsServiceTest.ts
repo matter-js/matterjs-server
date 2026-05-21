@@ -489,7 +489,10 @@ describe("ThreadDiagnosticsService", () => {
         });
 
         const batch = await service.getOrFetch(EXT_PAN_HEX_LOWER);
-        expect(probeCalls).to.deep.equal([{ host: "fd00::1", port: 8081 }]);
+        // Probes run in parallel; both candidates are dialled even though the first to succeed wins.
+        expect(probeCalls).to.have.lengthOf(2);
+        expect(probeCalls.map(c => c.host).sort()).to.deep.equal(["192.0.2.1", "fd00::1"]);
+        expect(probeCalls.every(c => c.port === 8081)).to.equal(true);
         expect(batch?.source).to.equal("otbr-rest");
         expect(restCalls).to.equal(1);
         expect(meshcopCalls).to.equal(0);

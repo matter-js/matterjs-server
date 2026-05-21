@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { Bytes } from "@matter/main";
 import { MeshCopTlvType } from "../dataset/meshcopTlvTypes.js";
 import { BasicTlv } from "../tlv/BasicTlvCodec.js";
 
@@ -37,7 +38,13 @@ export namespace LeadPet {
         }
 
         if (state === undefined) {
-            throw new Error("LeadPet: response missing STATE TLV");
+            const tlvSummary =
+                entries.length === 0
+                    ? "none"
+                    : entries.map(e => `t=0x${e.type.toString(16)}/${e.value.length}b`).join(",");
+            throw new Error(
+                `LeadPet: response missing STATE TLV (payload=${Bytes.toHex(payload)}, tlvs=[${tlvSummary}])`,
+            );
         }
 
         return state === "accept" ? { state, sessionId } : { state };
