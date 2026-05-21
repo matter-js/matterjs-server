@@ -11,6 +11,7 @@ This page shows a detailed overview of the changes between versions without the 
 
 - Feature: Added BLE proxy commissioning support (enabled with `--ble-proxy` CLI option)
 - Maintenance: Update matter.js to the official 0.17.0
+- Fix: Fix the Docker-Health-Checks when a custom Listen address was used
 
 ## 0.7.0 (2026-05-18)
 

@@ -41,6 +41,7 @@ export const BleProxyCommand = {
     ReadCharacteristic: "read_characteristic",
     WriteCharacteristic: "write_characteristic",
     SubscribeCharacteristic: "subscribe_characteristic",
+    WriteAndSubscribe: "write_and_subscribe",
     UnsubscribeCharacteristic: "unsubscribe_characteristic",
     RequestMtu: "request_mtu",
 } as const;
@@ -98,6 +99,21 @@ export interface WriteCharacteristicArgs {
 export interface SubscribeCharacteristicArgs {
     connection_handle: number;
     characteristic_uuid: string;
+}
+
+/**
+ * Atomic write-then-subscribe. The client performs the write to `write_uuid`, awaits the
+ * GATT Write Response, then enables CCCD on `subscribe_uuid` without any intervening
+ * WebSocket round-trip. Used for the Matter BTP handshake on C1/C2 where a peripheral may
+ * push the handshake response indication before the client has had time to enable CCCD if
+ * the two ops are split across WS commands.
+ */
+export interface WriteAndSubscribeArgs {
+    connection_handle: number;
+    write_uuid: string;
+    write_value: string; // base64
+    write_response?: boolean;
+    subscribe_uuid: string;
 }
 
 export interface UnsubscribeCharacteristicArgs {
@@ -179,6 +195,7 @@ export interface BleProxyCommandMap {
     [BleProxyCommand.ReadCharacteristic]: { args: ReadCharacteristicArgs; result: ReadCharacteristicResult };
     [BleProxyCommand.WriteCharacteristic]: { args: WriteCharacteristicArgs; result: void };
     [BleProxyCommand.SubscribeCharacteristic]: { args: SubscribeCharacteristicArgs; result: void };
+    [BleProxyCommand.WriteAndSubscribe]: { args: WriteAndSubscribeArgs; result: void };
     [BleProxyCommand.UnsubscribeCharacteristic]: { args: UnsubscribeCharacteristicArgs; result: void };
     [BleProxyCommand.RequestMtu]: { args: RequestMtuArgs; result: RequestMtuResult };
 }

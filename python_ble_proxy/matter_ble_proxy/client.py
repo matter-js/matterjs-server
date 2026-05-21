@@ -315,6 +315,7 @@ class MatterBleProxy:
             "read_characteristic": self._handle_read_characteristic,
             "write_characteristic": self._handle_write_characteristic,
             "subscribe_characteristic": self._handle_subscribe_characteristic,
+            "write_and_subscribe": self._handle_write_and_subscribe,
             "unsubscribe_characteristic": self._handle_unsubscribe_characteristic,
             "request_mtu": self._handle_request_mtu,
         }.get(command)
@@ -537,7 +538,9 @@ class MatterBleProxy:
         handle = conn.handle
 
         def _on_notification(_char: BleakGATTCharacteristic, data: bytearray) -> None:
-            frame = BINARY_FRAME_HEADER.pack(OPCODE_NOTIFICATION, handle) + bytes(data)
+            payload = bytes(data)
+            _LOGGER.debug("[NTFY] handle=%d char=%s len=%d head=%s", handle, char_uuid, len(payload), payload[:8].hex())
+            frame = BINARY_FRAME_HEADER.pack(OPCODE_NOTIFICATION, handle) + payload
             loop = self._loop
             if loop is None:
                 return
@@ -555,6 +558,61 @@ class MatterBleProxy:
             char_obj = conn.services.get_characteristic(char_uuid)
             if char_obj is not None:
                 conn.subscriptions[char_uuid] = char_obj
+        await self._send_success(cmd_id)
+
+    async def _handle_write_and_subscribe(self, cmd_id: int, args: dict[str, Any]) -> None:
+        """Atomic write-then-subscribe; eliminates the WS round-trip between Write Response
+        and CCCD enable that can lose an indication if the peripheral pushes it immediately
+        after Write Response (e.g. Matter BTP handshake response on C2).
+        """
+        conn = self._get_connection(args["connection_handle"])
+        if conn is None:
+            await self._send_error(cmd_id, "not_connected", f"No connection with handle {args['connection_handle']}")
+            return
+
+        write_uuid: str = args["write_uuid"]
+        write_data = base64.b64decode(args["write_value"])
+        write_response = args.get("write_response", False)
+        subscribe_uuid: str = args["subscribe_uuid"]
+        handle = conn.handle
+
+        def _on_notification(_char: BleakGATTCharacteristic, data: bytearray) -> None:
+            payload = bytes(data)
+            _LOGGER.debug(
+                "[NTFY] handle=%d char=%s len=%d head=%s",
+                handle,
+                subscribe_uuid,
+                len(payload),
+                payload[:8].hex(),
+            )
+            frame = BINARY_FRAME_HEADER.pack(OPCODE_NOTIFICATION, handle) + payload
+            loop = self._loop
+            if loop is None:
+                return
+            loop.call_soon_threadsafe(self._spawn_task, self._send_binary(frame))
+
+        try:
+            await conn.client.write_gatt_char(write_uuid, write_data, response=write_response)
+        except Exception as err:
+            await self._send_error(cmd_id, "write_failed", f"write_gatt_char({write_uuid}): {err}")
+            return
+
+        if conn.services is not None:
+            char_obj = conn.services.get_characteristic(write_uuid)
+            if char_obj is not None:
+                conn.last_write_characteristic = char_obj
+
+        try:
+            await conn.client.start_notify(subscribe_uuid, _on_notification)
+        except Exception as err:
+            await self._send_error(cmd_id, "subscribe_failed", f"start_notify({subscribe_uuid}): {err}")
+            return
+
+        if conn.services is not None:
+            sub_obj = conn.services.get_characteristic(subscribe_uuid)
+            if sub_obj is not None:
+                conn.subscriptions[subscribe_uuid] = sub_obj
+
         await self._send_success(cmd_id)
 
     async def _handle_unsubscribe_characteristic(self, cmd_id: int, args: dict[str, Any]) -> None:

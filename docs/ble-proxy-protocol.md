@@ -402,6 +402,48 @@ to the server. Binary frames (opcode `0x02`) are preferred for throughput.
 
 ---
 
+### write_and_subscribe
+
+Atomically write to one characteristic, then enable notifications on another, without any
+intervening WebSocket round-trip. Used for the Matter BTP handshake: the server writes the
+BTP handshake request to C1 and must enable indications on C2 before the peripheral pushes
+the handshake response. Splitting this across `write_characteristic` +
+`subscribe_characteristic` adds a WebSocket round-trip during which an early indication is
+lost on stacks that hand off notifications atomically with CCCD enable (e.g. CoreBluetooth on
+macOS via Bleak).
+
+The client MUST perform the write, await the GATT Write Response, and only then issue the
+CCCD enable for the subscribe characteristic. Both operations run in a single client-side
+task; the response is sent after both succeed.
+
+**Args:**
+
+| Field               | Type    | Required | Description                                                                                                                                                                                       |
+|---------------------|---------|----------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `connection_handle` | integer | yes      | Handle from `connect` response                                                                                                                                                                    |
+| `write_uuid`        | string  | yes      | Characteristic UUID to write to (typically C1)                                                                                                                                                    |
+| `write_value`       | string  | yes      | Base64-encoded value to write                                                                                                                                                                     |
+| `write_response`    | boolean | no       | `true` → ATT Write Request (acknowledged); `false` → Write Without Response. Default `false`. Matter BTP writes to C1 MUST set `true`.                                                            |
+| `subscribe_uuid`    | string  | yes      | Characteristic UUID to enable notifications/indications on (typically C2)                                                                                                                         |
+
+**Result:** `{}` (empty)
+
+After a successful response, the `subscribe_uuid` is treated identically to a successful
+`subscribe_characteristic`: all subsequent notifications are forwarded to the server
+(binary opcode `0x02` preferred), and `unsubscribe_characteristic` is the matching teardown.
+
+**Errors:**
+
+| Error Code                 | Description                                   |
+|----------------------------|-----------------------------------------------|
+| `not_connected`            | No active connection with this handle         |
+| `characteristic_not_found` | One of the specified UUIDs not found          |
+| `write_failed`             | Write operation failed                        |
+| `subscribe_failed`         | Subscribe operation failed                    |
+| `notify_not_supported`     | Subscribe characteristic does not support notifications |
+
+---
+
 ### unsubscribe_characteristic
 
 Unsubscribe from notifications on a characteristic.
@@ -586,7 +628,7 @@ by the preceding JSON command:
 | BTP writes (C1)                              | Binary (`0x01`)                    | High frequency during commissioning |
 | BTP notifications (C2)                       | Binary (`0x02`)                    | High frequency during commissioning |
 | C3 characteristic read                       | JSON result                        | One-time read, small payload        |
-| Initial characteristic write (BTP handshake) | JSON `write_characteristic`        | Establishes binary context          |
+| Initial characteristic write (BTP handshake) | JSON `write_and_subscribe`         | Establishes binary context; combo avoids CCCD-enable race |
 | Infrequent notifications                     | JSON `characteristic_notification` | Low frequency, simpler              |
 
 ## Matter BLE Commissioning Sequence
@@ -636,14 +678,12 @@ sequenceDiagram
     D-->>C: C3 data
     C->>S: {value: "base64..."}
 
-    Note over S,C: BTP Handshake
-    S->>C: write_characteristic {handle: 1, char: "...C1", value: "base64..."}
+    Note over S,C: BTP Handshake (atomic write+subscribe to close the CCCD-enable race window)
+    S->>C: write_and_subscribe {handle: 1, write_uuid: "...C1", write_value: "...", subscribe_uuid: "...C2"}
     C->>D: write C1 (BTP handshake request)
-    C->>S: {success: true}
-
-    S->>C: subscribe_characteristic {handle: 1, char: "...C2"}
-    C->>D: subscribe C2
-    D-->>C: notification (BTP handshake response)
+    D-->>C: GATT Write Response
+    C->>D: enable C2 indications (CCCD)
+    D-->>C: indication (BTP handshake response)
     C->>S: {success: true}
     C->>S: binary 0x02 [handle:1] [handshake response]
 

@@ -190,10 +190,10 @@ describe("BLE Proxy Integration", function () {
             testClient.onCommand(BleProxyCommand.DiscoverCharacteristics, async () => ({
                 characteristics: mockDevice.characteristics,
             }));
-            testClient.onCommand(BleProxyCommand.WriteCharacteristic, async () => ({}));
-            testClient.onCommand(BleProxyCommand.SubscribeCharacteristic, async () => {
-                // C2 subscribe is the last command before the channel registers its binary
-                // frame observer, so simulate the device's BTP handshake response now.
+            testClient.onCommand(BleProxyCommand.WriteAndSubscribe, async () => {
+                // The combo write_and_subscribe is the last command before the channel
+                // registers its binary frame observer, so simulate the device's BTP
+                // handshake response now.
                 setTimeout(() => {
                     testClient.sendBinaryFrame(
                         BinaryFrameOpcode.Notification,
@@ -239,21 +239,13 @@ describe("BLE Proxy Integration", function () {
             expect(commandNames).to.include("connect");
             expect(commandNames).to.include("discover_services");
             expect(commandNames).to.include("discover_characteristics");
-            const writeIndex = commandNames.indexOf("write_characteristic");
-            const subscribeIndex = commandNames.indexOf("subscribe_characteristic");
-            expect(writeIndex).to.be.greaterThanOrEqual(0);
-            expect(subscribeIndex).to.be.greaterThan(writeIndex);
+            expect(commandNames).to.include("write_and_subscribe");
 
-            // C1 write should target the C1 characteristic UUID
-            const writeCmd = testClient.receivedCommands.find(c => c.command === "write_characteristic");
-            expect((writeCmd?.args as { characteristic_uuid: string } | undefined)?.characteristic_uuid).to.equal(
-                C1_UUID,
-            );
-            // C2 subscribe should target the C2 characteristic UUID
-            const subscribeCmd = testClient.receivedCommands.find(c => c.command === "subscribe_characteristic");
-            expect((subscribeCmd?.args as { characteristic_uuid: string } | undefined)?.characteristic_uuid).to.equal(
-                C2_UUID,
-            );
+            // write_and_subscribe should target C1 for write and C2 for subscribe atomically
+            const comboCmd = testClient.receivedCommands.find(c => c.command === "write_and_subscribe");
+            const comboArgs = comboCmd?.args as { write_uuid: string; subscribe_uuid: string } | undefined;
+            expect(comboArgs?.write_uuid).to.equal(C1_UUID);
+            expect(comboArgs?.subscribe_uuid).to.equal(C2_UUID);
 
             await channel.close();
         });

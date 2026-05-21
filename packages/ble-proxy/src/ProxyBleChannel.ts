@@ -144,30 +144,26 @@ export class ProxyBleCentralInterface implements Transport {
                 // it's handled by matter.js commissioning flow internally
             }
 
-            // 5. Send BTP handshake request on C1.
-            // Matter BTP spec: writes to C1 use ATT Write Request (with response). C1 typically
-            // does not advertise writeWithoutResponse, so a writeWithoutResponse is silently
-            // dropped or rejected by the peripheral and the BTP handshake response never comes.
+            // 5. Send BTP handshake request on C1 and atomically subscribe to C2 for the
+            // response indication. The combo eliminates the WebSocket round-trip between
+            // Write Response and CCCD enable — without it, a peripheral that pushes the
+            // handshake indication immediately after Write Response can fire before the
+            // proxy client has enabled notifications, and the indication is lost.
             const btpHandshakeRequest = BtpCodec.encodeBtpHandshakeRequest({
                 versions: MatterBle.BTP_SUPPORTED_VERSIONS,
                 attMtu: mtu,
                 clientWindowSize: MatterBle.BTP_MAXIMUM_WINDOW_SIZE,
             });
-            logger.debug(`Sending BTP handshake request on C1`);
-            await this.#handler.sendCommand(BleProxyCommand.WriteCharacteristic, {
+            logger.debug(`Sending BTP handshake request on C1 and subscribing C2 atomically`);
+            await this.#handler.sendCommand(BleProxyCommand.WriteAndSubscribe, {
                 connection_handle,
-                characteristic_uuid: c1Uuid,
-                value: Buffer.from(btpHandshakeRequest as ArrayBuffer).toString("base64"),
-                response: true,
+                write_uuid: c1Uuid,
+                write_value: Buffer.from(btpHandshakeRequest as ArrayBuffer).toString("base64"),
+                write_response: true,
+                subscribe_uuid: c2Uuid,
             });
 
-            // 6. Subscribe to C2 for notifications
-            await this.#handler.sendCommand(BleProxyCommand.SubscribeCharacteristic, {
-                connection_handle,
-                characteristic_uuid: c2Uuid,
-            });
-
-            // 7. Wait for BTP handshake response via binary frame
+            // 6. Wait for BTP handshake response via binary frame
             const {
                 promise: handshakePromise,
                 resolver: handshakeResolver,
@@ -205,7 +201,7 @@ export class ProxyBleCentralInterface implements Transport {
                 btpHandshakeTimeout.stop();
             }
 
-            // 8. Create BTP session
+            // 7. Create BTP session
             // Use a ref object so closures can access the channel after it's created
             const onMatterMessageListener = this.#onMatterMessageListener;
             const channelRef: { channel?: ProxyBleChannel } = {};
@@ -239,7 +235,7 @@ export class ProxyBleCentralInterface implements Transport {
                 },
             );
 
-            // 9. Wire up binary frame notifications to BTP session
+            // 8. Wire up binary frame notifications to BTP session
             const binaryObserver = (frame: { connectionHandle: number; opcode: number; payload: Uint8Array }) => {
                 if (frame.connectionHandle === connection_handle && frame.opcode === BinaryFrameOpcode.Notification) {
                     btpSession
@@ -251,7 +247,7 @@ export class ProxyBleCentralInterface implements Transport {
             };
             this.#handler.binaryFrameReceived.on(binaryObserver);
 
-            // 10. Handle unexpected disconnects from proxy client
+            // 9. Handle unexpected disconnects from proxy client
             const eventObserver = (event: string, data: Record<string, unknown>) => {
                 if (
                     event === BleProxyEvent.Disconnected &&

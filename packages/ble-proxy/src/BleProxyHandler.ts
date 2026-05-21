@@ -333,6 +333,12 @@ export class BleProxyHandler implements WebServerHandler {
 
         try {
             const frame = decodeBinaryFrame(new Uint8Array(data));
+            const head = Array.from(frame.payload.subarray(0, 8))
+                .map(b => b.toString(16).padStart(2, "0"))
+                .join("");
+            logger.debug(
+                `[FRAME] opcode=${frame.opcode} handle=${frame.connectionHandle} len=${frame.payload.length} head=${head}`,
+            );
             this.binaryFrameReceived.emit(frame);
         } catch (err) {
             logger.error("Failed to decode binary frame:", err);

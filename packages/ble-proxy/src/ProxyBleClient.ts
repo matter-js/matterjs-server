@@ -86,9 +86,11 @@ export class ProxyBleClient {
         }
 
         logger.debug("Start BLE scanning via proxy ...");
+        // Matter discovery only needs one event per state change; opt out of the spec's
+        // default true so a 10 Hz peripheral advertise doesn't flood the WebSocket.
         await this.#handler.sendCommand(BleProxyCommand.StartScan, {
             service_uuids: ["fff6"],
-            allow_duplicates: true,
+            allow_duplicates: false,
         });
         this.#isScanning = true;
     }
