@@ -582,11 +582,9 @@ describe("ThreadDiagnosticsService", () => {
         expect(meshcopCalls).to.equal(1);
     });
 
-    it("force=true re-probes REST before fetching", async () => {
+    it("force=true bypasses the cache but reuses an already-registered REST cap", async () => {
         let probeCalls = 0;
-        let probeShouldSucceed = false;
         let restCalls = 0;
-        let meshcopCalls = 0;
         const stub = brsListing([makeBr({ addresses: ["fd00::1"] })]);
         const service = new ThreadDiagnosticsService({
             borderRouters: brRegistryFrom(stub),
@@ -595,31 +593,25 @@ describe("ThreadDiagnosticsService", () => {
                 restCalls += 1;
                 return syncRestSource([SAMPLE_NODE]);
             },
-            makeMeshcopSource: async () => {
-                meshcopCalls += 1;
-                return meshcopHandle(syncMeshcopSource([]));
-            },
+            makeMeshcopSource: async () => meshcopHandle(syncMeshcopSource([])),
             probeRest: async () => {
                 probeCalls += 1;
-                return probeShouldSucceed ? makeCap() : null;
+                return makeCap();
             },
         });
 
-        // Initial probe (from `added`) misses; first fetch is MeshCoP.
         stub.events.added.emit(makeBr({ addresses: ["fd00::1"] }));
         await new Promise(r => setTimeout(r, 5));
 
         const first = await service.getOrFetch(EXT_PAN_HEX_LOWER);
-        expect(first?.source).to.equal("meshcop");
-        expect(probeCalls).to.equal(1);
+        expect(first?.source).to.equal("otbr-rest");
+        expect(restCalls).to.equal(1);
 
-        // REST endpoint now reachable. force=true should re-probe and pick REST.
-        probeShouldSucceed = true;
+        // force=true re-fetches via REST without re-probing.
         const second = await service.getOrFetch(EXT_PAN_HEX_LOWER, { force: true });
         expect(second?.source).to.equal("otbr-rest");
-        expect(probeCalls).to.equal(2);
-        expect(restCalls).to.equal(1);
-        expect(meshcopCalls).to.equal(1);
+        expect(restCalls).to.equal(2);
+        expect(probeCalls).to.equal(1);
     });
 
     it("removed event drops the REST capability when no other BR carries the same xp", async () => {

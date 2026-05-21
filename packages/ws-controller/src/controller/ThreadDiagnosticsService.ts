@@ -98,6 +98,10 @@ export class ThreadDiagnosticsService {
     readonly #opts: ThreadDiagnosticsServiceOpts;
     readonly #cache = new Map<string, ThreadDiagnosticsBatch>();
     readonly #restCaps = new Map<string, OtbrRestCapability>();
+    /** In-flight probe promises keyed by extPanIdHex (lowercase). Lets concurrent
+     *  add/update events from peer BRs sharing the same xp collapse onto a single
+     *  probe instead of fanning out to N×addresses requests. */
+    readonly #probesInFlight = new Map<string, Promise<void>>();
     readonly #lockManager = new ExtPanIdLockManager();
     readonly #cacheTtlMs: number;
     readonly #collectMs: number;
@@ -115,6 +119,8 @@ export class ThreadDiagnosticsService {
 
         // Eagerly probe REST when BRs are discovered/updated and clean up REST caps when
         // BRs vanish, so on-demand fetches don't pay the probe latency on the hot path.
+        // Probes are deduplicated by extPanId via `#probesInFlight` so repeated events
+        // from the same BR (or peer BRs on the same network) collapse onto one probe.
         opts.borderRouters.events.added.on(br => {
             void this.#probeBrForRest(br);
         });
@@ -179,11 +185,9 @@ export class ThreadDiagnosticsService {
             `[ThreadDiag] BR picked xp=${xp} network="${networkName}" host="${br.hostname ?? "?"}" candidates=${matchingBrs.length}`,
         );
 
-        // Force=true means "do everything fresh", which includes re-probing REST in case
-        // the BR's REST endpoint has come online (or gone offline) since the last probe.
-        if (force) {
-            await this.#probeBrForRest(br);
-        }
+        // Force=true bypasses the cache only. We deliberately do not re-probe here —
+        // probes already fire eagerly on every BR add/update from the registry, so a
+        // freshly-online REST endpoint is picked up without dashboard interaction.
 
         const batch = await this.#fetch(key, networkName, br, extPanIdBytes);
         return this.#publish(batch);
@@ -223,28 +227,49 @@ export class ThreadDiagnosticsService {
      * timeout, not (timeout × address count). Losing probes finish in the
      * background but their results are ignored.
      */
-    async #probeBrForRest(br: BorderRouterEntry): Promise<void> {
+    async #probeBrForRest(br: BorderRouterEntry, opts?: { force?: boolean }): Promise<void> {
         const xp = br.extendedPanIdHex;
         if (xp === undefined) return;
         const key = xp.toLowerCase();
+        const force = opts?.force === true;
+
+        // Already have a capability for this network; skip unless caller forces a re-probe.
+        if (!force && this.#restCaps.has(key)) return;
+
+        // Coalesce concurrent triggers. mDNS adds + per-address updates + peer-BR events
+        // on the same xp can fire dozens of times within milliseconds; share one probe.
+        const existing = this.#probesInFlight.get(key);
+        if (existing !== undefined) {
+            await existing;
+            return;
+        }
 
         const candidates = br.addresses.filter(addr => !isLinkLocal(addr));
         if (candidates.length === 0) return;
 
-        const probes = candidates.map(async addr => {
-            const cap = await this.#probeRest(addr, this.#restProbePort, this.#restProbeTimeoutMs);
-            if (cap === null) {
-                throw new Error(`probe-miss for ${addr}`);
-            }
-            return cap;
-        });
+        const run = (async () => {
+            const probes = candidates.map(async addr => {
+                const cap = await this.#probeRest(addr, this.#restProbePort, this.#restProbeTimeoutMs);
+                if (cap === null) {
+                    throw new Error(`probe-miss for ${addr}`);
+                }
+                return cap;
+            });
 
+            try {
+                const cap = await Promise.any(probes);
+                this.#restCaps.set(key, cap);
+                logger.info(`[ThreadDiag] REST auto-registered xp=${xp.toUpperCase()} baseUrl=${cap.baseUrl}`);
+            } catch {
+                // AggregateError — every probe rejected. Normal when BR has no REST endpoint.
+            }
+        })();
+
+        this.#probesInFlight.set(key, run);
         try {
-            const cap = await Promise.any(probes);
-            this.#restCaps.set(key, cap);
-            logger.info(`[ThreadDiag] REST auto-registered xp=${xp.toUpperCase()} baseUrl=${cap.baseUrl}`);
-        } catch {
-            // AggregateError — every probe rejected. Normal when BR has no REST endpoint.
+            await run;
+        } finally {
+            this.#probesInFlight.delete(key);
         }
     }
 
