@@ -125,16 +125,32 @@ export function registerThreadCredentialsFromHex(
         const blob = Bytes.of(Bytes.fromHex(hex));
         const ds = OperationalDataset.decode(blob);
         credentials.register(ds);
-        logger.info(
-            `Registered Thread credentials from ${source} (xp=${
-                ds.extPanId === undefined ? "?" : Bytes.toHex(ds.extPanId).toUpperCase()
-            }, network="${ds.networkName ?? ""}")`,
-        );
+        logger.info(`[ThreadDiag] Registered Thread credentials from ${source} (${formatDatasetForLog(ds)})`);
         return ds;
     } catch (e) {
-        logger.warn(`Could not register Thread credentials from ${source}: ${e}`);
+        logger.warn(`[ThreadDiag] Could not register Thread credentials from ${source}: ${e}`);
         return undefined;
     }
+}
+
+function formatDatasetForLog(ds: OperationalDataset): string {
+    const fields = new Array<string>();
+    fields.push(`xp=${ds.extPanId === undefined ? "?" : Bytes.toHex(ds.extPanId).toUpperCase()}`);
+    fields.push(`network="${ds.networkName ?? ""}"`);
+    if (ds.channel !== undefined) fields.push(`ch=${ds.channel}`);
+    if (ds.panId !== undefined) fields.push(`panId=0x${ds.panId.toString(16).padStart(4, "0").toUpperCase()}`);
+    if (ds.meshLocalPrefix !== undefined) fields.push(`mlPrefix=${Bytes.toHex(ds.meshLocalPrefix).toUpperCase()}`);
+    if (ds.activeTimestamp !== undefined) fields.push(`activeTs=${Bytes.toHex(ds.activeTimestamp).toUpperCase()}`);
+    if (ds.pendingTimestamp !== undefined) fields.push(`pendingTs=${Bytes.toHex(ds.pendingTimestamp).toUpperCase()}`);
+    fields.push(`pskc=${ds.pskc !== undefined ? "set" : "missing"}`);
+    fields.push(`networkKey=${ds.networkKey !== undefined ? "set" : "missing"}`);
+    if (ds.securityPolicy !== undefined) {
+        fields.push(
+            `secPolicy=rotation${ds.securityPolicy.rotationTime}h/flags=0x${ds.securityPolicy.flags.toString(16).padStart(4, "0").toUpperCase()}`,
+        );
+    }
+    if (ds.unknownTlvs.length > 0) fields.push(`unknownTlvs=${ds.unknownTlvs.length}`);
+    return fields.join(", ");
 }
 
 /**
