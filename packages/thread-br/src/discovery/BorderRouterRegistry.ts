@@ -298,6 +298,14 @@ export class BorderRouterRegistry {
             const params = name.parameters;
             const xaKey = rawHex(params.raw("xa"), 8);
             if (xaKey === undefined) {
+                const rawXa = params.raw("xa");
+                const xaInfo =
+                    rawXa === undefined ? "missing" : `${rawXa.byteLength}B:${Bytes.toHex(rawXa).toUpperCase()}`;
+                const nn = params.get("nn");
+                const vn = params.get("vn");
+                logger.info(
+                    `[ThreadDiag] BR instance dropped (no valid xa) qname="${name.qname}" source=${source} xa=${xaInfo} nn="${nn ?? ""}" vn="${vn ?? ""}"`,
+                );
                 return;
             }
 
