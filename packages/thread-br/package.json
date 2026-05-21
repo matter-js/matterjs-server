@@ -35,14 +35,14 @@
         "node": ">=20.19.0 <22.0.0 || >=22.13.0"
     },
     "dependencies": {
-        "@matter/main": "0.17.0-alpha.0-20260518-7f13c7285",
+        "@matter/main": "0.17.0",
         "@noble/curves": "^2.2.0",
         "@noble/hashes": "^2.2.0",
         "coap-packet": "^1.1.1"
     },
     "devDependencies": {
-        "@matter/testing": "0.17.0-alpha.0-20260518-7f13c7285",
-        "@types/node": "^25.6.0"
+        "@matter/testing": "0.17.0",
+        "@types/node": "^25.9.1"
     },
     "files": [
         "dist/**/*",

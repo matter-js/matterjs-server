@@ -209,6 +209,7 @@ class ServerInfoMessage:
     thread_credentials_set: bool
     bluetooth_enabled: bool
     wifi_ssid: str | None = None
+    ble_proxy_enabled: bool = False
 
 
 MessageType = (

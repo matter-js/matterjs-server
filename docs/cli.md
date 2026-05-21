@@ -34,7 +34,8 @@ npm run server -- --bluetooth-adapter 0
 | --primary-interface   | string       | null             | No       | Primary network interface for link-local addresses                                               |
 | --enable-test-net-dcl | boolean flag | false            | No       | Enable test-net DCL to check for certificates and OTA-updates additionally to the production DCL |
 | --disable-dcl-seed    | boolean flag | false            | No       | Disable bundled offline DCL seed (PAA roots, CD signers, vendors); rely on network DCL only      |
-| --bluetooth-adapter   | integer      | null             | No       | Bluetooth adapter HCI ID (e.g., 0 for hci0)                                                      |
+| --bluetooth-adapter   | integer      | null             | No       | Bluetooth adapter HCI ID (e.g., 0 for hci0). Mutually exclusive with `--ble-proxy`.              |
+| --ble-proxy           | boolean flag | false            | No       | Expose `/ble` WebSocket endpoint for a remote BLE proxy client. Mutually exclusive with `--bluetooth-adapter` (--ble-proxy wins). |
 | --disable-ota         | boolean flag | false            | No       | Disable OTA update functionality                                                                 |
 | --ota-provider-dir    | string       | null             | No       | Directory for OTA Provider files                                                                 |
 | --disable-dashboard   | boolean flag | false            | No       | Disable the web dashboard                                                                        |

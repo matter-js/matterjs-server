@@ -58,6 +58,7 @@ export interface CliOptions {
 
     // Bluetooth configuration
     bluetoothAdapter: number | null;
+    bleProxy: boolean;
 
     // OTA configuration
     disableOta: boolean;
@@ -171,6 +172,13 @@ export function parseCliArgs(argv?: string[]): CliOptions {
                 .env("BLUETOOTH_ADAPTER"),
         )
         .addOption(
+            new Option("--ble-proxy [value]", "Enable BLE proxy mode (for remote BLE via WebSocket)")
+                .argParser(parseBooleanEnv)
+                .preset(true)
+                .default(false)
+                .env("BLE_PROXY"),
+        )
+        .addOption(
             new Option("--disable-ota [value]", "Disable OTA update functionality")
                 .argParser(parseBooleanEnv)
                 .preset(true)
@@ -258,6 +266,7 @@ export function parseCliArgs(argv?: string[]): CliOptions {
         enableTestNetDcl: opts.enableTestNetDcl,
         disableDclSeed: opts.disableDclSeed,
         bluetoothAdapter: opts.bluetoothAdapter ?? null,
+        bleProxy: opts.bleProxy,
         disableOta: opts.disableOta,
         otaProviderDir: opts.otaProviderDir ?? null,
         disableDashboard: opts.disableDashboard,

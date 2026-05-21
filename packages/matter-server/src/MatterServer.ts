@@ -9,6 +9,7 @@ import "./pre-init.js";
 // Register the custom clusters
 import "@matter-server/custom-clusters";
 // Standard imports
+import { BleProxyHandler, ProxyBle } from "@matter-server/ble-proxy";
 import {
     ConfigStorage,
     Environment,
@@ -22,6 +23,7 @@ import {
     WebServerHandler,
     WebSocketControllerHandler,
 } from "@matter-server/ws-controller";
+import { Ble } from "@matter/main/protocol";
 import { getCliOptions, type LogLevel as CliLogLevel } from "./cli.js";
 import { LegacyDataWriter, loadLegacyData, type LegacyData } from "./converter/index.js";
 import { createFileLogger } from "./file-logger.js";
@@ -70,7 +72,13 @@ env.vars.set("runtime.signals", false);
 
 // Apply CLI options to environment variables
 env.vars.set("storage.path", cliOptions.storagePath);
-if (cliOptions.bluetoothAdapter !== null) {
+if (cliOptions.bleProxy) {
+    if (cliOptions.bluetoothAdapter !== null) {
+        logger.warn("--ble-proxy and --bluetooth-adapter are mutually exclusive. Using --ble-proxy.");
+    }
+    env.vars.set("ble.enable", true);
+    logger.info("BLE proxy mode enabled");
+} else if (cliOptions.bluetoothAdapter !== null) {
     env.vars.set("ble.enable", true);
     env.vars.set("ble.hci.id", cliOptions.bluetoothAdapter);
     logger.info(`Bluetooth enabled (hci-id=${cliOptions.bluetoothAdapter})`);
@@ -164,6 +172,7 @@ async function start() {
             disableDclSeed: cliOptions.disableDclSeed,
             serverId: legacyData.serverId,
             serverVersion: MATTER_SERVER_VERSION,
+            bleProxyEnabled: cliOptions.bleProxy,
         },
         legacyServerData,
     );
@@ -186,8 +195,24 @@ async function start() {
         });
     }
 
+    // Register the proxy Ble on the environment and the /ble WebSocket handler.
+    // Done after MatterController.create() because the controller's BLE bootstrap reads env.Ble
+    // and we want the proxy to win even if some path auto-installs a default.
+    let bleProxyHandler: BleProxyHandler | undefined;
+    if (cliOptions.bleProxy) {
+        const existingBle = env.has(Ble) ? env.get(Ble) : undefined;
+        if (existingBle) {
+            logger.info(`Replacing existing BLE implementation (${existingBle.constructor.name}) with ProxyBle`);
+        }
+        bleProxyHandler = new BleProxyHandler();
+        env.set(Ble, new ProxyBle(bleProxyHandler, env));
+    }
+
     const wsHandler = new WebSocketControllerHandler(controller, config, MATTER_SERVER_VERSION);
     const handlers: WebServerHandler[] = [new HealthHandler(wsHandler), wsHandler];
+    if (bleProxyHandler) {
+        handlers.push(bleProxyHandler);
+    }
     if (!cliOptions.disableDashboard) {
         handlers.push(new StaticFileHandler(cliOptions.productionMode));
     } else {

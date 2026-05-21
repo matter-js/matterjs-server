@@ -1,0 +1,86 @@
+name: Test Python BLE Proxy
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  merge_group:
+
+# Cancel previous PR/branch runs when a new commit is pushed
+concurrency:
+  group: ${{ github.ref }}-python-ble-proxy
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "22"
+
+jobs:
+  check-changes:
+    name: Check for relevant changes
+    runs-on: ubuntu-latest
+    outputs:
+      should-run: ${{ steps.changes.outputs.python-ble-proxy }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v4
+        id: changes
+        with:
+          filters: |
+            python-ble-proxy:
+              - "python_ble_proxy/**"
+              - "docs/ble-proxy-protocol.md"
+              - "packages/ble-proxy/**"
+              - ".github/workflows/test-python-ble-proxy.yml"
+
+  lint:
+    name: Python BLE proxy linting and type checks
+    needs: check-changes
+    if: needs.check-changes.outputs.should-run == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Python BLE proxy with test dependencies
+        run: npm run python-ble-proxy:install
+
+      - name: Run ruff linter
+        run: npm run python-ble-proxy:lint
+
+      - name: Run mypy type checker
+        run: npm run python-ble-proxy:typecheck
+
+  unit-tests:
+    name: Python BLE proxy unit tests
+    needs: [ check-changes, lint ]
+    if: needs.check-changes.outputs.should-run == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Python BLE proxy with test dependencies
+        run: npm run python-ble-proxy:install
+
+      - name: Run unit tests
+        run: npm run python-ble-proxy:test

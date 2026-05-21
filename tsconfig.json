@@ -17,6 +17,9 @@
             "path": "packages/dashboard"
         },
         {
+            "path": "packages/ble-proxy"
+        },
+        {
             "path": "packages/matter-server"
         }
     ]

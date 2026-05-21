@@ -117,6 +117,16 @@ It was in general tested with a simply slight bulb on network.
 
 Ble and Wifi should work when server gets startes with `--ble` flag, but Wifi only will work. For Thread Matter.js currently requires a network Name which is not provided.
 
+### BLE Proxy mode
+
+Alternatively, start the server with `--ble-proxy` (or `BLE_PROXY=true`) to expose a
+`/ble` WebSocket endpoint instead of using a local BLE adapter. A separate process —
+Home Assistant's Matter integration, the Bleak-based Python CLI
+[`matter-ble-proxy`](python_ble_proxy/), or the Noble JS reference client
+[`@matter-server/ble-proxy`](packages/ble-proxy/) — connects to that endpoint and
+bridges BLE traffic from wherever the adapter actually lives. See
+[`docs/ble-proxy-protocol.md`](docs/ble-proxy-protocol.md) for the protocol spec.
+
 ## Internet access requirements
 
 Ideally, the Matter server has access to the internet which is needed for the following functionalities:

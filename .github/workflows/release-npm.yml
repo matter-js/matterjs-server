@@ -112,6 +112,7 @@ jobs:
             echo "pr_merged=true" >> "$GITHUB_OUTPUT"
             echo "npm_needed=true" >> "$GITHUB_OUTPUT"
             echo "pypi_needed=true" >> "$GITHUB_OUTPUT"
+            echo "pypi_ble_proxy_needed=true" >> "$GITHUB_OUTPUT"
             echo "docker_needed=true" >> "$GITHUB_OUTPUT"
             echo "release_needed=true" >> "$GITHUB_OUTPUT"
             exit 0
@@ -162,11 +163,19 @@ jobs:
           ")
           echo "PEP 440 version: ${PEP440}"
           if curl -sf "https://pypi.org/pypi/matter-python-client/${PEP440}/json" >/dev/null 2>&1; then
-            echo "PyPI: already published"
+            echo "PyPI (matter-python-client): already published"
             echo "pypi_needed=false" >> "$GITHUB_OUTPUT"
           else
-            echo "PyPI: NOT published — will publish"
+            echo "PyPI (matter-python-client): NOT published — will publish"
             echo "pypi_needed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+          if curl -sf "https://pypi.org/pypi/matter-ble-proxy/${PEP440}/json" >/dev/null 2>&1; then
+            echo "PyPI (matter-ble-proxy): already published"
+            echo "pypi_ble_proxy_needed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "PyPI (matter-ble-proxy): NOT published — will publish"
+            echo "pypi_ble_proxy_needed=true" >> "$GITHUB_OUTPUT"
           fi
 
           # Check Docker (ghcr.io) via OCI registry API
@@ -229,21 +238,23 @@ jobs:
         run: sleep 120
 
       - name: Set up Python for PyPI publish
-        if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.pypi_needed == 'true'
+        if: steps.publish_tasks.outputs.pr_merged == 'true' && (steps.publish_tasks.outputs.pypi_needed == 'true' || steps.publish_tasks.outputs.pypi_ble_proxy_needed == 'true')
         uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
       - name: Install Python build tools
-        if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.pypi_needed == 'true'
+        if: steps.publish_tasks.outputs.pr_merged == 'true' && (steps.publish_tasks.outputs.pypi_needed == 'true' || steps.publish_tasks.outputs.pypi_ble_proxy_needed == 'true')
         run: pip install build tomli tomli-w
 
-      - name: Convert version to PEP 440 and set in pyproject.toml
-        if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.pypi_needed == 'true'
+      - name: Convert version to PEP 440 and set in pyproject.toml files
+        if: steps.publish_tasks.outputs.pr_merged == 'true' && (steps.publish_tasks.outputs.pypi_needed == 'true' || steps.publish_tasks.outputs.pypi_ble_proxy_needed == 'true')
         id: python_version
         shell: python
         env:
           SEMVER_VERSION: ${{ steps.version.outputs.result }}
+          PYPI_NEEDED: ${{ steps.publish_tasks.outputs.pypi_needed }}
+          PYPI_BLE_PROXY_NEEDED: ${{ steps.publish_tasks.outputs.pypi_ble_proxy_needed }}
         run: |
           import re, os, tomli, tomli_w
 
@@ -279,11 +290,17 @@ jobs:
 
           print(f"Semver: {version} -> PEP 440: {pep440_version}")
 
-          with open("python_client/pyproject.toml", "rb") as f:
-              pyproject = tomli.load(f)
-          pyproject["project"]["version"] = pep440_version
-          with open("python_client/pyproject.toml", "wb") as f:
-              tomli_w.dump(pyproject, f)
+          def _patch(path: str) -> None:
+              with open(path, "rb") as f:
+                  pyproject = tomli.load(f)
+              pyproject["project"]["version"] = pep440_version
+              with open(path, "wb") as f:
+                  tomli_w.dump(pyproject, f)
+
+          if os.environ.get("PYPI_NEEDED") == "true":
+              _patch("python_client/pyproject.toml")
+          if os.environ.get("PYPI_BLE_PROXY_NEEDED") == "true":
+              _patch("python_ble_proxy/pyproject.toml")
 
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
               f.write(f"pep440_version={pep440_version}\n")
@@ -297,6 +314,16 @@ jobs:
         uses: pypa/gh-action-pypi-publish@v1.14.0
         with:
           packages-dir: python_client/dist/
+
+      - name: Build Python BLE proxy package
+        if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.pypi_ble_proxy_needed == 'true'
+        run: python3 -m build python_ble_proxy/
+
+      - name: Publish Python BLE proxy to PyPI
+        if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.pypi_ble_proxy_needed == 'true'
+        uses: pypa/gh-action-pypi-publish@v1.14.0
+        with:
+          packages-dir: python_ble_proxy/dist/
 
       - name: Log in to GitHub Container Registry
         if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.docker_needed == 'true'

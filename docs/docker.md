@@ -104,6 +104,7 @@ All CLI options can be configured via environment variables, making it easy to c
 | `ENABLE_TEST_NET_DCL` | Enable test-net DCL certificates/OTA updates additionally to Production DCL | `false`          | `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`                                                                     |
 | `DISABLE_DCL_SEED`    | Disable bundled offline DCL seed; network DCL only                          | `false`          | `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`                                                                     |
 | `BLUETOOTH_ADAPTER`   | Bluetooth adapter HCI ID                                                    | (none)           | e.g., `0` for `hci0`, but see [this workaround](#device-discovery-via-host-ble)                                     |
+| `BLE_PROXY`           | Expose `/ble` WebSocket endpoint for a remote BLE proxy client              | `false`          | `true`/`false`. Mutually exclusive with `BLUETOOTH_ADAPTER` — `BLE_PROXY` wins with a warning.                      |
 | `DISABLE_OTA`         | Disable OTA update functionality                                            | `false`          | `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`                                                                     |
 | `OTA_PROVIDER_DIR`    | Directory for OTA Provider files                                            | (none)           | Any valid directory path                                                                                            |
 | `DISABLE_DASHBOARD`   | Disable the web dashboard                                                   | `false`          | `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`                                                                     |
@@ -119,6 +120,10 @@ All CLI options can be configured via environment variables, making it easy to c
 > [!NOTE]
 > The `LISTEN_ADDRESS` environment variable only supports a single address. Use the CLI `--listen-address` option (repeatable) to bind to multiple addresses.
 > The value can either be an ip address or the network interface name (i.e. `192.168.1.10` or `eth0`)
+>
+> When `LISTEN_ADDRESS` is an interface name the built-in container health
+> check cannot resolve it and will mark the container unhealthy — see
+> [Health Check](#health-check) for the workaround.
 
 ### Advanced matter.js Configuration
 
@@ -201,6 +206,19 @@ The container includes a built-in health check that verifies the server is respo
 ```bash
 docker inspect --format='{{.State.Health.Status}}' matterjs-server
 ```
+
+The health check honours `LISTEN_ADDRESS` and `PORT`: it uses the first
+address from `LISTEN_ADDRESS` (or `localhost` when unset) and the configured
+port. IPv6 literals are bracketed automatically.
+
+> [!NOTE]
+> **Limitation:** The health check cannot resolve interface names. If you set
+> `LISTEN_ADDRESS=eth0` (or another interface name), the server binds to the
+> resolved IPs but the health check still receives `eth0` and fails to
+> connect. To keep the health check working in that case, either set
+> `LISTEN_ADDRESS` to an explicit IP literal, or use the CLI form with the
+> repeatable `--listen-address` flag and include a literal IP that resolves
+> from inside the container (e.g. `--listen-address eth0 --listen-address 127.0.0.1`).
 
 ## Troubleshooting
 

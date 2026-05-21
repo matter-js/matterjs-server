@@ -1,0 +1,204 @@
+[build-system]
+build-backend = "setuptools.build_meta"
+requires = ["setuptools>=62.3"]
+
+[project]
+authors = [
+  {name = "Open Home Foundation", email = "hello@openhomefoundation.io"},
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Home Automation",
+]
+dependencies = [
+  "aiohttp",
+  "bleak",
+]
+description = "Python client library for the OHF Matter Server BLE proxy protocol"
+license = "Apache-2.0"
+name = "matter-ble-proxy"
+readme = "README.md"
+requires-python = ">=3.12"
+# The version is set by CI on release
+version = "0.0.0"
+
+[project.urls]
+"Homepage" = "https://github.com/matter-js/matterjs-server"
+"Source" = "https://github.com/matter-js/matterjs-server/tree/main/python_ble_proxy"
+"Bug Tracker" = "https://github.com/matter-js/matterjs-server/issues"
+"Changelog" = "https://github.com/matter-js/matterjs-server/blob/main/CHANGELOG.md"
+
+[project.scripts]
+matter-ble-proxy = "matter_ble_proxy.cli:main"
+
+[project.optional-dependencies]
+test = [
+  "codespell==2.4.1",
+  "isort==7.0.0",
+  "mypy==1.19.1",
+  "pylint==4.0.4",
+  "pytest>=9.0",
+  "pytest-asyncio>=0.24",
+  "pytest-aiohttp>=1.0",
+  "pytest-cov>=7.0",
+  "ruff==0.14.9",
+]
+
+[tool.setuptools]
+include-package-data = true
+platforms = ["any"]
+zip-safe = false
+
+[tool.setuptools.package-data]
+matter_ble_proxy = ["py.typed"]
+
+[tool.setuptools.packages.find]
+include = ["matter_ble_proxy*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
+[tool.codespell]
+ignore-words-list = "requestor"
+
+[tool.mypy]
+check_untyped_defs = true
+disallow_any_generics = false
+disallow_incomplete_defs = true
+disallow_subclassing_any = true
+disallow_untyped_calls = true
+disallow_untyped_decorators = true
+disallow_untyped_defs = true
+follow_imports = "normal"
+ignore_missing_imports = true
+no_implicit_optional = true
+no_implicit_reexport = true
+python_version = "3.12"
+strict_optional = true
+warn_incomplete_stub = true
+warn_no_return = true
+warn_redundant_casts = false  # Too many false positives
+warn_return_any = true
+warn_unreachable = true
+warn_unused_configs = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+disallow_untyped_calls = false
+
+[tool.pylint.MAIN]
+extension-pkg-allow-list = []
+
+[tool.pylint.BASIC]
+good-names = [
+  "_",
+  "T",
+]
+
+[tool.pylint.DESIGN]
+max-args = 10
+max-attributes = 15
+max-positional-arguments = 10
+
+[tool.pylint."MESSAGES CONTROL"]
+disable = [
+  "duplicate-code",
+  "format",
+  "unsubscriptable-object",
+  "unused-argument",
+  "unspecified-encoding",
+  "isinstance-second-argument-not-valid-type",
+  "fixme",
+  "too-few-public-methods",
+]
+
+[tool.pylint.SIMILARITIES]
+ignore-imports = true
+
+[tool.pylint.FORMAT]
+max-line-length = 120
+
+[tool.ruff]
+fix = true
+line-length = 120
+show-fixes = true
+target-version = "py312"
+
+[tool.ruff.lint.pydocstyle]
+convention = "pep257"
+
+[tool.ruff.lint]
+ignore = [
+  "ANN002",  # Missing type annotation for *args
+  "ANN003",  # Missing type annotation for **kwargs
+  "ANN401",  # Dynamically typed expressions (Any) are disallowed
+  "D203",    # 1 blank line required before class docstring (conflicts with D211)
+  "D213",    # Multi-line docstring summary should start at the second line (conflicts with D212)
+  "D417",    # Missing argument description in docstring
+  "EM101",   # Exception must not use a string literal (false positives)
+  "EM102",   # Exception must not use an f-string literal
+  "FIX002",  # Line contains TODO
+  "PLR2004", # Magic value used in comparison
+  "S101",    # Use of assert detected
+  "TD002",   # Missing author in TODO
+  "TD003",   # Missing issue link on line following TODO
+  "COM812",  # Trailing comma missing (conflicts with formatter)
+  "ISC001",  # Single line implicit string concatenation (conflicts with formatter)
+  "TC006",   # Type checking import not quoted
+  "SLF001",  # Private member accessed
+  "D100",    # Missing docstring in public module
+  "D101",    # Missing docstring in public class
+  "D102",    # Missing docstring in public method
+  "D103",    # Missing docstring in public function
+  "D104",    # Missing docstring in public package
+  "D105",    # Missing docstring in magic method
+  "D107",    # Missing docstring in __init__
+  "PLC0415", # Import should be at top of module (dynamic imports needed)
+  "N818",    # Exception name should end with Error
+  "FBT001",  # Boolean positional arg in function definition
+  "FBT002",  # Boolean default value in function definition
+  "FBT003",  # Boolean positional value in function call
+  "TRY003",  # Avoid specifying long messages outside exception class
+  "ASYNC109",# Async function with timeout
+  "ARG001",  # Unused function argument
+  "ARG002",  # Unused method argument
+  "ERA001",  # Commented out code
+  "BLE001",  # Blind except
+  "TRY300",  # Try-consider-else
+  "TRY301",  # Raise within try
+  "PYI036",  # Bad exit annotation
+  "SIM117",  # Multiple with statements
+]
+
+select = ["ALL"]
+
+[tool.ruff.lint.flake8-pytest-style]
+fixture-parentheses = false
+mark-parentheses = false
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+force-sort-within-sections = true
+known-first-party = ["matter_ble_proxy"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 25
+
+[tool.ruff.lint.pylint]
+max-args = 10
+max-branches = 25
+max-returns = 15
+max-statements = 50
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+  "D",       # pydocstyle - no docstrings required in tests
+  "ANN",     # flake8-annotations - no type hints required in tests
+  "S",       # flake8-bandit - security rules relaxed for tests
+  "PLR2004", # Magic values OK in tests
+]

@@ -46,8 +46,11 @@ const logger = Logger.get("MatterController");
 let bleSupportLoaded: Promise<void> | undefined;
 
 // Lazy-load the optional `@matter/nodejs-ble` so a missing install only fails when BLE is enabled.
-async function loadBleSupport(environment: Environment): Promise<void> {
+// In BLE proxy mode the proxy provides its own Ble implementation and the host does not
+// need a local BLE adapter or `@matter/nodejs-ble` — skip the import entirely.
+async function loadBleSupport(environment: Environment, bleProxyEnabled: boolean): Promise<void> {
     if (!environment.vars.get("ble.enable", false)) return;
+    if (bleProxyEnabled) return;
     if (bleSupportLoaded === undefined) {
         bleSupportLoaded = (async () => {
             try {
@@ -81,6 +84,8 @@ export interface MatterControllerOptions {
     serverId?: string;
     /** Server version string (e.g., "0.2.10" or "0.2.10-alpha.0"). Used for BasicInformation cluster. */
     serverVersion?: string;
+    /** BLE proxy mode: skip the `@matter/nodejs-ble` import; caller supplies the Ble implementation. */
+    bleProxyEnabled?: boolean;
 }
 
 /**
@@ -156,6 +161,7 @@ export class MatterController {
     #enableTestNetDcl = false;
     #disableOtaProvider = true;
     #disableDclSeed = false;
+    #bleProxyEnabled = false;
     readonly #borderRouterRegistry: BorderRouterRegistry;
     readonly #credentials = new ThreadCredentialsRegistry();
     readonly #threadDiagnostics: ThreadDiagnosticsService;
@@ -168,7 +174,7 @@ export class MatterController {
         options: MatterControllerOptions,
         legacyData?: LegacyServerData,
     ) {
-        await loadBleSupport(environment);
+        await loadBleSupport(environment, options.bleProxyEnabled ?? false);
 
         // Resolve the server ID to use
         const serverId = await resolveServerId(
@@ -239,6 +245,7 @@ export class MatterController {
         this.#enableTestNetDcl = options.enableTestNetDcl ?? this.#enableTestNetDcl;
         this.#disableOtaProvider = options.disableOtaProvider ?? this.#disableOtaProvider;
         this.#disableDclSeed = options.disableDclSeed ?? this.#disableDclSeed;
+        this.#bleProxyEnabled = options.bleProxyEnabled ?? this.#bleProxyEnabled;
         this.#services = this.#env.asDependent();
         this.#threadDiagnostics = new ThreadDiagnosticsService({
             borderRouters: this.#borderRouterRegistry,
@@ -310,6 +317,7 @@ export class MatterController {
             this.#commandHandler = new ControllerCommandHandler(
                 this.#controllerInstance,
                 this.#env.vars.get("ble.enable", false),
+                this.#bleProxyEnabled,
                 !this.#disableOtaProvider,
             );
 

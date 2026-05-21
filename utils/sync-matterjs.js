@@ -9,7 +9,7 @@
  */
 
 import { glob } from "glob";
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 
 const MATTER_PACKAGES = ["@matter/", "@project-chip/matter.js"];
@@ -92,7 +92,9 @@ async function main() {
 
     if (totalModified > 0) {
         console.log(`\nUpdated ${totalModified} package.json file(s) to Matter.js ${version}`);
-        console.log("Run 'npm install' to apply changes.");
+        console.log("\nRunning relock...");
+        const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
+        execFileSync(npmCmd, ["run", "relock"], { stdio: "inherit" });
     } else {
         console.log("\nNo changes needed - all packages already at the correct version.");
     }

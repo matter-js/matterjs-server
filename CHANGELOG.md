@@ -15,6 +15,15 @@ This page shows a detailed overview of the changes between versions without the 
 - Internal: `@matter-server/thread-br` package gained diagnostic primitives: `DiagnosticSource` interface, `MeshCopDiagnosticSource`, `OtbrRestDiagnosticSource`, BR selection / per-network mutex / source strategy, OTBR REST adapter, and `connectMeshcop` factory.
 - Internal: New `ThreadDiagnosticsService` in `@matter-server/ws-controller` provides per-extPanId cache (1h TTL), source selection (REST > MeshCoP > none), per-network mutex, and event emission.
 
+## 0.7.1 (2026-05-21)
+
+- Feature: Added BLE proxy commissioning support (enabled with `--ble-proxy` CLI option)
+- Enhancement: Dashboard shows Thread protocol version on Thread node details
+- Enhancement: Dashboard always shows Thread/WiFi navigation tabs (removed small-screen gate)
+- Maintenance: Update matter.js to the official 0.17.0
+- Fix: Fix the Docker-Health-Checks when a custom Listen address was used
+- Fix: Dashboard auto-focuses pairing-code field when commission-node dialog opens
+
 ## 0.7.0 (2026-05-18)
 
 - IMPORTANT: The first start, when coming from any previous version, will take a bit because we migrate the storage to the new "WAL"-based storage format. This is a one-time migration that reduces disk usage and I/O.
