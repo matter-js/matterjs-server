@@ -60,3 +60,42 @@ def test_advertisement_data_defaults():
     assert ad.service_data == {}
     assert ad.manufacturer_data == {}
     assert ad.service_uuids == []
+
+
+def test_advertisement_data_from_bleak():
+    from bleak.backends.scanner import AdvertisementData as BleakAdvertisementData
+
+    bleak_ad = BleakAdvertisementData(
+        local_name="dev",
+        manufacturer_data={0x004C: b"\x01\x02"},
+        service_data={"0000fff6-0000-1000-8000-00805f9b34fb": b"\xaa"},
+        service_uuids=["0000fff6-0000-1000-8000-00805f9b34fb"],
+        tx_power=-12,
+        rssi=-50,
+        platform_data=(),
+    )
+    ad = AdvertisementData.from_bleak("aa:bb:cc:dd:ee:ff", True, bleak_ad)
+    assert ad.address == "aa:bb:cc:dd:ee:ff"
+    assert ad.connectable is True
+    assert ad.name == "dev"
+    assert ad.rssi == -50
+    assert ad.service_data == {"0000fff6-0000-1000-8000-00805f9b34fb": b"\xaa"}
+    assert ad.manufacturer_data == {0x004C: b"\x01\x02"}
+    assert ad.service_uuids == ["0000fff6-0000-1000-8000-00805f9b34fb"]
+
+
+def test_advertisement_data_from_bleak_uses_local_name():
+    from bleak.backends.scanner import AdvertisementData as BleakAdvertisementData
+
+    bleak_ad = BleakAdvertisementData(
+        local_name=None,
+        manufacturer_data={},
+        service_data={},
+        service_uuids=[],
+        tx_power=None,
+        rssi=-72,
+        platform_data=(),
+    )
+    ad = AdvertisementData.from_bleak("aa:bb:cc:dd:ee:ff", False, bleak_ad)
+    assert ad.name is None
+    assert ad.connectable is False

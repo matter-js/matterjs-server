@@ -72,17 +72,16 @@ class BleakScanSource(BleScanSource):
         cb = self._callback
         if cb is None:
             return
-        ad = AdvertisementData(
-            address=device.address,
-            name=advertisement.local_name or device.name,
-            rssi=advertisement.rssi,
-            connectable=True,  # Bleak does not expose this directly; assume true.
-            service_data=dict(advertisement.service_data),
-            manufacturer_data=dict(advertisement.manufacturer_data),
-            service_uuids=list(advertisement.service_uuids),
-        )
+        # Bleak's per-scan advertisement carries the local_name only when it is
+        # actually in the current packet; fall back to the BLEDevice's cached
+        # name so peripherals that alternate name-bearing and name-less ads
+        # still surface a name to the matter-server.
+        local_name = advertisement.local_name or device.name
+        if local_name and local_name != advertisement.local_name:
+            advertisement = advertisement._replace(local_name=local_name)
         try:
-            cb(ad)
+            # Bleak does not expose `connectable` at scan time; assume True.
+            cb(AdvertisementData.from_bleak(device.address, True, advertisement))
         except Exception:
             _LOGGER.exception("BLE proxy advertisement callback raised")
 
