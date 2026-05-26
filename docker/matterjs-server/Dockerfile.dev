@@ -31,13 +31,20 @@ COPY packages/dashboard/package*.json ./packages/dashboard/
 COPY packages/matter-server/package*.json ./packages/matter-server/
 
 # Install dependencies
-RUN npm ci
+RUN npm ci --ignore-scripts
 
 # Copy source code
 COPY . .
 
 # Build all packages
 RUN npm run build
+
+# Initialize data volume with user permissions
+RUN mkdir -p /data && chown -R 1000:1000 /data
+
+# Environment variables with defaults
+ENV LOG_LEVEL=info
+ENV STORAGE_PATH=/data
 
 # Data volume for persistent storage
 VOLUME ["/data"]
@@ -53,7 +60,10 @@ COPY --chmod=0755 docker/matterjs-server/healthcheck.sh /usr/local/bin/healthche
 HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --start-interval=5s --retries=3 \
     CMD ["/usr/local/bin/healthcheck.sh"]
 
+# Run as non-root user
+USER 1000:1000
+
 # Run the matter server with data stored in /data
 # --enable-source-maps provides better stack traces in error logs
 ENTRYPOINT ["node", "--enable-source-maps", "packages/matter-server/dist/esm/MatterServer.js"]
-CMD ["--storage-path", "/data"]
+CMD []
