@@ -44,7 +44,7 @@
         "@matter/dcl-data": ">=2026.5.20",
         "@matter/main": "0.17.0",
         "@project-chip/matter.js": "0.17.0",
-        "ws": "^8.20.0"
+        "ws": "^8.21.0"
     },
     "devDependencies": {
         "@types/node": "^25.9.1",
