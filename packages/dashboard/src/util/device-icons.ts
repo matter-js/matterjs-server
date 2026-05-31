@@ -17,6 +17,7 @@ import {
     mdiCast,
     mdiCctv,
     mdiChip,
+    mdiCrown,
     mdiDishwasher,
     mdiDoorbell,
     mdiDoorbellVideo,
@@ -511,14 +512,22 @@ export function createUnknownDeviceIconDataUrl(isRouter: boolean = false, isSele
 
 /**
  * Creates an SVG data URL for a Thread Border Router identified via mDNS.
+ * Leader BRs render with a crown glyph and amber color to differentiate from peers.
  * @param isSelected - Whether the node is selected
+ * @param isLeader - Whether this BR is the Thread network leader (from MeshCoP state bitmap)
  * @returns A data URL containing the SVG
  */
-export function createBorderRouterIconDataUrl(isSelected: boolean = false): string {
-    const color = isSelected
-        ? getCssVar("--node-color-selected", "#1976d2")
-        : getCssVar("--md-sys-color-primary", "#03a9f4");
-    return createIconDataUrl(mdiRouterWireless, color);
+export function createBorderRouterIconDataUrl(isSelected: boolean = false, isLeader: boolean = false): string {
+    if (isSelected) {
+        return createIconDataUrl(
+            isLeader ? mdiCrown : mdiRouterWireless,
+            getCssVar("--node-color-selected", "#1976d2"),
+        );
+    }
+    if (isLeader) {
+        return createIconDataUrl(mdiCrown, getCssVar("--node-color-thread-leader", "#f9a825"));
+    }
+    return createIconDataUrl(mdiRouterWireless, getCssVar("--md-sys-color-primary", "#03a9f4"));
 }
 
 /**

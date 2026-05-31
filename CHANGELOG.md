@@ -7,6 +7,11 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
+## **WORK IN PROGRESS**
+
+- Enhancement: Dashboard network visualization fills the full window width on large/4K displays
+- Enhancement: Dashboard Thread mesh marks the network Leader Border Router with a distinct crown icon and amber color
+
 ## 0.7.1 (2026-05-21)
 
 - Feature: Added BLE proxy commissioning support (enabled with `--ble-proxy` CLI option)
