@@ -24,6 +24,7 @@ import {
     buildExtAddrMap,
     buildRloc16Map,
     buildThreadEdgePairs,
+    decodeMeshcopStateBitmap,
     findUnknownDevices,
     getDeviceName,
     getEdgeSignalScore,
@@ -257,10 +258,11 @@ export class ThreadGraph extends BaseNetworkGraph {
                         ? `\n${device.networkName}`
                         : "";
                 const label = `${top}${suffix}`;
+                const isLeader = decodeMeshcopStateBitmap(device.stateBitmapHex)?.threadRoleValue === 3;
                 graphNodes.push({
                     id: device.id,
                     label,
-                    image: createBorderRouterIconDataUrl(isSelected),
+                    image: createBorderRouterIconDataUrl(isSelected, isLeader),
                     shape: "image" as const,
                     networkType: "thread" as const,
                     isUnknown: false,
@@ -620,9 +622,10 @@ export class ThreadGraph extends BaseNetworkGraph {
         }
         const external = this._unknownDevicesMapCache.get(nodeId);
         if (external?.kind === "br") {
+            const isLeader = decodeMeshcopStateBitmap(external.stateBitmapHex)?.threadRoleValue === 3;
             this._nodesDataSet.update({
                 id: nodeId,
-                image: createBorderRouterIconDataUrl(isHighlighted),
+                image: createBorderRouterIconDataUrl(isHighlighted, isLeader),
             });
         } else if (nodeId.startsWith("unknown_") || nodeId.startsWith("br_")) {
             this._nodesDataSet.update({
