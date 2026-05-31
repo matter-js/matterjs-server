@@ -12,6 +12,7 @@ import { MatterClient, MatterNode } from "@matter-server/ws-client";
 import { html, LitElement } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { preventDefault } from "../../../util/prevent_default.js";
+import { showAlertDialog } from "../../dialog-box/show-dialog-box.js";
 
 const CLUSTER_ID = 0x28; // BasicInformation cluster (40 decimal)
 const NODE_LABEL_ATTRIBUTE_ID = 5;
@@ -86,11 +87,9 @@ export class NodeLabelDialog extends LitElement {
             this._close();
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
-            import("../../dialog-box/show-dialog-box.js").then(({ showAlertDialog }) => {
-                showAlertDialog({
-                    title: "Failed to set node label",
-                    text: errorMessage,
-                });
+            showAlertDialog({
+                title: "Failed to set node label",
+                text: errorMessage,
             });
         } finally {
             this._saving = false;

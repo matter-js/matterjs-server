@@ -18,9 +18,9 @@ import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { clientContext, tickContext } from "../../client/client-context.js";
 import { DeviceType } from "../../client/models/descriptions.js";
-import { showNodeLabelDialog } from "../../components/dialogs/node-label-dialog/show-node-label-dialog.js";
 import { showAlertDialog, showPromptDialog } from "../../components/dialog-box/show-dialog-box.js";
 import { showNodeBindingDialog } from "../../components/dialogs/binding/show-node-binding-dialog.js";
+import { showNodeLabelDialog } from "../../components/dialogs/node-label-dialog/show-node-label-dialog.js";
 import { handleAsync } from "../../util/async-handler.js";
 import "../../components/ha-svg-icon";
 import "../camera-overlay.js";
@@ -91,7 +91,11 @@ export class NodeDetails extends LitElement {
                         <b>${this.node.nodeLabel || "Node Info"}</b>
                         ${this.node.available
                             ? html`
-                                  <md-icon-button @click=${() => this._editNodeLabel()}>
+                                  <md-icon-button
+                                      @click=${() => this._editNodeLabel()}
+                                      aria-label="Edit node label"
+                                      title="Edit node label"
+                                  >
                                       <ha-svg-icon .path=${mdiPencil}></ha-svg-icon>
                                   </md-icon-button>
                               `
