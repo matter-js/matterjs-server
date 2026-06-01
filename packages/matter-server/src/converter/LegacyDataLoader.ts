@@ -318,7 +318,7 @@ export async function loadLegacyData(
                 // Continue to try backup
             } else if (err instanceof SyntaxError) {
                 // JSON parse error - log and try backup
-                logger.error(`Error parsing server file ${fileLabel}: ${err.message}`);
+                logger.warn(`Error parsing server file ${fileLabel}: ${err.message}`);
                 // Continue to try backup
             } else {
                 logger.warn(`Error loading server file ${fileLabel}: ${err}`);

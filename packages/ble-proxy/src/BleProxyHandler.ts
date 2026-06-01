@@ -341,7 +341,7 @@ export class BleProxyHandler implements WebServerHandler {
             );
             this.binaryFrameReceived.emit(frame);
         } catch (err) {
-            logger.error("Failed to decode binary frame:", err);
+            logger.warn("Failed to decode binary frame:", err);
         }
     }
 

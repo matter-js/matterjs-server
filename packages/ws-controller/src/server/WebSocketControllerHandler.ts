@@ -143,7 +143,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
     }
 
     async register(server: HttpServer) {
-        logger.info(`Starting server: matter-server/${this.#serverVersion} (matter.js/${MATTER_VERSION})`);
+        logger.notice(`Starting server: matter-server/${this.#serverVersion} (matter.js/${MATTER_VERSION})`);
         // Use noServer mode with a path-filtered upgrade listener.
         // ws 8.x calls handleUpgrade unconditionally from its own upgrade listener, which
         // sends HTTP 400 for non-matching paths and destroys the socket — breaking other

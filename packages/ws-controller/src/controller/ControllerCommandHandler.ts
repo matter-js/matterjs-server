@@ -241,7 +241,7 @@ export class ControllerCommandHandler {
         this.#started = true;
 
         await this.#controller.start();
-        logger.info(`Controller started`);
+        logger.notice(`Matter Controller started`);
         this.#peers = this.#controller.node.env.get(PeerSet);
 
         if (this.#otaEnabled) {
@@ -278,14 +278,14 @@ export class ControllerCommandHandler {
             // Handle updateAvailable events - cache the update info
             softwareUpdateManagerEvents.updateAvailable.on(
                 (peerAddress: PeerAddress, updateDetails: SoftwareUpdateInfo) => {
-                    logger.info(`Update available for node ${this.formatNode(peerAddress.nodeId)}:`, updateDetails);
+                    logger.notice(`Update available for node ${this.formatNode(peerAddress.nodeId)}:`, updateDetails);
                     this.#availableUpdates.set(peerAddress.nodeId, updateDetails);
                 },
             );
 
             // Handle updateDone events - clear the cached update info
             softwareUpdateManagerEvents.updateDone.on((peerAddress: PeerAddress) => {
-                logger.info(`Update done for node ${this.formatNode(peerAddress.nodeId)}`);
+                logger.notice(`Update done for node ${this.formatNode(peerAddress.nodeId)}`);
                 this.#availableUpdates.delete(peerAddress.nodeId);
             });
 
@@ -433,7 +433,7 @@ export class ControllerCommandHandler {
                 const timer = Time.getTimer(`reconnect-timeout-${nodeId}`, RECONNECT_TIMEOUT, () => {
                     this.#reconnectTimers.delete(nodeId);
                     if (this.#nodes.forceUnavailable(nodeId)) {
-                        logger.info(
+                        logger.warn(
                             `Node ${this.formatNode(nodeId)} offline grace period expired, marking unavailable`,
                         );
                         this.events.nodeAvailabilityChanged.emit(nodeId, false);
@@ -450,9 +450,12 @@ export class ControllerCommandHandler {
             this.events.nodeStateChanged.emit(nodeId, state);
 
             if (result.availabilityChanged) {
-                logger.info(
-                    `Node ${this.formatNode(nodeId)} availability changed to ${result.available} (state: ${NodeStates[state]})`,
-                );
+                const availabilityMessage = `Node ${this.formatNode(nodeId)} availability changed to ${result.available} (state: ${NodeStates[state]})`;
+                if (result.available) {
+                    logger.notice(availabilityMessage);
+                } else {
+                    logger.warn(availabilityMessage);
+                }
                 this.events.nodeAvailabilityChanged.emit(nodeId, result.available);
             }
         });
@@ -923,7 +926,7 @@ export class ControllerCommandHandler {
                         logger.info(`Attestation finding (${f.level}):`, f.type, f.message);
                     }
                     if (testCertReason !== undefined) {
-                        logger.warn(`Attestation rejected: ${testCertReason}`);
+                        logger.notice(`Attestation rejected: ${testCertReason}`);
                         return testCertReason;
                     }
                     logger.info(`Attestation ${hardError ? "rejected" : "accepted"}`);
@@ -1367,46 +1370,37 @@ export class ControllerCommandHandler {
             );
         }
 
-        try {
-            const otaProvider = this.#controller.otaProvider;
-            if (!otaProvider) {
-                throw ServerError.updateError("OTA provider not available");
-            }
-
-            // Get the cached update info or query for it
-            let updateInfo = this.#availableUpdates.get(nodeId);
-            if (!updateInfo) {
-                // Try to get update info by querying
-                const result = await this.checkNodeUpdate(nodeId);
-                if (!result) {
-                    throw ServerError.updateError("No update available for this node");
-                }
-                updateInfo = this.#availableUpdates.get(nodeId);
-                if (!updateInfo) {
-                    throw ServerError.updateError("Failed to get update info");
-                }
-            }
-
-            logger.info(`Starting update for node ${this.formatNode(nodeId)} to version ${softwareVersion}`);
-
-            // Trigger the update using forceUpdate via dynamic behavior access
-            await otaProvider.act(agent =>
-                agent
-                    .get(SoftwareUpdateManager)
-                    .forceUpdate(
-                        this.#controller.fabric.addressOf(nodeId),
-                        updateInfo.vendorId,
-                        updateInfo.productId,
-                        softwareVersion,
-                    ),
-            );
-
-            // Return the update info
-            return this.#convertToMatterSoftwareVersion(updateInfo);
-        } catch (error) {
-            logger.error(`Failed to update node ${this.formatNode(nodeId)}:`, error);
-            throw error;
+        const otaProvider = this.#controller.otaProvider;
+        if (!otaProvider) {
+            throw ServerError.updateError("OTA provider not available");
         }
+
+        let updateInfo = this.#availableUpdates.get(nodeId);
+        if (!updateInfo) {
+            const result = await this.checkNodeUpdate(nodeId);
+            if (!result) {
+                throw ServerError.updateError("No update available for this node");
+            }
+            updateInfo = this.#availableUpdates.get(nodeId);
+            if (!updateInfo) {
+                throw ServerError.updateError("Failed to get update info");
+            }
+        }
+
+        logger.info(`Starting update for node ${this.formatNode(nodeId)} to version ${softwareVersion}`);
+
+        await otaProvider.act(agent =>
+            agent
+                .get(SoftwareUpdateManager)
+                .forceUpdate(
+                    this.#controller.fabric.addressOf(nodeId),
+                    updateInfo.vendorId,
+                    updateInfo.productId,
+                    softwareVersion,
+                ),
+        );
+
+        return this.#convertToMatterSoftwareVersion(updateInfo);
     }
 
     /**
