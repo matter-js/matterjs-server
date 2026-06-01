@@ -208,7 +208,7 @@ class MatterBleProxy:
                 f"BLE proxy handshake failed: {response.get('error')} - {response.get('message')}",
             )
 
-        _LOGGER.info("BLE proxy connected (protocol v%s)", response.get("version"))
+        _LOGGER.debug("BLE proxy connected (protocol v%s)", response.get("version"))
 
         self._loop = asyncio.get_running_loop()
         self._closed_event.clear()
@@ -285,7 +285,7 @@ class MatterBleProxy:
         except Exception:
             _LOGGER.exception("Error in BLE proxy message loop")
         finally:
-            _LOGGER.warning("BLE proxy WebSocket connection ended")
+            _LOGGER.debug("BLE proxy WebSocket connection ended")
             # Release scan + peripherals so an unexpected WS close doesn't leave the
             # adapter scanning or peripherals connected until the caller calls disconnect().
             await self._release_ble_resources()
@@ -300,10 +300,10 @@ class MatterBleProxy:
             _LOGGER.warning("Received invalid command: %s", msg)
             return
 
-        if _LOGGER.isEnabledFor(logging.INFO):
-            # Strip base64 payloads from INFO logs; full args remain at DEBUG via aiohttp's frame log.
+        if _LOGGER.isEnabledFor(logging.DEBUG):
+            # Strip base64 payloads from the summary; full args remain available via aiohttp's frame log.
             summary = {k: v for k, v in args.items() if k not in {"value"}}
-            _LOGGER.info("[←CMD] id=%s %s%s", cmd_id, command, f" {summary}" if summary else "")
+            _LOGGER.debug("[←CMD] id=%s %s%s", cmd_id, command, f" {summary}" if summary else "")
 
         handler = {
             "start_scan": self._handle_start_scan,
