@@ -303,8 +303,8 @@ export type ArgsOf<R extends keyof APICommands> = APICommands[R]["requestArgs"];
 /** Utility type to extract response type for a command */
 export type ResponseOf<R extends keyof APICommands> = APICommands[R]["response"];
 
-/** Log level string values matching CLI options */
-export type LogLevelString = "critical" | "error" | "warning" | "info" | "debug";
+/** Log level strings for the WebSocket API — the matter.js level names. */
+export type LogLevelString = "fatal" | "error" | "warn" | "notice" | "info" | "debug";
 
 /** Response for get_loglevel and set_loglevel commands */
 export interface LogLevelResponse {

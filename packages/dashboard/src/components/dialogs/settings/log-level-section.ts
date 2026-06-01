@@ -17,9 +17,10 @@ import { fireAndForget, handleAsync } from "../../../util/async-handler.js";
 import { showAlertDialog } from "../../dialog-box/show-dialog-box.js";
 
 const LOG_LEVELS: { value: LogLevelString; label: string }[] = [
-    { value: "critical", label: "Critical" },
+    { value: "fatal", label: "Fatal" },
     { value: "error", label: "Error" },
-    { value: "warning", label: "Warning" },
+    { value: "warn", label: "Warn" },
+    { value: "notice", label: "Notice" },
     { value: "info", label: "Info" },
     { value: "debug", label: "Debug" },
 ];
