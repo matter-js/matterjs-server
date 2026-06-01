@@ -282,7 +282,7 @@ class MatterBleProxy:
                 ):
                     break
         except asyncio.CancelledError:
-            # Intentional disconnect() cancels this task; nothing to report.
+            _LOGGER.debug("BLE proxy WebSocket connection closed (disconnect)")
             return
         except Exception:
             _LOGGER.exception("Error in BLE proxy message loop")
