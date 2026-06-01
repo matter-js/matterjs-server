@@ -223,12 +223,14 @@ connections. It is used in all subsequent commands and binary frames for this co
 
 **Errors:**
 
-| Error Code          | Description                                 |
-|---------------------|---------------------------------------------|
-| `device_not_found`  | Peripheral not reachable or not advertising |
-| `connection_failed` | Connection attempt failed                   |
-| `already_connected` | Already connected to this address           |
-| `timeout`           | Connection timed out                        |
+| Error Code                 | Description                                              |
+|----------------------------|----------------------------------------------------------|
+| `device_not_found`         | Peripheral not reachable or not advertising              |
+| `connection_failed`        | Connection attempt failed                                |
+| `out_of_connection_slots`  | Proxy backend has no free connection slot for this address |
+| `connection_aborted`       | Connection aborted (interference/range, peer/local terminate) |
+| `already_connected`        | Already connected to this address                        |
+| `timeout`                  | Connection timed out                                     |
 
 ---
 
@@ -711,6 +713,8 @@ sequenceDiagram
 | `not_scanning`             | No scan is currently active                     |
 | `device_not_found`         | Peripheral not reachable or not advertising     |
 | `connection_failed`        | BLE connection attempt failed                   |
+| `out_of_connection_slots`  | Proxy backend out of connection slots; add proxies or raise connection_slots |
+| `connection_aborted`       | Connection aborted (interference/range, peer/local terminate)                 |
 | `already_connected`        | Already connected to this peripheral            |
 | `not_connected`            | No active connection with this handle           |
 | `timeout`                  | Operation timed out                             |
