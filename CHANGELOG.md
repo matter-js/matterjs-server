@@ -9,7 +9,7 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## **WORK IN PROGRESS**
 
-- Breaking: The server now requires at least Node.js 22.12 or higher LTS Node.js version
+- Breaking: The server now requires at least Node.js 22.13.0 (LTS)
 - (Dev)Breaking: (rspier) Change Dev-Docker-Container to use the same user like the production container – might require permission updates
 - Enhancement: Dashboard network visualization fills the full window width on large/4K displays
 - Enhancement: Dashboard Thread mesh marks the network Leader Border Router with a distinct crown icon and amber color
