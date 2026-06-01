@@ -16,6 +16,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Enhancement: Dashboard Thread mesh icons reflect each node's Thread and Border Router roles
 - Enhancement: Allows to find a node in the thread network chart by its node label additionally to the extended address and Node-ID
 - Enhancement: Optimize the error message when commissioning a device with a test/dev certificate but without the "Test Net DCL" configuration enabled
+- Enhancement: BLE proxy endpoint now accepts multiple parallel WebSocket clients (each peripheral handled by the proxy that first discovered it), so several BLE radios can extend coverage
 - Enhancement: Update matter.js to the latest 0.17.1-nightly
     - Removed invalid FabricIndex field requirements for some command types and models
     - Standardized log levels and logged messages
