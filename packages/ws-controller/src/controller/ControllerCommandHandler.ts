@@ -173,6 +173,9 @@ export class ControllerCommandHandler {
         nodeEndpointAdded: new Observable<[nodeId: NodeId, endpointId: EndpointNumber]>(),
         nodeEndpointRemoved: new Observable<[nodeId: NodeId, endpointId: EndpointNumber]>(),
         webRtcCallback: new Observable<[WebRtcCallbackData]>(),
+        /** Emitted when a commissionNode attempt begins (after its options are validated). */
+        commissioningStarted: new Observable<[]>(),
+        /** Emitted when a commissionNode attempt finishes (success or failure). */
         commissioningEnded: new Observable<[]>(),
     };
     #peers?: PeerSet;
@@ -951,9 +954,14 @@ export class ControllerCommandHandler {
     }
 
     async commissionNode(data: CommissioningRequest): Promise<CommissioningResponse> {
+        // Resolve options before signalling start: an invalid request never reaches the
+        // controller, so it must not emit the started/ended lifecycle pair.
+        const options = this.#determineCommissionOptions(data);
+
+        this.events.commissioningStarted.emit();
         let nodeId: NodeId;
         try {
-            nodeId = await this.#controller.commissionNode(this.#determineCommissionOptions(data), {
+            nodeId = await this.#controller.commissionNode(options, {
                 connectNodeAfterCommissioning: true,
             });
         } catch (error) {

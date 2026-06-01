@@ -24,6 +24,7 @@ import {
     WebSocketControllerHandler,
 } from "@matter-server/ws-controller";
 import { Ble } from "@matter/main/protocol";
+import { wireBleConnectGate } from "./bleConnectGate.js";
 import { getCliOptions, type LogLevel as CliLogLevel } from "./cli.js";
 import { LegacyDataWriter, loadLegacyData, type LegacyData } from "./converter/index.js";
 import { createFileLogger } from "./file-logger.js";
@@ -207,7 +208,7 @@ async function start() {
         bleProxyHandler = new BleProxyHandler();
         const proxyBle = new ProxyBle(bleProxyHandler, env);
         env.set(Ble, proxyBle);
-        controller.commandHandler.events.commissioningEnded.on(() => proxyBle.abortPendingConnects());
+        wireBleConnectGate(controller.commandHandler.events, proxyBle);
     }
 
     const wsHandler = new WebSocketControllerHandler(controller, config, MATTER_SERVER_VERSION);
