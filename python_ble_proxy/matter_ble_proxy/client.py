@@ -493,7 +493,7 @@ class MatterBleProxy:
         # before this command; cast to Optional so the None guard isn't unreachable.
         services: BleakGATTServiceCollection | None = conn.client.services
         if services is None:
-            await self._send_error(cmd_id, "discover_failed", "Service discovery has not completed")
+            await self._send_error(cmd_id, "discovery_failed", "Service discovery has not completed")
             return
         conn.services = services
         services_list = [{"uuid": service.uuid} for service in services]
