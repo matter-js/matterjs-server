@@ -81,7 +81,7 @@ Ensure you follow the networking preparation instructions in the [OS requirement
 
 #### Step 1: Installation Steps (Preparation)
 
-1. Ensure you have Node.js 20.x, 22.x, or 24.x (22.x recommended) installed
+1. Ensure you have Node.js 22.13+, or 24.x (22.x recommended) installed
 2. `git clone https://github.com/matter-js/matterjs-server.git` (clone this repository)
 3. `cd matterjs-server` (change directory to the repository)
 4. `npm install` (install dependencies, only execute this in the repository base directory)
