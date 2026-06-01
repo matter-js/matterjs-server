@@ -144,7 +144,9 @@ export class ProxyBleClient {
             return;
         }
 
-        logger.debug(`Discovered device ${address} (${name ?? "unnamed"}) via proxy`);
+        logger.info(
+            `Discovered commissionable device ${address} (${name ?? "unnamed"}) rssi=${rssi ?? "n/a"} via proxy`,
+        );
         this.#discoveredPeripherals.set(address, { peripheral, matterServiceData });
         this.#deviceDiscoveredCallback?.(peripheral, matterServiceData);
     }

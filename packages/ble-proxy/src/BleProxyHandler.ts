@@ -197,15 +197,19 @@ export class BleProxyHandler implements WebServerHandler {
     }
 
     #onDeviceDiscovered(connection: BleProxyConnection, data: DeviceDiscoveredData): void {
-        const entry = this.#owners.get(data.address);
+        let entry = this.#owners.get(data.address);
         if (!entry) {
-            this.#owners.set(data.address, { owner: connection, seers: new Set([connection]) });
+            entry = { owner: connection, seers: new Set([connection]) };
+            this.#owners.set(data.address, entry);
         } else {
             entry.seers.add(connection);
             if (!entry.owner.connected) {
                 entry.owner = connection;
             }
         }
+        logger.debug(
+            `device_discovered ${data.address} rssi=${data.rssi ?? "n/a"} seers=${entry.seers.size} isOwner=${entry.owner === connection}`,
+        );
         this.deviceDiscovered.emit(data, connection);
     }
 

@@ -84,9 +84,11 @@ export class ProxyBleCentralInterface implements Transport {
             throw new BleError(`No connected BLE proxy client owns peripheral ${peripheralAddress}`);
         }
 
-        const { hasAdditionalAdvertisementData } = this.#bleScanner.getDiscoveredDevice(peripheralAddress);
+        const discovered = this.#bleScanner.getDiscoveredDevice(peripheralAddress);
+        const { hasAdditionalAdvertisementData } = discovered;
+        const rssi = discovered.peripheral.rssi;
 
-        logger.debug(`Connecting to peripheral ${peripheralAddress} via proxy`);
+        logger.debug(`Connecting to peripheral ${peripheralAddress} (rssi=${rssi ?? "n/a"}) via proxy`);
 
         // 1. Connect
         const { connection_handle, mtu: peripheralMtu } = await connection.sendCommand(BleProxyCommand.Connect, {
@@ -97,7 +99,9 @@ export class ProxyBleCentralInterface implements Transport {
         if (mtu > MatterBle.MAXIMUM_BTP_MTU) {
             mtu = MatterBle.MAXIMUM_BTP_MTU;
         }
-        logger.debug(`Connected to ${peripheralAddress}, handle=${connection_handle}, mtu=${mtu}`);
+        logger.info(
+            `Connected to ${peripheralAddress}, handle=${connection_handle}, mtu=${mtu}, rssi=${rssi ?? "n/a"}`,
+        );
 
         try {
             // 2. Discover services
