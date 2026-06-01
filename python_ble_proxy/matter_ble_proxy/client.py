@@ -266,10 +266,11 @@ class MatterBleProxy:
         return loop.create_task(coro)
 
     async def _message_loop(self) -> None:
-        if self._ws is None:
+        ws = self._ws
+        if ws is None:
             return
         try:
-            async for msg in self._ws:
+            async for msg in ws:
                 if msg.type == aiohttp.WSMsgType.TEXT:
                     await self._handle_command(msg.json())
                 elif msg.type == aiohttp.WSMsgType.BINARY:
@@ -281,11 +282,22 @@ class MatterBleProxy:
                 ):
                     break
         except asyncio.CancelledError:
+            # Intentional disconnect() cancels this task; nothing to report.
             return
         except Exception:
             _LOGGER.exception("Error in BLE proxy message loop")
+        else:
+            # The server closed the socket. Warn only on an abnormal closure (1006: no
+            # close handshake — crash / network loss), which has no other reporter on the
+            # BLE proxy connection. A graceful server shutdown, including a matter-server
+            # add-on update/restart, completes the close handshake (bare close -> code 0,
+            # or 1000/1001), so it stays quiet at DEBUG.
+            close_code = ws.close_code
+            if close_code == aiohttp.WSCloseCode.ABNORMAL_CLOSURE:
+                _LOGGER.warning("BLE proxy WebSocket connection lost unexpectedly (code %s)", close_code)
+            else:
+                _LOGGER.debug("BLE proxy WebSocket connection closed (code %s)", close_code)
         finally:
-            _LOGGER.debug("BLE proxy WebSocket connection ended")
             # Release scan + peripherals so an unexpected WS close doesn't leave the
             # adapter scanning or peripherals connected until the caller calls disconnect().
             await self._release_ble_resources()
