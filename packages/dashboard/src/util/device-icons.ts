@@ -471,6 +471,7 @@ export function getNetworkTypeIcon(networkType: string): string {
  * @param iconPath - The MDI icon path
  * @param color - The icon color (CSS color string)
  * @param size - The icon size in pixels
+ * @param badge - Optional top-right corner badge: an MDI glyph filled white on a colored disc
  * @returns A data URL containing the SVG
  */
 export function createIconDataUrl(

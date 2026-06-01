@@ -99,6 +99,7 @@ export class BasicInformationClusterCommands extends BaseClusterCommands {
         try {
             const label = this._nodeLabel.trim();
             await writeNodeLabel(this.client, this.node, label);
+            this._nodeLabel = label;
 
             showAlertDialog({
                 title: "Success",
