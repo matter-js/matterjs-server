@@ -20,6 +20,16 @@ import {
 
 type CommandHandler = (args: Record<string, unknown>) => Promise<Record<string, unknown> | void>;
 
+/** Throw this from an onCommand handler to send a structured error response with a chosen code. */
+export class TestProxyClientError extends Error {
+    constructor(
+        readonly code: string,
+        message: string,
+    ) {
+        super(message);
+    }
+}
+
 export class BleProxyTestClient {
     #ws?: WebSocket;
     #commandHandlers = new Map<BleProxyCommandName, CommandHandler>();
@@ -132,12 +142,13 @@ export class BleProxyTestClient {
                 }),
             );
         } catch (err) {
+            const code = err instanceof TestProxyClientError ? err.code : "test_error";
             this.#ws?.send(
                 JSON.stringify({
                     id: msg.id,
                     success: false,
-                    error: "test_error",
-                    message: (err as Error).message,
+                    error: code,
+                    message: err instanceof Error ? err.message : String(err),
                 }),
             );
         }

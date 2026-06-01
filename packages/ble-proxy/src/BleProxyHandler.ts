@@ -10,6 +10,7 @@ import type { createServer } from "node:http";
 import { WebSocket, WebSocketServer } from "ws";
 import {
     BLE_PROXY_PROTOCOL_VERSION,
+    BleProxyError,
     decodeBinaryFrame,
     encodeBinaryFrame,
     type BinaryFrame,
@@ -317,7 +318,7 @@ export class BleProxyHandler implements WebServerHandler {
         if (msg.success) {
             pending.resolver(msg.result);
         } else {
-            pending.rejecter(new Error(`${msg.error}: ${msg.message}`));
+            pending.rejecter(new BleProxyError(msg.error, msg.message));
         }
     }
 

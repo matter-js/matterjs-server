@@ -12,10 +12,10 @@
 import { Seconds } from "@matter/main";
 import { createServer } from "node:http";
 import { BleProxyHandler } from "../src/BleProxyHandler.js";
-import { BinaryFrameOpcode, BleProxyCommand } from "../src/BleProxyProtocol.js";
+import { BinaryFrameOpcode, BleProxyCommand, BleProxyError } from "../src/BleProxyProtocol.js";
 import { ProxyBle } from "../src/ProxyBle.js";
 import type { ProxyBleCentralInterface, ProxyBleChannel } from "../src/ProxyBleChannel.js";
-import { BleProxyTestClient } from "./BleProxyTestClient.js";
+import { BleProxyTestClient, TestProxyClientError } from "./BleProxyTestClient.js";
 import { MockBleDevice } from "./MockBleDevice.js";
 
 const TEST_PORT = 15580;
@@ -169,6 +169,26 @@ describe("BLE Proxy Integration", function () {
                 expect.fail("Should have thrown");
             } catch (err) {
                 expect((err as Error).message).to.include("Device not found");
+            }
+        });
+
+        it("rejects a failed command with a typed BleProxyError carrying the code", async () => {
+            testClient.onCommand(BleProxyCommand.Connect, async () => {
+                throw new TestProxyClientError(
+                    "out_of_connection_slots",
+                    "No backend with an available connection slot",
+                );
+            });
+
+            try {
+                await handler.sendCommand(BleProxyCommand.Connect, { address: "AA:BB:CC:DD:EE:FF" });
+                expect.fail("Should have thrown");
+            } catch (err) {
+                if (!(err instanceof BleProxyError)) {
+                    throw new Error(`Expected BleProxyError, got ${String(err)}`);
+                }
+                expect(err.code).to.equal("out_of_connection_slots");
+                expect(err.message).to.contain("available connection slot");
             }
         });
     });
