@@ -243,5 +243,28 @@ describe("BLE Proxy Integration", function () {
             const disconnectCmd = await disconnectPromise;
             expect((disconnectCmd.args as { connection_handle: number }).connection_handle).to.equal(7);
         });
+
+        it("tears down the channel when the owning proxy client disconnects", async () => {
+            const proxyBle = new ProxyBle(handler);
+            const mockDevice = new MockBleDevice({ discriminator: 7000, vendorId: 0xfff1, productId: 0x8000 });
+
+            await discoverDevice(proxyBle, mockDevice);
+            wireBtpFlow(mockDevice);
+
+            const central = proxyBle.centralInterface as ProxyBleCentralInterface;
+            central.onData(() => {});
+
+            const channel = (await central.openChannel({
+                type: "ble",
+                peripheralAddress: mockDevice.address,
+            })) as ProxyBleChannel;
+            expect(channel.connected).to.be.true;
+
+            // Owning proxy client drops entirely — the channel must tear down with it.
+            testClient.close();
+            await new Promise<void>(resolve => setTimeout(resolve, 100));
+
+            expect(channel.connected).to.be.false;
+        });
     });
 });
