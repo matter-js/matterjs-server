@@ -7,6 +7,7 @@
 import { createServer } from "node:http";
 import { BleProxyHandler } from "../src/BleProxyHandler.js";
 import { BleProxyCommand } from "../src/BleProxyProtocol.js";
+import { ProxyBleClient } from "../src/ProxyBleClient.js";
 import { BleProxyTestClient } from "./BleProxyTestClient.js";
 
 const matterServiceData = Buffer.from([0, 0, 0, 0, 0, 0, 0, 0]).toString("base64");
@@ -75,6 +76,27 @@ describe("Multi-client BLE Proxy", function () {
         const late = await addClient();
         const cmd = await late.waitForCommand("start_scan");
         expect(cmd.command).to.equal("start_scan");
+    });
+
+    it("stopScanning clears hub scan intent even after a transient scanStopped", async () => {
+        const a = await addClient();
+        await new Promise<void>(resolve => setTimeout(resolve, 50));
+
+        const client = new ProxyBleClient(handler);
+        await client.startScanning();
+        await a.waitForCommand("start_scan");
+
+        // Transient all-clients-stopped resets ProxyBleClient's #isScanning via hub.scanStopped.
+        a.sendEvent("scan_stopped", { reason: "transient" });
+        await new Promise<void>(resolve => setTimeout(resolve, 30));
+
+        // stopScanning must still reach the hub; otherwise #scanActive lingers.
+        const stopPromise = a.waitForCommand("stop_scan", 1000);
+        await client.stopScanning();
+        const cmd = await stopPromise;
+        expect(cmd.command).to.equal("stop_scan");
+
+        client.close();
     });
 
     it("emits scanStopped when the last scanning client disconnects", async () => {

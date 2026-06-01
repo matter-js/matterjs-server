@@ -95,18 +95,12 @@ export class ProxyBleClient {
     }
 
     async stopScanning(): Promise<void> {
-        if (!this.#isScanning) {
-            return;
-        }
-
-        if (!this.#handler.connected) {
-            this.#isScanning = false;
-            return;
-        }
-
+        // Clear hub scan intent unconditionally: a transient all-clients-disconnect can reset
+        // #isScanning while the hub still intends to scan, and skipping stopScan here would let
+        // a reconnecting client auto-resume a scan the caller already ended.
+        this.#isScanning = false;
         logger.debug("Stop BLE scanning via proxy ...");
         await this.#handler.stopScan();
-        this.#isScanning = false;
     }
 
     close(): void {
