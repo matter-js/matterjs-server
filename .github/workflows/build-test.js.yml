@@ -17,6 +17,7 @@ jobs:
     check-and-lint:
         outputs:
             package-changes: ${{ steps.changes.outputs.src }}
+            docker-changes: ${{ steps.changes.outputs.docker }}
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v6
@@ -28,6 +29,12 @@ jobs:
                       src:
                         - "package.json"
                         - "packages/**/package.json"
+                        - ".github/workflows/build-test.js.yml"
+                      docker:
+                        - "package.json"
+                        - "package-lock.json"
+                        - "packages/**"
+                        - "docker/**"
                         - ".github/workflows/build-test.js.yml"
             - name: Prepare testing environment
               uses: ./.github/actions/prepare-env
@@ -70,3 +77,27 @@ jobs:
                   node-version: ${{ matrix.node-version }}
             - name: Execute tests
               run: npm run test
+
+    docker-build:
+        # Builds the dev image from source (scripts enabled) so native module
+        # compilation and the Dockerfile itself are exercised on every relevant PR,
+        # instead of only at release time.
+        needs: [check-and-lint]
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v6
+              if: needs.check-and-lint.outputs.docker-changes == 'true' || github.event.pull_request.user.login == 'dependabot[bot]'
+            - name: Set up Docker Buildx
+              if: needs.check-and-lint.outputs.docker-changes == 'true' || github.event.pull_request.user.login == 'dependabot[bot]'
+              uses: docker/setup-buildx-action@v3
+            - name: Build dev image from source
+              if: needs.check-and-lint.outputs.docker-changes == 'true' || github.event.pull_request.user.login == 'dependabot[bot]'
+              uses: docker/build-push-action@v6
+              with:
+                  context: .
+                  file: ./docker/matterjs-server/Dockerfile.dev
+                  push: false
+                  load: true
+                  tags: matterjs-server:ci
+                  cache-from: type=gha
+                  cache-to: type=gha,mode=max
