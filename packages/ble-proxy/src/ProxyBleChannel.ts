@@ -328,14 +328,9 @@ export class ProxyBleCentralInterface implements Transport {
             // If the gate was aborted (commissioning ended) or the interface closed while we were
             // connecting, matter.js has already abandoned this attempt via its own abort. Returning
             // the channel would orphan it — nobody closes it, so it would hold the single connection
-            // slot forever. Tear it down instead.
+            // slot forever. Tear it down instead; the catch below sends the proxy Disconnect.
             if (this.#closed || this.#abortGeneration !== abortGenAtStart) {
                 await proxyChannel.close();
-                try {
-                    await this.#handler.sendCommand(BleProxyCommand.Disconnect, { connection_handle });
-                } catch (cleanupError) {
-                    logger.debug(`Peripheral ${peripheralAddress}: Error during orphan cleanup`, cleanupError);
-                }
                 throw new BleError(`BLE connect to ${peripheralAddress} aborted before completion`);
             }
 
