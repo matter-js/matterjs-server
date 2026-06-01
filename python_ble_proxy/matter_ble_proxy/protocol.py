@@ -8,6 +8,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import struct
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from bleak.backends.scanner import AdvertisementData as BleakAdvertisementData
 
 # Current protocol version. Must match the matter-server's
 # `BLE_PROXY_PROTOCOL_VERSION` constant; the server rejects clients that send
@@ -61,3 +65,34 @@ class AdvertisementData:
 
     service_uuids: list[str] = field(default_factory=list)
     """List of advertised service UUIDs."""
+
+    @classmethod
+    def from_bleak(
+        cls,
+        address: str,
+        connectable: bool,
+        advertisement: BleakAdvertisementData,
+    ) -> AdvertisementData:
+        """Build from a `bleak.backends.scanner.AdvertisementData` plus the two fields it lacks.
+
+        :class:`bleak.backends.scanner.AdvertisementData` intentionally carries
+        neither the peripheral address (it lives on the paired ``BLEDevice``)
+        nor the connectable bit (it lives on the scan context), so both are
+        passed explicitly. ``tx_power`` and ``platform_data`` are not part of
+        the wire schema and are dropped.
+
+        Use this helper from any Bleak-backed :class:`BleScanSource` to avoid a
+        field-by-field translation step in the integrator. Home Assistant's
+        ``BluetoothServiceInfoBleak.advertisement`` already materializes a
+        :class:`bleak.backends.scanner.AdvertisementData`, so the HA backend can
+        forward it directly.
+        """
+        return cls(
+            address=address,
+            name=advertisement.local_name,
+            rssi=advertisement.rssi,
+            connectable=connectable,
+            service_data=dict(advertisement.service_data),
+            manufacturer_data=dict(advertisement.manufacturer_data),
+            service_uuids=list(advertisement.service_uuids),
+        )

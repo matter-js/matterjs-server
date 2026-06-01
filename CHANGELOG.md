@@ -19,6 +19,7 @@ This page shows a detailed overview of the changes between versions without the 
     - Removed invalid FabricIndex field requirements for some command types and models
     - Standardized log levels
     - Fix: Event reports are now decoded in wire (EventNumber) order
+- Enhancement: `matter_ble_proxy` Python library: add `AdvertisementData.from_bleak(address, connectable, bleak_advertisement)` factory so integrators with a `bleak.backends.scanner.AdvertisementData` can skip the field-by-field translation step
 
 ## 0.7.1 (2026-05-21)
 

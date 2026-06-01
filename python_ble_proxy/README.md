@@ -51,7 +51,26 @@ class MyScanSource(BleScanSource):
 
 class MyDeviceResolver(BleDeviceResolver):
     async def resolve(self, address): ...   # return a bleak.BLEDevice / address / None
+```
 
+If your backend already has a `bleak.backends.scanner.AdvertisementData`
+(e.g. via `BluetoothServiceInfoBleak.advertisement` in Home Assistant),
+build the library's dataclass with the `from_bleak` factory instead of
+copying fields manually:
+
+```python
+callback(
+    AdvertisementData.from_bleak(
+        service_info.address,
+        service_info.connectable,
+        service_info.advertisement,
+    )
+)
+```
+
+Wire it up:
+
+```python
 proxy = MatterBleProxy(
     ws_url="ws://localhost:5580/ble",
     scan_source=MyScanSource(),
