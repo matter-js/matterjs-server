@@ -115,8 +115,11 @@ Log levels (from least to most verbose):
 - `critical` - Only fatal errors
 - `error` - Errors
 - `warning` - Warnings and errors
+- `notice` - Operator/user-significant lifecycle events
 - `info` - Informational messages (default)
 - `debug` - Debug output (verbose)
+
+`set_loglevel` also accepts the matter.js aliases `fatal` (= `critical`) and `warn` (= `warning`).
 
 Response returns the current levels after the change:
 ```json

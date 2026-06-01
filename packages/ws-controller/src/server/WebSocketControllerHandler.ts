@@ -1166,11 +1166,11 @@ export class WebSocketControllerHandler implements WebServerHandler {
     #logLevelToString(level: LogLevel): LogLevelString {
         switch (level) {
             case LogLevel.FATAL:
-                return "fatal";
+                return "critical";
             case LogLevel.ERROR:
                 return "error";
             case LogLevel.WARN:
-                return "warn";
+                return "warning";
             case LogLevel.NOTICE:
                 return "notice";
             case LogLevel.INFO:
@@ -1187,10 +1187,12 @@ export class WebSocketControllerHandler implements WebServerHandler {
      */
     #stringToLogLevel(level: LogLevelString): LogLevel {
         switch (level) {
+            case "critical":
             case "fatal":
                 return LogLevel.FATAL;
             case "error":
                 return LogLevel.ERROR;
+            case "warning":
             case "warn":
                 return LogLevel.WARN;
             case "notice":

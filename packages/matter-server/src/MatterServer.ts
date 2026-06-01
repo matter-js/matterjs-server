@@ -291,7 +291,7 @@ async function stop() {
 
 startCompleted = start().catch(async err => {
     if (!stopping) {
-        logger.fatal(err);
+        logger.fatal("Server failed to start", err);
         process.exitCode = 1;
     }
     await config?.close();

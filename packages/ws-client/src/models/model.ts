@@ -303,8 +303,13 @@ export type ArgsOf<R extends keyof APICommands> = APICommands[R]["requestArgs"];
 /** Utility type to extract response type for a command */
 export type ResponseOf<R extends keyof APICommands> = APICommands[R]["response"];
 
-/** Log level strings for the WebSocket API — the matter.js level names. */
-export type LogLevelString = "fatal" | "error" | "warn" | "notice" | "info" | "debug";
+/**
+ * Log level strings for the WebSocket API. The contract values (Python Matter
+ * Server names, reported by `get_loglevel`) are `critical`/`error`/`warning`/
+ * `info`/`debug`, plus `notice`. `set_loglevel` additionally accepts the
+ * matter.js aliases `fatal` (=critical) and `warn` (=warning).
+ */
+export type LogLevelString = "critical" | "error" | "warning" | "notice" | "info" | "debug" | "fatal" | "warn";
 
 /** Response for get_loglevel and set_loglevel commands */
 export interface LogLevelResponse {
