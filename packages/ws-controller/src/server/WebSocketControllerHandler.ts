@@ -33,6 +33,7 @@ import {
     ErrorResultMessage,
     EventTypes,
     LogLevelString,
+    SettableLogLevelString,
     MatterNode,
     MatterNodeEvent,
     ResponseOf,
@@ -143,7 +144,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
     }
 
     async register(server: HttpServer) {
-        logger.info(`Starting server: matter-server/${this.#serverVersion} (matter.js/${MATTER_VERSION})`);
+        logger.notice(`Starting server: matter-server/${this.#serverVersion} (matter.js/${MATTER_VERSION})`);
         // Use noServer mode with a path-filtered upgrade listener.
         // ws 8.x calls handleUpgrade unconditionally from its own upgrade listener, which
         // sends HTTP 400 for non-matching paths and destroys the socket — breaking other
@@ -1171,6 +1172,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 return "error";
             case LogLevel.WARN:
                 return "warning";
+            case LogLevel.NOTICE:
+                return "notice";
             case LogLevel.INFO:
                 return "info";
             case LogLevel.DEBUG:
@@ -1183,14 +1186,18 @@ export class WebSocketControllerHandler implements WebServerHandler {
     /**
      * Map API string format to internal LogLevel enum.
      */
-    #stringToLogLevel(level: LogLevelString): LogLevel {
+    #stringToLogLevel(level: SettableLogLevelString): LogLevel {
         switch (level) {
             case "critical":
+            case "fatal":
                 return LogLevel.FATAL;
             case "error":
                 return LogLevel.ERROR;
             case "warning":
+            case "warn":
                 return LogLevel.WARN;
+            case "notice":
+                return LogLevel.NOTICE;
             case "info":
                 return LogLevel.INFO;
             case "debug":
@@ -1203,7 +1210,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
     #handleGetLogLevel(): ResponseOf<"get_loglevel"> {
         // Logger.level can be LogLevel enum or string, convert string to enum first
         const currentLevel =
-            typeof Logger.level === "string" ? this.#stringToLogLevel(Logger.level as LogLevelString) : Logger.level;
+            typeof Logger.level === "string"
+                ? this.#stringToLogLevel(Logger.level as SettableLogLevelString)
+                : Logger.level;
         const consoleLevel = this.#logLevelToString(currentLevel);
 
         // Logger.destinations.file throws if file logging is not configured
@@ -1212,7 +1221,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             const fileDestination = Logger.destinations.file;
             const fileLevelValue =
                 typeof fileDestination.level === "string"
-                    ? this.#stringToLogLevel(fileDestination.level as LogLevelString)
+                    ? this.#stringToLogLevel(fileDestination.level as SettableLogLevelString)
                     : fileDestination.level;
             fileLevel = this.#logLevelToString(fileLevelValue);
         } catch {

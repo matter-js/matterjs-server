@@ -14,11 +14,13 @@ This page shows a detailed overview of the changes between versions without the 
 - Enhancement: (rspier) Added inline NodeLabel editing to the Node detail view
 - Enhancement: Dashboard network visualization fills the full window width on large/4K displays
 - Enhancement: Dashboard Thread mesh icons reflect each node's Thread and Border Router roles
+- Enhancement: Allows to find a node in the thread network chart by its node label additionally to the extended address and Node-ID
 - Enhancement: Optimize the error message when commissioning a device with a test/dev certificate but without the "Test Net DCL" configuration enabled
 - Enhancement: Update matter.js to the latest 0.17.1-nightly
     - Removed invalid FabricIndex field requirements for some command types and models
-    - Standardized log levels
+    - Standardized log levels and logged messages
     - Fix: Event reports are now decoded in wire (EventNumber) order
+- Adjustment: Standardized log levels and logged messages
 
 ## 0.7.1 (2026-05-21)
 

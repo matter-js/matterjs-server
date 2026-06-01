@@ -114,36 +114,56 @@ export class ThreadGraph extends BaseNetworkGraph {
     }
 
     /**
-     * Searches for a Thread node (known or unknown) by extended address and selects it.
-     * Accepts formats like:
-     * - AABBCCDDEEFF0011
-     * - AA:BB:CC:DD:EE:FF:00:11
-     * - 0xAABBCCDDEEFF0011
+     * Searches for a Thread node (known or unknown) and selects it. Matches, in priority order:
+     * 1. Extended address (EUI-64), accepting `AABBCCDDEEFF0011`, `AA:BB:...`, or `0x...` forms.
+     * 2. Node id (exact).
+     * 3. Visible device label (case-insensitive substring).
      * Returns true when a match is found.
      */
-    public selectByExtendedAddress(address: string): boolean {
-        const normalized = normalizeExtendedAddressInput(address);
-        if (!normalized) {
+    public selectBySearch(query: string): boolean {
+        const trimmed = query.trim();
+        if (!trimmed) {
             return false;
         }
 
-        // Search commissioned Thread devices first
-        for (const node of Object.values(this.nodes)) {
-            if (getNetworkType(node) !== "thread") {
-                continue;
+        // Only visible nodes are selectable — focusing a hidden node would report a
+        // match the user can't see on the graph.
+        const threadNodes = Object.values(this.nodes).filter(
+            node => getNetworkType(node) === "thread" && !(this.hideOfflineNodes && node.available === false),
+        );
+
+        // 1. Extended address — commissioned devices first, then unknown/external neighbors.
+        const normalized = normalizeExtendedAddressInput(trimmed);
+        if (normalized) {
+            for (const node of threadNodes) {
+                const extAddressHex = getThreadExtendedAddressHex(node);
+                if (extAddressHex && extAddressHex === normalized) {
+                    this.selectNode(String(node.node_id));
+                    return true;
+                }
             }
 
-            const extAddressHex = getThreadExtendedAddressHex(node);
-            if (extAddressHex && extAddressHex === normalized) {
+            for (const [unknownId, unknown] of this._unknownDevicesMapCache) {
+                if (normalizeExtendedAddressInput(unknown.extAddressHex) === normalized) {
+                    this.selectNode(unknownId);
+                    return true;
+                }
+            }
+        }
+
+        // 2. Node id (exact).
+        for (const node of threadNodes) {
+            if (String(node.node_id) === trimmed) {
                 this.selectNode(String(node.node_id));
                 return true;
             }
         }
 
-        // Then search unknown/external Thread devices
-        for (const [unknownId, unknown] of this._unknownDevicesMapCache) {
-            if (normalizeExtendedAddressInput(unknown.extAddressHex) === normalized) {
-                this.selectNode(unknownId);
+        // 3. Device label as shown on the graph (case-insensitive substring).
+        const needle = trimmed.toLowerCase();
+        for (const node of threadNodes) {
+            if (getDeviceName(node).toLowerCase().includes(needle)) {
+                this.selectNode(String(node.node_id));
                 return true;
             }
         }

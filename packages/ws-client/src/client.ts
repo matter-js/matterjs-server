@@ -15,7 +15,7 @@ import {
     ErrorResultMessage,
     EventMessage,
     LogLevelResponse,
-    LogLevelString,
+    SettableLogLevelString,
     MatterFabricData,
     MatterNodeEvent,
     MatterSoftwareVersion,
@@ -372,8 +372,8 @@ export class MatterClient {
      * @returns The log level configuration after the change
      */
     async setLogLevel(
-        consoleLoglevel?: LogLevelString,
-        fileLoglevel?: LogLevelString,
+        consoleLoglevel?: SettableLogLevelString,
+        fileLoglevel?: SettableLogLevelString,
         timeout?: number,
     ): Promise<LogLevelResponse> {
         return await this.sendCommand(
@@ -551,7 +551,7 @@ export class MatterClient {
     }
 
     private _handleEventMessage(event: EventMessage) {
-        console.log("Incoming event", event);
+        console.debug("Incoming event", event);
 
         // Allow subclasses to hook into raw events (for testing)
         this.onRawEvent(event);

@@ -131,7 +131,7 @@ export class BorderRouterDiscovery {
                 names = mdns.names;
             } catch (e) {
                 if (gen !== this.#startGeneration) return;
-                logger.warn("MDNS service unavailable; border router discovery inactive:", e);
+                logger.error("MDNS service unavailable; border router discovery inactive:", e);
                 return;
             }
         }

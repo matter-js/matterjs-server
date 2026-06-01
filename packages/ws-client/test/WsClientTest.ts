@@ -317,6 +317,35 @@ describe("ws-client", () => {
             });
         });
 
+        describe("loglevel", () => {
+            it("should round-trip native level names via get_loglevel", async () => {
+                server.onCommand("get_loglevel", () => ({
+                    console_loglevel: "notice",
+                    file_loglevel: "debug",
+                }));
+                await client.connect();
+
+                const result = await client.getLogLevel();
+                expect(result.console_loglevel).to.equal("notice");
+                expect(result.file_loglevel).to.equal("debug");
+            });
+
+            it("should accept matter.js aliases on set_loglevel while reporting contract names", async () => {
+                let received: { console_loglevel?: string; file_loglevel?: string } | undefined;
+                server.onCommand("set_loglevel", args => {
+                    received = args as { console_loglevel?: string; file_loglevel?: string };
+                    return { console_loglevel: "critical", file_loglevel: "warning" };
+                });
+                await client.connect();
+
+                const result = await client.setLogLevel("fatal", "warn");
+                expect(received?.console_loglevel).to.equal("fatal");
+                expect(received?.file_loglevel).to.equal("warn");
+                expect(result.console_loglevel).to.equal("critical");
+                expect(result.file_loglevel).to.equal("warning");
+            });
+        });
+
         describe("events", () => {
             it("should receive node_added event with BigInt node_id", async () => {
                 server.onCommand("start_listening", () => []);

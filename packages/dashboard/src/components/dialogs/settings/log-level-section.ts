@@ -20,6 +20,7 @@ const LOG_LEVELS: { value: LogLevelString; label: string }[] = [
     { value: "critical", label: "Critical" },
     { value: "error", label: "Error" },
     { value: "warning", label: "Warning" },
+    { value: "notice", label: "Notice" },
     { value: "info", label: "Info" },
     { value: "debug", label: "Debug" },
 ];

@@ -68,7 +68,7 @@ export class WebServer {
             let resolvedOrErrored = false;
 
             server.listen({ host, port: this.#port }, () => {
-                logger.info(`Webserver listening on http://${displayHost}:${this.#port}`);
+                logger.notice(`Webserver listening on http://${displayHost}:${this.#port}`);
                 if (!resolvedOrErrored) {
                     resolvedOrErrored = true;
                     resolve();
@@ -76,7 +76,7 @@ export class WebServer {
             });
 
             server.on("error", err => {
-                logger.error(`Webserver error on ${displayHost}:${this.#port}`, err);
+                logger.fatal(`Webserver error on ${displayHost}:${this.#port}`, err);
                 if (!resolvedOrErrored) {
                     resolvedOrErrored = true;
                     reject(err);
