@@ -88,9 +88,10 @@ def _classify_connect_error(err: BaseException, address: str) -> tuple[str, str]
     """
     name = type(err).__name__
     text = str(err)
-    if name == "BleakOutOfConnectionSlotsError" or any(m in text for m in _OUT_OF_SLOTS_MARKERS):
+    lowered = text.lower()
+    if name == "BleakOutOfConnectionSlotsError" or any(m.lower() in lowered for m in _OUT_OF_SLOTS_MARKERS):
         return "out_of_connection_slots", f"Out of connection slots connecting to {address}: {text}"
-    if name == "BleakAbortedError" or any(m in text for m in _ABORT_MARKERS):
+    if name == "BleakAbortedError" or any(m.lower() in lowered for m in _ABORT_MARKERS):
         return "connection_aborted", f"Connection aborted connecting to {address}: {text}"
     if name in ("BleakDeviceNotFoundError", "BleakNotFoundError"):
         return "device_not_found", f"Device not found for {address}: {text}"

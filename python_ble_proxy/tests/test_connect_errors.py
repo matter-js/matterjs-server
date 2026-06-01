@@ -77,6 +77,11 @@ def test_bluetooth_unavailable_by_type_name():
     assert ADDR in msg
 
 
+def test_out_of_slots_marker_is_case_insensitive():
+    code, _ = _classify_connect_error(Exception("No AVAILABLE CONNECTION slot left"), ADDR)
+    assert code == "out_of_connection_slots"
+
+
 def test_generic_failure():
     code, _ = _classify_connect_error(Exception("something else"), ADDR)
     assert code == "connection_failed"
