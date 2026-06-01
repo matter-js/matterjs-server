@@ -7,8 +7,11 @@
 import {
     BinaryFrameOpcode,
     BLE_PROXY_PROTOCOL_VERSION,
+    BleProxyError,
+    BleProxyErrorCode,
     decodeBinaryFrame,
     encodeBinaryFrame,
+    isOutOfConnectionSlotsError,
 } from "../src/BleProxyProtocol.js";
 
 describe("BleProxyProtocol", () => {
@@ -110,6 +113,38 @@ describe("BleProxyProtocol", () => {
             const encoded = encodeBinaryFrame(BinaryFrameOpcode.WriteData, 0x0102, new Uint8Array(0));
             expect(encoded[1]).to.equal(0x01);
             expect(encoded[2]).to.equal(0x02);
+        });
+    });
+
+    describe("slot-exhaustion classification", () => {
+        it("classifies the new structured code", () => {
+            expect(isOutOfConnectionSlotsError(BleProxyErrorCode.OutOfConnectionSlots, "anything")).to.be.true;
+        });
+
+        it("classifies an old client via connection_failed message text", () => {
+            const msg =
+                "connection_failed: No backend with an available connection slot that can reach address AA:BB was found";
+            expect(isOutOfConnectionSlotsError(BleProxyErrorCode.ConnectionFailed, msg)).to.be.true;
+        });
+
+        it("matches the ESP32 slot-cancel marker", () => {
+            expect(isOutOfConnectionSlotsError(BleProxyErrorCode.ConnectionFailed, "ESP_GATT_CONN_CONN_CANCEL")).to.be
+                .true;
+        });
+
+        it("does not classify an unrelated connection_failed", () => {
+            expect(isOutOfConnectionSlotsError(BleProxyErrorCode.ConnectionFailed, "device went away")).to.be.false;
+        });
+
+        it("does not classify connection_aborted as slot exhaustion", () => {
+            expect(isOutOfConnectionSlotsError(BleProxyErrorCode.ConnectionAborted, "anything")).to.be.false;
+        });
+
+        it("BleProxyError preserves the code and a readable message", () => {
+            const err = new BleProxyError("out_of_connection_slots", "no slots");
+            expect(err.code).to.equal("out_of_connection_slots");
+            expect(err.message).to.contain("no slots");
+            expect(err).to.be.instanceOf(Error);
         });
     });
 });
