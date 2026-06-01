@@ -292,7 +292,7 @@ export interface APICommands {
         response: LogLevelResponse;
     };
     set_loglevel: {
-        requestArgs: { console_loglevel?: LogLevelString; file_loglevel?: LogLevelString };
+        requestArgs: { console_loglevel?: SettableLogLevelString; file_loglevel?: SettableLogLevelString };
         response: LogLevelResponse;
     };
 }
@@ -304,12 +304,16 @@ export type ArgsOf<R extends keyof APICommands> = APICommands[R]["requestArgs"];
 export type ResponseOf<R extends keyof APICommands> = APICommands[R]["response"];
 
 /**
- * Log level strings for the WebSocket API. The contract values (Python Matter
- * Server names, reported by `get_loglevel`) are `critical`/`error`/`warning`/
- * `info`/`debug`, plus `notice`. `set_loglevel` additionally accepts the
- * matter.js aliases `fatal` (=critical) and `warn` (=warning).
+ * Log levels the server reports (`get_loglevel`/`set_loglevel` response): the
+ * Python Matter Server names plus `notice`.
  */
-export type LogLevelString = "critical" | "error" | "warning" | "notice" | "info" | "debug" | "fatal" | "warn";
+export type LogLevelString = "critical" | "error" | "warning" | "notice" | "info" | "debug";
+
+/**
+ * Log levels `set_loglevel` accepts as input: the reported names plus the
+ * matter.js aliases `fatal` (= `critical`) and `warn` (= `warning`).
+ */
+export type SettableLogLevelString = LogLevelString | "fatal" | "warn";
 
 /** Response for get_loglevel and set_loglevel commands */
 export interface LogLevelResponse {
