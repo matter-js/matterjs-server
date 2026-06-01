@@ -11,7 +11,7 @@ This page shows a detailed overview of the changes between versions without the 
 
 - Enhancement: Dashboard network visualization fills the full window width on large/4K displays
 - Enhancement: Dashboard Thread mesh marks the network Leader Border Router with a distinct crown icon and amber color
-- Enhancement: Optimize error message when commissioning a device with a test/dev certificate but without the "Test Net DCL" configuration enabled
+- Enhancement: Optimize the error message when commissioning a device with a test/dev certificate but without the "Test Net DCL" configuration enabled
 - Enhancement: Update matter.js to the latest 0.17.1-nightly
     - Removed invalid FabricIndex field requirements for some command types and models
     - Standardized log levels
