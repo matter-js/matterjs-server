@@ -65,7 +65,7 @@ A preconfigured [dev container](./.devcontainer) is available with all required 
 
 ### Manual installation (from npm)
 
-- Ensure to have Node.js 20.x, 22.x, or 24.x installed (22.x recommended)
+- Ensure to have Node.js 22.13+, or 24.x installed (22.x recommended)
 - `npm install matter-server`
 - `npx matter-server` or alternatively `cd node_modules/matter-server && npm run server`
 
