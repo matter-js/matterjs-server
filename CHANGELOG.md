@@ -11,8 +11,9 @@ This page shows a detailed overview of the changes between versions without the 
 
 - Breaking: The server now requires at least Node.js 22.13.0 (LTS)
 - (Dev)Breaking: (rspier) Change Dev-Docker-Container to use the same user like the production container – might require permission updates
+- Enhancement: (rspier) Added inline NodeLabel editing to the Node detail view
 - Enhancement: Dashboard network visualization fills the full window width on large/4K displays
-- Enhancement: Dashboard Thread mesh marks the network Leader Border Router with a distinct crown icon and amber color
+- Enhancement: Dashboard Thread mesh icons reflect each node's Thread and Border Router roles
 - Enhancement: Optimize the error message when commissioning a device with a test/dev certificate but without the "Test Net DCL" configuration enabled
 - Enhancement: Update matter.js to the latest 0.17.1-nightly
     - Removed invalid FabricIndex field requirements for some command types and models

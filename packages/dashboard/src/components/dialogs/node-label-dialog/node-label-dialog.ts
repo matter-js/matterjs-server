@@ -8,15 +8,12 @@ import "@material/web/button/text-button";
 import "@material/web/dialog/dialog";
 import "@material/web/textfield/outlined-text-field";
 import type { MdDialog } from "@material/web/dialog/dialog.js";
-import { MatterClient, MatterNode } from "@matter-server/ws-client";
+import type { MatterClient, MatterNode } from "@matter-server/ws-client";
 import { html, LitElement } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import { MAX_NODE_LABEL_LENGTH, writeNodeLabel } from "../../../util/node-label.js";
 import { preventDefault } from "../../../util/prevent_default.js";
 import { showAlertDialog } from "../../dialog-box/show-dialog-box.js";
-
-const CLUSTER_ID = 0x28; // BasicInformation cluster (40 decimal)
-const NODE_LABEL_ATTRIBUTE_ID = 5;
-const MAX_NODE_LABEL_LENGTH = 32;
 
 @customElement("node-label-dialog")
 export class NodeLabelDialog extends LitElement {
@@ -33,14 +30,7 @@ export class NodeLabelDialog extends LitElement {
     private _saving: boolean = false;
 
     protected override firstUpdated() {
-        this._nodeLabel = this.node.nodeLabel || "";
-        if (!this._nodeLabel) {
-            const attributePath = `0/${CLUSTER_ID}/${NODE_LABEL_ATTRIBUTE_ID}`;
-            const currentValue = this.node.attributes[attributePath];
-            if (typeof currentValue === "string") {
-                this._nodeLabel = currentValue;
-            }
-        }
+        this._nodeLabel = this.node.nodeLabel;
     }
 
     protected override render() {
@@ -82,8 +72,7 @@ export class NodeLabelDialog extends LitElement {
     private async _save() {
         this._saving = true;
         try {
-            const attributePath = `0/${CLUSTER_ID}/${NODE_LABEL_ATTRIBUTE_ID}`;
-            await this.client.writeAttribute(this.node.node_id, attributePath, this._nodeLabel);
+            await writeNodeLabel(this.client, this.node, this._nodeLabel);
             this._close();
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);

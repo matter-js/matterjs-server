@@ -258,11 +258,13 @@ export class ThreadGraph extends BaseNetworkGraph {
                         ? `\n${device.networkName}`
                         : "";
                 const label = `${top}${suffix}`;
-                const isLeader = decodeMeshcopStateBitmap(device.stateBitmapHex)?.threadRoleValue === 3;
+                const decodedState = decodeMeshcopStateBitmap(device.stateBitmapHex);
+                const isLeader = decodedState?.threadRoleValue === 3;
+                const isPrimaryBbr = decodedState?.bbr === true && decodedState.bbrFunction === "primary";
                 graphNodes.push({
                     id: device.id,
                     label,
-                    image: createBorderRouterIconDataUrl(isSelected, isLeader),
+                    image: createBorderRouterIconDataUrl(isSelected, isLeader, isPrimaryBbr),
                     shape: "image" as const,
                     networkType: "thread" as const,
                     isUnknown: false,
@@ -622,10 +624,12 @@ export class ThreadGraph extends BaseNetworkGraph {
         }
         const external = this._unknownDevicesMapCache.get(nodeId);
         if (external?.kind === "br") {
-            const isLeader = decodeMeshcopStateBitmap(external.stateBitmapHex)?.threadRoleValue === 3;
+            const decodedState = decodeMeshcopStateBitmap(external.stateBitmapHex);
+            const isLeader = decodedState?.threadRoleValue === 3;
+            const isPrimaryBbr = decodedState?.bbr === true && decodedState.bbrFunction === "primary";
             this._nodesDataSet.update({
                 id: nodeId,
-                image: createBorderRouterIconDataUrl(isHighlighted, isLeader),
+                image: createBorderRouterIconDataUrl(isHighlighted, isLeader, isPrimaryBbr),
             });
         } else if (nodeId.startsWith("unknown_") || nodeId.startsWith("br_")) {
             this._nodesDataSet.update({

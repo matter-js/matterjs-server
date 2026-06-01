@@ -51,16 +51,21 @@ This is an npm workspaces monorepo with four packages:
 ## Architecture
 
 ### Server Flow
+
 `MatterServer.ts` → creates `ConfigStorage` + `MatterController` → creates `WebServer` with handlers:
+
 - `WebSocketControllerHandler`: Python Matter Server compatible WS API on `/ws`
 - `StaticFileHandler`: Serves dashboard assets
 
 ### WebSocket Protocol
+
 The server implements a protocol compatible with Home Assistant's Python Matter Server. Key commands:
+
 - `start_listening`, `commission_with_code`, `device_command`, `read_attribute`, `write_attribute`
 - Events: `node_added`, `node_updated`, `node_removed`, `attribute_updated`
 
 ### Key Dependencies
+
 - `@project-chip/matter.js`: Core Matter protocol implementation
 - `@matter/main`, `@matter/main/general`: Matter.js utilities
 - `@matter/nodejs-ble`: Optional BLE support (enable with `--ble` flag)
@@ -68,6 +73,7 @@ The server implements a protocol compatible with Home Assistant's Python Matter 
 ## Build System
 
 Uses external `@nacho-iot/js-tools` build system:
+
 - TSC for type checking and declaration files
 - esbuild for transpilation (ESM + CJS)
 - Dashboard uses Rollup for bundling with Babel
@@ -79,11 +85,12 @@ Dashboard has additional `npm run generate` step for cluster descriptions.
 
 ## Node.js Requirements
 
-Engine requirement: `>=20.19.0 <22.0.0 || >=22.13.0`
+Engine requirement: `>=22.13.0`
 
 ## Code Quality
 
 ### Tooling
+
 - **Linter**: [oxlint](https://oxc.rs) with type-aware checking (config: `.oxlintrc.json`)
 - **Formatter**: [oxfmt](https://oxc.rs) (config: `.oxfmtrc.json`)
 - Both are Rust-based and run in <1s across the entire monorepo
@@ -118,18 +125,21 @@ Plan/design documents in `docs/plans/` are working files only. **Never commit th
 ## Dashboard Development
 
 ### Technology Stack
+
 - **Lit 3.x**: Web components framework with TypeScript decorators
 - **Material Web 2.4.x**: Material Design 3 components (`md-*` elements)
 - **@mdi/js**: Material Design Icons as SVG paths
 - **CSS Variables**: All colors use CSS custom properties for theming
 
 ### Styling Patterns
+
 - All components use inline `static override styles = css\`...\`` (Lit pattern)
 - Colors must use CSS variables from `public/index.html`, not hardcoded values
 - Key variables: `--md-sys-color-primary`, `--md-sys-color-surface`, `--md-sys-color-on-surface`, `--md-sys-color-on-surface-variant`
 - Dark mode: Variables overridden in `html.dark-theme body` selector
 
 ### Theme-Aware Colors
+
 When defining colors in dashboard components, **always use CSS variables** that are defined for both light and dark themes:
 
 ```css
@@ -144,6 +154,7 @@ color: grey;
 ```
 
 Available theme variables defined in `public/index.html`:
+
 - `--text-color`: Secondary text (grey) - adapts for light/dark
 - `--danger-color`: Error/warning red
 - `--primary-color`: Primary accent color
@@ -152,12 +163,14 @@ Available theme variables defined in `public/index.html`:
 Always verify new colors look correct in both light AND dark themes before committing.
 
 ### Theme System
+
 - `src/util/theme-service.ts`: Singleton managing theme state
 - Supports: `light`, `dark`, `system` (OS auto-detect)
 - Persisted in localStorage (`matterTheme` key)
 - Query parameter override: `?theme=dark|light|system`
 
 ### Key Dashboard Files
+
 - `public/index.html`: CSS variables for light/dark themes
 - `src/util/theme-service.ts`: Theme management singleton
 - `src/pages/components/header.ts`: Header bar with theme toggle
@@ -165,6 +178,7 @@ Always verify new colors look correct in both light AND dark themes before commi
 - `src/components/ha-svg-icon.ts`: Custom SVG icon component
 
 ### Common Pitfalls
+
 - Don't use hardcoded colors like `#673ab7` or `cornsilk` - use CSS variables
 - Material Web components need proper `--md-sys-color-*` variables to render correctly in dark mode
 - When adding status/error pages, include the header component for consistent UX
@@ -173,22 +187,27 @@ Always verify new colors look correct in both light AND dark themes before commi
 ## Design Context
 
 ### Users
+
 Two distinct audiences served equally:
+
 1. **Home Assistant power users** — technically capable smart home enthusiasts managing their Matter network. Need clear device status, easy commissioning, and network health at a glance.
 2. **Developers and testers** — building or debugging Matter integrations. Need raw data, attribute inspection, cluster details, and diagnostic information.
 
 Both audiences benefit from information density. Neither needs hand-holding.
 
 ### Brand Personality
+
 **Utilitarian, dense, reliable.** Tool-first. The dashboard should feel like a well-built instrument panel — everything needed visible, nothing decorative for its own sake.
 
 ### Aesthetic Direction
+
 - Material Design 3 as foundation — refine rather than replace
 - Both light and dark modes, equal quality in each
 - Current design is acceptable baseline — improvements focus on polish, color mode consistency, spacing, and information hierarchy
 - Anti-references: not a "hacker dashboard", not overly decorative, not consumer marketing
 
 ### Design Principles
+
 1. **Density over decoration** — Show more data in less space. Every pixel earns its place.
 2. **State clarity** — Online/offline, connection quality, commissioning status must be instantly readable. Color-code consistently.
 3. **Both modes, equal quality** — Light and dark themes both intentional, not one an afterthought.

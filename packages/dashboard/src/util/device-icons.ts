@@ -17,6 +17,7 @@ import {
     mdiCast,
     mdiCctv,
     mdiChip,
+    mdiCircleMedium,
     mdiCrown,
     mdiDishwasher,
     mdiDoorbell,
@@ -41,12 +42,15 @@ import {
     mdiRobotVacuum,
     mdiRouter,
     mdiRouterWireless,
+    mdiSleep,
     mdiSmokeDetector,
     mdiSnowflakeAlert,
     mdiSolarPower,
     mdiSpeaker,
     mdiSprinkler,
+    mdiStar,
     mdiStove,
+    mdiSwapHorizontal,
     mdiTelevision,
     mdiThermometer,
     mdiToggleSwitch,
@@ -305,6 +309,19 @@ const threadRoleToIcon: Record<number, string> = {
 };
 
 /**
+ * Corner badge marking a node's Thread RoutingRole (attr 0/53/1) — a role-rank indicator overlaid on
+ * the device icon. The Leader is the rare, high-signal exception (amber crown); routers and end
+ * devices use progressively lower-key glyphs. Unassigned/Unspecified and unknown roles get no badge.
+ */
+const THREAD_ROLE_BADGES: Record<number, { iconPath: string; colorVar: string; colorFallback: string }> = {
+    2: { iconPath: mdiSleep, colorVar: "--node-color-thread-enddevice", colorFallback: "#90a4ae" }, // Sleepy End Device
+    3: { iconPath: mdiCircleMedium, colorVar: "--node-color-thread-enddevice", colorFallback: "#90a4ae" }, // End Device
+    4: { iconPath: mdiCircleMedium, colorVar: "--node-color-thread-enddevice", colorFallback: "#90a4ae" }, // REED
+    5: { iconPath: mdiSwapHorizontal, colorVar: "--node-color-thread-router", colorFallback: "#1e88e5" }, // Router
+    6: { iconPath: mdiCrown, colorVar: "--node-color-thread-leader", colorFallback: "#f9a825" }, // Leader
+};
+
+/**
  * Utility device types (per Matter spec) deprioritized when selecting the primary type for icon display.
  * These are commonly reported alongside the actual application type (e.g., a light also reports as
  * OTA Requestor + Root Node + Electrical Sensor). Their icons are only used if no application type is found.
@@ -454,14 +471,26 @@ export function getNetworkTypeIcon(networkType: string): string {
  * @param iconPath - The MDI icon path
  * @param color - The icon color (CSS color string)
  * @param size - The icon size in pixels
+ * @param badge - Optional top-right corner badge: an MDI glyph filled white on a colored disc
  * @returns A data URL containing the SVG
  */
-export function createIconDataUrl(iconPath: string, color: string, size: number = 48): string {
+export function createIconDataUrl(
+    iconPath: string,
+    color: string,
+    size: number = 48,
+    badge?: { iconPath: string; color: string },
+): string {
     // MDI icons use a 24x24 viewBox
+    const badgeMarkup =
+        badge !== undefined
+            ? `<circle cx="18" cy="6" r="4" fill="${badge.color}"/>
+            <path d="${badge.iconPath}" fill="white" transform="translate(14.64,2.64) scale(0.28)"/>`
+            : "";
     const svg = `
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="${size}" height="${size}">
             <circle cx="12" cy="12" r="11" fill="white" stroke="${color}" stroke-width="1"/>
             <path d="${iconPath}" fill="${color}" transform="scale(0.6) translate(8,8)"/>
+            ${badgeMarkup}
         </svg>
     `.trim();
 
@@ -493,7 +522,14 @@ export function createNodeIconDataUrl(
     } else {
         color = getDefaultIconColor(); // Theme-aware default
     }
-    return createIconDataUrl(iconPath, color);
+    // Thread RoutingRole (incl. Leader) applies to any router node, not just BRs. Badge it over the
+    // device icon rather than replacing the icon, preserving device identity.
+    const roleBadge = threadRole !== undefined ? THREAD_ROLE_BADGES[threadRole] : undefined;
+    const badge =
+        roleBadge !== undefined
+            ? { iconPath: roleBadge.iconPath, color: getCssVar(roleBadge.colorVar, roleBadge.colorFallback) }
+            : undefined;
+    return createIconDataUrl(iconPath, color, 48, badge);
 }
 
 /**
@@ -512,22 +548,31 @@ export function createUnknownDeviceIconDataUrl(isRouter: boolean = false, isSele
 
 /**
  * Creates an SVG data URL for a Thread Border Router identified via mDNS.
- * Leader BRs render with a crown glyph and amber color to differentiate from peers.
+ *
+ * Thread Leader (mesh routing role) and Primary BBR (backbone role) are orthogonal: the central
+ * glyph reflects the mesh role (crown for leader, router otherwise) while a corner star badge marks
+ * the primary BBR. A BR that is both shows both.
+ *
  * @param isSelected - Whether the node is selected
  * @param isLeader - Whether this BR is the Thread network leader (from MeshCoP state bitmap)
+ * @param isPrimaryBbr - Whether this BR is the primary Backbone Border Router (from MeshCoP state bitmap)
  * @returns A data URL containing the SVG
  */
-export function createBorderRouterIconDataUrl(isSelected: boolean = false, isLeader: boolean = false): string {
-    if (isSelected) {
-        return createIconDataUrl(
-            isLeader ? mdiCrown : mdiRouterWireless,
-            getCssVar("--node-color-selected", "#1976d2"),
-        );
-    }
-    if (isLeader) {
-        return createIconDataUrl(mdiCrown, getCssVar("--node-color-thread-leader", "#f9a825"));
-    }
-    return createIconDataUrl(mdiRouterWireless, getCssVar("--md-sys-color-primary", "#03a9f4"));
+export function createBorderRouterIconDataUrl(
+    isSelected: boolean = false,
+    isLeader: boolean = false,
+    isPrimaryBbr: boolean = false,
+): string {
+    const glyph = isLeader ? mdiCrown : mdiRouterWireless;
+    const color = isSelected
+        ? getCssVar("--node-color-selected", "#1976d2")
+        : isLeader
+          ? getCssVar("--node-color-thread-leader", "#f9a825")
+          : getCssVar("--md-sys-color-primary", "#03a9f4");
+    const badge = isPrimaryBbr
+        ? { iconPath: mdiStar, color: getCssVar("--node-color-primary-bbr", "#00897b") }
+        : undefined;
+    return createIconDataUrl(glyph, color, 48, badge);
 }
 
 /**
