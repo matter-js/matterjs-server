@@ -204,18 +204,29 @@ export class MatterController {
         // Register DCL services on the root environment; DclBehavior picks them up.
         // When seeding is enabled (default), pre-populate from the bundled offline snapshot so
         // commissioning works without internet access.
-        const includeTest = this.#enableTestNetDcl;
+        //
+        // Test PAA roots/CD signers are always loaded (fetchTestCertificates). Trust is gated
+        // separately via acceptTestCertificates: a test device is only commissioned when
+        // enableTestNetDcl is set; otherwise the attestation validator reports TrustedAsTestCertificate
+        // and onAttestationFailure rejects with an actionable hint instead of an opaque PaaNotTrusted.
+        const trustTestCertificates = this.#enableTestNetDcl;
         if (this.#disableDclSeed) {
-            new DclCertificateService(this.#env.root, { fetchTestCertificates: includeTest });
+            new DclCertificateService(this.#env.root, {
+                fetchTestCertificates: true,
+                acceptTestCertificates: trustTestCertificates,
+            });
         } else {
             new DclCertificateService(this.#env.root, {
-                fetchTestCertificates: includeTest,
+                fetchTestCertificates: true,
+                acceptTestCertificates: trustTestCertificates,
                 seed: {
-                    paaRoots: paaRoots({ includeTest }),
-                    cdSigners: cdSigners({ includeTest }),
+                    paaRoots: paaRoots({ includeTest: true }),
+                    cdSigners: cdSigners({ includeTest: true }),
                 },
             });
-            new DclVendorInfoService(this.#env.root, { seed: { vendors: vendors({ includeTest }) } });
+            new DclVendorInfoService(this.#env.root, {
+                seed: { vendors: vendors({ includeTest: trustTestCertificates }) },
+            });
             this.#services.get(DclVendorInfoService);
         }
         this.#services.get(DclCertificateService);
@@ -260,7 +271,8 @@ export class MatterController {
             this.#commandHandler.events.started.once(async () => {
                 this.#controllerInstance!.node.behaviors.require(DclBehavior);
                 await this.#controllerInstance!.node.setStateOf(DclBehavior, {
-                    fetchTestCertificates: this.#enableTestNetDcl,
+                    fetchTestCertificates: true,
+                    acceptTestCertificates: this.#enableTestNetDcl,
                 });
 
                 const initPromises = new Array<Promise<unknown>>();

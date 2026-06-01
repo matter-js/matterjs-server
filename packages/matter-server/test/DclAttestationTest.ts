@@ -71,10 +71,11 @@ describe("DCL Attestation Enforcement", function () {
         await cleanupTempStorage(serverStoragePath, deviceStoragePath);
     });
 
-    it("should reject commissioning when test PAA certificates are not loaded", async function () {
-        // The TestLightDevice uses a test PAA certificate only present in the DCL test trust store.
-        // Without --enable-test-net-dcl the server loads only production PAAs, so attestation
-        // must reject the device.
+    it("should reject commissioning with a test-net-DCL hint when test certs are not trusted", async function () {
+        // The TestLightDevice uses a test PAA. Test PAAs are always seeded into the trust store, but
+        // without --enable-test-net-dcl they are not trusted: attestation surfaces a
+        // TrustedAsTestCertificate finding and onAttestationFailure rejects with a clear hint to
+        // enable test-net DCL.
         const error = await client.sendCommandExpectError(
             "commission_with_code",
             { code: MANUAL_PAIRING_CODE, network_only: true },
@@ -82,6 +83,6 @@ describe("DCL Attestation Enforcement", function () {
         );
 
         expect(error.error_code).to.equal(ServerErrorCode.NodeCommissionFailed);
-        expect(error.details).to.include("PAA not found in trust store");
+        expect(error.details).to.include("--enable-test-net-dcl");
     });
 });

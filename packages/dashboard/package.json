@@ -42,14 +42,14 @@
     },
     "devDependencies": {
         "@babel/preset-env": "^7.29.7",
-        "@matter/main": "0.17.0",
-        "@rollup/plugin-babel": "^7.0.0",
-        "@rollup/plugin-commonjs": "^29.0.2",
+        "@matter/main": "0.17.1-alpha.0-20260601-9386e30f9",
+        "@rollup/plugin-babel": "^7.1.0",
+        "@rollup/plugin-commonjs": "^29.0.3",
         "@rollup/plugin-json": "^6.1.0",
         "@rollup/plugin-node-resolve": "^16.0.3",
         "@rollup/plugin-terser": "^1.0.0",
         "@rollup/plugin-typescript": "^12.3.0",
-        "rollup": "^4.60.4",
+        "rollup": "^4.61.0",
         "rollup-plugin-copy": "^3.5.0",
         "serve": "^14.2.6"
     }

@@ -23,12 +23,12 @@
         "node": ">=20.19.0 <22.0.0 || >=22.13.0"
     },
     "dependencies": {
-        "@matter/main": "0.17.0",
+        "@matter/main": "0.17.1-alpha.0-20260601-9386e30f9",
         "@matter-server/ws-controller": "*",
         "ws": "^8.21.0"
     },
     "optionalDependencies": {
-        "@matter/nodejs-ble": "0.17.0"
+        "@matter/nodejs-ble": "0.17.1-alpha.0-20260601-9386e30f9"
     },
     "devDependencies": {
         "@types/node": "^25.9.1",
