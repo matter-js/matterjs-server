@@ -77,6 +77,22 @@ describe("Multi-client BLE Proxy", function () {
         expect(cmd.command).to.equal("start_scan");
     });
 
+    it("emits scanStopped when the last scanning client disconnects", async () => {
+        const a = await addClient();
+        await new Promise<void>(resolve => setTimeout(resolve, 50));
+
+        let stopped = false;
+        handler.scanStopped.on(() => {
+            stopped = true;
+        });
+
+        await handler.startScan({ service_uuids: ["fff6"], allow_duplicates: false });
+        a.close();
+        await new Promise<void>(resolve => setTimeout(resolve, 100));
+
+        expect(stopped).to.be.true;
+    });
+
     it("assigns ownership to the first client that discovers a peripheral", async () => {
         const a = await addClient();
         const b = await addClient();

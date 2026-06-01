@@ -141,9 +141,10 @@ export class BleProxyHandler implements WebServerHandler {
             if (connection.connected) {
                 this.#scanning.add(connection);
                 sends.push(
-                    connection
-                        .sendCommand(BleProxyCommand.StartScan, args)
-                        .catch(err => logger.warn("Failed to start scan on a client:", err)),
+                    connection.sendCommand(BleProxyCommand.StartScan, args).catch(err => {
+                        logger.warn("Failed to start scan on a client:", err);
+                        this.#markNotScanning(connection, "start scan failed");
+                    }),
                 );
             }
         }
@@ -170,9 +171,10 @@ export class BleProxyHandler implements WebServerHandler {
         this.connectionEstablished.emit();
         if (this.#scanActive && this.#scanArgs) {
             this.#scanning.add(connection);
-            connection
-                .sendCommand(BleProxyCommand.StartScan, this.#scanArgs)
-                .catch(err => logger.warn("Failed to sync scan to joining client:", err));
+            connection.sendCommand(BleProxyCommand.StartScan, this.#scanArgs).catch(err => {
+                logger.warn("Failed to sync scan to joining client:", err);
+                this.#markNotScanning(connection, "start scan failed");
+            });
         }
     }
 
@@ -180,10 +182,17 @@ export class BleProxyHandler implements WebServerHandler {
         if (event === BleProxyEvent.DeviceDiscovered) {
             this.#onDeviceDiscovered(connection, data as unknown as DeviceDiscoveredData);
         } else if (event === BleProxyEvent.ScanStopped) {
-            this.#scanning.delete(connection);
-            if (this.#scanning.size === 0) {
-                this.scanStopped.emit((data as { reason?: string }).reason ?? "unknown");
-            }
+            this.#markNotScanning(connection, (data as { reason?: string }).reason ?? "unknown");
+        }
+    }
+
+    /** Drop a connection from the scanning set; emit aggregate scanStopped once none remain. */
+    #markNotScanning(connection: BleProxyConnection, reason: string): void {
+        if (!this.#scanning.delete(connection)) {
+            return;
+        }
+        if (this.#scanning.size === 0) {
+            this.scanStopped.emit(reason);
         }
     }
 
@@ -202,7 +211,7 @@ export class BleProxyHandler implements WebServerHandler {
 
     #onConnectionClosed(connection: BleProxyConnection): void {
         this.#connections.delete(connection);
-        this.#scanning.delete(connection);
+        this.#markNotScanning(connection, "client disconnected");
 
         for (const [address, entry] of this.#owners) {
             entry.seers.delete(connection);

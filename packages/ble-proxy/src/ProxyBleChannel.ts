@@ -78,12 +78,13 @@ export class ProxyBleCentralInterface implements Transport {
         }
 
         const { peripheralAddress } = address;
-        const { hasAdditionalAdvertisementData } = this.#bleScanner.getDiscoveredDevice(peripheralAddress);
 
         const connection = this.#handler.getOwner(peripheralAddress);
         if (!connection) {
             throw new BleError(`No connected BLE proxy client owns peripheral ${peripheralAddress}`);
         }
+
+        const { hasAdditionalAdvertisementData } = this.#bleScanner.getDiscoveredDevice(peripheralAddress);
 
         logger.debug(`Connecting to peripheral ${peripheralAddress} via proxy`);
 
