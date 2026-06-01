@@ -379,7 +379,7 @@ jobs:
                   build-args: |
                       MATTERJS_SERVER_VERSION=${{ steps.version.outputs.result }}
 
-            - name: Create Github Release
+            - name: Create GitHub Release
               if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.release_needed == 'true'
               uses: ncipollo/release-action@v1
               env:
