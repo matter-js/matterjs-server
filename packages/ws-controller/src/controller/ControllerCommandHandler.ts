@@ -173,6 +173,7 @@ export class ControllerCommandHandler {
         nodeEndpointAdded: new Observable<[nodeId: NodeId, endpointId: EndpointNumber]>(),
         nodeEndpointRemoved: new Observable<[nodeId: NodeId, endpointId: EndpointNumber]>(),
         webRtcCallback: new Observable<[WebRtcCallbackData]>(),
+        commissioningEnded: new Observable<[]>(),
     };
     #peers?: PeerSet;
 
@@ -962,6 +963,8 @@ export class ControllerCommandHandler {
                 `Commission failed: ${originalMessage}`,
                 error instanceof Error ? error : undefined,
             );
+        } finally {
+            this.events.commissioningEnded.emit();
         }
 
         await this.#registerNode(nodeId);

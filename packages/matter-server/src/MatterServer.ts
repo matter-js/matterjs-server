@@ -205,7 +205,9 @@ async function start() {
             logger.info(`Replacing existing BLE implementation (${existingBle.constructor.name}) with ProxyBle`);
         }
         bleProxyHandler = new BleProxyHandler();
-        env.set(Ble, new ProxyBle(bleProxyHandler, env));
+        const proxyBle = new ProxyBle(bleProxyHandler, env);
+        env.set(Ble, proxyBle);
+        controller.commandHandler.events.commissioningEnded.on(() => proxyBle.abortPendingConnects());
     }
 
     const wsHandler = new WebSocketControllerHandler(controller, config, MATTER_SERVER_VERSION);
