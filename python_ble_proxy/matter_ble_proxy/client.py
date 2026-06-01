@@ -313,7 +313,7 @@ class MatterBleProxy:
             return
 
         if _LOGGER.isEnabledFor(logging.DEBUG):
-            # Strip base64 payloads from the summary; full args remain available via aiohttp's frame log.
+            # Drop the base64 `value` payload to keep the per-command line readable.
             summary = {k: v for k, v in args.items() if k not in {"value"}}
             _LOGGER.debug("[←CMD] id=%s %s%s", cmd_id, command, f" {summary}" if summary else "")
 
