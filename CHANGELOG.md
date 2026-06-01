@@ -17,8 +17,9 @@ This page shows a detailed overview of the changes between versions without the 
 - Enhancement: Optimize the error message when commissioning a device with a test/dev certificate but without the "Test Net DCL" configuration enabled
 - Enhancement: Update matter.js to the latest 0.17.1-nightly
     - Removed invalid FabricIndex field requirements for some command types and models
-    - Standardized log levels
+    - Standardized log levels and logged messages
     - Fix: Event reports are now decoded in wire (EventNumber) order
+- Adjustment: Standardized log levels and logged messages
 
 ## 0.7.1 (2026-05-21)
 
