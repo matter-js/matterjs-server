@@ -1,17 +1,23 @@
 {
     "name": "matter-server",
     "version": "0.0.0-git",
-    "type": "module",
     "description": "WebSocket Matter server based on matter.js",
+    "homepage": "https://github.com/matter-js/matterjs-server",
     "bugs": {
         "url": "https://github.com/matter-js/matterjs-server/issues"
     },
-    "homepage": "https://github.com/matter-js/matterjs-server",
+    "author": "Open Home Foundation",
     "repository": {
         "type": "git",
         "url": "git+https://github.com/matter-js/matterjs-server.git"
     },
-    "author": "Apollon77",
+    "files": [
+        "dist/**/*",
+        "src/**/*",
+        "LICENSE",
+        "README.md"
+    ],
+    "type": "module",
     "main": "dist/esm/MatterServer.js",
     "exports": {
         ".": {
@@ -24,38 +30,32 @@
             }
         }
     },
+    "publishConfig": {
+        "access": "public"
+    },
     "scripts": {
         "clean": "nacho-build clean",
         "build": "nacho-build",
         "build-clean": "nacho-build --clean",
         "server": "node --enable-source-maps dist/esm/MatterServer.js"
     },
-    "engines": {
-        "node": ">=20.19.0 <22.0.0 || >=22.13.0"
-    },
     "dependencies": {
-        "@matter/main": "0.17.0",
         "@matter-server/ble-proxy": "*",
-        "@matter-server/ws-controller": "*",
-        "@matter-server/dashboard": "*",
         "@matter-server/custom-clusters": "*",
-        "commander": "^14.0.3",
+        "@matter-server/dashboard": "*",
+        "@matter-server/ws-controller": "*",
+        "@matter/main": "0.17.1-alpha.0-20260601-9386e30f9",
+        "commander": "^15.0.0",
         "express": "^5.2.1"
     },
     "devDependencies": {
+        "@matter-server/ws-client": "*",
+        "@matter/nodejs": "0.17.1-alpha.0-20260601-9386e30f9",
+        "@matter/testing": "0.17.1-alpha.0-20260601-9386e30f9",
         "@types/express": "^5.0.6",
-        "@types/node": "^25.9.1",
-        "@matter/nodejs": "0.17.0",
-        "@matter/testing": "0.17.0",
-        "@matter-server/ws-client": "*"
+        "@types/node": "^25.9.1"
     },
-    "files": [
-        "dist/**/*",
-        "src/**/*",
-        "LICENSE",
-        "README.md"
-    ],
-    "publishConfig": {
-        "access": "public"
+    "engines": {
+        "node": ">=22.13.0"
     }
 }

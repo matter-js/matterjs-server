@@ -10,12 +10,9 @@ import { css, html, nothing, type CSSResultGroup } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { showAlertDialog } from "../../../components/dialog-box/show-dialog-box.js";
 import { handleAsync } from "../../../util/async-handler.js";
+import { MAX_NODE_LABEL_LENGTH, NODE_LABEL_CLUSTER_ID, writeNodeLabel } from "../../../util/node-label.js";
 import { BaseClusterCommands } from "../base-cluster-commands.js";
 import { registerClusterCommands } from "../registry.js";
-
-const CLUSTER_ID = 0x28; // BasicInformation cluster (40 decimal)
-const NODE_LABEL_ATTRIBUTE_ID = 5;
-const MAX_NODE_LABEL_LENGTH = 32;
 
 /**
  * Command panel for BasicInformation cluster (ID: 0x28 / 40).
@@ -44,22 +41,7 @@ export class BasicInformationClusterCommands extends BaseClusterCommands {
         if (!this.node) {
             return;
         }
-
-        // First check the direct nodeLabel property on the node
-        if (this.node.nodeLabel) {
-            this._nodeLabel = this.node.nodeLabel;
-            return;
-        }
-
-        // Fallback to attribute path: endpoint/cluster/attribute = 0/40/5
-        // BasicInformation cluster is always on endpoint 0 per Matter specification
-        const attributePath = `0/${CLUSTER_ID}/${NODE_LABEL_ATTRIBUTE_ID}`;
-        const currentValue = this.node.attributes[attributePath];
-        if (typeof currentValue === "string") {
-            this._nodeLabel = currentValue;
-        } else {
-            this._nodeLabel = "";
-        }
+        this._nodeLabel = this.node.nodeLabel;
     }
 
     /**
@@ -115,13 +97,13 @@ export class BasicInformationClusterCommands extends BaseClusterCommands {
         this._saving = true;
 
         try {
-            // BasicInformation cluster is always on endpoint 0 per Matter specification
-            const attributePath = `0/${CLUSTER_ID}/${NODE_LABEL_ATTRIBUTE_ID}`;
-            await this.client.writeAttribute(this.node.node_id, attributePath, this._nodeLabel);
+            const label = this._nodeLabel.trim();
+            await writeNodeLabel(this.client, this.node, label);
+            this._nodeLabel = label;
 
             showAlertDialog({
                 title: "Success",
-                text: `Node label set to "${this._nodeLabel}"`,
+                text: `Node label set to "${label}"`,
             });
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
@@ -161,8 +143,7 @@ export class BasicInformationClusterCommands extends BaseClusterCommands {
     ];
 }
 
-// Register this component for cluster ID 0x28 (40 decimal)
-registerClusterCommands(CLUSTER_ID, "basic-information-cluster-commands");
+registerClusterCommands(NODE_LABEL_CLUSTER_ID, "basic-information-cluster-commands");
 
 declare global {
     interface HTMLElementTagNameMap {

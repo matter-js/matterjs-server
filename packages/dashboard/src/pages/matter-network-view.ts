@@ -479,8 +479,6 @@ class MatterNetworkView extends LitElement {
                 flex: 1 1 0;
                 padding: 8px 16px;
                 gap: 8px;
-                max-width: 1600px;
-                margin: 0 auto;
                 width: 100%;
                 box-sizing: border-box;
                 min-height: 0;
@@ -683,7 +681,7 @@ class MatterNetworkView extends LitElement {
             }
 
             .details-sidebar {
-                width: 320px;
+                width: clamp(320px, 22vw, 480px);
                 flex-shrink: 0;
                 display: none;
                 min-height: 0;

@@ -1,38 +1,15 @@
 {
     "name": "@matter-server/ble-proxy",
     "version": "0.0.0-git",
-    "type": "module",
     "description": "BLE proxy implementation for matter.js - proxies BLE operations over WebSocket",
+    "homepage": "https://github.com/matter-js/matterjs-server",
     "bugs": {
         "url": "https://github.com/matter-js/matterjs-server/issues"
     },
-    "homepage": "https://github.com/matter-js/matterjs-server",
+    "author": "Open Home Foundation",
     "repository": {
         "type": "git",
         "url": "git+https://github.com/matter-js/matterjs-server.git"
-    },
-    "author": "Open Home Foundation",
-    "main": "dist/esm/index.js",
-    "scripts": {
-        "clean": "nacho-build clean",
-        "build": "nacho-build",
-        "build-clean": "nacho-build --clean",
-        "noble-ble-proxy": "nacho-run src/example/noble-ble-proxy.ts"
-    },
-    "engines": {
-        "node": ">=20.19.0 <22.0.0 || >=22.13.0"
-    },
-    "dependencies": {
-        "@matter/main": "0.17.0",
-        "@matter-server/ws-controller": "*",
-        "ws": "^8.20.1"
-    },
-    "optionalDependencies": {
-        "@matter/nodejs-ble": "0.17.0"
-    },
-    "devDependencies": {
-        "@types/node": "^25.9.1",
-        "@types/ws": "^8.18.1"
     },
     "files": [
         "dist/**/*",
@@ -40,7 +17,30 @@
         "LICENSE",
         "README.md"
     ],
+    "type": "module",
+    "main": "dist/esm/index.js",
     "publishConfig": {
         "access": "public"
+    },
+    "scripts": {
+        "clean": "nacho-build clean",
+        "build": "nacho-build",
+        "build-clean": "nacho-build --clean",
+        "noble-ble-proxy": "nacho-run src/example/noble-ble-proxy.ts"
+    },
+    "dependencies": {
+        "@matter-server/ws-controller": "*",
+        "@matter/main": "0.17.1-alpha.0-20260601-9386e30f9",
+        "ws": "^8.21.0"
+    },
+    "devDependencies": {
+        "@types/node": "^25.9.1",
+        "@types/ws": "^8.18.1"
+    },
+    "optionalDependencies": {
+        "@matter/nodejs-ble": "0.17.1-alpha.0-20260601-9386e30f9"
+    },
+    "engines": {
+        "node": ">=22.13.0"
     }
 }

@@ -39,15 +39,7 @@ import {
 } from "@matter/main/clusters";
 import { WebRtcTransportDefinitions } from "@matter/main/clusters/web-rtc-transport-definitions";
 import { WebRtcTransportProvider } from "@matter/main/clusters/web-rtc-transport-provider";
-import {
-    DecodedAttributeReportValue,
-    DecodedEventReportValue,
-    Invoke,
-    PeerAddress,
-    Read,
-    Specifier,
-    PeerSet,
-} from "@matter/main/protocol";
+import { DeviceAttestationCheck, Invoke, PeerAddress, Read, Specifier, PeerSet } from "@matter/main/protocol";
 import {
     AttributeId,
     ClusterId,
@@ -65,6 +57,7 @@ import {
 import { Endpoint } from "@matter/node";
 import { CameraControllerDevice } from "@matter/node/devices/camera-controller";
 import { CommissioningController, NodeCommissioningOptions } from "@project-chip/matter.js";
+import type { DecodedAttributeReportValue, DecodedEventReportValue } from "@project-chip/matter.js/cluster";
 import { NodeStates } from "@project-chip/matter.js/device";
 import { ClusterMap, ClusterMapEntry, GlobalAttributes } from "../model/ModelMapper.js";
 import {
@@ -639,7 +632,7 @@ export class ControllerCommandHandler {
             };
 
             for await (const chunk of node.node.interaction.read(readRequest)) {
-                for (const entry of chunk) {
+                for await (const entry of chunk) {
                     if (entry.kind === "attr-value") {
                         const { pathStr, value: wsValue } = this.#convertAttributeToWebSocket(
                             {
@@ -917,15 +910,24 @@ export class ControllerCommandHandler {
                 wifiNetwork,
                 threadNetwork,
                 onAttestationFailure: findings => {
-                    let accept = true;
+                    let testCertReason: string | undefined;
+                    let hardError = false;
                     for (const f of findings) {
-                        if (f.level === "error") {
-                            accept = false;
+                        if (f.type === DeviceAttestationCheck.TrustedAsTestCertificate) {
+                            testCertReason =
+                                'Device uses a test/development certificate. Enable the "Test Net DCL" option ' +
+                                "(--enable-test-net-dcl) to commission test or development devices";
+                        } else if (f.level === "error") {
+                            hardError = true;
                         }
                         logger.info(`Attestation finding (${f.level}):`, f.type, f.message);
                     }
-                    logger.info(`Attestation ${accept ? "accepted" : "rejected"}`);
-                    return accept;
+                    if (testCertReason !== undefined) {
+                        logger.warn(`Attestation rejected: ${testCertReason}`);
+                        return testCertReason;
+                    }
+                    logger.info(`Attestation ${hardError ? "rejected" : "accepted"}`);
+                    return !hardError;
                 },
             },
             discovery: {
@@ -1194,7 +1196,7 @@ export class ControllerCommandHandler {
         };
 
         for await (const chunk of node.node.interaction.read(read)) {
-            for (const attr of chunk) {
+            for await (const attr of chunk) {
                 if (attr.kind === "attr-value" && Array.isArray(attr.value)) {
                     // We only expect one array response
                     return attr.value.map(({ fabricId, fabricIndex, vendorId, label }) => ({

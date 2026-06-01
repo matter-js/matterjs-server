@@ -41,19 +41,19 @@
     },
     "dependencies": {
         "@matter-server/ws-client": "*",
-        "@matter/dcl-data": ">=2026.5.20",
-        "@matter/main": "0.17.0",
-        "@project-chip/matter.js": "0.17.0",
-        "ws": "^8.20.0"
+        "@matter/dcl-data": ">=2026.5.30",
+        "@matter/main": "0.17.1-alpha.0-20260601-9386e30f9",
+        "@project-chip/matter.js": "0.17.1-alpha.0-20260601-9386e30f9",
+        "ws": "^8.21.0"
     },
     "devDependencies": {
         "@types/node": "^25.9.1",
         "@types/ws": "^8.18.1"
     },
     "optionalDependencies": {
-        "@matter/nodejs-ble": "0.17.0"
+        "@matter/nodejs-ble": "0.17.1-alpha.0-20260601-9386e30f9"
     },
     "engines": {
-        "node": ">=20.19.0 <22.0.0 || >=22.13.0"
+        "node": ">=22.13.0"
     }
 }

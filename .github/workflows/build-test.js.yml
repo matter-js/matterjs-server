@@ -2,71 +2,71 @@
 name: Build and test
 
 on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
-  merge_group:
+    push:
+        branches: ["main"]
+    pull_request:
+        branches: ["main"]
+    merge_group:
 
 # Cancel previous PR/branch runs when a new commit is pushed
 concurrency:
-  group: ${{ github.ref }}-build-tests
-  cancel-in-progress: true
+    group: ${{ github.ref }}-build-tests
+    cancel-in-progress: true
 
 jobs:
-  check-and-lint:
-    outputs:
-      package-changes: ${{ steps.changes.outputs.src }}
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v6
-    - uses: dorny/paths-filter@v4
-      id: changes
-      if: github.event.pull_request.user.login != 'dependabot[bot]'
-      with:
-        filters: |
-          src:
-            - "package.json"
-            - "packages/**/package.json"
-            - ".github/workflows/build-test.js.yml"
-    - name: Prepare testing environment
-      uses: ./.github/actions/prepare-env
-    - run: npm run format-verify
-    - run: npm run lint
+    check-and-lint:
+        outputs:
+            package-changes: ${{ steps.changes.outputs.src }}
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v6
+            - uses: dorny/paths-filter@v4
+              id: changes
+              if: github.event.pull_request.user.login != 'dependabot[bot]'
+              with:
+                  filters: |
+                      src:
+                        - "package.json"
+                        - "packages/**/package.json"
+                        - ".github/workflows/build-test.js.yml"
+            - name: Prepare testing environment
+              uses: ./.github/actions/prepare-env
+            - run: npm run format-verify
+            - run: npm run lint
 
-  build-non-linux:
-    needs: [ check-and-lint ]
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        node-version: [ 20.x, 22.x, 24.x ]
-        os: [ macos-latest, windows-latest ]
-    steps:
-      - uses: actions/checkout@v6
-        if: needs.check-and-lint.outputs.package-changes == 'true' || github.event.pull_request.user.login == 'dependabot[bot]'
-      - uses: actions/setup-python@v6
-        if: needs.check-and-lint.outputs.package-changes == 'true' || github.event.pull_request.user.login == 'dependabot[bot]'
-        # needed as long as we test Node.js 16 and npm <10.2.2 is used for Node.js 18/20
-        with:
-          python-version: '3.11'
-      - name: Build on ${{ matrix.os }}
-        if: needs.check-and-lint.outputs.package-changes == 'true' || github.event.pull_request.user.login == 'dependabot[bot]'
-        uses: ./.github/actions/prepare-env
-        with:
-          node-version: ${{ matrix.node-version }}
-          os: ${{ matrix.os }}
+    build-non-linux:
+        needs: [check-and-lint]
+        runs-on: ${{ matrix.os }}
+        strategy:
+            matrix:
+                node-version: [22.x, 24.x, 26.x]
+                os: [macos-latest, windows-latest]
+        steps:
+            - uses: actions/checkout@v6
+              if: needs.check-and-lint.outputs.package-changes == 'true' || github.event.pull_request.user.login == 'dependabot[bot]'
+            - uses: actions/setup-python@v6
+              if: needs.check-and-lint.outputs.package-changes == 'true' || github.event.pull_request.user.login == 'dependabot[bot]'
+              # needed as long as we test Node.js 16 and npm <10.2.2 is used for Node.js 18/20
+              with:
+                  python-version: "3.11"
+            - name: Build on ${{ matrix.os }}
+              if: needs.check-and-lint.outputs.package-changes == 'true' || github.event.pull_request.user.login == 'dependabot[bot]'
+              uses: ./.github/actions/prepare-env
+              with:
+                  node-version: ${{ matrix.node-version }}
+                  os: ${{ matrix.os }}
 
-  test:
-    needs: [ check-and-lint ]
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        node-version: [ 20.x, 22.x, 24.x ]
-    steps:
-      - uses: actions/checkout@v6
-      - name: Prepare testing environment
-        uses: ./.github/actions/prepare-env
-        with:
-          node-version: ${{ matrix.node-version }}
-      - name: Execute tests
-        run: npm run test
+    test:
+        needs: [check-and-lint]
+        runs-on: ubuntu-latest
+        strategy:
+            matrix:
+                node-version: [22.x, 24.x, 26.x]
+        steps:
+            - uses: actions/checkout@v6
+            - name: Prepare testing environment
+              uses: ./.github/actions/prepare-env
+              with:
+                  node-version: ${{ matrix.node-version }}
+            - name: Execute tests
+              run: npm run test

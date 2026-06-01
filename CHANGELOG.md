@@ -9,6 +9,16 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## **WORK IN PROGRESS**
 
+- Breaking: The server now requires at least Node.js 22.13.0 (LTS)
+- (Dev)Breaking: (rspier) Change Dev-Docker-Container to use the same user like the production container – might require permission updates
+- Enhancement: (rspier) Added inline NodeLabel editing to the Node detail view
+- Enhancement: Dashboard network visualization fills the full window width on large/4K displays
+- Enhancement: Dashboard Thread mesh icons reflect each node's Thread and Border Router roles
+- Enhancement: Optimize the error message when commissioning a device with a test/dev certificate but without the "Test Net DCL" configuration enabled
+- Enhancement: Update matter.js to the latest 0.17.1-nightly
+    - Removed invalid FabricIndex field requirements for some command types and models
+    - Standardized log levels
+    - Fix: Event reports are now decoded in wire (EventNumber) order
 - Enhancement: `matter_ble_proxy` Python library: add `AdvertisementData.from_bleak(address, connectable, bleak_advertisement)` factory so integrators with a `bleak.backends.scanner.AdvertisementData` can skip the field-by-field translation step
 
 ## 0.7.1 (2026-05-21)
