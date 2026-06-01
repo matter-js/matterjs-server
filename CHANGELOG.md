@@ -9,6 +9,8 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## **WORK IN PROGRESS**
 
+- Breaking: The server now requires at least Node.js 22.12 or higher LTS Node.js version
+- (Dev)Breaking: (rspier) Change Dev-Docker-Container to use the same user like the production container – might require permission updates
 - Enhancement: Dashboard network visualization fills the full window width on large/4K displays
 - Enhancement: Dashboard Thread mesh marks the network Leader Border Router with a distinct crown icon and amber color
 - Enhancement: Optimize the error message when commissioning a device with a test/dev certificate but without the "Test Net DCL" configuration enabled
@@ -16,7 +18,6 @@ This page shows a detailed overview of the changes between versions without the 
     - Removed invalid FabricIndex field requirements for some command types and models
     - Standardized log levels
     - Fix: Event reports are now decoded in wire (EventNumber) order
-- (Dev)Breaking: (rspier) Change Dev-Docker-Container to use the same user like the production scontainer – might require permission updates  
 
 ## 0.7.1 (2026-05-21)
 
