@@ -70,6 +70,35 @@ def _normalize_uuid(uuid: str) -> str:
     return compact
 
 
+# Connect-failure message markers, sourced from bleak_retry_connector's marker sets.
+_OUT_OF_SLOTS_MARKERS = ("available connection", "connection slot", "ESP_GATT_CONN_CONN_CANCEL")
+_ABORT_MARKERS = (
+    "le-connection-abort-by-local",
+    "br-connection-canceled",
+    "ESP_GATT_CONN_TERMINATE_PEER_USER",
+    "ESP_GATT_CONN_TERMINATE_LOCAL_HOST",
+)
+
+
+def _classify_connect_error(err: BaseException, address: str) -> tuple[str, str]:
+    """Map a BLE connect failure to a (wire error code, human message).
+
+    Order matters: out-of-slots is checked before aborted because the
+    slot-cancel marker is also an abort condition.
+    """
+    name = type(err).__name__
+    text = str(err)
+    if name == "BleakOutOfConnectionSlotsError" or any(m in text for m in _OUT_OF_SLOTS_MARKERS):
+        return "out_of_connection_slots", f"Out of connection slots connecting to {address}: {text}"
+    if name == "BleakAbortedError" or any(m in text for m in _ABORT_MARKERS):
+        return "connection_aborted", f"Connection aborted connecting to {address}: {text}"
+    if name in ("BleakDeviceNotFoundError", "BleakNotFoundError"):
+        return "device_not_found", f"Device not found for {address}: {text}"
+    if name == "BleakBluetoothNotAvailableError":
+        return "bluetooth_unavailable", f"Bluetooth unavailable connecting to {address}: {text}"
+    return "connection_failed", f"Failed to connect to {address}: {text}"
+
+
 class BleScanSource(ABC):
     """Pluggable source of BLE advertisements.
 
@@ -433,7 +462,8 @@ class MatterBleProxy:
             await self._send_error(cmd_id, "connection_failed", f"Timeout connecting to {address}")
             return
         except Exception as err:
-            await self._send_error(cmd_id, "connection_failed", f"Failed to connect to {address}: {err}")
+            code, message = _classify_connect_error(err, address)
+            await self._send_error(cmd_id, code, message)
             return
 
         conn = ConnectionState(client, handle)
