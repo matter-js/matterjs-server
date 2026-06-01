@@ -51,7 +51,8 @@
         "@types/ws": "^8.18.1"
     },
     "optionalDependencies": {
-        "@matter/nodejs-ble": "0.17.1-alpha.0-20260601-9386e30f9"
+        "@matter/nodejs-ble": "0.17.1-alpha.0-20260601-9386e30f9",
+        "dbus-next": "npm:@jellybrick/dbus-next@^0.10.3"
     },
     "engines": {
         "node": ">=22.13.0"

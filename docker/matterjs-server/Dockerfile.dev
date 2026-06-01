@@ -4,9 +4,14 @@ FROM node:24-trixie-slim
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Install required system dependencies
+# Runtime dependencies:
 # - iputils-ping: Required for node ping functionality
 # - curl: For health checks and general utility
 # - git: Required for npm install from git repos
+# - bluez: Bluetooth stack for BLE commissioning
+# Build dependencies (kept in the dev image for fast incremental rebuilds):
+# - python3, make, gcc, g++: toolchain for native module compilation
+# - libbluetooth-dev, libudev-dev: headers for native BLE/udev bindings
 RUN \
     set -x \
     && apt-get update \
@@ -14,7 +19,13 @@ RUN \
         iputils-ping \
         curl \
         git \
-    && apt-get purge -y --auto-remove \
+        bluez \
+        python3 \
+        make \
+        gcc \
+        g++ \
+        libbluetooth-dev \
+        libudev-dev \
     && rm -rf \
         /var/lib/apt/lists/* \
         /usr/src/*
@@ -28,16 +39,21 @@ COPY packages/custom-clusters/package*.json ./packages/custom-clusters/
 COPY packages/ws-controller/package*.json ./packages/ws-controller/
 COPY packages/ws-client/package*.json ./packages/ws-client/
 COPY packages/dashboard/package*.json ./packages/dashboard/
+COPY packages/ble-proxy/package*.json ./packages/ble-proxy/
 COPY packages/matter-server/package*.json ./packages/matter-server/
 
-# Install dependencies
+# Install dependencies. --ignore-scripts is required: the root `prepare` script
+# runs `build-clean`, which needs the source that is only copied below (kept after
+# this layer for caching). Native modules are compiled explicitly after the copy.
 RUN npm ci --ignore-scripts
 
 # Copy source code
 COPY . .
 
-# Build all packages
-RUN npm run build
+# Compile optional native modules (noble/bleno for BLE) now that the toolchain and
+# source are present, then build all packages.
+RUN npm rebuild --foreground-scripts \
+    && npm run build
 
 # Initialize data volume with user permissions
 RUN mkdir -p /data && chown -R 1000:1000 /data
