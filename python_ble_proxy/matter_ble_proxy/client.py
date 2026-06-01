@@ -287,11 +287,9 @@ class MatterBleProxy:
         except Exception:
             _LOGGER.exception("Error in BLE proxy message loop")
         else:
-            # The server closed the socket. Warn only on an abnormal closure (1006: no
-            # close handshake — crash / network loss), which has no other reporter on the
-            # BLE proxy connection. A graceful server shutdown, including a matter-server
-            # add-on update/restart, completes the close handshake (bare close -> code 0,
-            # or 1000/1001), so it stays quiet at DEBUG.
+            # Server closed the socket. Warn only on an abnormal closure (1006: no close
+            # handshake — crash / network loss). A graceful shutdown, including a
+            # matter-server add-on update, completes the handshake and stays quiet.
             close_code = ws.close_code
             if close_code == aiohttp.WSCloseCode.ABNORMAL_CLOSURE:
                 _LOGGER.warning("BLE proxy WebSocket connection lost unexpectedly (code %s)", close_code)
