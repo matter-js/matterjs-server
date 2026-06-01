@@ -3,390 +3,390 @@
 name: Automatic Labeled NPM Release
 
 permissions:
-  contents: write
-  pull-requests: write
-  packages: write  # Required for ghcr.io
-  id-token: write  # Required for OIDC
+    contents: write
+    pull-requests: write
+    packages: write # Required for ghcr.io
+    id-token: write # Required for OIDC
 
 on:
-  pull_request:
-    types: [labeled]
+    pull_request:
+        types: [labeled]
 
 # Cancel previous PR/branch runs when a new commit is pushed
 concurrency:
-  group: ${{ github.ref }}-auto-npm-release
-  cancel-in-progress: true
+    group: ${{ github.ref }}-auto-npm-release
+    cancel-in-progress: true
 
 jobs:
-  check-and-lint:
-    if: github.repository == 'matter-js/matterjs-server' && contains(github.event.pull_request.labels.*.name, 'automated-npm-release')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - name: Prepare testing environment
-        uses: ./.github/actions/prepare-env
-      - run: npm run format-verify
-      - run: npm run lint
+    check-and-lint:
+        if: github.repository == 'matter-js/matterjs-server' && contains(github.event.pull_request.labels.*.name, 'automated-npm-release')
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v6
+            - name: Prepare testing environment
+              uses: ./.github/actions/prepare-env
+            - run: npm run format-verify
+            - run: npm run lint
 
-  build-non-linux:
-    if: github.repository == 'matter-js/matterjs-server' && contains(github.event.pull_request.labels.*.name, 'automated-npm-release')
-    needs: [ check-and-lint ]
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        node-version: [ 22.x, 24.x ]
-        os: [ macos-latest, windows-latest ]
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        # needed as long as we test Node.js 16 and npm <10.2.2 is used for Node.js 18/20
-        with:
-          python-version: '3.11'
-      - name: Build on ${{ matrix.os }}
-        uses: ./.github/actions/prepare-env
-        with:
-          node-version: ${{ matrix.node-version }}
-          os: ${{ matrix.os }}
+    build-non-linux:
+        if: github.repository == 'matter-js/matterjs-server' && contains(github.event.pull_request.labels.*.name, 'automated-npm-release')
+        needs: [check-and-lint]
+        runs-on: ${{ matrix.os }}
+        strategy:
+            matrix:
+                node-version: [22.x, 24.x, 26.x]
+                os: [macos-latest, windows-latest]
+        steps:
+            - uses: actions/checkout@v6
+            - uses: actions/setup-python@v6
+              # needed as long as we test Node.js 16 and npm <10.2.2 is used for Node.js 18/20
+              with:
+                  python-version: "3.11"
+            - name: Build on ${{ matrix.os }}
+              uses: ./.github/actions/prepare-env
+              with:
+                  node-version: ${{ matrix.node-version }}
+                  os: ${{ matrix.os }}
 
-  test:
-    if: github.repository == 'matter-js/matterjs-server' && contains(github.event.pull_request.labels.*.name, 'automated-npm-release')
-    needs: [ check-and-lint ]
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        node-version: [ 22.x, 24.x ]
-    steps:
-      - uses: actions/checkout@v6
-      - name: Prepare testing environment
-        uses: ./.github/actions/prepare-env
-        with:
-          node-version: ${{ matrix.node-version }}
-      - name: Execute tests
-        run: npm run test
+    test:
+        if: github.repository == 'matter-js/matterjs-server' && contains(github.event.pull_request.labels.*.name, 'automated-npm-release')
+        needs: [check-and-lint]
+        runs-on: ubuntu-latest
+        strategy:
+            matrix:
+                node-version: [22.x, 24.x, 26.x]
+        steps:
+            - uses: actions/checkout@v6
+            - name: Prepare testing environment
+              uses: ./.github/actions/prepare-env
+              with:
+                  node-version: ${{ matrix.node-version }}
+            - name: Execute tests
+              run: npm run test
 
-  auto-merge:
-    if: |
-      always() &&
-      github.event_name == 'pull_request' &&
-      github.repository == 'matter-js/matterjs-server' &&
-      contains(github.event.pull_request.labels.*.name, 'automated-npm-release')
-    needs: [ test, build-non-linux, check-and-lint ]
-    runs-on: ubuntu-latest
-    steps:
-      - id: automerge
-        name: automerge
-        uses: "pascalgn/automerge-action@v0.16.4"
-        env:
-          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
-          MERGE_LABELS: "automated-npm-release"
-          MERGE_FILTER_AUTHOR: "Automator77"
-          MERGE_FORKS: "false"
-          MERGE_DELETE_BRANCH: "false"
-          UPDATE_LABELS: "automated-npm-release"
-          MERGE_METHOD: "squash"
-          MERGE_RETRIES: "50"
-          MERGE_RETRY_SLEEP: "60000"
+    auto-merge:
+        if: |
+            always() &&
+            github.event_name == 'pull_request' &&
+            github.repository == 'matter-js/matterjs-server' &&
+            contains(github.event.pull_request.labels.*.name, 'automated-npm-release')
+        needs: [test, build-non-linux, check-and-lint]
+        runs-on: ubuntu-latest
+        steps:
+            - id: automerge
+              name: automerge
+              uses: "pascalgn/automerge-action@v0.16.4"
+              env:
+                  GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+                  MERGE_LABELS: "automated-npm-release"
+                  MERGE_FILTER_AUTHOR: "Automator77"
+                  MERGE_FORKS: "false"
+                  MERGE_DELETE_BRANCH: "false"
+                  UPDATE_LABELS: "automated-npm-release"
+                  MERGE_METHOD: "squash"
+                  MERGE_RETRIES: "50"
+                  MERGE_RETRY_SLEEP: "60000"
 
-      - name: Use Node.js 24.x
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24.x
+            - name: Use Node.js 24.x
+              uses: actions/setup-node@v6
+              with:
+                  node-version: 24.x
 
-      - name: Determine publish tasks
-        id: publish_tasks
-        env:
-          MERGE_RESULT: ${{ steps.automerge.outputs.mergeResult }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO_OWNER: ${{ github.repository_owner }}
-          REPO: ${{ github.repository }}
-        run: |
-          # Extract version from PR title: "[...RELEASE] x.y.z..." → "x.y.z..."
-          VERSION=$(echo "$PR_TITLE" | sed 's/.*] //')
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "Detected version: ${VERSION}"
+            - name: Determine publish tasks
+              id: publish_tasks
+              env:
+                  MERGE_RESULT: ${{ steps.automerge.outputs.mergeResult }}
+                  PR_NUMBER: ${{ github.event.pull_request.number }}
+                  PR_TITLE: ${{ github.event.pull_request.title }}
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  REPO_OWNER: ${{ github.repository_owner }}
+                  REPO: ${{ github.repository }}
+              run: |
+                  # Extract version from PR title: "[...RELEASE] x.y.z..." → "x.y.z..."
+                  VERSION=$(echo "$PR_TITLE" | sed 's/.*] //')
+                  echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+                  echo "Detected version: ${VERSION}"
 
-          if [[ "$MERGE_RESULT" == "merged" ]]; then
-            echo "PR just merged — all publish steps needed"
-            echo "pr_merged=true" >> "$GITHUB_OUTPUT"
-            echo "npm_needed=true" >> "$GITHUB_OUTPUT"
-            echo "pypi_needed=true" >> "$GITHUB_OUTPUT"
-            echo "pypi_ble_proxy_needed=true" >> "$GITHUB_OUTPUT"
-            echo "docker_needed=true" >> "$GITHUB_OUTPUT"
-            echo "release_needed=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
+                  if [[ "$MERGE_RESULT" == "merged" ]]; then
+                    echo "PR just merged — all publish steps needed"
+                    echo "pr_merged=true" >> "$GITHUB_OUTPUT"
+                    echo "npm_needed=true" >> "$GITHUB_OUTPUT"
+                    echo "pypi_needed=true" >> "$GITHUB_OUTPUT"
+                    echo "pypi_ble_proxy_needed=true" >> "$GITHUB_OUTPUT"
+                    echo "docker_needed=true" >> "$GITHUB_OUTPUT"
+                    echo "release_needed=true" >> "$GITHUB_OUTPUT"
+                    exit 0
+                  fi
 
-          if [[ "$MERGE_RESULT" != "skipped" ]]; then
-            echo "Unexpected merge result: ${MERGE_RESULT} — stopping"
-            echo "pr_merged=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
+                  if [[ "$MERGE_RESULT" != "skipped" ]]; then
+                    echo "Unexpected merge result: ${MERGE_RESULT} — stopping"
+                    echo "pr_merged=false" >> "$GITHUB_OUTPUT"
+                    exit 0
+                  fi
 
-          # mergeResult is 'skipped' — check if PR was already merged (re-run scenario)
-          PR_STATE=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json state --jq '.state')
-          echo "PR state: ${PR_STATE}"
+                  # mergeResult is 'skipped' — check if PR was already merged (re-run scenario)
+                  PR_STATE=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json state --jq '.state')
+                  echo "PR state: ${PR_STATE}"
 
-          if [[ "$PR_STATE" != "MERGED" ]]; then
-            echo "PR is not merged — stopping"
-            echo "pr_merged=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
+                  if [[ "$PR_STATE" != "MERGED" ]]; then
+                    echo "PR is not merged — stopping"
+                    echo "pr_merged=false" >> "$GITHUB_OUTPUT"
+                    exit 0
+                  fi
 
-          echo "PR was already merged — checking which publish targets are missing"
-          echo "pr_merged=true" >> "$GITHUB_OUTPUT"
+                  echo "PR was already merged — checking which publish targets are missing"
+                  echo "pr_merged=true" >> "$GITHUB_OUTPUT"
 
-          # Check npm
-          if npm view "matter-server@${VERSION}" version 2>/dev/null; then
-            echo "npm: already published"
-            echo "npm_needed=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "npm: NOT published — will publish"
-            echo "npm_needed=true" >> "$GITHUB_OUTPUT"
-          fi
+                  # Check npm
+                  if npm view "matter-server@${VERSION}" version 2>/dev/null; then
+                    echo "npm: already published"
+                    echo "npm_needed=false" >> "$GITHUB_OUTPUT"
+                  else
+                    echo "npm: NOT published — will publish"
+                    echo "npm_needed=true" >> "$GITHUB_OUTPUT"
+                  fi
 
-          # Check PyPI (needs semver → PEP 440 conversion)
-          PEP440=$(VERSION="$VERSION" python3 -c "
-          import re, os
-          v = os.environ['VERSION']
-          m = re.match(r'^(\d+\.\d+\.\d+)(?:-(.+))?$', v)
-          base, pre = m.group(1), m.group(2)
-          if pre:
-              pm = re.match(r'(alpha|beta|rc)(?:\.(\d+))?(?:-(\d+))?', pre)
-              t = {'alpha':'a','beta':'b','rc':'rc'}[pm.group(1)]
-              n = pm.group(2) or '0'
-              d = f'.dev{pm.group(3)}' if pm.group(3) else ''
-              print(f'{base}{t}{n}{d}')
-          else:
-              print(base)
-          ")
-          echo "PEP 440 version: ${PEP440}"
-          if curl -sf "https://pypi.org/pypi/matter-python-client/${PEP440}/json" >/dev/null 2>&1; then
-            echo "PyPI (matter-python-client): already published"
-            echo "pypi_needed=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "PyPI (matter-python-client): NOT published — will publish"
-            echo "pypi_needed=true" >> "$GITHUB_OUTPUT"
-          fi
+                  # Check PyPI (needs semver → PEP 440 conversion)
+                  PEP440=$(VERSION="$VERSION" python3 -c "
+                  import re, os
+                  v = os.environ['VERSION']
+                  m = re.match(r'^(\d+\.\d+\.\d+)(?:-(.+))?$', v)
+                  base, pre = m.group(1), m.group(2)
+                  if pre:
+                      pm = re.match(r'(alpha|beta|rc)(?:\.(\d+))?(?:-(\d+))?', pre)
+                      t = {'alpha':'a','beta':'b','rc':'rc'}[pm.group(1)]
+                      n = pm.group(2) or '0'
+                      d = f'.dev{pm.group(3)}' if pm.group(3) else ''
+                      print(f'{base}{t}{n}{d}')
+                  else:
+                      print(base)
+                  ")
+                  echo "PEP 440 version: ${PEP440}"
+                  if curl -sf "https://pypi.org/pypi/matter-python-client/${PEP440}/json" >/dev/null 2>&1; then
+                    echo "PyPI (matter-python-client): already published"
+                    echo "pypi_needed=false" >> "$GITHUB_OUTPUT"
+                  else
+                    echo "PyPI (matter-python-client): NOT published — will publish"
+                    echo "pypi_needed=true" >> "$GITHUB_OUTPUT"
+                  fi
 
-          if curl -sf "https://pypi.org/pypi/matter-ble-proxy/${PEP440}/json" >/dev/null 2>&1; then
-            echo "PyPI (matter-ble-proxy): already published"
-            echo "pypi_ble_proxy_needed=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "PyPI (matter-ble-proxy): NOT published — will publish"
-            echo "pypi_ble_proxy_needed=true" >> "$GITHUB_OUTPUT"
-          fi
+                  if curl -sf "https://pypi.org/pypi/matter-ble-proxy/${PEP440}/json" >/dev/null 2>&1; then
+                    echo "PyPI (matter-ble-proxy): already published"
+                    echo "pypi_ble_proxy_needed=false" >> "$GITHUB_OUTPUT"
+                  else
+                    echo "PyPI (matter-ble-proxy): NOT published — will publish"
+                    echo "pypi_ble_proxy_needed=true" >> "$GITHUB_OUTPUT"
+                  fi
 
-          # Check Docker (ghcr.io) via OCI registry API
-          DOCKER_TOKEN=$(curl -sf "https://ghcr.io/token?service=ghcr.io&scope=repository:${REPO_OWNER}/matterjs-server:pull" | jq -r '.token // empty' || true)
-          if [[ -n "$DOCKER_TOKEN" ]] && curl -sf -H "Authorization: Bearer $DOCKER_TOKEN" \
-            "https://ghcr.io/v2/${REPO_OWNER}/matterjs-server/manifests/${VERSION}" >/dev/null 2>&1; then
-            echo "Docker: already published"
-            echo "docker_needed=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "Docker: NOT published — will build and push"
-            echo "docker_needed=true" >> "$GITHUB_OUTPUT"
-          fi
+                  # Check Docker (ghcr.io) via OCI registry API
+                  DOCKER_TOKEN=$(curl -sf "https://ghcr.io/token?service=ghcr.io&scope=repository:${REPO_OWNER}/matterjs-server:pull" | jq -r '.token // empty' || true)
+                  if [[ -n "$DOCKER_TOKEN" ]] && curl -sf -H "Authorization: Bearer $DOCKER_TOKEN" \
+                    "https://ghcr.io/v2/${REPO_OWNER}/matterjs-server/manifests/${VERSION}" >/dev/null 2>&1; then
+                    echo "Docker: already published"
+                    echo "docker_needed=false" >> "$GITHUB_OUTPUT"
+                  else
+                    echo "Docker: NOT published — will build and push"
+                    echo "docker_needed=true" >> "$GITHUB_OUTPUT"
+                  fi
 
-          # Check GitHub Release
-          if gh release view "v${VERSION}" --repo "$REPO" >/dev/null 2>&1; then
-            echo "GitHub Release: already exists"
-            echo "release_needed=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "GitHub Release: NOT found — will create"
-            echo "release_needed=true" >> "$GITHUB_OUTPUT"
-          fi
+                  # Check GitHub Release
+                  if gh release view "v${VERSION}" --repo "$REPO" >/dev/null 2>&1; then
+                    echo "GitHub Release: already exists"
+                    echo "release_needed=false" >> "$GITHUB_OUTPUT"
+                  else
+                    echo "GitHub Release: NOT found — will create"
+                    echo "release_needed=true" >> "$GITHUB_OUTPUT"
+                  fi
 
-      - name: Checkout repository
-        if: steps.publish_tasks.outputs.pr_merged == 'true'
-        uses: actions/checkout@v6
+            - name: Checkout repository
+              if: steps.publish_tasks.outputs.pr_merged == 'true'
+              uses: actions/checkout@v6
 
-      - name: Install dependencies and build
-        if: steps.publish_tasks.outputs.pr_merged == 'true'
-        run: npm ci
+            - name: Install dependencies and build
+              if: steps.publish_tasks.outputs.pr_merged == 'true'
+              run: npm ci
 
-      - name: Determine version
-        if: steps.publish_tasks.outputs.pr_merged == 'true'
-        id: version
-        uses: actions/github-script@v9
-        with:
-          result-encoding: string
-          script: |
-            const fs = require('fs');
-            return fs.readFileSync(`${process.env.GITHUB_WORKSPACE}/version.txt`, "utf8");
+            - name: Determine version
+              if: steps.publish_tasks.outputs.pr_merged == 'true'
+              id: version
+              uses: actions/github-script@v9
+              with:
+                  result-encoding: string
+                  script: |
+                      const fs = require('fs');
+                      return fs.readFileSync(`${process.env.GITHUB_WORKSPACE}/version.txt`, "utf8");
 
-      - name: Apply new version to package files
-        if: steps.publish_tasks.outputs.pr_merged == 'true'
-        run: npm run version -- --apply
+            - name: Apply new version to package files
+              if: steps.publish_tasks.outputs.pr_merged == 'true'
+              run: npm run version -- --apply
 
-      - name: Publish npm
-        if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.npm_needed == 'true'
-        env:
-          PRERELEASE: ${{ contains(steps.version.outputs.result, '-') }}
-        run: |
-          npm install -g npm@latest
+            - name: Publish npm
+              if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.npm_needed == 'true'
+              env:
+                  PRERELEASE: ${{ contains(steps.version.outputs.result, '-') }}
+              run: |
+                  npm install -g npm@latest
 
-          if [[ "$PRERELEASE" == "true" ]]; then
-            npm publish --workspaces --tag dev
-          else
-            npm publish --workspaces
-          fi
+                  if [[ "$PRERELEASE" == "true" ]]; then
+                    npm publish --workspaces --tag dev
+                  else
+                    npm publish --workspaces
+                  fi
 
-      - name: Wait for npm registry
-        if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.npm_needed == 'true'
-        run: sleep 120
+            - name: Wait for npm registry
+              if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.npm_needed == 'true'
+              run: sleep 120
 
-      - name: Set up Python for PyPI publish
-        if: steps.publish_tasks.outputs.pr_merged == 'true' && (steps.publish_tasks.outputs.pypi_needed == 'true' || steps.publish_tasks.outputs.pypi_ble_proxy_needed == 'true')
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
+            - name: Set up Python for PyPI publish
+              if: steps.publish_tasks.outputs.pr_merged == 'true' && (steps.publish_tasks.outputs.pypi_needed == 'true' || steps.publish_tasks.outputs.pypi_ble_proxy_needed == 'true')
+              uses: actions/setup-python@v6
+              with:
+                  python-version: "3.12"
 
-      - name: Install Python build tools
-        if: steps.publish_tasks.outputs.pr_merged == 'true' && (steps.publish_tasks.outputs.pypi_needed == 'true' || steps.publish_tasks.outputs.pypi_ble_proxy_needed == 'true')
-        run: pip install build tomli tomli-w
+            - name: Install Python build tools
+              if: steps.publish_tasks.outputs.pr_merged == 'true' && (steps.publish_tasks.outputs.pypi_needed == 'true' || steps.publish_tasks.outputs.pypi_ble_proxy_needed == 'true')
+              run: pip install build tomli tomli-w
 
-      - name: Convert version to PEP 440 and set in pyproject.toml files
-        if: steps.publish_tasks.outputs.pr_merged == 'true' && (steps.publish_tasks.outputs.pypi_needed == 'true' || steps.publish_tasks.outputs.pypi_ble_proxy_needed == 'true')
-        id: python_version
-        shell: python
-        env:
-          SEMVER_VERSION: ${{ steps.version.outputs.result }}
-          PYPI_NEEDED: ${{ steps.publish_tasks.outputs.pypi_needed }}
-          PYPI_BLE_PROXY_NEEDED: ${{ steps.publish_tasks.outputs.pypi_ble_proxy_needed }}
-        run: |
-          import re, os, tomli, tomli_w
+            - name: Convert version to PEP 440 and set in pyproject.toml files
+              if: steps.publish_tasks.outputs.pr_merged == 'true' && (steps.publish_tasks.outputs.pypi_needed == 'true' || steps.publish_tasks.outputs.pypi_ble_proxy_needed == 'true')
+              id: python_version
+              shell: python
+              env:
+                  SEMVER_VERSION: ${{ steps.version.outputs.result }}
+                  PYPI_NEEDED: ${{ steps.publish_tasks.outputs.pypi_needed }}
+                  PYPI_BLE_PROXY_NEEDED: ${{ steps.publish_tasks.outputs.pypi_ble_proxy_needed }}
+              run: |
+                  import re, os, tomli, tomli_w
 
-          version = os.environ["SEMVER_VERSION"]
+                  version = os.environ["SEMVER_VERSION"]
 
-          # Convert semver to PEP 440
-          match = re.match(r'^(\d+\.\d+\.\d+)(?:-(.+))?$', version)
-          if not match:
-              raise SystemExit(
-                  f"Invalid SEMVER_VERSION format: {version!r}. "
-                  "Expected 'MAJOR.MINOR.PATCH' or 'MAJOR.MINOR.PATCH-prerelease'."
-              )
-          base = match.group(1)
-          prerelease = match.group(2)
+                  # Convert semver to PEP 440
+                  match = re.match(r'^(\d+\.\d+\.\d+)(?:-(.+))?$', version)
+                  if not match:
+                      raise SystemExit(
+                          f"Invalid SEMVER_VERSION format: {version!r}. "
+                          "Expected 'MAJOR.MINOR.PATCH' or 'MAJOR.MINOR.PATCH-prerelease'."
+                      )
+                  base = match.group(1)
+                  prerelease = match.group(2)
 
-          if prerelease:
-              # Expected: alpha.N-YYYYMMDD[-sha] or beta.N-YYYYMMDD[-sha] or rc.N-...
-              pre_match = re.match(r'^(alpha|beta|rc)(?:\.(\d+))?(?:-(\d+))?', prerelease)
-              if not pre_match:
-                  raise SystemExit(
-                      f"Invalid prerelease format in SEMVER_VERSION: {version!r}. "
-                      "Expected 'alpha[.N][-DATE]', 'beta[.N][-DATE]', or 'rc[.N][-DATE]'."
-                  )
-              pre_type = pre_match.group(1)
-              pre_num = pre_match.group(2) or "0"
-              date_str = pre_match.group(3)
-              pep440_pre = {'alpha': 'a', 'beta': 'b', 'rc': 'rc'}[pre_type]
-              pep440_version = f"{base}{pep440_pre}{pre_num}"
-              if date_str:
-                  pep440_version = f"{pep440_version}.dev{date_str}"
-          else:
-              pep440_version = base
+                  if prerelease:
+                      # Expected: alpha.N-YYYYMMDD[-sha] or beta.N-YYYYMMDD[-sha] or rc.N-...
+                      pre_match = re.match(r'^(alpha|beta|rc)(?:\.(\d+))?(?:-(\d+))?', prerelease)
+                      if not pre_match:
+                          raise SystemExit(
+                              f"Invalid prerelease format in SEMVER_VERSION: {version!r}. "
+                              "Expected 'alpha[.N][-DATE]', 'beta[.N][-DATE]', or 'rc[.N][-DATE]'."
+                          )
+                      pre_type = pre_match.group(1)
+                      pre_num = pre_match.group(2) or "0"
+                      date_str = pre_match.group(3)
+                      pep440_pre = {'alpha': 'a', 'beta': 'b', 'rc': 'rc'}[pre_type]
+                      pep440_version = f"{base}{pep440_pre}{pre_num}"
+                      if date_str:
+                          pep440_version = f"{pep440_version}.dev{date_str}"
+                  else:
+                      pep440_version = base
 
-          print(f"Semver: {version} -> PEP 440: {pep440_version}")
+                  print(f"Semver: {version} -> PEP 440: {pep440_version}")
 
-          def _patch(path: str) -> None:
-              with open(path, "rb") as f:
-                  pyproject = tomli.load(f)
-              pyproject["project"]["version"] = pep440_version
-              with open(path, "wb") as f:
-                  tomli_w.dump(pyproject, f)
+                  def _patch(path: str) -> None:
+                      with open(path, "rb") as f:
+                          pyproject = tomli.load(f)
+                      pyproject["project"]["version"] = pep440_version
+                      with open(path, "wb") as f:
+                          tomli_w.dump(pyproject, f)
 
-          if os.environ.get("PYPI_NEEDED") == "true":
-              _patch("python_client/pyproject.toml")
-          if os.environ.get("PYPI_BLE_PROXY_NEEDED") == "true":
-              _patch("python_ble_proxy/pyproject.toml")
+                  if os.environ.get("PYPI_NEEDED") == "true":
+                      _patch("python_client/pyproject.toml")
+                  if os.environ.get("PYPI_BLE_PROXY_NEEDED") == "true":
+                      _patch("python_ble_proxy/pyproject.toml")
 
-          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-              f.write(f"pep440_version={pep440_version}\n")
+                  with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+                      f.write(f"pep440_version={pep440_version}\n")
 
-      - name: Build Python client package
-        if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.pypi_needed == 'true'
-        run: python3 -m build python_client/
+            - name: Build Python client package
+              if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.pypi_needed == 'true'
+              run: python3 -m build python_client/
 
-      - name: Publish Python client to PyPI
-        if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.pypi_needed == 'true'
-        uses: pypa/gh-action-pypi-publish@v1.14.0
-        with:
-          packages-dir: python_client/dist/
+            - name: Publish Python client to PyPI
+              if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.pypi_needed == 'true'
+              uses: pypa/gh-action-pypi-publish@v1.14.0
+              with:
+                  packages-dir: python_client/dist/
 
-      - name: Build Python BLE proxy package
-        if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.pypi_ble_proxy_needed == 'true'
-        run: python3 -m build python_ble_proxy/
+            - name: Build Python BLE proxy package
+              if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.pypi_ble_proxy_needed == 'true'
+              run: python3 -m build python_ble_proxy/
 
-      - name: Publish Python BLE proxy to PyPI
-        if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.pypi_ble_proxy_needed == 'true'
-        uses: pypa/gh-action-pypi-publish@v1.14.0
-        with:
-          packages-dir: python_ble_proxy/dist/
+            - name: Publish Python BLE proxy to PyPI
+              if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.pypi_ble_proxy_needed == 'true'
+              uses: pypa/gh-action-pypi-publish@v1.14.0
+              with:
+                  packages-dir: python_ble_proxy/dist/
 
-      - name: Log in to GitHub Container Registry
-        if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.docker_needed == 'true'
-        uses: docker/login-action@v4.2.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.repository_owner }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+            - name: Log in to GitHub Container Registry
+              if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.docker_needed == 'true'
+              uses: docker/login-action@v4.2.0
+              with:
+                  registry: ghcr.io
+                  username: ${{ github.repository_owner }}
+                  password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up Docker Buildx
-        if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.docker_needed == 'true'
-        uses: docker/setup-buildx-action@v4.1.0
+            - name: Set up Docker Buildx
+              if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.docker_needed == 'true'
+              uses: docker/setup-buildx-action@v4.1.0
 
-      - name: Version number for Docker tags
-        if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.docker_needed == 'true'
-        id: docker_tags
-        shell: bash
-        run: |
-          version="${{ steps.version.outputs.result }}"
-          echo "patch=${version}" >> $GITHUB_OUTPUT
-          echo "minor=${version%.*}" >> $GITHUB_OUTPUT
-          echo "major=${version%.*.*}" >> $GITHUB_OUTPUT
+            - name: Version number for Docker tags
+              if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.docker_needed == 'true'
+              id: docker_tags
+              shell: bash
+              run: |
+                  version="${{ steps.version.outputs.result }}"
+                  echo "patch=${version}" >> $GITHUB_OUTPUT
+                  echo "minor=${version%.*}" >> $GITHUB_OUTPUT
+                  echo "major=${version%.*.*}" >> $GITHUB_OUTPUT
 
-      - name: Build and push Docker image (release)
-        if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.docker_needed == 'true' && !contains(steps.version.outputs.result, '-')
-        uses: docker/build-push-action@v7.2.0
-        with:
-          context: ./docker/matterjs-server
-          platforms: linux/amd64,linux/arm64
-          file: ./docker/matterjs-server/Dockerfile
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/matterjs-server:${{ steps.docker_tags.outputs.patch }}
-            ghcr.io/${{ github.repository_owner }}/matterjs-server:${{ steps.docker_tags.outputs.minor }}
-            ghcr.io/${{ github.repository_owner }}/matterjs-server:${{ steps.docker_tags.outputs.major }}
-            ghcr.io/${{ github.repository_owner }}/matterjs-server:stable
-            ghcr.io/${{ github.repository_owner }}/matterjs-server:latest
-            ghcr.io/${{ github.repository_owner }}/matterjs-server:dev
-          push: true
-          build-args: |
-            MATTERJS_SERVER_VERSION=${{ steps.version.outputs.result }}
+            - name: Build and push Docker image (release)
+              if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.docker_needed == 'true' && !contains(steps.version.outputs.result, '-')
+              uses: docker/build-push-action@v7.2.0
+              with:
+                  context: ./docker/matterjs-server
+                  platforms: linux/amd64,linux/arm64
+                  file: ./docker/matterjs-server/Dockerfile
+                  tags: |
+                      ghcr.io/${{ github.repository_owner }}/matterjs-server:${{ steps.docker_tags.outputs.patch }}
+                      ghcr.io/${{ github.repository_owner }}/matterjs-server:${{ steps.docker_tags.outputs.minor }}
+                      ghcr.io/${{ github.repository_owner }}/matterjs-server:${{ steps.docker_tags.outputs.major }}
+                      ghcr.io/${{ github.repository_owner }}/matterjs-server:stable
+                      ghcr.io/${{ github.repository_owner }}/matterjs-server:latest
+                      ghcr.io/${{ github.repository_owner }}/matterjs-server:dev
+                  push: true
+                  build-args: |
+                      MATTERJS_SERVER_VERSION=${{ steps.version.outputs.result }}
 
-      - name: Build and push Docker image (pre-release)
-        if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.docker_needed == 'true' && contains(steps.version.outputs.result, '-')
-        uses: docker/build-push-action@v7.2.0
-        with:
-          context: ./docker/matterjs-server
-          platforms: linux/amd64,linux/arm64
-          file: ./docker/matterjs-server/Dockerfile
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/matterjs-server:${{ steps.docker_tags.outputs.patch }}
-            ghcr.io/${{ github.repository_owner }}/matterjs-server:dev
-          push: true
-          build-args: |
-            MATTERJS_SERVER_VERSION=${{ steps.version.outputs.result }}
+            - name: Build and push Docker image (pre-release)
+              if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.docker_needed == 'true' && contains(steps.version.outputs.result, '-')
+              uses: docker/build-push-action@v7.2.0
+              with:
+                  context: ./docker/matterjs-server
+                  platforms: linux/amd64,linux/arm64
+                  file: ./docker/matterjs-server/Dockerfile
+                  tags: |
+                      ghcr.io/${{ github.repository_owner }}/matterjs-server:${{ steps.docker_tags.outputs.patch }}
+                      ghcr.io/${{ github.repository_owner }}/matterjs-server:dev
+                  push: true
+                  build-args: |
+                      MATTERJS_SERVER_VERSION=${{ steps.version.outputs.result }}
 
-      - name: Create Github Release
-        if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.release_needed == 'true'
-        uses: ncipollo/release-action@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag: v${{ steps.version.outputs.result }}
-          name: Release v${{ steps.version.outputs.result }}
-          draft: false
-          prerelease: ${{ contains(steps.version.outputs.result, '-') }}
-          body: ${{ contains(steps.version.outputs.result, '-') && 'Nightly release' || format('Official release, check [CHANGELOG.md]({0}) for details', 'https://github.com/matter-js/matterjs-server/blob/main/CHANGELOG.md') }}
+            - name: Create Github Release
+              if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.release_needed == 'true'
+              uses: ncipollo/release-action@v1
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              with:
+                  tag: v${{ steps.version.outputs.result }}
+                  name: Release v${{ steps.version.outputs.result }}
+                  draft: false
+                  prerelease: ${{ contains(steps.version.outputs.result, '-') }}
+                  body: ${{ contains(steps.version.outputs.result, '-') && 'Nightly release' || format('Official release, check [CHANGELOG.md]({0}) for details', 'https://github.com/matter-js/matterjs-server/blob/main/CHANGELOG.md') }}
