@@ -8,7 +8,7 @@ import "@material/web/button/text-button";
 import "@material/web/dialog/dialog";
 import "@material/web/textfield/outlined-text-field";
 import type { MdDialog } from "@material/web/dialog/dialog.js";
-import { MatterClient, MatterNode } from "@matter-server/ws-client";
+import type { MatterClient, MatterNode } from "@matter-server/ws-client";
 import { html, LitElement } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { MAX_NODE_LABEL_LENGTH, writeNodeLabel } from "../../../util/node-label.js";
