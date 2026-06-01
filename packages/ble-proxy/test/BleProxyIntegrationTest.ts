@@ -315,5 +315,219 @@ describe("BLE Proxy Integration", function () {
             const disconnectCmd = await disconnectPromise;
             expect((disconnectCmd.args as { connection_handle: number }).connection_handle).to.equal(7);
         });
+
+        describe("connect concurrency gate", () => {
+            it("serializes connects — only one Connect is in flight at a time", async () => {
+                const proxyBle = new ProxyBle(handler);
+                const deviceA = new MockBleDevice({ discriminator: 100, vendorId: 0xfff1, productId: 0x8000 });
+                const deviceB = new MockBleDevice({ discriminator: 101, vendorId: 0xfff1, productId: 0x8000 });
+
+                testClient.onCommand(BleProxyCommand.StartScan, async () => {
+                    setTimeout(() => {
+                        testClient.sendEvent("device_discovered", deviceA.discoveredEventData);
+                        testClient.sendEvent("device_discovered", deviceB.discoveredEventData);
+                    }, 20);
+                });
+                await proxyBle.scanner.findCommissionableDevicesContinuously({}, () => {}, Seconds(1));
+
+                wireBtpFlow(deviceA, 1);
+
+                const central = proxyBle.centralInterface as ProxyBleCentralInterface;
+                central.onData(() => {});
+
+                const channelA = (await central.openChannel({
+                    type: "ble",
+                    peripheralAddress: deviceA.address,
+                })) as ProxyBleChannel;
+
+                let bResolved = false;
+                const openB = central.openChannel({ type: "ble", peripheralAddress: deviceB.address }).then(ch => {
+                    bResolved = true;
+                    return ch as ProxyBleChannel;
+                });
+
+                await new Promise(r => setTimeout(r, 100));
+                const connectCount = testClient.receivedCommands.filter(c => c.command === "connect").length;
+                expect(connectCount).to.equal(1);
+                expect(bResolved).to.be.false;
+
+                await channelA.close();
+                const channelB = await openB;
+                expect(channelB.connected).to.be.true;
+                const connectCountAfter = testClient.receivedCommands.filter(c => c.command === "connect").length;
+                expect(connectCountAfter).to.equal(2);
+                await channelB.close();
+            });
+
+            it("rejects a queued connect when the interface is closed", async () => {
+                const proxyBle = new ProxyBle(handler);
+                const deviceA = new MockBleDevice({ discriminator: 110, vendorId: 0xfff1, productId: 0x8000 });
+                const deviceB = new MockBleDevice({ discriminator: 111, vendorId: 0xfff1, productId: 0x8000 });
+
+                testClient.onCommand(BleProxyCommand.StartScan, async () => {
+                    setTimeout(() => {
+                        testClient.sendEvent("device_discovered", deviceA.discoveredEventData);
+                        testClient.sendEvent("device_discovered", deviceB.discoveredEventData);
+                    }, 20);
+                });
+                await proxyBle.scanner.findCommissionableDevicesContinuously({}, () => {}, Seconds(1));
+
+                wireBtpFlow(deviceA, 1);
+                const central = proxyBle.centralInterface as ProxyBleCentralInterface;
+                central.onData(() => {});
+
+                const channelA = (await central.openChannel({
+                    type: "ble",
+                    peripheralAddress: deviceA.address,
+                })) as ProxyBleChannel;
+
+                const openB = central.openChannel({ type: "ble", peripheralAddress: deviceB.address });
+                await new Promise(r => setTimeout(r, 50));
+                await central.close();
+
+                try {
+                    await openB;
+                    expect.fail("queued openChannel should reject after interface close");
+                } catch (err) {
+                    expect((err as Error).message).to.contain("aborted");
+                }
+                await channelA.close();
+            });
+
+            it("abortPendingConnects rejects queued waiters but leaves the gate usable", async () => {
+                const proxyBle = new ProxyBle(handler);
+                const deviceA = new MockBleDevice({ discriminator: 120, vendorId: 0xfff1, productId: 0x8000 });
+                const deviceB = new MockBleDevice({ discriminator: 121, vendorId: 0xfff1, productId: 0x8000 });
+
+                testClient.onCommand(BleProxyCommand.StartScan, async () => {
+                    setTimeout(() => {
+                        testClient.sendEvent("device_discovered", deviceA.discoveredEventData);
+                        testClient.sendEvent("device_discovered", deviceB.discoveredEventData);
+                    }, 20);
+                });
+                await proxyBle.scanner.findCommissionableDevicesContinuously({}, () => {}, Seconds(1));
+
+                wireBtpFlow(deviceA, 1);
+                const central = proxyBle.centralInterface as ProxyBleCentralInterface;
+                central.onData(() => {});
+
+                const channelA = (await central.openChannel({
+                    type: "ble",
+                    peripheralAddress: deviceA.address,
+                })) as ProxyBleChannel;
+
+                const openB = central.openChannel({ type: "ble", peripheralAddress: deviceB.address });
+                await new Promise(r => setTimeout(r, 50));
+                central.abortPendingConnects();
+
+                try {
+                    await openB;
+                    expect.fail("queued openChannel should reject on abortPendingConnects");
+                } catch (err) {
+                    expect((err as Error).message).to.contain("aborted");
+                }
+
+                await channelA.close();
+                const channelB = (await central.openChannel({
+                    type: "ble",
+                    peripheralAddress: deviceB.address,
+                })) as ProxyBleChannel;
+                expect(channelB.connected).to.be.true;
+                await channelB.close();
+            });
+
+            it("surfaces a clear error when the proxy backend is out of connection slots", async () => {
+                const proxyBle = new ProxyBle(handler);
+                const deviceA = new MockBleDevice({ discriminator: 130, vendorId: 0xfff1, productId: 0x8000 });
+
+                testClient.onCommand(BleProxyCommand.StartScan, async () => {
+                    setTimeout(() => testClient.sendEvent("device_discovered", deviceA.discoveredEventData), 20);
+                });
+                await proxyBle.scanner.findCommissionableDevicesContinuously({}, () => {}, Seconds(1));
+
+                testClient.onCommand(BleProxyCommand.Connect, async () => {
+                    throw new TestProxyClientError(
+                        "out_of_connection_slots",
+                        "No backend with an available connection slot",
+                    );
+                });
+
+                const central = proxyBle.centralInterface as ProxyBleCentralInterface;
+                central.onData(() => {});
+
+                try {
+                    await central.openChannel({ type: "ble", peripheralAddress: deviceA.address });
+                    expect.fail("Should have thrown");
+                } catch (err) {
+                    expect((err as Error).message).to.contain("out of connection slots");
+                }
+            });
+
+            it("tears down an already-open channel on abortPendingConnects (orphan release)", async () => {
+                const proxyBle = new ProxyBle(handler);
+                const deviceA = new MockBleDevice({ discriminator: 140, vendorId: 0xfff1, productId: 0x8000 });
+
+                testClient.onCommand(BleProxyCommand.StartScan, async () => {
+                    setTimeout(() => testClient.sendEvent("device_discovered", deviceA.discoveredEventData), 20);
+                });
+                await proxyBle.scanner.findCommissionableDevicesContinuously({}, () => {}, Seconds(1));
+
+                wireBtpFlow(deviceA, 1);
+                const central = proxyBle.centralInterface as ProxyBleCentralInterface;
+                central.onData(() => {});
+
+                const channelA = (await central.openChannel({
+                    type: "ble",
+                    peripheralAddress: deviceA.address,
+                })) as ProxyBleChannel;
+                expect(channelA.connected).to.be.true;
+
+                central.abortPendingConnects();
+                await new Promise(r => setTimeout(r, 20));
+
+                // Orphan torn down, slot freed: a fresh connect succeeds.
+                expect(channelA.connected).to.be.false;
+                const channelB = (await central.openChannel({
+                    type: "ble",
+                    peripheralAddress: deviceA.address,
+                })) as ProxyBleChannel;
+                expect(channelB.connected).to.be.true;
+                await channelB.close();
+            });
+
+            it("tears down a connect that finishes after abortPendingConnects (no orphaned slot)", async () => {
+                const proxyBle = new ProxyBle(handler);
+                const deviceA = new MockBleDevice({ discriminator: 150, vendorId: 0xfff1, productId: 0x8000 });
+
+                testClient.onCommand(BleProxyCommand.StartScan, async () => {
+                    setTimeout(() => testClient.sendEvent("device_discovered", deviceA.discoveredEventData), 20);
+                });
+                await proxyBle.scanner.findCommissionableDevicesContinuously({}, () => {}, Seconds(1));
+
+                wireBtpFlow(deviceA, 1);
+                const central = proxyBle.centralInterface as ProxyBleCentralInterface;
+                central.onData(() => {});
+
+                const open = central.openChannel({ type: "ble", peripheralAddress: deviceA.address });
+                // Abort while the connect is in flight (before its handshake completes).
+                await new Promise(r => setTimeout(r, 5));
+                central.abortPendingConnects();
+
+                try {
+                    await open;
+                    expect.fail("in-flight connect should have torn down");
+                } catch (err) {
+                    expect((err as Error).message).to.contain("aborted");
+                }
+
+                // Slot is free: a subsequent connect works.
+                const channelB = (await central.openChannel({
+                    type: "ble",
+                    peripheralAddress: deviceA.address,
+                })) as ProxyBleChannel;
+                expect(channelB.connected).to.be.true;
+                await channelB.close();
+            });
+        });
     });
 });

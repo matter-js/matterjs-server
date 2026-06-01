@@ -5,6 +5,7 @@
  */
 
 import {
+    Abort,
     type Bytes,
     type Channel,
     ChannelType,
@@ -12,13 +13,22 @@ import {
     InternalError,
     Logger,
     NetworkError,
+    Seconds,
+    Semaphore,
     ServerAddress,
     Time,
     type Transport,
+    type WorkSlot,
 } from "@matter/main";
 import { BleChannel, BleError, BtpCodec, BtpFlowError, BtpSessionHandler, MatterBle } from "@matter/main/protocol";
 import type { BleProxyHandler } from "./BleProxyHandler.js";
-import { BinaryFrameOpcode, BleProxyCommand, BleProxyEvent } from "./BleProxyProtocol.js";
+import {
+    BinaryFrameOpcode,
+    BleProxyCommand,
+    BleProxyError,
+    BleProxyEvent,
+    isOutOfConnectionSlotsError,
+} from "./BleProxyProtocol.js";
 import type { ProxyBleScanner } from "./ProxyBleScanner.js";
 
 const logger = Logger.get("ProxyBleChannel");
@@ -27,6 +37,9 @@ const logger = Logger.get("ProxyBleChannel");
 const BTP_HANDSHAKE_RESPONSE_OPCODE_1 = 0x65;
 const BTP_HANDSHAKE_RESPONSE_OPCODE_2 = 0x6c;
 const BTP_HANDSHAKE_RESPONSE_LENGTH = 6;
+
+/** Safety-net bound on waiting for a connection slot. */
+const MAX_QUEUE_WAIT = Seconds(20);
 
 /**
  * Normalize any UUID form sent by a proxy client to the canonical dashed-uppercase form used by
@@ -60,13 +73,19 @@ export class ProxyBleCentralInterface implements Transport {
     readonly #handler: BleProxyHandler;
     #onMatterMessageListener: ((socket: Channel<Bytes>, data: Bytes) => void) | undefined;
     #closed = false;
+    readonly #connectSemaphore = new Semaphore("ble-proxy-connect", 1);
+    readonly #closeAbort = new Abort();
+    /** Channels the gate has handed out and that are still open. */
+    readonly #openChannels = new Set<ProxyBleChannel>();
+    /** Bumped by abortPendingConnects/close so a connect that completes afterwards tears itself down. */
+    #abortGeneration = 0;
 
     constructor(bleScanner: ProxyBleScanner, handler: BleProxyHandler) {
         this.#bleScanner = bleScanner;
         this.#handler = handler;
     }
 
-    async openChannel(address: ServerAddress): Promise<Channel<Bytes>> {
+    async openChannel(address: ServerAddress, options?: Transport.OpenChannelOptions): Promise<Channel<Bytes>> {
         if (this.#closed) {
             throw new NetworkError("Network interface is closed");
         }
@@ -84,12 +103,46 @@ export class ProxyBleCentralInterface implements Transport {
             throw new BleError("BLE proxy client not connected");
         }
 
+        // Serialize BLE connects: a single physical device advertises rotating MAC
+        // addresses, and matter.js fires one connect per address. Without this gate the
+        // proxy backend's connection slots are exhausted and commissioning fails.
+        const waitAbort = new Abort({ abort: [this.#closeAbort.signal, options?.abort], timeout: MAX_QUEUE_WAIT });
+        let slot: WorkSlot;
+        try {
+            slot = await this.#connectSemaphore.obtainSlot(waitAbort.signal);
+        } catch {
+            throw new BleError(`BLE connect to ${peripheralAddress} aborted before a connection slot was available`);
+        } finally {
+            waitAbort.close();
+        }
+
+        const abortGenAtStart = this.#abortGeneration;
+        let slotReleased = false;
+        const releaseSlot = () => {
+            if (!slotReleased) {
+                slotReleased = true;
+                slot.close();
+            }
+        };
+
         logger.debug(`Connecting to peripheral ${peripheralAddress} via proxy`);
 
         // 1. Connect
-        const { connection_handle, mtu: peripheralMtu } = await this.#handler.sendCommand(BleProxyCommand.Connect, {
-            address: peripheralAddress,
-        });
+        let connection_handle: number;
+        let peripheralMtu: number | undefined;
+        try {
+            ({ connection_handle, mtu: peripheralMtu } = await this.#handler.sendCommand(BleProxyCommand.Connect, {
+                address: peripheralAddress,
+            }));
+        } catch (error) {
+            releaseSlot();
+            if (error instanceof BleProxyError && isOutOfConnectionSlotsError(error.code, error.message)) {
+                throw new BleError(
+                    `BLE proxy backend is out of connection slots for ${peripheralAddress} — increase connection_slots on the proxy or add more proxies`,
+                );
+            }
+            throw error;
+        }
 
         let mtu = peripheralMtu ?? 0;
         if (mtu > MatterBle.MAXIMUM_BTP_MTU) {
@@ -269,8 +322,25 @@ export class ProxyBleCentralInterface implements Transport {
                 this.#handler.eventReceived.off(eventObserver);
             };
 
-            const proxyChannel = new ProxyBleChannel(peripheralAddress, btpSession, cleanupObservers);
+            const proxyChannel = new ProxyBleChannel(peripheralAddress, btpSession, cleanupObservers, releaseSlot);
             channelRef.channel = proxyChannel;
+
+            // If the gate was aborted (commissioning ended) or the interface closed while we were
+            // connecting, matter.js has already abandoned this attempt via its own abort. Returning
+            // the channel would orphan it — nobody closes it, so it would hold the single connection
+            // slot forever. Tear it down instead.
+            if (this.#closed || this.#abortGeneration !== abortGenAtStart) {
+                await proxyChannel.close();
+                try {
+                    await this.#handler.sendCommand(BleProxyCommand.Disconnect, { connection_handle });
+                } catch (cleanupError) {
+                    logger.debug(`Peripheral ${peripheralAddress}: Error during orphan cleanup`, cleanupError);
+                }
+                throw new BleError(`BLE connect to ${peripheralAddress} aborted before completion`);
+            }
+
+            this.#openChannels.add(proxyChannel);
+            proxyChannel.onClose(() => this.#openChannels.delete(proxyChannel));
             return proxyChannel;
         } catch (error) {
             // Clean up on failure — best-effort tear-down of the peripheral on the proxy side
@@ -279,6 +349,7 @@ export class ProxyBleCentralInterface implements Transport {
             } catch (cleanupError) {
                 logger.debug(`Peripheral ${peripheralAddress}: Error during connect-failure cleanup`, cleanupError);
             }
+            releaseSlot();
             throw error;
         }
     }
@@ -290,8 +361,27 @@ export class ProxyBleCentralInterface implements Transport {
         };
     }
 
+    /**
+     * Release the connect gate when a commissioning attempt ends. BLE is only used during
+     * commissioning, so afterwards any queued connect is stale and any still-open channel is an
+     * orphan holding the connection slot. Rejects queued waiters, tears down open channels, and
+     * bumps the generation so an in-flight connect that completes later tears itself down too.
+     */
+    abortPendingConnects(): void {
+        this.#abortGeneration++;
+        this.#connectSemaphore.clear();
+        for (const channel of [...this.#openChannels]) {
+            channel.close().catch(error => logger.debug(`Error closing channel during connect abort`, error));
+        }
+    }
+
     async close() {
         this.#closed = true;
+        this.#closeAbort.abort();
+        this.#connectSemaphore.close();
+        for (const channel of [...this.#openChannels]) {
+            await channel.close().catch(error => logger.debug(`Error closing channel during interface close`, error));
+        }
     }
 
     supports(type: ChannelType, _address?: string) {
@@ -308,17 +398,24 @@ export class ProxyBleChannel extends BleChannel<Bytes> {
     readonly #peripheralAddress: string;
     readonly #btpSession: BtpSessionHandler;
     readonly #cleanupObservers: () => void;
+    readonly #releaseSlot: () => void;
     readonly #onBtpSessionClosed: () => void;
     readonly #closeListeners = new Set<() => void>();
     #iteratorQueue = new Array<Bytes>();
     #iteratorWaiter?: (value: IteratorResult<Bytes>) => void;
     #iteratorDone = false;
 
-    constructor(peripheralAddress: string, btpSession: BtpSessionHandler, cleanupObservers: () => void) {
+    constructor(
+        peripheralAddress: string,
+        btpSession: BtpSessionHandler,
+        cleanupObservers: () => void,
+        releaseSlot: () => void,
+    ) {
         super();
         this.#peripheralAddress = peripheralAddress;
         this.#btpSession = btpSession;
         this.#cleanupObservers = cleanupObservers;
+        this.#releaseSlot = releaseSlot;
         this.#onBtpSessionClosed = () => this.emitClosed();
         btpSession.closed.on(this.#onBtpSessionClosed);
     }
@@ -391,6 +488,7 @@ export class ProxyBleChannel extends BleChannel<Bytes> {
 
     async close() {
         this.#connected = false;
+        this.#releaseSlot();
         this.#cleanupObservers();
         this.#terminateIterator();
         for (const listener of this.#closeListeners) {
