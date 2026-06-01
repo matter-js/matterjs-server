@@ -321,7 +321,7 @@ export async function loadLegacyData(
                 logger.warn(`Error parsing server file ${fileLabel}: ${err.message}`);
                 // Continue to try backup
             } else {
-                logger.warn(`Error loading server file ${fileLabel}: ${err}`);
+                logger.warn(`Error loading server file ${fileLabel}:`, err);
                 // Continue to try backup
             }
         }
