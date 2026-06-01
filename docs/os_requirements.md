@@ -130,3 +130,5 @@ Diagnostic sentinel: a per-instance firewall chain drop counter climbing in step
 ## Bluetooth Low Energy requirements
 
 When working without Docker, please see the BLE requirements for your platform in the ["noble" relevant BLE documentation](https://github.com/matter-js/matter.js/tree/main/packages/nodejs-ble#prerequisites-and-limitations).
+
+On Linux the Bluetooth backend can talk to the host adapter either through a raw HCI socket (the default, `NOBLE_BINDINGS=hci`, which needs elevated privileges) or through the BlueZ daemon over D-Bus (`NOBLE_BINDINGS=dbus`). The D-Bus backend avoids raw-socket privileges and is the recommended option for containerized deployments — see [Device discovery via host BLE](docker.md#device-discovery-via-host-ble). It requires a running BlueZ daemon and the `dbus-next` package, which ships as an optional dependency of the server.

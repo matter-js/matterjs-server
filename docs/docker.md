@@ -251,15 +251,34 @@ docker compose logs -f
 
 ### Device discovery via host BLE
 
-For security reasons, by default the matter.js server is run as an unprivileged user in Docker. Unfortunately, up to now we didn't find a way to grant access to a specific HCI device to unprivileged users.
+For security reasons, by default the matter.js server is run as an unprivileged user in Docker. The Bluetooth backend ([noble](https://github.com/matter-js/matter.js/tree/main/packages/nodejs-ble)) talks to the host adapter in one of two ways, selectable via the `NOBLE_BINDINGS` environment variable:
 
-If you need to discover Matter devices via the hosts BLE, you can use this workaround:
+#### D-Bus / BlueZ backend (recommended)
+
+Set `NOBLE_BINDINGS=dbus` to make noble talk to the host's BlueZ daemon over D-Bus instead of opening a raw HCI socket. This keeps the container unprivileged: the only host resource it needs is the system D-Bus socket, mounted read-only.
+
+```bash
+docker run -d \
+  --name matterjs-server \
+  --restart=unless-stopped \
+  -v $(pwd)/data:/data \
+  -v /run/dbus:/run/dbus:ro \
+  --network=host \
+  -e NOBLE_BINDINGS=dbus \
+  ghcr.io/matter-js/matterjs-server:stable
+```
+
+The `dbus-next` package required by this backend ships as an optional dependency of the server image, so no extra install step is required. Host requirements: BlueZ running on the host (`bluetoothd`) and the adapter powered (`bluetoothctl power on`). Select a specific adapter with `BLUETOOTH_ADAPTER` if more than one is present.
+
+#### Raw HCI socket backend
+
+The default (`NOBLE_BINDINGS=hci`) opens the HCI socket directly, which requires elevated privileges the unprivileged container user does not have. If you must use it, this workaround grants the access:
 
 1. Stop the docker container
 2. Use `chown -R 0:0 /path-to-data-volume`
 3. Run docker with the root user `docker run --user=0:0 …` (for compose: `user: 0:0`)
 
-However, be aware this workaround effectively disables container isolation. For this reason, using other means of device commissioning (e.g. via the Home Assistant app) are preferred to applying this workaround.
+However, be aware this workaround effectively disables container isolation. For this reason, the D-Bus backend above (or other means of device commissioning such as the Home Assistant app) are preferred.
 
 ### Battery devices (Sleepy End Devices) drop subscriptions every 15–30 min
 
