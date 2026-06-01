@@ -56,9 +56,7 @@ import {
 } from "@matter/main/types";
 import { Endpoint } from "@matter/node";
 import { CameraControllerDevice } from "@matter/node/devices/camera-controller";
-import { CommissioningController, NodeCommissioningOptions } from "@project-chip/matter.js";
-import { DecodedAttributeReportValue, DecodedEventReportValue } from "@project-chip/matter.js/cluster";
-import { NodeStates } from "@project-chip/matter.js/device";
+import type { DecodedAttributeReportValue, DecodedEventReportValue } from "@project-chip/matter.js/cluster";
 import { ClusterMap, ClusterMapEntry, GlobalAttributes } from "../model/ModelMapper.js";
 import {
     buildAttributePath,
