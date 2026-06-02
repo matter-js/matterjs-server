@@ -14,6 +14,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Enhancement: (rspier) Added inline NodeLabel editing to the Node detail view
 - Enhancement: Dashboard network visualization fills the full window width on large/4K displays
 - Enhancement: Dashboard Thread mesh icons reflect each node's Thread and Border Router roles
+- Enhancement: Dashboard header shows a Home button in node/endpoint/cluster views for one-click return to the main dashboard
 - Enhancement: Allows finding a node in the thread network chart by its node label in addition to the extended address and Node-ID
 - Enhancement: Optimize the error message when commissioning a device with a test/dev certificate but without the "Test Net DCL" configuration enabled
 - Enhancement: BLE proxy endpoint now accepts multiple parallel WebSocket clients (each peripheral handled by the proxy that first discovered it), so several BLE radios can extend coverage
