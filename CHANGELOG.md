@@ -7,7 +7,7 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
-## **WORK IN PROGRESS**
+## 0.8.0 (2026-06-02)
 
 - Breaking: The server now requires at least Node.js 22.13.0 (LTS)
 - (Dev)Breaking: (rspier) Change Dev-Docker-Container to use the same user like the production container – might require permission updates
