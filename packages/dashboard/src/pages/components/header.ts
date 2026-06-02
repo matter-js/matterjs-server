@@ -67,6 +67,16 @@ export class DashboardHeader extends LitElement {
         this._unsubscribeDevMode?.();
     }
 
+    private _goBack() {
+        if (this.backButton) {
+            location.hash = this.backButton;
+        }
+    }
+
+    private _goHome() {
+        location.hash = "#";
+    }
+
     private _cycleTheme() {
         ThemeService.cycleTheme();
     }
@@ -144,16 +154,12 @@ export class DashboardHeader extends LitElement {
             <div class="header">
                 <!-- optional back button -->
                 ${this.backButton
-                    ? html` <a .href=${this.backButton} aria-label="Back">
-                              <md-icon-button title="Back">
-                                  <ha-svg-icon .path=${mdiArrowLeft}></ha-svg-icon>
-                              </md-icon-button>
-                          </a>
-                          <a href="#" aria-label="Home">
-                              <md-icon-button title="Home">
-                                  <ha-svg-icon .path=${mdiHome}></ha-svg-icon>
-                              </md-icon-button>
-                          </a>`
+                    ? html` <md-icon-button title="Back" aria-label="Back" @click=${this._goBack}>
+                              <ha-svg-icon .path=${mdiArrowLeft}></ha-svg-icon>
+                          </md-icon-button>
+                          <md-icon-button title="Home" aria-label="Home" @click=${this._goHome}>
+                              <ha-svg-icon .path=${mdiHome}></ha-svg-icon>
+                          </md-icon-button>`
                     : ""}
 
                 <div class="title">${this.title ?? ""}</div>
