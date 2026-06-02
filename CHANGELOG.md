@@ -22,10 +22,11 @@ This page shows a detailed overview of the changes between versions without the 
     - Fix: Event reports are now decoded in wire (EventNumber) order
 - Enhancement: Adds the dbus-next package to support BLE commissioning in D-Bus mode (see [docker](./docs/docker.md) and [os_requirements](./docs/os_requirements.md) for details)
 - Adjustment: Standardized log levels and logged messages
+- Fix: Ensure that we correctly process handshake messages when using the BLE proxy
 
 ## 0.7.1 (2026-05-21)
 
-- Feature: Added BLE proxy commissioning support (enabled with `--ble-proxy` CLI option)
+- Feature: Added (experimental) BLE proxy commissioning support (enabled with `--ble-proxy` CLI option)
 - Enhancement: Dashboard shows Thread protocol version on Thread node details
 - Enhancement: Dashboard always shows Thread/WiFi navigation tabs (removed small-screen gate)
 - Maintenance: Update matter.js to the official 0.17.0
