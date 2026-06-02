@@ -11,7 +11,7 @@ import "@material/web/list/list";
 import "@material/web/list/list-item";
 import { consume } from "@lit/context";
 import { MatterClient } from "@matter-server/ws-client";
-import { mdiArrowLeft, mdiBrightnessAuto, mdiCog, mdiLogout, mdiWeatherNight, mdiWeatherSunny } from "@mdi/js";
+import { mdiArrowLeft, mdiBrightnessAuto, mdiCog, mdiHome, mdiLogout, mdiWeatherNight, mdiWeatherSunny } from "@mdi/js";
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { clientContext, tickContext } from "../../client/client-context.js";
@@ -65,6 +65,16 @@ export class DashboardHeader extends LitElement {
         super.disconnectedCallback();
         this._unsubscribeTheme?.();
         this._unsubscribeDevMode?.();
+    }
+
+    private _goBack() {
+        if (this.backButton) {
+            location.hash = this.backButton;
+        }
+    }
+
+    private _goHome() {
+        location.hash = "#";
     }
 
     private _cycleTheme() {
@@ -144,11 +154,12 @@ export class DashboardHeader extends LitElement {
             <div class="header">
                 <!-- optional back button -->
                 ${this.backButton
-                    ? html` <a .href=${this.backButton}>
-                          <md-icon-button>
+                    ? html` <md-icon-button title="Back" aria-label="Back" @click=${this._goBack}>
                               <ha-svg-icon .path=${mdiArrowLeft}></ha-svg-icon>
                           </md-icon-button>
-                      </a>`
+                          <md-icon-button title="Home" aria-label="Home" @click=${this._goHome}>
+                              <ha-svg-icon .path=${mdiHome}></ha-svg-icon>
+                          </md-icon-button>`
                     : ""}
 
                 <div class="title">${this.title ?? ""}</div>
