@@ -250,6 +250,40 @@ describe("BLE Proxy Integration", function () {
             await channel.close();
         });
 
+        it("should complete handshake when the indication arrives before the WriteAndSubscribe response", async () => {
+            const proxyBle = new ProxyBle(handler);
+            const mockDevice = new MockBleDevice({ discriminator: 4242, vendorId: 0xfff1, productId: 0x8000 });
+
+            await discoverDevice(proxyBle, mockDevice);
+
+            testClient.onCommand(BleProxyCommand.Connect, async () => ({ connection_handle: 1, mtu: 247 }));
+            testClient.onCommand(BleProxyCommand.DiscoverServices, async () => ({ services: mockDevice.services }));
+            testClient.onCommand(BleProxyCommand.DiscoverCharacteristics, async () => ({
+                characteristics: mockDevice.characteristics,
+            }));
+            // Emit the indication before returning the command result, so the binary frame reaches
+            // the server ahead of the WriteAndSubscribe reply — the ordering that broke commissioning.
+            testClient.onCommand(BleProxyCommand.WriteAndSubscribe, async () => {
+                testClient.sendBinaryFrame(
+                    BinaryFrameOpcode.Notification,
+                    1,
+                    mockDevice.generateBtpHandshakeResponse(),
+                );
+                return {};
+            });
+
+            const central = proxyBle.centralInterface as ProxyBleCentralInterface;
+            central.onData(() => {});
+
+            const channel = (await central.openChannel({
+                type: "ble",
+                peripheralAddress: mockDevice.address,
+            })) as ProxyBleChannel;
+
+            expect(channel.connected).to.be.true;
+            await channel.close();
+        });
+
         it("should reject when openChannel is called before onData listener is installed", async () => {
             const proxyBle = new ProxyBle(handler);
             const mockDevice = new MockBleDevice({ discriminator: 1234, vendorId: 0xfff1, productId: 0x8000 });
