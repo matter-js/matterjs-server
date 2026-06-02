@@ -217,11 +217,9 @@ class TimeSynchronization(Cluster):
                 return ClusterObjectDescriptor(
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="trustedTimeSource", Tag=0, Type=typing.Union[Nullable, TimeSynchronization.Structs.FabricScopedTrustedTimeSourceStruct]),
-                        ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=254, Type=uint),
                     ])
 
             trustedTimeSource: typing.Union[Nullable, TimeSynchronization.Structs.FabricScopedTrustedTimeSourceStruct] = NullValue
-            fabricIndex: uint = 0
 
         @dataclass
         class SetTimeZone(ClusterCommand):

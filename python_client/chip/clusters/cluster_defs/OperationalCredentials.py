@@ -205,12 +205,10 @@ class OperationalCredentials(Cluster):
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="NOCValue", Tag=0, Type=bytes),
                         ClusterObjectFieldDescriptor(Label="ICACValue", Tag=1, Type=typing.Optional[bytes]),
-                        ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=254, Type=uint),
                     ])
 
             NOCValue: bytes = b""
             ICACValue: typing.Optional[bytes] = None
-            fabricIndex: uint = 0
 
         @dataclass
         class UpdateFabricLabel(ClusterCommand):
@@ -224,11 +222,9 @@ class OperationalCredentials(Cluster):
                 return ClusterObjectDescriptor(
                     Fields=[
                         ClusterObjectFieldDescriptor(Label="label", Tag=0, Type=str),
-                        ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=254, Type=uint),
                     ])
 
             label: str = ""
-            fabricIndex: uint = 0
 
         @dataclass
         class RemoveFabric(ClusterCommand):

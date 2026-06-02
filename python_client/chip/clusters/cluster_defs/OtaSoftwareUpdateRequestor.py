@@ -117,7 +117,6 @@ class OtaSoftwareUpdateRequestor(Cluster):
                         ClusterObjectFieldDescriptor(Label="announcementReason", Tag=2, Type=OtaSoftwareUpdateRequestor.Enums.AnnouncementReasonEnum),
                         ClusterObjectFieldDescriptor(Label="metadataForNode", Tag=3, Type=typing.Optional[bytes]),
                         ClusterObjectFieldDescriptor(Label="endpoint", Tag=4, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="fabricIndex", Tag=254, Type=uint),
                     ])
 
             providerNodeID: uint = 0
@@ -125,7 +124,6 @@ class OtaSoftwareUpdateRequestor(Cluster):
             announcementReason: OtaSoftwareUpdateRequestor.Enums.AnnouncementReasonEnum = 0
             metadataForNode: typing.Optional[bytes] = None
             endpoint: uint = 0
-            fabricIndex: uint = 0
 
     class Attributes:
         @dataclass
