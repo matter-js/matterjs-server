@@ -11,7 +11,7 @@ import "@material/web/list/list";
 import "@material/web/list/list-item";
 import { consume } from "@lit/context";
 import { MatterClient } from "@matter-server/ws-client";
-import { mdiArrowLeft, mdiBrightnessAuto, mdiCog, mdiLogout, mdiWeatherNight, mdiWeatherSunny } from "@mdi/js";
+import { mdiArrowLeft, mdiBrightnessAuto, mdiCog, mdiHome, mdiLogout, mdiWeatherNight, mdiWeatherSunny } from "@mdi/js";
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { clientContext, tickContext } from "../../client/client-context.js";
@@ -144,11 +144,16 @@ export class DashboardHeader extends LitElement {
             <div class="header">
                 <!-- optional back button -->
                 ${this.backButton
-                    ? html` <a .href=${this.backButton}>
-                          <md-icon-button>
-                              <ha-svg-icon .path=${mdiArrowLeft}></ha-svg-icon>
-                          </md-icon-button>
-                      </a>`
+                    ? html` <a .href=${this.backButton} aria-label="Back">
+                              <md-icon-button title="Back">
+                                  <ha-svg-icon .path=${mdiArrowLeft}></ha-svg-icon>
+                              </md-icon-button>
+                          </a>
+                          <a href="#" aria-label="Home">
+                              <md-icon-button title="Home">
+                                  <ha-svg-icon .path=${mdiHome}></ha-svg-icon>
+                              </md-icon-button>
+                          </a>`
                     : ""}
 
                 <div class="title">${this.title ?? ""}</div>
