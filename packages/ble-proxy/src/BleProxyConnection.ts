@@ -5,6 +5,7 @@
  */
 
 import { createPromise, Logger, Observable, Seconds, Time, withTimeout } from "@matter/main";
+import { Mark } from "@matter/main/protocol";
 import { WebSocket } from "ws";
 import {
     BLE_PROXY_PROTOCOL_VERSION,
@@ -21,6 +22,11 @@ import {
 } from "./BleProxyProtocol.js";
 
 const logger = Logger.get("BleProxyConnection");
+
+const frameHead = (payload: Uint8Array): string =>
+    Array.from(payload.subarray(0, 8))
+        .map(b => b.toString(16).padStart(2, "0"))
+        .join("");
 
 const HANDSHAKE_TIMEOUT = Seconds(10);
 /**
@@ -130,6 +136,9 @@ export class BleProxyConnection {
         if (!this.connected) {
             throw new Error("BLE proxy client not connected");
         }
+        logger.debug(
+            `[FRAME] ${Mark.OUTBOUND} opcode=${opcode} handle=${connectionHandle} len=${payload.length} head=${frameHead(payload)}`,
+        );
         this.#ws.send(encodeBinaryFrame(opcode, connectionHandle, payload));
     }
 
@@ -220,11 +229,8 @@ export class BleProxyConnection {
 
         try {
             const frame = decodeBinaryFrame(new Uint8Array(data));
-            const head = Array.from(frame.payload.subarray(0, 8))
-                .map(b => b.toString(16).padStart(2, "0"))
-                .join("");
             logger.debug(
-                `[FRAME] opcode=${frame.opcode} handle=${frame.connectionHandle} len=${frame.payload.length} head=${head}`,
+                `[FRAME] ${Mark.INBOUND} opcode=${frame.opcode} handle=${frame.connectionHandle} len=${frame.payload.length} head=${frameHead(frame.payload)}`,
             );
             this.binaryFrameReceived.emit(frame);
         } catch (err) {
