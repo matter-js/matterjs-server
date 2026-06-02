@@ -86,7 +86,6 @@ export class BleProxyHandler implements WebServerHandler {
                 return;
             }
 
-            logger.info("BLE proxy client connected, waiting for handshake");
             const connection = new BleProxyConnection(ws);
             this.#connections.add(connection);
 
@@ -142,7 +141,7 @@ export class BleProxyHandler implements WebServerHandler {
                 this.#scanning.add(connection);
                 sends.push(
                     connection.sendCommand(BleProxyCommand.StartScan, args).catch(err => {
-                        logger.warn("Failed to start scan on a client:", err);
+                        logger.warn(`[${connection.id}] Failed to start scan:`, err);
                         this.#markNotScanning(connection, "start scan failed");
                     }),
                 );
@@ -159,7 +158,7 @@ export class BleProxyHandler implements WebServerHandler {
                 sends.push(
                     connection
                         .sendCommand(BleProxyCommand.StopScan)
-                        .catch(err => logger.warn("Failed to stop scan on a client:", err)),
+                        .catch(err => logger.warn(`[${connection.id}] Failed to stop scan:`, err)),
                 );
             }
         }
@@ -172,7 +171,7 @@ export class BleProxyHandler implements WebServerHandler {
         if (this.#scanActive && this.#scanArgs) {
             this.#scanning.add(connection);
             connection.sendCommand(BleProxyCommand.StartScan, this.#scanArgs).catch(err => {
-                logger.warn("Failed to sync scan to joining client:", err);
+                logger.warn(`[${connection.id}] Failed to sync scan to joining client:`, err);
                 this.#markNotScanning(connection, "start scan failed");
             });
         }
@@ -208,7 +207,7 @@ export class BleProxyHandler implements WebServerHandler {
             }
         }
         logger.debug(
-            `device_discovered ${data.address} rssi=${data.rssi ?? "n/a"} seers=${entry.seers.size} isOwner=${entry.owner === connection}`,
+            `[${connection.id}] device_discovered ${data.address} rssi=${data.rssi ?? "n/a"} seers=${entry.seers.size} isOwner=${entry.owner === connection}`,
         );
         this.deviceDiscovered.emit(data, connection);
     }
@@ -229,7 +228,7 @@ export class BleProxyHandler implements WebServerHandler {
                 }
                 if (next) {
                     entry.owner = next;
-                    logger.info(`Reassigned ownership of ${address} to another proxy client`);
+                    logger.info(`Reassigned ownership of ${address} to [${next.id}]`);
                 } else {
                     this.#owners.delete(address);
                 }

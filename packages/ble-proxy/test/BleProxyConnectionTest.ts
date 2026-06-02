@@ -54,6 +54,10 @@ describe("BleProxyConnection", function () {
         expect(connection.connected).to.be.true;
     });
 
+    it("exposes a non-empty connection id", () => {
+        expect(connection.id).to.be.a("string").and.not.empty;
+    });
+
     it("sends a command and resolves with the typed result", async () => {
         testClient.onCommand(BleProxyCommand.Connect, async () => ({ connection_handle: 1, mtu: 247 }));
 

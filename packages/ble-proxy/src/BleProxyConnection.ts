@@ -28,6 +28,20 @@ const frameHead = (payload: Uint8Array): string =>
         .map(b => b.toString(16).padStart(2, "0"))
         .join("");
 
+/** Counter for generating unique connection IDs. */
+let connectionIdCounter = 0;
+
+/**
+ * Generate a unique connection ID as a hex string, rolling over at 0xFFFF to keep it short.
+ * Same scheme as the controller WebSocket handler, prefixed `ble` so proxy sockets are
+ * distinguishable from the controller WebSocket connections in shared logs.
+ */
+function generateConnectionId(): string {
+    const id = connectionIdCounter;
+    connectionIdCounter = (connectionIdCounter + 1) & 0xffff;
+    return `ble${id.toString(16)}`;
+}
+
 const HANDSHAKE_TIMEOUT = Seconds(10);
 /**
  * Default per-command timeout. Long enough to cover the slowest BLE
@@ -45,6 +59,7 @@ const COMMAND_TIMEOUT = Seconds(60);
  */
 export class BleProxyConnection {
     readonly #ws: WebSocket;
+    readonly #id = generateConnectionId();
     #handshakeComplete = false;
     #closedEmitted = false;
     #pendingCommands = new Map<
@@ -63,10 +78,11 @@ export class BleProxyConnection {
 
     constructor(ws: WebSocket) {
         this.#ws = ws;
+        logger.info(`[${this.#id}] BLE proxy connection established, waiting for handshake`);
 
         const handshakeTimer = Time.getTimer("BLE proxy handshake timeout", HANDSHAKE_TIMEOUT, () => {
             if (!this.#handshakeComplete) {
-                logger.warn("BLE proxy handshake timeout - closing connection");
+                logger.warn(`[${this.#id}] Handshake timeout - closing connection`);
                 ws.close(4001, "Handshake timeout");
                 this.#cleanup();
             }
@@ -82,15 +98,19 @@ export class BleProxyConnection {
 
         ws.on("close", () => {
             handshakeTimer.stop();
-            logger.info("BLE proxy client disconnected");
+            logger.info(`[${this.#id}] BLE proxy connection closed`);
             this.#cleanup();
         });
 
         ws.on("error", err => {
-            logger.error("BLE proxy WebSocket error:", err);
+            logger.error(`[${this.#id}] BLE proxy WebSocket error`, err);
             handshakeTimer.stop();
             this.#cleanup();
         });
+    }
+
+    get id(): string {
+        return this.#id;
     }
 
     get connected(): boolean {
@@ -137,7 +157,7 @@ export class BleProxyConnection {
             throw new Error("BLE proxy client not connected");
         }
         logger.debug(
-            `[FRAME] ${Mark.OUTBOUND} opcode=${opcode} handle=${connectionHandle} len=${payload.length} head=${frameHead(payload)}`,
+            `[${this.#id}] [FRAME] ${Mark.OUTBOUND} opcode=${opcode} handle=${connectionHandle} len=${payload.length} head=${frameHead(payload)}`,
         );
         this.#ws.send(encodeBinaryFrame(opcode, connectionHandle, payload));
     }
@@ -147,7 +167,7 @@ export class BleProxyConnection {
         try {
             parsed = JSON.parse(raw);
         } catch {
-            logger.warn("Received invalid JSON from BLE proxy client");
+            logger.warn(`[${this.#id}] Received invalid JSON from BLE proxy client`);
             return;
         }
 
@@ -169,12 +189,12 @@ export class BleProxyConnection {
             return;
         }
 
-        logger.warn("Received unknown message from BLE proxy client:", msg);
+        logger.warn(`[${this.#id}] Received unknown message from BLE proxy client:`, msg);
     }
 
     #handleHandshake(msg: Record<string, unknown>, handshakeTimer: { stop: () => void }): void {
         if (msg.type !== "hello") {
-            logger.warn(`Expected hello message, got: ${JSON.stringify(msg)}`);
+            logger.warn(`[${this.#id}] Expected hello message, got: ${JSON.stringify(msg)}`);
             this.#ws.close(4002, "Expected hello message");
             this.#cleanup();
             return;
@@ -185,7 +205,7 @@ export class BleProxyConnection {
 
         if (hello.version !== BLE_PROXY_PROTOCOL_VERSION) {
             logger.warn(
-                `BLE proxy client version ${hello.version} not supported (server supports ${BLE_PROXY_PROTOCOL_VERSION})`,
+                `[${this.#id}] BLE proxy client version ${hello.version} not supported (server supports ${BLE_PROXY_PROTOCOL_VERSION})`,
             );
             this.#ws.send(
                 JSON.stringify({
@@ -202,14 +222,14 @@ export class BleProxyConnection {
 
         this.#handshakeComplete = true;
         this.#ws.send(JSON.stringify({ type: "hello_response", version: BLE_PROXY_PROTOCOL_VERSION }));
-        logger.info(`BLE proxy handshake complete (version ${BLE_PROXY_PROTOCOL_VERSION})`);
+        logger.info(`[${this.#id}] BLE proxy handshake complete (version ${BLE_PROXY_PROTOCOL_VERSION})`);
         this.handshakeCompleted.emit();
     }
 
     #handleResponse(msg: ResponseMessage): void {
         const pending = this.#pendingCommands.get(msg.id);
         if (!pending) {
-            logger.warn(`Received response for unknown command id ${msg.id}`);
+            logger.warn(`[${this.#id}] Received response for unknown command id ${msg.id}`);
             return;
         }
         this.#pendingCommands.delete(msg.id);
@@ -223,18 +243,18 @@ export class BleProxyConnection {
 
     #handleBinaryMessage(data: Buffer): void {
         if (!this.#handshakeComplete) {
-            logger.warn("Received binary frame before handshake");
+            logger.warn(`[${this.#id}] Received binary frame before handshake`);
             return;
         }
 
         try {
             const frame = decodeBinaryFrame(new Uint8Array(data));
             logger.debug(
-                `[FRAME] ${Mark.INBOUND} opcode=${frame.opcode} handle=${frame.connectionHandle} len=${frame.payload.length} head=${frameHead(frame.payload)}`,
+                `[${this.#id}] [FRAME] ${Mark.INBOUND} opcode=${frame.opcode} handle=${frame.connectionHandle} len=${frame.payload.length} head=${frameHead(frame.payload)}`,
             );
             this.binaryFrameReceived.emit(frame);
         } catch (err) {
-            logger.warn("Failed to decode binary frame:", err);
+            logger.warn(`[${this.#id}] Failed to decode binary frame:`, err);
         }
     }
 
