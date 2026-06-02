@@ -24,6 +24,7 @@ import {
     WebSocketControllerHandler,
 } from "@matter-server/ws-controller";
 import { Ble } from "@matter/main/protocol";
+import { wireBleConnectGate } from "./bleConnectGate.js";
 import { getCliOptions, type LogLevel as CliLogLevel } from "./cli.js";
 import { LegacyDataWriter, loadLegacyData, type LegacyData } from "./converter/index.js";
 import { createFileLogger } from "./file-logger.js";
@@ -209,7 +210,9 @@ async function start() {
             logger.info(`Replacing existing BLE implementation (${existingBle.constructor.name}) with ProxyBle`);
         }
         bleProxyHandler = new BleProxyHandler();
-        env.set(Ble, new ProxyBle(bleProxyHandler, env));
+        const proxyBle = new ProxyBle(bleProxyHandler, env);
+        env.set(Ble, proxyBle);
+        wireBleConnectGate(controller.commandHandler.events, proxyBle);
     }
 
     const wsHandler = new WebSocketControllerHandler(controller, config, MATTER_SERVER_VERSION);

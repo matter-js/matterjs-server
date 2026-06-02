@@ -249,9 +249,40 @@ export const BleProxyErrorCode = {
     MtuRequestFailed: "mtu_request_failed",
     DiscoveryFailed: "discovery_failed",
     InternalError: "internal_error",
+    OutOfConnectionSlots: "out_of_connection_slots",
+    ConnectionAborted: "connection_aborted",
 } as const;
 
 export type BleProxyErrorCodeValue = (typeof BleProxyErrorCode)[keyof typeof BleProxyErrorCode];
+
+/** Substring markers sourced from bleak_retry_connector's `OUT_OF_SLOTS_ERRORS`. */
+export const OUT_OF_SLOTS_MESSAGE_MARKERS = [
+    "available connection",
+    "connection slot",
+    "ESP_GATT_CONN_CONN_CANCEL",
+] as const;
+
+/** True when a connect failure means the proxy backend ran out of connection slots. */
+export function isOutOfConnectionSlotsError(code: string | undefined, message: string | undefined): boolean {
+    if (code === BleProxyErrorCode.OutOfConnectionSlots) {
+        return true;
+    }
+    if (code === BleProxyErrorCode.ConnectionFailed && message) {
+        const lower = message.toLowerCase();
+        return OUT_OF_SLOTS_MESSAGE_MARKERS.some(marker => lower.includes(marker.toLowerCase()));
+    }
+    return false;
+}
+
+/** Error carrying the structured proxy-client error code alongside a readable message. */
+export class BleProxyError extends Error {
+    readonly code: string;
+    constructor(code: string, detail: string) {
+        super(`${code}: ${detail}`);
+        this.name = "BleProxyError";
+        this.code = code;
+    }
+}
 
 // ─── Binary Frame Opcodes ────────────────────────────────────────────────────
 

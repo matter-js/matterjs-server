@@ -54,6 +54,10 @@ export class ProxyBle extends Ble {
         return this.#bleScanner;
     }
 
+    abortPendingConnects(): void {
+        this.#bleCentralInterface?.abortPendingConnects();
+    }
+
     async close(): Promise<void> {
         if (this.#closed) return;
         this.#closed = true;
