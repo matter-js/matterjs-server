@@ -7,6 +7,10 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
+## **WORK IN PROGRESS**
+
+- Enhancement: Dashboard WiFi graph shows the full BSSID in access point labels, so APs differing only in leading octets are distinguishable
+
 ## 0.8.0 (2026-06-02)
 
 - Breaking: The server now requires at least Node.js 22.13.0 (LTS)
