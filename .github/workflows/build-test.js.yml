@@ -92,7 +92,7 @@ jobs:
               uses: docker/setup-buildx-action@v3
             - name: Build dev image from source
               if: needs.check-and-lint.outputs.docker-changes == 'true' || github.event.pull_request.user.login == 'dependabot[bot]'
-              uses: docker/build-push-action@v6
+              uses: docker/build-push-action@v7
               with:
                   context: .
                   file: ./docker/matterjs-server/Dockerfile.dev
