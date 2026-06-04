@@ -335,7 +335,7 @@ jobs:
 
             - name: Set up Docker Buildx
               if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.docker_needed == 'true'
-              uses: docker/setup-buildx-action@v4.1.0
+              uses: docker/setup-buildx-action@v4
 
             - name: Version number for Docker tags
               if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.docker_needed == 'true'
