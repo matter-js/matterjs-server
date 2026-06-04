@@ -1,4 +1,4 @@
-FROM node:24-trixie-slim
+FROM node:24.15-trixie-slim
 
 # Set shell
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
