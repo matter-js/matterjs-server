@@ -131,7 +131,7 @@ When using the BLE proxy mode together with Home Assistant, you need:
 
 - Home Assistant 2026.6 (or later)
 - ESPHome 2026.5 (or later)
-- esp-idf 6.0.1 (exactly)
+- esp-idf 6.0.1 (or later)
 
 In your ESPHome device.yaml, use:
 
