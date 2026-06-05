@@ -127,7 +127,7 @@ Home Assistant's Matter integration, the Bleak-based Python CLI
 bridges BLE traffic from wherever the adapter actually lives. See
 [`docs/ble-proxy-protocol.md`](docs/ble-proxy-protocol.md) for the protocol spec.
 
-When using the BLE proxy mode together with Home Assistant, you need:
+When using the BLE proxy mode together with Home Assistant (which uses the ble-prox-python -client), you need:
 
 - Home Assistant 2026.6 (or later)
 - ESPHome 2026.5 (or later)
