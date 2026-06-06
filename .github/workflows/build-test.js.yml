@@ -101,3 +101,12 @@ jobs:
                   tags: matterjs-server:ci
                   cache-from: type=gha
                   cache-to: type=gha,mode=max
+            - name: Prepare host testing environment
+              if: needs.check-and-lint.outputs.docker-changes == 'true' || github.event.pull_request.user.login == 'dependabot[bot]'
+              uses: ./.github/actions/prepare-env
+            - name: Run integration tests against server in Docker
+              if: needs.check-and-lint.outputs.docker-changes == 'true' || github.event.pull_request.user.login == 'dependabot[bot]'
+              env:
+                  MATTER_TEST_SERVER_MODE: docker
+                  MATTER_TEST_DOCKER_IMAGE: matterjs-server:ci
+              run: npx matter-test esm --prefix packages/matter-server --spec ./test/IntegrationTest.ts
