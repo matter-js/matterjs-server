@@ -93,8 +93,11 @@ describe("Integration Test", function () {
             await client.close();
         }
 
-        // Tear down server (process or container) and device
-        await server.cleanup();
+        // Tear down server (process or container) and device. server may be unset
+        // if before() failed before assigning it — don't mask that original error.
+        if (server) {
+            await server.cleanup();
+        }
         await killProcess(deviceProcess);
 
         // Cleanup temp directories

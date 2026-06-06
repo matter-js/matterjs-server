@@ -63,7 +63,8 @@ export class LocalProcessServerController implements ServerController {
 
 const execFileAsync = promisify(execFile);
 
-const CONTAINER_NAME = "matter-test-server";
+// Per-process name avoids clobbering an unrelated container and lets concurrent runs coexist.
+const CONTAINER_NAME = `matter-test-server-${process.pid}`;
 const DEFAULT_IMAGE = "matterjs-server:ci";
 
 async function runDocker(args: string[], { ignoreErrors = false } = {}): Promise<void> {
@@ -121,7 +122,10 @@ export class DockerServerController implements ServerController {
     #runArgs(): string[] {
         const { storagePath, logLevel, enableTestNetDcl } = this.#options;
 
-        const args = ["--name", CONTAINER_NAME, "--network", "host"];
+        // NET_RAW lets the non-root container run ICMP ping (ping_node): with
+        // --network host it inherits the host's ping_group_range, which may forbid
+        // unprivileged ICMP, so the raw-socket capability is required instead.
+        const args = ["--name", CONTAINER_NAME, "--network", "host", "--cap-add", "NET_RAW"];
 
         // Match file owner to the host runner so the bind-mounted /data is writable by the server.
         const uid = typeof process.getuid === "function" ? process.getuid() : undefined;
