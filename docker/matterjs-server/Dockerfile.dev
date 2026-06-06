@@ -6,6 +6,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # Install required system dependencies
 # Runtime dependencies:
 # - iputils-ping: Required for node ping functionality
+# - libcap2-bin: provides setcap, used to grant ping CAP_NET_RAW (see below)
 # - curl: For health checks and general utility
 # - git: Required for npm install from git repos
 # - bluez: Bluetooth stack for BLE commissioning
@@ -17,6 +18,7 @@ RUN \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
         iputils-ping \
+        libcap2-bin \
         curl \
         git \
         bluez \
@@ -26,6 +28,9 @@ RUN \
         g++ \
         libbluetooth-dev \
         libudev-dev \
+    # ping_node runs as the non-root user; CAP_NET_RAW on the binary lets it open
+    # an ICMP socket regardless of the host's net.ipv4.ping_group_range.
+    && setcap cap_net_raw+ep "$(command -v ping)" \
     && rm -rf \
         /var/lib/apt/lists/* \
         /usr/src/*

@@ -122,10 +122,7 @@ export class DockerServerController implements ServerController {
     #runArgs(): string[] {
         const { storagePath, logLevel, enableTestNetDcl } = this.#options;
 
-        // NET_RAW lets the non-root container run ICMP ping (ping_node): with
-        // --network host it inherits the host's ping_group_range, which may forbid
-        // unprivileged ICMP, so the raw-socket capability is required instead.
-        const args = ["--name", CONTAINER_NAME, "--network", "host", "--cap-add", "NET_RAW"];
+        const args = ["--name", CONTAINER_NAME, "--network", "host"];
 
         // Match file owner to the host runner so the bind-mounted /data is writable by the server.
         const uid = typeof process.getuid === "function" ? process.getuid() : undefined;

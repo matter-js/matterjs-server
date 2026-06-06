@@ -17,6 +17,7 @@ ARG MATTERJS_SERVER_VERSION
 # - python3: Required by node-gyp for native module compilation
 # - make, gcc, g++: C/C++ toolchain for native module compilation
 # - libbluetooth-dev, libudev-dev: Headers for native BLE/udev bindings
+# - libcap2-bin: provides setcap to grant ping CAP_NET_RAW (purged afterwards)
 RUN \
     set -x \
     && apt-get update \
@@ -30,6 +31,10 @@ RUN \
         bluez \
         libbluetooth-dev \
         libudev-dev \
+        libcap2-bin \
+    # ping_node runs as the non-root user; CAP_NET_RAW on the binary lets it open
+    # an ICMP socket regardless of the host's net.ipv4.ping_group_range.
+    && setcap cap_net_raw+ep "$(command -v ping)" \
     # Install matter-server from npm and optimize image size
     && set -x \
     && npm install --foreground-scripts "matter-server@${MATTERJS_SERVER_VERSION}" \
@@ -41,6 +46,7 @@ RUN \
         g++ \
         libbluetooth-dev \
         libudev-dev \
+        libcap2-bin \
     && rm -rf \
         /var/lib/apt/lists/* \
         /usr/src/* \
