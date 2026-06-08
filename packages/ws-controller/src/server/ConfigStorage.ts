@@ -104,7 +104,7 @@ export class ConfigStorage {
         return this.#nodeIdMutex.produce(async () => {
             let candidate = this.#data.nextNodeId;
             while (isInUse(candidate)) {
-                logger.warn(`Node ID ${candidate} already in use on the fabric, skipping`);
+                logger.notice(`Node ID ${candidate} already in use on the fabric, skipping`);
                 candidate = incrementNodeId(candidate);
             }
             await this.set({ nextNodeId: incrementNodeId(candidate) });
