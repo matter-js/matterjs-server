@@ -542,6 +542,14 @@ export class ControllerCommandHandler {
     }
 
     /**
+     * Whether a node id is already reserved on the fabric, either by a commissioned peer or the commissioner itself.
+     * Authoritative against matter.js rather than the locally tracked node set, which can drift from the fabric.
+     */
+    isNodeIdInUse(nodeId: NodeId): boolean {
+        return nodeId === this.#controller.nodeId || this.#controller.isNodeCommissioned(nodeId);
+    }
+
+    /**
      * Alias for decommissionNode to match NodeCommandHandler interface.
      */
     removeNode(nodeId: NodeId) {

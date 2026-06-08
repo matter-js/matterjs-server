@@ -9,7 +9,9 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## **WORK IN PROGRESS**
 
-- Enhancement: Dashboard WiFi graph shows the full BSSID in access point labels, so APs differing only in leading octets are distinguishable
+- Enhancement: Dashboard Wi-Fi graph shows the full BSSID in access point labels, so APs differing only in leading octets are distinguishable
+- Enhancement: Update matter.js to 0.17.2
+- Fix: Ensures that multiple parallel commissioning tries do not allocate the same Node-ID, and recovers automatically when the stored Node-ID counter drifts out of sync with the fabric by skipping/retrying with the next free id
 
 ## 0.8.0 (2026-06-02)
 
