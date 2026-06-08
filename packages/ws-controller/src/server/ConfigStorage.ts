@@ -102,10 +102,17 @@ export class ConfigStorage {
      */
     async allocateNodeId(isInUse: (nodeId: number | bigint) => boolean): Promise<number | bigint> {
         return this.#nodeIdMutex.produce(async () => {
-            let candidate = this.#data.nextNodeId;
+            const start = this.#data.nextNodeId;
+            let candidate = start;
+            let skipped = 0;
             while (isInUse(candidate)) {
-                logger.notice(`Node ID ${candidate} already in use on the fabric, skipping`);
                 candidate = incrementNodeId(candidate);
+                skipped++;
+            }
+            if (skipped > 0) {
+                logger.notice(
+                    `Skipped ${skipped} node id(s) from ${start} already in use on the fabric, allocated ${candidate} instead`,
+                );
             }
             await this.set({ nextNodeId: incrementNodeId(candidate) });
             return candidate;

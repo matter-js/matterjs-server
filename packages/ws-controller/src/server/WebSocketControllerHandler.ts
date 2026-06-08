@@ -706,8 +706,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 );
             }
         }
+        const reason = lastError instanceof Error ? `: ${lastError.message}` : "";
         throw ServerError.nodeCommissionFailed(
-            `Commission failed: could not find a free node id after ${MAX_COMMISSION_NODE_ID_ATTEMPTS} attempts`,
+            `Commission failed: could not find a free node id after ${MAX_COMMISSION_NODE_ID_ATTEMPTS} attempts${reason}`,
             lastError instanceof Error ? lastError : undefined,
         );
     }
