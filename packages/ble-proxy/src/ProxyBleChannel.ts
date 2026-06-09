@@ -95,12 +95,9 @@ export class ProxyBleCentralInterface implements Transport {
             address: peripheralAddress,
         });
 
-        let mtu = peripheralMtu ?? 0;
-        if (mtu > MatterBle.MAXIMUM_BTP_MTU) {
-            mtu = MatterBle.MAXIMUM_BTP_MTU;
-        }
+        const mtu = MatterBle.btpSegmentSizeFromAttMtu(peripheralMtu ?? 0);
         logger.info(
-            `Connected to ${peripheralAddress}, handle=${connection_handle}, mtu=${mtu}, rssi=${rssi ?? "n/a"}`,
+            `Connected to ${peripheralAddress}, handle=${connection_handle}, BTP segment size=${mtu} bytes (peripheral ATT_MTU up to ${peripheralMtu ?? "n/a"}), rssi=${rssi ?? "n/a"}`,
         );
 
         // The owner connection's observables outlive a failed open; a leaked observer would corrupt
