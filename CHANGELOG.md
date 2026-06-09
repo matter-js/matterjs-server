@@ -7,7 +7,7 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
-## **WORK IN PROGRESS**
+## 1.0.0 (2026-06-09)
 
 - Enhancement: Update matter.js to 0.17.2 with many fixes and optimizations
 - Enhancement: Dashboard Wi-Fi graph shows the full BSSID in access point labels, so APs differing only in leading octets are distinguishable
