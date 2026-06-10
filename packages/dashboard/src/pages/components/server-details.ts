@@ -43,13 +43,13 @@ export class ServerDetails extends LitElement {
         </md-list-item>
         <md-list-item>
           <div slot="supporting-text">
+            <div class="left">Matter Server Version: </div>${this.client.serverInfo.sdk_version}
+          </div>
+          <div slot="supporting-text">
             <div class="left">FabricId: </div>${this.client.serverInfo.fabric_id}
           </div>
           <div slot="supporting-text">
             <div class="left">Compressed FabricId: </div>${this.client.serverInfo.compressed_fabric_id}
-          </div>
-          <div slot="supporting-text">
-            <div class="left">SDK Wheels Version: </div>${this.client.serverInfo.sdk_version}
           </div>
           <div slot="supporting-text">
             <div class="left">Schema Version: </div>${this.client.serverInfo.schema_version}
