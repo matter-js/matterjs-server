@@ -26,11 +26,23 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class BleakScanSource(BleScanSource):
+    """Scan source backed by a directly-managed `BleakScanner`.
+
+    The scanner is created on each :meth:`start` and torn down on :meth:`stop`,
+    so the BLE adapter sits idle whenever the matter-server is not actively
+    scanning. The first `start_scan` after a process boot pays the native
+    cold-start cost (CoreBluetooth state transition to `powered_on`, DBus
+    handshake) — typically tens to hundreds of milliseconds.
+    """
+
     def __init__(self, hci_device: int | None = None) -> None:
         """Initialize."""
         self._hci_device = hci_device
         self._scanner: BleakScanner | None = None
         self._callback: Callable[[AdvertisementData], None] | None = None
+        # Cache the most recent BLEDevice per address so BleakDeviceResolver
+        # can hand a fully-formed device to BleakClient (more reliable than
+        # connecting by address alone on some platforms).
         self._device_cache: dict[str, BLEDevice] = {}
 
     @property
