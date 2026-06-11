@@ -40,6 +40,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--hci-id",
         default=None,
+        type=int,
         help="Bluetooth adapter HCI ID (e.g., 0 for hci0)",
     )
     parser.add_argument(
@@ -51,8 +52,8 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-async def _run(server_url: str, hci_id: int) -> int:
-    scan_source = BleakScanSource()
+async def _run(server_url: str, hci_id: int | None) -> int:
+    scan_source = BleakScanSource(hci_id)
     device_resolver = BleakDeviceResolver(scan_source)
     proxy = MatterBleProxy(server_url, scan_source, device_resolver)
 

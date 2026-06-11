@@ -57,7 +57,7 @@ class BleakScanSource(BleScanSource):
             return
 
         bluez_args: BlueZScannerArgs = {}
-        if self._hci_device:
+        if self._hci_device is not None:
             bluez_args["adapter"] = f"hci{self._hci_device}"
 
         self._scanner = BleakScanner(
