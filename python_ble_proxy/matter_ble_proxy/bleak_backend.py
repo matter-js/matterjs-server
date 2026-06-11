@@ -18,6 +18,7 @@ from .protocol import AdvertisementData
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from bleak.args.bluez import BlueZScannerArgs
     from bleak.backends.device import BLEDevice
     from bleak.backends.scanner import AdvertisementData as BleakAdvertisementData
 
@@ -25,22 +26,11 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class BleakScanSource(BleScanSource):
-    """Scan source backed by a directly-managed `BleakScanner`.
-
-    The scanner is created on each :meth:`start` and torn down on :meth:`stop`,
-    so the BLE adapter sits idle whenever the matter-server is not actively
-    scanning. The first `start_scan` after a process boot pays the native
-    cold-start cost (CoreBluetooth state transition to `powered_on`, DBus
-    handshake) — typically tens to hundreds of milliseconds.
-    """
-
-    def __init__(self) -> None:
+    def __init__(self, hci_device: int | None = None) -> None:
         """Initialize."""
+        self._hci_device = hci_device
         self._scanner: BleakScanner | None = None
         self._callback: Callable[[AdvertisementData], None] | None = None
-        # Cache the most recent BLEDevice per address so BleakDeviceResolver
-        # can hand a fully-formed device to BleakClient (more reliable than
-        # connecting by address alone on some platforms).
         self._device_cache: dict[str, BLEDevice] = {}
 
     @property
@@ -53,7 +43,15 @@ class BleakScanSource(BleScanSource):
         self._callback = callback
         if self._scanner is not None:
             return
-        self._scanner = BleakScanner(detection_callback=self._on_detection)
+
+        bluez_args: BlueZScannerArgs = {}
+        if self._hci_device:
+            bluez_args["adapter"] = f"hci{self._hci_device}"
+
+        self._scanner = BleakScanner(
+            detection_callback=self._on_detection,
+            bluez=bluez_args,
+        )
         await self._scanner.start()
 
     async def stop(self) -> None:
