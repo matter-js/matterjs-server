@@ -382,6 +382,8 @@ export interface ServerInfoMessage {
     bluetooth_enabled: boolean;
     /** True when BLE proxy mode is enabled (server exposes `/ble` WebSocket endpoint for a remote proxy client). Note: Only available with OHF Matter Server, not Python Matter Server. */
     ble_proxy_enabled?: boolean;
+    /** The controller's own operational (CASE) node id. Note: Only available with OHF Matter Server, not Python Matter Server. */
+    controller_node_id?: number | bigint;
 }
 
 /** WebSocket event types and their data payloads */
