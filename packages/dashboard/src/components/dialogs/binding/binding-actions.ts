@@ -5,8 +5,8 @@
  */
 
 import { AccessControlEntry, BindingTarget, MatterClient, MatterNode } from "@matter-server/ws-client";
+import { AuthMode, Privilege, attributeArray, isWholeNode, subjectsInclude } from "../../../util/access-control.js";
 import { AccessControlEntryDataTransformer, type AccessControlEntryStruct } from "../acl/model.js";
-import { AuthMode, Privilege, isWholeNode, subjectsInclude } from "../../../util/access-control.js";
 import { BindingEntryDataTransformer, type BindingEntryStruct } from "./model.js";
 
 function toBindingTarget(e: BindingEntryStruct): BindingTarget {
@@ -29,9 +29,7 @@ function toApiAcl(e: AccessControlEntryStruct): AccessControlEntry {
 
 async function freshAcl(client: MatterClient, nodeId: number | bigint): Promise<AccessControlEntryStruct[]> {
     const res = await client.readAttribute(nodeId, "0/31/0");
-    const raw = res["0/31/0"] as unknown[] | undefined;
-    if (!raw) return new Array<AccessControlEntryStruct>();
-    return Object.values(raw).map(v => AccessControlEntryDataTransformer.transform(v));
+    return attributeArray(res["0/31/0"]).map(v => AccessControlEntryDataTransformer.transform(v));
 }
 
 async function freshBindings(
@@ -40,9 +38,7 @@ async function freshBindings(
     endpoint: number,
 ): Promise<BindingEntryStruct[]> {
     const res = await client.readAttribute(nodeId, `${endpoint}/30/0`);
-    const raw = res[`${endpoint}/30/0`] as unknown[] | undefined;
-    if (!raw) return new Array<BindingEntryStruct>();
-    return Object.values(raw).map(v => BindingEntryDataTransformer.transform(v));
+    return attributeArray(res[`${endpoint}/30/0`]).map(v => BindingEntryDataTransformer.transform(v));
 }
 
 /**

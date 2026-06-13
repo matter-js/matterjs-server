@@ -48,10 +48,15 @@ export function nodeIdKey(id: number | bigint): string {
     return String(id);
 }
 
+/** Normalize a raw attribute value (array or index-keyed object, or absent) into an element array. */
+export function attributeArray(value: unknown): unknown[] {
+    if (Array.isArray(value)) return value;
+    if (value && typeof value === "object") return Object.values(value);
+    return new Array<unknown>();
+}
+
 export function readAclEntries(node: MatterNode): AccessControlEntryStruct[] {
-    const raw = node.attributes["0/31/0"] as unknown[] | undefined;
-    if (!raw) return new Array<AccessControlEntryStruct>();
-    return Object.values(raw).map(value => AccessControlEntryDataTransformer.transform(value));
+    return attributeArray(node.attributes["0/31/0"]).map(value => AccessControlEntryDataTransformer.transform(value));
 }
 
 export function entriesForFabric(

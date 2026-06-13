@@ -11,8 +11,8 @@ import "@material/web/select/select-option";
 import "@material/web/textfield/outlined-text-field";
 import { consume } from "@lit/context";
 import type { MdDialog } from "@material/web/dialog/dialog.js";
-import { mdiClose } from "@mdi/js";
 import { MatterClient, MatterNode } from "@matter-server/ws-client";
+import { mdiClose } from "@mdi/js";
 import { css, html, LitElement } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import "../../../components/ha-svg-icon.js";
@@ -111,7 +111,10 @@ export class NodeAclAddDialog extends LitElement {
             await addAclEntry(this.client, this.node.node_id, entry);
             this._close();
         } catch (err) {
-            await showAlertDialog({ title: "Failed to add entry", text: err instanceof Error ? err.message : String(err) });
+            await showAlertDialog({
+                title: "Failed to add entry",
+                text: err instanceof Error ? err.message : String(err),
+            });
         } finally {
             this._busy = false;
         }
@@ -201,7 +204,8 @@ export class NodeAclAddDialog extends LitElement {
                                 : this._targets.map(
                                       (t, i) =>
                                           html`<span class="chip"
-                                              >EP ${t.endpoint}${t.cluster != null
+                                              >EP
+                                              ${t.endpoint}${t.cluster != null
                                                   ? ` · 0x${t.cluster.toString(16).toUpperCase()}`
                                                   : " · all clusters"}
                                               <ha-svg-icon
@@ -231,12 +235,16 @@ export class NodeAclAddDialog extends LitElement {
                                 ?disabled=${this._busy}
                                 @input=${(e: Event) => (this._targetCluster = (e.target as HTMLInputElement).value)}
                             ></md-outlined-text-field>
-                            <md-text-button ?disabled=${this._busy} @click=${() => this._addTarget()}>Add target</md-text-button>
+                            <md-text-button ?disabled=${this._busy} @click=${() => this._addTarget()}
+                                >Add target</md-text-button
+                            >
                         </div>
                     </div>
                 </div>
                 <div slot="actions">
-                    <md-text-button ?disabled=${this._busy} @click=${handleAsync(() => this._save())}>Add</md-text-button>
+                    <md-text-button ?disabled=${this._busy} @click=${handleAsync(() => this._save())}
+                        >Add</md-text-button
+                    >
                     <md-text-button ?disabled=${this._busy} @click=${this._close}>Cancel</md-text-button>
                 </div>
             </md-dialog>

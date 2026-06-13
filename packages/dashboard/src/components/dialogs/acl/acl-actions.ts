@@ -5,7 +5,7 @@
  */
 
 import { AccessControlEntry, MatterClient } from "@matter-server/ws-client";
-import { Privilege, aclEntryKey } from "../../../util/access-control.js";
+import { Privilege, aclEntryKey, attributeArray } from "../../../util/access-control.js";
 import { AccessControlEntryDataTransformer, type AccessControlEntryStruct } from "./model.js";
 
 function toApiAcl(e: AccessControlEntryStruct): AccessControlEntry {
@@ -24,9 +24,7 @@ function toApiAcl(e: AccessControlEntryStruct): AccessControlEntry {
 
 async function freshAcl(client: MatterClient, nodeId: number | bigint): Promise<AccessControlEntryStruct[]> {
     const res = await client.readAttribute(nodeId, "0/31/0");
-    const raw = res["0/31/0"] as unknown[] | undefined;
-    if (!raw) return new Array<AccessControlEntryStruct>();
-    return Object.values(raw).map(v => AccessControlEntryDataTransformer.transform(v));
+    return attributeArray(res["0/31/0"]).map(v => AccessControlEntryDataTransformer.transform(v));
 }
 
 export async function addAclEntry(

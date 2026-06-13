@@ -9,6 +9,7 @@ import { BindingEntryDataTransformer, type BindingEntryStruct } from "../compone
 import {
     AuthMode,
     Privilege,
+    attributeArray,
     entriesForFabric,
     entryMatchesTarget,
     readAclEntries,
@@ -18,9 +19,9 @@ import {
 const BINDING_KEY_RE = /^(\d+)\/30\/0$/;
 
 export function readBindings(node: MatterNode, endpoint: number): BindingEntryStruct[] {
-    const raw = node.attributes[`${endpoint}/30/0`] as unknown[] | undefined;
-    if (!raw) return new Array<BindingEntryStruct>();
-    return Object.values(raw).map(value => BindingEntryDataTransformer.transform(value));
+    return attributeArray(node.attributes[`${endpoint}/30/0`]).map(value =>
+        BindingEntryDataTransformer.transform(value),
+    );
 }
 
 export interface EndpointBinding {
@@ -34,9 +35,7 @@ export function readAllBindings(node: MatterNode): EndpointBinding[] {
         const m = BINDING_KEY_RE.exec(key);
         if (!m) continue;
         const endpoint = Number(m[1]);
-        const raw = node.attributes[key] as unknown[] | undefined;
-        if (!raw) continue;
-        for (const value of Object.values(raw)) {
+        for (const value of attributeArray(node.attributes[key])) {
             result.push({ endpoint, binding: BindingEntryDataTransformer.transform(value) });
         }
     }

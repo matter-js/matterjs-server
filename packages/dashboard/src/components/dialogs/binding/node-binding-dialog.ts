@@ -14,12 +14,12 @@ import type { MdDialog } from "@material/web/dialog/dialog.js";
 import { MatterClient, MatterNode } from "@matter-server/ws-client";
 import { css, html, LitElement, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import { clientContext } from "../../../client/client-context.js";
 import { clusters } from "../../../client/models/descriptions.js";
 import { getEndpointDeviceTypes } from "../../../pages/matter-endpoint-view.js";
 import { nodeIdKey } from "../../../util/access-control.js";
 import { handleAsync } from "../../../util/async-handler.js";
 import { bindableClusters, targetAclCapacityForBinding } from "../../../util/binding.js";
-import { clientContext } from "../../../client/client-context.js";
 import { preventDefault } from "../../../util/prevent_default.js";
 import { showAlertDialog } from "../../dialog-box/show-dialog-box.js";
 import { addBinding } from "./binding-actions.js";
@@ -175,7 +175,9 @@ export class NodeBindingDialog extends LitElement {
                                   >`,
                           )}`
                     : nothing}
-                <md-select-option value=${CUSTOM_CLUSTER}><div slot="headline">Custom cluster id…</div></md-select-option>
+                <md-select-option value=${CUSTOM_CLUSTER}
+                    ><div slot="headline">Custom cluster id…</div></md-select-option
+                >
             </md-outlined-select>
             ${this._clusterSelection === CUSTOM_CLUSTER
                 ? html`<md-outlined-text-field
@@ -250,7 +252,8 @@ export class NodeBindingDialog extends LitElement {
                                       ep =>
                                           html`<md-select-option value=${String(ep)}>
                                               <div slot="headline">
-                                                  EP ${ep}${getEndpointDeviceTypes(target, ep)[0]
+                                                  EP
+                                                  ${ep}${getEndpointDeviceTypes(target, ep)[0]
                                                       ? ` · ${getEndpointDeviceTypes(target, ep)[0].label}`
                                                       : ""}
                                               </div>
@@ -269,12 +272,13 @@ export class NodeBindingDialog extends LitElement {
                                   .value=${this._endpointInput}
                                   @input=${(e: Event) => (this._endpointInput = (e.target as HTMLInputElement).value)}
                               ></md-outlined-text-field>`}
-
                         ${this._renderClusterField(target, endpoint)}
                     </div>
                 </div>
                 <div slot="actions">
-                    <md-text-button ?disabled=${this._busy} @click=${handleAsync(() => this._add())}>Add</md-text-button>
+                    <md-text-button ?disabled=${this._busy} @click=${handleAsync(() => this._add())}
+                        >Add</md-text-button
+                    >
                     <md-text-button ?disabled=${this._busy} @click=${this._close}>Cancel</md-text-button>
                 </div>
             </md-dialog>
