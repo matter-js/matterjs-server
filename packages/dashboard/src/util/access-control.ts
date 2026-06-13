@@ -91,6 +91,18 @@ export function aclCapacity(node: MatterNode): AclCapacity {
     return { max: num("0/31/4", 0), subjectsMax: num("0/31/2", 0), targetsMax: num("0/31/3", 0) };
 }
 
+/**
+ * Stable structural identity for an ACL entry, used to re-locate it in a freshly-read list before a
+ * write (the cache copy and the fresh copy are different objects).
+ */
+export function aclEntryKey(entry: AccessControlEntryStruct): string {
+    const subjects = (entry.subjects ?? []).map(nodeIdKey).sort();
+    const targets = (entry.targets ?? [])
+        .map(t => `${t.endpoint ?? ""}:${t.cluster ?? ""}:${t.deviceType ?? ""}`)
+        .sort();
+    return JSON.stringify([entry.fabricIndex, entry.privilege, entry.authMode, subjects, targets]);
+}
+
 export function subjectsInclude(entry: AccessControlEntryStruct, nodeId: number | bigint): boolean {
     const key = nodeIdKey(nodeId);
     return (entry.subjects ?? []).some(s => nodeIdKey(s) === key);

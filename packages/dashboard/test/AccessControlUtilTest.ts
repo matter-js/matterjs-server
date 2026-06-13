@@ -9,6 +9,7 @@ import type { AccessControlEntryStruct } from "../src/components/dialogs/acl/mod
 import {
     Privilege,
     aclCapacity,
+    aclEntryKey,
     detectBindingRelationship,
     entriesForFabric,
     entryMatchesTarget,
@@ -84,6 +85,14 @@ describe("access-control util", () => {
         expect(isProtectedAdmin(entry({ privilege: Privilege.Administer, subjects: [112233n] }), undefined)).to.equal(
             false,
         );
+    });
+
+    it("aclEntryKey is stable across number/bigint subjects and target order", () => {
+        const a = entry({ subjects: [112233], targets: [{ endpoint: 1, cluster: 6, deviceType: undefined }] });
+        const b = entry({ subjects: [112233n], targets: [{ endpoint: 1, cluster: 6, deviceType: undefined }] });
+        expect(aclEntryKey(a)).to.equal(aclEntryKey(b));
+        const c = entry({ subjects: [112233], targets: undefined });
+        expect(aclEntryKey(a)).to.not.equal(aclEntryKey(c));
     });
 
     it("detectBindingRelationship marks backs / overPrivileged / none", () => {
