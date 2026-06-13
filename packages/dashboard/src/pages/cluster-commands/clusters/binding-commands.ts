@@ -62,7 +62,13 @@ class BindingClusterCommands extends BaseClusterCommands {
         if (!confirmed) return;
         this._busy = true;
         try {
-            await deleteBindingAtIndex(this.client, this.node, this.endpoint, index);
+            await deleteBindingAtIndex(
+                this.client,
+                this.node,
+                this.endpoint,
+                index,
+                this.client.serverInfo?.fabric_index,
+            );
         } catch (err) {
             await showAlertDialog({ title: "Delete failed", text: err instanceof Error ? err.message : String(err) });
         } finally {

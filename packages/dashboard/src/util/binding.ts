@@ -12,6 +12,7 @@ import {
     attributeArray,
     entriesForFabric,
     entryMatchesTarget,
+    isWholeNode,
     readAclEntries,
     subjectsInclude,
 } from "./access-control.js";
@@ -117,8 +118,14 @@ export function targetAclCapacityForBinding(
     fabricIndex?: number,
 ): AddBindingCapacity {
     const entries = entriesForFabric(readAclEntries(targetNode), fabricIndex);
+    const targetsMaxRaw = targetNode.attributes["0/31/3"];
+    const targetsMax = typeof targetsMaxRaw === "number" && targetsMaxRaw > 0 ? targetsMaxRaw : Number.MAX_SAFE_INTEGER;
     const reusable = entries.some(
-        e => e.authMode === AuthMode.Case && e.privilege >= Privilege.Operate && subjectsInclude(e, sourceNodeId),
+        e =>
+            e.authMode === AuthMode.Case &&
+            e.privilege >= Privilege.Operate &&
+            subjectsInclude(e, sourceNodeId) &&
+            (isWholeNode(e) || (e.targets?.length ?? 0) < targetsMax),
     );
     if (reusable) return { canAdd: true };
     const maxRaw = targetNode.attributes["0/31/4"];

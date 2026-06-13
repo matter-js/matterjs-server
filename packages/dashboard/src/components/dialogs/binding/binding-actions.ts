@@ -5,7 +5,15 @@
  */
 
 import { AccessControlEntry, BindingTarget, MatterClient, MatterNode } from "@matter-server/ws-client";
-import { AuthMode, Privilege, attributeArray, isWholeNode, subjectsInclude } from "../../../util/access-control.js";
+import {
+    AuthMode,
+    Privilege,
+    attributeArray,
+    entriesForFabric,
+    isWholeNode,
+    nodeIdKey,
+    subjectsInclude,
+} from "../../../util/access-control.js";
 import { AccessControlEntryDataTransformer, type AccessControlEntryStruct } from "../acl/model.js";
 import { BindingEntryDataTransformer, type BindingEntryStruct } from "./model.js";
 
@@ -53,18 +61,21 @@ export async function addBinding(
     targetNodeId: number | bigint,
     targetEndpoint: number,
     cluster: number | undefined,
+    fabricIndex?: number,
 ): Promise<void> {
-    const acl = await freshAcl(client, targetNodeId);
+    const acl = entriesForFabric(await freshAcl(client, targetNodeId), fabricIndex);
+    const targetsMax = aclTargetsMax(client, targetNodeId);
     const reusable = acl.find(
-        e => e.authMode === AuthMode.Case && e.privilege >= Privilege.Operate && subjectsInclude(e, sourceNode.node_id),
+        e =>
+            e.authMode === AuthMode.Case &&
+            e.privilege >= Privilege.Operate &&
+            subjectsInclude(e, sourceNode.node_id) &&
+            (isWholeNode(e) || hasTarget(e, targetEndpoint, cluster) || (e.targets?.length ?? 0) < targetsMax),
     );
     if (reusable) {
-        if (!isWholeNode(reusable)) {
+        if (!isWholeNode(reusable) && !hasTarget(reusable, targetEndpoint, cluster)) {
             reusable.targets = reusable.targets ?? [];
-            const exists = reusable.targets.some(
-                t => t.endpoint === targetEndpoint && (t.cluster ?? undefined) === cluster,
-            );
-            if (!exists) reusable.targets.push({ endpoint: targetEndpoint, cluster, deviceType: undefined });
+            reusable.targets.push({ endpoint: targetEndpoint, cluster, deviceType: undefined });
         }
     } else {
         acl.push({
@@ -82,6 +93,15 @@ export async function addBinding(
     await client.setNodeBinding(sourceNode.node_id, sourceEndpoint, bindings.map(toBindingTarget));
 }
 
+function hasTarget(e: AccessControlEntryStruct, endpoint: number, cluster: number | undefined): boolean {
+    return (e.targets ?? []).some(t => t.endpoint === endpoint && (t.cluster ?? undefined) === cluster);
+}
+
+function aclTargetsMax(client: MatterClient, nodeId: number | bigint): number {
+    const raw = client.nodes[nodeIdKey(nodeId)]?.attributes["0/31/3"];
+    return typeof raw === "number" && raw > 0 ? raw : Number.MAX_SAFE_INTEGER;
+}
+
 /**
  * Remove the binding at `index`, then drop the matching target endpoint from the source's ACL
  * entry on the (binding) target node. Matches on the binding's TARGET endpoint.
@@ -91,6 +111,7 @@ export async function deleteBindingAtIndex(
     sourceNode: MatterNode,
     sourceEndpoint: number,
     index: number,
+    fabricIndex?: number,
 ): Promise<void> {
     const bindings = await freshBindings(client, sourceNode.node_id, sourceEndpoint);
     const removed = bindings[index];
@@ -100,11 +121,14 @@ export async function deleteBindingAtIndex(
 
     if (removed.node == null || removed.endpoint == null) return;
     const targetEndpoint = removed.endpoint;
-    const acl = await freshAcl(client, removed.node);
+    const removedCluster = removed.cluster ?? undefined;
+    const acl = entriesForFabric(await freshAcl(client, removed.node), fabricIndex);
     const kept = acl
         .map(e => {
             if (!subjectsInclude(e, sourceNode.node_id) || isWholeNode(e)) return e;
-            const targets = e.targets!.filter(t => t.endpoint !== targetEndpoint);
+            const targets = e.targets!.filter(
+                t => !(t.endpoint === targetEndpoint && (t.cluster ?? undefined) === removedCluster),
+            );
             if (targets.length === 0) return undefined;
             return { ...e, targets };
         })

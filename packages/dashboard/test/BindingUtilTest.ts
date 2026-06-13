@@ -12,6 +12,7 @@ import {
     readBindings,
     reverseAclState,
     sourceClientClusters,
+    targetAclCapacityForBinding,
     targetServerClusters,
 } from "../src/util/binding.js";
 
@@ -60,5 +61,20 @@ describe("binding util", () => {
         expect(reverseAclState(1, binding({ cluster: 6 }), target).state).to.equal("present");
         expect(reverseAclState(1, binding({ cluster: 8 }), target).state).to.equal("missing");
         expect(reverseAclState(1, binding({ cluster: 8 }), undefined).state).to.equal("cannotVerify");
+    });
+
+    it("targetAclCapacityForBinding gates on fabric-scoped count and reusable room", () => {
+        // Our fabric (1) is full (max 1) with a non-reusable entry (different subject) → cannot add.
+        const full = node({ "0/31/4": 1, "0/31/0": [{ "1": 3, "2": 2, "3": [9], "4": undefined, "254": 1 }] }, 2);
+        expect(targetAclCapacityForBinding(full, 1, 1).canAdd).to.equal(false);
+        // A foreign-fabric entry does not consume our per-fabric quota → can still add.
+        const foreignOnly = node(
+            { "0/31/4": 1, "0/31/0": [{ "1": 3, "2": 2, "3": [9], "4": undefined, "254": 2 }] },
+            2,
+        );
+        expect(targetAclCapacityForBinding(foreignOnly, 1, 1).canAdd).to.equal(true);
+        // Our fabric already has a whole-node Operate entry for the source → reusable, can add.
+        const reusable = node({ "0/31/4": 1, "0/31/0": [{ "1": 3, "2": 2, "3": [1], "4": undefined, "254": 1 }] }, 2);
+        expect(targetAclCapacityForBinding(reusable, 1, 1).canAdd).to.equal(true);
     });
 });

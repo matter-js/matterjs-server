@@ -39,7 +39,14 @@ export async function addAclEntry(
 
 export async function deleteAclEntry(client: MatterClient, nodeId: number | bigint, key: string): Promise<void> {
     const acl = await freshAcl(client, nodeId);
-    const kept = acl.filter(e => aclEntryKey(e) !== key);
+    let removed = false;
+    const kept = acl.filter(e => {
+        if (!removed && aclEntryKey(e) === key) {
+            removed = true;
+            return false;
+        }
+        return true;
+    });
     await client.setACLEntry(nodeId, kept.map(toApiAcl));
 }
 

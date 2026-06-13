@@ -116,7 +116,7 @@ export class NodeBindingDialog extends LitElement {
 
         this._busy = true;
         try {
-            await addBinding(this.client, this.node!, this.endpoint, targetNodeId, endpoint, cluster);
+            await addBinding(this.client, this.node!, this.endpoint, targetNodeId, endpoint, cluster, fabricIndex);
             this._close();
         } catch (err) {
             await showAlertDialog({

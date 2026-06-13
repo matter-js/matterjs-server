@@ -80,7 +80,9 @@ describe("access-control util", () => {
     });
 
     it("isProtectedAdmin flags the controller's admin entry across number/bigint", () => {
-        expect(isProtectedAdmin(entry({ privilege: Privilege.Administer, subjects: [112233n] }), 112233)).to.equal(true);
+        expect(isProtectedAdmin(entry({ privilege: Privilege.Administer, subjects: [112233n] }), 112233)).to.equal(
+            true,
+        );
         expect(isProtectedAdmin(entry({ privilege: Privilege.Operate, subjects: [112233] }), 112233)).to.equal(false);
         expect(isProtectedAdmin(entry({ privilege: Privilege.Administer, subjects: [112233n] }), undefined)).to.equal(
             false,
@@ -113,5 +115,16 @@ describe("access-control util", () => {
         expect(detectBindingRelationship(admin, viewed, all).kind).to.equal("overPrivileged");
         const unrelated = entry({ subjects: [555], targets: [{ endpoint: 1, cluster: 6, deviceType: undefined }] });
         expect(detectBindingRelationship(unrelated, viewed, all).kind).to.equal("none");
+    });
+
+    it("detectBindingRelationship ignores an offline source node", () => {
+        const viewed = 2588119612;
+        const source = node({ "1/30/0": [{ "1": viewed, "3": 1, "4": 6 }] }, { node_id: 976328453, available: false });
+        const operate = entry({
+            privilege: Privilege.Operate,
+            subjects: [976328453],
+            targets: [{ endpoint: 1, cluster: 6, deviceType: undefined }],
+        });
+        expect(detectBindingRelationship(operate, viewed, [source]).kind).to.equal("none");
     });
 });
