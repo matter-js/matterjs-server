@@ -1,0 +1,132 @@
+/**
+ * @license
+ * Copyright 2025-2026 Open Home Foundation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import type { MatterNode } from "@matter-server/ws-client";
+import { AccessControlEntryDataTransformer, type AccessControlEntryStruct } from "../components/dialogs/acl/model.js";
+import { readAllBindings } from "./binding.js";
+
+export enum Privilege {
+    View = 1,
+    ProxyView = 2,
+    Operate = 3,
+    Manage = 4,
+    Administer = 5,
+}
+
+export enum AuthMode {
+    Pase = 1,
+    Case = 2,
+    Group = 3,
+}
+
+export const PRIVILEGE_NAMES: Record<number, string> = {
+    [Privilege.View]: "View",
+    [Privilege.ProxyView]: "ProxyView",
+    [Privilege.Operate]: "Operate",
+    [Privilege.Manage]: "Manage",
+    [Privilege.Administer]: "Administer",
+};
+
+export const AUTH_MODE_NAMES: Record<number, string> = {
+    [AuthMode.Pase]: "PASE",
+    [AuthMode.Case]: "CASE",
+    [AuthMode.Group]: "Group",
+};
+
+export type RelationshipKind = "none" | "backs" | "overPrivileged";
+
+export interface RelationshipResult {
+    kind: RelationshipKind;
+    sourceNodeId?: number | bigint;
+    sourceEndpoint?: number;
+}
+
+export function nodeIdKey(id: number | bigint): string {
+    return String(id);
+}
+
+export function readAclEntries(node: MatterNode): AccessControlEntryStruct[] {
+    const raw = node.attributes["0/31/0"] as unknown[] | undefined;
+    if (!raw) return new Array<AccessControlEntryStruct>();
+    return Object.values(raw).map(value => AccessControlEntryDataTransformer.transform(value));
+}
+
+export function entriesForFabric(
+    entries: AccessControlEntryStruct[],
+    fabricIndex: number | undefined,
+): AccessControlEntryStruct[] {
+    if (fabricIndex === undefined) return entries;
+    return entries.filter(e => e.fabricIndex === fabricIndex);
+}
+
+export function isWholeNode(entry: AccessControlEntryStruct): boolean {
+    return !entry.targets || entry.targets.length === 0;
+}
+
+export function entryMatchesTarget(
+    entry: AccessControlEntryStruct,
+    endpoint: number,
+    cluster: number | undefined,
+): boolean {
+    if (isWholeNode(entry)) return true;
+    return entry.targets!.some(
+        t => t.endpoint === endpoint && (t.cluster == null || cluster == null || t.cluster === cluster),
+    );
+}
+
+export interface AclCapacity {
+    max: number;
+    subjectsMax: number;
+    targetsMax: number;
+}
+
+export function aclCapacity(node: MatterNode): AclCapacity {
+    const num = (key: string, fallback: number) => {
+        const v = node.attributes[key];
+        return typeof v === "number" ? v : fallback;
+    };
+    return { max: num("0/31/4", 0), subjectsMax: num("0/31/2", 0), targetsMax: num("0/31/3", 0) };
+}
+
+export function subjectsInclude(entry: AccessControlEntryStruct, nodeId: number | bigint): boolean {
+    const key = nodeIdKey(nodeId);
+    return (entry.subjects ?? []).some(s => nodeIdKey(s) === key);
+}
+
+export function isProtectedAdmin(
+    entry: AccessControlEntryStruct,
+    controllerNodeId: number | bigint | undefined,
+): boolean {
+    if (controllerNodeId === undefined) return false;
+    return (
+        entry.privilege === Privilege.Administer &&
+        entry.authMode === AuthMode.Case &&
+        subjectsInclude(entry, controllerNodeId)
+    );
+}
+
+export function detectBindingRelationship(
+    entry: AccessControlEntryStruct,
+    viewedNodeId: number | bigint,
+    allNodes: MatterNode[],
+): RelationshipResult {
+    if (entry.authMode !== AuthMode.Case) return { kind: "none" };
+    const viewedKey = nodeIdKey(viewedNodeId);
+
+    for (const subject of entry.subjects ?? []) {
+        const sourceKey = nodeIdKey(subject);
+        const source = allNodes.find(n => nodeIdKey(n.node_id) === sourceKey);
+        if (!source || !source.available) continue;
+        for (const { endpoint, binding } of readAllBindings(source)) {
+            if (binding.node == null) continue;
+            if (nodeIdKey(binding.node) !== viewedKey) continue;
+            if (!entryMatchesTarget(entry, binding.endpoint ?? -1, binding.cluster)) continue;
+            const kind: RelationshipKind = entry.privilege === Privilege.Administer ? "overPrivileged" : "backs";
+            return { kind, sourceNodeId: source.node_id, sourceEndpoint: endpoint };
+        }
+    }
+    return { kind: "none" };
+}
