@@ -39,16 +39,48 @@ Node colors indicate device status:
 - **Red**: Offline device (not responding)
 - **Orange**: Unknown/external device (not commissioned to this fabric, detected in neighbor tables)
 
+### Understanding Node Role Badges
+
+Thread nodes commissioned to this fabric carry a small corner badge over the device icon showing their Thread routing role:
+
+- **Crown (amber)**: Leader — the elected coordinator of the Thread network
+- **Swap arrows (blue)**: Router — forwards traffic for other nodes
+- **Small dot (grey-blue)**: End Device or REED (Router-Eligible End Device)
+- **Zzz / sleep (grey-blue)**: Sleepy End Device — radio off when idle to save battery
+- **No badge**: Role unassigned/unspecified, or an external device whose role can't be queried
+
+Thread Border Routers use the device icon itself to show role:
+
+- **Crown**: this Border Router is currently the Thread Leader
+- **Wireless router icon**: a Border Router that is not the Leader
+- **Star badge (teal)**: the Primary Backbone Border Router (BBR). Independent of the Leader role — a node can be either, both, or neither.
+
+Other node icons:
+
+- **WiFi symbol**: WiFi-connected node
+- **Access point (orange)**: external/unknown router-capable device
+- **Question mark (orange)**: external/unknown end device
+
 ### Understanding Connection Lines
 
-Connection lines represent the communication links between devices:
+Connection lines represent the communication links between devices.
 
-- **Solid lines**: Connections to online devices
-- **Dashed lines**: Connections to offline or unknown devices (based on last known data)
-- **Line colors** indicate signal quality:
-  - **Green**: Strong signal (RSSI > -60 dBm or LQI > 200)
-  - **Yellow/Orange**: Medium signal (RSSI > -75 dBm or LQI > 100)
-  - **Red**: Weak signal
+**Line style:**
+
+- **Solid lines**: link to an online device
+- **Dashed lines**: link to an offline or unknown/external device (based on last known data), **or** an asymmetric link where the peer reports no usable link back (one direction is dead)
+
+**Line color** indicates signal quality. Thread links are scored by LQI (Link Quality Indicator, typically 0–3 on the underlying stack; higher is better); WiFi links by RSSI:
+
+- **Green**: strong signal (LQI > 2, or RSSI > -70 dBm)
+- **Orange**: medium signal (LQI = 2, or RSSI -70 to -85 dBm)
+- **Red**: weak signal (LQI = 1, or RSSI ≤ -85 dBm)
+- **Grey**: no usable link (LQI = 0 — stale or dead neighbor entry)
+
+**Arrows** appear only on asymmetric links and point from the reporting node toward the node it sees:
+
+- A link drawn with an arrow means only one side reports the other in its neighbor/route table, or the link is shown from the peer's perspective rather than the selected node's.
+- A plain line (no arrow) means both nodes see each other — a healthy bidirectional link.
 
 ### Thread Network Details
 
@@ -62,10 +94,17 @@ When you click on a Thread device, the details panel shows network information:
 
 Each connection shows:
 
-- **LQI (Link Quality Indicator)**: 0-255, higher is better. Derived from RF signal quality.
+- **LQI (Link Quality Indicator)**: higher is better. The Matter spec types this as 0–255, but the OpenThread stack reports 0–3 in practice. Derived from RF signal quality.
 - **RSSI (Received Signal Strength)**: In dBm, closer to 0 is stronger (e.g., -50 dBm is better than -80 dBm).
-- **Bidir (Bidirectional LQI)**: Average of inbound and outbound LQI from the route table. Only available for router connections.
+- **Bidir (Bidirectional LQI)**: Average of the inbound and outbound LQI from the route table — i.e. the link quality measured in **both directions**. Only available for router connections, which maintain a route table.
 - **Cost (Path Cost)**: Number of hops to reach the destination. 1 = direct link, higher = multi-hop route.
+
+A connection may also be tagged with a direction hint:
+
+- **← one-way**: the peer reports this node as a neighbor, but this node has no matching neighbor-table entry for the peer. This points to asymmetric (one-way) visibility — caused by range, transmit-power differences, or a stale neighbor table — rather than a healthy two-way link.
+- **(reverse)**: the displayed link comes from the peer's neighbor/route table, not the selected node's. The data is real, just measured from the other end.
+
+A connection with neither tag is bidirectional: both nodes see each other.
 
 #### Data Sources
 
@@ -88,11 +127,12 @@ This is useful when network topology changes or when you want the latest signal 
 
 ### Unknown Devices
 
-Devices that appear in neighbor tables but are not commissioned to your fabric are shown as "Unknown" with an orange icon. These could be:
+Devices that appear in neighbor or route tables but are not commissioned to your fabric are shown as "Unknown" with an orange icon. Because these tables live at the Thread mesh layer, an unknown entry is always a node on the **same** Thread network as your devices — just not reachable by us. They could be:
 
-- Devices commissioned to a different fabric (e.g., Home Assistant's Thread Border Router)
-- Border routers from other Thread networks
-- Thread devices in pairing mode
+- **Devices on a different Matter fabric**: a single Thread network is often shared by several fabrics (e.g. Home Assistant, Apple, Google). Their nodes and Border Routers are RF neighbors of your devices, but we cannot query them.
+- **Non-Matter Thread infrastructure**: Border Routers, range extenders, and other Thread devices (e.g. HomeKit-only Thread devices) that are not Matter devices and can never be commissioned.
+- **A Border Router under an unstable radio MAC**: some vendors (notably Apple and Aqara) randomize their Thread radio MAC at each reboot. The same physical Border Router then shows up twice — once as the known BR (matched via its stable MeshCoP `xa` identifier) and once here as an "External Router" carrying its current radio MAC. After such a reboot the old MAC lingers until neighbor tables age out.
+- **Stale entries**: a neighbor may keep listing a node that has left the network or a battery-powered (sleepy) device it has not heard from recently, until the entry ages out. Use the refresh button to re-read current tables; sometimes a device restart is needed before its tables drop the obsolete entry.
 
 Unknown devices show as "Router (external)" or "End Device (external)" based on their radio behavior (rxOnWhenIdle). Since they're not commissioned to this fabric, we cannot query their actual Thread role (Leader, Router, etc.).
 

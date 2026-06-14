@@ -112,7 +112,7 @@ export class WiFiGraph extends BaseNetworkGraph {
 
             graphNodes.push({
                 id: apId,
-                label: `AP ${bssid.slice(-8)}`,
+                label: `AP ${bssid}`,
                 image: createWiFiRouterIconDataUrl(isSelected),
                 shape: "image",
                 networkType: "wifi",

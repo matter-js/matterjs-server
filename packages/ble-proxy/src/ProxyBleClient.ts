@@ -6,8 +6,9 @@
 
 import { createPromise, Logger, Seconds, withTimeout } from "@matter/main";
 import { BleError, MatterBle } from "@matter/main/protocol";
+import type { BleProxyConnection } from "./BleProxyConnection.js";
 import type { BleProxyHandler } from "./BleProxyHandler.js";
-import { BleProxyCommand, BleProxyEvent, type DeviceDiscoveredData } from "./BleProxyProtocol.js";
+import type { DeviceDiscoveredData } from "./BleProxyProtocol.js";
 
 const logger = Logger.get("ProxyBleClient");
 
@@ -43,18 +44,19 @@ export class ProxyBleClient {
     #deviceDiscoveredCallback: ((peripheral: ProxyPeripheral, matterServiceData: Uint8Array) => void) | undefined;
     #isScanning = false;
 
-    readonly #eventObserver = (event: string, data: Record<string, unknown>) => {
-        if (event === BleProxyEvent.DeviceDiscovered) {
-            this.#handleDeviceDiscovered(data as unknown as DeviceDiscoveredData);
-        } else if (event === BleProxyEvent.ScanStopped) {
-            logger.info(`Scan stopped by proxy client: ${(data as { reason?: string }).reason ?? "unknown"}`);
-            this.#isScanning = false;
-        }
+    readonly #deviceDiscoveredObserver = (data: DeviceDiscoveredData, _connection: BleProxyConnection) => {
+        this.#handleDeviceDiscovered(data);
+    };
+
+    readonly #scanStoppedObserver = (reason: string) => {
+        logger.info(`Scan stopped by proxy client: ${reason}`);
+        this.#isScanning = false;
     };
 
     constructor(handler: BleProxyHandler) {
         this.#handler = handler;
-        this.#handler.eventReceived.on(this.#eventObserver);
+        this.#handler.deviceDiscovered.on(this.#deviceDiscoveredObserver);
+        this.#handler.scanStopped.on(this.#scanStoppedObserver);
     }
 
     setDiscoveryCallback(callback: (peripheral: ProxyPeripheral, matterServiceData: Uint8Array) => void): void {
@@ -88,31 +90,23 @@ export class ProxyBleClient {
         logger.debug("Start BLE scanning via proxy ...");
         // Matter discovery only needs one event per state change; opt out of the spec's
         // default true so a 10 Hz peripheral advertise doesn't flood the WebSocket.
-        await this.#handler.sendCommand(BleProxyCommand.StartScan, {
-            service_uuids: ["fff6"],
-            allow_duplicates: false,
-        });
+        await this.#handler.startScan({ service_uuids: ["fff6"], allow_duplicates: false });
         this.#isScanning = true;
     }
 
     async stopScanning(): Promise<void> {
-        if (!this.#isScanning) {
-            return;
-        }
-
-        if (!this.#handler.connected) {
-            this.#isScanning = false;
-            return;
-        }
-
-        logger.debug("Stop BLE scanning via proxy ...");
-        await this.#handler.sendCommand(BleProxyCommand.StopScan);
+        // Clear hub scan intent unconditionally: a transient all-clients-disconnect can reset
+        // #isScanning while the hub still intends to scan, and skipping stopScan here would let
+        // a reconnecting client auto-resume a scan the caller already ended.
         this.#isScanning = false;
+        logger.debug("Stop BLE scanning via proxy ...");
+        await this.#handler.stopScan();
     }
 
     close(): void {
         this.#isScanning = false;
-        this.#handler.eventReceived.off(this.#eventObserver);
+        this.#handler.deviceDiscovered.off(this.#deviceDiscoveredObserver);
+        this.#handler.scanStopped.off(this.#scanStoppedObserver);
     }
 
     #handleDeviceDiscovered(data: DeviceDiscoveredData): void {
@@ -150,7 +144,9 @@ export class ProxyBleClient {
             return;
         }
 
-        logger.debug(`Discovered device ${address} (${name ?? "unnamed"}) via proxy`);
+        logger.info(
+            `Discovered commissionable device ${address} (${name ?? "unnamed"}) rssi=${rssi ?? "n/a"} via proxy`,
+        );
         this.#discoveredPeripherals.set(address, { peripheral, matterServiceData });
         this.#deviceDiscoveredCallback?.(peripheral, matterServiceData);
     }

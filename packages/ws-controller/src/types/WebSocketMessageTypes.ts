@@ -29,6 +29,7 @@ export {
     type EventTypes,
     type LogLevelResponse,
     type LogLevelString,
+    type SettableLogLevelString,
     type MatterFabricData,
     type MatterNodeEvent,
     type NodePingResult,

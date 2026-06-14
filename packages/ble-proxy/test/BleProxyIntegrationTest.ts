@@ -121,58 +121,6 @@ describe("BLE Proxy Integration", function () {
         });
     });
 
-    describe("command routing", () => {
-        it("should send connect and receive typed result", async () => {
-            testClient.onCommand(BleProxyCommand.Connect, async () => {
-                return { connection_handle: 1, mtu: 247 };
-            });
-
-            const result = await handler.sendCommand(BleProxyCommand.Connect, { address: "AA:BB:CC:DD:EE:FF" });
-
-            expect(result.connection_handle).to.equal(1);
-            expect(result.mtu).to.equal(247);
-        });
-
-        it("should send discover_services and receive services", async () => {
-            const mockDevice = new MockBleDevice({ discriminator: 3840, vendorId: 0xfff1, productId: 0x8000 });
-
-            testClient.onCommand(BleProxyCommand.DiscoverServices, async () => {
-                return { services: mockDevice.services };
-            });
-
-            const result = await handler.sendCommand(BleProxyCommand.DiscoverServices, { connection_handle: 1 });
-            expect(result.services).to.have.length(1);
-            expect(result.services[0].uuid).to.equal("fff6");
-        });
-
-        it("should send discover_characteristics and receive characteristics", async () => {
-            const mockDevice = new MockBleDevice({ discriminator: 3840, vendorId: 0xfff1, productId: 0x8000 });
-
-            testClient.onCommand(BleProxyCommand.DiscoverCharacteristics, async () => {
-                return { characteristics: mockDevice.characteristics };
-            });
-
-            const result = await handler.sendCommand(BleProxyCommand.DiscoverCharacteristics, {
-                connection_handle: 1,
-                service_uuid: "fff6",
-            });
-            expect(result.characteristics).to.have.length(3);
-        });
-
-        it("should handle error responses", async () => {
-            testClient.onCommand(BleProxyCommand.Connect, async () => {
-                throw new Error("Device not found");
-            });
-
-            try {
-                await handler.sendCommand(BleProxyCommand.Connect, { address: "XX:XX:XX:XX:XX:XX" });
-                expect.fail("Should have thrown");
-            } catch (err) {
-                expect((err as Error).message).to.include("Device not found");
-            }
-        });
-    });
-
     describe("openChannel BTP handshake", () => {
         const C1_UUID = "18EE2EF5-263D-4559-959F-4F9C429F9D11";
         const C2_UUID = "18EE2EF5-263D-4559-959F-4F9C429F9D12";
@@ -250,6 +198,40 @@ describe("BLE Proxy Integration", function () {
             await channel.close();
         });
 
+        it("should complete handshake when the indication arrives before the WriteAndSubscribe response", async () => {
+            const proxyBle = new ProxyBle(handler);
+            const mockDevice = new MockBleDevice({ discriminator: 4242, vendorId: 0xfff1, productId: 0x8000 });
+
+            await discoverDevice(proxyBle, mockDevice);
+
+            testClient.onCommand(BleProxyCommand.Connect, async () => ({ connection_handle: 1, mtu: 247 }));
+            testClient.onCommand(BleProxyCommand.DiscoverServices, async () => ({ services: mockDevice.services }));
+            testClient.onCommand(BleProxyCommand.DiscoverCharacteristics, async () => ({
+                characteristics: mockDevice.characteristics,
+            }));
+            // Emit the indication before returning the command result, so the binary frame reaches
+            // the server ahead of the WriteAndSubscribe reply — the ordering that broke commissioning.
+            testClient.onCommand(BleProxyCommand.WriteAndSubscribe, async () => {
+                testClient.sendBinaryFrame(
+                    BinaryFrameOpcode.Notification,
+                    1,
+                    mockDevice.generateBtpHandshakeResponse(),
+                );
+                return {};
+            });
+
+            const central = proxyBle.centralInterface as ProxyBleCentralInterface;
+            central.onData(() => {});
+
+            const channel = (await central.openChannel({
+                type: "ble",
+                peripheralAddress: mockDevice.address,
+            })) as ProxyBleChannel;
+
+            expect(channel.connected).to.be.true;
+            await channel.close();
+        });
+
         it("should reject when openChannel is called before onData listener is installed", async () => {
             const proxyBle = new ProxyBle(handler);
             const mockDevice = new MockBleDevice({ discriminator: 1234, vendorId: 0xfff1, productId: 0x8000 });
@@ -294,6 +276,29 @@ describe("BLE Proxy Integration", function () {
 
             const disconnectCmd = await disconnectPromise;
             expect((disconnectCmd.args as { connection_handle: number }).connection_handle).to.equal(7);
+        });
+
+        it("tears down the channel when the owning proxy client disconnects", async () => {
+            const proxyBle = new ProxyBle(handler);
+            const mockDevice = new MockBleDevice({ discriminator: 7000, vendorId: 0xfff1, productId: 0x8000 });
+
+            await discoverDevice(proxyBle, mockDevice);
+            wireBtpFlow(mockDevice);
+
+            const central = proxyBle.centralInterface as ProxyBleCentralInterface;
+            central.onData(() => {});
+
+            const channel = (await central.openChannel({
+                type: "ble",
+                peripheralAddress: mockDevice.address,
+            })) as ProxyBleChannel;
+            expect(channel.connected).to.be.true;
+
+            // Owning proxy client drops entirely — the channel must tear down with it.
+            testClient.close();
+            await new Promise<void>(resolve => setTimeout(resolve, 100));
+
+            expect(channel.connected).to.be.false;
         });
     });
 });

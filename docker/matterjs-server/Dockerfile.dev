@@ -1,20 +1,36 @@
-FROM node:22-trixie-slim
+FROM node:24.15-trixie-slim
 
 # Set shell
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Install required system dependencies
+# Runtime dependencies:
 # - iputils-ping: Required for node ping functionality
+# - libcap2-bin: provides setcap, used to grant ping CAP_NET_RAW (see below)
 # - curl: For health checks and general utility
 # - git: Required for npm install from git repos
+# - bluez: Bluetooth stack for BLE commissioning
+# Build dependencies (kept in the dev image for fast incremental rebuilds):
+# - python3, make, gcc, g++: toolchain for native module compilation
+# - libbluetooth-dev, libudev-dev: headers for native BLE/udev bindings
 RUN \
     set -x \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
         iputils-ping \
+        libcap2-bin \
         curl \
         git \
-    && apt-get purge -y --auto-remove \
+        bluez \
+        python3 \
+        make \
+        gcc \
+        g++ \
+        libbluetooth-dev \
+        libudev-dev \
+    # ping_node runs as the non-root user; CAP_NET_RAW on the binary lets it open
+    # an ICMP socket regardless of the host's net.ipv4.ping_group_range.
+    && setcap cap_net_raw+ep "$(command -v ping)" \
     && rm -rf \
         /var/lib/apt/lists/* \
         /usr/src/*
@@ -28,16 +44,28 @@ COPY packages/custom-clusters/package*.json ./packages/custom-clusters/
 COPY packages/ws-controller/package*.json ./packages/ws-controller/
 COPY packages/ws-client/package*.json ./packages/ws-client/
 COPY packages/dashboard/package*.json ./packages/dashboard/
+COPY packages/ble-proxy/package*.json ./packages/ble-proxy/
 COPY packages/matter-server/package*.json ./packages/matter-server/
 
-# Install dependencies
-RUN npm ci
+# Install dependencies. --ignore-scripts is required: the root `prepare` script
+# runs `build-clean`, which needs the source that is only copied below (kept after
+# this layer for caching). Native modules are compiled explicitly after the copy.
+RUN npm ci --ignore-scripts
 
 # Copy source code
 COPY . .
 
-# Build all packages
-RUN npm run build
+# Compile optional native modules (noble/bleno for BLE) now that the toolchain and
+# source are present, then build all packages.
+RUN npm rebuild --foreground-scripts \
+    && npm run build
+
+# Initialize data volume with user permissions
+RUN mkdir -p /data && chown -R 1000:1000 /data
+
+# Environment variables with defaults
+ENV LOG_LEVEL=info
+ENV STORAGE_PATH=/data
 
 # Data volume for persistent storage
 VOLUME ["/data"]
@@ -53,7 +81,10 @@ COPY --chmod=0755 docker/matterjs-server/healthcheck.sh /usr/local/bin/healthche
 HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --start-interval=5s --retries=3 \
     CMD ["/usr/local/bin/healthcheck.sh"]
 
+# Run as non-root user
+USER 1000:1000
+
 # Run the matter server with data stored in /data
 # --enable-source-maps provides better stack traces in error logs
 ENTRYPOINT ["node", "--enable-source-maps", "packages/matter-server/dist/esm/MatterServer.js"]
-CMD ["--storage-path", "/data"]
+CMD []

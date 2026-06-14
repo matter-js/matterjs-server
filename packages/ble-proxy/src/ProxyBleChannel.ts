@@ -78,28 +78,35 @@ export class ProxyBleCentralInterface implements Transport {
         }
 
         const { peripheralAddress } = address;
-        const { hasAdditionalAdvertisementData } = this.#bleScanner.getDiscoveredDevice(peripheralAddress);
 
-        if (!this.#handler.connected) {
-            throw new BleError("BLE proxy client not connected");
+        const connection = this.#handler.getOwner(peripheralAddress);
+        if (!connection) {
+            throw new BleError(`No connected BLE proxy client owns peripheral ${peripheralAddress}`);
         }
 
-        logger.debug(`Connecting to peripheral ${peripheralAddress} via proxy`);
+        const discovered = this.#bleScanner.getDiscoveredDevice(peripheralAddress);
+        const { hasAdditionalAdvertisementData } = discovered;
+        const rssi = discovered.peripheral.rssi;
+
+        logger.debug(`Connecting to peripheral ${peripheralAddress} (rssi=${rssi ?? "n/a"}) via proxy`);
 
         // 1. Connect
-        const { connection_handle, mtu: peripheralMtu } = await this.#handler.sendCommand(BleProxyCommand.Connect, {
+        const { connection_handle, mtu: peripheralMtu } = await connection.sendCommand(BleProxyCommand.Connect, {
             address: peripheralAddress,
         });
 
-        let mtu = peripheralMtu ?? 0;
-        if (mtu > MatterBle.MAXIMUM_BTP_MTU) {
-            mtu = MatterBle.MAXIMUM_BTP_MTU;
-        }
-        logger.debug(`Connected to ${peripheralAddress}, handle=${connection_handle}, mtu=${mtu}`);
+        const mtu = MatterBle.btpSegmentSizeFromAttMtu(peripheralMtu ?? 0);
+        logger.info(
+            `Connected to ${peripheralAddress}, handle=${connection_handle}, BTP segment size=${mtu} bytes (peripheral ATT_MTU up to ${peripheralMtu ?? "n/a"}), rssi=${rssi ?? "n/a"}`,
+        );
+
+        // The owner connection's observables outlive a failed open; a leaked observer would corrupt
+        // the next channel on the same connection. Detach on every exit path; assigned once registered.
+        let detachObservers: (() => void) | undefined;
 
         try {
             // 2. Discover services
-            const { services } = await this.#handler.sendCommand(BleProxyCommand.DiscoverServices, {
+            const { services } = await connection.sendCommand(BleProxyCommand.DiscoverServices, {
                 connection_handle,
             });
 
@@ -109,7 +116,7 @@ export class ProxyBleCentralInterface implements Transport {
             }
 
             // 3. Discover characteristics
-            const { characteristics } = await this.#handler.sendCommand(BleProxyCommand.DiscoverCharacteristics, {
+            const { characteristics } = await connection.sendCommand(BleProxyCommand.DiscoverCharacteristics, {
                 connection_handle,
                 service_uuid: matterService.uuid,
             });
@@ -136,34 +143,15 @@ export class ProxyBleCentralInterface implements Transport {
             // 4. Read C3 if present and has additional data
             if (c3Uuid && hasAdditionalAdvertisementData) {
                 logger.debug(`Reading additional commissioning data from C3`);
-                await this.#handler.sendCommand(BleProxyCommand.ReadCharacteristic, {
+                await connection.sendCommand(BleProxyCommand.ReadCharacteristic, {
                     connection_handle,
                     characteristic_uuid: c3Uuid,
                 });
-                // Additional commissioning data read but not used directly by the proxy -
-                // it's handled by matter.js commissioning flow internally
             }
 
-            // 5. Send BTP handshake request on C1 and atomically subscribe to C2 for the
-            // response indication. The combo eliminates the WebSocket round-trip between
-            // Write Response and CCCD enable — without it, a peripheral that pushes the
-            // handshake indication immediately after Write Response can fire before the
-            // proxy client has enabled notifications, and the indication is lost.
-            const btpHandshakeRequest = BtpCodec.encodeBtpHandshakeRequest({
-                versions: MatterBle.BTP_SUPPORTED_VERSIONS,
-                attMtu: mtu,
-                clientWindowSize: MatterBle.BTP_MAXIMUM_WINDOW_SIZE,
-            });
-            logger.debug(`Sending BTP handshake request on C1 and subscribing C2 atomically`);
-            await this.#handler.sendCommand(BleProxyCommand.WriteAndSubscribe, {
-                connection_handle,
-                write_uuid: c1Uuid,
-                write_value: Buffer.from(btpHandshakeRequest as ArrayBuffer).toString("base64"),
-                write_response: true,
-                subscribe_uuid: c2Uuid,
-            });
-
-            // 6. Wait for BTP handshake response via binary frame
+            // 5. Register the handshake observer BEFORE sending: the C2 indication is a separate
+            // binary frame that can beat the WriteAndSubscribe response, and binaryFrameReceived
+            // drops frames emitted with no listener attached.
             const {
                 promise: handshakePromise,
                 resolver: handshakeResolver,
@@ -191,34 +179,74 @@ export class ProxyBleCentralInterface implements Transport {
                     }
                 }
             };
-            this.#handler.binaryFrameReceived.on(handshakeObserver);
+            connection.binaryFrameReceived.on(handshakeObserver);
+
+            // 6. Write C1 and subscribe C2 atomically so the peripheral can't fire its indication
+            // before notifications are enabled (no round-trip between Write Response and CCCD enable).
+            const btpHandshakeRequest = BtpCodec.encodeBtpHandshakeRequest({
+                versions: MatterBle.BTP_SUPPORTED_VERSIONS,
+                attMtu: mtu,
+                clientWindowSize: MatterBle.BTP_MAXIMUM_WINDOW_SIZE,
+            });
+            logger.debug(`Sending BTP handshake request on C1 and subscribing C2 atomically`);
 
             let handshakeResponse: Uint8Array;
             try {
+                await connection.sendCommand(BleProxyCommand.WriteAndSubscribe, {
+                    connection_handle,
+                    write_uuid: c1Uuid,
+                    write_value: Buffer.from(btpHandshakeRequest as ArrayBuffer).toString("base64"),
+                    write_response: true,
+                    subscribe_uuid: c2Uuid,
+                });
                 handshakeResponse = await handshakePromise;
             } finally {
-                this.#handler.binaryFrameReceived.off(handshakeObserver);
+                connection.binaryFrameReceived.off(handshakeObserver);
                 btpHandshakeTimeout.stop();
             }
 
-            // 7. Create BTP session
-            // Use a ref object so closures can access the channel after it's created
+            // 7. Register the live observer BEFORE creating the session (same non-buffering frame
+            // race as step 5); frames seen before the session exists are buffered, then flushed below.
             const onMatterMessageListener = this.#onMatterMessageListener;
             const channelRef: { channel?: ProxyBleChannel } = {};
+            const sessionRef: { session?: BtpSessionHandler } = {};
+            const earlyFrames = new Array<Uint8Array>();
 
+            const forwardToBtp = (payload: Uint8Array) => {
+                sessionRef.session
+                    ?.handleIncomingBleData(payload)
+                    .catch(error =>
+                        logger.warn(`Peripheral ${peripheralAddress}: Error handling incoming BLE data`, error),
+                    );
+            };
+
+            const binaryObserver = (frame: { connectionHandle: number; opcode: number; payload: Uint8Array }) => {
+                if (frame.connectionHandle === connection_handle && frame.opcode === BinaryFrameOpcode.Notification) {
+                    const payload = new Uint8Array(frame.payload);
+                    if (sessionRef.session) {
+                        forwardToBtp(payload);
+                    } else {
+                        earlyFrames.push(payload);
+                    }
+                }
+            };
+            connection.binaryFrameReceived.on(binaryObserver);
+            detachObservers = () => connection.binaryFrameReceived.off(binaryObserver);
+
+            // 8. Create the BTP session.
             const btpSession = await BtpSessionHandler.createAsCentral(
                 handshakeResponse,
                 // Write callback: send binary frame to proxy client
                 async (data: Bytes) => {
                     const bytes = data instanceof Uint8Array ? data : new Uint8Array(data as ArrayBuffer);
-                    this.#handler.sendBinaryFrame(BinaryFrameOpcode.WriteData, connection_handle, bytes);
+                    connection.sendBinaryFrame(BinaryFrameOpcode.WriteData, connection_handle, bytes);
                 },
                 // Disconnect callback
                 async () => {
                     if (!channelRef.channel?.connected) return;
                     logger.debug(`Disconnecting from ${peripheralAddress} via proxy`);
                     try {
-                        await this.#handler.sendCommand(BleProxyCommand.Disconnect, { connection_handle });
+                        await connection.sendCommand(BleProxyCommand.Disconnect, { connection_handle });
                     } catch (error) {
                         logger.debug(
                             `Peripheral ${peripheralAddress}: Error sending Disconnect to proxy client`,
@@ -234,18 +262,12 @@ export class ProxyBleCentralInterface implements Transport {
                     }
                 },
             );
+            sessionRef.session = btpSession;
 
-            // 8. Wire up binary frame notifications to BTP session
-            const binaryObserver = (frame: { connectionHandle: number; opcode: number; payload: Uint8Array }) => {
-                if (frame.connectionHandle === connection_handle && frame.opcode === BinaryFrameOpcode.Notification) {
-                    btpSession
-                        .handleIncomingBleData(new Uint8Array(frame.payload))
-                        .catch(error =>
-                            logger.warn(`Peripheral ${peripheralAddress}: Error handling incoming BLE data`, error),
-                        );
-                }
-            };
-            this.#handler.binaryFrameReceived.on(binaryObserver);
+            for (const payload of earlyFrames) {
+                forwardToBtp(payload);
+            }
+            earlyFrames.length = 0;
 
             // 9. Handle unexpected disconnects from proxy client
             const eventObserver = (event: string, data: Record<string, unknown>) => {
@@ -261,21 +283,32 @@ export class ProxyBleCentralInterface implements Transport {
                         .catch(error => logger.debug(`Peripheral ${peripheralAddress}: Error closing channel`, error));
                 }
             };
-            this.#handler.eventReceived.on(eventObserver);
+            connection.eventReceived.on(eventObserver);
 
-            // Cleanup function to remove observers when channel closes
-            const cleanupObservers = () => {
-                this.#handler.binaryFrameReceived.off(binaryObserver);
-                this.#handler.eventReceived.off(eventObserver);
+            // The Disconnected event covers one peripheral; this covers the whole owning client vanishing.
+            const ownerClosedObserver = () => {
+                logger.info(`Owning proxy client for ${peripheralAddress} disconnected`);
+                channelRef.channel?.markDisconnected();
+                channelRef.channel
+                    ?.close()
+                    .catch(error => logger.debug(`Peripheral ${peripheralAddress}: Error closing channel`, error));
+            };
+            connection.closed.on(ownerClosedObserver);
+
+            detachObservers = () => {
+                connection.binaryFrameReceived.off(binaryObserver);
+                connection.eventReceived.off(eventObserver);
+                connection.closed.off(ownerClosedObserver);
             };
 
-            const proxyChannel = new ProxyBleChannel(peripheralAddress, btpSession, cleanupObservers);
+            const proxyChannel = new ProxyBleChannel(peripheralAddress, btpSession, detachObservers);
             channelRef.channel = proxyChannel;
             return proxyChannel;
         } catch (error) {
-            // Clean up on failure — best-effort tear-down of the peripheral on the proxy side
+            // Clean up on failure — detach observers and best-effort tear-down on the proxy side
+            detachObservers?.();
             try {
-                await this.#handler.sendCommand(BleProxyCommand.Disconnect, { connection_handle });
+                await connection.sendCommand(BleProxyCommand.Disconnect, { connection_handle });
             } catch (cleanupError) {
                 logger.debug(`Peripheral ${peripheralAddress}: Error during connect-failure cleanup`, cleanupError);
             }

@@ -8,6 +8,7 @@
  * @matter-server/ble-proxy - BLE proxy for matter.js over WebSocket
  */
 
+export * from "./BleProxyConnection.js";
 export * from "./BleProxyHandler.js";
 export * from "./BleProxyProtocol.js";
 export * from "./ProxyBle.js";

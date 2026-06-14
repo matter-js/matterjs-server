@@ -208,7 +208,7 @@ class MatterBleProxy:
                 f"BLE proxy handshake failed: {response.get('error')} - {response.get('message')}",
             )
 
-        _LOGGER.info("BLE proxy connected (protocol v%s)", response.get("version"))
+        _LOGGER.debug("BLE proxy connected (protocol v%s)", response.get("version"))
 
         self._loop = asyncio.get_running_loop()
         self._closed_event.clear()
@@ -266,10 +266,11 @@ class MatterBleProxy:
         return loop.create_task(coro)
 
     async def _message_loop(self) -> None:
-        if self._ws is None:
+        ws = self._ws
+        if ws is None:
             return
         try:
-            async for msg in self._ws:
+            async for msg in ws:
                 if msg.type == aiohttp.WSMsgType.TEXT:
                     await self._handle_command(msg.json())
                 elif msg.type == aiohttp.WSMsgType.BINARY:
@@ -281,11 +282,20 @@ class MatterBleProxy:
                 ):
                     break
         except asyncio.CancelledError:
+            _LOGGER.debug("BLE proxy WebSocket connection closed (disconnect)")
             return
         except Exception:
             _LOGGER.exception("Error in BLE proxy message loop")
+        else:
+            # Server closed the socket. Warn only on an abnormal closure (1006: no close
+            # handshake — crash / network loss). A graceful shutdown, including a
+            # matter-server add-on update, completes the handshake and stays quiet.
+            close_code = ws.close_code
+            if close_code == aiohttp.WSCloseCode.ABNORMAL_CLOSURE:
+                _LOGGER.warning("BLE proxy WebSocket connection lost unexpectedly (code %s)", close_code)
+            else:
+                _LOGGER.debug("BLE proxy WebSocket connection closed (code %s)", close_code)
         finally:
-            _LOGGER.warning("BLE proxy WebSocket connection ended")
             # Release scan + peripherals so an unexpected WS close doesn't leave the
             # adapter scanning or peripherals connected until the caller calls disconnect().
             await self._release_ble_resources()
@@ -300,10 +310,10 @@ class MatterBleProxy:
             _LOGGER.warning("Received invalid command: %s", msg)
             return
 
-        if _LOGGER.isEnabledFor(logging.INFO):
-            # Strip base64 payloads from INFO logs; full args remain at DEBUG via aiohttp's frame log.
+        if _LOGGER.isEnabledFor(logging.DEBUG):
+            # Drop the base64 `value` payload to keep the per-command line readable.
             summary = {k: v for k, v in args.items() if k not in {"value"}}
-            _LOGGER.info("[←CMD] id=%s %s%s", cmd_id, command, f" {summary}" if summary else "")
+            _LOGGER.debug("[←CMD] id=%s %s%s", cmd_id, command, f" {summary}" if summary else "")
 
         handler = {
             "start_scan": self._handle_start_scan,

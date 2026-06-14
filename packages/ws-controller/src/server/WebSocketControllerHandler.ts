@@ -34,6 +34,7 @@ import {
     ErrorResultMessage,
     EventTypes,
     LogLevelString,
+    SettableLogLevelString,
     MatterNode,
     MatterNodeEvent,
     ResponseOf,
@@ -55,6 +56,19 @@ import {
 import { serializeBatch } from "./serializeBatch.js";
 
 const logger = Logger.get("WebSocketControllerHandler");
+
+/** Maximum number of commissioning attempts when the chosen node id keeps colliding on the fabric. */
+const MAX_COMMISSION_NODE_ID_ATTEMPTS = 5;
+
+/** Whether an error (or any error in its cause chain) is a matter.js node id collision. */
+function isIdentityConflict(error: unknown): boolean {
+    for (let current: unknown = error; current instanceof Error; current = current.cause) {
+        if (current instanceof MatterError && current.id === "identity-conflict") {
+            return true;
+        }
+    }
+    return false;
+}
 
 /** Maximum number of events to keep in the history buffer */
 const EVENT_HISTORY_SIZE = 25;
@@ -147,7 +161,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
     }
 
     async register(server: HttpServer) {
-        logger.info(`Starting server: matter-server/${this.#serverVersion} (matter.js/${MATTER_VERSION})`);
+        logger.notice(`Starting server: matter-server/${this.#serverVersion} (matter.js/${MATTER_VERSION})`);
         // Use noServer mode with a path-filtered upgrade listener.
         // ws 8.x calls handleUpgrade unconditionally from its own upgrade listener, which
         // sends HTTP 400 for non-matching paths and destroys the socket — breaking other
@@ -675,11 +689,43 @@ export class WebSocketControllerHandler implements WebServerHandler {
         return null;
     }
 
+    /**
+     * Commission a node, allocating a fresh node id for each attempt.
+     *
+     * The node id counter can drift out of sync with the fabric (e.g. after manual storage edits or legacy imports).
+     * When that happens matter.js rejects the chosen id with an identity conflict; we then allocate the next id and
+     * retry rather than failing the commissioning outright.
+     */
+    async #commissionWithRetry(buildRequest: (nodeId: NodeId) => CommissioningRequest): Promise<NodeId> {
+        let lastError: unknown;
+        for (let attempt = 1; attempt <= MAX_COMMISSION_NODE_ID_ATTEMPTS; attempt++) {
+            const nodeId = NodeId(
+                await this.#config.allocateNodeId(id => this.#commandHandler.isNodeIdInUse(NodeId(id))),
+            );
+            try {
+                const { nodeId: committed } = await this.#commandHandler.commissionNode(buildRequest(nodeId));
+                return committed;
+            } catch (error) {
+                if (!isIdentityConflict(error)) {
+                    throw error;
+                }
+                lastError = error;
+                logger.warn(
+                    `Node id ${nodeId} conflicts with an existing node on the fabric ` +
+                        `(attempt ${attempt}/${MAX_COMMISSION_NODE_ID_ATTEMPTS}), retrying with the next id`,
+                );
+            }
+        }
+        const reason = lastError instanceof Error ? `: ${lastError.message}` : "";
+        throw ServerError.nodeCommissionFailed(
+            `Commission failed: could not find a free node id after ${MAX_COMMISSION_NODE_ID_ATTEMPTS} attempts${reason}`,
+            lastError instanceof Error ? lastError : undefined,
+        );
+    }
+
     async #handleCommissionWithCode(args: ArgsOf<"commission_with_code">): Promise<ResponseOf<"commission_with_code">> {
         const { code, network_only } = args;
         const isQrCode = code.startsWith("MT:");
-
-        const nextNodeId = this.#config.nextNodeId;
 
         let wifiCredentials: ControllerCommissioningFlowOptions["wifiNetwork"] | undefined = undefined;
         let threadCredentials: ControllerCommissioningFlowOptions["threadNetwork"] | undefined = undefined;
@@ -701,17 +747,13 @@ export class WebSocketControllerHandler implements WebServerHandler {
         // Ensure certificates are loaded and initialized
         await this.#controller.certificateService();
 
-        await this.#config.set({
-            nextNodeId: typeof nextNodeId === "bigint" ? nextNodeId + 1n : nextNodeId + 1,
-        });
-
-        const { nodeId } = await this.#commandHandler.commissionNode({
-            nodeId: NodeId(nextNodeId),
+        const nodeId = await this.#commissionWithRetry(nodeId => ({
+            nodeId,
             onNetworkOnly: network_only,
             ...(isQrCode ? { qrCode: code } : { manualCode: code }),
             wifiCredentials,
             threadCredentials,
-        });
+        }));
 
         return this.#collectNodeDetails(nodeId);
     }
@@ -721,14 +763,11 @@ export class WebSocketControllerHandler implements WebServerHandler {
     ): Promise<ResponseOf<"commission_on_network">> {
         const { setup_pin_code, filter_type, filter, ip_addr } = args;
 
-        const nextNodeId = this.#config.nextNodeId;
-
         // Build commissioning request based on filter type
         // Filter types: 0=None, 1=ShortDiscriminator, 2=LongDiscriminator, 3=VendorId, 4=DeviceType
         let commissionRequest: CommissioningRequest;
 
         const baseRequest = {
-            nodeId: NodeId(nextNodeId),
             onNetworkOnly: true, // commission_on_network is always network-only
             // Ignore fe80 addresses and better do generic discovery because could be from mobile devices
             knownAddress: ip_addr && !ip_addr.startsWith("fe80") ? { ip: ip_addr, port: 5540 } : undefined,
@@ -761,11 +800,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         // Ensure certificates are loaded and initialized
         await this.#controller.certificateService();
 
-        await this.#config.set({
-            nextNodeId: typeof nextNodeId === "bigint" ? nextNodeId + 1n : nextNodeId + 1,
-        });
-
-        const { nodeId } = await this.#commandHandler.commissionNode(commissionRequest);
+        const nodeId = await this.#commissionWithRetry(nodeId => ({ ...commissionRequest, nodeId }));
 
         return this.#collectNodeDetails(nodeId);
     }
@@ -1218,6 +1253,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 return "error";
             case LogLevel.WARN:
                 return "warning";
+            case LogLevel.NOTICE:
+                return "notice";
             case LogLevel.INFO:
                 return "info";
             case LogLevel.DEBUG:
@@ -1230,14 +1267,18 @@ export class WebSocketControllerHandler implements WebServerHandler {
     /**
      * Map API string format to internal LogLevel enum.
      */
-    #stringToLogLevel(level: LogLevelString): LogLevel {
+    #stringToLogLevel(level: SettableLogLevelString): LogLevel {
         switch (level) {
             case "critical":
+            case "fatal":
                 return LogLevel.FATAL;
             case "error":
                 return LogLevel.ERROR;
             case "warning":
+            case "warn":
                 return LogLevel.WARN;
+            case "notice":
+                return LogLevel.NOTICE;
             case "info":
                 return LogLevel.INFO;
             case "debug":
@@ -1250,7 +1291,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
     #handleGetLogLevel(): ResponseOf<"get_loglevel"> {
         // Logger.level can be LogLevel enum or string, convert string to enum first
         const currentLevel =
-            typeof Logger.level === "string" ? this.#stringToLogLevel(Logger.level as LogLevelString) : Logger.level;
+            typeof Logger.level === "string"
+                ? this.#stringToLogLevel(Logger.level as SettableLogLevelString)
+                : Logger.level;
         const consoleLevel = this.#logLevelToString(currentLevel);
 
         // Logger.destinations.file throws if file logging is not configured
@@ -1259,7 +1302,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             const fileDestination = Logger.destinations.file;
             const fileLevelValue =
                 typeof fileDestination.level === "string"
-                    ? this.#stringToLogLevel(fileDestination.level as LogLevelString)
+                    ? this.#stringToLogLevel(fileDestination.level as SettableLogLevelString)
                     : fileDestination.level;
             fileLevel = this.#logLevelToString(fileLevelValue);
         } catch {

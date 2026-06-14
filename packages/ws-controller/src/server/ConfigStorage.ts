@@ -4,9 +4,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Environment, Logger, StorageContext, StorageManager, StorageService } from "@matter/main";
+import { Environment, Logger, Mutex, StorageContext, StorageManager, StorageService } from "@matter/main";
 
 const logger = new Logger("ConfigStorage");
+
+function incrementNodeId(value: number | bigint): number | bigint {
+    return typeof value === "bigint" ? value + 1n : value + 1;
+}
 
 const SENSITIVE_KEYS: ReadonlySet<keyof ConfigData> = new Set(["wifiCredentials", "threadDataset"]);
 
@@ -31,6 +35,7 @@ export class ConfigStorage {
     #storageService?: StorageService;
     #storage?: StorageManager;
     #configStore?: StorageContext;
+    readonly #nodeIdMutex = new Mutex(this);
     readonly #data: ConfigData = {
         nextNodeId: 1,
         fabricLabel: "HomeAssistant",
@@ -87,6 +92,31 @@ export class ConfigStorage {
     }
     get nextNodeId() {
         return this.#data.nextNodeId;
+    }
+
+    /**
+     * Atomically allocate the next free node id and persist the advanced counter.
+     *
+     * The mutex serializes concurrent commissioning requests so they cannot read the same counter and collide.
+     * `isInUse` lets a drifted counter skip ids already assigned on the fabric instead of colliding with them.
+     */
+    async allocateNodeId(isInUse: (nodeId: number | bigint) => boolean): Promise<number | bigint> {
+        return this.#nodeIdMutex.produce(async () => {
+            const start = this.#data.nextNodeId;
+            let candidate = start;
+            let skipped = 0;
+            while (isInUse(candidate)) {
+                candidate = incrementNodeId(candidate);
+                skipped++;
+            }
+            if (skipped > 0) {
+                logger.notice(
+                    `Skipped ${skipped} node id(s) from ${start} already in use on the fabric, allocated ${candidate} instead`,
+                );
+            }
+            await this.set({ nextNodeId: incrementNodeId(candidate) });
+            return candidate;
+        });
     }
     get wifiSsid() {
         return this.#data.wifiSsid;

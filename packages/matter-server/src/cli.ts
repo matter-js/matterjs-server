@@ -30,7 +30,7 @@ const DEFAULT_PORT = 5580;
 const DEFAULT_STORAGE_PATH = join(homedir(), ".matter_server");
 
 // Log level enums
-const LOG_LEVELS = ["critical", "error", "warning", "info", "debug", "verbose"] as const;
+const LOG_LEVELS = ["fatal", "critical", "error", "warning", "warn", "notice", "info", "debug", "verbose"] as const;
 const SDK_LOG_LEVELS = ["none", "error", "progress", "detail", "automation"] as const;
 
 export type LogLevel = (typeof LOG_LEVELS)[number];

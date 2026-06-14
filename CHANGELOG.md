@@ -15,9 +15,34 @@ This page shows a detailed overview of the changes between versions without the 
 - Internal: `@matter-server/thread-br` package gained diagnostic primitives: `DiagnosticSource` interface, `MeshCopDiagnosticSource`, `OtbrRestDiagnosticSource`, BR selection / per-network mutex / source strategy, OTBR REST adapter, and `connectMeshcop` factory.
 - Internal: New `ThreadDiagnosticsService` in `@matter-server/ws-controller` provides per-extPanId cache (1h TTL), source selection (REST > MeshCoP > none), per-network mutex, and event emission.
 
+## 1.0.0 (2026-06-09)
+
+- Enhancement: Update matter.js to 0.17.2 with many fixes and optimizations
+- Enhancement: Dashboard Wi-Fi graph shows the full BSSID in access point labels, so APs differing only in leading octets are distinguishable
+- Fix: Ensures that multiple parallel commissioning tries do not allocate the same Node-ID, and recovers automatically when the stored Node-ID counter drifts out of sync with the fabric by skipping/retrying with the next free id
+
+## 0.8.0 (2026-06-02)
+
+- Breaking: The server now requires at least Node.js 22.13.0 (LTS)
+- (Dev)Breaking: (rspier) Change Dev-Docker-Container to use the same user like the production container – might require permission updates
+- Enhancement: (rspier) Added inline NodeLabel editing to the Node detail view
+- Enhancement: Dashboard network visualization fills the full window width on large/4K displays
+- Enhancement: Dashboard Thread mesh icons reflect each node's Thread and Border Router roles
+- Enhancement: Dashboard header shows a Home button in node/endpoint/cluster views for one-click return to the main dashboard
+- Enhancement: Allows finding a node in the thread network chart by its node label in addition to the extended address and Node-ID
+- Enhancement: Optimize the error message when commissioning a device with a test/dev certificate but without the "Test Net DCL" configuration enabled
+- Enhancement: BLE proxy endpoint now accepts multiple parallel WebSocket clients (each peripheral handled by the proxy that first discovered it), so several BLE radios can extend coverage
+- Enhancement: Update matter.js to the latest 0.17.1-nightly
+    - Removed invalid FabricIndex field requirements for some command types and models
+    - Standardized log levels and logged messages
+    - Fix: Event reports are now decoded in wire (EventNumber) order
+- Enhancement: Adds the dbus-next package to support BLE commissioning in D-Bus mode (see [docker](./docs/docker.md) and [os_requirements](./docs/os_requirements.md) for details)
+- Adjustment: Standardized log levels and logged messages
+- Fix: Ensure that we correctly process handshake messages when using the BLE proxy
+
 ## 0.7.1 (2026-05-21)
 
-- Feature: Added BLE proxy commissioning support (enabled with `--ble-proxy` CLI option)
+- Feature: Added (experimental) BLE proxy commissioning support (enabled with `--ble-proxy` CLI option)
 - Enhancement: Dashboard shows Thread protocol version on Thread node details
 - Enhancement: Dashboard always shows Thread/WiFi navigation tabs (removed small-screen gate)
 - Maintenance: Update matter.js to the official 0.17.0

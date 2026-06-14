@@ -41,12 +41,16 @@ const cliOptions = getCliOptions();
  */
 function mapLogLevel(level: CliLogLevel): LogLevel {
     switch (level) {
-        case "critical":
+        case "fatal":
+        case "critical": // old Python server loglevel
             return LogLevel.FATAL;
         case "error":
             return LogLevel.ERROR;
-        case "warning":
+        case "warn":
+        case "warning": // old Python server loglevel
             return LogLevel.WARN;
+        case "notice":
+            return LogLevel.NOTICE;
         case "info":
             return LogLevel.INFO;
         case "debug":
@@ -249,12 +253,12 @@ async function stop() {
     try {
         await server?.stop();
     } catch (err) {
-        console.error(`Failed to stop server: ${err}`);
+        console.warn("Failed to stop server:", err);
     }
     try {
         await controller?.stop();
     } catch (err) {
-        console.error(`Failed to stop controller: ${err}`);
+        console.warn("Failed to stop controller:", err);
     }
     // Flush any pending legacy data writes before closing
     try {
@@ -263,12 +267,12 @@ async function stop() {
             await legacyDataWriter.flush();
         }
     } catch (err) {
-        console.error(`Failed to flush legacy data: ${err}`);
+        console.warn("Failed to flush legacy data:", err);
     }
     try {
         await config?.close();
     } catch (err) {
-        console.error(`Failed to close config storage: ${err}`);
+        console.warn("Failed to close config storage:", err);
     }
     // Wait for the Environment runtime to fully shut down (flushes all storage,
     // completes async worker cleanup). Without this, controller storage like
@@ -276,18 +280,18 @@ async function stop() {
     try {
         await env.runtime.close();
     } catch (err) {
-        console.error(`Failed to close runtime: ${err}`);
+        console.warn("Failed to close runtime:", err);
     }
     try {
         await fileLoggerClose?.();
     } catch (err) {
-        console.error(`Failed to flush log file on shutdown: ${err}`);
+        console.warn("Failed to flush log file on shutdown:", err);
     }
 }
 
 startCompleted = start().catch(async err => {
     if (!stopping) {
-        console.error(err);
+        logger.fatal("Server failed to start", err);
         process.exitCode = 1;
     }
     await config?.close();

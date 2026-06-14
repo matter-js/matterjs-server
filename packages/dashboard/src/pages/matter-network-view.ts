@@ -313,7 +313,7 @@ class MatterNetworkView extends LitElement {
             return;
         }
 
-        const found = graph.selectByExtendedAddress(searchValue);
+        const found = graph.selectBySearch(searchValue);
         this._threadAddressSearchStatus = found ? "found" : "not-found";
     }
 
@@ -328,8 +328,8 @@ class MatterNetworkView extends LitElement {
                                 type="text"
                                 .value=${this._threadAddressSearch}
                                 @input=${this._handleThreadAddressSearchInput}
-                                placeholder="Search extended address"
-                                title="Find device by Thread extended address (EUI-64)"
+                                placeholder="Search label, node id, or address"
+                                title="Find a Thread device by node label, node id, or extended address (EUI-64)"
                             />
                             <button type="submit" class="search-button">Find</button>
                         </form>
@@ -393,7 +393,7 @@ class MatterNetworkView extends LitElement {
                     : html`<div class="thread-search-status ${this._threadAddressSearchStatus}">
                           ${this._threadAddressSearchStatus === "found"
                               ? "Node highlighted."
-                              : "No matching extended address found."}
+                              : "No matching device found."}
                       </div>`}
                 <thread-graph
                     .nodes=${this.nodes}
@@ -504,8 +504,6 @@ class MatterNetworkView extends LitElement {
                 flex: 1 1 0;
                 padding: 8px 16px;
                 gap: 8px;
-                max-width: 1600px;
-                margin: 0 auto;
                 width: 100%;
                 box-sizing: border-box;
                 min-height: 0;
@@ -708,7 +706,7 @@ class MatterNetworkView extends LitElement {
             }
 
             .details-sidebar {
-                width: 320px;
+                width: clamp(320px, 22vw, 480px);
                 flex-shrink: 0;
                 display: none;
                 min-height: 0;

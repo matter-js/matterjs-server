@@ -65,7 +65,7 @@ A preconfigured [dev container](./.devcontainer) is available with all required 
 
 ### Manual installation (from npm)
 
-- Ensure to have Node.js 20.x, 22.x, or 24.x installed (22.x recommended)
+- Ensure you have Node.js 22.13+, 24.x or 26.x installed (24.x recommended)
 - `npm install matter-server`
 - `npx matter-server` or alternatively `cd node_modules/matter-server && npm run server`
 
@@ -127,6 +127,22 @@ Home Assistant's Matter integration, the Bleak-based Python CLI
 bridges BLE traffic from wherever the adapter actually lives. See
 [`docs/ble-proxy-protocol.md`](docs/ble-proxy-protocol.md) for the protocol spec.
 
+When using the BLE proxy mode together with Home Assistant (which uses the ble-proxy-python -client), you need:
+
+- Home Assistant 2026.6 (or later)
+- ESPHome 2026.5 (or later)
+- esp-idf 6.0.1 (or later)
+
+In your ESPHome device.yaml, use:
+
+```
+esp32:
+  […]
+  framework:
+    type: esp-idf
+    version: 6.0.1
+```
+
 ## Internet access requirements
 
 Ideally, the Matter server has access to the internet which is needed for the following functionalities:
@@ -144,16 +160,15 @@ For Certificates, Certification verifications, and vendor lookup the server uses
 
 The dashboard includes interactive network topology graphs for Thread and WiFi networks, accessible via the navigation tabs. These graphs are only available on screens wider than 768px and are hidden on mobile devices.
 
+For an end-user legend explaining the visual encodings — line styles, arrow direction, role badges, signal colors, and the "Bidir" / "one-way" / "reverse" terms — see [Network Visualization in the dashboard README](packages/dashboard/README.md#network-visualization).
+
 ### Thread Network Graph
 
 Displays the Thread mesh network topology showing how your Thread devices connect to each other. The graph visualizes:
 
 - **Device nodes** with icons based on device type (lights, sensors, plugs, etc.)
-- **Mesh connections** between Thread devices with signal strength indicated by color:
-    - Green: Strong signal (> -70 dBm)
-    - Orange: Medium signal (-85 to -70 dBm)
-    - Red: Weak signal (< -85 dBm)
-- **Thread roles**: Leader, Router, End Device, Sleepy End Device
+- **Mesh connections** between Thread devices, with line style, color, and arrows encoding link state and signal strength (see the legend linked above)
+- **Thread roles**: Leader, Router, End Device, Sleepy End Device — shown as corner badges (see the legend linked above)
 - **Border Routers**: External devices identified via mDNS (`_meshcop._udp` + `_trel._udp`) are rendered with a router icon and a two-line label showing the device hostname and the Thread network name. Click a Border Router node to see its full mDNS-derived details — vendor, model, Thread version, hostname, IP addresses, MeshCoP/TREL ports, extended PAN ID, partition ID, active timestamp, state bitmap, border-agent ID, and which commissioned nodes report it as a neighbor.
 - **Unknown / External devices**: Thread routers that appear in commissioned-node neighbor tables but cannot be matched to a known Border Router are shown with a question-mark icon and dashed edges. When their Thread network can be resolved (because at least one Border Router on the same extended PAN ID is known via mDNS), the network name is shown as a second line on the label and in the details panel.
 

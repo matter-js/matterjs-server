@@ -130,7 +130,7 @@ export async function resolveServerId(
                                 logger.info(`Renamed storage "${DEFAULT_SERVER_ID}" to "${candidateId}"`);
                                 return candidateId;
                             } catch (renameErr) {
-                                logger.error(
+                                logger.warn(
                                     `Failed to rename storage from "${DEFAULT_SERVER_ID}" to "${candidateId}"`,
                                     renameErr,
                                 );

@@ -13,13 +13,14 @@ import "@material/web/list/list";
 import "@material/web/list/list-item";
 import { consume } from "@lit/context";
 import { MatterClient, MatterNode, UpdateSource } from "@matter-server/ws-client";
-import { mdiChatProcessing, mdiLink, mdiShareVariant, mdiTrashCan, mdiUpdate, mdiVideo } from "@mdi/js";
+import { mdiChatProcessing, mdiLink, mdiPencil, mdiShareVariant, mdiTrashCan, mdiUpdate, mdiVideo } from "@mdi/js";
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { clientContext, tickContext } from "../../client/client-context.js";
 import { DeviceType } from "../../client/models/descriptions.js";
 import { showAlertDialog, showPromptDialog } from "../../components/dialog-box/show-dialog-box.js";
 import { showNodeBindingDialog } from "../../components/dialogs/binding/show-node-binding-dialog.js";
+import { showNodeLabelDialog } from "../../components/dialogs/node-label-dialog/show-node-label-dialog.js";
 import { handleAsync } from "../../util/async-handler.js";
 import "../../components/ha-svg-icon";
 import "../camera-overlay.js";
@@ -86,8 +87,19 @@ export class NodeDetails extends LitElement {
             <md-list>
                 <md-list-item>
                     <ha-svg-icon slot="start" class="device-icon" .path=${getDeviceIcon(this.node)}></ha-svg-icon>
-                    <div slot="headline">
+                    <div slot="headline" class="node-label-row">
                         <b>${this.node.nodeLabel || "Node Info"}</b>
+                        ${this.node.available
+                            ? html`
+                                  <md-icon-button
+                                      @click=${() => this._editNodeLabel()}
+                                      aria-label="Edit node label"
+                                      title="Edit node label"
+                                  >
+                                      <ha-svg-icon .path=${mdiPencil}></ha-svg-icon>
+                                  </md-icon-button>
+                              `
+                            : nothing}
                         ${this.node.available ? nothing : html` <span class="status">OFFLINE</span> `}
                     </div>
                 </md-list-item>
@@ -166,6 +178,10 @@ export class NodeDetails extends LitElement {
                 </md-list-item>
             </md-list>
         `;
+    }
+
+    private _editNodeLabel() {
+        showNodeLabelDialog(this.client, this.node!);
     }
 
     private async _reinterview() {
@@ -318,6 +334,19 @@ export class NodeDetails extends LitElement {
     }
 
     static override styles = css`
+        .node-label-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .node-label-row md-icon-button {
+            width: 24px;
+            height: 24px;
+            --md-icon-button-state-layer-width: 32px;
+            --md-icon-button-state-layer-height: 32px;
+        }
+
         .device-icon {
             --icon-primary-color: var(--md-sys-color-on-surface-variant, #666);
         }

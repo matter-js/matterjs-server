@@ -5,79 +5,54 @@
  */
 
 import type { WebServerHandler } from "@matter-server/ws-controller";
-import { createPromise, Logger, Observable, Seconds, Time, Timer, withTimeout } from "@matter/main";
+import { Logger, Observable } from "@matter/main";
 import type { createServer } from "node:http";
 import { WebSocket, WebSocketServer } from "ws";
-import {
-    BLE_PROXY_PROTOCOL_VERSION,
-    decodeBinaryFrame,
-    encodeBinaryFrame,
-    type BinaryFrame,
-    type BleProxyCommandMap,
-    type BleProxyCommandName,
-    type BleProxyEventName,
-    type CommandMessage,
-    type EventMessage,
-    type HelloMessage,
-    type ResponseMessage,
-} from "./BleProxyProtocol.js";
+import { BleProxyConnection } from "./BleProxyConnection.js";
+import { BleProxyCommand, BleProxyEvent, type DeviceDiscoveredData, type StartScanArgs } from "./BleProxyProtocol.js";
 
 type HttpServer = ReturnType<typeof createServer>;
 
 const logger = Logger.get("BleProxyHandler");
 
-const HANDSHAKE_TIMEOUT = Seconds(10);
 /**
- * Default per-command timeout. Long enough to cover the slowest BLE
- * commissioning ops (peripheral connect ≤ 30 s, service discovery on
- * Android-side adapters can take several seconds), short enough that an
- * unresponsive-but-still-connected proxy client doesn't hang commissioning
- * indefinitely.
- */
-const COMMAND_TIMEOUT = Seconds(60);
-
-/**
- * WebSocket server handler for the /ble BLE proxy endpoint.
+ * WebSocket server handler (hub) for the `/ble` BLE proxy endpoint.
  *
- * Accepts a single client connection, performs the protocol handshake,
- * and routes commands/events/binary frames between the proxy implementation
- * and the connected BLE proxy client.
+ * Accepts any number of proxy client connections, broadcasts scan commands to
+ * all of them, and tracks which client owns each discovered peripheral so that
+ * per-peripheral traffic routes to a single client.
  */
 export class BleProxyHandler implements WebServerHandler {
     #wss?: WebSocketServer;
     /** Upgrade listener removers, one per HTTP server `register()` call (multi-bind). */
     #removeUpgradeListeners: (() => void)[] = [];
-    #client?: WebSocket;
-    #handshakeComplete = false;
-    #pendingCommands = new Map<
-        number,
-        { resolver: (result: Record<string, unknown> | undefined) => void; rejecter: (reason?: unknown) => void }
-    >();
-    /** Command ID counter. Rolls over at 0xFFFF to stay in safe integer range. */
-    #nextCommandId = 0;
+    #connections = new Set<BleProxyConnection>();
     #closed = false;
 
-    /** Emitted when a JSON event is received from the BLE proxy client. */
-    readonly eventReceived = new Observable<[event: BleProxyEventName, data: Record<string, unknown>]>();
+    /** Active scan intent + args, so clients joining mid-scan can be synced. */
+    #scanActive = false;
+    #scanArgs?: StartScanArgs;
+    /** Connections currently told to scan, for aggregate `scanStopped`. */
+    #scanning = new Set<BleProxyConnection>();
 
-    /** Emitted when a binary frame is received from the BLE proxy client. */
-    readonly binaryFrameReceived = new Observable<[frame: BinaryFrame]>();
+    /** address -> owning connection + every connection that has seen it. */
+    #owners = new Map<string, { owner: BleProxyConnection; seers: Set<BleProxyConnection> }>();
 
-    /** Emitted once a proxy client has completed the handshake and `connected` is true. */
+    /** Emitted whenever a connection completes its handshake. */
     readonly connectionEstablished = new Observable<[]>();
+    /** Emitted for each `device_discovered`, after ownership is updated. */
+    readonly deviceDiscovered = new Observable<[data: DeviceDiscoveredData, connection: BleProxyConnection]>();
+    /** Emitted once no connection is scanning anymore. */
+    readonly scanStopped = new Observable<[reason: string]>();
 
     get connected(): boolean {
-        return this.#handshakeComplete && this.#client?.readyState === WebSocket.OPEN;
+        for (const c of this.#connections) {
+            if (c.connected) return true;
+        }
+        return false;
     }
 
     async register(server: HttpServer): Promise<void> {
-        // Use noServer mode with a path-filtered upgrade listener.
-        // ws 8.x calls handleUpgrade unconditionally from its own upgrade listener, which
-        // sends HTTP 400 for non-matching paths and destroys the socket — breaking other
-        // WebSocket endpoints on the same server.
-        //
-        // Reuse a single WSS across all bound HTTP servers (multi-listen-address): create
-        // it once, then attach a per-server upgrade listener that forwards into it.
         const isFirstBind = this.#wss === undefined;
         const wss = (this.#wss ??= new WebSocketServer({ noServer: true }));
         const upgradeHandler = (
@@ -111,43 +86,12 @@ export class BleProxyHandler implements WebServerHandler {
                 return;
             }
 
-            if (this.#client) {
-                logger.warn("Rejecting new BLE proxy client - only one connection allowed");
-                ws.close(4000, "Only one BLE proxy client allowed");
-                return;
-            }
+            const connection = new BleProxyConnection(ws);
+            this.#connections.add(connection);
 
-            logger.info("BLE proxy client connected, waiting for handshake");
-            this.#client = ws;
-            this.#handshakeComplete = false;
-
-            const handshakeTimer = Time.getTimer("BLE proxy handshake timeout", HANDSHAKE_TIMEOUT, () => {
-                if (!this.#handshakeComplete) {
-                    logger.warn("BLE proxy handshake timeout - closing connection");
-                    ws.close(4001, "Handshake timeout");
-                    this.#cleanupClient();
-                }
-            }).start();
-
-            ws.on("message", (data, isBinary) => {
-                if (isBinary) {
-                    this.#handleBinaryMessage(data as Buffer);
-                } else {
-                    this.#handleTextMessage(data.toString(), handshakeTimer);
-                }
-            });
-
-            ws.on("close", () => {
-                handshakeTimer.stop();
-                logger.info("BLE proxy client disconnected");
-                this.#cleanupClient();
-            });
-
-            ws.on("error", err => {
-                logger.error("BLE proxy WebSocket error:", err);
-                handshakeTimer.stop();
-                this.#cleanupClient();
-            });
+            connection.handshakeCompleted.on(() => this.#onHandshakeCompleted(connection));
+            connection.eventReceived.on((event, data) => this.#onConnectionEvent(connection, event, data));
+            connection.closed.on(() => this.#onConnectionClosed(connection));
         });
     }
 
@@ -160,204 +104,135 @@ export class BleProxyHandler implements WebServerHandler {
         for (const remove of this.#removeUpgradeListeners) remove();
         this.#removeUpgradeListeners = [];
 
-        // Close the connected client
-        if (this.#client && this.#client.readyState === WebSocket.OPEN) {
-            this.#client.close();
+        for (const connection of this.#connections) {
+            connection.close();
         }
-        this.#cleanupClient();
+        this.#connections.clear();
+        this.#scanning.clear();
+        this.#owners.clear();
 
         const wss = this.#wss;
         this.#wss = undefined;
 
-        // Close all clients connected to the WSS (safety net)
         wss.clients.forEach(client => {
             if (client.readyState === WebSocket.OPEN) {
                 client.close();
             }
         });
 
-        // Wait for the WebSocket server to close properly
         return new Promise<void>((resolve, reject) => {
-            wss.close(err => {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve();
-                }
-            });
+            wss.close(err => (err ? reject(err) : resolve()));
         });
     }
 
-    /**
-     * Send a typed command to the BLE proxy client and wait for the response.
-     * The return type is inferred from the command name via BleProxyCommandMap.
-     * Rejects if no client is connected or the client disconnects before responding.
-     */
-    async sendCommand<C extends BleProxyCommandName>(
-        command: C,
-        ...rest: BleProxyCommandMap[C]["args"] extends undefined ? [] : [args: BleProxyCommandMap[C]["args"]]
-    ): Promise<BleProxyCommandMap[C]["result"]> {
-        if (!this.connected || !this.#client) {
-            throw new Error("BLE proxy client not connected");
-        }
+    /** Returns the connection that owns `address`, if it is still connected. */
+    getOwner(address: string): BleProxyConnection | undefined {
+        const entry = this.#owners.get(address);
+        if (entry && entry.owner.connected) return entry.owner;
+        return undefined;
+    }
 
-        const args = rest[0];
-        const id = this.#nextCommandId;
-        this.#nextCommandId = (this.#nextCommandId + 1) & 0xffff;
-        const message: CommandMessage = { id, command };
-        if (args !== undefined) {
-            message.args = args as Record<string, unknown>;
-        }
-
-        const { promise, resolver, rejecter } = createPromise<Record<string, unknown> | undefined>();
-        this.#pendingCommands.set(id, { resolver, rejecter });
-
-        this.#client.send(JSON.stringify(message), err => {
-            if (err) {
-                this.#pendingCommands.delete(id);
-                rejecter(new Error(`Failed to send command ${command}: ${err.message}`));
+    async startScan(args: StartScanArgs): Promise<void> {
+        this.#scanActive = true;
+        this.#scanArgs = args;
+        const sends = new Array<Promise<unknown>>();
+        for (const connection of this.#connections) {
+            if (connection.connected) {
+                this.#scanning.add(connection);
+                sends.push(
+                    connection.sendCommand(BleProxyCommand.StartScan, args).catch(err => {
+                        logger.warn(`[${connection.id}] Failed to start scan:`, err);
+                        this.#markNotScanning(connection, "start scan failed");
+                    }),
+                );
             }
-        });
-
-        return withTimeout(COMMAND_TIMEOUT, promise, () => this.#pendingCommands.delete(id)) as Promise<
-            BleProxyCommandMap[C]["result"]
-        >;
+        }
+        await Promise.all(sends);
     }
 
-    /**
-     * Send a binary frame to the BLE proxy client.
-     */
-    sendBinaryFrame(opcode: number, connectionHandle: number, payload: Uint8Array): void {
-        if (!this.connected || !this.#client) {
-            throw new Error("BLE proxy client not connected");
+    async stopScan(): Promise<void> {
+        this.#scanActive = false;
+        const sends = new Array<Promise<unknown>>();
+        for (const connection of this.#connections) {
+            if (connection.connected) {
+                sends.push(
+                    connection
+                        .sendCommand(BleProxyCommand.StopScan)
+                        .catch(err => logger.warn(`[${connection.id}] Failed to stop scan:`, err)),
+                );
+            }
         }
-        const frame = encodeBinaryFrame(opcode, connectionHandle, payload);
-        this.#client.send(frame);
+        this.#scanning.clear();
+        await Promise.all(sends);
     }
 
-    #handleTextMessage(raw: string, handshakeTimer: Timer): void {
-        let parsed: unknown;
-        try {
-            parsed = JSON.parse(raw);
-        } catch {
-            logger.warn("Received invalid JSON from BLE proxy client");
-            return;
-        }
-
-        const msg = parsed as Record<string, unknown>;
-
-        // Handle handshake
-        if (!this.#handshakeComplete) {
-            this.#handleHandshake(msg, handshakeTimer);
-            return;
-        }
-
-        // Handle response to a pending command
-        if ("id" in msg && "success" in msg) {
-            this.#handleResponse(msg as unknown as ResponseMessage);
-            return;
-        }
-
-        // Handle event
-        if ("event" in msg && "data" in msg) {
-            this.#handleEvent(msg as unknown as EventMessage);
-            return;
-        }
-
-        logger.warn("Received unknown message from BLE proxy client:", msg);
-    }
-
-    #handleHandshake(msg: Record<string, unknown>, handshakeTimer: Timer): void {
-        if (msg.type !== "hello") {
-            logger.warn(`Expected hello message, got: ${JSON.stringify(msg)}`);
-            this.#client?.close(4002, "Expected hello message");
-            this.#cleanupClient();
-            return;
-        }
-
-        const hello = msg as unknown as HelloMessage;
-        handshakeTimer.stop();
-
-        if (hello.version !== BLE_PROXY_PROTOCOL_VERSION) {
-            logger.warn(
-                `BLE proxy client version ${hello.version} not supported (server supports ${BLE_PROXY_PROTOCOL_VERSION})`,
-            );
-            this.#client?.send(
-                JSON.stringify({
-                    type: "hello_response",
-                    version: BLE_PROXY_PROTOCOL_VERSION,
-                    error: "unsupported_version",
-                    message: `Server supports protocol version ${BLE_PROXY_PROTOCOL_VERSION}, client sent version ${hello.version}`,
-                }),
-            );
-            this.#client?.close(4003, "Unsupported protocol version");
-            this.#cleanupClient();
-            return;
-        }
-
-        this.#handshakeComplete = true;
-        this.#client?.send(
-            JSON.stringify({
-                type: "hello_response",
-                version: BLE_PROXY_PROTOCOL_VERSION,
-            }),
-        );
-        logger.info(`BLE proxy handshake complete (version ${BLE_PROXY_PROTOCOL_VERSION})`);
+    #onHandshakeCompleted(connection: BleProxyConnection): void {
         this.connectionEstablished.emit();
+        if (this.#scanActive && this.#scanArgs) {
+            this.#scanning.add(connection);
+            connection.sendCommand(BleProxyCommand.StartScan, this.#scanArgs).catch(err => {
+                logger.warn(`[${connection.id}] Failed to sync scan to joining client:`, err);
+                this.#markNotScanning(connection, "start scan failed");
+            });
+        }
     }
 
-    #handleResponse(msg: ResponseMessage): void {
-        const pending = this.#pendingCommands.get(msg.id);
-        if (!pending) {
-            logger.warn(`Received response for unknown command id ${msg.id}`);
+    #onConnectionEvent(connection: BleProxyConnection, event: string, data: Record<string, unknown>): void {
+        if (event === BleProxyEvent.DeviceDiscovered) {
+            this.#onDeviceDiscovered(connection, data as unknown as DeviceDiscoveredData);
+        } else if (event === BleProxyEvent.ScanStopped) {
+            this.#markNotScanning(connection, (data as { reason?: string }).reason ?? "unknown");
+        }
+    }
+
+    /** Drop a connection from the scanning set; emit aggregate scanStopped once none remain. */
+    #markNotScanning(connection: BleProxyConnection, reason: string): void {
+        if (!this.#scanning.delete(connection)) {
             return;
         }
-        this.#pendingCommands.delete(msg.id);
+        if (this.#scanning.size === 0) {
+            this.scanStopped.emit(reason);
+        }
+    }
 
-        if (msg.success) {
-            pending.resolver(msg.result);
+    #onDeviceDiscovered(connection: BleProxyConnection, data: DeviceDiscoveredData): void {
+        let entry = this.#owners.get(data.address);
+        if (!entry) {
+            entry = { owner: connection, seers: new Set([connection]) };
+            this.#owners.set(data.address, entry);
         } else {
-            pending.rejecter(new Error(`${msg.error}: ${msg.message}`));
-        }
-    }
-
-    #handleEvent(msg: EventMessage): void {
-        this.eventReceived.emit(msg.event, msg.data);
-    }
-
-    #handleBinaryMessage(data: Buffer): void {
-        if (!this.#handshakeComplete) {
-            logger.warn("Received binary frame before handshake");
-            return;
-        }
-
-        try {
-            const frame = decodeBinaryFrame(new Uint8Array(data));
-            const head = Array.from(frame.payload.subarray(0, 8))
-                .map(b => b.toString(16).padStart(2, "0"))
-                .join("");
-            logger.debug(
-                `[FRAME] opcode=${frame.opcode} handle=${frame.connectionHandle} len=${frame.payload.length} head=${head}`,
-            );
-            this.binaryFrameReceived.emit(frame);
-        } catch (err) {
-            logger.error("Failed to decode binary frame:", err);
-        }
-    }
-
-    #cleanupClient(): void {
-        if (this.#client) {
-            if (this.#client.readyState === WebSocket.OPEN) {
-                this.#client.close();
+            entry.seers.add(connection);
+            if (!entry.owner.connected) {
+                entry.owner = connection;
             }
-            this.#client = undefined;
         }
-        this.#handshakeComplete = false;
+        logger.debug(
+            `[${connection.id}] device_discovered ${data.address} rssi=${data.rssi ?? "n/a"} seers=${entry.seers.size} isOwner=${entry.owner === connection}`,
+        );
+        this.deviceDiscovered.emit(data, connection);
+    }
 
-        // Reject all pending commands
-        for (const [id, pending] of this.#pendingCommands) {
-            pending.rejecter(new Error("BLE proxy client disconnected"));
-            this.#pendingCommands.delete(id);
+    #onConnectionClosed(connection: BleProxyConnection): void {
+        this.#connections.delete(connection);
+        this.#markNotScanning(connection, "client disconnected");
+
+        for (const [address, entry] of this.#owners) {
+            entry.seers.delete(connection);
+            if (entry.owner === connection) {
+                let next: BleProxyConnection | undefined;
+                for (const seer of entry.seers) {
+                    if (seer.connected) {
+                        next = seer;
+                        break;
+                    }
+                }
+                if (next) {
+                    entry.owner = next;
+                    logger.info(`Reassigned ownership of ${address} to [${next.id}]`);
+                } else {
+                    this.#owners.delete(address);
+                }
+            }
         }
     }
 }

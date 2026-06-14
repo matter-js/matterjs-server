@@ -378,7 +378,7 @@ export interface APICommands {
         response: LogLevelResponse;
     };
     set_loglevel: {
-        requestArgs: { console_loglevel?: LogLevelString; file_loglevel?: LogLevelString };
+        requestArgs: { console_loglevel?: SettableLogLevelString; file_loglevel?: SettableLogLevelString };
         response: LogLevelResponse;
     };
 }
@@ -389,8 +389,17 @@ export type ArgsOf<R extends keyof APICommands> = APICommands[R]["requestArgs"];
 /** Utility type to extract response type for a command */
 export type ResponseOf<R extends keyof APICommands> = APICommands[R]["response"];
 
-/** Log level string values matching CLI options */
-export type LogLevelString = "critical" | "error" | "warning" | "info" | "debug";
+/**
+ * Log levels the server reports (`get_loglevel`/`set_loglevel` response): the
+ * Python Matter Server names plus `notice`.
+ */
+export type LogLevelString = "critical" | "error" | "warning" | "notice" | "info" | "debug";
+
+/**
+ * Log levels `set_loglevel` accepts as input: the reported names plus the
+ * matter.js aliases `fatal` (= `critical`) and `warn` (= `warning`).
+ */
+export type SettableLogLevelString = LogLevelString | "fatal" | "warn";
 
 /** Response for get_loglevel and set_loglevel commands */
 export interface LogLevelResponse {

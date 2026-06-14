@@ -24,11 +24,10 @@ import {
     MatterTestClient,
     SERVER_PORT,
     SERVER_WS_URL,
-    startServer,
     startTestDevice,
     waitForDeviceReady,
-    waitForPort,
 } from "./helpers/index.js";
+import { createServerController, type ServerController } from "./helpers/ServerController.js";
 
 const TEST_TIMEOUT = 120_000; // 2 minutes for Matter commissioning
 
@@ -55,7 +54,7 @@ async function waitForOnOffUpdate(
 describe("Integration Test", function () {
     this.timeout(TEST_TIMEOUT);
 
-    let serverProcess: ChildProcess;
+    let server: ServerController;
     let deviceProcess: ChildProcess;
     let client: MatterTestClient;
     let serverStoragePath: string;
@@ -75,12 +74,11 @@ describe("Integration Test", function () {
         console.log(`Device storage: ${deviceStoragePath}`);
         console.log(`Log file: ${logFilePath}`);
 
-        // Start server process
+        // Start server (local child process by default, or the CI Docker image
+        // when MATTER_TEST_SERVER_MODE=docker). start() waits for the WS port.
         console.log("Starting server...");
-        serverProcess = startServer(serverStoragePath, logFilePath);
-
-        // Wait for server to be ready
-        await waitForPort(SERVER_PORT);
+        server = createServerController({ storagePath: serverStoragePath, logFilePath });
+        await server.start();
         console.log("Server is ready");
 
         // Connect WebSocket client
@@ -95,8 +93,11 @@ describe("Integration Test", function () {
             await client.close();
         }
 
-        // Kill processes
-        await killProcess(serverProcess);
+        // Tear down server (process or container) and device. server may be unset
+        // if before() failed before assigning it — don't mask that original error.
+        if (server) {
+            await server.cleanup();
+        }
         await killProcess(deviceProcess);
 
         // Cleanup temp directories
@@ -1010,7 +1011,7 @@ describe("Integration Test", function () {
             // Use a generous timeout so the server has time to flush gracefully
             // before SIGKILL, which matters for the log-size assertion below.
             console.log("Stopping server for restart test...");
-            await killProcess(serverProcess, 10_000);
+            await server.stop(10_000);
 
             // The log is now fully flushed and closed. Capture the final size —
             // on next startup it is renamed to .1, so these must match exactly.
@@ -1021,8 +1022,7 @@ describe("Integration Test", function () {
 
             // Restart the server with the same storage path
             console.log("Restarting server...");
-            serverProcess = startServer(serverStoragePath, logFilePath);
-            await waitForPort(SERVER_PORT);
+            await server.start();
             console.log("Server restarted");
 
             // Reconnect WebSocket client

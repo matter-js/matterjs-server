@@ -76,7 +76,7 @@ export class Connection {
             this.socket.onmessage = (event: { data: unknown }) => {
                 const dataStr = typeof event.data === "string" ? event.data : String(event.data);
                 const data = parseBigIntAwareJson(dataStr);
-                console.log("WebSocket OnMessage", data);
+                console.debug("WebSocket OnMessage", data);
                 if (!this.serverInfo) {
                     this.serverInfo = data as ServerInfoMessage;
                     resolve();
@@ -100,7 +100,7 @@ export class Connection {
         if (!this.socket) {
             throw new Error("Not connected");
         }
-        console.log("WebSocket send message", message);
+        console.debug("WebSocket send message", message);
         this.socket.send(toBigIntAwareJson(message));
     }
 }
