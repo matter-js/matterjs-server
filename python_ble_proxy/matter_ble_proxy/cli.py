@@ -38,6 +38,12 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         help="matter-server BLE proxy URL (default: %(default)s)",
     )
     parser.add_argument(
+        "--hci-id",
+        default=None,
+        type=int,
+        help="Bluetooth adapter HCI ID (e.g., 0 for hci0)",
+    )
+    parser.add_argument(
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -46,8 +52,8 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-async def _run(server_url: str) -> int:
-    scan_source = BleakScanSource()
+async def _run(server_url: str, hci_id: int | None) -> int:
+    scan_source = BleakScanSource(hci_id)
     device_resolver = BleakDeviceResolver(scan_source)
     proxy = MatterBleProxy(server_url, scan_source, device_resolver)
 
@@ -96,7 +102,7 @@ def main(argv: list[str] | None = None) -> int:
         datefmt="%H:%M:%S",
     )
     try:
-        return asyncio.run(_run(args.server))
+        return asyncio.run(_run(args.server, args.hci_id))
     except KeyboardInterrupt:
         return 0
 

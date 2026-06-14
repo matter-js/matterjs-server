@@ -18,6 +18,7 @@ from .protocol import AdvertisementData
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from bleak.args.bluez import BlueZScannerArgs
     from bleak.backends.device import BLEDevice
     from bleak.backends.scanner import AdvertisementData as BleakAdvertisementData
 
@@ -34,8 +35,9 @@ class BleakScanSource(BleScanSource):
     handshake) — typically tens to hundreds of milliseconds.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, hci_device: int | None = None) -> None:
         """Initialize."""
+        self._hci_device = hci_device
         self._scanner: BleakScanner | None = None
         self._callback: Callable[[AdvertisementData], None] | None = None
         # Cache the most recent BLEDevice per address so BleakDeviceResolver
@@ -53,7 +55,15 @@ class BleakScanSource(BleScanSource):
         self._callback = callback
         if self._scanner is not None:
             return
-        self._scanner = BleakScanner(detection_callback=self._on_detection)
+
+        bluez_args: BlueZScannerArgs = {}
+        if self._hci_device is not None:
+            bluez_args["adapter"] = f"hci{self._hci_device}"
+
+        self._scanner = BleakScanner(
+            detection_callback=self._on_detection,
+            bluez=bluez_args,
+        )
         await self._scanner.start()
 
     async def stop(self) -> None:
