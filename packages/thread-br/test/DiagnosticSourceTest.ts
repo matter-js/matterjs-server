@@ -6,14 +6,22 @@
 
 import type { CoapClient } from "../src/coap/CoapClient.js";
 import { CoapTimeoutError } from "../src/coap/CoapClient.js";
-import type { CoapMessage } from "../src/coap/CoapMessage.js";
+import { CoapMessage } from "../src/coap/CoapMessage.js";
 import type { Commissioner } from "../src/commissioner/Commissioner.js";
+import { MeshCopTlvType } from "../src/dataset/meshcopTlvTypes.js";
+import type { DiagnosticResponse } from "../src/diagnostic/DiagnosticResponse.js";
 import { MeshCopDiagnosticSource } from "../src/diagnostic/MeshCopDiagnosticSource.js";
 import { BasicTlv } from "../src/tlv/BasicTlvCodec.js";
+import { Ip6AddressTlv } from "../src/tlv/meshcop/Ip6AddressTlv.js";
+import { UdpEncapsulationTlv } from "../src/tlv/meshcop/UdpEncapsulationTlv.js";
 import { NetworkDiagTlvType } from "../src/tlv/networkDiagTlvTypes.js";
+import { ALL_THREAD_ROUTERS_REALM_LOCAL, deriveMeshLocalAddress } from "../src/util/meshLocalAddr.js";
 
 type CommissionerLike = Pick<Commissioner, "withSession">;
 type CoapLike = Pick<CoapClient, "request" | "listen">;
+type RequestOpts = { type: "CON" | "NON"; code: string; uriPath: string[]; payload?: Uint8Array };
+
+const ML_PREFIX = new Uint8Array([0xfd, 0xda, 0x3f, 0xb0, 0x2c, 0x67, 0x00, 0x00]);
 
 function mockCommissioner(): CommissionerLike {
     return {
@@ -21,75 +29,133 @@ function mockCommissioner(): CommissionerLike {
     };
 }
 
-type RequestOpts = { type: "CON" | "NON"; code: string; uriPath: string[]; payload?: Uint8Array };
-
-function mockCoap(responseFn: (opts: RequestOpts) => Promise<CoapMessage>): CoapLike {
-    return {
-        request: responseFn,
-        listen: () => () => {},
-    };
-}
-
-function ackMessage(payload: Uint8Array): CoapMessage {
-    return { type: "ACK", code: "2.05", messageId: 1, token: new Uint8Array(4), payload };
+function ackMessage(): CoapMessage {
+    return { type: "ACK", code: "2.04", messageId: 1, token: new Uint8Array(), payload: new Uint8Array() };
 }
 
 function buildDiagPayload(type: number, value: Uint8Array): Uint8Array {
     return BasicTlv.encode([{ type, value }]);
 }
 
+/** Decode the outer ProxyTx TLVs the source built, returning the inner CoAP
+ *  message and the target IPv6 address. */
+function unwrapProxyTx(proxyPayload: Uint8Array): { inner: CoapMessage; targetAddr: Uint8Array } {
+    const entries = BasicTlv.walk(proxyPayload);
+    const encapEntry = entries.find(e => e.type === MeshCopTlvType.UDP_ENCAPSULATION);
+    const addrEntry = entries.find(e => e.type === MeshCopTlvType.IPV6_ADDRESS);
+    if (encapEntry === undefined || addrEntry === undefined) {
+        throw new Error("ProxyTx payload missing UDP_ENCAPSULATION or IPV6_ADDRESS TLV");
+    }
+    const encap = UdpEncapsulationTlv.decode(encapEntry.value);
+    return { inner: CoapMessage.decode(encap.payload), targetAddr: Ip6AddressTlv.decode(addrEntry.value) };
+}
+
+/** Build a `c/ur` (ProxyRx) reply that wraps a diagnostic answer with the given
+ *  inner CoAP token and source address. */
+function buildProxyRxReply(innerToken: Uint8Array, diagPayload: Uint8Array, sourceAddr: Uint8Array): CoapMessage {
+    const innerCoap = CoapMessage.encode({
+        type: "NON",
+        code: "2.04",
+        messageId: 0x1234,
+        token: innerToken,
+        uriPath: ["d", "da"],
+        payload: diagPayload,
+    });
+    const proxyPayload = BasicTlv.encode([
+        {
+            type: MeshCopTlvType.UDP_ENCAPSULATION,
+            value: UdpEncapsulationTlv.encode({ sourcePort: 61631, destinationPort: 49152, payload: innerCoap }),
+        },
+        { type: MeshCopTlvType.IPV6_ADDRESS, value: Ip6AddressTlv.encode(sourceAddr) },
+    ]);
+    return {
+        type: "NON",
+        code: "0.02",
+        messageId: 7,
+        token: new Uint8Array(4),
+        uriPath: ["c", "ur"],
+        payload: proxyPayload,
+    };
+}
+
+async function collect(
+    handle: import("../src/diagnostic/DiagnosticSource.js").QueryMulticastHandle,
+): Promise<DiagnosticResponse[]> {
+    const responses = new Array<DiagnosticResponse>();
+    handle.onNode.on(n => {
+        responses.push(n);
+    });
+    await handle.done;
+    return responses;
+}
+
 describe("MeshCopDiagnosticSource", () => {
     it("kind is 'meshcop'", () => {
-        const source = new MeshCopDiagnosticSource(
-            mockCommissioner(),
-            mockCoap(async () => ackMessage(new Uint8Array())),
-        );
+        const source = new MeshCopDiagnosticSource(mockCommissioner(), {
+            request: async () => ackMessage(),
+            listen: () => () => {},
+        });
         expect(source.kind).to.equal("meshcop");
     });
 
     it("canQuery always returns true", () => {
-        const source = new MeshCopDiagnosticSource(
-            mockCommissioner(),
-            mockCoap(async () => ackMessage(new Uint8Array())),
-        );
+        const source = new MeshCopDiagnosticSource(mockCommissioner(), {
+            request: async () => ackMessage(),
+            listen: () => () => {},
+        });
         expect(source.canQuery(new Uint8Array(8))).to.equal(true);
         expect(source.canQuery(new Uint8Array(0))).to.equal(true);
     });
 
-    it("queryUnicast sends CON POST to /d/dg with TLV(18) framed payload and decodes extMacAddress", async () => {
+    it("queryUnicast wraps /d/dg in a c/ut ProxyTx to the node's mesh-local address and decodes the c/ur reply", async () => {
         const extMacValue = new Uint8Array([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
         const responsePayload = buildDiagPayload(NetworkDiagTlvType.EXT_MAC_ADDRESS, extMacValue);
 
         let capturedOpts: RequestOpts | undefined;
+        let urHandler: ((msg: CoapMessage) => void) | undefined;
+        const sourceAddr = deriveMeshLocalAddress(ML_PREFIX, 0x0400);
 
-        const coap = mockCoap(async opts => {
-            capturedOpts = opts;
-            return ackMessage(responsePayload);
-        });
+        const coap: CoapLike = {
+            listen: (uriPath, handler) => {
+                if (uriPath.join("/") === "c/ur") urHandler = handler;
+                return () => {};
+            },
+            request: async opts => {
+                capturedOpts = opts;
+                const { inner } = unwrapProxyTx(opts.payload!);
+                urHandler!(buildProxyRxReply(inner.token, responsePayload, sourceAddr));
+                return ackMessage();
+            },
+        };
 
-        const source = new MeshCopDiagnosticSource(mockCommissioner(), coap);
+        const source = new MeshCopDiagnosticSource(mockCommissioner(), coap, ML_PREFIX);
         const result = await source.queryUnicast({ rloc16: 0x0400 }, [NetworkDiagTlvType.EXT_MAC_ADDRESS]);
 
         expect(capturedOpts).to.not.be.undefined;
         expect(capturedOpts!.type).to.equal("CON");
         expect(capturedOpts!.code).to.equal("0.02");
-        expect(capturedOpts!.uriPath).to.deep.equal(["d", "dg"]);
-        // Wire format: TLV(type=18 TYPE_LIST, length=1, value=[0x00 EXT_MAC_ADDRESS])
-        expect(capturedOpts!.payload).to.deep.equal(new Uint8Array([0x12, 0x01, NetworkDiagTlvType.EXT_MAC_ADDRESS]));
+        expect(capturedOpts!.uriPath).to.deep.equal(["c", "ut"]);
 
-        expect(result.extMacAddress).to.not.be.undefined;
+        const { inner, targetAddr } = unwrapProxyTx(capturedOpts!.payload!);
+        expect(inner.type).to.equal("CON");
+        expect(inner.code).to.equal("0.02");
+        expect(inner.uriPath).to.deep.equal(["d", "dg"]);
+        expect(inner.payload).to.deep.equal(new Uint8Array([0x12, 0x01, NetworkDiagTlvType.EXT_MAC_ADDRESS]));
+        expect(targetAddr).to.deep.equal(sourceAddr);
+
         expect(result.extMacAddress).to.deep.equal(extMacValue);
     });
 
     it("queryUnicast propagates errors from coap.request", async () => {
-        const coap = mockCoap(async _opts => {
-            throw new CoapTimeoutError(0);
-        });
-
-        const source = new MeshCopDiagnosticSource(mockCommissioner(), coap);
-
+        const coap: CoapLike = {
+            listen: () => () => {},
+            request: async () => {
+                throw new CoapTimeoutError(0);
+            },
+        };
+        const source = new MeshCopDiagnosticSource(mockCommissioner(), coap, ML_PREFIX);
         try {
-            await source.queryUnicast({}, [0]);
+            await source.queryUnicast({ rloc16: 0x0400 }, [0]);
             expect.fail("expected CoapTimeoutError");
         } catch (err) {
             expect(err).to.be.instanceOf(CoapTimeoutError);
@@ -100,10 +166,21 @@ describe("MeshCopDiagnosticSource", () => {
         const unknownType = 0xfe;
         const unknownValue = new Uint8Array([0xaa, 0xbb]);
         const responsePayload = buildDiagPayload(unknownType, unknownValue);
+        let urHandler: ((msg: CoapMessage) => void) | undefined;
 
-        const coap = mockCoap(async () => ackMessage(responsePayload));
-        const source = new MeshCopDiagnosticSource(mockCommissioner(), coap);
-        const result = await source.queryUnicast({}, [unknownType]);
+        const coap: CoapLike = {
+            listen: (_uri, handler) => {
+                urHandler = handler;
+                return () => {};
+            },
+            request: async opts => {
+                const { inner } = unwrapProxyTx(opts.payload!);
+                urHandler!(buildProxyRxReply(inner.token, responsePayload, deriveMeshLocalAddress(ML_PREFIX, 0x0400)));
+                return ackMessage();
+            },
+        };
+        const source = new MeshCopDiagnosticSource(mockCommissioner(), coap, ML_PREFIX);
+        const result = await source.queryUnicast({ rloc16: 0x0400 }, [unknownType]);
 
         expect(result.unknown).to.have.length(1);
         expect(result.unknown[0].type).to.equal(unknownType);
@@ -114,168 +191,233 @@ describe("MeshCopDiagnosticSource", () => {
     it("queryUnicast throws when target.ip is supplied", async () => {
         const source = new MeshCopDiagnosticSource(
             mockCommissioner(),
-            mockCoap(async () => ackMessage(new Uint8Array())),
+            { request: async () => ackMessage(), listen: () => () => {} },
+            ML_PREFIX,
         );
-
         try {
             await source.queryUnicast({ ip: "fd00::1" }, [0]);
             expect.fail("expected Error");
         } catch (err) {
-            expect(err).to.be.instanceOf(Error);
             expect((err as Error).message).to.include("ip-routed");
         }
     });
 
-    it("queryUnicast with empty response returns only empty unknown[]", async () => {
-        const coap = mockCoap(async () => ackMessage(new Uint8Array()));
-        const source = new MeshCopDiagnosticSource(mockCommissioner(), coap);
-        const result = await source.queryUnicast({}, [NetworkDiagTlvType.EXT_MAC_ADDRESS]);
-
-        expect(result.extMacAddress).to.be.undefined;
-        expect(result.unknown).to.have.length(0);
+    it("queryUnicast throws when rloc16 is missing", async () => {
+        const source = new MeshCopDiagnosticSource(
+            mockCommissioner(),
+            { request: async () => ackMessage(), listen: () => () => {} },
+            ML_PREFIX,
+        );
+        try {
+            await source.queryUnicast({}, [0]);
+            expect.fail("expected Error");
+        } catch (err) {
+            expect((err as Error).message).to.include("rloc16");
+        }
     });
 
-    it("queryUnicast with multiple TLV types sends all types in TypeListTlv payload", async () => {
-        let capturedPayload: Uint8Array | undefined;
-
-        const coap = mockCoap(async opts => {
-            capturedPayload = opts.payload;
-            return ackMessage(new Uint8Array());
+    it("queryUnicast throws when no mesh-local prefix was provided", async () => {
+        const source = new MeshCopDiagnosticSource(mockCommissioner(), {
+            request: async () => ackMessage(),
+            listen: () => () => {},
         });
-
-        const source = new MeshCopDiagnosticSource(mockCommissioner(), coap);
-        await source.queryUnicast({}, [NetworkDiagTlvType.EXT_MAC_ADDRESS, NetworkDiagTlvType.ADDRESS16]);
-
-        // TLV(type=18 TYPE_LIST, length=2, value=[0x00, 0x01])
-        expect(capturedPayload).to.deep.equal(new Uint8Array([0x12, 0x02, 0x00, 0x01]));
+        try {
+            await source.queryUnicast({ rloc16: 0x0400 }, [0]);
+            expect.fail("expected Error");
+        } catch (err) {
+            expect((err as Error).message).to.include("mesh-local prefix");
+        }
     });
 
-    it("queryMulticast collects responses for collectMs window and returns array", async () => {
+    it("queryMulticast streams parsed c/ur replies through onNode and resolves done at window end", async () => {
         const extMacA = new Uint8Array([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
         const extMacB = new Uint8Array([0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18]);
         const ansA = buildDiagPayload(NetworkDiagTlvType.EXT_MAC_ADDRESS, extMacA);
         const ansB = buildDiagPayload(NetworkDiagTlvType.EXT_MAC_ADDRESS, extMacB);
-
-        let listenHandler: ((msg: CoapMessage) => void) | undefined;
+        let urHandler: ((msg: CoapMessage) => void) | undefined;
 
         const coap: CoapLike = {
-            request: async () => ackMessage(new Uint8Array()),
+            request: async () => ackMessage(),
             listen: (uriPath, handler) => {
-                expect(uriPath).to.deep.equal(["d", "da"]);
-                listenHandler = handler;
+                if (uriPath.join("/") === "c/ur") urHandler = handler;
                 return () => {};
             },
         };
+        const source = new MeshCopDiagnosticSource(mockCommissioner(), coap, ML_PREFIX);
 
-        const source = new MeshCopDiagnosticSource(mockCommissioner(), coap);
-
-        const queryPromise = source.queryMulticast("ff03::2", [NetworkDiagTlvType.EXT_MAC_ADDRESS], 50);
+        const handle = source.queryMulticast("ff03::2", {
+            tlvTypes: [NetworkDiagTlvType.EXT_MAC_ADDRESS],
+            windowMs: 50,
+        });
+        const responses = new Array<DiagnosticResponse>();
+        handle.onNode.on(n => {
+            responses.push(n);
+        });
 
         await new Promise(r => setTimeout(r, 10));
-        expect(listenHandler).to.not.be.undefined;
-        listenHandler!({ type: "NON", code: "0.02", messageId: 1, token: new Uint8Array(4), payload: ansA });
-        listenHandler!({ type: "NON", code: "0.02", messageId: 2, token: new Uint8Array(4), payload: ansB });
+        expect(urHandler).to.not.be.undefined;
+        urHandler!(buildProxyRxReply(new Uint8Array([1, 2, 3, 4]), ansA, deriveMeshLocalAddress(ML_PREFIX, 0x0400)));
+        urHandler!(buildProxyRxReply(new Uint8Array([5, 6, 7, 8]), ansB, deriveMeshLocalAddress(ML_PREFIX, 0x0800)));
 
-        const results = await queryPromise;
-        expect(results).to.have.length(2);
-        expect(results[0].extMacAddress).to.deep.equal(extMacA);
-        expect(results[1].extMacAddress).to.deep.equal(extMacB);
+        await handle.done;
+        expect(responses).to.have.length(2);
+        expect(responses[0].extMacAddress).to.deep.equal(extMacA);
+        expect(responses[1].extMacAddress).to.deep.equal(extMacB);
     });
 
-    it("queryMulticast subscribes BEFORE sending the query", async () => {
+    it("queryMulticast subscribes to c/ur BEFORE sending the c/ut ProxyTx", async () => {
         const events = new Array<string>();
+        const listenedPaths = new Array<string[]>();
+        const requestedPaths = new Array<string[]>();
 
         const coap: CoapLike = {
-            request: async () => {
+            request: async opts => {
                 events.push("request");
-                return ackMessage(new Uint8Array());
+                requestedPaths.push(opts.uriPath);
+                return ackMessage();
             },
-            listen: () => {
+            listen: uriPath => {
                 events.push("listen");
+                listenedPaths.push(uriPath);
                 return () => {};
             },
         };
-
-        const source = new MeshCopDiagnosticSource(mockCommissioner(), coap);
-        await source.queryMulticast("ff03::2", [NetworkDiagTlvType.EXT_MAC_ADDRESS], 10);
+        const source = new MeshCopDiagnosticSource(mockCommissioner(), coap, ML_PREFIX);
+        const handle = source.queryMulticast("ff03::2", {
+            tlvTypes: [NetworkDiagTlvType.EXT_MAC_ADDRESS],
+            windowMs: 10,
+        });
+        await handle.done;
 
         expect(events).to.deep.equal(["listen", "request"]);
+        expect(listenedPaths.map(p => p.join("/"))).to.deep.equal(["c/ur"]);
+        expect(requestedPaths.map(p => p.join("/"))).to.deep.equal(["c/ut"]);
     });
 
-    it("queryMulticast returns [] when no .ans arrives within collectMs", async () => {
+    it("queryMulticast sends a NON /d/dq inner query to the all-routers group", async () => {
+        let capturedPayload: Uint8Array | undefined;
         const coap: CoapLike = {
-            request: async () => ackMessage(new Uint8Array()),
+            request: async opts => {
+                capturedPayload = opts.payload;
+                return ackMessage();
+            },
             listen: () => () => {},
         };
-        const source = new MeshCopDiagnosticSource(mockCommissioner(), coap);
-        const results = await source.queryMulticast("ff03::2", [NetworkDiagTlvType.EXT_MAC_ADDRESS], 10);
-        expect(results).to.have.length(0);
+        const source = new MeshCopDiagnosticSource(mockCommissioner(), coap, ML_PREFIX);
+        const handle = source.queryMulticast("ff03::2", {
+            tlvTypes: [NetworkDiagTlvType.EXT_MAC_ADDRESS, NetworkDiagTlvType.ADDRESS16],
+            windowMs: 10,
+        });
+        await handle.done;
+
+        const { inner, targetAddr } = unwrapProxyTx(capturedPayload!);
+        expect(inner.type).to.equal("NON");
+        expect(inner.uriPath).to.deep.equal(["d", "dq"]);
+        expect(inner.payload).to.deep.equal(new Uint8Array([0x12, 0x02, 0x00, 0x01]));
+        expect(targetAddr).to.deep.equal(ALL_THREAD_ROUTERS_REALM_LOCAL);
     });
 
-    it("queryMulticast drops empty .ans payloads", async () => {
-        let listenHandler: ((msg: CoapMessage) => void) | undefined;
+    it("queryMulticast yields no nodes when no c/ur arrives within windowMs", async () => {
+        const coap: CoapLike = { request: async () => ackMessage(), listen: () => () => {} };
+        const source = new MeshCopDiagnosticSource(mockCommissioner(), coap, ML_PREFIX);
+        const handle = source.queryMulticast("ff03::2", {
+            tlvTypes: [NetworkDiagTlvType.EXT_MAC_ADDRESS],
+            windowMs: 10,
+        });
+        expect(await collect(handle)).to.have.length(0);
+    });
+
+    it("queryMulticast drops c/ur replies whose inner diagnostic payload is empty", async () => {
+        let urHandler: ((msg: CoapMessage) => void) | undefined;
         const coap: CoapLike = {
-            request: async () => ackMessage(new Uint8Array()),
-            listen: (_uriPath, handler) => {
-                listenHandler = handler;
+            request: async () => ackMessage(),
+            listen: (_uri, handler) => {
+                urHandler = handler;
                 return () => {};
             },
         };
-        const source = new MeshCopDiagnosticSource(mockCommissioner(), coap);
-        const queryPromise = source.queryMulticast("ff03::2", [NetworkDiagTlvType.EXT_MAC_ADDRESS], 30);
-
-        await new Promise(r => setTimeout(r, 5));
-        listenHandler!({
-            type: "NON",
-            code: "0.02",
-            messageId: 1,
-            token: new Uint8Array(4),
-            payload: new Uint8Array(),
+        const source = new MeshCopDiagnosticSource(mockCommissioner(), coap, ML_PREFIX);
+        const handle = source.queryMulticast("ff03::2", {
+            tlvTypes: [NetworkDiagTlvType.EXT_MAC_ADDRESS],
+            windowMs: 30,
         });
 
-        const results = await queryPromise;
-        expect(results).to.have.length(0);
+        await new Promise(r => setTimeout(r, 5));
+        urHandler!(
+            buildProxyRxReply(
+                new Uint8Array([1, 2, 3, 4]),
+                new Uint8Array(),
+                deriveMeshLocalAddress(ML_PREFIX, 0x0400),
+            ),
+        );
+
+        expect(await collect(handle)).to.have.length(0);
     });
 
-    it("queryMulticast drops .ans payloads that fail to decode", async () => {
-        let listenHandler: ((msg: CoapMessage) => void) | undefined;
+    it("queryMulticast surfaces decode failures on onError and continues running", async () => {
+        let urHandler: ((msg: CoapMessage) => void) | undefined;
         const coap: CoapLike = {
-            request: async () => ackMessage(new Uint8Array()),
-            listen: (_uriPath, handler) => {
-                listenHandler = handler;
+            request: async () => ackMessage(),
+            listen: (_uri, handler) => {
+                urHandler = handler;
                 return () => {};
             },
         };
-        const source = new MeshCopDiagnosticSource(mockCommissioner(), coap);
-        const queryPromise = source.queryMulticast("ff03::2", [NetworkDiagTlvType.EXT_MAC_ADDRESS], 30);
-
-        await new Promise(r => setTimeout(r, 5));
-        // Truncated TLV: type=0, length=8, but only 2 bytes follow.
-        listenHandler!({
-            type: "NON",
-            code: "0.02",
-            messageId: 1,
-            token: new Uint8Array(4),
-            payload: new Uint8Array([0x00, 0x08, 0x01, 0x02]),
+        const source = new MeshCopDiagnosticSource(mockCommissioner(), coap, ML_PREFIX);
+        const handle = source.queryMulticast("ff03::2", {
+            tlvTypes: [NetworkDiagTlvType.EXT_MAC_ADDRESS],
+            windowMs: 30,
         });
 
-        const results = await queryPromise;
-        expect(results).to.have.length(0);
+        const errors = new Array<Error>();
+        handle.onError.on(e => {
+            errors.push(e);
+        });
+
+        await new Promise(r => setTimeout(r, 5));
+        // Truncated inner diag TLV: type=0, length=8, but only 2 bytes follow.
+        urHandler!(
+            buildProxyRxReply(
+                new Uint8Array([1, 2, 3, 4]),
+                new Uint8Array([0x00, 0x08, 0x01, 0x02]),
+                deriveMeshLocalAddress(ML_PREFIX, 0x0400),
+            ),
+        );
+
+        expect(await collect(handle)).to.have.length(0);
+        expect(errors.length).to.be.greaterThan(0);
     });
 
-    it("queryMulticast unsubscribes after the collect window", async () => {
+    it("queryMulticast unsubscribes after the window closes", async () => {
         let unsubCalled = false;
-
         const coap: CoapLike = {
-            request: async () => ackMessage(new Uint8Array()),
+            request: async () => ackMessage(),
             listen: () => () => {
                 unsubCalled = true;
             },
         };
+        const source = new MeshCopDiagnosticSource(mockCommissioner(), coap, ML_PREFIX);
+        const handle = source.queryMulticast("ff03::2", {
+            tlvTypes: [NetworkDiagTlvType.EXT_MAC_ADDRESS],
+            windowMs: 10,
+        });
+        await handle.done;
+        expect(unsubCalled).to.equal(true);
+    });
 
-        const source = new MeshCopDiagnosticSource(mockCommissioner(), coap);
-        await source.queryMulticast("ff03::2", [NetworkDiagTlvType.EXT_MAC_ADDRESS], 10);
+    it("queryMulticast close() tears down before the window elapses", async () => {
+        let unsubCalled = false;
+        const coap: CoapLike = {
+            request: async () => ackMessage(),
+            listen: () => () => {
+                unsubCalled = true;
+            },
+        };
+        const source = new MeshCopDiagnosticSource(mockCommissioner(), coap, ML_PREFIX);
+        const handle = source.queryMulticast("ff03::2", { tlvTypes: [], windowMs: 10_000 });
 
+        await new Promise(r => setTimeout(r, 5));
+        await handle.close();
         expect(unsubCalled).to.equal(true);
     });
 });

@@ -13,6 +13,7 @@ import {
     type DiagnosticSource,
     OtbrRestError,
     type OtbrRestCapability,
+    type QueryMulticastHandle,
     type ThreadCredentialsRegistry,
     type ThreadNetworkCredentials,
 } from "@matter-server/thread-br";
@@ -28,6 +29,12 @@ const EXT_PAN_HEX_LOWER = "1122334455667788";
 const EXT_PAN_HEX_UPPER = "1122334455667788".toUpperCase();
 const OTHER_EXT_PAN_BYTES = new Uint8Array([0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff, 0x00, 0x11]);
 const OTHER_EXT_PAN_HEX_LOWER = "aabbccddeeff0011";
+
+const FAST_TIMING = {
+    windowMs: 20,
+    firstBatchMs: 5,
+    debounceMs: 5,
+};
 
 function makeBr(overrides: Partial<BorderRouterEntry> = {}): BorderRouterEntry {
     return {
@@ -105,12 +112,60 @@ const SAMPLE_NODE: DiagnosticResponse = {
     unknown: [],
 };
 
+interface ScriptedHandleOpts {
+    /** Pre-canned nodes emitted immediately on subscription. */
+    nodes?: DiagnosticResponse[];
+    /** If true, do not auto-resolve `done`; the caller controls it via `close()` or windowMs. */
+    keepOpen?: boolean;
+    /** Resolution delay in ms before emitting nodes + done. Defaults to 0. */
+    delayMs?: number;
+    /** If set, reject `done` with this error after emitting nodes. */
+    rejectWith?: Error;
+    onClose?: () => void;
+}
+
+function scriptedHandle(opts: ScriptedHandleOpts = {}): QueryMulticastHandle {
+    const onNode = new Observable<[DiagnosticResponse]>();
+    const onError = new Observable<[Error]>();
+    let resolveDone!: () => void;
+    let rejectDone!: (err: Error) => void;
+    const done = new Promise<void>((resolve, reject) => {
+        resolveDone = resolve;
+        rejectDone = reject;
+    });
+    let closed = false;
+    setTimeout(() => {
+        if (closed) return;
+        for (const node of opts.nodes ?? []) {
+            onNode.emit(node);
+        }
+        if (!opts.keepOpen) {
+            if (opts.rejectWith !== undefined) {
+                rejectDone(opts.rejectWith);
+            } else {
+                resolveDone();
+            }
+        }
+    }, opts.delayMs ?? 0);
+    return {
+        onNode,
+        onError,
+        done,
+        close: async () => {
+            if (closed) return;
+            closed = true;
+            opts.onClose?.();
+            resolveDone();
+        },
+    };
+}
+
 function syncRestSource(nodes: DiagnosticResponse[]): DiagnosticSource {
     return {
         kind: "otbr-rest",
         canQuery: () => true,
         queryUnicast: async () => nodes[0] ?? { unknown: [] },
-        queryMulticast: async () => nodes,
+        queryMulticast: () => scriptedHandle({ nodes }),
     };
 }
 
@@ -119,7 +174,29 @@ function syncMeshcopSource(nodes: DiagnosticResponse[]): DiagnosticSource {
         kind: "meshcop",
         canQuery: () => true,
         queryUnicast: async () => nodes[0] ?? { unknown: [] },
-        queryMulticast: async () => nodes,
+        queryMulticast: () => scriptedHandle({ nodes }),
+    };
+}
+
+function failingMeshcopSource(err: Error): DiagnosticSource {
+    return {
+        kind: "meshcop",
+        canQuery: () => true,
+        queryUnicast: async () => ({ unknown: [] }),
+        queryMulticast: () => {
+            throw err;
+        },
+    };
+}
+
+function failingRestSource(err: OtbrRestError): DiagnosticSource {
+    return {
+        kind: "otbr-rest",
+        canQuery: () => true,
+        queryUnicast: async () => ({ unknown: [] }),
+        queryMulticast: () => {
+            throw err;
+        },
     };
 }
 
@@ -132,7 +209,6 @@ function meshcopHandle(source: DiagnosticSource, onClose?: () => void): MeshcopS
     };
 }
 
-// Type-check that the structural stubs satisfy the Pick<> types the service expects.
 function brRegistryFrom(stub: BorderRoutersStub): Pick<BorderRouterRegistry, "list" | "events"> {
     return stub;
 }
@@ -146,6 +222,7 @@ describe("ThreadDiagnosticsService", () => {
         const restCalls = new Array<number>();
         const meshcopCalls = new Array<number>();
         const service = new ThreadDiagnosticsService({
+            ...FAST_TIMING,
             borderRouters: brRegistryFrom(brsListing([makeBr()])),
             credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
             makeRestSource: () => {
@@ -171,6 +248,7 @@ describe("ThreadDiagnosticsService", () => {
     it("force=true bypasses the cache", async () => {
         let calls = 0;
         const service = new ThreadDiagnosticsService({
+            ...FAST_TIMING,
             borderRouters: brRegistryFrom(brsListing([makeBr()])),
             credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
             makeRestSource: () => syncRestSource([]),
@@ -189,6 +267,7 @@ describe("ThreadDiagnosticsService", () => {
     it("emits batchUpdated for every fresh fetch", async () => {
         const events = new Array<ThreadDiagnosticsBatch>();
         const service = new ThreadDiagnosticsService({
+            ...FAST_TIMING,
             borderRouters: brRegistryFrom(brsListing([makeBr()])),
             credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
             makeRestSource: () => syncRestSource([]),
@@ -201,12 +280,15 @@ describe("ThreadDiagnosticsService", () => {
         await service.getOrFetch(EXT_PAN_HEX_LOWER);
         await service.getOrFetch(EXT_PAN_HEX_LOWER, { force: true });
 
-        expect(events).to.have.lengthOf(2);
-        expect(events[0].nodes).to.have.lengthOf(1);
+        // First batch is published when firstBatch resolves and the final batch
+        // is published when the window closes — at least one event per fetch.
+        expect(events.length).to.be.greaterThanOrEqual(2);
+        expect(events[0].nodes.length).to.be.greaterThan(0);
     });
 
     it("yields border_router_unreachable when no BRs match the extPanId", async () => {
         const service = new ThreadDiagnosticsService({
+            ...FAST_TIMING,
             borderRouters: brRegistryFrom(brsListing([])),
             credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
             makeRestSource: () => syncRestSource([]),
@@ -220,6 +302,7 @@ describe("ThreadDiagnosticsService", () => {
 
     it("yields no_credentials when BRs match but neither creds nor REST cap exist", async () => {
         const service = new ThreadDiagnosticsService({
+            ...FAST_TIMING,
             borderRouters: brRegistryFrom(brsListing([makeBr()])),
             credentials: credsRegistryFrom(credsLookup(new Map())),
             makeRestSource: () => syncRestSource([]),
@@ -235,6 +318,7 @@ describe("ThreadDiagnosticsService", () => {
         let restCalls = 0;
         let meshcopCalls = 0;
         const service = new ThreadDiagnosticsService({
+            ...FAST_TIMING,
             borderRouters: brRegistryFrom(brsListing([makeBr()])),
             credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
             makeRestSource: () => {
@@ -255,47 +339,42 @@ describe("ThreadDiagnosticsService", () => {
         expect(meshcopCalls).to.equal(0);
     });
 
-    it("serialises concurrent fetches for the same extPanId", async () => {
-        const order = new Array<string>();
-        let active = 0;
-        let maxActive = 0;
+    it("concurrent fetches for the same extPanId share a single stream", async () => {
+        let acquireCalls = 0;
         const service = new ThreadDiagnosticsService({
+            ...FAST_TIMING,
+            windowMs: 50,
+            firstBatchMs: 10,
             borderRouters: brRegistryFrom(brsListing([makeBr()])),
             credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
             makeRestSource: () => syncRestSource([]),
             makeMeshcopSource: async () => {
-                active += 1;
-                maxActive = Math.max(maxActive, active);
-                order.push("acquire");
-                const slowSource: DiagnosticSource = {
+                acquireCalls += 1;
+                const source: DiagnosticSource = {
                     kind: "meshcop",
                     canQuery: () => true,
                     queryUnicast: async () => ({ unknown: [] }),
-                    queryMulticast: async () => {
-                        await new Promise(r => setTimeout(r, 10));
-                        return [SAMPLE_NODE];
-                    },
+                    queryMulticast: () => scriptedHandle({ nodes: [SAMPLE_NODE], delayMs: 5 }),
                 };
-                return meshcopHandle(slowSource, () => {
-                    active -= 1;
-                    order.push("release");
-                });
+                return meshcopHandle(source);
             },
         });
 
-        await Promise.all([
-            service.getOrFetch(EXT_PAN_HEX_LOWER, { force: true }),
-            service.getOrFetch(EXT_PAN_HEX_LOWER, { force: true }),
+        const [a, b] = await Promise.all([
+            service.getOrFetch(EXT_PAN_HEX_LOWER),
+            service.getOrFetch(EXT_PAN_HEX_LOWER),
         ]);
-
-        expect(maxActive).to.equal(1);
-        expect(order).to.deep.equal(["acquire", "release", "acquire", "release"]);
+        expect(acquireCalls).to.equal(1);
+        expect(a).to.equal(b);
     });
 
     it("runs fetches for distinct extPanIds in parallel", async () => {
         let active = 0;
         let maxActive = 0;
         const service = new ThreadDiagnosticsService({
+            ...FAST_TIMING,
+            windowMs: 30,
+            firstBatchMs: 10,
             borderRouters: brRegistryFrom(
                 brsListing([
                     makeBr(),
@@ -317,16 +396,13 @@ describe("ThreadDiagnosticsService", () => {
             makeMeshcopSource: async () => {
                 active += 1;
                 maxActive = Math.max(maxActive, active);
-                const slowSource: DiagnosticSource = {
+                const source: DiagnosticSource = {
                     kind: "meshcop",
                     canQuery: () => true,
                     queryUnicast: async () => ({ unknown: [] }),
-                    queryMulticast: async () => {
-                        await new Promise(r => setTimeout(r, 20));
-                        return [];
-                    },
+                    queryMulticast: () => scriptedHandle({ delayMs: 20 }),
                 };
-                return meshcopHandle(slowSource, () => {
+                return meshcopHandle(source, () => {
                     active -= 1;
                 });
             },
@@ -343,23 +419,14 @@ describe("ThreadDiagnosticsService", () => {
     it("maps a CommissionerRejectedError to petition_rejected and still closes the handle", async () => {
         let closed = false;
         const service = new ThreadDiagnosticsService({
+            ...FAST_TIMING,
             borderRouters: brRegistryFrom(brsListing([makeBr()])),
             credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
             makeRestSource: () => syncRestSource([]),
             makeMeshcopSource: async () =>
-                meshcopHandle(
-                    {
-                        kind: "meshcop",
-                        canQuery: () => true,
-                        queryUnicast: async () => ({ unknown: [] }),
-                        queryMulticast: async () => {
-                            throw new CommissionerRejectedError();
-                        },
-                    },
-                    () => {
-                        closed = true;
-                    },
-                ),
+                meshcopHandle(failingMeshcopSource(new CommissionerRejectedError()), () => {
+                    closed = true;
+                }),
         });
 
         const batch = await service.getOrFetch(EXT_PAN_HEX_LOWER);
@@ -369,18 +436,11 @@ describe("ThreadDiagnosticsService", () => {
 
     it("maps a CommissionerTimeoutError to timeout", async () => {
         const service = new ThreadDiagnosticsService({
+            ...FAST_TIMING,
             borderRouters: brRegistryFrom(brsListing([makeBr()])),
             credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
             makeRestSource: () => syncRestSource([]),
-            makeMeshcopSource: async () =>
-                meshcopHandle({
-                    kind: "meshcop",
-                    canQuery: () => true,
-                    queryUnicast: async () => ({ unknown: [] }),
-                    queryMulticast: async () => {
-                        throw new CommissionerTimeoutError();
-                    },
-                }),
+            makeMeshcopSource: async () => meshcopHandle(failingMeshcopSource(new CommissionerTimeoutError())),
         });
 
         const batch = await service.getOrFetch(EXT_PAN_HEX_LOWER);
@@ -389,16 +449,10 @@ describe("ThreadDiagnosticsService", () => {
 
     it("maps an OtbrRestError(rest_unreachable) to rest_unreachable", async () => {
         const service = new ThreadDiagnosticsService({
+            ...FAST_TIMING,
             borderRouters: brRegistryFrom(brsListing([makeBr()])),
             credentials: credsRegistryFrom(credsLookup(new Map())),
-            makeRestSource: () => ({
-                kind: "otbr-rest",
-                canQuery: () => true,
-                queryUnicast: async () => ({ unknown: [] }),
-                queryMulticast: async () => {
-                    throw new OtbrRestError("rest_unreachable", "boom");
-                },
-            }),
+            makeRestSource: () => failingRestSource(new OtbrRestError("rest_unreachable", "boom")),
             makeMeshcopSource: async () => meshcopHandle(syncMeshcopSource([])),
         });
         service.registerRestCapability(EXT_PAN_HEX_LOWER, makeCap());
@@ -410,16 +464,10 @@ describe("ThreadDiagnosticsService", () => {
 
     it("maps an OtbrRestError(rest_protocol) to rest_protocol", async () => {
         const service = new ThreadDiagnosticsService({
+            ...FAST_TIMING,
             borderRouters: brRegistryFrom(brsListing([makeBr()])),
             credentials: credsRegistryFrom(credsLookup(new Map())),
-            makeRestSource: () => ({
-                kind: "otbr-rest",
-                canQuery: () => true,
-                queryUnicast: async () => ({ unknown: [] }),
-                queryMulticast: async () => {
-                    throw new OtbrRestError("rest_protocol", "garbled");
-                },
-            }),
+            makeRestSource: () => failingRestSource(new OtbrRestError("rest_protocol", "garbled")),
             makeMeshcopSource: async () => meshcopHandle(syncMeshcopSource([])),
         });
         service.registerRestCapability(EXT_PAN_HEX_LOWER, makeCap());
@@ -430,6 +478,7 @@ describe("ThreadDiagnosticsService", () => {
 
     it("listCached returns a snapshot of every cached batch", async () => {
         const service = new ThreadDiagnosticsService({
+            ...FAST_TIMING,
             borderRouters: brRegistryFrom(
                 brsListing([
                     makeBr(),
@@ -462,6 +511,7 @@ describe("ThreadDiagnosticsService", () => {
         let restCalls = 0;
         let meshcopCalls = 0;
         const service = new ThreadDiagnosticsService({
+            ...FAST_TIMING,
             borderRouters: brRegistryFrom(brsListing([makeBr()])),
             credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
             makeRestSource: () => {
@@ -472,7 +522,6 @@ describe("ThreadDiagnosticsService", () => {
                 meshcopCalls += 1;
                 return meshcopHandle(syncMeshcopSource([]));
             },
-            // force=true triggers a re-probe; inject a no-op so the test stays isolated.
             probeRest: async () => null,
         });
 
@@ -490,6 +539,7 @@ describe("ThreadDiagnosticsService", () => {
         const probeCalls = new Array<{ host: string; port: number }>();
         const stub = brsListing([]);
         const service = new ThreadDiagnosticsService({
+            ...FAST_TIMING,
             borderRouters: brRegistryFrom(stub),
             credentials: credsRegistryFrom(credsLookup(new Map())),
             makeRestSource: () => syncRestSource([SAMPLE_NODE]),
@@ -506,7 +556,6 @@ describe("ThreadDiagnosticsService", () => {
 
         expect(probeCalls).to.have.lengthOf(2);
         expect(probeCalls.map(c => c.host).sort()).to.deep.equal(["192.0.2.1", "fd00::1"]);
-        // Probe completed without needing a fetch.
         void service;
     });
 
@@ -516,6 +565,7 @@ describe("ThreadDiagnosticsService", () => {
         let meshcopCalls = 0;
         const stub = brsListing([makeBr({ addresses: ["fd00::1"] })]);
         const service = new ThreadDiagnosticsService({
+            ...FAST_TIMING,
             borderRouters: brRegistryFrom(stub),
             credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
             makeRestSource: () => {
@@ -546,6 +596,7 @@ describe("ThreadDiagnosticsService", () => {
         const probeCalls = new Array<string>();
         const stub = brsListing([]);
         new ThreadDiagnosticsService({
+            ...FAST_TIMING,
             borderRouters: brRegistryFrom(stub),
             credentials: credsRegistryFrom(credsLookup(new Map())),
             makeRestSource: () => syncRestSource([]),
@@ -566,6 +617,7 @@ describe("ThreadDiagnosticsService", () => {
         let meshcopCalls = 0;
         const stub = brsListing([makeBr({ addresses: ["fd00::1"] })]);
         const service = new ThreadDiagnosticsService({
+            ...FAST_TIMING,
             borderRouters: brRegistryFrom(stub),
             credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
             makeRestSource: () => syncRestSource([]),
@@ -589,6 +641,7 @@ describe("ThreadDiagnosticsService", () => {
         let restCalls = 0;
         const stub = brsListing([makeBr({ addresses: ["fd00::1"] })]);
         const service = new ThreadDiagnosticsService({
+            ...FAST_TIMING,
             borderRouters: brRegistryFrom(stub),
             credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
             makeRestSource: () => {
@@ -610,8 +663,6 @@ describe("ThreadDiagnosticsService", () => {
         expect(restCalls).to.equal(1);
         expect(probeCalls).to.equal(1);
 
-        // force=true re-probes so a BR that came online later (or whose REST
-        // endpoint has flipped) gets revalidated.
         const second = await service.getOrFetch(EXT_PAN_HEX_LOWER, { force: true });
         expect(second?.source).to.equal("otbr-rest");
         expect(restCalls).to.equal(2);
@@ -622,6 +673,7 @@ describe("ThreadDiagnosticsService", () => {
         let probeCalls = 0;
         const stub = brsListing([makeBr({ addresses: ["fd00::1"] })]);
         new ThreadDiagnosticsService({
+            ...FAST_TIMING,
             borderRouters: brRegistryFrom(stub),
             credentials: credsRegistryFrom(credsLookup(new Map())),
             makeRestSource: () => syncRestSource([]),
@@ -636,7 +688,6 @@ describe("ThreadDiagnosticsService", () => {
         await new Promise(r => setTimeout(r, 5));
         expect(probeCalls).to.equal(1);
 
-        // mDNS TXT/A refresh — should not trigger a fresh probe storm.
         for (let i = 0; i < 5; i++) {
             stub.events.updated.emit(makeBr({ addresses: ["fd00::1"] }));
         }
@@ -647,6 +698,7 @@ describe("ThreadDiagnosticsService", () => {
     it("removed event drops the REST capability when no other BR carries the same xp", async () => {
         const stub = brsListing([makeBr({ addresses: ["fd00::1"] })]);
         const service = new ThreadDiagnosticsService({
+            ...FAST_TIMING,
             borderRouters: brRegistryFrom(stub),
             credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
             makeRestSource: () => syncRestSource([SAMPLE_NODE]),
@@ -660,13 +712,10 @@ describe("ThreadDiagnosticsService", () => {
         const beforeRemove = await service.getOrFetch(EXT_PAN_HEX_LOWER);
         expect(beforeRemove?.source).to.equal("otbr-rest");
 
-        // Drop the BR; with no remaining BR for this xp, the cap should be released.
         stub.list = () => [];
         stub.events.removed.emit(makeBr({ addresses: ["fd00::1"] }));
         await new Promise(r => setTimeout(r, 5));
 
-        // Next fetch has no BR -> partial(border_router_unreachable); cap is also gone
-        // because the removed-listener cleared it.
         const afterRemove = await service.getOrFetch(EXT_PAN_HEX_LOWER);
         expect(afterRemove?.partialReason).to.equal("border_router_unreachable");
     });
@@ -678,6 +727,7 @@ describe("ThreadDiagnosticsService", () => {
             makeBr({ extAddressHex: "BBBBBBBBBBBBBBBB", addresses: ["fd00::2"] }),
         ]);
         const service = new ThreadDiagnosticsService({
+            ...FAST_TIMING,
             borderRouters: brRegistryFrom(stub),
             credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
             makeRestSource: () => syncRestSource([SAMPLE_NODE]),
@@ -688,22 +738,20 @@ describe("ThreadDiagnosticsService", () => {
             },
         });
 
-        // Eager probe via `added` for one BR registers cap.
         stub.events.added.emit(makeBr({ extAddressHex: "AAAAAAAAAAAAAAAA", addresses: ["fd00::1"] }));
         await new Promise(r => setTimeout(r, 5));
 
-        // Remove only one of the two BRs for this xp.
         stub.list = () => [makeBr({ extAddressHex: "BBBBBBBBBBBBBBBB", addresses: ["fd00::2"] })];
         stub.events.removed.emit(makeBr({ extAddressHex: "AAAAAAAAAAAAAAAA", addresses: ["fd00::1"] }));
 
         const batch = await service.getOrFetch(EXT_PAN_HEX_LOWER);
         expect(batch?.source).to.equal("otbr-rest");
-        // No re-probe happened — cap survived because peer BR still serves the network.
         expect(probeCalls).to.equal(1);
     });
 
     it("rejects invalid extPanId hex input", async () => {
         const service = new ThreadDiagnosticsService({
+            ...FAST_TIMING,
             borderRouters: brRegistryFrom(brsListing([])),
             credentials: credsRegistryFrom(credsLookup(new Map())),
             makeRestSource: () => syncRestSource([]),
@@ -717,5 +765,142 @@ describe("ThreadDiagnosticsService", () => {
             caught = err as Error;
         }
         expect(caught?.message).to.contain("Invalid extPanId hex");
+    });
+
+    it("first-batch resolves at firstBatchMs with in_progress partial reason; final batch follows on window close", async () => {
+        const events = new Array<ThreadDiagnosticsBatch>();
+        let onNodeEmit: ((n: DiagnosticResponse) => void) | undefined;
+        const stub = brsListing([makeBr()]);
+        const service = new ThreadDiagnosticsService({
+            windowMs: 80,
+            firstBatchMs: 20,
+            debounceMs: 10,
+            borderRouters: brRegistryFrom(stub),
+            credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
+            makeRestSource: () => syncRestSource([]),
+            makeMeshcopSource: async () => {
+                let resolveDone!: () => void;
+                const handle: QueryMulticastHandle = {
+                    onNode: new Observable<[DiagnosticResponse]>(),
+                    onError: new Observable<[Error]>(),
+                    done: new Promise<void>(r => {
+                        resolveDone = r;
+                    }),
+                    close: async () => resolveDone(),
+                };
+                onNodeEmit = (n: DiagnosticResponse) => handle.onNode.emit(n);
+                // Resolve `done` after the test's windowMs deadline.
+                setTimeout(() => resolveDone(), 80);
+                return {
+                    source: {
+                        kind: "meshcop",
+                        canQuery: () => true,
+                        queryUnicast: async () => ({ unknown: [] }),
+                        queryMulticast: () => handle,
+                    },
+                    close: async () => {},
+                };
+            },
+        });
+        service.events.batchUpdated.on(b => {
+            events.push(b);
+        });
+
+        // Emit a node BEFORE firstBatchMs hits so it's part of the first batch.
+        const fetchPromise = service.getOrFetch(EXT_PAN_HEX_LOWER);
+        await new Promise(r => setTimeout(r, 5));
+        expect(onNodeEmit).to.not.be.undefined;
+        onNodeEmit!(SAMPLE_NODE);
+
+        const first = await fetchPromise;
+        expect(first?.partialReason).to.equal("in_progress");
+        expect(first?.nodes).to.have.lengthOf(1);
+
+        // After window closes the final non-partial batch is published.
+        await new Promise(r => setTimeout(r, 120));
+        const final = events[events.length - 1];
+        expect(final.partialReason).to.equal(undefined);
+        expect(final.nodes).to.have.lengthOf(1);
+    });
+
+    it("first-batch resolves with meshcop_no_responses_yet when no arrivals before firstBatchMs", async () => {
+        const stub = brsListing([makeBr()]);
+        const service = new ThreadDiagnosticsService({
+            windowMs: 30,
+            firstBatchMs: 10,
+            debounceMs: 5,
+            borderRouters: brRegistryFrom(stub),
+            credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
+            makeRestSource: () => syncRestSource([]),
+            makeMeshcopSource: async () =>
+                meshcopHandle({
+                    kind: "meshcop",
+                    canQuery: () => true,
+                    queryUnicast: async () => ({ unknown: [] }),
+                    queryMulticast: () => scriptedHandle({ keepOpen: true }),
+                }),
+        });
+
+        const first = await service.getOrFetch(EXT_PAN_HEX_LOWER);
+        expect(first?.partialReason).to.equal("meshcop_no_responses_yet");
+        expect(first?.nodes).to.have.lengthOf(0);
+    });
+
+    it("debounced in-progress flush publishes follow-up batches between firstBatch and window close", async () => {
+        const events = new Array<ThreadDiagnosticsBatch>();
+        let onNodeEmit: ((n: DiagnosticResponse) => void) | undefined;
+        const stub = brsListing([makeBr()]);
+        const service = new ThreadDiagnosticsService({
+            windowMs: 80,
+            firstBatchMs: 10,
+            debounceMs: 10,
+            borderRouters: brRegistryFrom(stub),
+            credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
+            makeRestSource: () => syncRestSource([]),
+            makeMeshcopSource: async () => {
+                let resolveDone!: () => void;
+                const handle: QueryMulticastHandle = {
+                    onNode: new Observable<[DiagnosticResponse]>(),
+                    onError: new Observable<[Error]>(),
+                    done: new Promise<void>(r => {
+                        resolveDone = r;
+                    }),
+                    close: async () => resolveDone(),
+                };
+                onNodeEmit = (n: DiagnosticResponse) => handle.onNode.emit(n);
+                setTimeout(() => resolveDone(), 80);
+                return {
+                    source: {
+                        kind: "meshcop",
+                        canQuery: () => true,
+                        queryUnicast: async () => ({ unknown: [] }),
+                        queryMulticast: () => handle,
+                    },
+                    close: async () => {},
+                };
+            },
+        });
+        service.events.batchUpdated.on(b => {
+            events.push(b);
+        });
+
+        const fetchPromise = service.getOrFetch(EXT_PAN_HEX_LOWER);
+        // No node before firstBatch.
+        const first = await fetchPromise;
+        expect(first?.partialReason).to.equal("meshcop_no_responses_yet");
+        const firstBatchCount = events.length;
+
+        // Now emit a node — should land in a debounced in_progress publish.
+        onNodeEmit!(SAMPLE_NODE);
+        await new Promise(r => setTimeout(r, 30));
+        const inProgress = events.find(e => e.partialReason === "in_progress" && e.nodes.length === 1);
+        expect(inProgress).to.not.be.undefined;
+        expect(events.length).to.be.greaterThan(firstBatchCount);
+
+        // Final batch after window close.
+        await new Promise(r => setTimeout(r, 80));
+        const final = events[events.length - 1];
+        expect(final.partialReason).to.equal(undefined);
+        expect(final.nodes).to.have.lengthOf(1);
     });
 });

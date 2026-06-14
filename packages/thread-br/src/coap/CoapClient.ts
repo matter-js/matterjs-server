@@ -305,14 +305,20 @@ export class CoapClient {
 
     #dispatchToListeners(msg: CoapMessage): void {
         const inbound = msg.uriPath ?? [];
+        const uri = inbound.length > 0 ? `/${inbound.join("/")}` : "(none)";
+        let delivered = 0;
         for (const listener of this.#listeners) {
             if (!pathsEqual(listener.uriPath, inbound)) continue;
+            delivered++;
             try {
                 listener.handler(msg);
             } catch (err) {
                 logger.warn("CoapClient listener handler threw:", err);
             }
         }
+        logger.info(
+            `[ThreadDiag] CoAP inbound (unmatched-to-request) uri=${uri} type=${msg.type} code=${msg.code} payloadLen=${msg.payload.length} listeners=${delivered}`,
+        );
     }
 
     #nextMessageId(): number {

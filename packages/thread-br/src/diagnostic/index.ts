@@ -8,5 +8,5 @@ export { connectMeshcop } from "./connectMeshcop.js";
 export type { ConnectMeshcopOpts, MeshcopHandle } from "./connectMeshcop.js";
 export { DefaultTlvSet } from "./DefaultTlvSet.js";
 export type { DiagnosticResponse } from "./DiagnosticResponse.js";
-export type { DiagnosticSource } from "./DiagnosticSource.js";
+export type { DiagnosticSource, QueryMulticastHandle, QueryMulticastOptions } from "./DiagnosticSource.js";
 export { MeshCopDiagnosticSource } from "./MeshCopDiagnosticSource.js";

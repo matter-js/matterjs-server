@@ -4,9 +4,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Bytes, Logger } from "@matter/main";
+import { Bytes, Logger, Observable } from "@matter/main";
 import type { DiagnosticResponse } from "../diagnostic/DiagnosticResponse.js";
-import type { DiagnosticSource } from "../diagnostic/DiagnosticSource.js";
+import type { DiagnosticSource, QueryMulticastHandle, QueryMulticastOptions } from "../diagnostic/DiagnosticSource.js";
 import type { OtbrRestCapability } from "./OtbrRestCapability.js";
 import type { OtbrRestClient } from "./OtbrRestClient.js";
 import { OtbrRestError } from "./OtbrRestError.js";
@@ -53,20 +53,45 @@ export class OtbrRestDiagnosticSource implements DiagnosticSource {
         throw new OtbrRestError("rest_protocol", `rloc16 0x${target.rloc16.toString(16)} not found in /diagnostics`);
     }
 
-    async queryMulticast(
-        _scope: "ff03::1" | "ff03::2",
-        _tlvTypes: number[],
-        _collectMs: number,
-    ): Promise<DiagnosticResponse[]> {
-        // scope/collectMs are no-ops for REST: the BR has already collected
-        // diagnostics for the whole mesh and exposes the snapshot via
-        // /diagnostics. tlvTypes is ignored for the same reason as
-        // queryUnicast.
-        logger.info(`[ThreadDiag] REST GET /diagnostics ${this.#capability.baseUrl}`);
+    queryMulticast(_scope: "ff03::1" | "ff03::2", _opts: QueryMulticastOptions): QueryMulticastHandle {
+        // scope/tlvTypes/windowMs are no-ops for REST: the BR has already
+        // collected diagnostics for the whole mesh and exposes the snapshot
+        // via /diagnostics. REST emits all nodes in a single burst and resolves
+        // `done` immediately after — windowMs is irrelevant.
+        const onNode = new Observable<[DiagnosticResponse]>();
+        const onError = new Observable<[Error]>();
+        let resolveDone!: () => void;
+        let rejectDone!: (err: Error) => void;
+        const done = new Promise<void>((resolve, reject) => {
+            resolveDone = resolve;
+            rejectDone = reject;
+        });
+
         const start = Date.now();
-        const list = await this.#client.getDiagnostics();
-        const decoded = list.map(entry => translateNodeJson(entry));
-        logger.info(`[ThreadDiag] REST /diagnostics OK nodes=${decoded.length} duration=${Date.now() - start}ms`);
-        return decoded;
+        logger.info(`[ThreadDiag] REST GET /diagnostics ${this.#capability.baseUrl}`);
+        void (async () => {
+            try {
+                const list = await this.#client.getDiagnostics();
+                for (const entry of list) {
+                    onNode.emit(translateNodeJson(entry));
+                }
+                logger.info(`[ThreadDiag] REST /diagnostics OK nodes=${list.length} duration=${Date.now() - start}ms`);
+                resolveDone();
+            } catch (err) {
+                const e = err instanceof Error ? err : new Error(String(err));
+                onError.emit(e);
+                rejectDone(e);
+            }
+        })();
+
+        return {
+            onNode,
+            onError,
+            done,
+            close: async () => {
+                // The fetch is in-flight — let it complete; ignore the outcome.
+                await done.catch(() => {});
+            },
+        };
     }
 }

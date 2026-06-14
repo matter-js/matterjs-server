@@ -4,9 +4,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Logger } from "@matter/main";
+import { Bytes, Logger, Observable } from "@matter/main";
 import type { CoapClient } from "../coap/CoapClient.js";
+import { CoapMessage } from "../coap/CoapMessage.js";
 import type { Commissioner } from "../commissioner/Commissioner.js";
+import { MeshCopTlvType } from "../dataset/meshcopTlvTypes.js";
+import { BasicTlv } from "../tlv/BasicTlvCodec.js";
 import { ChildTable } from "../tlv/diag/ChildTable.js";
 import { Connectivity } from "../tlv/diag/Connectivity.js";
 import { Ipv6AddressList } from "../tlv/diag/Ipv6AddressList.js";
@@ -33,23 +36,63 @@ import {
     VendorSwVersion,
     Version,
 } from "../tlv/diag/VendorInfo.js";
+import { Ip6AddressTlv } from "../tlv/meshcop/Ip6AddressTlv.js";
+import { UdpEncapsulationTlv } from "../tlv/meshcop/UdpEncapsulationTlv.js";
 import { NetworkDiagnosticTlv } from "../tlv/NetworkDiagnosticTlv.js";
 import { NetworkDiagTlvType } from "../tlv/networkDiagTlvTypes.js";
 import { TypeListTlv } from "../tlv/TypeListTlv.js";
+import {
+    ALL_THREAD_NODES_REALM_LOCAL,
+    ALL_THREAD_ROUTERS_REALM_LOCAL,
+    deriveMeshLocalAddress,
+    formatIp6,
+} from "../util/meshLocalAddr.js";
 import type { DiagnosticResponse } from "./DiagnosticResponse.js";
-import type { DiagnosticSource } from "./DiagnosticSource.js";
+import type { DiagnosticSource, QueryMulticastHandle, QueryMulticastOptions } from "./DiagnosticSource.js";
 
 const logger = Logger.get("MeshCopDiagnosticSource");
 
+const DEFAULT_WINDOW_MS = 20_000;
+const DEFAULT_UNICAST_TIMEOUT_MS = 10_000;
+
+/** TMF service port on the mesh-local interface (Thread spec §5.20). */
+const TMF_PORT = 61631;
+/** Arbitrary ephemeral source port for the encapsulated inner UDP datagram. */
+const PROXY_SRC_PORT = 49152;
+
+/** UDP-proxy URIs on the Border Agent's commissioner CoAP server. */
+const PROXY_TX_URI = ["c", "ut"];
+const PROXY_RX_URI = ["c", "ur"];
+/** Network-diagnostic URIs carried inside the proxied inner CoAP message. */
+const DIAG_GET_URI = ["d", "dg"];
+const DIAG_QUERY_URI = ["d", "dq"];
+
+/**
+ * MeshCoP network-diagnostic source.
+ *
+ * External commissioners cannot send `/d/dg` or `/d/dq` directly to the Border
+ * Agent — its commissioner CoAP server has no diagnostic URIs and answers 4.04.
+ * Diagnostics must traverse the UDP Proxy: the inner diagnostic CoAP message is
+ * wrapped in a `c/ut` (ProxyTx) request; the Border Agent emits it as a UDP
+ * datagram on the mesh (TMF port 61631) and forwards each mesh reply back
+ * wrapped in `c/ur` (ProxyRx). See Thread spec §8.10.
+ */
 export class MeshCopDiagnosticSource implements DiagnosticSource {
     readonly kind = "meshcop" as const;
 
     readonly #commissioner: Pick<Commissioner, "withSession">;
     readonly #coap: Pick<CoapClient, "request" | "listen">;
+    readonly #mlPrefix?: Uint8Array;
+    #innerMessageId = Math.floor(Math.random() * 0x10000);
 
-    constructor(commissioner: Pick<Commissioner, "withSession">, coap: Pick<CoapClient, "request" | "listen">) {
+    constructor(
+        commissioner: Pick<Commissioner, "withSession">,
+        coap: Pick<CoapClient, "request" | "listen">,
+        mlPrefix?: Uint8Array,
+    ) {
         this.#commissioner = commissioner;
         this.#coap = coap;
+        this.#mlPrefix = mlPrefix;
     }
 
     canQuery(_extPanId: Uint8Array): boolean {
@@ -59,61 +102,272 @@ export class MeshCopDiagnosticSource implements DiagnosticSource {
     async queryUnicast(target: { rloc16?: number; ip?: string }, tlvTypes: number[]): Promise<DiagnosticResponse> {
         if (target.ip !== undefined) {
             throw new Error(
-                "MeshCopDiagnosticSource: ip-routed unicast is not supported in Phase 5 — use rloc16 or the commissioner session address",
+                "MeshCopDiagnosticSource: ip-routed unicast is not supported — use rloc16 (mesh-local addressing)",
             );
         }
+        if (target.rloc16 === undefined) {
+            throw new Error("MeshCopDiagnosticSource: queryUnicast requires target.rloc16");
+        }
+        if (this.#mlPrefix === undefined) {
+            throw new Error(
+                "MeshCopDiagnosticSource: queryUnicast requires the mesh-local prefix; none was provided to the constructor",
+            );
+        }
+        const targetAddr = deriveMeshLocalAddress(this.#mlPrefix, target.rloc16);
+        const token = this.#freshToken();
+        const innerBytes = this.#encodeInnerDiag("CON", DIAG_GET_URI, tlvTypes, token);
+        const proxyPayload = this.#wrapProxyTx(targetAddr, innerBytes);
+
         return this.#commissioner.withSession(async () => {
-            const response = await this.#coap.request({
-                type: "CON",
-                code: "0.02",
-                uriPath: ["d", "dg"],
-                payload: NetworkDiagnosticTlv.encode([
-                    { type: NetworkDiagTlvType.TYPE_LIST, value: TypeListTlv.encode(tlvTypes) },
-                ]),
+            let resolveResponse!: (r: DiagnosticResponse) => void;
+            let rejectResponse!: (e: Error) => void;
+            const responsePromise = new Promise<DiagnosticResponse>((res, rej) => {
+                resolveResponse = res;
+                rejectResponse = rej;
             });
-            return decodeResponse(response.payload);
+
+            const unsubscribe = this.#coap.listen(PROXY_RX_URI, msg => {
+                logger.info(
+                    `[ThreadDiag][ProxyDebug] (unicast) c/ur raw payloadLen=${msg.payload.length} hex=${Bytes.toHex(msg.payload)}`,
+                );
+                const inner = unwrapProxyRx(msg.payload);
+                if (inner === undefined) {
+                    logger.info("[ThreadDiag][ProxyDebug] (unicast) c/ur unwrap returned undefined, dropping");
+                    return;
+                }
+                if (!tokensEqual(inner.token, token)) {
+                    logger.info(
+                        `[ThreadDiag][ProxyDebug] (unicast) c/ur token mismatch want=${Bytes.toHex(token)} got=${Bytes.toHex(inner.token)}, dropping`,
+                    );
+                    return;
+                }
+                try {
+                    resolveResponse(decodeResponse(inner.payload));
+                } catch (err) {
+                    rejectResponse(err instanceof Error ? err : new Error(String(err)));
+                }
+            });
+
+            const timer = setTimeout(() => {
+                rejectResponse(
+                    new Error(`MeshCopDiagnosticSource: unicast diagnostic to ${formatIp6(targetAddr)} timed out`),
+                );
+            }, DEFAULT_UNICAST_TIMEOUT_MS);
+
+            logger.info(
+                `[ThreadDiag][ProxyDebug] c/ut ProxyTx target=${formatIp6(targetAddr)} dstPort=${TMF_PORT} innerUri=/d/dg innerToken=${Bytes.toHex(token)} innerLen=${innerBytes.length} proxyLen=${proxyPayload.length} proxyHex=${Bytes.toHex(proxyPayload)}`,
+            );
+            try {
+                const ack = await this.#coap.request({
+                    type: "CON",
+                    code: "0.02",
+                    uriPath: PROXY_TX_URI,
+                    payload: proxyPayload,
+                });
+                logger.info(`[ThreadDiag][ProxyDebug] (unicast) c/ut ack code=${ack.code}`);
+                return await responsePromise;
+            } finally {
+                clearTimeout(timer);
+                unsubscribe();
+            }
         });
     }
 
-    async queryMulticast(
-        _scope: "ff03::1" | "ff03::2",
-        tlvTypes: number[],
-        collectMs: number,
-    ): Promise<DiagnosticResponse[]> {
-        // scope param accepted but not wired into the request: our DTLS socket has a single peer (the BR),
-        // and the BR forwards /d/dq to its configured multicast scope. Per-scope routing requires
-        // socket-level destination control (Phase 8).
-        return this.#commissioner.withSession(async () => {
-            logger.info(`[ThreadDiag] queryMulticast START tlvs=${tlvTypes.length} collect=${collectMs}ms`);
-            const start = Date.now();
-            const responses = new Array<DiagnosticResponse>();
-            const unsubscribe = this.#coap.listen(["d", "da"], msg => {
-                if (msg.payload.length === 0) return;
-                try {
-                    responses.push(decodeResponse(msg.payload));
-                } catch (err) {
-                    logger.warn("[ThreadDiag] failed to decode .ans payload, dropping:", err);
-                }
-            });
-            try {
-                await this.#coap.request({
-                    type: "NON",
-                    code: "0.02",
-                    uriPath: ["d", "dq"],
-                    payload: NetworkDiagnosticTlv.encode([
-                        { type: NetworkDiagTlvType.TYPE_LIST, value: TypeListTlv.encode(tlvTypes) },
-                    ]),
-                });
-                await new Promise<void>(r => setTimeout(r, collectMs));
-            } finally {
-                unsubscribe();
-                logger.info(
-                    `[ThreadDiag] queryMulticast DONE responses=${responses.length} duration=${Date.now() - start}ms`,
-                );
+    queryMulticast(scope: "ff03::1" | "ff03::2", opts: QueryMulticastOptions): QueryMulticastHandle {
+        const windowMs = opts.windowMs ?? DEFAULT_WINDOW_MS;
+        const targetAddr = scope === "ff03::1" ? ALL_THREAD_NODES_REALM_LOCAL : ALL_THREAD_ROUTERS_REALM_LOCAL;
+        const onNode = new Observable<[DiagnosticResponse]>();
+        const onError = new Observable<[Error]>();
+        const start = Date.now();
+        let nodeCount = 0;
+        let closed = false;
+        let unsubscribe: (() => void) | undefined;
+        let windowTimer: NodeJS.Timeout | undefined;
+        let resolveTeardown!: () => void;
+        // teardownPromise gates the inner withSession callback: when it resolves
+        // (via teardown()), the callback returns and Commissioner.release() runs.
+        const teardownPromise = new Promise<void>(r => {
+            resolveTeardown = r;
+        });
+
+        const teardown = () => {
+            if (closed) return;
+            closed = true;
+            if (windowTimer !== undefined) {
+                clearTimeout(windowTimer);
+                windowTimer = undefined;
             }
-            return responses;
+            unsubscribe?.();
+            logger.info(
+                `[ThreadDiag] queryMulticast DONE nodes=${nodeCount} duration=${Date.now() - start}ms window=${windowMs}ms`,
+            );
+            resolveTeardown();
+        };
+
+        // sessionPromise resolves AFTER Commissioner.release() (or the catch
+        // branch) so callers awaiting handle.done / handle.close() see the
+        // commissioner cleanly released before they tear down DTLS. Without
+        // this, COMM_REL would race against socket close and BR would never
+        // see the release ACK (manifested as petition-rejected on retry).
+        const sessionPromise = this.#commissioner
+            .withSession(async () => {
+                logger.info(`[ThreadDiag] queryMulticast START tlvs=${opts.tlvTypes.length} window=${windowMs}ms`);
+                unsubscribe = this.#coap.listen(PROXY_RX_URI, msg => {
+                    if (closed) return;
+                    logger.info(
+                        `[ThreadDiag][ProxyDebug] c/ur raw payloadLen=${msg.payload.length} hex=${Bytes.toHex(msg.payload)}`,
+                    );
+                    const inner = unwrapProxyRx(msg.payload);
+                    if (inner === undefined) {
+                        logger.info("[ThreadDiag][ProxyDebug] c/ur unwrap returned undefined, dropping");
+                        return;
+                    }
+                    logger.info(
+                        `[ThreadDiag][ProxyDebug] c/ur unwrapped src=${formatIp6(inner.sourceAddr)} token=${Bytes.toHex(inner.token)} innerPayloadLen=${inner.payload.length} hex=${Bytes.toHex(inner.payload)}`,
+                    );
+                    if (inner.payload.length === 0) return;
+                    try {
+                        const decoded = decodeResponse(inner.payload);
+                        nodeCount++;
+                        logger.info(`[ThreadDiag] c/ur arrival from=${formatIp6(inner.sourceAddr)}`);
+                        onNode.emit(decoded);
+                    } catch (err) {
+                        logger.warn("[ThreadDiag] failed to decode c/ur inner payload, dropping:", err);
+                        onError.emit(err instanceof Error ? err : new Error(String(err)));
+                    }
+                });
+
+                const token = this.#freshToken();
+                const innerBytes = this.#encodeInnerDiag("NON", DIAG_QUERY_URI, opts.tlvTypes, token);
+                const proxyPayload = this.#wrapProxyTx(targetAddr, innerBytes);
+                logger.info(
+                    `[ThreadDiag][ProxyDebug] c/ut ProxyTx target=${formatIp6(targetAddr)} dstPort=${TMF_PORT} innerUri=/d/dq innerToken=${Bytes.toHex(token)} innerLen=${innerBytes.length} proxyLen=${proxyPayload.length} proxyHex=${Bytes.toHex(proxyPayload)}`,
+                );
+                try {
+                    const ack = await this.#coap.request({
+                        type: "CON",
+                        code: "0.02",
+                        uriPath: PROXY_TX_URI,
+                        payload: proxyPayload,
+                    });
+                    logger.info(`[ThreadDiag] c/ut ProxyTx (/d/dq -> ${scope}) sent; ack code=${ack.code}`);
+                } catch (err) {
+                    logger.warn(`[ThreadDiag] c/ut ProxyTx send failed: ${err}`);
+                    onError.emit(err instanceof Error ? err : new Error(String(err)));
+                }
+
+                windowTimer = setTimeout(teardown, windowMs);
+                await teardownPromise;
+            })
+            .catch(err => {
+                onError.emit(err instanceof Error ? err : new Error(String(err)));
+                teardown();
+            });
+
+        return {
+            onNode,
+            onError,
+            done: sessionPromise,
+            close: async () => {
+                teardown();
+                await sessionPromise;
+            },
+        };
+    }
+
+    #encodeInnerDiag(type: "CON" | "NON", uriPath: string[], tlvTypes: number[], token: Uint8Array): Uint8Array {
+        return CoapMessage.encode({
+            type,
+            code: "0.02",
+            messageId: this.#nextInnerMessageId(),
+            token,
+            uriPath,
+            payload: NetworkDiagnosticTlv.encode([
+                { type: NetworkDiagTlvType.TYPE_LIST, value: TypeListTlv.encode(tlvTypes) },
+            ]),
         });
     }
+
+    #wrapProxyTx(targetAddr: Uint8Array, innerCoapBytes: Uint8Array): Uint8Array {
+        return BasicTlv.encode([
+            {
+                type: MeshCopTlvType.UDP_ENCAPSULATION,
+                value: UdpEncapsulationTlv.encode({
+                    sourcePort: PROXY_SRC_PORT,
+                    destinationPort: TMF_PORT,
+                    payload: innerCoapBytes,
+                }),
+            },
+            { type: MeshCopTlvType.IPV6_ADDRESS, value: Ip6AddressTlv.encode(targetAddr) },
+        ]);
+    }
+
+    #nextInnerMessageId(): number {
+        const id = this.#innerMessageId;
+        this.#innerMessageId = (this.#innerMessageId + 1) & 0xffff;
+        return id;
+    }
+
+    #freshToken(): Uint8Array {
+        const token = new Uint8Array(4);
+        crypto.getRandomValues(token);
+        return token;
+    }
+}
+
+interface ProxyRxInner {
+    sourceAddr: Uint8Array;
+    token: Uint8Array;
+    payload: Uint8Array;
+}
+
+/**
+ * Unwrap a `c/ur` (ProxyRx) payload: parse the outer MeshCoP TLVs, decode the
+ * encapsulated inner CoAP message, and surface its diagnostic payload plus the
+ * responder's source address. Returns `undefined` if the required TLVs are
+ * absent or the inner CoAP message cannot be parsed.
+ */
+function unwrapProxyRx(payload: Uint8Array): ProxyRxInner | undefined {
+    let entries: ReturnType<typeof BasicTlv.walk>;
+    try {
+        entries = BasicTlv.walk(payload);
+    } catch (err) {
+        logger.warn("[ThreadDiag] c/ur outer TLV parse failed, dropping:", err);
+        return undefined;
+    }
+
+    let encap: ReturnType<typeof UdpEncapsulationTlv.decode> | undefined;
+    let sourceAddr: Uint8Array | undefined;
+    for (const entry of entries) {
+        if (entry.type === MeshCopTlvType.UDP_ENCAPSULATION) {
+            encap = UdpEncapsulationTlv.decode(entry.value);
+        } else if (entry.type === MeshCopTlvType.IPV6_ADDRESS) {
+            sourceAddr = Ip6AddressTlv.decode(entry.value);
+        }
+    }
+    if (encap === undefined || sourceAddr === undefined) {
+        logger.info(
+            `[ThreadDiag][ProxyDebug] c/ur missing TLVs: encap=${encap !== undefined} ip6=${sourceAddr !== undefined} types=[${entries.map(e => e.type).join(",")}]`,
+        );
+        return undefined;
+    }
+
+    let inner: CoapMessage;
+    try {
+        inner = CoapMessage.decode(encap.payload);
+    } catch (err) {
+        logger.warn("[ThreadDiag] c/ur inner CoAP parse failed, dropping:", err);
+        return undefined;
+    }
+    return { sourceAddr, token: inner.token, payload: inner.payload };
+}
+
+function tokensEqual(a: Uint8Array, b: Uint8Array): boolean {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+        if (a[i] !== b[i]) return false;
+    }
+    return true;
 }
 
 function decodeResponse(payload: Uint8Array): DiagnosticResponse {

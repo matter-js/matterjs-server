@@ -35,14 +35,16 @@ logger.info(`Probed: keyFormat=${capability.keyFormat} network=${capability.netw
 
 const client = new OtbrRestClient({ host, port });
 const source = new OtbrRestDiagnosticSource(client, capability);
-const responses = await source.queryMulticast("ff03::2", [], 0);
-
-logger.info(`Received ${responses.length} response(s):`);
-for (const r of responses) {
+const handle = source.queryMulticast("ff03::2", { tlvTypes: [] });
+let count = 0;
+handle.onNode.on(r => {
+    count++;
     const rloc = r.rloc16 !== undefined ? `0x${r.rloc16.toString(16).padStart(4, "0")}` : "?";
     const mac = r.extMacAddress !== undefined ? Bytes.toHex(r.extMacAddress) : "?";
     const childCount = r.childTable !== undefined ? r.childTable.length : 0;
     const ipv6Count = r.ipv6Addresses !== undefined ? r.ipv6Addresses.length : 0;
     logger.info(`  rloc16=${rloc} mac=${mac} children=${childCount} ipv6=${ipv6Count}`);
-}
+});
+await handle.done;
+logger.info(`Received ${count} response(s).`);
 process.exit(0);

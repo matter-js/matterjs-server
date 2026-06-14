@@ -18,6 +18,9 @@ export interface ThreadNetworkCredentials {
     networkName: string;
     /** 16-byte EC-JPAKE password (PSKc). Sensitive — redact when logging. */
     pskc: Uint8Array;
+    /** 8-byte mesh-local prefix, used to derive node mesh-local addresses for
+     *  UDP-proxy unicast diagnostics. Absent if the dataset omits it. */
+    meshLocalPrefix?: Uint8Array;
     /** Active timestamp from the dataset, used for change detection. */
     activeTimestamp?: bigint;
 }

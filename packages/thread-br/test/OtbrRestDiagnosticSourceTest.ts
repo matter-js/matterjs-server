@@ -107,9 +107,14 @@ describe("OtbrRestDiagnosticSource", () => {
         }
     });
 
-    it("queryMulticast returns 5 DiagnosticResponse entries (one per fixture node)", async () => {
+    it("queryMulticast streams 5 DiagnosticResponse entries (one per fixture node) and resolves done", async () => {
         const source = new OtbrRestDiagnosticSource(mockClient(), makeCapability("1122334455667788"));
-        const responses = await source.queryMulticast("ff03::2", [], 100);
+        const handle = source.queryMulticast("ff03::2", { tlvTypes: [], windowMs: 100 });
+        const responses = new Array<Awaited<ReturnType<typeof source.queryUnicast>>>();
+        handle.onNode.on(r => {
+            responses.push(r);
+        });
+        await handle.done;
         expect(responses).to.have.length(5);
         for (const r of responses) {
             expect(r.rloc16).to.be.a("number");
@@ -117,10 +122,23 @@ describe("OtbrRestDiagnosticSource", () => {
         }
     });
 
-    it("queryMulticast ignores scope/collectMs/tlvTypes (no-ops in REST)", async () => {
+    it("queryMulticast ignores scope/windowMs/tlvTypes (no-ops in REST)", async () => {
         const source = new OtbrRestDiagnosticSource(mockClient(), makeCapability("1122334455667788"));
-        const a = await source.queryMulticast("ff03::1", [1, 2, 3], 0);
-        const b = await source.queryMulticast("ff03::2", [], 5000);
+        const collect = async (
+            scope: "ff03::1" | "ff03::2",
+            tlvTypes: number[],
+            windowMs: number,
+        ): Promise<unknown[]> => {
+            const h = source.queryMulticast(scope, { tlvTypes, windowMs });
+            const out = new Array<unknown>();
+            h.onNode.on(r => {
+                out.push(r);
+            });
+            await h.done;
+            return out;
+        };
+        const a = await collect("ff03::1", [1, 2, 3], 0);
+        const b = await collect("ff03::2", [], 5000);
         expect(a).to.have.length(b.length);
     });
 });

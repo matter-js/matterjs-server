@@ -12,10 +12,10 @@ import {
     DefaultTlvSet,
     type DiagnosticResponse,
     type DiagnosticSource,
-    ExtPanIdLockManager,
     OtbrRestError,
     type OtbrRestCapability,
     OtbrRestProbe,
+    type QueryMulticastHandle,
     type ThreadCredentialsRegistry,
     type ThreadNetworkCredentials,
     selectBr,
@@ -32,7 +32,9 @@ export type ThreadDiagnosticsPartialReason =
     | "no_source"
     | "rest_unreachable"
     | "rest_protocol"
-    | "timeout";
+    | "timeout"
+    | "in_progress"
+    | "meshcop_no_responses_yet";
 
 export interface ThreadDiagnosticsBatch {
     /** 16-char lowercase hex of the extPanId. Internal cache key; serializeBatch uppercases for wire. */
@@ -55,15 +57,19 @@ export interface ThreadDiagnosticsServiceOpts {
     credentials: Pick<ThreadCredentialsRegistry, "getCredentials">;
     /**
      * Async factory that orchestrates DTLS + CoAP + Commissioner setup for a MeshCoP query.
-     * The handle's `close` is invoked unconditionally after each fetch, including on error.
+     * The handle's `close` is invoked unconditionally after the stream window closes.
      */
     makeMeshcopSource: (creds: ThreadNetworkCredentials, br: BorderRouterEntry) => Promise<MeshcopSourceHandle>;
     /** Sync factory — REST source has no resource lifecycle. */
     makeRestSource: (cap: OtbrRestCapability) => DiagnosticSource;
     /** Cache TTL in ms; defaults to {@link ThreadDiagnosticsService.DEFAULT_TTL_MS}. */
     cacheTtlMs?: number;
-    /** Multicast collection window in ms; defaults to {@link ThreadDiagnosticsService.DEFAULT_COLLECT_MS}. */
-    collectMs?: number;
+    /** Multicast collection window in ms; defaults to {@link ThreadDiagnosticsService.DEFAULT_WINDOW_MS}. */
+    windowMs?: number;
+    /** First-batch resolve delay in ms; defaults to {@link ThreadDiagnosticsService.DEFAULT_FIRST_BATCH_MS}. */
+    firstBatchMs?: number;
+    /** Debounce coalesce window for in-progress publishes in ms; defaults to {@link ThreadDiagnosticsService.DEFAULT_DEBOUNCE_MS}. */
+    debounceMs?: number;
     /** OTBR REST probe port. Defaults to 8081. */
     restProbePort?: number;
     /** OTBR REST probe timeout in ms. Defaults to 1500. */
@@ -76,18 +82,34 @@ export interface ThreadDiagnosticsServiceOpts {
 // extMacAddress against their own state. The server emits raw per-network batches.
 const MULTICAST_SCOPE_REALM_LOCAL = "ff03::2" as const;
 
+interface InFlightStream {
+    /** Resolves with the snapshot available at `firstBatchMs` (or earlier if `done` fires first). */
+    readonly firstBatch: Promise<ThreadDiagnosticsBatch>;
+    /** Resolves when the underlying handle/DTLS session has fully torn down. */
+    readonly settled: Promise<void>;
+    /** Aborts the stream early; `settled` resolves once teardown finishes. */
+    cancel(): Promise<void>;
+}
+
 /**
- * Per-Thread-network diagnostic cache + fetch coordinator.
+ * Per-Thread-network diagnostic cache + streaming fetch coordinator.
  *
- * Source priority (matches `selectSource` but expressed inline so async MeshCoP
- * setup can stay inside the per-network mutex):
- *   1. REST capability registered (auto-detected via OtbrRestProbe) → REST.
- *   2. Credentials registered for the BR's extPanId → MeshCoP.
+ * Source priority:
+ *   1. REST capability registered → REST (fast, single-burst).
+ *   2. Credentials registered for the BR's extPanId → MeshCoP (streaming).
  *   3. Neither → partial batch with `no_credentials`.
+ *
+ * MeshCoP queries stream: responses arrive over a `windowMs` window, the
+ * service accumulates by extMacAddress, and emits debounced `batchUpdated`
+ * events. The first-batch promise resolves at `firstBatchMs` (default 5s).
+ *
+ * Concurrent fetches for the same xp share one stream.
  */
 export class ThreadDiagnosticsService {
     static readonly DEFAULT_TTL_MS = 3_600_000;
-    static readonly DEFAULT_COLLECT_MS = 3_000;
+    static readonly DEFAULT_WINDOW_MS = 20_000;
+    static readonly DEFAULT_FIRST_BATCH_MS = 5_000;
+    static readonly DEFAULT_DEBOUNCE_MS = 5_000;
     static readonly DEFAULT_REST_PROBE_PORT = 8081;
     static readonly DEFAULT_REST_PROBE_TIMEOUT_MS = 1_500;
 
@@ -98,19 +120,13 @@ export class ThreadDiagnosticsService {
     readonly #opts: ThreadDiagnosticsServiceOpts;
     readonly #cache = new Map<string, ThreadDiagnosticsBatch>();
     readonly #restCaps = new Map<string, OtbrRestCapability>();
-    /** In-flight probe promises keyed by extPanIdHex (lowercase). Coalesces
-     *  concurrent triggers that fire for the same xp within one event batch. */
+    readonly #streamsInFlight = new Map<string, InFlightStream>();
     readonly #probesInFlight = new Map<string, Promise<void>>();
-    /** xps we've already attempted to probe at least once (success or failure).
-     *  Gates `updated`-event probes — mDNS refreshes TXT/A records frequently,
-     *  but a BR that didn't expose REST on first sight will not start exposing
-     *  it via a TXT update; spamming probes on every refresh is pure waste.
-     *  Cleared on `force=true` fetches and on `removed` events so re-discovery
-     *  can happen when the user explicitly asks. */
     readonly #probeAttempted = new Set<string>();
-    readonly #lockManager = new ExtPanIdLockManager();
     readonly #cacheTtlMs: number;
-    readonly #collectMs: number;
+    readonly #windowMs: number;
+    readonly #firstBatchMs: number;
+    readonly #debounceMs: number;
     readonly #restProbePort: number;
     readonly #restProbeTimeoutMs: number;
     readonly #probeRest: (host: string, port: number, timeoutMs: number) => Promise<OtbrRestCapability | null>;
@@ -118,16 +134,20 @@ export class ThreadDiagnosticsService {
     constructor(opts: ThreadDiagnosticsServiceOpts) {
         this.#opts = opts;
         this.#cacheTtlMs = opts.cacheTtlMs ?? ThreadDiagnosticsService.DEFAULT_TTL_MS;
-        this.#collectMs = opts.collectMs ?? ThreadDiagnosticsService.DEFAULT_COLLECT_MS;
+        this.#windowMs = opts.windowMs ?? ThreadDiagnosticsService.DEFAULT_WINDOW_MS;
+        this.#firstBatchMs = opts.firstBatchMs ?? ThreadDiagnosticsService.DEFAULT_FIRST_BATCH_MS;
+        this.#debounceMs = opts.debounceMs ?? ThreadDiagnosticsService.DEFAULT_DEBOUNCE_MS;
         this.#restProbePort = opts.restProbePort ?? ThreadDiagnosticsService.DEFAULT_REST_PROBE_PORT;
         this.#restProbeTimeoutMs = opts.restProbeTimeoutMs ?? ThreadDiagnosticsService.DEFAULT_REST_PROBE_TIMEOUT_MS;
         this.#probeRest = opts.probeRest ?? ((host, port, timeoutMs) => OtbrRestProbe.probe(host, port, timeoutMs));
 
-        // Probe REST when a BR is first discovered. Deliberately not wired to
-        // `updated` — mDNS refreshes fire continuously and a BR that doesn't
-        // expose REST on first sight won't start exposing it via a TXT refresh.
-        // `force=true` on `getOrFetch` is the explicit re-probe path.
         opts.borderRouters.events.added.on(br => {
+            // TEMPORARY: env-var gate to force MeshCoP path for testing.
+            // REMOVE BEFORE COMMIT.
+            if (process.env.MATTER_DISABLE_REST === "1") {
+                logger.info(`[ThreadDiag] REST probe SKIPPED (MATTER_DISABLE_REST=1) xp=${br.extendedPanIdHex ?? "?"}`);
+                return;
+            }
             void this.#probeBrForRest(br);
         });
         opts.borderRouters.events.removed.on(br => {
@@ -162,6 +182,11 @@ export class ThreadDiagnosticsService {
                 );
                 return cached;
             }
+            const inFlight = this.#streamsInFlight.get(key);
+            if (inFlight !== undefined) {
+                logger.info(`[ThreadDiag] join in-flight stream xp=${xp}`);
+                return inFlight.firstBatch;
+            }
         }
 
         const extPanIdBytes = decodeExtPanIdHex(key);
@@ -188,67 +213,227 @@ export class ThreadDiagnosticsService {
             `[ThreadDiag] BR picked xp=${xp} network="${networkName}" host="${br.hostname ?? "?"}" candidates=${matchingBrs.length}`,
         );
 
-        // force=true is the dashboard "reload" path. Re-probe REST so a BR that came
-        // online after first discovery (or whose REST cap was lost) gets rechecked.
         if (force) {
             this.#probeAttempted.delete(key);
             this.#restCaps.delete(key);
-            await this.#probeBrForRest(br, { force: true });
+            // TEMPORARY gate — see constructor. REMOVE BEFORE COMMIT.
+            if (process.env.MATTER_DISABLE_REST !== "1") {
+                await this.#probeBrForRest(br, { force: true });
+            }
+            const existing = this.#streamsInFlight.get(key);
+            if (existing !== undefined) {
+                logger.info(`[ThreadDiag] force=true canceling in-flight stream xp=${xp}`);
+                await existing.cancel();
+            }
         }
 
-        const batch = await this.#fetch(key, networkName, br, extPanIdBytes);
-        return this.#publish(batch);
+        return this.#startStream(key, networkName, br, extPanIdBytes).firstBatch;
     }
 
-    #fetch(
+    #startStream(
         extPanIdHex: string,
         networkName: string,
         br: BorderRouterEntry,
         extPanIdBytes: Uint8Array,
-    ): Promise<ThreadDiagnosticsBatch> {
+    ): InFlightStream {
         const xp = extPanIdHex.toUpperCase();
-        return this.#lockManager.withLock(extPanIdBytes, async () => {
-            const restCap = this.#restCaps.get(extPanIdHex);
-            if (restCap !== undefined) {
-                logger.info(`[ThreadDiag] source=REST xp=${xp} baseUrl=${restCap.baseUrl}`);
-                return this.#runRest(extPanIdHex, networkName, restCap);
-            }
-            const creds = this.#opts.credentials.getCredentials(extPanIdBytes);
-            if (creds !== undefined) {
-                logger.info(`[ThreadDiag] source=MeshCoP xp=${xp} pskc-registered=true`);
-                return this.#runMeshcop(extPanIdHex, networkName, creds, br);
-            }
+        const restCap = this.#restCaps.get(extPanIdHex);
+
+        if (restCap !== undefined) {
+            logger.info(`[ThreadDiag] source=REST xp=${xp} baseUrl=${restCap.baseUrl}`);
+            return this.#launchStream(extPanIdHex, networkName, "otbr-rest", async () => ({
+                source: this.#opts.makeRestSource(restCap),
+                close: async () => {},
+            }));
+        }
+
+        const creds = this.#opts.credentials.getCredentials(extPanIdBytes);
+        if (creds === undefined) {
             logger.info(`[ThreadDiag] no source xp=${xp} -> partial(no_credentials)`);
-            return this.#partial(extPanIdHex, networkName, "no_credentials");
-        });
+            const partial = this.#partial(extPanIdHex, networkName, "no_credentials");
+            this.#publish(partial);
+            const settled = Promise.resolve();
+            return {
+                firstBatch: Promise.resolve(partial),
+                settled,
+                cancel: () => settled,
+            };
+        }
+
+        logger.info(`[ThreadDiag] source=MeshCoP xp=${xp} pskc-registered=true`);
+        return this.#launchStream(extPanIdHex, networkName, "meshcop", () => this.#opts.makeMeshcopSource(creds, br));
     }
 
     /**
-     * Probe every routable BR address in parallel and register the first
-     * successful REST capability against the BR's extPanId. Triggered eagerly
-     * from `BorderRouterRegistry` `added`/`updated` events, plus on `force=true`
-     * fetches. Idempotent — replaces any existing capability for the xp.
-     *
-     * Link-local addresses are skipped — Node `fetch` has no scope-id support.
-     * Probes run concurrently so the worst-case wait per BR is the per-probe
-     * timeout, not (timeout × address count). Losing probes finish in the
-     * background but their results are ignored.
+     * Acquire a source via the supplied factory, then drive a streaming
+     * multicast query against it. Single shared implementation for REST and
+     * MeshCoP — they only differ in how the source handle is obtained.
      */
+    #launchStream(
+        extPanIdHex: string,
+        networkName: string,
+        sourceKind: "meshcop" | "otbr-rest",
+        acquire: () => Promise<MeshcopSourceHandle>,
+    ): InFlightStream {
+        const xp = extPanIdHex.toUpperCase();
+        const start = Date.now();
+
+        let firstBatchResolve!: (batch: ThreadDiagnosticsBatch) => void;
+        const firstBatch = new Promise<ThreadDiagnosticsBatch>(r => {
+            firstBatchResolve = r;
+        });
+        const firstBatchSettled = { resolved: false };
+
+        let cancelled = false;
+        let activeHandle: QueryMulticastHandle | undefined;
+        let activeSourceHandle: MeshcopSourceHandle | undefined;
+
+        const resolveFirstBatchOnce = (batch: ThreadDiagnosticsBatch) => {
+            if (firstBatchSettled.resolved) return;
+            firstBatchSettled.resolved = true;
+            firstBatchResolve(batch);
+        };
+
+        const settled = (async (): Promise<void> => {
+            try {
+                activeSourceHandle = await acquire();
+                if (cancelled) {
+                    resolveFirstBatchOnce(this.#partial(extPanIdHex, networkName, "timeout"));
+                    return;
+                }
+                activeHandle = activeSourceHandle.source.queryMulticast(MULTICAST_SCOPE_REALM_LOCAL, {
+                    tlvTypes: [...DefaultTlvSet],
+                    windowMs: this.#windowMs,
+                });
+                await this.#driveStream(extPanIdHex, networkName, sourceKind, activeHandle, resolveFirstBatchOnce);
+                logger.info(`[ThreadDiag] ${sourceKind} DONE xp=${xp} duration=${Date.now() - start}ms`);
+            } catch (err) {
+                logger.warn(`[ThreadDiag] ${sourceKind} FAIL xp=${xp} duration=${Date.now() - start}ms: ${err}`);
+                const reason = sourceKind === "otbr-rest" ? mapRestError(err) : mapMeshcopError(err);
+                const partial = this.#partialOf(extPanIdHex, networkName, sourceKind, reason);
+                this.#publish(partial);
+                resolveFirstBatchOnce(partial);
+            } finally {
+                if (activeHandle !== undefined) {
+                    await activeHandle.close().catch(() => {});
+                }
+                if (activeSourceHandle !== undefined) {
+                    try {
+                        await activeSourceHandle.close();
+                    } catch (closeErr) {
+                        logger.warn(`[ThreadDiag] ${sourceKind} close FAIL xp=${xp}: ${closeErr}`);
+                    }
+                }
+                this.#streamsInFlight.delete(extPanIdHex);
+            }
+        })();
+
+        const stream: InFlightStream = {
+            firstBatch,
+            settled,
+            cancel: async () => {
+                cancelled = true;
+                if (activeHandle !== undefined) {
+                    await activeHandle.close().catch(() => {});
+                }
+                await settled.catch(() => {});
+            },
+        };
+        this.#streamsInFlight.set(extPanIdHex, stream);
+        return stream;
+    }
+
+    async #driveStream(
+        extPanIdHex: string,
+        networkName: string,
+        sourceKind: "meshcop" | "otbr-rest",
+        handle: QueryMulticastHandle,
+        resolveFirstBatch: (batch: ThreadDiagnosticsBatch) => void,
+    ): Promise<void> {
+        const xp = extPanIdHex.toUpperCase();
+        const acc = new Map<string, DiagnosticResponse>();
+        let fallbackKeyCounter = 0;
+        let firstBatchFired = false;
+
+        const snapshot = (partialReason: ThreadDiagnosticsPartialReason | undefined): ThreadDiagnosticsBatch => ({
+            extPanIdHex,
+            networkName,
+            collectedAt: Date.now(),
+            source: sourceKind,
+            nodes: Array.from(acc.values()),
+            partialReason,
+        });
+
+        const streamStart = Date.now();
+        let debounceTimer: NodeJS.Timeout | undefined;
+
+        const scheduleDebouncedFlush = () => {
+            if (debounceTimer !== undefined) clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                debounceTimer = undefined;
+                logger.info(`[ThreadDiag] stream debounced flush xp=${xp} acc=${acc.size}`);
+                this.#publish(snapshot("in_progress"));
+            }, this.#debounceMs);
+        };
+
+        handle.onNode.on((node: DiagnosticResponse) => {
+            const key =
+                node.extMacAddress !== undefined
+                    ? Bytes.toHex(node.extMacAddress).toLowerCase()
+                    : node.rloc16 !== undefined
+                      ? `rloc16:${node.rloc16}`
+                      : `idx:${fallbackKeyCounter++}`;
+            const isNew = !acc.has(key);
+            acc.set(key, node);
+            const rloc = node.rloc16 !== undefined ? `0x${node.rloc16.toString(16).padStart(4, "0")}` : "?";
+            logger.info(
+                `[ThreadDiag] stream arrival xp=${xp} source=${sourceKind} mac=${key} rloc16=${rloc} new=${isNew} acc=${acc.size} t+${Date.now() - streamStart}ms`,
+            );
+            if (firstBatchFired) {
+                scheduleDebouncedFlush();
+            }
+        });
+        handle.onError.on((err: Error) => {
+            logger.warn(`[ThreadDiag] stream error xp=${xp}: ${err.message}`);
+        });
+
+        const firstBatchTimer = setTimeout(() => {
+            firstBatchFired = true;
+            const reason = acc.size === 0 ? "meshcop_no_responses_yet" : "in_progress";
+            logger.info(
+                `[ThreadDiag] stream firstBatch xp=${xp} acc=${acc.size} partial=${reason} t+${Date.now() - streamStart}ms`,
+            );
+            resolveFirstBatch(this.#publish(snapshot(reason)));
+        }, this.#firstBatchMs);
+
+        try {
+            await handle.done;
+        } finally {
+            clearTimeout(firstBatchTimer);
+            if (debounceTimer !== undefined) {
+                clearTimeout(debounceTimer);
+                debounceTimer = undefined;
+            }
+        }
+
+        firstBatchFired = true;
+        logger.info(`[ThreadDiag] stream final xp=${xp} acc=${acc.size} t+${Date.now() - streamStart}ms`);
+        const finalBatch = this.#publish(snapshot(undefined));
+        resolveFirstBatch(finalBatch);
+    }
+
     async #probeBrForRest(br: BorderRouterEntry, opts?: { force?: boolean }): Promise<void> {
         const xp = br.extendedPanIdHex;
         if (xp === undefined) return;
         const key = xp.toLowerCase();
         const force = opts?.force === true;
 
-        // Coalesce concurrent triggers. Peer BRs sharing the same xp emit
-        // separate `added` events; share one probe.
         const existing = this.#probesInFlight.get(key);
         if (existing !== undefined) {
             await existing;
             return;
         }
 
-        // Skip if we've already tried this xp. force=true bypasses (reload button).
         if (!force && this.#probeAttempted.has(key)) return;
 
         const candidates = br.addresses.filter(addr => !isLinkLocal(addr));
@@ -281,12 +466,6 @@ export class ThreadDiagnosticsService {
         }
     }
 
-    /**
-     * Cleanup hook for `BorderRouterRegistry.events.removed`. Drops the REST
-     * capability for an xp only when no other BR currently advertises the same
-     * network — otherwise a peer BR for the same Thread network is still
-     * available via REST.
-     */
     #handleBrRemoved(removed: BorderRouterEntry): void {
         const xp = removed.extendedPanIdHex;
         if (xp === undefined) return;
@@ -300,67 +479,7 @@ export class ThreadDiagnosticsService {
                 `[ThreadDiag] REST capability unregistered xp=${xp.toUpperCase()} (last BR for network removed)`,
             );
         }
-        // Clear probe-attempted marker so a future re-discovery (same xp coming back)
-        // will re-probe instead of relying on stale state.
         this.#probeAttempted.delete(key);
-    }
-
-    async #runRest(extPanIdHex: string, networkName: string, cap: OtbrRestCapability): Promise<ThreadDiagnosticsBatch> {
-        const xp = extPanIdHex.toUpperCase();
-        const start = Date.now();
-        try {
-            const source = this.#opts.makeRestSource(cap);
-            const nodes = await source.queryMulticast(MULTICAST_SCOPE_REALM_LOCAL, [...DefaultTlvSet], this.#collectMs);
-            logger.info(`[ThreadDiag] REST OK xp=${xp} nodes=${nodes.length} duration=${Date.now() - start}ms`);
-            return {
-                extPanIdHex,
-                networkName,
-                collectedAt: Date.now(),
-                source: "otbr-rest",
-                nodes,
-            };
-        } catch (err) {
-            logger.warn(`[ThreadDiag] REST FAIL xp=${xp} duration=${Date.now() - start}ms: ${err}`);
-            return this.#partialOf(extPanIdHex, networkName, "otbr-rest", mapRestError(err));
-        }
-    }
-
-    async #runMeshcop(
-        extPanIdHex: string,
-        networkName: string,
-        creds: ThreadNetworkCredentials,
-        br: BorderRouterEntry,
-    ): Promise<ThreadDiagnosticsBatch> {
-        const xp = extPanIdHex.toUpperCase();
-        const start = Date.now();
-        let handle: MeshcopSourceHandle | undefined;
-        try {
-            handle = await this.#opts.makeMeshcopSource(creds, br);
-            const nodes = await handle.source.queryMulticast(
-                MULTICAST_SCOPE_REALM_LOCAL,
-                [...DefaultTlvSet],
-                this.#collectMs,
-            );
-            logger.info(`[ThreadDiag] MeshCoP OK xp=${xp} nodes=${nodes.length} duration=${Date.now() - start}ms`);
-            return {
-                extPanIdHex,
-                networkName,
-                collectedAt: Date.now(),
-                source: "meshcop",
-                nodes,
-            };
-        } catch (err) {
-            logger.warn(`[ThreadDiag] MeshCoP FAIL xp=${xp} duration=${Date.now() - start}ms: ${err}`);
-            return this.#partial(extPanIdHex, networkName, mapMeshcopError(err));
-        } finally {
-            if (handle !== undefined) {
-                try {
-                    await handle.close();
-                } catch (closeErr) {
-                    logger.warn(`[ThreadDiag] MeshCoP close FAIL xp=${xp}: ${closeErr}`);
-                }
-            }
-        }
     }
 
     #partial(

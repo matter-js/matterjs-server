@@ -27,8 +27,19 @@ export { TypeListTlv } from "./tlv/TypeListTlv.js";
 
 export * as NetworkDiagnosticDecoders from "./tlv/diag/index.js";
 
+export type { UdpEncapsulation } from "./tlv/meshcop/UdpEncapsulationTlv.js";
+export { UdpEncapsulationTlv } from "./tlv/meshcop/UdpEncapsulationTlv.js";
+export { Ip6AddressTlv } from "./tlv/meshcop/Ip6AddressTlv.js";
+
+export {
+    ALL_THREAD_NODES_REALM_LOCAL,
+    ALL_THREAD_ROUTERS_REALM_LOCAL,
+    deriveMeshLocalAddress,
+    formatIp6,
+} from "./util/meshLocalAddr.js";
+
 export type { ConnectMeshcopOpts, DiagnosticResponse, MeshcopHandle } from "./diagnostic/index.js";
-export type { DiagnosticSource } from "./diagnostic/index.js";
+export type { DiagnosticSource, QueryMulticastHandle, QueryMulticastOptions } from "./diagnostic/index.js";
 export { connectMeshcop, DefaultTlvSet, MeshCopDiagnosticSource } from "./diagnostic/index.js";
 
 export { Pskc } from "./crypto/index.js";

@@ -129,7 +129,11 @@ export type ThreadDiagnosticsPartialReason =
     | "no_source"
     | "rest_unreachable"
     | "rest_protocol"
-    | "timeout";
+    | "timeout"
+    /** Streaming multicast query is still active; this is a snapshot, more nodes may follow. */
+    | "in_progress"
+    /** Streaming multicast query is active but no responses have arrived yet. */
+    | "meshcop_no_responses_yet";
 
 export interface ThreadDiagnosticsBatch {
     /** 16-char uppercase hex extPanId. */

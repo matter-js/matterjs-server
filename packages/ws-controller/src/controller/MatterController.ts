@@ -361,6 +361,7 @@ export class MatterController {
                 initPromises.push(this.#enableWebRtcRequestor());
 
                 this.#registerStoredThreadCredentials();
+                this.#registerManualThreadCredentials();
 
                 try {
                     await MatterAggregateError.allSettled(initPromises);
@@ -387,6 +388,44 @@ export class MatterController {
 
     #registerStoredThreadCredentials(): void {
         registerThreadCredentialsFromHex(this.#credentials, this.#config.threadDataset, "stored dataset");
+    }
+
+    // =====================================================================
+    // TEMPORARY: manual Thread credentials for diagnostic testing.
+    // REMOVE BEFORE COMMIT. Fill in operational dataset hex strings from
+    // your Home/Google Home/Nest/HA exports. `source` is just a free-form
+    // label that shows up in [ThreadDiag] logs.
+    // =====================================================================
+    #registerManualThreadCredentials(): void {
+        const MANUAL_THREAD_CREDS: Array<{ source: string; datasetHex: string }> = [
+            {
+                source: "manual-google",
+                datasetHex:
+                    "000300000b0102e8790208b0864a4d33ecb8fd0e080000652201fb351705108e2c349cfd3f338478638088578bb879030d4e4553542d50414e2d453837390708fd64e63845bc000004101131e0d337cfb024a75e722d342f6a780c0402a0f77835060004001fffe0",
+            },
+            {
+                source: "manual-ikea",
+                datasetHex:
+                    "0e08000068dae90a0000000300001335060004001fffc00208ef91d1906f9076d60708fd6ed15702b4cdbf0510aaebbfabddbe2a2765e729af93ca1b2e030d53542d34303231323834363137010220e404102fb0636f250f583b98fe8cf974b578a00c0402a0fff8",
+            },
+            {
+                source: "manual-aqara",
+                datasetHex:
+                    "0e080000000000000000000300001935060004001fffc00208da3fb02c67a1495f0708fdda3fb02c67000005106c8496cd48f47617b146d4efe077051d03104d79486f6d653230303234303233393001029e2b0410912eab3435fccf86f721f9fa33ef62800c0402a0f7f8",
+            },
+            {
+                source: "manual-samsung",
+                datasetHex: "0003000013010220e40208ef91d1906f9076d60510aaebbfabddbe2a2765e729af93ca1b2e",
+            },
+            {
+                source: "manual-amzn",
+                datasetHex:
+                    "0208336a40a6be1deea70102e28f0510c07da5bac58561018607e22e11eb4e1b000300000b0310414d5a4e2d5468726561642d65323866",
+            },
+        ];
+        for (const entry of MANUAL_THREAD_CREDS) {
+            registerThreadCredentialsFromHex(this.#credentials, entry.datasetHex, entry.source);
+        }
     }
 
     get webRtcRequestor(): Endpoint<typeof CameraControllerDevice> {

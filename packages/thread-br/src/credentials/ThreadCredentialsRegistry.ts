@@ -46,6 +46,7 @@ export class ThreadCredentialsRegistry {
             extPanId: dataset.extPanId,
             networkName: dataset.networkName,
             pskc: dataset.pskc,
+            meshLocalPrefix: dataset.meshLocalPrefix,
             activeTimestamp: dataset.activeTimestamp === undefined ? undefined : bytesToBigint(dataset.activeTimestamp),
         });
     }
@@ -64,6 +65,7 @@ export class ThreadCredentialsRegistry {
             extPanId: creds.extPanId.slice(),
             networkName: creds.networkName,
             pskc: creds.pskc.slice(),
+            meshLocalPrefix: creds.meshLocalPrefix?.slice(),
             activeTimestamp: creds.activeTimestamp,
         };
         this.#byExtPanId.set(keyOf(stored.extPanId), stored);
@@ -99,6 +101,7 @@ function snapshot(creds: ThreadNetworkCredentials): ThreadNetworkCredentials {
         extPanId: creds.extPanId.slice(),
         networkName: creds.networkName,
         pskc: creds.pskc.slice(),
+        meshLocalPrefix: creds.meshLocalPrefix?.slice(),
         activeTimestamp: creds.activeTimestamp,
     };
 }

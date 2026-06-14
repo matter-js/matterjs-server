@@ -4,12 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-// Edge link-quality merge from Route64 diagnostics is intentionally deferred:
-// it requires reconciling each Border Router's perspective with each commissioned
-// node's own RouteTable cluster reads, and inconsistent partial views regress the
-// graph more often than they help. Vendor labels and child counts are the
-// lightweight enrichments that ship in this pass.
-
 import type { BorderRouterEntry, ThreadDiagnosticsBatch, ThreadDiagnosticsNode } from "@matter-server/ws-client";
 import { html } from "lit";
 import { customElement, property } from "lit/decorators.js";
@@ -124,13 +118,60 @@ export class ThreadGraph extends BaseNetworkGraph {
      * (not dotted as for purely-inferred unknown devices).
      */
     private _brHasValidDiagnostic(graphNodeId: string): boolean {
-        if (!graphNodeId.startsWith("br_")) return false;
+        return this._brBatch(graphNodeId) !== undefined;
+    }
+
+    /** Returns the BR's diagnostic batch if one is available and non-partial. */
+    private _brBatch(graphNodeId: string): ThreadDiagnosticsBatch | undefined {
+        if (!graphNodeId.startsWith("br_")) return undefined;
         const extAddr = graphNodeId.slice(3).toUpperCase();
         const br = this.borderRouters.get(extAddr);
         const xp = br?.extendedPanIdHex;
-        if (xp === undefined) return false;
+        if (xp === undefined) return undefined;
         const batch = this.threadDiagnostics.get(xp.toUpperCase());
-        return batch !== undefined && batch.partialReason === undefined && batch.nodes.length > 0;
+        if (batch === undefined || batch.partialReason !== undefined || batch.nodes.length === 0) return undefined;
+        return batch;
+    }
+
+    /**
+     * BR's view of a peer node via Route64 / ChildTable, if any.
+     * Returns `undefined` when the BR has no diagnostic batch, when the peer
+     * is not present in the batch, or when the peer is in the batch but has
+     * no Route64 / ChildTable entry on the BR itself (i.e. multi-hop).
+     */
+    private _brViewOfPeer(
+        brGraphNodeId: string,
+        peerExtMacHex: string,
+    ): { linkQualityIn?: number; linkQualityOut?: number; routeCost?: number; isChild?: boolean } | undefined {
+        const batch = this._brBatch(brGraphNodeId);
+        if (batch === undefined) return undefined;
+        const brExtAddr = brGraphNodeId.slice(3).toUpperCase();
+        const target = peerExtMacHex.toUpperCase();
+
+        const brNode = batch.nodes.find(n => n.extMacAddress?.toUpperCase() === brExtAddr);
+        const peerNode = batch.nodes.find(n => n.extMacAddress?.toUpperCase() === target);
+        if (peerNode?.rloc16 === undefined || brNode === undefined) return undefined;
+
+        const peerRouterId = (peerNode.rloc16 >> 10) & 0x3f;
+        const peerChildId = peerNode.rloc16 & 0x3ff;
+
+        const routeEntry = brNode.route64?.entries.find(e => e.routerId === peerRouterId);
+        if (routeEntry !== undefined) {
+            return {
+                linkQualityIn: routeEntry.linkQualityIn,
+                linkQualityOut: routeEntry.linkQualityOut,
+                routeCost: routeEntry.routeCost,
+            };
+        }
+
+        if (peerChildId !== 0) {
+            const childEntry = brNode.childTable?.find(c => c.childId === peerChildId);
+            if (childEntry !== undefined) {
+                return { isChild: true };
+            }
+        }
+
+        return undefined;
     }
 
     override updated(changedProperties: Map<string, unknown>): void {
@@ -346,15 +387,20 @@ export class ThreadGraph extends BaseNetworkGraph {
 
                 const fromId = String(conn.fromNodeId);
                 const toId = String(conn.toNodeId);
-                // A BR with a fresh non-partial diagnostic batch is "verified" — we
-                // talked to it (REST or MeshCoP) and got mesh data back. Treat it as
-                // known so edges aren't rendered dotted just because it isn't a
-                // commissioned Matter node.
-                const isToUnknown =
-                    toId.startsWith("unknown_") || (toId.startsWith("br_") && !this._brHasValidDiagnostic(toId));
                 const fromNode = this.nodes[fromId];
                 const toNode = this.nodes[toId];
                 const hasOfflineEndpoint = fromNode?.available === false || toNode?.available === false;
+
+                // BR's Route64 / ChildTable confirms this exact peer → bidirectional
+                // evidence; we can render the edge solid and annotate the tooltip
+                // with the BR's view of the link.
+                const isToBr = toId.startsWith("br_");
+                const fromExtMac = fromNode ? getThreadExtendedAddressHex(fromNode) : undefined;
+                const brView = isToBr && fromExtMac !== undefined ? this._brViewOfPeer(toId, fromExtMac) : undefined;
+
+                const isToUnknown =
+                    toId.startsWith("unknown_") ||
+                    (isToBr && brView === undefined && !this._brHasValidDiagnostic(toId));
 
                 // Apply filters to determine if edge should be hidden
                 let filterHidden = false;
@@ -385,13 +431,24 @@ export class ThreadGraph extends BaseNetworkGraph {
 
                 const edgeId = `edge_${fromId}_${toId}`;
 
+                let tooltip = conn.rssi !== null ? `RSSI: ${conn.rssi} dBm, LQI: ${conn.lqi}` : `LQI: ${conn.lqi}`;
+                if (brView !== undefined) {
+                    if (brView.isChild === true) {
+                        tooltip += ` (BR sees as child)`;
+                    } else if (brView.linkQualityIn !== undefined || brView.linkQualityOut !== undefined) {
+                        tooltip += ` (BR view: in=${brView.linkQualityIn ?? "?"} out=${brView.linkQualityOut ?? "?"}${
+                            brView.routeCost !== undefined ? ` cost=${brView.routeCost}` : ""
+                        })`;
+                    }
+                }
+
                 const visEdge: NetworkGraphEdge = {
                     id: edgeId,
                     from: fromId,
                     to: toId,
                     color: { color: conn.signalColor, highlight: conn.signalColor },
                     width: 2,
-                    title: conn.rssi !== null ? `RSSI: ${conn.rssi} dBm, LQI: ${conn.lqi}` : `LQI: ${conn.lqi}`,
+                    title: tooltip,
                     dashes: isToUnknown || hasOfflineEndpoint,
                     hidden: filterHidden,
                     pairKey: pair.pairKey,

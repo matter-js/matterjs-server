@@ -64,7 +64,7 @@ export async function connectMeshcop(opts: ConnectMeshcopOpts): Promise<MeshcopH
     try {
         const coap = new CoapClient(socket);
         const commissioner = new Commissioner(coap);
-        const source = new MeshCopDiagnosticSource(commissioner, coap);
+        const source = new MeshCopDiagnosticSource(commissioner, coap, opts.creds.meshLocalPrefix);
         return {
             source,
             close: async () => {

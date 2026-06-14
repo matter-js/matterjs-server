@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-// Usage: npm run example -- examples/query-full-set.ts <host> <port> <pskHex> [collectMs]
-// Example: npm run example -- examples/query-full-set.ts fd11::1 49191 74687265616400000000000000000000 3000
+// Usage: npm run example -- examples/query-full-set.ts <host> <port> <pskHex> [windowMs]
+// Example: npm run example -- examples/query-full-set.ts fd11::1 49191 74687265616400000000000000000000 20000
 //
 // Requires: npm run build -w @matter-server/thread-br
 
@@ -19,9 +19,9 @@ import { createDtlsBackend } from "../dist/esm/dtls/socket/index.js";
 
 const logger = Logger.get("query-full-set");
 
-const [host, portStr, pskHex, collectMsStr] = process.argv.slice(2);
+const [host, portStr, pskHex, windowMsStr] = process.argv.slice(2);
 if (host === undefined || portStr === undefined || pskHex === undefined) {
-    console.error("usage: query-full-set.ts <host> <port> <pskHex> [collectMs]");
+    console.error("usage: query-full-set.ts <host> <port> <pskHex> [windowMs]");
     process.exit(1);
 }
 
@@ -38,9 +38,9 @@ if (!/^[0-9a-fA-F]+$/.test(trimmed)) {
 }
 const password = Bytes.of(Bytes.fromHex(trimmed));
 
-const collectMs = collectMsStr !== undefined ? parseInt(collectMsStr, 10) : 3000;
-if (!Number.isInteger(collectMs) || collectMs < 100) {
-    console.error(`Invalid collectMs: ${collectMsStr}`);
+const windowMs = windowMsStr !== undefined ? parseInt(windowMsStr, 10) : 20000;
+if (!Number.isInteger(windowMs) || windowMs < 100) {
+    console.error(`Invalid windowMs: ${windowMsStr}`);
     process.exit(1);
 }
 
@@ -58,19 +58,20 @@ const coap = new CoapClient(socket);
 const commissioner = new Commissioner(coap);
 const source = new MeshCopDiagnosticSource(commissioner, coap);
 
-logger.info(`Sending multicast diagnostic query (collect window: ${collectMs}ms)`);
-const responses = await source.queryMulticast("ff03::2", [...DefaultTlvSet], collectMs);
-
-logger.info(`Received ${responses.length} response(s):`);
-for (const r of responses) {
+logger.info(`Sending multicast diagnostic query (window: ${windowMs}ms)`);
+const handle = source.queryMulticast("ff03::2", { tlvTypes: [...DefaultTlvSet], windowMs });
+let count = 0;
+handle.onNode.on(r => {
+    count++;
     const rloc = r.rloc16 !== undefined ? `0x${r.rloc16.toString(16).padStart(4, "0")}` : "?";
     const mac = r.extMacAddress !== undefined ? Bytes.toHex(r.extMacAddress) : "?";
     const vendor = r.vendorName ?? "?";
     const model = r.vendorModel ?? "?";
     const sw = r.vendorSwVersion ?? "?";
     logger.info(`  rloc16=${rloc} mac=${mac} vendor=${vendor} model=${model} sw=${sw}`);
-}
+});
+await handle.done;
 
 await coap.close();
-logger.info("Done.");
+logger.info(`Done. Received ${count} response(s).`);
 process.exit(0);

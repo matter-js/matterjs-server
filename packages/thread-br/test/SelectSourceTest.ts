@@ -4,11 +4,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Bytes } from "@matter/main";
+import { Bytes, Observable } from "@matter/main";
 import type { ThreadCredentialsRegistry } from "../src/credentials/ThreadCredentialsRegistry.js";
 import type { ThreadNetworkCredentials } from "../src/credentials/ThreadNetworkCredentials.js";
 import type { DiagnosticResponse } from "../src/diagnostic/DiagnosticResponse.js";
-import type { DiagnosticSource } from "../src/diagnostic/DiagnosticSource.js";
+import type { DiagnosticSource, QueryMulticastHandle } from "../src/diagnostic/DiagnosticSource.js";
 import type { BorderRouterEntry } from "../src/discovery/BorderRouterEntry.js";
 import type { OtbrRestCapability } from "../src/otbr-rest/OtbrRestCapability.js";
 import { selectSource } from "../src/selection/selectSource.js";
@@ -56,18 +56,27 @@ function credsRegistryWith(creds: ThreadNetworkCredentials | undefined): Credent
     };
 }
 
+function emptyHandle(): QueryMulticastHandle {
+    return {
+        onNode: new Observable<[DiagnosticResponse]>(),
+        onError: new Observable<[Error]>(),
+        done: Promise.resolve(),
+        close: async () => {},
+    };
+}
+
 const STUB_REST: DiagnosticSource = {
     kind: "otbr-rest",
     canQuery: () => true,
     queryUnicast: async (): Promise<DiagnosticResponse> => ({ unknown: [] }),
-    queryMulticast: async () => [],
+    queryMulticast: () => emptyHandle(),
 };
 
 const STUB_MESHCOP: DiagnosticSource = {
     kind: "meshcop",
     canQuery: () => true,
     queryUnicast: async (): Promise<DiagnosticResponse> => ({ unknown: [] }),
-    queryMulticast: async () => [],
+    queryMulticast: () => emptyHandle(),
 };
 
 describe("selectSource", () => {
