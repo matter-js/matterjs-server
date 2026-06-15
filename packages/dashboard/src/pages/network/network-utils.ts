@@ -1127,6 +1127,68 @@ export function buildThreadEdgePairs(
 }
 
 /**
+ * Merge route64 (router<->router) and childTable (router->child) edges from
+ * diagnostics into an existing edge-pair map. Resolves references to graph node
+ * ids via `resolveRloc16`; unresolved references are dropped (no phantom nodes).
+ * Existing edges (Matter-sourced) take precedence per direction.
+ */
+export function mergeDiagnosticEdges(
+    pairs: Map<string, ThreadEdgePair>,
+    batches: ReadonlyMap<string, ThreadDiagnosticsBatch>,
+    resolveRloc16: (rloc16: number) => string | undefined,
+): void {
+    const addEdge = (fromNodeId: string, toNodeId: string, lqi: number, pathCost?: number): void => {
+        if (fromNodeId === toNodeId) return;
+        const pairKey = makePairKey(fromNodeId, toNodeId);
+        let pair = pairs.get(pairKey);
+        if (pair === undefined) {
+            const [nodeA, nodeB] = fromNodeId < toNodeId ? [fromNodeId, toNodeId] : [toNodeId, fromNodeId];
+            pair = { pairKey, nodeA, nodeB };
+            pairs.set(pairKey, pair);
+        }
+        const isFromA = fromNodeId === pair.nodeA;
+        if (isFromA && pair.edgeAB) return; // existing (Matter) edge wins
+        if (!isFromA && pair.edgeBA) return;
+        const signalLevel = getSignalLevelFromLqi(lqi);
+        const edge: ThreadConnection = {
+            fromNodeId,
+            toNodeId,
+            signalColor: signalLevelToColor(signalLevel),
+            signalLevel,
+            lqi,
+            rssi: null,
+            pathCost,
+            fromRouteTable: true,
+        };
+        if (isFromA) pair.edgeAB = edge;
+        else pair.edgeBA = edge;
+    };
+
+    for (const batch of batches.values()) {
+        for (const node of batch.nodes) {
+            if (node.rloc16 === undefined) continue;
+            const fromId = resolveRloc16(node.rloc16) ?? diagnosticNodeId(node);
+            const routerId = (node.rloc16 >> 10) & 0x3f;
+            if (node.route64 !== undefined) {
+                for (const e of node.route64.entries) {
+                    if (e.routerId === routerId) continue;
+                    const toId = resolveRloc16((e.routerId << 10) & 0xffff);
+                    if (toId === undefined) continue;
+                    addEdge(fromId, toId, e.linkQualityIn, e.routeCost);
+                }
+            }
+            if (node.childTable !== undefined) {
+                for (const child of node.childTable) {
+                    const childRloc16 = ((routerId << 10) | child.childId) & 0xffff;
+                    const toId = resolveRloc16(childRloc16) ?? diagnosticChildId(routerId, child.childId);
+                    addEdge(fromId, toId, child.incomingLinkQuality);
+                }
+            }
+        }
+    }
+}
+
+/**
  * Filter options for edge visibility, matching the graph's filter pipeline.
  */
 export interface EdgeFilterOptions {
