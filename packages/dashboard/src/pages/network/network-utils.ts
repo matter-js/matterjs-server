@@ -473,6 +473,22 @@ function diagRlocKey(extPanIdHex: string, rloc16: number): string {
 }
 
 /**
+ * `extPanId:rloc16` -> Matter node id, scoped per Thread network. rloc16 is only
+ * unique within a network, so a global rloc16 map would mis-attach diagnostic
+ * edges from one network onto a Matter device on another. Keyed via {@link diagRlocKey}.
+ */
+export function buildMatterRloc16ByXp(nodes: Record<string, MatterNode>): Map<string, string> {
+    const map = new Map<string, string>();
+    for (const node of Object.values(nodes)) {
+        const rloc16 = getThreadRloc16(node);
+        const xp = getThreadExtendedPanId(node);
+        if (rloc16 === undefined || xp === undefined) continue;
+        map.set(diagRlocKey(xp.toString(16).padStart(16, "0"), rloc16), String(node.node_id));
+    }
+    return map;
+}
+
+/**
  * Resolve a diagnostic node to the graph node id it is actually rendered under:
  * a commissioned Matter device (by extMac), a known Border Router (`br_<xa>`), a
  * neighbor-inferred unknown, or — when it matches none — its own diagnostic id.
@@ -505,7 +521,7 @@ function diagnosticGraphNodeId(
  */
 export function buildDiagnosticRloc16Map(
     batches: ReadonlyMap<string, ThreadDiagnosticsBatch>,
-    matterRloc16Map: Map<number, string>,
+    matterRloc16ByXp: Map<string, string>,
     matterExtAddrMap: Map<bigint, string>,
     borderRouters: ReadonlyMap<string, BorderRouterEntry>,
     unknownDevices: ThreadExternalDevice[],
@@ -517,7 +533,8 @@ export function buildDiagnosticRloc16Map(
     for (const batch of batches.values()) {
         for (const node of batch.nodes) {
             if (node.rloc16 === undefined) continue;
-            if (matterRloc16Map.has(node.rloc16)) continue; // Matter device (by rloc16) wins
+            // Matter device on THIS network (by rloc16) wins.
+            if (matterRloc16ByXp.has(diagRlocKey(batch.extPanIdHex, node.rloc16))) continue;
             map.set(
                 diagRlocKey(batch.extPanIdHex, node.rloc16),
                 diagnosticGraphNodeId(node, batch.extPanIdHex, matterExtAddrMap, borderRouters, unknownIdByExt),
@@ -528,14 +545,17 @@ export function buildDiagnosticRloc16Map(
 }
 
 /**
- * Build a per-network rloc16 resolver: Matter device id (global) wins, else the
- * diagnostic node id within the same extPanId. Returns undefined when unresolved.
+ * Build a per-network rloc16 resolver: a Matter device on the same Thread network
+ * wins, else the diagnostic node id within the same extPanId. Returns undefined
+ * when unresolved. Both lookups are keyed by `extPanId:rloc16` so identical rloc16
+ * values across networks never cross-attach.
  */
 export function makeDiagnosticRloc16Resolver(
-    matterRloc16Map: Map<number, string>,
+    matterRloc16ByXp: Map<string, string>,
     diagRloc16Map: Map<string, string>,
 ): (rloc16: number, extPanIdHex: string) => string | undefined {
-    return (rloc16, extPanIdHex) => matterRloc16Map.get(rloc16) ?? diagRloc16Map.get(diagRlocKey(extPanIdHex, rloc16));
+    return (rloc16, extPanIdHex) =>
+        matterRloc16ByXp.get(diagRlocKey(extPanIdHex, rloc16)) ?? diagRloc16Map.get(diagRlocKey(extPanIdHex, rloc16));
 }
 
 interface ExternalAggregate {
@@ -954,7 +974,7 @@ export function getWiFiVersionName(version: number | null): string {
  */
 export function findDiagnosticMeshNodes(
     batches: ReadonlyMap<string, ThreadDiagnosticsBatch>,
-    matterRloc16Map: Map<number, string>,
+    matterRloc16ByXp: Map<string, string>,
     matterExtAddrMap: Map<bigint, string>,
     borderRouters: ReadonlyMap<string, BorderRouterEntry>,
     unknownDevices: ThreadExternalDevice[],
@@ -962,8 +982,8 @@ export function findDiagnosticMeshNodes(
     const unknownExt = new Set<string>(unknownDevices.map(d => d.extAddressHex.toUpperCase()));
     const out = new Map<string, DiagnosticMeshNode>();
 
-    const matchesExisting = (rloc16: number | undefined, extHex?: string): boolean => {
-        if (rloc16 !== undefined && matterRloc16Map.has(rloc16)) return true;
+    const matchesExisting = (extPanIdHex: string, rloc16: number | undefined, extHex?: string): boolean => {
+        if (rloc16 !== undefined && matterRloc16ByXp.has(diagRlocKey(extPanIdHex, rloc16))) return true;
         if (extHex !== undefined) {
             const up = extHex.toUpperCase();
             if (matterExtAddrMap.has(BigInt(`0x${up}`))) return true;
@@ -975,7 +995,7 @@ export function findDiagnosticMeshNodes(
 
     for (const batch of batches.values()) {
         for (const node of batch.nodes) {
-            if (node.rloc16 !== undefined && !matchesExisting(node.rloc16, node.extMacAddress)) {
+            if (node.rloc16 !== undefined && !matchesExisting(batch.extPanIdHex, node.rloc16, node.extMacAddress)) {
                 const id = diagnosticNodeId(node, batch.extPanIdHex);
                 out.set(id, {
                     kind: "diagnostic",
@@ -991,7 +1011,7 @@ export function findDiagnosticMeshNodes(
                 const parentRouterId = (node.rloc16 >> 10) & 0x3f;
                 for (const child of node.childTable) {
                     const childRloc16 = ((parentRouterId << 10) | child.childId) & 0xffff;
-                    if (matchesExisting(childRloc16)) continue;
+                    if (matchesExisting(batch.extPanIdHex, childRloc16)) continue;
                     const id = diagnosticChildId(batch.extPanIdHex, parentRouterId, child.childId);
                     if (!out.has(id)) {
                         out.set(id, {

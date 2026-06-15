@@ -23,6 +23,7 @@ import type {
 import {
     buildDiagnosticRloc16Map,
     buildExtAddrMap,
+    buildMatterRloc16ByXp,
     buildRloc16Map,
     buildThreadEdgePairs,
     decodeMeshcopStateBitmap,
@@ -291,21 +292,24 @@ export class ThreadGraph extends BaseNetworkGraph {
         // Build ALL edge pairs (0-2 edges per connected pair, no dedup)
         this._edgePairs = buildThreadEdgePairs(this.nodes, extAddrMap, rloc16Map, this._unknownDevices);
 
+        // Diagnostic references (route64/childTable) are rloc16-based and only unique
+        // within a network, so resolve them against a per-extPanId Matter map.
+        const matterRloc16ByXp = buildMatterRloc16ByXp(this.nodes);
         const diagRloc16Map = buildDiagnosticRloc16Map(
             this.threadDiagnostics,
-            rloc16Map,
+            matterRloc16ByXp,
             extAddrMap,
             this.borderRouters,
             this._unknownDevices,
         );
         const diagnosticMeshNodes = findDiagnosticMeshNodes(
             this.threadDiagnostics,
-            rloc16Map,
+            matterRloc16ByXp,
             extAddrMap,
             this.borderRouters,
             this._unknownDevices,
         );
-        const resolveRloc16 = makeDiagnosticRloc16Resolver(rloc16Map, diagRloc16Map);
+        const resolveRloc16 = makeDiagnosticRloc16Resolver(matterRloc16ByXp, diagRloc16Map);
         mergeDiagnosticEdges(this._edgePairs, this.threadDiagnostics, resolveRloc16);
 
         // Track which nodes should be hidden
