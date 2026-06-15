@@ -13,6 +13,7 @@ import type {
 import { getCssVar } from "../../util/shared-styles.js";
 import type {
     CategorizedDevices,
+    DiagnosticMeshNode,
     NetworkType,
     SignalLevel,
     ThreadConnection,
@@ -885,6 +886,69 @@ export function getWiFiVersionName(version: number | null): string {
         default:
             return "Unknown";
     }
+}
+
+/**
+ * Materialize mesh nodes that exist only in diagnostics: router records and
+ * childTable children whose rloc16/extMac matches no Matter device, BR, or
+ * already-found unknown. Matter/BR/unknown matches are enriched in place, not
+ * duplicated.
+ */
+export function findDiagnosticMeshNodes(
+    batches: ReadonlyMap<string, ThreadDiagnosticsBatch>,
+    matterRloc16Map: Map<number, string>,
+    matterExtAddrMap: Map<bigint, string>,
+    borderRouters: ReadonlyMap<string, BorderRouterEntry>,
+    unknownDevices: ThreadExternalDevice[],
+): DiagnosticMeshNode[] {
+    const unknownExt = new Set<string>(unknownDevices.map(d => d.extAddressHex.toUpperCase()));
+    const out = new Map<string, DiagnosticMeshNode>();
+
+    const matchesExisting = (rloc16: number | undefined, extHex?: string): boolean => {
+        if (rloc16 !== undefined && matterRloc16Map.has(rloc16)) return true;
+        if (extHex !== undefined) {
+            const up = extHex.toUpperCase();
+            if (matterExtAddrMap.has(BigInt(`0x${up}`))) return true;
+            if (borderRouters.has(up)) return true;
+            if (unknownExt.has(up)) return true;
+        }
+        return false;
+    };
+
+    for (const batch of batches.values()) {
+        for (const node of batch.nodes) {
+            if (node.rloc16 !== undefined && !matchesExisting(node.rloc16, node.extMacAddress)) {
+                const id = diagnosticNodeId(node);
+                out.set(id, {
+                    kind: "diagnostic",
+                    id,
+                    rloc16: node.rloc16,
+                    extAddressHex: node.extMacAddress?.toUpperCase(),
+                    isRouter: (node.rloc16 & 0x3ff) === 0,
+                    vendorName: node.vendorName,
+                    networkName: batch.networkName,
+                });
+            }
+            if (node.rloc16 !== undefined && node.childTable !== undefined) {
+                const parentRouterId = (node.rloc16 >> 10) & 0x3f;
+                for (const child of node.childTable) {
+                    const childRloc16 = ((parentRouterId << 10) | child.childId) & 0xffff;
+                    if (matchesExisting(childRloc16)) continue;
+                    const id = diagnosticChildId(parentRouterId, child.childId);
+                    if (!out.has(id)) {
+                        out.set(id, {
+                            kind: "diagnostic",
+                            id,
+                            rloc16: childRloc16,
+                            isRouter: false,
+                            networkName: batch.networkName,
+                        });
+                    }
+                }
+            }
+        }
+    }
+    return [...out.values()];
 }
 
 /**
