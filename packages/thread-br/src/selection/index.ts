@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-export { decodeStateBitmap, selectBr } from "./selectBr.js";
+export { decodeStateBitmap, rankBrs, selectBr } from "./selectBr.js";
 export type { DecodedStateBitmap } from "./selectBr.js";
 export { ExtPanIdLockManager } from "./withExtPanIdLock.js";
 export { selectSource } from "./selectSource.js";

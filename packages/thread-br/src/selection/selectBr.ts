@@ -46,7 +46,9 @@ function hasLinkLocal(addresses: ReadonlyArray<string>): boolean {
 
 function scoreOf(br: BorderRouterEntry): number {
     const { bbrActive, bbrPrimary } = decodeStateBitmap(br.stateBitmapHex);
-    const stateScore = bbrActive && bbrPrimary ? 2 : 0;
+    // State tier dominates link-local so an active BBR always outranks an
+    // ordinary router: primary BBR (4) > active-but-not-primary BBR (2) > rest (0).
+    const stateScore = bbrActive ? (bbrPrimary ? 4 : 2) : 0;
     const llScore = hasLinkLocal(br.addresses) ? 1 : 0;
     return stateScore + llScore;
 }
@@ -54,25 +56,22 @@ function scoreOf(br: BorderRouterEntry): number {
 /**
  * Pick the best BR per spec FR-12 priority:
  *   1. State bitmap "BBR Active + Primary" (bits 7 and 8) wins.
- *   2. Among equals: BR with at least one IPv6 link-local (`fe80:`) address wins.
- *   3. Among equals: alphabetical `extAddressHex` ascending (deterministic tie-break).
+ *   2. Then BBR Active but not Primary.
+ *   3. Among equals: BR with at least one IPv6 link-local (`fe80:`) address wins.
+ *   4. Among equals: alphabetical `extAddressHex` ascending (deterministic tie-break).
  */
 export function selectBr(brs: ReadonlyArray<BorderRouterEntry>): BorderRouterEntry | undefined {
-    if (brs.length === 0) return undefined;
+    return rankBrs(brs)[0];
+}
 
-    let best = brs[0];
-    let bestScore = scoreOf(best);
-    for (let i = 1; i < brs.length; i++) {
-        const candidate = brs[i];
-        const candidateScore = scoreOf(candidate);
-        if (candidateScore > bestScore) {
-            best = candidate;
-            bestScore = candidateScore;
-            continue;
-        }
-        if (candidateScore === bestScore && candidate.extAddressHex < best.extAddressHex) {
-            best = candidate;
-        }
-    }
-    return best;
+/**
+ * Rank all candidate BRs best-first using the same priority as {@link selectBr}.
+ * Callers fall back to later entries when the preferred BR is unreachable.
+ */
+export function rankBrs(brs: ReadonlyArray<BorderRouterEntry>): BorderRouterEntry[] {
+    return [...brs].sort((a, b) => {
+        const byScore = scoreOf(b) - scoreOf(a);
+        if (byScore !== 0) return byScore;
+        return a.extAddressHex < b.extAddressHex ? -1 : a.extAddressHex > b.extAddressHex ? 1 : 0;
+    });
 }

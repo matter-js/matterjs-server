@@ -18,7 +18,7 @@ import {
     type QueryMulticastHandle,
     type ThreadCredentialsRegistry,
     type ThreadNetworkCredentials,
-    selectBr,
+    rankBrs,
 } from "@matter-server/thread-br";
 import { Bytes, Logger, Observable } from "@matter/main";
 
@@ -201,7 +201,8 @@ export class ThreadDiagnosticsService {
             return this.#publish(this.#partial(key, networkName, "border_router_unreachable"));
         }
 
-        const br = selectBr(matchingBrs);
+        const ranked = rankBrs(matchingBrs);
+        const br = ranked[0];
         if (br === undefined) {
             logger.info(`[ThreadDiag] selectBr returned none xp=${xp} candidates=${matchingBrs.length}`);
             const networkName = matchingBrs[0].networkName ?? this.#cache.get(key)?.networkName ?? "";
@@ -227,13 +228,13 @@ export class ThreadDiagnosticsService {
             }
         }
 
-        return this.#startStream(key, networkName, br, extPanIdBytes).firstBatch;
+        return this.#startStream(key, networkName, ranked, extPanIdBytes).firstBatch;
     }
 
     #startStream(
         extPanIdHex: string,
         networkName: string,
-        br: BorderRouterEntry,
+        brs: BorderRouterEntry[],
         extPanIdBytes: Uint8Array,
     ): InFlightStream {
         const xp = extPanIdHex.toUpperCase();
@@ -260,8 +261,38 @@ export class ThreadDiagnosticsService {
             };
         }
 
-        logger.info(`[ThreadDiag] source=MeshCoP xp=${xp} pskc-registered=true`);
-        return this.#launchStream(extPanIdHex, networkName, "meshcop", () => this.#opts.makeMeshcopSource(creds, br));
+        logger.info(`[ThreadDiag] source=MeshCoP xp=${xp} pskc-registered=true candidates=${brs.length}`);
+        return this.#launchStream(extPanIdHex, networkName, "meshcop", () =>
+            this.#acquireMeshcopWithFallback(xp, creds, brs),
+        );
+    }
+
+    /**
+     * Acquire a MeshCoP source, trying ranked BR candidates in order until one
+     * accepts the DTLS/petition handshake. A single unreachable BR (e.g. a stale
+     * mDNS address) no longer fails the whole network when another BR serves it.
+     */
+    async #acquireMeshcopWithFallback(
+        xp: string,
+        creds: ThreadNetworkCredentials,
+        brs: BorderRouterEntry[],
+    ): Promise<MeshcopSourceHandle> {
+        let lastErr: unknown;
+        for (let i = 0; i < brs.length; i++) {
+            const br = brs[i];
+            try {
+                return await this.#opts.makeMeshcopSource(creds, br);
+            } catch (err) {
+                lastErr = err;
+                logger.warn(
+                    `[ThreadDiag] meshcop connect FAIL xp=${xp} host="${br.hostname ?? "?"}" candidate=${i + 1}/${brs.length}: ${err}`,
+                );
+            }
+        }
+        if (lastErr instanceof Error) throw lastErr;
+        throw new Error(
+            lastErr === undefined ? "no reachable Border Router candidates" : `meshcop connect failed: ${lastErr}`,
+        );
     }
 
     /**

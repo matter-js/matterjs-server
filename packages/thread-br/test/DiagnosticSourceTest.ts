@@ -10,7 +10,7 @@ import { CoapMessage } from "../src/coap/CoapMessage.js";
 import type { Commissioner } from "../src/commissioner/Commissioner.js";
 import { MeshCopTlvType } from "../src/dataset/meshcopTlvTypes.js";
 import type { DiagnosticResponse } from "../src/diagnostic/DiagnosticResponse.js";
-import { MeshCopDiagnosticSource } from "../src/diagnostic/MeshCopDiagnosticSource.js";
+import { MeshCopDiagnosticSource, missingRouterIds } from "../src/diagnostic/MeshCopDiagnosticSource.js";
 import { BasicTlv } from "../src/tlv/BasicTlvCodec.js";
 import { Ip6AddressTlv } from "../src/tlv/meshcop/Ip6AddressTlv.js";
 import { UdpEncapsulationTlv } from "../src/tlv/meshcop/UdpEncapsulationTlv.js";
@@ -39,7 +39,12 @@ function buildDiagPayload(type: number, value: Uint8Array): Uint8Array {
 
 /** Decode the outer ProxyTx TLVs the source built, returning the inner CoAP
  *  message and the target IPv6 address. */
-function unwrapProxyTx(proxyPayload: Uint8Array): { inner: CoapMessage; targetAddr: Uint8Array } {
+function unwrapProxyTx(proxyPayload: Uint8Array): {
+    inner: CoapMessage;
+    targetAddr: Uint8Array;
+    sourcePort: number;
+    destinationPort: number;
+} {
     const entries = BasicTlv.walk(proxyPayload);
     const encapEntry = entries.find(e => e.type === MeshCopTlvType.UDP_ENCAPSULATION);
     const addrEntry = entries.find(e => e.type === MeshCopTlvType.IPV6_ADDRESS);
@@ -47,16 +52,27 @@ function unwrapProxyTx(proxyPayload: Uint8Array): { inner: CoapMessage; targetAd
         throw new Error("ProxyTx payload missing UDP_ENCAPSULATION or IPV6_ADDRESS TLV");
     }
     const encap = UdpEncapsulationTlv.decode(encapEntry.value);
-    return { inner: CoapMessage.decode(encap.payload), targetAddr: Ip6AddressTlv.decode(addrEntry.value) };
+    return {
+        inner: CoapMessage.decode(encap.payload),
+        targetAddr: Ip6AddressTlv.decode(addrEntry.value),
+        sourcePort: encap.sourcePort,
+        destinationPort: encap.destinationPort,
+    };
 }
 
 /** Build a `c/ur` (ProxyRx) reply that wraps a diagnostic answer with the given
  *  inner CoAP token and source address. */
-function buildProxyRxReply(innerToken: Uint8Array, diagPayload: Uint8Array, sourceAddr: Uint8Array): CoapMessage {
+function buildProxyRxReply(
+    innerToken: Uint8Array,
+    diagPayload: Uint8Array,
+    sourceAddr: Uint8Array,
+    innerType: "CON" | "NON" = "NON",
+    innerMessageId = 0x1234,
+): CoapMessage {
     const innerCoap = CoapMessage.encode({
-        type: "NON",
+        type: innerType,
         code: "2.04",
-        messageId: 0x1234,
+        messageId: innerMessageId,
         token: innerToken,
         uriPath: ["d", "da"],
         payload: diagPayload,
@@ -132,7 +148,7 @@ describe("MeshCopDiagnosticSource", () => {
         const result = await source.queryUnicast({ rloc16: 0x0400 }, [NetworkDiagTlvType.EXT_MAC_ADDRESS]);
 
         expect(capturedOpts).to.not.be.undefined;
-        expect(capturedOpts!.type).to.equal("CON");
+        expect(capturedOpts!.type).to.equal("NON");
         expect(capturedOpts!.code).to.equal("0.02");
         expect(capturedOpts!.uriPath).to.deep.equal(["c", "ut"]);
 
@@ -317,6 +333,77 @@ describe("MeshCopDiagnosticSource", () => {
         expect(targetAddr).to.deep.equal(ALL_THREAD_ROUTERS_REALM_LOCAL);
     });
 
+    it("queryMulticast ACKs a confirmable inner d/da via a c/ut ProxyTx to the responder", async () => {
+        const ans = buildDiagPayload(NetworkDiagTlvType.EXT_MAC_ADDRESS, new Uint8Array(8));
+        const sourceAddr = deriveMeshLocalAddress(ML_PREFIX, 0x0400);
+        const requests = new Array<RequestOpts>();
+        let urHandler: ((msg: CoapMessage) => void) | undefined;
+
+        const coap: CoapLike = {
+            request: async opts => {
+                requests.push(opts);
+                return ackMessage();
+            },
+            listen: (uriPath, handler) => {
+                if (uriPath.join("/") === "c/ur") urHandler = handler;
+                return () => {};
+            },
+        };
+        const source = new MeshCopDiagnosticSource(mockCommissioner(), coap, ML_PREFIX);
+        const handle = source.queryMulticast("ff03::2", {
+            tlvTypes: [NetworkDiagTlvType.EXT_MAC_ADDRESS],
+            windowMs: 30,
+        });
+
+        await new Promise(r => setTimeout(r, 5));
+        urHandler!(buildProxyRxReply(new Uint8Array([1, 2, 3, 4]), ans, sourceAddr, "CON", 0x55aa));
+        await handle.done;
+
+        const ackSends = requests
+            .filter(r => r.uriPath.join("/") === "c/ut")
+            .map(r => unwrapProxyTx(r.payload!))
+            .filter(({ inner }) => inner.type === "ACK");
+        expect(ackSends).to.have.length(1);
+        expect(ackSends[0].inner.code).to.equal("0.00");
+        expect(ackSends[0].inner.messageId).to.equal(0x55aa);
+        expect(ackSends[0].targetAddr).to.deep.equal(sourceAddr);
+        // ACK mirrors the received datagram's ports: the reply was sent 61631->49152,
+        // so the ACK goes back 49152->61631 (from the port the node addressed).
+        expect(ackSends[0].sourcePort).to.equal(49152);
+        expect(ackSends[0].destinationPort).to.equal(61631);
+    });
+
+    it("queryMulticast does NOT ACK a non-confirmable inner d/da", async () => {
+        const ans = buildDiagPayload(NetworkDiagTlvType.EXT_MAC_ADDRESS, new Uint8Array(8));
+        const requests = new Array<RequestOpts>();
+        let urHandler: ((msg: CoapMessage) => void) | undefined;
+        const coap: CoapLike = {
+            request: async opts => {
+                requests.push(opts);
+                return ackMessage();
+            },
+            listen: (uriPath, handler) => {
+                if (uriPath.join("/") === "c/ur") urHandler = handler;
+                return () => {};
+            },
+        };
+        const source = new MeshCopDiagnosticSource(mockCommissioner(), coap, ML_PREFIX);
+        const handle = source.queryMulticast("ff03::2", {
+            tlvTypes: [NetworkDiagTlvType.EXT_MAC_ADDRESS],
+            windowMs: 30,
+        });
+
+        await new Promise(r => setTimeout(r, 5));
+        urHandler!(buildProxyRxReply(new Uint8Array([1, 2, 3, 4]), ans, deriveMeshLocalAddress(ML_PREFIX, 0x0400)));
+        await handle.done;
+
+        const ackSends = requests
+            .filter(r => r.uriPath.join("/") === "c/ut")
+            .map(r => unwrapProxyTx(r.payload!))
+            .filter(({ inner }) => inner.type === "ACK");
+        expect(ackSends).to.have.length(0);
+    });
+
     it("queryMulticast yields no nodes when no c/ur arrives within windowMs", async () => {
         const coap: CoapLike = { request: async () => ackMessage(), listen: () => () => {} };
         const source = new MeshCopDiagnosticSource(mockCommissioner(), coap, ML_PREFIX);
@@ -419,5 +506,76 @@ describe("MeshCopDiagnosticSource", () => {
         await new Promise(r => setTimeout(r, 5));
         await handle.close();
         expect(unsubCalled).to.equal(true);
+    });
+});
+
+describe("missingRouterIds", () => {
+    it("returns router ids referenced in route64 entries that have no answering responder", () => {
+        const responses: DiagnosticResponse[] = [
+            {
+                rloc16: 0x7400,
+                route64: {
+                    idSequence: 0,
+                    entries: [
+                        { routerId: 5, linkQualityIn: 3, linkQualityOut: 3, routeCost: 1 },
+                        { routerId: 9, linkQualityIn: 2, linkQualityOut: 2, routeCost: 2 },
+                    ],
+                },
+                unknown: [],
+            },
+            {
+                rloc16: 0x1400,
+                route64: {
+                    idSequence: 0,
+                    entries: [
+                        { routerId: 29, linkQualityIn: 3, linkQualityOut: 3, routeCost: 1 },
+                        { routerId: 9, linkQualityIn: 1, linkQualityOut: 1, routeCost: 3 },
+                    ],
+                },
+                unknown: [],
+            },
+        ];
+        expect(missingRouterIds(responses)).to.deep.equal([9]);
+    });
+
+    it("returns empty when every referenced router answered", () => {
+        const responses: DiagnosticResponse[] = [
+            {
+                rloc16: 0x7400,
+                route64: {
+                    idSequence: 0,
+                    entries: [{ routerId: 5, linkQualityIn: 3, linkQualityOut: 3, routeCost: 1 }],
+                },
+                unknown: [],
+            },
+            {
+                rloc16: 0x1400,
+                route64: {
+                    idSequence: 0,
+                    entries: [{ routerId: 29, linkQualityIn: 3, linkQualityOut: 3, routeCost: 1 }],
+                },
+                unknown: [],
+            },
+        ];
+        expect(missingRouterIds(responses)).to.deep.equal([]);
+    });
+
+    it("ignores responses without rloc16 or route64", () => {
+        expect(missingRouterIds([{ unknown: [] }])).to.deep.equal([]);
+    });
+
+    it("counts a responder with rloc16 but no route64 as answered", () => {
+        const responses: DiagnosticResponse[] = [
+            {
+                rloc16: 0x7400,
+                route64: {
+                    idSequence: 0,
+                    entries: [{ routerId: 5, linkQualityIn: 3, linkQualityOut: 3, routeCost: 1 }],
+                },
+                unknown: [],
+            },
+            { rloc16: 0x1400, unknown: [] },
+        ];
+        expect(missingRouterIds(responses)).to.deep.equal([]);
     });
 });

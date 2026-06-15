@@ -135,14 +135,15 @@ export class MeshCopDiagnosticSource implements DiagnosticSource {
                     logger.info("[ThreadDiag][ProxyDebug] (unicast) c/ur unwrap returned undefined, dropping");
                     return;
                 }
-                if (!tokensEqual(inner.token, token)) {
+                this.#ackInnerIfNeeded(inner);
+                if (!tokensEqual(inner.message.token, token)) {
                     logger.info(
-                        `[ThreadDiag][ProxyDebug] (unicast) c/ur token mismatch want=${Bytes.toHex(token)} got=${Bytes.toHex(inner.token)}, dropping`,
+                        `[ThreadDiag][ProxyDebug] (unicast) c/ur token mismatch want=${Bytes.toHex(token)} got=${Bytes.toHex(inner.message.token)}, dropping`,
                     );
                     return;
                 }
                 try {
-                    resolveResponse(decodeResponse(inner.payload));
+                    resolveResponse(decodeResponse(inner.message.payload));
                 } catch (err) {
                     rejectResponse(err instanceof Error ? err : new Error(String(err)));
                 }
@@ -158,13 +159,15 @@ export class MeshCopDiagnosticSource implements DiagnosticSource {
                 `[ThreadDiag][ProxyDebug] c/ut ProxyTx target=${formatIp6(targetAddr)} dstPort=${TMF_PORT} innerUri=/d/dg innerToken=${Bytes.toHex(token)} innerLen=${innerBytes.length} proxyLen=${proxyPayload.length} proxyHex=${Bytes.toHex(proxyPayload)}`,
             );
             try {
-                const ack = await this.#coap.request({
-                    type: "CON",
+                // ProxyTx is fire-and-forget: the Border Agent forwards the inner
+                // datagram without answering the c/ut request, so a CON would only
+                // retransmit and re-inject the query. The reply returns via c/ur.
+                await this.#coap.request({
+                    type: "NON",
                     code: "0.02",
                     uriPath: PROXY_TX_URI,
                     payload: proxyPayload,
                 });
-                logger.info(`[ThreadDiag][ProxyDebug] (unicast) c/ut ack code=${ack.code}`);
                 return await responsePromise;
             } finally {
                 clearTimeout(timer);
@@ -222,12 +225,13 @@ export class MeshCopDiagnosticSource implements DiagnosticSource {
                         logger.info("[ThreadDiag][ProxyDebug] c/ur unwrap returned undefined, dropping");
                         return;
                     }
+                    this.#ackInnerIfNeeded(inner);
                     logger.info(
-                        `[ThreadDiag][ProxyDebug] c/ur unwrapped src=${formatIp6(inner.sourceAddr)} token=${Bytes.toHex(inner.token)} innerPayloadLen=${inner.payload.length} hex=${Bytes.toHex(inner.payload)}`,
+                        `[ThreadDiag][ProxyDebug] c/ur unwrapped src=${formatIp6(inner.sourceAddr)} token=${Bytes.toHex(inner.message.token)} innerPayloadLen=${inner.message.payload.length} hex=${Bytes.toHex(inner.message.payload)}`,
                     );
-                    if (inner.payload.length === 0) return;
+                    if (inner.message.payload.length === 0) return;
                     try {
-                        const decoded = decodeResponse(inner.payload);
+                        const decoded = decodeResponse(inner.message.payload);
                         nodeCount++;
                         logger.info(`[ThreadDiag] c/ur arrival from=${formatIp6(inner.sourceAddr)}`);
                         onNode.emit(decoded);
@@ -237,6 +241,11 @@ export class MeshCopDiagnosticSource implements DiagnosticSource {
                     }
                 });
 
+                // Start the collection window before sending: ProxyTx is fire-and-forget
+                // (the Border Agent never answers c/ut), so gating the window on the send
+                // completing would leave it unbounded.
+                windowTimer = setTimeout(teardown, windowMs);
+
                 const token = this.#freshToken();
                 const innerBytes = this.#encodeInnerDiag("NON", DIAG_QUERY_URI, opts.tlvTypes, token);
                 const proxyPayload = this.#wrapProxyTx(targetAddr, innerBytes);
@@ -244,19 +253,18 @@ export class MeshCopDiagnosticSource implements DiagnosticSource {
                     `[ThreadDiag][ProxyDebug] c/ut ProxyTx target=${formatIp6(targetAddr)} dstPort=${TMF_PORT} innerUri=/d/dq innerToken=${Bytes.toHex(token)} innerLen=${innerBytes.length} proxyLen=${proxyPayload.length} proxyHex=${Bytes.toHex(proxyPayload)}`,
                 );
                 try {
-                    const ack = await this.#coap.request({
-                        type: "CON",
+                    await this.#coap.request({
+                        type: "NON",
                         code: "0.02",
                         uriPath: PROXY_TX_URI,
                         payload: proxyPayload,
                     });
-                    logger.info(`[ThreadDiag] c/ut ProxyTx (/d/dq -> ${scope}) sent; ack code=${ack.code}`);
+                    logger.info(`[ThreadDiag] c/ut ProxyTx (/d/dq -> ${scope}) sent`);
                 } catch (err) {
                     logger.warn(`[ThreadDiag] c/ut ProxyTx send failed: ${err}`);
                     onError.emit(err instanceof Error ? err : new Error(String(err)));
                 }
 
-                windowTimer = setTimeout(teardown, windowMs);
                 await teardownPromise;
             })
             .catch(err => {
@@ -288,18 +296,42 @@ export class MeshCopDiagnosticSource implements DiagnosticSource {
         });
     }
 
-    #wrapProxyTx(targetAddr: Uint8Array, innerCoapBytes: Uint8Array): Uint8Array {
+    #wrapProxyTx(
+        targetAddr: Uint8Array,
+        innerCoapBytes: Uint8Array,
+        sourcePort = PROXY_SRC_PORT,
+        destinationPort = TMF_PORT,
+    ): Uint8Array {
         return BasicTlv.encode([
             {
                 type: MeshCopTlvType.UDP_ENCAPSULATION,
-                value: UdpEncapsulationTlv.encode({
-                    sourcePort: PROXY_SRC_PORT,
-                    destinationPort: TMF_PORT,
-                    payload: innerCoapBytes,
-                }),
+                value: UdpEncapsulationTlv.encode({ sourcePort, destinationPort, payload: innerCoapBytes }),
             },
             { type: MeshCopTlvType.IPV6_ADDRESS, value: Ip6AddressTlv.encode(targetAddr) },
         ]);
+    }
+
+    /**
+     * Acknowledge a confirmable inner diagnostic answer. Mesh nodes send
+     * `/d/da` as a CON to the commissioner address; without an empty ACK
+     * (matched by message id) they keep retransmitting through the proxy. The
+     * ACK rides back through a fire-and-forget `c/ut` ProxyTx to the responder,
+     * mirroring the datagram's ports (src = the port the node addressed, dst =
+     * the node's source port) so the node correlates it to its pending CON.
+     */
+    #ackInnerIfNeeded(inner: ProxyRxInner): void {
+        if (inner.message.type !== "CON") return;
+        const ackBytes = CoapMessage.encode({
+            type: "ACK",
+            code: "0.00",
+            messageId: inner.message.messageId,
+            token: new Uint8Array(),
+            payload: new Uint8Array(),
+        });
+        const proxyPayload = this.#wrapProxyTx(inner.sourceAddr, ackBytes, inner.destinationPort, inner.sourcePort);
+        void this.#coap
+            .request({ type: "NON", code: "0.02", uriPath: PROXY_TX_URI, payload: proxyPayload })
+            .catch(err => logger.debug("[ThreadDiag] inner ACK send failed:", err));
     }
 
     #nextInnerMessageId(): number {
@@ -317,8 +349,9 @@ export class MeshCopDiagnosticSource implements DiagnosticSource {
 
 interface ProxyRxInner {
     sourceAddr: Uint8Array;
-    token: Uint8Array;
-    payload: Uint8Array;
+    sourcePort: number;
+    destinationPort: number;
+    message: CoapMessage;
 }
 
 /**
@@ -359,7 +392,7 @@ function unwrapProxyRx(payload: Uint8Array): ProxyRxInner | undefined {
         logger.warn("[ThreadDiag] c/ur inner CoAP parse failed, dropping:", err);
         return undefined;
     }
-    return { sourceAddr, token: inner.token, payload: inner.payload };
+    return { sourceAddr, sourcePort: encap.sourcePort, destinationPort: encap.destinationPort, message: inner };
 }
 
 function tokensEqual(a: Uint8Array, b: Uint8Array): boolean {
@@ -368,6 +401,23 @@ function tokensEqual(a: Uint8Array, b: Uint8Array): boolean {
         if (a[i] !== b[i]) return false;
     }
     return true;
+}
+
+// Router id = rloc16 top 6 bits (Thread spec); route64 entries carry router ids directly.
+export function missingRouterIds(responses: ReadonlyArray<DiagnosticResponse>): number[] {
+    const answered = new Set<number>();
+    const referenced = new Set<number>();
+    for (const r of responses) {
+        if (r.rloc16 !== undefined) answered.add((r.rloc16 >> 10) & 0x3f);
+        if (r.route64 !== undefined) {
+            for (const e of r.route64.entries) referenced.add(e.routerId);
+        }
+    }
+    const missing = new Array<number>();
+    for (const id of referenced) {
+        if (!answered.has(id)) missing.push(id);
+    }
+    return missing.sort((a, b) => a - b);
 }
 
 function decodeResponse(payload: Uint8Array): DiagnosticResponse {

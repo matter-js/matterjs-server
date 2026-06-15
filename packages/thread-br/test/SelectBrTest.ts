@@ -60,12 +60,20 @@ describe("selectBr", () => {
         expect(selectBr([a, b, c])).to.equal(c);
     });
 
-    it("treats BBR Active alone as no primary bonus (state score 0)", () => {
+    it("ranks an active-but-not-primary BBR above an ordinary link-local router", () => {
         // a: state=0 + ll=1 = 1
         const a = makeBr({ extAddressHex: "1111111111111111", addresses: ["fe80::1"] });
-        // b: bbrActive but not primary → state score 0; no link-local → ll 0
+        // b: bbrActive but not primary → state score 2; no link-local → ll 0 = 2 (winner)
         const b = makeBr({ extAddressHex: "2222222222222222", stateBitmapHex: STATE_BBR_ACTIVE_ONLY });
-        expect(selectBr([a, b])).to.equal(a);
+        expect(selectBr([a, b])).to.equal(b);
+    });
+
+    it("ranks a primary BBR above an active-but-not-primary BBR", () => {
+        // a: active-only → state 2
+        const a = makeBr({ extAddressHex: "1111111111111111", stateBitmapHex: STATE_BBR_ACTIVE_ONLY });
+        // b: active + primary → state 4 (winner)
+        const b = makeBr({ extAddressHex: "2222222222222222", stateBitmapHex: STATE_BBR_ACTIVE_PRIMARY });
+        expect(selectBr([a, b])).to.equal(b);
     });
 
     it("treats missing or malformed stateBitmapHex as no bits set", () => {
