@@ -14,6 +14,7 @@ import { MeshCopDiagnosticSource, missingRouterIds } from "../src/diagnostic/Mes
 import { BasicTlv } from "../src/tlv/BasicTlvCodec.js";
 import { Ip6AddressTlv } from "../src/tlv/meshcop/Ip6AddressTlv.js";
 import { UdpEncapsulationTlv } from "../src/tlv/meshcop/UdpEncapsulationTlv.js";
+import { NetworkDiagnosticTlv } from "../src/tlv/NetworkDiagnosticTlv.js";
 import { NetworkDiagTlvType } from "../src/tlv/networkDiagTlvTypes.js";
 import { ALL_THREAD_ROUTERS_REALM_LOCAL, deriveMeshLocalAddress } from "../src/util/meshLocalAddr.js";
 
@@ -506,6 +507,53 @@ describe("MeshCopDiagnosticSource", () => {
         await new Promise(r => setTimeout(r, 5));
         await handle.close();
         expect(unsubCalled).to.equal(true);
+    });
+
+    it("queryMulticast unicast-fills routers referenced but not answered", async () => {
+        // Route64 layout per Route64.decode: [idSequence:1][routerIdMask:8][oneEntryByte per set bit]
+        // Bit for routerId is: byte[routerId >> 3] |= 0x80 >> (routerId & 7)
+        function encodeRoute64(routerIds: number[]): Uint8Array {
+            const mask = new Uint8Array(8);
+            for (const id of routerIds) mask[id >> 3] |= 0x80 >> (id & 7);
+            const entries = routerIds.map(() => 0x00);
+            return new Uint8Array([0x00, ...mask, ...entries]);
+        }
+
+        const diagFor = (rloc16: number, refRouterIds: number[]): Uint8Array =>
+            NetworkDiagnosticTlv.encode([
+                { type: NetworkDiagTlvType.ADDRESS16, value: new Uint8Array([(rloc16 >> 8) & 0xff, rloc16 & 0xff]) },
+                { type: NetworkDiagTlvType.ROUTE64, value: encodeRoute64(refRouterIds) },
+            ]);
+
+        const proxyTxTargets = new Array<Uint8Array>();
+        let urHandler: ((msg: CoapMessage) => void) | undefined;
+        const coap: CoapLike = {
+            listen: (uriPath, handler) => {
+                if (uriPath.join("/") === "c/ur") urHandler = handler;
+                return () => {};
+            },
+            request: async opts => {
+                if (opts.uriPath.join("/") === "c/ut") proxyTxTargets.push(unwrapProxyTx(opts.payload!).targetAddr);
+                return ackMessage();
+            },
+        };
+        const source = new MeshCopDiagnosticSource(mockCommissioner(), coap, ML_PREFIX);
+        const handle = source.queryMulticast("ff03::2", {
+            tlvTypes: [NetworkDiagTlvType.ADDRESS16, NetworkDiagTlvType.ROUTE64],
+            windowMs: 80,
+        });
+        await new Promise(r => setTimeout(r, 10));
+        // responder rloc16 0x1400 (routerId 5) references routerId 29 (rloc16 0x7400) which never answers
+        urHandler!(
+            buildProxyRxReply(
+                new Uint8Array([1, 2, 3, 4]),
+                diagFor(0x1400, [29]),
+                deriveMeshLocalAddress(ML_PREFIX, 0x1400),
+            ),
+        );
+        await handle.done;
+        const want = deriveMeshLocalAddress(ML_PREFIX, (29 << 10) & 0xffff);
+        expect(proxyTxTargets.some(t => t.length === want.length && t.every((b, i) => b === want[i]))).to.equal(true);
     });
 });
 

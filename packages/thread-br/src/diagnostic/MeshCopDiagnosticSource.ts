@@ -186,6 +186,7 @@ export class MeshCopDiagnosticSource implements DiagnosticSource {
         let closed = false;
         let unsubscribe: (() => void) | undefined;
         let windowTimer: NodeJS.Timeout | undefined;
+        let fillTimers: NodeJS.Timeout[] = [];
         let resolveTeardown!: () => void;
         // teardownPromise gates the inner withSession callback: when it resolves
         // (via teardown()), the callback returns and Commissioner.release() runs.
@@ -200,6 +201,8 @@ export class MeshCopDiagnosticSource implements DiagnosticSource {
                 clearTimeout(windowTimer);
                 windowTimer = undefined;
             }
+            for (const t of fillTimers) clearTimeout(t);
+            fillTimers = [];
             unsubscribe?.();
             logger.info(
                 `[ThreadDiag] queryMulticast DONE nodes=${nodeCount} duration=${Date.now() - start}ms window=${windowMs}ms`,
@@ -215,6 +218,8 @@ export class MeshCopDiagnosticSource implements DiagnosticSource {
         const sessionPromise = this.#commissioner
             .withSession(async () => {
                 logger.info(`[ThreadDiag] queryMulticast START tlvs=${opts.tlvTypes.length} window=${windowMs}ms`);
+                const collected = new Array<DiagnosticResponse>();
+                const probed = new Set<number>();
                 unsubscribe = this.#coap.listen(PROXY_RX_URI, msg => {
                     if (closed) return;
                     logger.info(
@@ -232,6 +237,7 @@ export class MeshCopDiagnosticSource implements DiagnosticSource {
                     if (inner.message.payload.length === 0) return;
                     try {
                         const decoded = decodeResponse(inner.message.payload);
+                        collected.push(decoded);
                         nodeCount++;
                         logger.info(`[ThreadDiag] c/ur arrival from=${formatIp6(inner.sourceAddr)}`);
                         onNode.emit(decoded);
@@ -263,6 +269,39 @@ export class MeshCopDiagnosticSource implements DiagnosticSource {
                 } catch (err) {
                     logger.warn(`[ThreadDiag] c/ut ProxyTx send failed: ${err}`);
                     onError.emit(err instanceof Error ? err : new Error(String(err)));
+                }
+
+                if (this.#mlPrefix !== undefined) {
+                    const mlPrefix = this.#mlPrefix;
+                    const sendUnicastFill = (): void => {
+                        if (closed) return;
+                        for (const routerId of missingRouterIds(collected)) {
+                            if (probed.has(routerId)) continue;
+                            probed.add(routerId);
+                            const target = deriveMeshLocalAddress(mlPrefix, (routerId << 10) & 0xffff);
+                            const fillToken = this.#freshToken();
+                            const fillInner = this.#encodeInnerDiag("CON", DIAG_GET_URI, opts.tlvTypes, fillToken);
+                            logger.info(
+                                `[ThreadDiag][ProxyDebug] unicast-fill router=${routerId} target=${formatIp6(target)}`,
+                            );
+                            void this.#coap
+                                .request({
+                                    type: "NON",
+                                    code: "0.02",
+                                    uriPath: PROXY_TX_URI,
+                                    payload: this.#wrapProxyTx(target, fillInner),
+                                })
+                                .catch(err =>
+                                    logger.warn(`[ThreadDiag] unicast-fill router=${routerId} send failed: ${err}`),
+                                );
+                        }
+                    };
+                    fillTimers = [
+                        setTimeout(sendUnicastFill, Math.floor(windowMs / 2)),
+                        setTimeout(sendUnicastFill, Math.max(0, windowMs - 2_000)),
+                    ];
+                } else {
+                    logger.info("[ThreadDiag] unicast-fill skipped: no mesh-local prefix");
                 }
 
                 await teardownPromise;
