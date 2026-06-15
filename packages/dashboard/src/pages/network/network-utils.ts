@@ -4,7 +4,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type { BorderRouterEntry, MatterNode } from "@matter-server/ws-client";
+import type {
+    BorderRouterEntry,
+    MatterNode,
+    ThreadDiagnosticsBatch,
+    ThreadDiagnosticsNode,
+} from "@matter-server/ws-client";
 import { getCssVar } from "../../util/shared-styles.js";
 import type {
     CategorizedDevices,
@@ -442,6 +447,36 @@ export function buildRloc16Map(nodes: Record<string, MatterNode>): Map<number, s
     }
 
     return rloc16Map;
+}
+
+/** Stable graph id for a diagnostic mesh node: prefer extMac, else rloc16. */
+export function diagnosticNodeId(node: Pick<ThreadDiagnosticsNode, "extMacAddress" | "rloc16">): string {
+    if (node.extMacAddress !== undefined) return `thread_${node.extMacAddress.toUpperCase()}`;
+    return `meshrloc_${node.rloc16 ?? "x"}`;
+}
+
+/** Child graph id derived from parent router id + childId (child end-devices never self-report). */
+export function diagnosticChildId(parentRouterId: number, childId: number): string {
+    return `meshrloc_${((parentRouterId << 10) | childId) & 0xffff}`;
+}
+
+/**
+ * rloc16 -> graph node id across diagnostic batches, layered UNDER the Matter
+ * device map (Matter ids win). Used to resolve route64/childTable references.
+ */
+export function buildDiagnosticRloc16Map(
+    batches: ReadonlyMap<string, ThreadDiagnosticsBatch>,
+    matterRloc16Map: Map<number, string>,
+): Map<number, string> {
+    const map = new Map<number, string>();
+    for (const batch of batches.values()) {
+        for (const node of batch.nodes) {
+            if (node.rloc16 === undefined) continue;
+            if (matterRloc16Map.has(node.rloc16)) continue;
+            map.set(node.rloc16, diagnosticNodeId(node));
+        }
+    }
+    return map;
 }
 
 interface ExternalAggregate {
