@@ -28,6 +28,7 @@ import {
     decodeMeshcopStateBitmap,
     findDiagnosticMeshNodes,
     findUnknownDevices,
+    makeDiagnosticRloc16Resolver,
     getDeviceName,
     getEdgeSignalScore,
     getNeighborTableLength,
@@ -298,8 +299,7 @@ export class ThreadGraph extends BaseNetworkGraph {
             this.borderRouters,
             this._unknownDevices,
         );
-        const resolveRloc16 = (rloc16: number): string | undefined =>
-            rloc16Map.get(rloc16) ?? diagRloc16Map.get(rloc16);
+        const resolveRloc16 = makeDiagnosticRloc16Resolver(rloc16Map, diagRloc16Map);
         mergeDiagnosticEdges(this._edgePairs, this.threadDiagnostics, resolveRloc16);
 
         // Track which nodes should be hidden

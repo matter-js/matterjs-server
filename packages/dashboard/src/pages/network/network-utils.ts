@@ -450,34 +450,57 @@ export function buildRloc16Map(nodes: Record<string, MatterNode>): Map<number, s
     return rloc16Map;
 }
 
-/** Stable graph id for a diagnostic mesh node: prefer extMac, else rloc16. */
-export function diagnosticNodeId(node: Pick<ThreadDiagnosticsNode, "extMacAddress" | "rloc16">): string {
+/**
+ * Stable graph id for a diagnostic mesh node: prefer the globally-unique extMac,
+ * else an rloc16 namespaced by extPanId (rloc16 is only unique within a network).
+ */
+export function diagnosticNodeId(
+    node: Pick<ThreadDiagnosticsNode, "extMacAddress" | "rloc16">,
+    extPanIdHex: string,
+): string {
     if (node.extMacAddress !== undefined) return `thread_${node.extMacAddress.toUpperCase()}`;
-    return `meshrloc_${node.rloc16 ?? "x"}`;
+    return `meshrloc_${extPanIdHex.toUpperCase()}_${node.rloc16 ?? "x"}`;
 }
 
-/** Child graph id derived from parent router id + childId (child end-devices never self-report). */
-export function diagnosticChildId(parentRouterId: number, childId: number): string {
-    return `meshrloc_${((parentRouterId << 10) | childId) & 0xffff}`;
+/** Child graph id derived from parent router id + childId, namespaced by extPanId. */
+export function diagnosticChildId(extPanIdHex: string, parentRouterId: number, childId: number): string {
+    return `meshrloc_${extPanIdHex.toUpperCase()}_${((parentRouterId << 10) | childId) & 0xffff}`;
+}
+
+/** Resolver key joining a network's extPanId with an rloc16 (rloc16 alone is not unique across networks). */
+function diagRlocKey(extPanIdHex: string, rloc16: number): string {
+    return `${extPanIdHex.toUpperCase()}:${rloc16}`;
 }
 
 /**
- * rloc16 -> graph node id across diagnostic batches, layered UNDER the Matter
- * device map (Matter ids win). Used to resolve route64/childTable references.
+ * `extPanId:rloc16` -> graph node id across diagnostic batches, layered UNDER the
+ * Matter device map (Matter ids win). Used to resolve route64/childTable references
+ * within the referencing node's own network. Keyed via {@link diagRlocKey}.
  */
 export function buildDiagnosticRloc16Map(
     batches: ReadonlyMap<string, ThreadDiagnosticsBatch>,
     matterRloc16Map: Map<number, string>,
-): Map<number, string> {
-    const map = new Map<number, string>();
+): Map<string, string> {
+    const map = new Map<string, string>();
     for (const batch of batches.values()) {
         for (const node of batch.nodes) {
             if (node.rloc16 === undefined) continue;
             if (matterRloc16Map.has(node.rloc16)) continue;
-            map.set(node.rloc16, diagnosticNodeId(node));
+            map.set(diagRlocKey(batch.extPanIdHex, node.rloc16), diagnosticNodeId(node, batch.extPanIdHex));
         }
     }
     return map;
+}
+
+/**
+ * Build a per-network rloc16 resolver: Matter device id (global) wins, else the
+ * diagnostic node id within the same extPanId. Returns undefined when unresolved.
+ */
+export function makeDiagnosticRloc16Resolver(
+    matterRloc16Map: Map<number, string>,
+    diagRloc16Map: Map<string, string>,
+): (rloc16: number, extPanIdHex: string) => string | undefined {
+    return (rloc16, extPanIdHex) => matterRloc16Map.get(rloc16) ?? diagRloc16Map.get(diagRlocKey(extPanIdHex, rloc16));
 }
 
 interface ExternalAggregate {
@@ -918,7 +941,7 @@ export function findDiagnosticMeshNodes(
     for (const batch of batches.values()) {
         for (const node of batch.nodes) {
             if (node.rloc16 !== undefined && !matchesExisting(node.rloc16, node.extMacAddress)) {
-                const id = diagnosticNodeId(node);
+                const id = diagnosticNodeId(node, batch.extPanIdHex);
                 out.set(id, {
                     kind: "diagnostic",
                     id,
@@ -934,7 +957,7 @@ export function findDiagnosticMeshNodes(
                 for (const child of node.childTable) {
                     const childRloc16 = ((parentRouterId << 10) | child.childId) & 0xffff;
                     if (matchesExisting(childRloc16)) continue;
-                    const id = diagnosticChildId(parentRouterId, child.childId);
+                    const id = diagnosticChildId(batch.extPanIdHex, parentRouterId, child.childId);
                     if (!out.has(id)) {
                         out.set(id, {
                             kind: "diagnostic",
@@ -1135,7 +1158,7 @@ export function buildThreadEdgePairs(
 export function mergeDiagnosticEdges(
     pairs: Map<string, ThreadEdgePair>,
     batches: ReadonlyMap<string, ThreadDiagnosticsBatch>,
-    resolveRloc16: (rloc16: number) => string | undefined,
+    resolveRloc16: (rloc16: number, extPanIdHex: string) => string | undefined,
 ): void {
     const addEdge = (fromNodeId: string, toNodeId: string, lqi: number, pathCost?: number): void => {
         if (fromNodeId === toNodeId) return;
@@ -1167,12 +1190,13 @@ export function mergeDiagnosticEdges(
     for (const batch of batches.values()) {
         for (const node of batch.nodes) {
             if (node.rloc16 === undefined) continue;
-            const fromId = resolveRloc16(node.rloc16) ?? diagnosticNodeId(node);
+            const xp = batch.extPanIdHex;
+            const fromId = resolveRloc16(node.rloc16, xp) ?? diagnosticNodeId(node, xp);
             const routerId = (node.rloc16 >> 10) & 0x3f;
             if (node.route64 !== undefined) {
                 for (const e of node.route64.entries) {
                     if (e.routerId === routerId) continue;
-                    const toId = resolveRloc16((e.routerId << 10) & 0xffff);
+                    const toId = resolveRloc16((e.routerId << 10) & 0xffff, xp);
                     if (toId === undefined) continue;
                     addEdge(fromId, toId, e.linkQualityIn, e.routeCost);
                 }
@@ -1180,7 +1204,7 @@ export function mergeDiagnosticEdges(
             if (node.childTable !== undefined) {
                 for (const child of node.childTable) {
                     const childRloc16 = ((routerId << 10) | child.childId) & 0xffff;
-                    const toId = resolveRloc16(childRloc16) ?? diagnosticChildId(routerId, child.childId);
+                    const toId = resolveRloc16(childRloc16, xp) ?? diagnosticChildId(xp, routerId, child.childId);
                     addEdge(fromId, toId, child.incomingLinkQuality);
                 }
             }
