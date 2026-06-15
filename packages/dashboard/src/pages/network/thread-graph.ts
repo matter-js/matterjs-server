@@ -21,10 +21,12 @@ import type {
     ThreadExternalDevice,
 } from "./network-types.js";
 import {
+    buildDiagnosticRloc16Map,
     buildExtAddrMap,
     buildRloc16Map,
     buildThreadEdgePairs,
     decodeMeshcopStateBitmap,
+    findDiagnosticMeshNodes,
     findUnknownDevices,
     getDeviceName,
     getEdgeSignalScore,
@@ -32,6 +34,7 @@ import {
     getNetworkType,
     getThreadExtendedAddressHex,
     getThreadRole,
+    mergeDiagnosticEdges,
     stripMdnsHostname,
 } from "./network-utils.js";
 
@@ -287,6 +290,18 @@ export class ThreadGraph extends BaseNetworkGraph {
         // Build ALL edge pairs (0-2 edges per connected pair, no dedup)
         this._edgePairs = buildThreadEdgePairs(this.nodes, extAddrMap, rloc16Map, this._unknownDevices);
 
+        const diagRloc16Map = buildDiagnosticRloc16Map(this.threadDiagnostics, rloc16Map);
+        const diagnosticMeshNodes = findDiagnosticMeshNodes(
+            this.threadDiagnostics,
+            rloc16Map,
+            extAddrMap,
+            this.borderRouters,
+            this._unknownDevices,
+        );
+        const resolveRloc16 = (rloc16: number): string | undefined =>
+            rloc16Map.get(rloc16) ?? diagRloc16Map.get(rloc16);
+        mergeDiagnosticEdges(this._edgePairs, this.threadDiagnostics, resolveRloc16);
+
         // Track which nodes should be hidden
         const hiddenNodeIds = new Set<string>();
 
@@ -393,6 +408,37 @@ export class ThreadGraph extends BaseNetworkGraph {
             }
         }
 
+        // Diagnostic-only mesh nodes: nodes seen in route64/childTable diagnostics that
+        // are not yet commissioned or present in neighbor tables. Only show when they
+        // have at least one cross-witnessed edge (connectedIds guard below).
+        const connectedIds = new Set<string>();
+        for (const pair of this._edgePairs.values()) {
+            if (pair.edgeAB || pair.edgeBA) {
+                connectedIds.add(pair.nodeA);
+                connectedIds.add(pair.nodeB);
+            }
+        }
+        for (const meshNode of diagnosticMeshNodes) {
+            const hidden = !connectedIds.has(meshNode.id);
+            if (hidden) hiddenNodeIds.add(meshNode.id);
+            const idTail =
+                meshNode.extAddressHex !== undefined
+                    ? meshNode.extAddressHex.slice(-8)
+                    : `rloc:${meshNode.rloc16.toString(16)}`;
+            const label = meshNode.isRouter
+                ? `${meshNode.vendorName ?? "Router"} [${idTail}]\n${meshNode.networkName}`
+                : `End device [rloc:${meshNode.rloc16.toString(16)}]\n${meshNode.networkName}`;
+            graphNodes.push({
+                id: meshNode.id,
+                label,
+                image: createUnknownDeviceIconDataUrl(meshNode.isRouter, meshNode.id === this._selectedNodeId),
+                shape: "image" as const,
+                networkType: "thread" as const,
+                isUnknown: true,
+                hidden,
+            });
+        }
+
         // --- Build graph edges from edge pairs ---
 
         const graphEdges: NetworkGraphEdge[] = [];
@@ -422,8 +468,11 @@ export class ThreadGraph extends BaseNetworkGraph {
                 const fromExtMac = fromNode ? getThreadExtendedAddressHex(fromNode) : undefined;
                 const brView = isToBr && fromExtMac !== undefined ? this._brViewOfPeer(toId, fromExtMac) : undefined;
 
+                // Diagnostic-only mesh nodes are inferred (not commissioned) — dash like unknowns.
+                const isToDiagnostic = toId.startsWith("thread_") || toId.startsWith("meshrloc_");
                 const isToUnknown =
                     toId.startsWith("unknown_") ||
+                    isToDiagnostic ||
                     (isToBr && brView === undefined && !this._brHasValidDiagnostic(toId));
 
                 // Apply filters to determine if edge should be hidden
@@ -764,6 +813,14 @@ export class ThreadGraph extends BaseNetworkGraph {
             this._nodesDataSet.update({
                 id: nodeId,
                 image: createUnknownDeviceIconDataUrl(external?.isRouter ?? false, isHighlighted),
+            });
+        } else if (nodeId.startsWith("thread_") || nodeId.startsWith("meshrloc_")) {
+            // Diagnostic mesh node. Router id scheme: `thread_<MAC>` (always a router) or
+            // `meshrloc_<rloc16>` where a router has the low 10 child bits clear.
+            const isRouter = nodeId.startsWith("thread_") || (Number(nodeId.slice("meshrloc_".length)) & 0x3ff) === 0;
+            this._nodesDataSet.update({
+                id: nodeId,
+                image: createUnknownDeviceIconDataUrl(isRouter, isHighlighted),
             });
         }
     }
