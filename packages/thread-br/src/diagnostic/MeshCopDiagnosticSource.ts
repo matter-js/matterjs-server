@@ -220,8 +220,15 @@ export class MeshCopDiagnosticSource implements DiagnosticSource {
                 logger.info(`[ThreadDiag] queryMulticast START tlvs=${opts.tlvTypes.length} window=${windowMs}ms`);
                 const collected = new Array<DiagnosticResponse>();
                 const probed = new Set<number>();
+                const seenProxyRx = new Set<string>();
                 unsubscribe = this.#coap.listen(PROXY_RX_URI, msg => {
                     if (closed) return;
+                    // Some Border Agents re-deliver an identical c/ur many times (observed
+                    // as a tight retransmit storm when probing the BR's own RLOC). Drop exact
+                    // duplicates within the window — the first copy is fully processed/ACKed.
+                    const rawKey = Bytes.toHex(msg.payload);
+                    if (seenProxyRx.has(rawKey)) return;
+                    seenProxyRx.add(rawKey);
                     logger.info(
                         `[ThreadDiag][ProxyDebug] c/ur raw payloadLen=${msg.payload.length} hex=${Bytes.toHex(msg.payload)}`,
                     );

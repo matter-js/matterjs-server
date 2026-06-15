@@ -291,7 +291,13 @@ export class ThreadGraph extends BaseNetworkGraph {
         // Build ALL edge pairs (0-2 edges per connected pair, no dedup)
         this._edgePairs = buildThreadEdgePairs(this.nodes, extAddrMap, rloc16Map, this._unknownDevices);
 
-        const diagRloc16Map = buildDiagnosticRloc16Map(this.threadDiagnostics, rloc16Map);
+        const diagRloc16Map = buildDiagnosticRloc16Map(
+            this.threadDiagnostics,
+            rloc16Map,
+            extAddrMap,
+            this.borderRouters,
+            this._unknownDevices,
+        );
         const diagnosticMeshNodes = findDiagnosticMeshNodes(
             this.threadDiagnostics,
             rloc16Map,
@@ -413,7 +419,13 @@ export class ThreadGraph extends BaseNetworkGraph {
         // have at least one cross-witnessed edge (connectedIds guard below).
         const connectedIds = new Set<string>();
         for (const pair of this._edgePairs.values()) {
-            if (pair.edgeAB || pair.edgeBA) {
+            // A no-link (LQI=0 -> "none") edge is filtered out before render, so it
+            // does not count as cross-witness — otherwise its endpoints would show as
+            // isolated orphans.
+            const live =
+                (pair.edgeAB !== undefined && pair.edgeAB.signalLevel !== "none") ||
+                (pair.edgeBA !== undefined && pair.edgeBA.signalLevel !== "none");
+            if (live) {
                 connectedIds.add(pair.nodeA);
                 connectedIds.add(pair.nodeB);
             }

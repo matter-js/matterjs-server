@@ -473,20 +473,55 @@ function diagRlocKey(extPanIdHex: string, rloc16: number): string {
 }
 
 /**
+ * Resolve a diagnostic node to the graph node id it is actually rendered under:
+ * a commissioned Matter device (by extMac), a known Border Router (`br_<xa>`), a
+ * neighbor-inferred unknown, or — when it matches none — its own diagnostic id.
+ * Mirrors the precedence in {@link findDiagnosticMeshNodes} so edges target the
+ * same node those materialize, rather than a phantom `thread_`/`meshrloc_` id.
+ */
+function diagnosticGraphNodeId(
+    node: ThreadDiagnosticsNode,
+    extPanIdHex: string,
+    matterExtAddrMap: Map<bigint, string>,
+    borderRouters: ReadonlyMap<string, BorderRouterEntry>,
+    unknownIdByExt: Map<string, string>,
+): string {
+    const up = node.extMacAddress?.toUpperCase();
+    if (up !== undefined) {
+        const matterId = matterExtAddrMap.get(BigInt(`0x${up}`));
+        if (matterId !== undefined) return matterId;
+        if (borderRouters.has(up)) return `br_${up}`;
+        const unknownId = unknownIdByExt.get(up);
+        if (unknownId !== undefined) return unknownId;
+    }
+    return diagnosticNodeId(node, extPanIdHex);
+}
+
+/**
  * `extPanId:rloc16` -> graph node id across diagnostic batches, layered UNDER the
- * Matter device map (Matter ids win). Used to resolve route64/childTable references
- * within the referencing node's own network. Keyed via {@link diagRlocKey}.
+ * Matter rloc16 map. Resolves route64/childTable references within the referencing
+ * node's own network to whatever id that node is drawn as (Matter / `br_` /
+ * `unknown_` / diagnostic). Keyed via {@link diagRlocKey}.
  */
 export function buildDiagnosticRloc16Map(
     batches: ReadonlyMap<string, ThreadDiagnosticsBatch>,
     matterRloc16Map: Map<number, string>,
+    matterExtAddrMap: Map<bigint, string>,
+    borderRouters: ReadonlyMap<string, BorderRouterEntry>,
+    unknownDevices: ThreadExternalDevice[],
 ): Map<string, string> {
+    const unknownIdByExt = new Map<string, string>();
+    for (const d of unknownDevices) unknownIdByExt.set(d.extAddressHex.toUpperCase(), d.id);
+
     const map = new Map<string, string>();
     for (const batch of batches.values()) {
         for (const node of batch.nodes) {
             if (node.rloc16 === undefined) continue;
-            if (matterRloc16Map.has(node.rloc16)) continue;
-            map.set(diagRlocKey(batch.extPanIdHex, node.rloc16), diagnosticNodeId(node, batch.extPanIdHex));
+            if (matterRloc16Map.has(node.rloc16)) continue; // Matter device (by rloc16) wins
+            map.set(
+                diagRlocKey(batch.extPanIdHex, node.rloc16),
+                diagnosticGraphNodeId(node, batch.extPanIdHex, matterExtAddrMap, borderRouters, unknownIdByExt),
+            );
         }
     }
     return map;
