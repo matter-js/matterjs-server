@@ -441,9 +441,11 @@ export class ThreadGraph extends BaseNetworkGraph {
                 meshNode.extAddressHex !== undefined
                     ? meshNode.extAddressHex.slice(-8)
                     : `rloc:${meshNode.rloc16.toString(16)}`;
-            const label = meshNode.isRouter
-                ? `${meshNode.vendorName ?? "Router"} [${idTail}]\n${meshNode.networkName}`
-                : `End device [rloc:${meshNode.rloc16.toString(16)}]\n${meshNode.networkName}`;
+            const childSuffix =
+                meshNode.childCount > 0
+                    ? ` · ${meshNode.childCount} ${meshNode.childCount === 1 ? "child" : "children"}`
+                    : "";
+            const label = `${meshNode.vendorName ?? "Router"} [${idTail}]${childSuffix}\n${meshNode.networkName}`;
             graphNodes.push({
                 id: meshNode.id,
                 label,

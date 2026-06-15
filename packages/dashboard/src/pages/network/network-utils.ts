@@ -462,11 +462,6 @@ export function diagnosticNodeId(
     return `meshrloc_${extPanIdHex.toUpperCase()}_${node.rloc16 ?? "x"}`;
 }
 
-/** Child graph id derived from parent router id + childId, namespaced by extPanId. */
-export function diagnosticChildId(extPanIdHex: string, parentRouterId: number, childId: number): string {
-    return `meshrloc_${extPanIdHex.toUpperCase()}_${((parentRouterId << 10) | childId) & 0xffff}`;
-}
-
 /** Resolver key joining a network's extPanId with an rloc16 (rloc16 alone is not unique across networks). */
 function diagRlocKey(extPanIdHex: string, rloc16: number): string {
     return `${extPanIdHex.toUpperCase()}:${rloc16}`;
@@ -995,35 +990,23 @@ export function findDiagnosticMeshNodes(
 
     for (const batch of batches.values()) {
         for (const node of batch.nodes) {
-            if (node.rloc16 !== undefined && !matchesExisting(batch.extPanIdHex, node.rloc16, node.extMacAddress)) {
-                const id = diagnosticNodeId(node, batch.extPanIdHex);
-                out.set(id, {
-                    kind: "diagnostic",
-                    id,
-                    rloc16: node.rloc16,
-                    extAddressHex: node.extMacAddress?.toUpperCase(),
-                    isRouter: (node.rloc16 & 0x3ff) === 0,
-                    vendorName: node.vendorName,
-                    networkName: batch.networkName,
-                });
-            }
-            if (node.rloc16 !== undefined && node.childTable !== undefined) {
-                const parentRouterId = (node.rloc16 >> 10) & 0x3f;
-                for (const child of node.childTable) {
-                    const childRloc16 = ((parentRouterId << 10) | child.childId) & 0xffff;
-                    if (matchesExisting(batch.extPanIdHex, childRloc16)) continue;
-                    const id = diagnosticChildId(batch.extPanIdHex, parentRouterId, child.childId);
-                    if (!out.has(id)) {
-                        out.set(id, {
-                            kind: "diagnostic",
-                            id,
-                            rloc16: childRloc16,
-                            isRouter: false,
-                            networkName: batch.networkName,
-                        });
-                    }
-                }
-            }
+            // Only materialize a node for the responding router itself (a route64
+            // participant). Its childTable children are leaf end devices — surfaced
+            // as a count on the router, not as individual floating nodes — unless a
+            // child is itself a commissioned Matter device, which already has a node.
+            if (node.rloc16 === undefined) continue;
+            if (matchesExisting(batch.extPanIdHex, node.rloc16, node.extMacAddress)) continue;
+            const id = diagnosticNodeId(node, batch.extPanIdHex);
+            out.set(id, {
+                kind: "diagnostic",
+                id,
+                rloc16: node.rloc16,
+                extAddressHex: node.extMacAddress?.toUpperCase(),
+                isRouter: (node.rloc16 & 0x3ff) === 0,
+                vendorName: node.vendorName,
+                childCount: node.childTable?.length ?? 0,
+                networkName: batch.networkName,
+            });
         }
     }
     return [...out.values()];
@@ -1259,7 +1242,11 @@ export function mergeDiagnosticEdges(
             if (node.childTable !== undefined) {
                 for (const child of node.childTable) {
                     const childRloc16 = ((routerId << 10) | child.childId) & 0xffff;
-                    const toId = resolveRloc16(childRloc16, xp) ?? diagnosticChildId(xp, routerId, child.childId);
+                    // Only link children that are themselves a real graph node (a
+                    // commissioned Matter device). Non-Matter leaves are a count on
+                    // the parent, not floating nodes — so don't invent an edge.
+                    const toId = resolveRloc16(childRloc16, xp);
+                    if (toId === undefined) continue;
                     addEdge(fromId, toId, child.incomingLinkQuality);
                 }
             }
