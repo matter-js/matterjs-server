@@ -215,10 +215,13 @@ export class ThreadDiagnosticsService {
         );
 
         if (force) {
-            this.#probeAttempted.delete(key);
-            this.#restCaps.delete(key);
+            // A manual refresh re-pulls diagnostics; it does not re-discover the
+            // transport. Reuse the cap the startup/first-seen probe already registered.
+            // Probe only when REST is not yet known — which still lets a BR that gained
+            // a REST endpoint after startup be picked up.
             // TEMPORARY gate — see constructor. REMOVE BEFORE COMMIT.
-            if (process.env.MATTER_DISABLE_REST !== "1") {
+            if (process.env.MATTER_DISABLE_REST !== "1" && !this.#restCaps.has(key)) {
+                this.#probeAttempted.delete(key);
                 await this.#probeBrForRest(br, { force: true });
             }
             const existing = this.#streamsInFlight.get(key);

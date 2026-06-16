@@ -636,7 +636,7 @@ describe("ThreadDiagnosticsService", () => {
         expect(meshcopCalls).to.equal(1);
     });
 
-    it("force=true bypasses the cache and re-probes REST (reload-button path)", async () => {
+    it("force=true re-fetches REST diagnostics but reuses the registered cap (no re-probe)", async () => {
         let probeCalls = 0;
         let restCalls = 0;
         const stub = brsListing([makeBr({ addresses: ["fd00::1"] })]);
@@ -663,10 +663,12 @@ describe("ThreadDiagnosticsService", () => {
         expect(restCalls).to.equal(1);
         expect(probeCalls).to.equal(1);
 
+        // A manual refresh re-pulls diagnostics (restCalls++) but trusts the cap the
+        // first-seen probe already registered — no second probe burst.
         const second = await service.getOrFetch(EXT_PAN_HEX_LOWER, { force: true });
         expect(second?.source).to.equal("otbr-rest");
         expect(restCalls).to.equal(2);
-        expect(probeCalls).to.equal(2);
+        expect(probeCalls).to.equal(1);
     });
 
     it("does not re-probe on `updated` events; only `added` triggers eager probes", async () => {
