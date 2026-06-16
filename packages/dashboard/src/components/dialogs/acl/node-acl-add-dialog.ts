@@ -203,7 +203,7 @@ export class NodeAclAddDialog extends LitElement {
                                     n =>
                                         html`<md-select-option value=${nodeIdKey(n.node_id)}
                                             ><div slot="headline">
-                                                ${n.nodeLabel || "Unknown"} · ${n.node_id.toString()}
+                                                ${n.node_id.toString()} · ${n.nodeLabel || "Unknown"}
                                             </div></md-select-option
                                         >`,
                                 )}

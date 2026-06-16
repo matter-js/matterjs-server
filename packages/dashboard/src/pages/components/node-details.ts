@@ -19,13 +19,12 @@ import { customElement, property, state } from "lit/decorators.js";
 import { clientContext, tickContext } from "../../client/client-context.js";
 import { DeviceType } from "../../client/models/descriptions.js";
 import { showAlertDialog, showPromptDialog } from "../../components/dialog-box/show-dialog-box.js";
-import "../cluster-commands/clusters/binding-commands.js";
 import { showNodeLabelDialog } from "../../components/dialogs/node-label-dialog/show-node-label-dialog.js";
 import { handleAsync } from "../../util/async-handler.js";
 import "../../components/ha-svg-icon";
 import "../camera-overlay.js";
 import { getDeviceIcon } from "../../util/device-icons.js";
-import { getEndpointDeviceTypes } from "../matter-endpoint-view.js";
+import { getEndpointDeviceTypes } from "../../util/endpoints.js";
 import { bindingContext } from "./context.js";
 
 /** Map updateState values to user-friendly labels */
@@ -79,7 +78,6 @@ export class NodeDetails extends LitElement {
     protected override render() {
         if (!this.node) return html``;
 
-        const hasBindingCluster = Object.keys(this.node.attributes).some(k => k.startsWith(`${this.endpoint}/30/`));
         const deviceTypeIds = getEndpointDeviceTypes(this.node, this.endpoint).map(d => d.id);
         const isCamera = deviceTypeIds.includes(0x0142) || deviceTypeIds.includes(0x0143);
 
@@ -168,15 +166,6 @@ export class NodeDetails extends LitElement {
                     </div>
                 </md-list-item>
             </md-list>
-            ${hasBindingCluster
-                ? html`<div style="margin: 8px 16px;">
-                      <binding-cluster-commands
-                          .node=${this.node}
-                          .endpoint=${this.endpoint}
-                          .cluster=${30}
-                      ></binding-cluster-commands>
-                  </div>`
-                : nothing}
         `;
     }
 

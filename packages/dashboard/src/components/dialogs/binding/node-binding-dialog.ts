@@ -16,10 +16,10 @@ import { css, html, LitElement, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { clientContext } from "../../../client/client-context.js";
 import { clusters } from "../../../client/models/descriptions.js";
-import { getEndpointDeviceTypes } from "../../../pages/matter-endpoint-view.js";
 import { nodeIdKey } from "../../../util/access-control.js";
 import { handleAsync } from "../../../util/async-handler.js";
 import { bindableClusters, targetAclCapacityForBinding } from "../../../util/binding.js";
+import { getEndpointDeviceTypes } from "../../../util/endpoints.js";
 import { preventDefault } from "../../../util/prevent_default.js";
 import { showAlertDialog } from "../../dialog-box/show-dialog-box.js";
 import { addBinding } from "./binding-actions.js";
@@ -223,7 +223,7 @@ export class NodeBindingDialog extends LitElement {
                             ${this._knownNodes().map(
                                 n =>
                                     html`<md-select-option value=${nodeIdKey(n.node_id)}>
-                                        <div slot="headline">${n.nodeLabel || "Unknown"} · ${n.node_id.toString()}</div>
+                                        <div slot="headline">${n.node_id.toString()} · ${n.nodeLabel || "Unknown"}</div>
                                     </md-select-option>`,
                             )}
                         </md-outlined-select>

@@ -21,7 +21,7 @@ import { showNodeBindingDialog } from "../../../components/dialogs/binding/show-
 import { nodeIdKey } from "../../../util/access-control.js";
 import { handleAsync } from "../../../util/async-handler.js";
 import { readBindings, reverseAclState, type ReverseAclState } from "../../../util/binding.js";
-import { getEndpointDeviceTypes } from "../../matter-endpoint-view.js";
+import { getEndpointDeviceTypes } from "../../../util/endpoints.js";
 import { BaseClusterCommands } from "../base-cluster-commands.js";
 import { registerClusterCommands } from "../registry.js";
 
@@ -195,7 +195,7 @@ class BindingClusterCommands extends BaseClusterCommands {
         if (state === "present") return html`<span class="status ok">ACL present</span>`;
         if (state === "cannotVerify") return html`<span class="status mut">can't verify</span>`;
         const label = state === "missing" ? "ACL missing" : "ACL > Operate";
-        const fixLabel = state === "missing" ? "Add ACL" : "→ Operate";
+        const fixLabel = state === "missing" ? "Fix ACL" : "Fix → Operate";
         return html`
             <span class="status warn">${label}</span>
             <md-outlined-button
