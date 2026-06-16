@@ -87,6 +87,7 @@ import {
     AccessControlTarget,
     AttributeWriteResult,
     BindingTarget,
+    MatterGroupData,
     MatterSoftwareVersion,
     NodePingResult,
     ServerError,
@@ -96,6 +97,8 @@ import { formatNodeId } from "../util/formatNodeId.js";
 import { pingIp } from "../util/network.js";
 import { WebRtcTransportRequestorServer } from "./behaviors/WebRtcTransportRequestorServer.js";
 import { CustomClusterPoller } from "./CustomClusterPoller.js";
+import { GroupManager } from "./GroupManager.js";
+import { GroupRegistry } from "./GroupRegistry.js";
 import { Nodes } from "./Nodes.js";
 import { attachWebRtcCallbackBridge } from "./WebRtcCallbackBridge.js";
 
@@ -173,8 +176,13 @@ export class ControllerCommandHandler {
         nodeEndpointAdded: new Observable<[nodeId: NodeId, endpointId: EndpointNumber]>(),
         nodeEndpointRemoved: new Observable<[nodeId: NodeId, endpointId: EndpointNumber]>(),
         webRtcCallback: new Observable<[WebRtcCallbackData]>(),
+        groupAdded: new Observable<[MatterGroupData]>(),
+        groupUpdated: new Observable<[MatterGroupData]>(),
+        groupRemoved: new Observable<[groupId: number]>(),
     };
     #peers?: PeerSet;
+    /** Multicast group manager; created lazily on start once the controller fabric exists. */
+    #groupManager?: GroupManager;
 
     constructor(
         controllerInstance: CommissioningController,
@@ -243,6 +251,26 @@ export class ControllerCommandHandler {
         await this.#controller.start();
         logger.notice(`Matter Controller started`);
         this.#peers = this.#controller.node.env.get(PeerSet);
+
+        // Initialize multicast group support: load persisted groups and re-install
+        // their operational key material onto the controller's own fabric.
+        const groupRegistry = await GroupRegistry.create(this.#controller.node.env);
+        this.#groupManager = new GroupManager(this.#controller, groupRegistry, {
+            invokeNative: (nodeId, endpointId, clusterId, commandName, fields) =>
+                this.#invokeNative(nodeId, endpointId, clusterId, commandName, fields),
+            writeNative: (nodeId, endpointId, clusterId, attributeName, value) =>
+                this.#writeAttribute(nodeId, endpointId, clusterId, attributeName, value),
+            readNativeAttribute: (nodeId, endpointId, clusterId, attributeId) =>
+                this.#readNativeAttribute(nodeId, endpointId, clusterId, attributeId),
+            currentFabricIndex: nodeId => this.#currentFabricIndex(nodeId),
+            isAvailable: nodeId => this.#nodes.isAvailable(nodeId),
+        });
+        // Bridge group lifecycle events onto the always-present events object so the
+        // WebSocket layer can subscribe regardless of start ordering.
+        this.#groupManager.events.groupAdded.on(data => this.events.groupAdded.emit(data));
+        this.#groupManager.events.groupUpdated.on(data => this.events.groupUpdated.emit(data));
+        this.#groupManager.events.groupRemoved.on(groupId => this.events.groupRemoved.emit(groupId));
+        await this.#groupManager.restore();
 
         if (this.#otaEnabled) {
             // Subscribe to OTA provider events to track available updates
@@ -762,6 +790,82 @@ export class ControllerCommandHandler {
             value,
         );
         return { attributeId, clusterId, endpointId, status, clusterStatus };
+    }
+
+    /** Multicast group manager. Available only after {@link start} has run. */
+    get groups(): GroupManager {
+        if (this.#groupManager === undefined) {
+            throw ServerError.sdkStackError("Group manager not initialized (controller not started)");
+        }
+        return this.#groupManager;
+    }
+
+    /**
+     * Invoke a command on a node with native (already Matter-shaped) fields, bypassing
+     * the WebSocket tag-based conversion. Used by {@link GroupManager} for provisioning.
+     */
+    async #invokeNative(
+        nodeId: NodeId,
+        endpointId: EndpointNumber,
+        clusterId: ClusterId,
+        commandName: string,
+        fields: unknown,
+    ): Promise<unknown> {
+        const clusterEntry = ClusterMap[clusterId];
+        if (!clusterEntry) {
+            throw ServerError.invalidArguments(`Cluster Id "${clusterId}" unknown`);
+        }
+        const cluster = ClusterType(clusterEntry.model) as Specifier.ClusterLike;
+        return await this.#invokeCommand(this.#nodes.get(nodeId).node, {
+            endpoint: endpointId,
+            cluster,
+            command: commandName,
+            fields,
+        });
+    }
+
+    /**
+     * Read a single attribute from a node over the wire and return its raw native
+     * (un-converted) value. Used by {@link GroupManager} for read-modify-write of
+     * fabric-scoped lists (ACL, GroupKeyMap) so it never clobbers existing entries
+     * based on stale cache. Reads are fabric-filtered so only the current fabric's
+     * entries are returned and subsequently rewritten.
+     */
+    async #readNativeAttribute(
+        nodeId: NodeId,
+        endpointId: EndpointNumber,
+        clusterId: ClusterId,
+        attributeId: number,
+        fabricFiltered = true,
+    ): Promise<unknown> {
+        const node = this.#nodes.get(nodeId);
+        const readRequest = {
+            ...Read({
+                fabricFilter: fabricFiltered,
+                attributes: [
+                    {
+                        endpointId,
+                        clusterId,
+                        attributeId: AttributeId(attributeId),
+                    },
+                ],
+            }),
+            includeKnownVersions: true,
+        };
+
+        let value: unknown = undefined;
+        for await (const chunk of node.node.interaction.read(readRequest)) {
+            for await (const entry of chunk) {
+                if (entry.kind === "attr-value") {
+                    value = entry.value;
+                } else if (entry.kind === "attr-status") {
+                    logger.warn(
+                        `Failed to read attribute ${endpointId}/${clusterId}/${attributeId}: status=${entry.status}`,
+                    );
+                }
+            }
+        }
+        return value;
     }
 
     async #invokeCommand<const C extends Specifier.ClusterLike>(
