@@ -32,17 +32,17 @@ export class OtbrRestProbe {
     ): Promise<OtbrRestCapability | null> {
         const client = new OtbrRestClient({ host, port, timeoutMs });
         const baseUrl = client.baseUrl;
-        logger.info(`[ThreadDiag] probe START ${baseUrl} timeout=${timeoutMs}ms`);
+        logger.debug(`[ThreadDiag] probe START ${baseUrl} timeout=${timeoutMs}ms`);
 
         const keyFormat = await detectCase(baseUrl, timeoutMs);
         if (keyFormat === null) {
-            logger.info(`[ThreadDiag] probe MISS ${baseUrl} (case detect failed)`);
+            logger.debug(`[ThreadDiag] probe MISS ${baseUrl} (case detect failed)`);
             return null;
         }
 
         try {
             const node = await client.getNode();
-            logger.info(
+            logger.debug(
                 `[ThreadDiag] probe OK ${baseUrl} keyFormat=${keyFormat} xp=${Bytes.toHex(node.extPanId).toUpperCase()} network="${node.networkName}"`,
             );
             return {
@@ -54,7 +54,7 @@ export class OtbrRestProbe {
             };
         } catch (err) {
             if (err instanceof OtbrRestError) {
-                logger.info(`[ThreadDiag] probe MISS ${baseUrl} /node ${err.code} (${err.message})`);
+                logger.debug(`[ThreadDiag] probe MISS ${baseUrl} /node ${err.code} (${err.message})`);
                 return null;
             }
             throw err;

@@ -198,10 +198,6 @@ export class WebSocketControllerHandler implements WebServerHandler {
         }
 
         this.#serviceObservers.on(this.#controller.threadDiagnostics.events.batchUpdated, batch => {
-            const clients = this.#wss === undefined ? 0 : [...this.#wss.clients].filter(c => c.readyState === 1).length;
-            logger.info(
-                `[ThreadDiag][ProxyDebug] broadcast thread_diagnostics_updated xp=${batch.extPanIdHex.toUpperCase()} nodes=${batch.nodes.length} partial=${batch.partialReason ?? "none"} clients=${clients}`,
-            );
             this.#broadcastEvent("thread_diagnostics_updated", serializeBatch(batch));
         });
 

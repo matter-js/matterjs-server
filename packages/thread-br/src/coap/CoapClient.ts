@@ -316,9 +316,11 @@ export class CoapClient {
                 logger.warn("CoapClient listener handler threw:", err);
             }
         }
-        logger.info(
-            `[ThreadDiag] CoAP inbound (unmatched-to-request) uri=${uri} type=${msg.type} code=${msg.code} payloadLen=${msg.payload.length} listeners=${delivered}`,
-        );
+        if (delivered === 0) {
+            logger.debug(
+                `CoAP inbound consumed by no request or listener: uri=${uri} type=${msg.type} code=${msg.code} payloadLen=${msg.payload.length}`,
+            );
+        }
     }
 
     #nextMessageId(): number {

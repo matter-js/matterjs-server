@@ -50,7 +50,7 @@ export async function connectMeshcop(opts: ConnectMeshcopOpts): Promise<MeshcopH
         throw new Error("connectMeshcop: BR has no meshcopPort and no opts.port override");
     }
 
-    logger.info(`[ThreadDiag] connectMeshcop START ${address}:${port}`);
+    logger.debug(`[ThreadDiag] connectMeshcop START ${address}:${port}`);
     const dtlsStart = Date.now();
     const backend = opts.makeBackend?.() ?? createDtlsBackend({ kind: opts.backendKind ?? "noble" });
     const socket = await backend.connect({
@@ -59,7 +59,7 @@ export async function connectMeshcop(opts: ConnectMeshcopOpts): Promise<MeshcopH
         password: opts.creds.pskc,
         type: address.includes(":") ? "udp6" : "udp4",
     });
-    logger.info(`[ThreadDiag] DTLS handshake OK ${address}:${port} duration=${Date.now() - dtlsStart}ms`);
+    logger.debug(`[ThreadDiag] DTLS handshake OK ${address}:${port} duration=${Date.now() - dtlsStart}ms`);
 
     try {
         const coap = new CoapClient(socket);
@@ -68,7 +68,7 @@ export async function connectMeshcop(opts: ConnectMeshcopOpts): Promise<MeshcopH
         return {
             source,
             close: async () => {
-                logger.info(`[ThreadDiag] connectMeshcop CLOSE ${address}:${port}`);
+                logger.debug(`[ThreadDiag] connectMeshcop CLOSE ${address}:${port}`);
                 await coap.close();
             },
         };

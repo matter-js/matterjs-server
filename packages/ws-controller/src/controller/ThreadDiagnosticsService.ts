@@ -172,19 +172,19 @@ export class ThreadDiagnosticsService {
         const xp = key.toUpperCase();
         const force = opts?.force === true;
 
-        logger.info(`[ThreadDiag] getOrFetch xp=${xp} force=${force}`);
+        logger.debug(`[ThreadDiag] getOrFetch xp=${xp} force=${force}`);
 
         if (!force) {
             const cached = this.#cache.get(key);
             if (cached !== undefined && Date.now() - cached.collectedAt < this.#cacheTtlMs) {
-                logger.info(
+                logger.debug(
                     `[ThreadDiag] cache HIT xp=${xp} age=${Date.now() - cached.collectedAt}ms source=${cached.source} nodes=${cached.nodes.length}`,
                 );
                 return cached;
             }
             const inFlight = this.#streamsInFlight.get(key);
             if (inFlight !== undefined) {
-                logger.info(`[ThreadDiag] join in-flight stream xp=${xp}`);
+                logger.debug(`[ThreadDiag] join in-flight stream xp=${xp}`);
                 return inFlight.firstBatch;
             }
         }
@@ -210,7 +210,7 @@ export class ThreadDiagnosticsService {
         }
 
         const networkName = br.networkName ?? this.#cache.get(key)?.networkName ?? "";
-        logger.info(
+        logger.debug(
             `[ThreadDiag] BR picked xp=${xp} network="${networkName}" host="${br.hostname ?? "?"}" candidates=${matchingBrs.length}`,
         );
 
@@ -226,7 +226,7 @@ export class ThreadDiagnosticsService {
             }
             const existing = this.#streamsInFlight.get(key);
             if (existing !== undefined) {
-                logger.info(`[ThreadDiag] force=true canceling in-flight stream xp=${xp}`);
+                logger.debug(`[ThreadDiag] force=true canceling in-flight stream xp=${xp}`);
                 await existing.cancel();
             }
         }
@@ -244,7 +244,7 @@ export class ThreadDiagnosticsService {
         const restCap = this.#restCaps.get(extPanIdHex);
 
         if (restCap !== undefined) {
-            logger.info(`[ThreadDiag] source=REST xp=${xp} baseUrl=${restCap.baseUrl}`);
+            logger.debug(`[ThreadDiag] source=REST xp=${xp} baseUrl=${restCap.baseUrl}`);
             return this.#launchStream(extPanIdHex, networkName, "otbr-rest", async () => ({
                 source: this.#opts.makeRestSource(restCap),
                 close: async () => {},
@@ -264,7 +264,7 @@ export class ThreadDiagnosticsService {
             };
         }
 
-        logger.info(`[ThreadDiag] source=MeshCoP xp=${xp} pskc-registered=true candidates=${brs.length}`);
+        logger.debug(`[ThreadDiag] source=MeshCoP xp=${xp} pskc-registered=true candidates=${brs.length}`);
         return this.#launchStream(extPanIdHex, networkName, "meshcop", () =>
             this.#acquireMeshcopWithFallback(xp, creds, brs),
         );
@@ -340,7 +340,7 @@ export class ThreadDiagnosticsService {
                     windowMs: this.#windowMs,
                 });
                 await this.#driveStream(extPanIdHex, networkName, sourceKind, activeHandle, resolveFirstBatchOnce);
-                logger.info(`[ThreadDiag] ${sourceKind} DONE xp=${xp} duration=${Date.now() - start}ms`);
+                logger.debug(`[ThreadDiag] ${sourceKind} DONE xp=${xp} duration=${Date.now() - start}ms`);
             } catch (err) {
                 logger.warn(`[ThreadDiag] ${sourceKind} FAIL xp=${xp} duration=${Date.now() - start}ms: ${err}`);
                 const reason = sourceKind === "otbr-rest" ? mapRestError(err) : mapMeshcopError(err);
@@ -405,7 +405,7 @@ export class ThreadDiagnosticsService {
             if (debounceTimer !== undefined) clearTimeout(debounceTimer);
             debounceTimer = setTimeout(() => {
                 debounceTimer = undefined;
-                logger.info(`[ThreadDiag] stream debounced flush xp=${xp} acc=${acc.size}`);
+                logger.debug(`[ThreadDiag] stream debounced flush xp=${xp} acc=${acc.size}`);
                 this.#publish(snapshot("in_progress"));
             }, this.#debounceMs);
         };
@@ -420,7 +420,7 @@ export class ThreadDiagnosticsService {
             const isNew = !acc.has(key);
             acc.set(key, node);
             const rloc = node.rloc16 !== undefined ? `0x${node.rloc16.toString(16).padStart(4, "0")}` : "?";
-            logger.info(
+            logger.debug(
                 `[ThreadDiag] stream arrival xp=${xp} source=${sourceKind} mac=${key} rloc16=${rloc} new=${isNew} acc=${acc.size} t+${Date.now() - streamStart}ms`,
             );
             if (firstBatchFired) {
@@ -434,7 +434,7 @@ export class ThreadDiagnosticsService {
         const firstBatchTimer = setTimeout(() => {
             firstBatchFired = true;
             const reason = acc.size === 0 ? "meshcop_no_responses_yet" : "in_progress";
-            logger.info(
+            logger.debug(
                 `[ThreadDiag] stream firstBatch xp=${xp} acc=${acc.size} partial=${reason} t+${Date.now() - streamStart}ms`,
             );
             resolveFirstBatch(this.#publish(snapshot(reason)));
@@ -451,7 +451,7 @@ export class ThreadDiagnosticsService {
         }
 
         firstBatchFired = true;
-        logger.info(`[ThreadDiag] stream final xp=${xp} acc=${acc.size} t+${Date.now() - streamStart}ms`);
+        logger.info(`[ThreadDiag] ${sourceKind} OK xp=${xp} nodes=${acc.size} t+${Date.now() - streamStart}ms`);
         const finalBatch = this.#publish(snapshot(undefined));
         resolveFirstBatch(finalBatch);
     }
@@ -542,7 +542,7 @@ export class ThreadDiagnosticsService {
 
     #publish(batch: ThreadDiagnosticsBatch): ThreadDiagnosticsBatch {
         this.#cache.set(batch.extPanIdHex, batch);
-        logger.info(
+        logger.debug(
             `[ThreadDiag] publish xp=${batch.extPanIdHex.toUpperCase()} source=${batch.source} nodes=${batch.nodes.length}${batch.partialReason ? ` partial=${batch.partialReason}` : ""}`,
         );
         if (batch.nodes.length > 0) {
@@ -562,7 +562,7 @@ export class ThreadDiagnosticsService {
                     totalChildTableEntries += n.childTable.length;
                 }
             }
-            logger.info(
+            logger.debug(
                 `[ThreadDiag] batch contents xp=${batch.extPanIdHex.toUpperCase()} connectivity=${withConnectivity}/${batch.nodes.length} route64=${withRoute64}/${batch.nodes.length} (${totalRoute64Entries} entries) childTable=${withChildTable}/${batch.nodes.length} (${totalChildTableEntries} entries)`,
             );
         }

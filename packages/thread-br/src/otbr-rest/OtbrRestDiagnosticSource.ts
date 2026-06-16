@@ -68,14 +68,14 @@ export class OtbrRestDiagnosticSource implements DiagnosticSource {
         });
 
         const start = Date.now();
-        logger.info(`[ThreadDiag] REST GET /diagnostics ${this.#capability.baseUrl}`);
+        logger.debug(`[ThreadDiag] REST GET /diagnostics ${this.#capability.baseUrl}`);
         void (async () => {
             try {
                 const list = await this.#client.getDiagnostics();
                 for (const entry of list) {
                     onNode.emit(translateNodeJson(entry));
                 }
-                logger.info(`[ThreadDiag] REST /diagnostics OK nodes=${list.length} duration=${Date.now() - start}ms`);
+                logger.debug(`[ThreadDiag] REST /diagnostics OK nodes=${list.length} duration=${Date.now() - start}ms`);
                 resolveDone();
             } catch (err) {
                 const e = err instanceof Error ? err : new Error(String(err));
