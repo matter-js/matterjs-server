@@ -418,24 +418,51 @@ export class ThreadGraph extends BaseNetworkGraph {
             }
         }
 
-        // Diagnostic-only mesh nodes: nodes seen in route64/childTable diagnostics that
-        // are not yet commissioned or present in neighbor tables. Only show when they
-        // have at least one cross-witnessed edge (connectedIds guard below).
-        const connectedIds = new Set<string>();
+        // Diagnostic-only mesh nodes show only when reachable — through live
+        // (non-"none") edges — from a commissioned Matter device. A bare "has any
+        // live edge" test fails for a foreign island whose only neighbour is itself
+        // unrendered (e.g. a NEST leader linking to a BR no Matter device is on):
+        // the edge dangles to a non-existent node and the leader floats. Reachability
+        // from a Matter anchor hides such islands while keeping diagnostic routers
+        // that attach to our own networks (directly or via another diagnostic hop).
+        const adjacency = new Map<string, Set<string>>();
+        const addAdjacency = (a: string, b: string): void => {
+            let peers = adjacency.get(a);
+            if (peers === undefined) {
+                peers = new Set<string>();
+                adjacency.set(a, peers);
+            }
+            peers.add(b);
+        };
         for (const pair of this._edgePairs.values()) {
-            // A no-link (LQI=0 -> "none") edge is filtered out before render, so it
-            // does not count as cross-witness — otherwise its endpoints would show as
-            // isolated orphans.
             const live =
                 (pair.edgeAB !== undefined && pair.edgeAB.signalLevel !== "none") ||
                 (pair.edgeBA !== undefined && pair.edgeBA.signalLevel !== "none");
-            if (live) {
-                connectedIds.add(pair.nodeA);
-                connectedIds.add(pair.nodeB);
+            if (!live) continue;
+            addAdjacency(pair.nodeA, pair.nodeB);
+            addAdjacency(pair.nodeB, pair.nodeA);
+        }
+        const reachableIds = new Set<string>();
+        const frontier = new Array<string>();
+        for (const node of threadNodes) {
+            const id = String(node.node_id);
+            if (!hiddenNodeIds.has(id)) {
+                reachableIds.add(id);
+                frontier.push(id);
+            }
+        }
+        for (let i = 0; i < frontier.length; i++) {
+            const peers = adjacency.get(frontier[i]);
+            if (peers === undefined) continue;
+            for (const peer of peers) {
+                if (!reachableIds.has(peer)) {
+                    reachableIds.add(peer);
+                    frontier.push(peer);
+                }
             }
         }
         for (const meshNode of diagnosticMeshNodes) {
-            const hidden = !connectedIds.has(meshNode.id);
+            const hidden = !reachableIds.has(meshNode.id);
             if (hidden) hiddenNodeIds.add(meshNode.id);
             const idTail =
                 meshNode.extAddressHex !== undefined
