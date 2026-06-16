@@ -78,6 +78,18 @@ export async function ensureBindingAcl(
     cluster: number | undefined,
 ): Promise<void> {
     const acl = await freshOurAcl(client, targetNodeId);
+
+    // Duplicate check: if an existing entry already grants the source Operate+ access to this
+    // endpoint/cluster (or wider), no ACL change is needed.
+    const alreadyGranted = acl.some(
+        e =>
+            e.authMode === AuthMode.Case &&
+            e.privilege >= Privilege.Operate &&
+            subjectsInclude(e, sourceNodeId) &&
+            entryMatchesTarget(e, targetEndpoint, cluster),
+    );
+    if (alreadyGranted) return;
+
     const targetsMax = aclTargetsMax(client, targetNodeId);
     const reusable = acl.find(
         e =>
@@ -134,6 +146,15 @@ export async function addBinding(
     await ensureBindingAcl(client, sourceNode.node_id, targetNodeId, targetEndpoint, cluster);
 
     const bindings = await freshOurBindings(client, sourceNode.node_id, sourceEndpoint);
+    const targetKey = nodeIdKey(targetNodeId);
+    const exists = bindings.some(
+        b =>
+            b.node != null &&
+            nodeIdKey(b.node) === targetKey &&
+            b.endpoint === targetEndpoint &&
+            (b.cluster ?? undefined) === cluster,
+    );
+    if (exists) return;
     bindings.push({ node: targetNodeId, group: undefined, endpoint: targetEndpoint, cluster, fabricIndex: undefined });
     await client.setNodeBinding(sourceNode.node_id, sourceEndpoint, bindings.map(toBindingTarget));
 }
