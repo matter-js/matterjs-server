@@ -58,6 +58,16 @@ export function entriesForFabric(
     return entries.filter(e => e.fabricIndex === fabricIndex);
 }
 
+/**
+ * The device-side fabric index for our controller's fabric, read from CurrentFabricIndex (0/62/5).
+ * ACL/Binding entries carry this index in their fabricIndex field — NOT the controller's own
+ * fabric-table index (serverInfo.fabric_index), which lives in a different numbering space.
+ */
+export function nodeFabricIndex(node: MatterNode): number | undefined {
+    const v = node.attributes["0/62/5"];
+    return typeof v === "number" ? v : undefined;
+}
+
 export function isWholeNode(entry: AccessControlEntryStruct): boolean {
     return !entry.targets || entry.targets.length === 0;
 }

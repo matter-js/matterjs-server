@@ -24,6 +24,7 @@ import {
     entriesForFabric,
     isProtectedAdmin,
     isWholeNode,
+    nodeFabricIndex,
     nodeIdKey,
     readAclEntries,
 } from "../../../util/access-control.js";
@@ -72,12 +73,8 @@ class AccessControlClusterCommands extends BaseClusterCommands {
         return this.client.serverInfo?.controller_node_id;
     }
 
-    private get _fabricIndex(): number | undefined {
-        return this.client.serverInfo?.fabric_index;
-    }
-
     private _entries(): AccessControlEntryStruct[] {
-        return entriesForFabric(readAclEntries(this.node), this._fabricIndex);
+        return entriesForFabric(readAclEntries(this.node), nodeFabricIndex(this.node));
     }
 
     private _clusterName(id: number | undefined): string {

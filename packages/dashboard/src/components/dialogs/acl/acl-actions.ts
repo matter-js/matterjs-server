@@ -5,7 +5,14 @@
  */
 
 import { AccessControlEntry, MatterClient } from "@matter-server/ws-client";
-import { Privilege, aclEntryKey, attributeArray } from "../../../util/access-control.js";
+import {
+    Privilege,
+    aclEntryKey,
+    attributeArray,
+    entriesForFabric,
+    nodeFabricIndex,
+    nodeIdKey,
+} from "../../../util/access-control.js";
 import { AccessControlEntryDataTransformer, type AccessControlEntryStruct } from "./model.js";
 
 function toApiAcl(e: AccessControlEntryStruct): AccessControlEntry {
@@ -22,9 +29,12 @@ function toApiAcl(e: AccessControlEntryStruct): AccessControlEntry {
     };
 }
 
-async function freshAcl(client: MatterClient, nodeId: number | bigint): Promise<AccessControlEntryStruct[]> {
+/** Read the node's ACL fresh (explicit reads are not fabric-filtered) and narrow to our fabric. */
+async function freshOurAcl(client: MatterClient, nodeId: number | bigint): Promise<AccessControlEntryStruct[]> {
     const res = await client.readAttribute(nodeId, "0/31/0");
-    return attributeArray(res["0/31/0"]).map(v => AccessControlEntryDataTransformer.transform(v));
+    const all = attributeArray(res["0/31/0"]).map(v => AccessControlEntryDataTransformer.transform(v));
+    const node = client.nodes[nodeIdKey(nodeId)];
+    return entriesForFabric(all, node ? nodeFabricIndex(node) : undefined);
 }
 
 export async function addAclEntry(
@@ -32,13 +42,13 @@ export async function addAclEntry(
     nodeId: number | bigint,
     entry: AccessControlEntryStruct,
 ): Promise<void> {
-    const acl = await freshAcl(client, nodeId);
+    const acl = await freshOurAcl(client, nodeId);
     acl.push(entry);
     await client.setACLEntry(nodeId, acl.map(toApiAcl));
 }
 
 export async function deleteAclEntry(client: MatterClient, nodeId: number | bigint, key: string): Promise<void> {
-    const acl = await freshAcl(client, nodeId);
+    const acl = await freshOurAcl(client, nodeId);
     let removed = false;
     const kept = acl.filter(e => {
         if (!removed && aclEntryKey(e) === key) {
@@ -56,7 +66,7 @@ export async function downgradeToOperate(
     nodeId: number | bigint,
     keys: Set<string>,
 ): Promise<void> {
-    const acl = await freshAcl(client, nodeId);
+    const acl = await freshOurAcl(client, nodeId);
     const updated = acl.map(e => (keys.has(aclEntryKey(e)) ? { ...e, privilege: Privilege.Operate } : e));
     await client.setACLEntry(nodeId, updated.map(toApiAcl));
 }

@@ -109,9 +109,8 @@ export class NodeBindingDialog extends LitElement {
             cluster = parseInt(this._clusterSelection, 10);
         }
 
-        const fabricIndex = this.client.serverInfo?.fabric_index;
         if (target) {
-            const capacity = targetAclCapacityForBinding(target, this.node!.node_id, fabricIndex);
+            const capacity = targetAclCapacityForBinding(target, this.node!.node_id);
             if (!capacity.canAdd) {
                 await showAlertDialog({ title: "Cannot add binding", text: capacity.reason ?? "Target ACL is full." });
                 return;
@@ -120,7 +119,7 @@ export class NodeBindingDialog extends LitElement {
 
         this._busy = true;
         try {
-            await addBinding(this.client, this.node!, this.endpoint, targetNodeId, endpoint, cluster, fabricIndex);
+            await addBinding(this.client, this.node!, this.endpoint, targetNodeId, endpoint, cluster);
             this._close();
         } catch (err) {
             await showAlertDialog({

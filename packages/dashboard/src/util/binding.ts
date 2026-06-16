@@ -14,6 +14,7 @@ import {
     entriesForFabric,
     entryMatchesTarget,
     isWholeNode,
+    nodeFabricIndex,
     nodeIdKey,
     readAclEntries,
     subjectsInclude,
@@ -98,10 +99,9 @@ export function reverseAclState(
     sourceNodeId: number | bigint,
     binding: BindingEntryStruct,
     targetNode: MatterNode | undefined,
-    fabricIndex?: number,
 ): ReverseAclResult {
     if (!targetNode || !targetNode.available) return { state: "cannotVerify" };
-    const matching = entriesForFabric(readAclEntries(targetNode), fabricIndex).filter(
+    const matching = entriesForFabric(readAclEntries(targetNode), nodeFabricIndex(targetNode)).filter(
         e =>
             e.authMode === AuthMode.Case &&
             subjectsInclude(e, sourceNodeId) &&
@@ -157,12 +157,8 @@ export interface AddBindingCapacity {
  * A new binding consumes a target ACL slot only when no existing our-fabric Operate+ entry for the
  * source can absorb it — mirrors the merge behavior the writer implements.
  */
-export function targetAclCapacityForBinding(
-    targetNode: MatterNode,
-    sourceNodeId: number | bigint,
-    fabricIndex?: number,
-): AddBindingCapacity {
-    const entries = entriesForFabric(readAclEntries(targetNode), fabricIndex);
+export function targetAclCapacityForBinding(targetNode: MatterNode, sourceNodeId: number | bigint): AddBindingCapacity {
+    const entries = entriesForFabric(readAclEntries(targetNode), nodeFabricIndex(targetNode));
     const targetsMaxRaw = targetNode.attributes["0/31/3"];
     const targetsMax = typeof targetsMaxRaw === "number" && targetsMaxRaw > 0 ? targetsMaxRaw : Number.MAX_SAFE_INTEGER;
     const reusable = entries.some(

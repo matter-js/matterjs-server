@@ -12,6 +12,7 @@ import {
     entriesForFabric,
     entryMatchesTarget,
     isWholeNode,
+    nodeFabricIndex,
     nodeIdKey,
     subjectsInclude,
 } from "../../../util/access-control.js";
@@ -36,25 +37,38 @@ function toApiAcl(e: AccessControlEntryStruct): AccessControlEntry {
     };
 }
 
-async function freshAcl(client: MatterClient, nodeId: number | bigint): Promise<AccessControlEntryStruct[]> {
-    const res = await client.readAttribute(nodeId, "0/31/0");
-    return attributeArray(res["0/31/0"]).map(v => AccessControlEntryDataTransformer.transform(v));
+function fabricOf(client: MatterClient, nodeId: number | bigint): number | undefined {
+    const node = client.nodes[nodeIdKey(nodeId)];
+    return node ? nodeFabricIndex(node) : undefined;
 }
 
-async function freshBindings(
+/** Read the node's ACL fresh (explicit reads are not fabric-filtered) and narrow to our fabric. */
+async function freshOurAcl(client: MatterClient, nodeId: number | bigint): Promise<AccessControlEntryStruct[]> {
+    const res = await client.readAttribute(nodeId, "0/31/0");
+    const all = attributeArray(res["0/31/0"]).map(v => AccessControlEntryDataTransformer.transform(v));
+    return entriesForFabric(all, fabricOf(client, nodeId));
+}
+
+async function freshOurBindings(
     client: MatterClient,
     nodeId: number | bigint,
     endpoint: number,
 ): Promise<BindingEntryStruct[]> {
     const res = await client.readAttribute(nodeId, `${endpoint}/30/0`);
-    return attributeArray(res[`${endpoint}/30/0`]).map(v => BindingEntryDataTransformer.transform(v));
+    const all = attributeArray(res[`${endpoint}/30/0`]).map(v => BindingEntryDataTransformer.transform(v));
+    const fabricIndex = fabricOf(client, nodeId);
+    return fabricIndex === undefined ? all : all.filter(b => b.fabricIndex === fabricIndex);
 }
 
-/**
- * Grant the source Operate access to the target (merging into an existing subject entry where
- * possible so no extra ACL slot is consumed), then add the binding. Both writes read the current
- * list fresh first to avoid clobbering concurrent changes.
- */
+function hasTarget(e: AccessControlEntryStruct, endpoint: number, cluster: number | undefined): boolean {
+    return (e.targets ?? []).some(t => t.endpoint === endpoint && (t.cluster ?? undefined) === cluster);
+}
+
+function aclTargetsMax(client: MatterClient, nodeId: number | bigint): number {
+    const raw = client.nodes[nodeIdKey(nodeId)]?.attributes["0/31/3"];
+    return typeof raw === "number" && raw > 0 ? raw : Number.MAX_SAFE_INTEGER;
+}
+
 /** Ensure the target grants the source an Operate ACL for {endpoint, cluster}, merging where possible. */
 export async function ensureBindingAcl(
     client: MatterClient,
@@ -62,9 +76,8 @@ export async function ensureBindingAcl(
     targetNodeId: number | bigint,
     targetEndpoint: number,
     cluster: number | undefined,
-    fabricIndex?: number,
 ): Promise<void> {
-    const acl = entriesForFabric(await freshAcl(client, targetNodeId), fabricIndex);
+    const acl = await freshOurAcl(client, targetNodeId);
     const targetsMax = aclTargetsMax(client, targetNodeId);
     const reusable = acl.find(
         e =>
@@ -97,9 +110,8 @@ export async function fixOverPrivilegedBindingAcl(
     targetNodeId: number | bigint,
     targetEndpoint: number,
     cluster: number | undefined,
-    fabricIndex?: number,
 ): Promise<void> {
-    const acl = entriesForFabric(await freshAcl(client, targetNodeId), fabricIndex);
+    const acl = await freshOurAcl(client, targetNodeId);
     const updated = acl.map(e =>
         e.authMode === AuthMode.Case &&
         subjectsInclude(e, sourceNodeId) &&
@@ -118,36 +130,25 @@ export async function addBinding(
     targetNodeId: number | bigint,
     targetEndpoint: number,
     cluster: number | undefined,
-    fabricIndex?: number,
 ): Promise<void> {
-    await ensureBindingAcl(client, sourceNode.node_id, targetNodeId, targetEndpoint, cluster, fabricIndex);
+    await ensureBindingAcl(client, sourceNode.node_id, targetNodeId, targetEndpoint, cluster);
 
-    const bindings = await freshBindings(client, sourceNode.node_id, sourceEndpoint);
+    const bindings = await freshOurBindings(client, sourceNode.node_id, sourceEndpoint);
     bindings.push({ node: targetNodeId, group: undefined, endpoint: targetEndpoint, cluster, fabricIndex: undefined });
     await client.setNodeBinding(sourceNode.node_id, sourceEndpoint, bindings.map(toBindingTarget));
 }
 
-function hasTarget(e: AccessControlEntryStruct, endpoint: number, cluster: number | undefined): boolean {
-    return (e.targets ?? []).some(t => t.endpoint === endpoint && (t.cluster ?? undefined) === cluster);
-}
-
-function aclTargetsMax(client: MatterClient, nodeId: number | bigint): number {
-    const raw = client.nodes[nodeIdKey(nodeId)]?.attributes["0/31/3"];
-    return typeof raw === "number" && raw > 0 ? raw : Number.MAX_SAFE_INTEGER;
-}
-
 /**
- * Remove the binding at `index`, then drop the matching target endpoint from the source's ACL
- * entry on the (binding) target node. Matches on the binding's TARGET endpoint.
+ * Remove the binding at `index`, then drop the matching target from the source's ACL entry on the
+ * (binding) target node. Matches on the binding's TARGET endpoint + cluster.
  */
 export async function deleteBindingAtIndex(
     client: MatterClient,
     sourceNode: MatterNode,
     sourceEndpoint: number,
     index: number,
-    fabricIndex?: number,
 ): Promise<void> {
-    const bindings = await freshBindings(client, sourceNode.node_id, sourceEndpoint);
+    const bindings = await freshOurBindings(client, sourceNode.node_id, sourceEndpoint);
     const removed = bindings[index];
     if (!removed) return;
     const updated = [...bindings.slice(0, index), ...bindings.slice(index + 1)];
@@ -156,7 +157,7 @@ export async function deleteBindingAtIndex(
     if (removed.node == null || removed.endpoint == null) return;
     const targetEndpoint = removed.endpoint;
     const removedCluster = removed.cluster ?? undefined;
-    const acl = entriesForFabric(await freshAcl(client, removed.node), fabricIndex);
+    const acl = await freshOurAcl(client, removed.node);
     const kept = acl
         .map(e => {
             if (!subjectsInclude(e, sourceNode.node_id) || isWholeNode(e)) return e;

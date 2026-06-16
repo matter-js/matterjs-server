@@ -107,34 +107,16 @@ class BindingClusterCommands extends BaseClusterCommands {
             confirmText: "Remove",
         });
         if (!confirmed) return;
-        await this._run(
-            () =>
-                deleteBindingAtIndex(
-                    this.client,
-                    this.node,
-                    this.endpoint,
-                    index,
-                    this.client.serverInfo?.fabric_index,
-                ),
-            "Delete failed",
-        );
+        await this._run(() => deleteBindingAtIndex(this.client, this.node, this.endpoint, index), "Delete failed");
     }
 
     private async _fixAcl(b: BindingEntryStruct, mode: "missing" | "overPrivileged") {
         if (b.node == null || b.endpoint == null) return;
-        const fabricIndex = this.client.serverInfo?.fabric_index;
         await this._run(
             () =>
                 mode === "missing"
-                    ? ensureBindingAcl(this.client, this.node.node_id, b.node!, b.endpoint!, b.cluster, fabricIndex)
-                    : fixOverPrivilegedBindingAcl(
-                          this.client,
-                          this.node.node_id,
-                          b.node!,
-                          b.endpoint!,
-                          b.cluster,
-                          fabricIndex,
-                      ),
+                    ? ensureBindingAcl(this.client, this.node.node_id, b.node!, b.endpoint!, b.cluster)
+                    : fixOverPrivilegedBindingAcl(this.client, this.node.node_id, b.node!, b.endpoint!, b.cluster),
             "Fix failed",
         );
     }
@@ -142,7 +124,6 @@ class BindingClusterCommands extends BaseClusterCommands {
     override render() {
         if (!this.node || this.cluster !== CLUSTER_ID) return nothing;
         const bindings = readBindings(this.node, this.endpoint);
-        const fabricIndex = this.client.serverInfo?.fabric_index;
 
         return html`
             <details class="command-panel">
@@ -161,7 +142,7 @@ class BindingClusterCommands extends BaseClusterCommands {
                                   </tr>
                               </thead>
                               <tbody>
-                                  ${bindings.map((b, i) => this._row(b, i, fabricIndex))}
+                                  ${bindings.map((b, i) => this._row(b, i))}
                               </tbody>
                           </table>`}
                     <md-outlined-button
@@ -174,10 +155,10 @@ class BindingClusterCommands extends BaseClusterCommands {
         `;
     }
 
-    private _row(b: BindingEntryStruct, index: number, fabricIndex?: number): TemplateResult {
+    private _row(b: BindingEntryStruct, index: number): TemplateResult {
         const target = this._targetNode(b.node);
         const aclState: ReverseAclState =
-            b.node == null ? "cannotVerify" : reverseAclState(this.node.node_id, b, target, fabricIndex).state;
+            b.node == null ? "cannotVerify" : reverseAclState(this.node.node_id, b, target).state;
         const name = b.group != null ? `Group ${b.group}` : target ? target.nodeLabel || "Unknown" : "Unknown node";
         const endpointText =
             b.endpoint == null
