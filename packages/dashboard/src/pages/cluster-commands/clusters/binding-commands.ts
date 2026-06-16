@@ -6,12 +6,17 @@
 
 import "@material/web/button/outlined-button";
 import { mdiTrashCan } from "@mdi/js";
-import { css, html, nothing, type CSSResultGroup } from "lit";
+import { css, html, nothing, type CSSResultGroup, type TemplateResult } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import "../../../components/ha-svg-icon.js";
 import { clusters } from "../../../client/models/descriptions.js";
 import { showAlertDialog, showPromptDialog } from "../../../components/dialog-box/show-dialog-box.js";
-import { deleteBindingAtIndex } from "../../../components/dialogs/binding/binding-actions.js";
+import {
+    deleteBindingAtIndex,
+    ensureBindingAcl,
+    fixOverPrivilegedBindingAcl,
+} from "../../../components/dialogs/binding/binding-actions.js";
+import type { BindingEntryStruct } from "../../../components/dialogs/binding/model.js";
 import { showNodeBindingDialog } from "../../../components/dialogs/binding/show-node-binding-dialog.js";
 import { nodeIdKey } from "../../../util/access-control.js";
 import { handleAsync } from "../../../util/async-handler.js";
@@ -25,6 +30,7 @@ const CLUSTER_ID = 30;
 @customElement("binding-cluster-commands")
 class BindingClusterCommands extends BaseClusterCommands {
     private _unsubscribe?: () => void;
+    private _loadedKey = "";
     @state() private _busy = false;
 
     override updated(changed: Map<string, unknown>) {
@@ -32,11 +38,41 @@ class BindingClusterCommands extends BaseClusterCommands {
         if (changed.has("client") && this.client && !this._unsubscribe) {
             this._unsubscribe = this.client.addEventListener("nodes_changed", () => this.requestUpdate());
         }
+        void this._ensureLoaded();
     }
 
     override disconnectedCallback() {
         super.disconnectedCallback();
         this._unsubscribe?.();
+    }
+
+    /** Read the (fabric-scoped) binding attribute and each target's ACL into the cache on open. */
+    private async _ensureLoaded() {
+        if (!this.client || !this.node || this.endpoint === undefined) return;
+        const key = `${nodeIdKey(this.node.node_id)}/${this.endpoint}`;
+        if (this._loadedKey === key) return;
+        this._loadedKey = key;
+        try {
+            await this._readInto(this.node.node_id, `${this.endpoint}/30/0`);
+            const targets = new Set(
+                readBindings(this.node, this.endpoint)
+                    .map(b => (b.node != null ? nodeIdKey(b.node) : undefined))
+                    .filter((k): k is string => k !== undefined),
+            );
+            for (const k of targets) {
+                const id = this.client.nodes[k]?.node_id;
+                if (id != null) await this._readInto(id, "0/31/0");
+            }
+            this.requestUpdate();
+        } catch (err) {
+            console.error("Failed to load binding/ACL data", err);
+        }
+    }
+
+    private async _readInto(nodeId: number | bigint, path: string) {
+        const res = await this.client.readAttribute(nodeId, path);
+        const node = this.client.nodes[nodeIdKey(nodeId)];
+        if (node) for (const [k, v] of Object.entries(res)) node.attributes[k] = v;
     }
 
     private _clusterName(id: number | undefined): string {
@@ -53,6 +89,17 @@ class BindingClusterCommands extends BaseClusterCommands {
         await showNodeBindingDialog(this.node, this.endpoint);
     }
 
+    private async _run(action: () => Promise<void>, failTitle: string) {
+        this._busy = true;
+        try {
+            await action();
+        } catch (err) {
+            await showAlertDialog({ title: failTitle, text: err instanceof Error ? err.message : String(err) });
+        } finally {
+            this._busy = false;
+        }
+    }
+
     private async _delete(index: number) {
         const confirmed = await showPromptDialog({
             title: "Remove binding",
@@ -60,20 +107,36 @@ class BindingClusterCommands extends BaseClusterCommands {
             confirmText: "Remove",
         });
         if (!confirmed) return;
-        this._busy = true;
-        try {
-            await deleteBindingAtIndex(
-                this.client,
-                this.node,
-                this.endpoint,
-                index,
-                this.client.serverInfo?.fabric_index,
-            );
-        } catch (err) {
-            await showAlertDialog({ title: "Delete failed", text: err instanceof Error ? err.message : String(err) });
-        } finally {
-            this._busy = false;
-        }
+        await this._run(
+            () =>
+                deleteBindingAtIndex(
+                    this.client,
+                    this.node,
+                    this.endpoint,
+                    index,
+                    this.client.serverInfo?.fabric_index,
+                ),
+            "Delete failed",
+        );
+    }
+
+    private async _fixAcl(b: BindingEntryStruct, mode: "missing" | "overPrivileged") {
+        if (b.node == null || b.endpoint == null) return;
+        const fabricIndex = this.client.serverInfo?.fabric_index;
+        await this._run(
+            () =>
+                mode === "missing"
+                    ? ensureBindingAcl(this.client, this.node.node_id, b.node!, b.endpoint!, b.cluster, fabricIndex)
+                    : fixOverPrivilegedBindingAcl(
+                          this.client,
+                          this.node.node_id,
+                          b.node!,
+                          b.endpoint!,
+                          b.cluster,
+                          fabricIndex,
+                      ),
+            "Fix failed",
+        );
     }
 
     override render() {
@@ -82,7 +145,7 @@ class BindingClusterCommands extends BaseClusterCommands {
         const fabricIndex = this.client.serverInfo?.fabric_index;
 
         return html`
-            <details class="command-panel" open>
+            <details class="command-panel">
                 <summary>Bindings (${bindings.length})</summary>
                 <div class="command-content">
                     ${bindings.length === 0
@@ -111,16 +174,10 @@ class BindingClusterCommands extends BaseClusterCommands {
         `;
     }
 
-    private _row(b: ReturnType<typeof readBindings>[number], index: number, fabricIndex?: number) {
+    private _row(b: BindingEntryStruct, index: number, fabricIndex?: number): TemplateResult {
         const target = this._targetNode(b.node);
         const aclState: ReverseAclState =
             b.node == null ? "cannotVerify" : reverseAclState(this.node.node_id, b, target, fabricIndex).state;
-        const aclChip =
-            aclState === "present"
-                ? html`<span class="chip ok">ACL present</span>`
-                : aclState === "missing"
-                  ? html`<span class="chip warn">ACL missing on target</span>`
-                  : html`<span class="chip mut">can't verify</span>`;
         const name = b.group != null ? `Group ${b.group}` : target ? target.nodeLabel || "Unknown" : "Unknown node";
         const endpointText =
             b.endpoint == null
@@ -131,7 +188,7 @@ class BindingClusterCommands extends BaseClusterCommands {
         return html`
             <tr>
                 <td>
-                    <span class="chip"
+                    <span class="ident"
                         ><b>${name}</b>${b.node != null
                             ? html` · <span class="nid">${b.node.toString()}</span>`
                             : nothing}</span
@@ -139,8 +196,8 @@ class BindingClusterCommands extends BaseClusterCommands {
                 </td>
                 <td>${endpointText}</td>
                 <td>${this._clusterName(b.cluster)}</td>
-                <td>${aclChip}</td>
-                <td>
+                <td>${this._aclCell(b, aclState)}</td>
+                <td class="actions">
                     <md-outlined-button
                         class="danger"
                         ?disabled=${this._busy || !this.node.available}
@@ -150,6 +207,22 @@ class BindingClusterCommands extends BaseClusterCommands {
                     </md-outlined-button>
                 </td>
             </tr>
+        `;
+    }
+
+    private _aclCell(b: BindingEntryStruct, state: ReverseAclState): TemplateResult {
+        if (state === "present") return html`<span class="status ok">ACL present</span>`;
+        if (state === "cannotVerify") return html`<span class="status mut">can't verify</span>`;
+        const label = state === "missing" ? "ACL missing" : "ACL > Operate";
+        const fixLabel = state === "missing" ? "Add ACL" : "→ Operate";
+        return html`
+            <span class="status warn">${label}</span>
+            <md-outlined-button
+                class="fix"
+                ?disabled=${this._busy || !this.node.available}
+                @click=${handleAsync(() => this._fixAcl(b, state))}
+                >${fixLabel}</md-outlined-button
+            >
         `;
     }
 
@@ -172,34 +245,34 @@ class BindingClusterCommands extends BaseClusterCommands {
             .bt td {
                 padding: 10px;
                 border-bottom: 1px solid var(--md-sys-color-outline-variant);
-                vertical-align: top;
+                vertical-align: middle;
             }
             .empty {
                 opacity: 0.6;
                 padding: 8px 0 12px;
             }
-            .chip {
-                display: inline-block;
-                padding: 3px 9px;
-                border-radius: 6px;
-                margin: 2px 4px 2px 0;
-                font-size: 12px;
-                background: var(--md-sys-color-surface-container-high);
-                color: var(--md-sys-color-on-surface);
+            .ident .nid {
+                font-weight: 600;
             }
-            .chip.ok {
-                background: var(--md-sys-color-tertiary-container);
-                color: var(--md-sys-color-on-tertiary-container);
+            .status {
+                font-size: inherit;
             }
-            .chip.warn {
-                background: var(--md-sys-color-error-container);
-                color: var(--md-sys-color-on-error-container);
+            .status.ok {
+                color: var(--md-sys-color-primary);
             }
-            .chip.mut {
+            .status.warn {
+                color: var(--md-sys-color-error);
+                margin-right: 8px;
+            }
+            .status.mut {
                 opacity: 0.6;
             }
-            .nid {
-                font-weight: 600;
+            .actions {
+                text-align: right;
+                white-space: nowrap;
+            }
+            md-outlined-button.fix {
+                --md-outlined-button-container-height: 28px;
             }
             md-outlined-button.danger {
                 --md-outlined-button-label-text-color: var(--md-sys-color-error);

@@ -5,6 +5,7 @@
  */
 
 import type { MatterNode } from "@matter-server/ws-client";
+import type { AccessControlEntryStruct } from "../components/dialogs/acl/model.js";
 import { BindingEntryDataTransformer, type BindingEntryStruct } from "../components/dialogs/binding/model.js";
 import {
     AuthMode,
@@ -13,6 +14,7 @@ import {
     entriesForFabric,
     entryMatchesTarget,
     isWholeNode,
+    nodeIdKey,
     readAclEntries,
     subjectsInclude,
 } from "./access-control.js";
@@ -79,12 +81,19 @@ export function bindableClusters(
     return { bindable, otherTarget };
 }
 
-export type ReverseAclState = "present" | "missing" | "cannotVerify";
+export type ReverseAclState = "present" | "missing" | "overPrivileged" | "cannotVerify";
 
 export interface ReverseAclResult {
     state: ReverseAclState;
 }
 
+/**
+ * Whether the target node's ACL grants the source the access this binding needs:
+ *  - present:        a matching CASE entry at Operate exists
+ *  - overPrivileged: the only matching grant is above Operate (Manage/Administer)
+ *  - missing:        no matching grant (or only below Operate)
+ *  - cannotVerify:   target node not known / offline
+ */
 export function reverseAclState(
     sourceNodeId: number | bigint,
     binding: BindingEntryStruct,
@@ -92,15 +101,51 @@ export function reverseAclState(
     fabricIndex?: number,
 ): ReverseAclResult {
     if (!targetNode || !targetNode.available) return { state: "cannotVerify" };
-    const entries = entriesForFabric(readAclEntries(targetNode), fabricIndex);
-    const found = entries.some(
+    const matching = entriesForFabric(readAclEntries(targetNode), fabricIndex).filter(
         e =>
             e.authMode === AuthMode.Case &&
-            e.privilege >= Privilege.Operate &&
             subjectsInclude(e, sourceNodeId) &&
             entryMatchesTarget(e, binding.endpoint ?? -1, binding.cluster),
     );
-    return { state: found ? "present" : "missing" };
+    const granting = matching.filter(e => e.privilege >= Privilege.Operate);
+    if (granting.length === 0) return { state: "missing" };
+    if (granting.some(e => e.privilege === Privilege.Operate)) return { state: "present" };
+    return { state: "overPrivileged" };
+}
+
+export type RelationshipKind = "none" | "backs" | "overPrivileged";
+
+export interface RelationshipResult {
+    kind: RelationshipKind;
+    sourceNodeId?: number | bigint;
+    sourceEndpoint?: number;
+}
+
+/**
+ * Whether an ACL entry on the viewed node backs a real binding from one of its subjects. Grants
+ * above Operate are flagged over-privileged (Operate is sufficient for a binding).
+ */
+export function detectBindingRelationship(
+    entry: AccessControlEntryStruct,
+    viewedNodeId: number | bigint,
+    allNodes: MatterNode[],
+): RelationshipResult {
+    if (entry.authMode !== AuthMode.Case) return { kind: "none" };
+    const viewedKey = nodeIdKey(viewedNodeId);
+
+    for (const subject of entry.subjects ?? []) {
+        const sourceKey = nodeIdKey(subject);
+        const source = allNodes.find(n => nodeIdKey(n.node_id) === sourceKey);
+        if (!source || !source.available) continue;
+        for (const { endpoint, binding } of readAllBindings(source)) {
+            if (binding.node == null) continue;
+            if (nodeIdKey(binding.node) !== viewedKey) continue;
+            if (!entryMatchesTarget(entry, binding.endpoint ?? -1, binding.cluster)) continue;
+            const kind: RelationshipKind = entry.privilege > Privilege.Operate ? "overPrivileged" : "backs";
+            return { kind, sourceNodeId: source.node_id, sourceEndpoint: endpoint };
+        }
+    }
+    return { kind: "none" };
 }
 
 export interface AddBindingCapacity {

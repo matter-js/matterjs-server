@@ -10,6 +10,7 @@ import {
     Privilege,
     attributeArray,
     entriesForFabric,
+    entryMatchesTarget,
     isWholeNode,
     nodeIdKey,
     subjectsInclude,
@@ -54,10 +55,10 @@ async function freshBindings(
  * possible so no extra ACL slot is consumed), then add the binding. Both writes read the current
  * list fresh first to avoid clobbering concurrent changes.
  */
-export async function addBinding(
+/** Ensure the target grants the source an Operate ACL for {endpoint, cluster}, merging where possible. */
+export async function ensureBindingAcl(
     client: MatterClient,
-    sourceNode: MatterNode,
-    sourceEndpoint: number,
+    sourceNodeId: number | bigint,
     targetNodeId: number | bigint,
     targetEndpoint: number,
     cluster: number | undefined,
@@ -69,7 +70,7 @@ export async function addBinding(
         e =>
             e.authMode === AuthMode.Case &&
             e.privilege >= Privilege.Operate &&
-            subjectsInclude(e, sourceNode.node_id) &&
+            subjectsInclude(e, sourceNodeId) &&
             (isWholeNode(e) || hasTarget(e, targetEndpoint, cluster) || (e.targets?.length ?? 0) < targetsMax),
     );
     if (reusable) {
@@ -81,12 +82,45 @@ export async function addBinding(
         acl.push({
             privilege: Privilege.Operate,
             authMode: AuthMode.Case,
-            subjects: [sourceNode.node_id],
+            subjects: [sourceNodeId],
             targets: [{ endpoint: targetEndpoint, cluster, deviceType: undefined }],
             fabricIndex: 0,
         });
     }
     await client.setACLEntry(targetNodeId, acl.map(toApiAcl));
+}
+
+/** Downgrade an over-privileged (>Operate) binding ACL on the target back to Operate. */
+export async function fixOverPrivilegedBindingAcl(
+    client: MatterClient,
+    sourceNodeId: number | bigint,
+    targetNodeId: number | bigint,
+    targetEndpoint: number,
+    cluster: number | undefined,
+    fabricIndex?: number,
+): Promise<void> {
+    const acl = entriesForFabric(await freshAcl(client, targetNodeId), fabricIndex);
+    const updated = acl.map(e =>
+        e.authMode === AuthMode.Case &&
+        subjectsInclude(e, sourceNodeId) &&
+        e.privilege > Privilege.Operate &&
+        entryMatchesTarget(e, targetEndpoint, cluster)
+            ? { ...e, privilege: Privilege.Operate }
+            : e,
+    );
+    await client.setACLEntry(targetNodeId, updated.map(toApiAcl));
+}
+
+export async function addBinding(
+    client: MatterClient,
+    sourceNode: MatterNode,
+    sourceEndpoint: number,
+    targetNodeId: number | bigint,
+    targetEndpoint: number,
+    cluster: number | undefined,
+    fabricIndex?: number,
+): Promise<void> {
+    await ensureBindingAcl(client, sourceNode.node_id, targetNodeId, targetEndpoint, cluster, fabricIndex);
 
     const bindings = await freshBindings(client, sourceNode.node_id, sourceEndpoint);
     bindings.push({ node: targetNodeId, group: undefined, endpoint: targetEndpoint, cluster, fabricIndex: undefined });

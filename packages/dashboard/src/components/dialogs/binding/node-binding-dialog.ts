@@ -48,7 +48,11 @@ export class NodeBindingDialog extends LitElement {
     private _knownNodes(): MatterNode[] {
         return Object.values(this.client.nodes)
             .filter(n => nodeIdKey(n.node_id) !== nodeIdKey(this.node!.node_id))
-            .sort((a, b) => (a.nodeLabel || "").localeCompare(b.nodeLabel || ""));
+            .sort((a, b) => {
+                const x = BigInt(a.node_id);
+                const y = BigInt(b.node_id);
+                return x < y ? -1 : x > y ? 1 : 0;
+            });
     }
 
     private _resolveTarget(): MatterNode | undefined {

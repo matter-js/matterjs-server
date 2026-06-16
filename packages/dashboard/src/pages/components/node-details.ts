@@ -13,13 +13,13 @@ import "@material/web/list/list";
 import "@material/web/list/list-item";
 import { consume } from "@lit/context";
 import { MatterClient, MatterNode, UpdateSource } from "@matter-server/ws-client";
-import { mdiChatProcessing, mdiLink, mdiPencil, mdiShareVariant, mdiTrashCan, mdiUpdate, mdiVideo } from "@mdi/js";
+import { mdiChatProcessing, mdiPencil, mdiShareVariant, mdiTrashCan, mdiUpdate, mdiVideo } from "@mdi/js";
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { clientContext, tickContext } from "../../client/client-context.js";
 import { DeviceType } from "../../client/models/descriptions.js";
 import { showAlertDialog, showPromptDialog } from "../../components/dialog-box/show-dialog-box.js";
-import { showNodeBindingDialog } from "../../components/dialogs/binding/show-node-binding-dialog.js";
+import "../cluster-commands/clusters/binding-commands.js";
 import { showNodeLabelDialog } from "../../components/dialogs/node-label-dialog/show-node-label-dialog.js";
 import { handleAsync } from "../../util/async-handler.js";
 import "../../components/ha-svg-icon";
@@ -79,7 +79,7 @@ export class NodeDetails extends LitElement {
     protected override render() {
         if (!this.node) return html``;
 
-        const bindings = this.node.attributes[this.endpoint + "/30/0"];
+        const hasBindingCluster = Object.keys(this.node.attributes).some(k => k.startsWith(`${this.endpoint}/30/`));
         const deviceTypeIds = getEndpointDeviceTypes(this.node, this.endpoint).map(d => d.id);
         const isCamera = deviceTypeIds.includes(0x0142) || deviceTypeIds.includes(0x0143);
 
@@ -159,15 +159,6 @@ export class NodeDetails extends LitElement {
                                   </md-outlined-button>
                               `
                             : nothing}
-                        ${bindings
-                            ? html`
-                                  <md-outlined-button @click=${handleAsync(() => this._binding())}>
-                                      Binding
-                                      <ha-svg-icon slot="icon" .path=${mdiLink}></ha-svg-icon>
-                                  </md-outlined-button>
-                              `
-                            : nothing}
-
                         <md-outlined-button @click=${handleAsync(() => this._openCommissioningWindow())}
                             >Share<ha-svg-icon slot="icon" .path=${mdiShareVariant}></ha-svg-icon
                         ></md-outlined-button>
@@ -177,6 +168,15 @@ export class NodeDetails extends LitElement {
                     </div>
                 </md-list-item>
             </md-list>
+            ${hasBindingCluster
+                ? html`<div style="margin: 8px 16px;">
+                      <binding-cluster-commands
+                          .node=${this.node}
+                          .endpoint=${this.endpoint}
+                          .cluster=${30}
+                      ></binding-cluster-commands>
+                  </div>`
+                : nothing}
         `;
     }
 
@@ -228,14 +228,6 @@ export class NodeDetails extends LitElement {
                 title: "Failed to remove node",
                 text: err.message,
             });
-        }
-    }
-
-    private async _binding() {
-        try {
-            showNodeBindingDialog(this.node!, this.endpoint);
-        } catch (err: unknown) {
-            console.error("Binding error:", err);
         }
     }
 

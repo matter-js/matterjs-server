@@ -10,7 +10,6 @@ import {
     Privilege,
     aclCapacity,
     aclEntryKey,
-    detectBindingRelationship,
     entriesForFabric,
     entryMatchesTarget,
     isProtectedAdmin,
@@ -18,6 +17,7 @@ import {
     nodeIdKey,
     readAclEntries,
 } from "../src/util/access-control.js";
+import { detectBindingRelationship } from "../src/util/binding.js";
 
 function node(
     attributes: Record<string, unknown>,

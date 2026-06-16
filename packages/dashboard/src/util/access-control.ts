@@ -6,7 +6,6 @@
 
 import type { MatterNode } from "@matter-server/ws-client";
 import { AccessControlEntryDataTransformer, type AccessControlEntryStruct } from "../components/dialogs/acl/model.js";
-import { readAllBindings } from "./binding.js";
 
 export enum Privilege {
     View = 1,
@@ -35,14 +34,6 @@ export const AUTH_MODE_NAMES: Record<number, string> = {
     [AuthMode.Case]: "CASE",
     [AuthMode.Group]: "Group",
 };
-
-export type RelationshipKind = "none" | "backs" | "overPrivileged";
-
-export interface RelationshipResult {
-    kind: RelationshipKind;
-    sourceNodeId?: number | bigint;
-    sourceEndpoint?: number;
-}
 
 export function nodeIdKey(id: number | bigint): string {
     return String(id);
@@ -123,27 +114,4 @@ export function isProtectedAdmin(
         entry.authMode === AuthMode.Case &&
         subjectsInclude(entry, controllerNodeId)
     );
-}
-
-export function detectBindingRelationship(
-    entry: AccessControlEntryStruct,
-    viewedNodeId: number | bigint,
-    allNodes: MatterNode[],
-): RelationshipResult {
-    if (entry.authMode !== AuthMode.Case) return { kind: "none" };
-    const viewedKey = nodeIdKey(viewedNodeId);
-
-    for (const subject of entry.subjects ?? []) {
-        const sourceKey = nodeIdKey(subject);
-        const source = allNodes.find(n => nodeIdKey(n.node_id) === sourceKey);
-        if (!source || !source.available) continue;
-        for (const { endpoint, binding } of readAllBindings(source)) {
-            if (binding.node == null) continue;
-            if (nodeIdKey(binding.node) !== viewedKey) continue;
-            if (!entryMatchesTarget(entry, binding.endpoint ?? -1, binding.cluster)) continue;
-            const kind: RelationshipKind = entry.privilege === Privilege.Administer ? "overPrivileged" : "backs";
-            return { kind, sourceNodeId: source.node_id, sourceEndpoint: endpoint };
-        }
-    }
-    return { kind: "none" };
 }

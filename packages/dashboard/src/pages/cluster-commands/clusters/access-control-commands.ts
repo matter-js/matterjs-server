@@ -21,15 +21,14 @@ import {
     Privilege,
     aclCapacity,
     aclEntryKey,
-    detectBindingRelationship,
     entriesForFabric,
     isProtectedAdmin,
     isWholeNode,
     nodeIdKey,
     readAclEntries,
-    type RelationshipResult,
 } from "../../../util/access-control.js";
 import { handleAsync } from "../../../util/async-handler.js";
+import { detectBindingRelationship, type RelationshipResult } from "../../../util/binding.js";
 import { BaseClusterCommands } from "../base-cluster-commands.js";
 import { registerClusterCommands } from "../registry.js";
 
@@ -38,6 +37,7 @@ const CLUSTER_ID = 31;
 @customElement("access-control-cluster-commands")
 class AccessControlClusterCommands extends BaseClusterCommands {
     private _unsubscribe?: () => void;
+    private _loadedKey = "";
     @state() private _busy = false;
 
     override updated(changed: Map<string, unknown>) {
@@ -45,11 +45,27 @@ class AccessControlClusterCommands extends BaseClusterCommands {
         if (changed.has("client") && this.client && !this._unsubscribe) {
             this._unsubscribe = this.client.addEventListener("nodes_changed", () => this.requestUpdate());
         }
+        void this._ensureLoaded();
     }
 
     override disconnectedCallback() {
         super.disconnectedCallback();
         this._unsubscribe?.();
+    }
+
+    /** The acl attribute is fabric-scoped and may be absent from the cache until read. Load it on open. */
+    private async _ensureLoaded() {
+        if (!this.client || !this.node) return;
+        const key = nodeIdKey(this.node.node_id);
+        if (this._loadedKey === key) return;
+        this._loadedKey = key;
+        try {
+            const res = await this.client.readAttribute(this.node.node_id, "0/31/0");
+            for (const [k, v] of Object.entries(res)) this.node.attributes[k] = v;
+            this.requestUpdate();
+        } catch (err) {
+            console.error("Failed to load ACL", err);
+        }
     }
 
     private get _controllerNodeId(): number | bigint | undefined {
@@ -112,19 +128,19 @@ class AccessControlClusterCommands extends BaseClusterCommands {
     private _renderSubjects(entry: AccessControlEntryStruct): TemplateResult {
         const subjects = entry.subjects ?? [];
         if (entry.authMode === AuthMode.Case && subjects.length === 0) {
-            return html`<span class="chip mut">Any node on fabric</span>`;
+            return html`<span class="mut">Any node on fabric</span>`;
         }
         if (entry.authMode === AuthMode.Group) {
-            return html`${subjects.map(s => html`<span class="chip">Group ${s.toString()}</span>`)}`;
+            return html`${subjects.map(s => html`<div class="ident">Group ${s.toString()}</div>`)}`;
         }
         return html`${subjects.map(s => {
             const known = this.client.nodes[nodeIdKey(s)];
             const protectedMe =
                 isProtectedAdmin(entry, this._controllerNodeId) && nodeIdKey(s) === nodeIdKey(this._controllerNodeId!);
-            return html`<span class="chip ${protectedMe ? "me" : ""}"
-                >${protectedMe ? "This controller" : known ? known.nodeLabel || "Unknown" : "Unknown node"} ·
-                <span class="nid">${s.toString()}</span><span class="hex">0x${s.toString(16).toUpperCase()}</span></span
-            >`;
+            return html`<div class="ident ${protectedMe ? "me" : ""}">
+                ${protectedMe ? "This controller" : known ? known.nodeLabel || "Unknown" : "Unknown node"} ·
+                <span class="nid">${s.toString()}</span><span class="hex">0x${s.toString(16).toUpperCase()}</span>
+            </div>`;
         })}`;
     }
 
@@ -167,7 +183,7 @@ class AccessControlClusterCommands extends BaseClusterCommands {
         });
 
         return html`
-            <details class="command-panel" open>
+            <details class="command-panel">
                 <summary>Access Control — ACL Entries (${entries.length})</summary>
                 <div class="command-content">
                     ${overPrivilegedKeys.size >= 2
@@ -272,7 +288,17 @@ class AccessControlClusterCommands extends BaseClusterCommands {
             .acl td {
                 padding: 10px;
                 border-bottom: 1px solid var(--md-sys-color-outline-variant);
-                vertical-align: top;
+                vertical-align: middle;
+            }
+            .ident {
+                line-height: 1.4;
+            }
+            .ident.me {
+                color: var(--md-sys-color-primary);
+                font-weight: 600;
+            }
+            .ident .nid {
+                font-weight: 600;
             }
             .row-warn td {
                 background: var(--md-sys-color-error-container);
@@ -282,7 +308,7 @@ class AccessControlClusterCommands extends BaseClusterCommands {
                 display: inline-block;
                 padding: 2px 8px;
                 border-radius: 999px;
-                font-size: 11px;
+                font-size: 12px;
                 font-weight: 700;
             }
             .pv-5 {
@@ -309,7 +335,7 @@ class AccessControlClusterCommands extends BaseClusterCommands {
                 padding: 3px 8px;
                 border-radius: 6px;
                 margin: 2px 4px 2px 0;
-                font-size: 12px;
+                font-size: inherit;
                 background: var(--md-sys-color-surface-container-high);
                 color: var(--md-sys-color-on-surface);
             }

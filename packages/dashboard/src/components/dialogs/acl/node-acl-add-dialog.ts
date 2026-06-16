@@ -17,8 +17,10 @@ import { css, html, LitElement } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import "../../../components/ha-svg-icon.js";
 import { clientContext } from "../../../client/client-context.js";
+import { clusters } from "../../../client/models/descriptions.js";
 import { AuthMode, Privilege, PRIVILEGE_NAMES, aclCapacity, nodeIdKey } from "../../../util/access-control.js";
 import { handleAsync } from "../../../util/async-handler.js";
+import { targetServerClusters } from "../../../util/binding.js";
 import { preventDefault } from "../../../util/prevent_default.js";
 import { showAlertDialog } from "../../dialog-box/show-dialog-box.js";
 import { addAclEntry } from "./acl-actions.js";
@@ -42,7 +44,11 @@ export class NodeAclAddDialog extends LitElement {
     @state() private _busy = false;
 
     private _knownNodes(): MatterNode[] {
-        return Object.values(this.client.nodes).sort((a, b) => (a.nodeLabel || "").localeCompare(b.nodeLabel || ""));
+        return Object.values(this.client.nodes).sort((a, b) => {
+            const x = BigInt(a.node_id);
+            const y = BigInt(b.node_id);
+            return x < y ? -1 : x > y ? 1 : 0;
+        });
     }
 
     private _addSubject(raw: string) {
@@ -64,28 +70,46 @@ export class NodeAclAddDialog extends LitElement {
         this._subjects = this._subjects.filter(s => nodeIdKey(s) !== key);
     }
 
-    private _addTarget() {
-        const ep = parseInt(this._targetEndpoint, 10);
-        if (Number.isNaN(ep) || ep < 0 || ep > 0xfffe) {
-            void showAlertDialog({ title: "Validation error", text: "Enter a valid endpoint." });
-            return;
+    private _nodeEndpoints(): number[] {
+        const eps = new Set<number>();
+        for (const key of Object.keys(this.node.attributes)) {
+            const m = /^(\d+)\/29\/0$/.exec(key);
+            if (m) eps.add(Number(m[1]));
         }
+        return Array.from(eps).sort((a, b) => a - b);
+    }
+
+    private _clusterOptions(): number[] {
+        if (this._targetEndpoint === "all") {
+            const all = new Set<number>();
+            for (const ep of this._nodeEndpoints()) targetServerClusters(this.node, ep).forEach(c => all.add(c));
+            return Array.from(all).sort((a, b) => a - b);
+        }
+        return targetServerClusters(this.node, Number(this._targetEndpoint)).sort((a, b) => a - b);
+    }
+
+    private _clusterLabel(id: number): string {
+        return `${clusters[id]?.label ?? "Cluster"} (0x${id.toString(16).padStart(2, "0").toUpperCase()})`;
+    }
+
+    private _addTarget() {
         const max = aclCapacity(this.node).targetsMax;
         if (max > 0 && this._targets.length >= max) {
             void showAlertDialog({ title: "Limit reached", text: `At most ${max} targets per entry.` });
             return;
         }
-        const clusterRaw = this._targetCluster.trim();
-        let cluster: number | undefined;
-        if (clusterRaw !== "") {
-            const c = parseInt(clusterRaw, 10);
-            if (Number.isNaN(c) || c < 0 || c > 0x7fff) {
-                void showAlertDialog({ title: "Validation error", text: "Enter a valid cluster id (or leave empty)." });
-                return;
-            }
-            cluster = c;
+        const endpoint =
+            this._targetEndpoint === "all" || this._targetEndpoint === "" ? undefined : Number(this._targetEndpoint);
+        const cluster =
+            this._targetCluster === "all" || this._targetCluster === "" ? undefined : Number(this._targetCluster);
+        if (endpoint === undefined && cluster === undefined) {
+            void showAlertDialog({
+                title: "Validation error",
+                text: "Pick an endpoint and/or a cluster for the target.",
+            });
+            return;
         }
-        this._targets = [...this._targets, { endpoint: ep, cluster, deviceType: undefined }];
+        this._targets = [...this._targets, { endpoint, cluster, deviceType: undefined }];
         this._targetEndpoint = "";
         this._targetCluster = "";
     }
@@ -204,10 +228,10 @@ export class NodeAclAddDialog extends LitElement {
                                 : this._targets.map(
                                       (t, i) =>
                                           html`<span class="chip"
-                                              >EP
-                                              ${t.endpoint}${t.cluster != null
-                                                  ? ` · 0x${t.cluster.toString(16).toUpperCase()}`
-                                                  : " · all clusters"}
+                                              >${t.endpoint != null ? `EP ${t.endpoint}` : "All endpoints"}
+                                              ${t.cluster != null
+                                                  ? `· ${this._clusterLabel(t.cluster)}`
+                                                  : "· all clusters"}
                                               <ha-svg-icon
                                                   class="x"
                                                   .path=${mdiClose}
@@ -217,24 +241,39 @@ export class NodeAclAddDialog extends LitElement {
                                   )}
                         </div>
                         <div class="row">
-                            <md-outlined-text-field
+                            <md-outlined-select
                                 label="endpoint"
-                                type="number"
-                                min="0"
-                                max="65534"
                                 .value=${this._targetEndpoint}
                                 ?disabled=${this._busy}
-                                @input=${(e: Event) => (this._targetEndpoint = (e.target as HTMLInputElement).value)}
-                            ></md-outlined-text-field>
-                            <md-outlined-text-field
-                                label="cluster id (optional)"
-                                type="number"
-                                min="0"
-                                max="32767"
+                                @change=${(e: Event) => {
+                                    this._targetEndpoint = (e.target as HTMLSelectElement).value;
+                                    this._targetCluster = "";
+                                }}
+                            >
+                                <md-select-option value="all"
+                                    ><div slot="headline">All endpoints</div></md-select-option
+                                >
+                                ${this._nodeEndpoints().map(
+                                    ep =>
+                                        html`<md-select-option value=${String(ep)}
+                                            ><div slot="headline">EP ${ep}</div></md-select-option
+                                        >`,
+                                )}
+                            </md-outlined-select>
+                            <md-outlined-select
+                                label="cluster"
                                 .value=${this._targetCluster}
                                 ?disabled=${this._busy}
-                                @input=${(e: Event) => (this._targetCluster = (e.target as HTMLInputElement).value)}
-                            ></md-outlined-text-field>
+                                @change=${(e: Event) => (this._targetCluster = (e.target as HTMLSelectElement).value)}
+                            >
+                                <md-select-option value="all"><div slot="headline">All clusters</div></md-select-option>
+                                ${this._clusterOptions().map(
+                                    c =>
+                                        html`<md-select-option value=${String(c)}
+                                            ><div slot="headline">${this._clusterLabel(c)}</div></md-select-option
+                                        >`,
+                                )}
+                            </md-outlined-select>
                             <md-text-button ?disabled=${this._busy} @click=${() => this._addTarget()}
                                 >Add target</md-text-button
                             >
