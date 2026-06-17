@@ -41,13 +41,13 @@
     },
     "dependencies": {
         "@matter-server/ws-client": "*",
-        "@matter/dcl-data": ">=2026.6.9",
+        "@matter/dcl-data": ">=2026.6.16",
         "@matter/main": "0.17.3",
         "@project-chip/matter.js": "0.17.3",
         "ws": "^8.21.0"
     },
     "devDependencies": {
-        "@types/node": "^25.9.1",
+        "@types/node": "^25.9.3",
         "@types/ws": "^8.18.1"
     },
     "optionalDependencies": {
