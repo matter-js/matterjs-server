@@ -90,7 +90,7 @@ export class GroupRegistry {
         throw new Error("No free application group id available (0x0001..0xFEFF exhausted)");
     }
 
-    /** Lowest unused group key set id (1.. ; 0 is reserved for the IPK). */
+    /** Lowest unused group key set id (1.. ; 0 is reserved for the IPK, Matter 1.4 Core §4.17.3.5.1). */
     allocateGroupKeySetId(): number {
         const used = new Set([...this.#groups.values()].map(g => g.group_key_set_id));
         for (let candidate = 1; candidate <= 0xffff; candidate++) {

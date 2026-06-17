@@ -21,7 +21,11 @@ import { GroupRecord, GroupRegistry, toPublic } from "./GroupRegistry.js";
 
 const logger = new Logger("GroupManager");
 
-/** Epoch start time for the single operational epoch key we provision (must be >= 1). */
+/**
+ * Epoch start time for the single operational epoch key we provision. Units are
+ * epoch-us (microseconds since 2000-01-01 UTC, Matter 1.4 Core §11.2.5.4); a value
+ * of 1 keeps the key always-active. Per §11.2.7.1 only 0 is illegal in KeySetWrite.
+ */
 const EPOCH_START_TIME = 1;
 /** Operational group key length in bytes. */
 const GROUP_KEY_LENGTH = 16;
@@ -132,7 +136,8 @@ export class GroupManager {
         return this.#mutex.produce(async () => {
             const id = groupId ?? this.#registry.allocateGroupId();
             // Only the application Group ID range (0x0001..0xFEFF) may be assigned by a
-            // fabric administrator; 0xFF00..0xFFFF is reserved for universal groups.
+            // fabric administrator; 0xFF00..0xFFFF is reserved for universal groups
+            // (Matter 1.4 Core §2.5.4 / Table 3).
             if (!GroupId.isApplicationGroupId(GroupId(id, false))) {
                 throw ServerError.invalidArguments(`Group id ${id} is outside the application range (0x0001..0xFEFF)`);
             }
@@ -330,6 +335,8 @@ export class GroupManager {
     #buildGroupKeySet(record: GroupRecord): GroupKeyManagement.GroupKeySet {
         return {
             groupKeySetId: record.group_key_set_id,
+            // TrustFirst is the only Mandatory group key security policy (Matter 1.4 Core
+            // §11.2.5.1); CacheAndSync is gated behind a provisional feature.
             groupKeySecurityPolicy: GroupKeyManagement.GroupKeySecurityPolicy.TrustFirst,
             epochKey0: Bytes.fromHex(record.epoch_key_hex),
             epochStartTime0: EPOCH_START_TIME,
@@ -454,9 +461,11 @@ export class GroupManager {
      * ACL (so a pre-existing admin/CASE entry is never dropped), and replaces any stale
      * group entry only when its target scope differs — otherwise leaves the ACL untouched.
      *
-     * Operate is the minimum privilege to invoke commands. `targets` come from the group's
-     * `acl_targets` (least privilege); null grants Operate on all clusters when the caller
-     * did not specify a scope.
+     * Operate is the minimum privilege to invoke commands and the maximum a Group entry may
+     * hold — Matter 1.4 Core §6.6.6.2 forbids granting Administer to a Group. The subject is a
+     * uint64 whose low 16 bits carry the Group ID (§9.10.5.6), which is exactly GroupId(groupId).
+     * `targets` come from the group's `acl_targets` (least privilege); null grants access on all
+     * clusters when the caller did not specify a scope.
      */
     async #ensureGroupAcl(record: GroupRecord, nodeId: NodeId, fabricIndex: FabricIndex): Promise<void> {
         const groupId = record.group_id;
