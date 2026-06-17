@@ -7,6 +7,15 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
+## **WORK IN PROGRESS**
+
+- Enhancement: Revamped the experimental Binding overview and editor in Dashboard
+- Enhancement: Added ACL overview and limited management options to Access Control cluster view (Root endpoint)
+- Enhancement: Update matter.js to 0.17.3 with many fixes and optimizations, especially:
+    - Fixes attestation certificate validation error for Nuki SmartLocks
+    - Ensures to use the increased thread message retransmission timings also for commands
+- Adjustment: Ensure that Matter-Server CLI options do not interfere with matter.js
+
 ## 1.0.0 (2026-06-09)
 
 - Enhancement: Update matter.js to 0.17.2 with many fixes and optimizations
