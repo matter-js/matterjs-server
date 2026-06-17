@@ -56,7 +56,7 @@ class AccessControlClusterCommands extends BaseClusterCommands {
 
     /** The acl attribute is fabric-scoped and may be absent from the cache until read. Load it on open. */
     private async _ensureLoaded() {
-        if (!this.client || !this.node) return;
+        if (!this.client || !this.node || !this.node.available) return;
         const key = nodeIdKey(this.node.node_id);
         if (this._loadedKey === key) return;
         this._loadedKey = key;

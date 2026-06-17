@@ -24,7 +24,7 @@ import {
     WebSocketControllerHandler,
 } from "@matter-server/ws-controller";
 import { Ble } from "@matter/main/protocol";
-import { getCliOptions, type LogLevel as CliLogLevel } from "./cli.js";
+import { getCliOptions, getOriginalArgv, type LogLevel as CliLogLevel } from "./cli.js";
 import { LegacyDataWriter, loadLegacyData, type LegacyData } from "./converter/index.js";
 import { createFileLogger } from "./file-logger.js";
 import { initializeOta } from "./ota.js";
@@ -67,7 +67,7 @@ Logger.level = mapLogLevel(cliOptions.logLevel);
 const logger = Logger.get("MatterServer");
 
 // Log command line arguments at startup for debugging
-logger.info(`Command line: ${process.argv.slice(2).join(" ") || "(no arguments)"}`);
+logger.info(`Command line: ${getOriginalArgv().join(" ") || "(no arguments)"}`);
 
 const env = Environment.default;
 

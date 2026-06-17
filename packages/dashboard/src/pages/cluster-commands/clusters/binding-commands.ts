@@ -48,7 +48,7 @@ class BindingClusterCommands extends BaseClusterCommands {
 
     /** Read the (fabric-scoped) binding attribute and each target's ACL into the cache on open. */
     private async _ensureLoaded() {
-        if (!this.client || !this.node || this.endpoint === undefined) return;
+        if (!this.client || !this.node || !this.node.available || this.endpoint === undefined) return;
         const key = `${nodeIdKey(this.node.node_id)}/${this.endpoint}`;
         if (this._loadedKey === key) return;
         this._loadedKey = key;
@@ -60,8 +60,8 @@ class BindingClusterCommands extends BaseClusterCommands {
                     .filter((k): k is string => k !== undefined),
             );
             for (const k of targets) {
-                const id = this.client.nodes[k]?.node_id;
-                if (id != null) await this._readInto(id, "0/31/0");
+                const target = this.client.nodes[k];
+                if (target?.available) await this._readInto(target.node_id, "0/31/0");
             }
             this.requestUpdate();
         } catch (err) {
