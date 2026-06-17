@@ -12,7 +12,6 @@ import {
     entriesForFabric,
     entryMatchesTarget,
     isWholeNode,
-    nodeFabricIndex,
     nodeIdKey,
     subjectsInclude,
 } from "../../../util/access-control.js";
@@ -37,16 +36,22 @@ function toApiAcl(e: AccessControlEntryStruct): AccessControlEntry {
     };
 }
 
-function fabricOf(client: MatterClient, nodeId: number | bigint): number | undefined {
-    const node = client.nodes[nodeIdKey(nodeId)];
-    return node ? nodeFabricIndex(node) : undefined;
+function requireFabricIndex(res: Record<string, unknown>, nodeId: number | bigint): number {
+    const fi = res["0/62/5"];
+    if (typeof fi !== "number") {
+        throw new Error(`Cannot determine the current fabric index (0/62/5) for node ${nodeId}`);
+    }
+    return fi;
 }
 
-/** Read the node's ACL fresh (explicit reads are not fabric-filtered) and narrow to our fabric. */
+/**
+ * Read the node's ACL + CurrentFabricIndex fresh (explicit reads are not fabric-filtered) and narrow
+ * to our fabric. Fails rather than risk writing back other fabrics' entries if the index is unknown.
+ */
 async function freshOurAcl(client: MatterClient, nodeId: number | bigint): Promise<AccessControlEntryStruct[]> {
-    const res = await client.readAttribute(nodeId, "0/31/0");
+    const res = await client.readAttribute(nodeId, ["0/31/0", "0/62/5"]);
     const all = attributeArray(res["0/31/0"]).map(v => AccessControlEntryDataTransformer.transform(v));
-    return entriesForFabric(all, fabricOf(client, nodeId));
+    return entriesForFabric(all, requireFabricIndex(res, nodeId));
 }
 
 async function freshOurBindings(
@@ -54,10 +59,10 @@ async function freshOurBindings(
     nodeId: number | bigint,
     endpoint: number,
 ): Promise<BindingEntryStruct[]> {
-    const res = await client.readAttribute(nodeId, `${endpoint}/30/0`);
+    const res = await client.readAttribute(nodeId, [`${endpoint}/30/0`, "0/62/5"]);
     const all = attributeArray(res[`${endpoint}/30/0`]).map(v => BindingEntryDataTransformer.transform(v));
-    const fabricIndex = fabricOf(client, nodeId);
-    return fabricIndex === undefined ? all : all.filter(b => b.fabricIndex === fabricIndex);
+    const fabricIndex = requireFabricIndex(res, nodeId);
+    return all.filter(b => b.fabricIndex === fabricIndex);
 }
 
 function hasTarget(e: AccessControlEntryStruct, endpoint: number, cluster: number | undefined): boolean {

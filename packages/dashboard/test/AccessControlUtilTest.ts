@@ -81,6 +81,20 @@ describe("access-control util", () => {
         expect(entryMatchesTarget(scoped, 1, 8)).to.equal(false);
     });
 
+    it("entryMatchesTarget handles wildcard endpoint and directional cluster matching", () => {
+        // Wildcard endpoint (null) on the ACL target grants all endpoints.
+        const wildEp = entry({ targets: [{ endpoint: undefined, cluster: 6, deviceType: undefined }] });
+        expect(entryMatchesTarget(wildEp, 5, 6)).to.equal(true);
+        // Wildcard cluster (null) on the ACL target grants all clusters on that endpoint.
+        const wildCl = entry({ targets: [{ endpoint: 1, cluster: undefined, deviceType: undefined }] });
+        expect(entryMatchesTarget(wildCl, 1, 6)).to.equal(true);
+        // An all-clusters request (cluster undefined) is NOT covered by a cluster-specific grant.
+        const specific = entry({ targets: [{ endpoint: 1, cluster: 6, deviceType: undefined }] });
+        expect(entryMatchesTarget(specific, 1, undefined)).to.equal(false);
+        // ...but IS covered by a wildcard-cluster grant.
+        expect(entryMatchesTarget(wildCl, 1, undefined)).to.equal(true);
+    });
+
     it("aclCapacity reads the limit attributes", () => {
         const n = node({ "0/31/4": 4, "0/31/2": 4, "0/31/3": 3 });
         expect(aclCapacity(n)).to.deep.equal({ max: 4, subjectsMax: 4, targetsMax: 3 });

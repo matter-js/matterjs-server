@@ -5,14 +5,7 @@
  */
 
 import { AccessControlEntry, MatterClient } from "@matter-server/ws-client";
-import {
-    Privilege,
-    aclEntryKey,
-    attributeArray,
-    entriesForFabric,
-    nodeFabricIndex,
-    nodeIdKey,
-} from "../../../util/access-control.js";
+import { Privilege, aclEntryKey, attributeArray, entriesForFabric } from "../../../util/access-control.js";
 import { AccessControlEntryDataTransformer, type AccessControlEntryStruct } from "./model.js";
 
 function toApiAcl(e: AccessControlEntryStruct): AccessControlEntry {
@@ -29,12 +22,18 @@ function toApiAcl(e: AccessControlEntryStruct): AccessControlEntry {
     };
 }
 
-/** Read the node's ACL fresh (explicit reads are not fabric-filtered) and narrow to our fabric. */
+/**
+ * Read the node's ACL + CurrentFabricIndex fresh (explicit reads are not fabric-filtered) and narrow
+ * to our fabric. Fails rather than risk writing back other fabrics' entries if the index is unknown.
+ */
 async function freshOurAcl(client: MatterClient, nodeId: number | bigint): Promise<AccessControlEntryStruct[]> {
-    const res = await client.readAttribute(nodeId, "0/31/0");
+    const res = await client.readAttribute(nodeId, ["0/31/0", "0/62/5"]);
     const all = attributeArray(res["0/31/0"]).map(v => AccessControlEntryDataTransformer.transform(v));
-    const node = client.nodes[nodeIdKey(nodeId)];
-    return entriesForFabric(all, node ? nodeFabricIndex(node) : undefined);
+    const fi = res["0/62/5"];
+    if (typeof fi !== "number") {
+        throw new Error(`Cannot determine the current fabric index (0/62/5) for node ${nodeId}`);
+    }
+    return entriesForFabric(all, fi);
 }
 
 export async function addAclEntry(

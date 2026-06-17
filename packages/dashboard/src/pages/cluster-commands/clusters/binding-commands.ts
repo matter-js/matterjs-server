@@ -54,7 +54,7 @@ class BindingClusterCommands extends BaseClusterCommands {
         if (this._loadedKey === key) return;
         this._loadedKey = key;
         try {
-            await this._readInto(this.node.node_id, `${this.endpoint}/30/0`);
+            await this._readInto(this.node.node_id, [`${this.endpoint}/30/0`, "0/62/5"]);
             const targets = new Set(
                 readBindings(this.node, this.endpoint)
                     .map(b => (b.node != null ? nodeIdKey(b.node) : undefined))
@@ -62,7 +62,7 @@ class BindingClusterCommands extends BaseClusterCommands {
             );
             for (const k of targets) {
                 const target = this.client.nodes[k];
-                if (target?.available) await this._readInto(target.node_id, "0/31/0");
+                if (target?.available) await this._readInto(target.node_id, ["0/31/0", "0/62/5"]);
             }
             this.requestUpdate();
         } catch (err) {
@@ -70,7 +70,7 @@ class BindingClusterCommands extends BaseClusterCommands {
         }
     }
 
-    private async _readInto(nodeId: number | bigint, path: string) {
+    private async _readInto(nodeId: number | bigint, path: string | string[]) {
         const res = await this.client.readAttribute(nodeId, path);
         const node = this.client.nodes[nodeIdKey(nodeId)];
         if (node) for (const [k, v] of Object.entries(res)) node.attributes[k] = v;

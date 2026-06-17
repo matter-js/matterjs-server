@@ -72,15 +72,23 @@ export function isWholeNode(entry: AccessControlEntryStruct): boolean {
     return !entry.targets || entry.targets.length === 0;
 }
 
+/**
+ * Whether the entry grants access to (endpoint, cluster). A null target endpoint/cluster is an ACL
+ * wildcard (grants all). Cluster matching is directional: a wildcard *request* (cluster undefined,
+ * i.e. an all-clusters binding) is only covered by a wildcard ACL target — a cluster-specific grant
+ * does not cover "all clusters".
+ */
 export function entryMatchesTarget(
     entry: AccessControlEntryStruct,
     endpoint: number,
     cluster: number | undefined,
 ): boolean {
     if (isWholeNode(entry)) return true;
-    return entry.targets!.some(
-        t => t.endpoint === endpoint && (t.cluster == null || cluster == null || t.cluster === cluster),
-    );
+    return entry.targets!.some(t => {
+        const endpointMatch = t.endpoint == null || t.endpoint === endpoint;
+        const clusterMatch = cluster == null ? t.cluster == null : t.cluster == null || t.cluster === cluster;
+        return endpointMatch && clusterMatch;
+    });
 }
 
 export interface AclCapacity {
