@@ -158,7 +158,11 @@ export interface AddBindingCapacity {
  * source can absorb it — mirrors the merge behavior the writer implements.
  */
 export function targetAclCapacityForBinding(targetNode: MatterNode, sourceNodeId: number | bigint): AddBindingCapacity {
-    const entries = entriesForFabric(readAclEntries(targetNode), nodeFabricIndex(targetNode));
+    const fabricIndex = nodeFabricIndex(targetNode);
+    // Advisory pre-check only. If CurrentFabricIndex isn't cached for this target yet, don't block:
+    // the write path (ensureBindingAcl → freshOurAcl) reads 0/62/5 fresh and fails cleanly if absent.
+    if (fabricIndex === undefined) return { canAdd: true };
+    const entries = entriesForFabric(readAclEntries(targetNode), fabricIndex);
     const targetsMaxRaw = targetNode.attributes["0/31/3"];
     const targetsMax = typeof targetsMaxRaw === "number" && targetsMaxRaw > 0 ? targetsMaxRaw : Number.MAX_SAFE_INTEGER;
     const reusable = entries.some(

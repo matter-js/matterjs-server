@@ -60,10 +60,12 @@ class BindingClusterCommands extends BaseClusterCommands {
                     .map(b => (b.node != null ? nodeIdKey(b.node) : undefined))
                     .filter((k): k is string => k !== undefined),
             );
-            for (const k of targets) {
-                const target = this.client.nodes[k];
-                if (target?.available) await this._readInto(target.node_id, ["0/31/0", "0/62/5"]);
-            }
+            await Promise.all(
+                [...targets].map(k => {
+                    const target = this.client.nodes[k];
+                    return target?.available ? this._readInto(target.node_id, ["0/31/0", "0/62/5"]) : undefined;
+                }),
+            );
             this.requestUpdate();
         } catch (err) {
             console.error("Failed to load binding/ACL data", err);

@@ -98,5 +98,8 @@ describe("binding util", () => {
             2,
         );
         expect(targetAclCapacityForBinding(reusable, 1).canAdd).to.equal(true);
+        // CurrentFabricIndex not cached → advisory gate does not block (write path validates).
+        const noFabric = node({ "0/31/4": 1, "0/31/0": [{ "1": 3, "2": 2, "3": [9], "4": undefined, "254": 1 }] }, 2);
+        expect(targetAclCapacityForBinding(noFabric, 1).canAdd).to.equal(true);
     });
 });
