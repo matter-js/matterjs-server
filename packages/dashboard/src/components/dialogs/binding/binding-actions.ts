@@ -183,16 +183,24 @@ export async function deleteBindingAtIndex(
     if (removed.node == null || removed.endpoint == null) return;
     const targetEndpoint = removed.endpoint;
     const removedCluster = removed.cluster ?? undefined;
-    const acl = await freshOurAcl(client, removed.node);
-    const kept = acl
-        .map(e => {
-            if (!subjectsInclude(e, sourceNode.node_id) || isWholeNode(e)) return e;
-            const targets = e.targets!.filter(
-                t => !(t.endpoint === targetEndpoint && (t.cluster ?? undefined) === removedCluster),
-            );
-            if (targets.length === 0) return undefined;
-            return { ...e, targets };
-        })
-        .filter((e): e is AccessControlEntryStruct => e !== undefined);
-    await client.setACLEntry(removed.node, kept.map(toApiAcl));
+    try {
+        const acl = await freshOurAcl(client, removed.node);
+        const kept = acl
+            .map(e => {
+                if (!subjectsInclude(e, sourceNode.node_id) || isWholeNode(e)) return e;
+                const targets = e.targets!.filter(
+                    t => !(t.endpoint === targetEndpoint && (t.cluster ?? undefined) === removedCluster),
+                );
+                if (targets.length === 0) return undefined;
+                return { ...e, targets };
+            })
+            .filter((e): e is AccessControlEntryStruct => e !== undefined);
+        await client.setACLEntry(removed.node, kept.map(toApiAcl));
+    } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        throw new Error(
+            `Binding removed, but cleaning up the access control entry on the target node failed: ${detail}. ` +
+                "The target may retain a stale access grant.",
+        );
+    }
 }

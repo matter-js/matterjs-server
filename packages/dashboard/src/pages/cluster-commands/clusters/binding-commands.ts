@@ -68,6 +68,7 @@ class BindingClusterCommands extends BaseClusterCommands {
             );
             this.requestUpdate();
         } catch (err) {
+            this._loadedKey = ""; // allow retry on the next update after a transient failure
             console.error("Failed to load binding/ACL data", err);
         }
     }
@@ -163,12 +164,9 @@ class BindingClusterCommands extends BaseClusterCommands {
         const aclState: ReverseAclState =
             b.node == null ? "cannotVerify" : reverseAclState(this.node.node_id, b, target).state;
         const name = b.group != null ? `Group ${b.group}` : target ? getDeviceName(target) : "Unknown node";
+        const deviceType = b.endpoint != null && target ? getEndpointDeviceTypes(target, b.endpoint)[0] : undefined;
         const endpointText =
-            b.endpoint == null
-                ? "—"
-                : target && getEndpointDeviceTypes(target, b.endpoint)[0]
-                  ? `EP ${b.endpoint} · ${getEndpointDeviceTypes(target, b.endpoint)[0].label}`
-                  : `EP ${b.endpoint}`;
+            b.endpoint == null ? "—" : deviceType ? `EP ${b.endpoint} · ${deviceType.label}` : `EP ${b.endpoint}`;
         return html`
             <tr>
                 <td>

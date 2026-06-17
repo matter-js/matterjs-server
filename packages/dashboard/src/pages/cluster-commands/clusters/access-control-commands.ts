@@ -66,6 +66,7 @@ class AccessControlClusterCommands extends BaseClusterCommands {
             for (const [k, v] of Object.entries(res)) this.node.attributes[k] = v;
             this.requestUpdate();
         } catch (err) {
+            this._loadedKey = ""; // allow retry on the next update after a transient failure
             console.error("Failed to load ACL", err);
         }
     }
