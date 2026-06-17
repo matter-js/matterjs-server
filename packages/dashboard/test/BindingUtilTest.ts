@@ -42,6 +42,14 @@ describe("binding util", () => {
         expect(all.map(b => b.endpoint).sort()).to.deep.equal([1, 2]);
     });
 
+    it("treats null binding fields as unset, not 0", () => {
+        const n = node({ "1/30/0": [{ "1": 5, "3": 1, "4": null }] });
+        const [b] = readBindings(n, 1);
+        expect(b.node).to.equal(5);
+        expect(b.endpoint).to.equal(1);
+        expect(b.cluster).to.equal(undefined);
+    });
+
     it("source/target cluster lists read Descriptor ClientList/ServerList", () => {
         const n = node({ "1/29/1": [6, 8, 29], "1/29/2": [6, 768] });
         expect(targetServerClusters(n, 1)).to.deep.equal([6, 8, 29]);

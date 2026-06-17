@@ -52,7 +52,8 @@ export class AccessControlTargetTransformer {
                 const mappedKey = keyMapping[key];
                 if (mappedKey) {
                     const value = input[key];
-                    if (value === undefined) continue;
+                    // Treat unset/wildcard fields (null or absent) as omitted, not numeric 0.
+                    if (value == null) continue;
                     result[mappedKey] = Number(value);
                 }
             }
@@ -85,7 +86,7 @@ export class AccessControlEntryDataTransformer {
                 const mappedKey = keyMapping[key];
                 if (mappedKey) {
                     const value = input[key];
-                    if (value === undefined) continue;
+                    if (value == null) continue;
                     if (mappedKey === "subjects") {
                         result.subjects = Array.isArray(value) ? value : undefined;
                     } else if (mappedKey === "targets") {

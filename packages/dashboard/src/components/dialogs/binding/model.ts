@@ -44,7 +44,8 @@ export class BindingEntryDataTransformer {
                 const mappedKey = keyMapping[key];
                 if (mappedKey) {
                     const value = input[key];
-                    if (value === undefined) {
+                    // Treat unset/wildcard fields (null or absent) as omitted, not numeric 0.
+                    if (value == null) {
                         continue;
                     }
                     if (mappedKey === "node") {

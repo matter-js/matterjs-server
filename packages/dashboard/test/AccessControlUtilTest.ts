@@ -60,6 +60,13 @@ describe("access-control util", () => {
         expect(isWholeNode(entries[0])).to.equal(true);
     });
 
+    it("treats null target fields as wildcard (undefined), not 0", () => {
+        const n = node({ "0/31/0": [{ "1": 3, "2": 2, "3": [1], "4": [{ "0": 6, "1": null }], "254": 1 }] });
+        const target = readAclEntries(n)[0].targets![0];
+        expect(target.cluster).to.equal(6);
+        expect(target.endpoint).to.equal(undefined);
+    });
+
     it("entriesForFabric filters by fabricIndex", () => {
         const all = [entry({ fabricIndex: 1 }), entry({ subjects: [2], fabricIndex: 2 })];
         expect(entriesForFabric(all, 1)).to.have.length(1);
