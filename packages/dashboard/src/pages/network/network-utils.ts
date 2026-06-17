@@ -707,24 +707,7 @@ export function stripMdnsHostname(hostname: string): string {
     return hostname.replace(/\.$/, "").replace(/\.local$/i, "");
 }
 
-/**
- * Gets a human-readable display name for a node.
- * Format: nodeLabel || productName (serialNumber)
- */
-export function getDeviceName(node: MatterNode): string {
-    if (node.nodeLabel) {
-        return node.nodeLabel;
-    }
-
-    const productName = node.productName || "Unknown Device";
-    const serialNumber = node.serialNumber;
-
-    if (serialNumber) {
-        return `${productName} (${serialNumber})`;
-    }
-
-    return productName;
-}
+export { getDeviceName } from "../../util/node-name.js";
 
 /**
  * Gets the human-readable name for a Thread routing role.

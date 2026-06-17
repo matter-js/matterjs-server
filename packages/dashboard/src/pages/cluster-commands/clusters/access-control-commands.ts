@@ -30,6 +30,7 @@ import {
 } from "../../../util/access-control.js";
 import { handleAsync } from "../../../util/async-handler.js";
 import { detectBindingRelationship, type RelationshipResult } from "../../../util/binding.js";
+import { getDeviceName } from "../../../util/node-name.js";
 import { BaseClusterCommands } from "../base-cluster-commands.js";
 import { registerClusterCommands } from "../registry.js";
 
@@ -135,7 +136,7 @@ class AccessControlClusterCommands extends BaseClusterCommands {
             const protectedMe =
                 isProtectedAdmin(entry, this._controllerNodeId) && nodeIdKey(s) === nodeIdKey(this._controllerNodeId!);
             return html`<div class="ident ${protectedMe ? "me" : ""}">
-                ${protectedMe ? "This controller" : known ? known.nodeLabel || "Unknown" : "Unknown node"} ·
+                ${protectedMe ? "This controller" : known ? getDeviceName(known) : "Unknown node"} ·
                 <span class="nid">${s.toString()}</span><span class="hex">0x${s.toString(16).toUpperCase()}</span>
             </div>`;
         })}`;
@@ -155,7 +156,7 @@ class AccessControlClusterCommands extends BaseClusterCommands {
     private _renderRelationship(rel: RelationshipResult): TemplateResult {
         if (rel.kind === "none") return html`<span class="mut">—</span>`;
         const source = rel.sourceNodeId != null ? this.client.nodes[nodeIdKey(rel.sourceNodeId)] : undefined;
-        const label = source ? source.nodeLabel || "node" : "node";
+        const label = source ? getDeviceName(source) : "node";
         if (rel.kind === "overPrivileged") {
             return html`<span class="chip bug"
                 ><ha-svg-icon .path=${mdiAlert}></ha-svg-icon> over-privileged binding ACL</span

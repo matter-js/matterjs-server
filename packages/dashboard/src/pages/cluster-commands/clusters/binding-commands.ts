@@ -22,6 +22,7 @@ import { nodeIdKey } from "../../../util/access-control.js";
 import { handleAsync } from "../../../util/async-handler.js";
 import { readBindings, reverseAclState, type ReverseAclState } from "../../../util/binding.js";
 import { getEndpointDeviceTypes } from "../../../util/endpoints.js";
+import { getDeviceName } from "../../../util/node-name.js";
 import { BaseClusterCommands } from "../base-cluster-commands.js";
 import { registerClusterCommands } from "../registry.js";
 
@@ -159,7 +160,7 @@ class BindingClusterCommands extends BaseClusterCommands {
         const target = this._targetNode(b.node);
         const aclState: ReverseAclState =
             b.node == null ? "cannotVerify" : reverseAclState(this.node.node_id, b, target).state;
-        const name = b.group != null ? `Group ${b.group}` : target ? target.nodeLabel || "Unknown" : "Unknown node";
+        const name = b.group != null ? `Group ${b.group}` : target ? getDeviceName(target) : "Unknown node";
         const endpointText =
             b.endpoint == null
                 ? "—"

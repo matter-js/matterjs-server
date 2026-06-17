@@ -21,6 +21,7 @@ import { clusters } from "../../../client/models/descriptions.js";
 import { AuthMode, Privilege, PRIVILEGE_NAMES, aclCapacity, nodeIdKey } from "../../../util/access-control.js";
 import { handleAsync } from "../../../util/async-handler.js";
 import { targetServerClusters } from "../../../util/binding.js";
+import { getDeviceName } from "../../../util/node-name.js";
 import { preventDefault } from "../../../util/prevent_default.js";
 import { showAlertDialog } from "../../dialog-box/show-dialog-box.js";
 import { addAclEntry } from "./acl-actions.js";
@@ -180,7 +181,7 @@ export class NodeAclAddDialog extends LitElement {
                                 : this._subjects.map(s => {
                                       const known = this.client.nodes[nodeIdKey(s)];
                                       return html`<span class="chip"
-                                          >${known ? known.nodeLabel || "Unknown" : "Node"} · ${s.toString()}
+                                          >${known ? getDeviceName(known) : "Node"} · ${s.toString()}
                                           <ha-svg-icon
                                               class="x"
                                               .path=${mdiClose}
@@ -203,7 +204,7 @@ export class NodeAclAddDialog extends LitElement {
                                     n =>
                                         html`<md-select-option value=${nodeIdKey(n.node_id)}
                                             ><div slot="headline">
-                                                ${n.node_id.toString()} · ${n.nodeLabel || "Unknown"}
+                                                ${n.node_id.toString()} · ${getDeviceName(n)}
                                             </div></md-select-option
                                         >`,
                                 )}
