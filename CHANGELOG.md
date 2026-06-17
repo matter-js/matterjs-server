@@ -7,7 +7,7 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
-## **WORK IN PROGRESS**
+## 1.1.0 (2026-06-17)
 
 - Enhancement: Revamped the experimental Binding overview and editor in Dashboard
 - Enhancement: Added ACL overview and limited management options to Access Control cluster view (Root endpoint)
