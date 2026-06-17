@@ -40,7 +40,7 @@ export class NodeAclAddDialog extends LitElement {
     @state() private _subjects = new Array<number | bigint>();
     @state() private _subjectInput = "";
     @state() private _targets = new Array<AccessControlTargetStruct>();
-    @state() private _targetEndpoint = "";
+    @state() private _targetEndpoint = "all";
     @state() private _targetCluster = "";
     @state() private _busy = false;
 
@@ -111,8 +111,8 @@ export class NodeAclAddDialog extends LitElement {
             return;
         }
         this._targets = [...this._targets, { endpoint, cluster, deviceType: undefined }];
-        this._targetEndpoint = "";
-        this._targetCluster = "";
+        this._targetEndpoint = "all";
+        this._targetCluster = "all";
     }
 
     private _removeTarget(index: number) {

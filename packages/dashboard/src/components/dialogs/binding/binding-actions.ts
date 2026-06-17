@@ -66,7 +66,7 @@ async function freshOurBindings(
 }
 
 function hasTarget(e: AccessControlEntryStruct, endpoint: number, cluster: number | undefined): boolean {
-    return (e.targets ?? []).some(t => t.endpoint === endpoint && (t.cluster ?? undefined) === cluster);
+    return (e.targets ?? []).some(t => t.endpoint === endpoint && t.cluster === cluster);
 }
 
 function aclTargetsMax(client: MatterClient, nodeId: number | bigint): number {
@@ -84,8 +84,6 @@ export async function ensureBindingAcl(
 ): Promise<void> {
     const acl = await freshOurAcl(client, targetNodeId);
 
-    // Duplicate check: if an existing entry already grants the source Operate+ access to this
-    // endpoint/cluster (or wider), no ACL change is needed.
     const alreadyGranted = acl.some(
         e =>
             e.authMode === AuthMode.Case &&
@@ -154,10 +152,7 @@ export async function addBinding(
     const targetKey = nodeIdKey(targetNodeId);
     const exists = bindings.some(
         b =>
-            b.node != null &&
-            nodeIdKey(b.node) === targetKey &&
-            b.endpoint === targetEndpoint &&
-            (b.cluster ?? undefined) === cluster,
+            b.node != null && nodeIdKey(b.node) === targetKey && b.endpoint === targetEndpoint && b.cluster === cluster,
     );
     if (exists) return;
     bindings.push({ node: targetNodeId, group: undefined, endpoint: targetEndpoint, cluster, fabricIndex: undefined });
@@ -182,14 +177,14 @@ export async function deleteBindingAtIndex(
 
     if (removed.node == null || removed.endpoint == null) return;
     const targetEndpoint = removed.endpoint;
-    const removedCluster = removed.cluster ?? undefined;
+    const removedCluster = removed.cluster;
     try {
         const acl = await freshOurAcl(client, removed.node);
         const kept = acl
             .map(e => {
                 if (!subjectsInclude(e, sourceNode.node_id) || isWholeNode(e)) return e;
                 const targets = e.targets!.filter(
-                    t => !(t.endpoint === targetEndpoint && (t.cluster ?? undefined) === removedCluster),
+                    t => !(t.endpoint === targetEndpoint && t.cluster === removedCluster),
                 );
                 if (targets.length === 0) return undefined;
                 return { ...e, targets };

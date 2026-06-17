@@ -252,17 +252,12 @@ export class NodeBindingDialog extends LitElement {
                                       this._clusterSelection = ALL_CLUSTERS;
                                   }}
                               >
-                                  ${endpoints.map(
-                                      ep =>
-                                          html`<md-select-option value=${String(ep)}>
-                                              <div slot="headline">
-                                                  EP
-                                                  ${ep}${getEndpointDeviceTypes(target, ep)[0]
-                                                      ? ` · ${getEndpointDeviceTypes(target, ep)[0].label}`
-                                                      : ""}
-                                              </div>
-                                          </md-select-option>`,
-                                  )}
+                                  ${endpoints.map(ep => {
+                                      const dt = getEndpointDeviceTypes(target, ep)[0];
+                                      return html`<md-select-option value=${String(ep)}>
+                                          <div slot="headline">EP ${ep}${dt ? ` · ${dt.label}` : ""}</div>
+                                      </md-select-option>`;
+                                  })}
                               </md-outlined-select>`
                             : html`<md-outlined-text-field
                                   label="Target endpoint"
