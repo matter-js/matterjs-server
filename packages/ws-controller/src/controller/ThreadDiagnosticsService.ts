@@ -216,13 +216,14 @@ export class ThreadDiagnosticsService {
 
         if (force) {
             // A manual refresh re-pulls diagnostics; it does not re-discover the
-            // transport. Reuse the cap the startup/first-seen probe already registered.
-            // Probe only when REST is not yet known — which still lets a BR that gained
-            // a REST endpoint after startup be picked up.
+            // transport. Trust the first-seen probe result — REST present OR absent —
+            // and only probe a BR we have never probed. #probeBrForRest is a no-op
+            // once a BR has been probed (see its #probeAttempted guard), so a known
+            // REST-less network (e.g. Aqara) is not re-checked on every reload. A BR
+            // that gains REST later is re-probed when it is re-announced via mDNS.
             // TEMPORARY gate — see constructor. REMOVE BEFORE COMMIT.
-            if (process.env.MATTER_DISABLE_REST !== "1" && !this.#restCaps.has(key)) {
-                this.#probeAttempted.delete(key);
-                await this.#probeBrForRest(br, { force: true });
+            if (process.env.MATTER_DISABLE_REST !== "1") {
+                await this.#probeBrForRest(br);
             }
             const existing = this.#streamsInFlight.get(key);
             if (existing !== undefined) {
