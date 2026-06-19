@@ -16,6 +16,10 @@ export interface BindingEntryStruct {
     fabricIndex: number | undefined;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null;
+}
+
 export class BindingEntryDataTransformer {
     private static readonly KEY_MAPPING: {
         [inputKey: string]: keyof BindingEntryStruct;
@@ -27,8 +31,8 @@ export class BindingEntryDataTransformer {
         "254": "fabricIndex",
     };
 
-    public static transform(input: any): BindingEntryStruct {
-        if (!input || typeof input !== "object") {
+    public static transform(input: unknown): BindingEntryStruct {
+        if (!isRecord(input)) {
             throw new Error("Invalid input: expected an object");
         }
 
@@ -40,12 +44,15 @@ export class BindingEntryDataTransformer {
                 const mappedKey = keyMapping[key];
                 if (mappedKey) {
                     const value = input[key];
-                    if (value === undefined) {
+                    // Treat unset/wildcard fields (null or absent) as omitted, not numeric 0.
+                    if (value == null) {
                         continue;
                     }
                     if (mappedKey === "node") {
                         // Node IDs can be bigint - preserve the original type
-                        result[mappedKey] = value;
+                        if (typeof value === "number" || typeof value === "bigint") {
+                            result.node = value;
+                        }
                     } else {
                         // group, endpoint, cluster, fabricIndex are all numeric
                         result[mappedKey] = Number(value);

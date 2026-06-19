@@ -13,12 +13,14 @@ import "@material/web/list/list-item";
 import { consume } from "@lit/context";
 import { MatterClient, MatterNode, isTestNodeId } from "@matter-server/ws-client";
 import { mdiAlertCircleOutline, mdiChevronRight } from "@mdi/js";
-import { LitElement, css, html } from "lit";
+import { LitElement, css, html, nothing } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { guard } from "lit/directives/guard.js";
+import "./cluster-commands/clusters/binding-commands.js";
 import { clientContext, tickContext } from "../client/client-context.js";
-import { DeviceType, clusters, device_types } from "../client/models/descriptions.js";
+import { clusters } from "../client/models/descriptions.js";
 import "../components/ha-svg-icon";
+import { getEndpointDeviceTypes } from "../util/endpoints.js";
 import { formatHex, formatNodeAddress, getEffectiveFabricIndex } from "../util/format_hex.js";
 import { notFoundStyles } from "../util/shared-styles.js";
 import { bindingContext } from "./components/context.js";
@@ -41,14 +43,7 @@ function getUniqueClusters(node: MatterNode, endpoint: number) {
     });
 }
 
-export function getEndpointDeviceTypes(node: MatterNode, endpoint: number): DeviceType[] {
-    const rawValues = node.attributes[`${endpoint}/29/0`] as Record<string, number>[] | undefined;
-    if (!rawValues) return [];
-    return rawValues.map(rawValue => {
-        const id = rawValue["0"] ?? rawValue["deviceType"];
-        return device_types[id] ?? { id: id ?? -1, label: `Unknown Device Type (${id})`, clusters: [] };
-    });
-}
+export { getEndpointDeviceTypes };
 
 @customElement("matter-endpoint-view")
 class MatterEndpointView extends LitElement {
@@ -94,6 +89,17 @@ class MatterEndpointView extends LitElement {
             <div class="container">
                 <node-details .node=${this.node}></node-details>
             </div>
+
+            <!-- Binding editor (when this endpoint has a Binding cluster) -->
+            ${getUniqueClusters(this.node, this.endpoint).includes(30)
+                ? html`<div class="container">
+                      <binding-cluster-commands
+                          .node=${this.node}
+                          .endpoint=${this.endpoint}
+                          .cluster=${30}
+                      ></binding-cluster-commands>
+                  </div>`
+                : nothing}
 
             <!-- Endpoint clusters listing -->
             <div class="container">

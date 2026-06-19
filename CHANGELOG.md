@@ -11,9 +11,20 @@ This page shows a detailed overview of the changes between versions without the 
 
 - Feature: Surface mDNS TXT keys `sv` (software version) and `rv` (record version) on Border Router cards. The existing `borderAgentIdHex` field now also populates from the `ai` TXT key (OpenThread upstream spec), with `dd` as a fallback (legacy/Apple variant). The `id` TXT key is deferred until a real-world sample with a confirmed meaning is available.
 - Feature: Add `get_thread_diagnostics` WS command and `thread_diagnostics_updated` WS event for per-Thread-network diagnostic batches collected from Border Routers via MeshCoP (commissioner + CoAP) or OTBR REST. Batches are cached server-side per extPanId with a 1h TTL. The OTBR REST transport is auto-detected via probe and used when reachable; otherwise MeshCoP is used.
+- Feature: Dashboard Thread graph now renders the real mesh from BR/router diagnostics (route64 router links + childTable child counts), merged per Thread network into the existing graph. Diagnostic-only nodes appear only when reachable from a commissioned Matter device.
 - Internal: Move Thread Border Router discovery into the new `@matter-server/thread-br` package. The class is renamed from `BorderRouterDiscovery` to `BorderRouterRegistry`; behaviour is unchanged. `BorderRouterEntry` is now sourced from `@matter-server/thread-br` and re-exported from `@matter-server/ws-client` so the wire format and dashboard imports are unchanged. Foundation for upcoming MeshCoP / OTBR REST diagnostic queries.
 - Internal: `@matter-server/thread-br` package gained diagnostic primitives: `DiagnosticSource` interface, `MeshCopDiagnosticSource`, `OtbrRestDiagnosticSource`, BR selection / per-network mutex / source strategy, OTBR REST adapter, and `connectMeshcop` factory.
 - Internal: New `ThreadDiagnosticsService` in `@matter-server/ws-controller` provides per-extPanId cache (1h TTL), source selection (REST > MeshCoP > none), per-network mutex, and event emission.
+
+## 1.1.0 (2026-06-17)
+
+- Enhancement: Revamped the experimental Binding overview and editor in Dashboard
+- Enhancement: Added ACL overview and limited management options to Access Control cluster view (Root endpoint)
+- Enhancement: Update matter.js to 0.17.3 with many fixes and optimizations, especially:
+    - Fixes attestation certificate validation error for Nuki SmartLocks
+    - Ensures to use the increased thread message retransmission timings also for commands
+- Adjustment: Ensure that Matter-Server CLI options do not interfere with matter.js
+>>>>>>> origin/main
 
 ## 1.0.0 (2026-06-09)
 

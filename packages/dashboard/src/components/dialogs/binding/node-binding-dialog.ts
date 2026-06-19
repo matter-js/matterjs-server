@@ -6,27 +6,27 @@
 
 import "@material/web/button/text-button";
 import "@material/web/dialog/dialog";
-import { consume } from "@lit/context";
-import "@material/web/list/list";
-import "@material/web/list/list-item";
+import "@material/web/select/outlined-select";
+import "@material/web/select/select-option";
 import "@material/web/textfield/outlined-text-field";
+import { consume } from "@lit/context";
 import type { MdDialog } from "@material/web/dialog/dialog.js";
-import "../../../components/ha-svg-icon";
-import type { MdOutlinedTextField } from "@material/web/textfield/outlined-text-field.js";
-import { AccessControlEntry, BindingTarget, MatterClient, MatterNode } from "@matter-server/ws-client";
+import { MatterClient, MatterNode } from "@matter-server/ws-client";
 import { css, html, LitElement, nothing } from "lit";
-import { customElement, property, query } from "lit/decorators.js";
+import { customElement, property, state } from "lit/decorators.js";
 import { clientContext } from "../../../client/client-context.js";
+import { clusters } from "../../../client/models/descriptions.js";
+import { nodeIdKey } from "../../../util/access-control.js";
 import { handleAsync } from "../../../util/async-handler.js";
-import { analyzeBatchResults, type MatterBatchResult } from "../../../util/matter-status.js";
+import { bindableClusters, targetAclCapacityForBinding } from "../../../util/binding.js";
+import { getEndpointDeviceTypes } from "../../../util/endpoints.js";
+import { getDeviceName } from "../../../util/node-name.js";
 import { preventDefault } from "../../../util/prevent_default.js";
-import { showAlertDialog, showPromptDialog } from "../../dialog-box/show-dialog-box.js";
-import {
-    AccessControlEntryDataTransformer,
-    AccessControlEntryStruct,
-    AccessControlTargetStruct,
-} from "../acl/model.js";
-import { BindingEntryDataTransformer, BindingEntryStruct, InputType } from "./model.js";
+import { showAlertDialog } from "../../dialog-box/show-dialog-box.js";
+import { addBinding } from "./binding-actions.js";
+
+const ALL_CLUSTERS = "all";
+const CUSTOM_CLUSTER = "custom";
 
 @customElement("node-binding-dialog")
 export class NodeBindingDialog extends LitElement {
@@ -40,290 +40,95 @@ export class NodeBindingDialog extends LitElement {
     @property({ attribute: false })
     endpoint!: number;
 
-    @query("md-outlined-text-field[name='NodeId']")
-    private _targetNodeId!: MdOutlinedTextField;
+    @state() private _nodeIdInput = "";
+    @state() private _endpointInput = "";
+    @state() private _clusterSelection = ALL_CLUSTERS;
+    @state() private _customClusterInput = "";
+    @state() private _busy = false;
 
-    @query("md-outlined-text-field[name='Endpoint']")
-    private _targetEndpoint!: MdOutlinedTextField;
-
-    @query("md-outlined-text-field[name='Cluster']")
-    private _targetCluster!: MdOutlinedTextField;
-
-    private fetchBindingEntry(): BindingEntryStruct[] {
-        const bindings_raw = this.node!.attributes[this.endpoint + "/30/0"] as InputType[] | undefined;
-        if (!bindings_raw) return [];
-        return Object.values(bindings_raw).map(value => BindingEntryDataTransformer.transform(value));
+    private _knownNodes(): MatterNode[] {
+        return Object.values(this.client.nodes)
+            .filter(n => nodeIdKey(n.node_id) !== nodeIdKey(this.node!.node_id))
+            .sort((a, b) => {
+                const x = BigInt(a.node_id);
+                const y = BigInt(b.node_id);
+                return x < y ? -1 : x > y ? 1 : 0;
+            });
     }
 
-    private fetchACLEntry(targetNodeId: number | bigint): AccessControlEntryStruct[] {
-        const acl_cluster_raw = this.client.nodes[String(targetNodeId)]?.attributes["0/31/0"] as
-            | InputType[]
-            | undefined;
-        if (!acl_cluster_raw) return [];
-        return Object.values(acl_cluster_raw).map((value: InputType) =>
-            AccessControlEntryDataTransformer.transform(value),
-        );
+    private _resolveTarget(): MatterNode | undefined {
+        const raw = this._nodeIdInput.trim();
+        if (!/^\d+$/.test(raw)) return undefined;
+        return this.client.nodes[nodeIdKey(BigInt(raw))];
     }
 
-    private async deleteBindingHandler(index: number): Promise<void> {
-        const rawBindings = this.fetchBindingEntry();
-        try {
-            const targetNodeId = rawBindings[index].node;
-            const endpoint = rawBindings[index].endpoint;
-            if (targetNodeId === undefined || endpoint === undefined) return;
-            let aclCleanedUp = false;
-            try {
-                await this.removeNodeAtACLEntry(this.node!.node_id, endpoint, targetNodeId);
-                aclCleanedUp = true;
-            } catch (aclError) {
-                const errorMessage = aclError instanceof Error ? aclError.message : String(aclError);
-                const proceed = await showPromptDialog({
-                    title: "ACL cleanup failed",
-                    text:
-                        `Could not clean up ACL on target node ${targetNodeId}: ${errorMessage}. ` +
-                        "The target node may no longer exist or be unreachable. " +
-                        "Do you want to remove the binding anyway? " +
-                        "Note: The target device may retain an outdated ACL entry.",
-                    confirmText: "Remove binding",
-                });
-                if (!proceed) return;
-            }
-            try {
-                const updatedBindings = this.removeBindingAtIndex(rawBindings, index);
-                await this.syncBindingUpdates(updatedBindings, index);
-            } catch (bindingError) {
-                const errorMessage = bindingError instanceof Error ? bindingError.message : String(bindingError);
-                await showAlertDialog({
-                    title: "Binding removal failed",
-                    text:
-                        `Failed to remove the binding: ${errorMessage}. ` +
-                        (aclCleanedUp
-                            ? "The ACL on the target device was already updated. " +
-                              "The binding and ACL may now be out of sync."
-                            : "No changes were made."),
-                });
-                return;
-            }
-        } catch (error) {
-            this.handleBindingDeletionError(error);
+    private _nodeEndpoints(target: MatterNode): number[] {
+        const eps = new Set<number>();
+        for (const key of Object.keys(target.attributes)) {
+            const m = /^(\d+)\/29\/0$/.exec(key);
+            if (m) eps.add(Number(m[1]));
         }
+        return Array.from(eps).sort((a, b) => a - b);
     }
 
-    private async removeNodeAtACLEntry(
-        sourceNodeId: number | bigint,
-        sourceEndpoint: number,
-        targetNodeId: number | bigint,
-    ): Promise<void> {
-        const aclEntries = this.fetchACLEntry(targetNodeId);
-
-        const updatedACLEntries = aclEntries
-            .map(entry => this.removeEntryAtACL(sourceNodeId, sourceEndpoint, entry))
-            .filter((entry): entry is AccessControlEntryStruct => entry !== undefined);
-
-        // Convert to API format (without fabricIndex - server handles it)
-        const apiEntries = updatedACLEntries.map(e => this.toAccessControlEntry(e));
-        await this.client.setACLEntry(targetNodeId, apiEntries);
+    private _clusterLabel(id: number): string {
+        return `${clusters[id]?.label ?? "Cluster"} (0x${id.toString(16).padStart(2, "0").toUpperCase()})`;
     }
 
-    private removeEntryAtACL(
-        nodeId: number | bigint,
-        sourceEndpoint: number,
-        entry: AccessControlEntryStruct,
-    ): AccessControlEntryStruct | undefined {
-        const hasSubject = entry.subjects.includes(nodeId);
-        if (!hasSubject) return entry;
-
-        const hasTarget = entry.targets!.filter(item => item.endpoint === sourceEndpoint);
-        return hasTarget.length > 0 ? undefined : entry;
+    private _onNodeSelect(e: Event) {
+        const select = e.target as HTMLSelectElement;
+        this._nodeIdInput = select.value;
+        this._endpointInput = "";
+        this._clusterSelection = ALL_CLUSTERS;
     }
 
-    private removeBindingAtIndex(bindings: BindingEntryStruct[], index: number): BindingEntryStruct[] {
-        return [...bindings.slice(0, index), ...bindings.slice(index + 1)];
-    }
-
-    private async syncBindingUpdates(updatedBindings: BindingEntryStruct[], index: number): Promise<void> {
-        // Convert to API format (without fabricIndex - server handles it)
-        const apiBindings = updatedBindings.map(b => this.toBindingTarget(b));
-        await this.client.setNodeBinding(this.node!.node_id, this.endpoint, apiBindings);
-
-        const attributePath = `${this.endpoint}/30/0`;
-        const currentBindings = this.node!.attributes[attributePath] as BindingEntryStruct[] | undefined;
-        const updatedAttributes = {
-            ...this.node!.attributes,
-            [attributePath]: currentBindings ? this.removeBindingAtIndex(currentBindings, index) : [],
-        };
-
-        this.node!.attributes = updatedAttributes;
-        this.requestUpdate();
-    }
-
-    private handleBindingDeletionError(error: unknown): void {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        console.error(`Binding deletion failed: ${errorMessage}`);
-    }
-
-    private async add_target_acl(
-        targetNodeId: number | bigint,
-        entry: AccessControlEntryStruct,
-    ): Promise<MatterBatchResult> {
-        try {
-            // Fetch existing ACL entries and transform to local struct format
-            const rawEntries = this.client.nodes[String(targetNodeId)]?.attributes["0/31/0"] as InputType[] | undefined;
-            const entries = rawEntries
-                ? Object.values(rawEntries).map(v => AccessControlEntryDataTransformer.transform(v))
-                : [];
-            entries.push(entry);
-
-            // Convert to API format (without fabricIndex - server handles it)
-            const apiEntries = entries.map(e => this.toAccessControlEntry(e));
-            const results = await this.client.setACLEntry(targetNodeId, apiEntries);
-
-            const batchResult = analyzeBatchResults(results);
-            if (batchResult.outcome !== "all_success") {
-                console.error(`Set ACL entry: ${batchResult.message}`);
-            }
-            return batchResult;
-        } catch (err) {
-            console.error("Add ACL error:", err);
-            return {
-                outcome: "all_failed",
-                successCount: 0,
-                failureCount: 1,
-                errorCounts: { 1: 1 },
-                message: `Exception: ${err instanceof Error ? err.message : String(err)}`,
-            };
+    private async _add() {
+        const target = this._resolveTarget();
+        const rawNodeId = this._nodeIdInput.trim();
+        if (!/^\d+$/.test(rawNodeId) || BigInt(rawNodeId) <= 0n) {
+            await showAlertDialog({ title: "Validation error", text: "Please enter a valid target node id." });
+            return;
         }
-    }
-
-    /** Convert local BindingEntryStruct to API BindingTarget (without fabricIndex) */
-    private toBindingTarget(entry: BindingEntryStruct): BindingTarget {
-        return {
-            node: entry.node ?? null,
-            group: entry.group ?? null,
-            endpoint: entry.endpoint ?? null,
-            cluster: entry.cluster ?? null,
-        };
-    }
-
-    /** Convert local AccessControlEntryStruct to API AccessControlEntry (without fabricIndex) */
-    private toAccessControlEntry(entry: AccessControlEntryStruct): AccessControlEntry {
-        return {
-            privilege: entry.privilege,
-            auth_mode: entry.authMode,
-            subjects: entry.subjects ?? null,
-            targets:
-                entry.targets?.map(t => ({
-                    cluster: t.cluster ?? null,
-                    endpoint: t.endpoint ?? null,
-                    device_type: t.deviceType ?? null,
-                })) ?? null,
-        };
-    }
-
-    private async add_bindings(endpoint: number, bindingEntry: BindingEntryStruct): Promise<MatterBatchResult> {
-        const bindings = this.fetchBindingEntry();
-        bindings.push(bindingEntry);
-        try {
-            // Convert to API format (without fabricIndex - server handles it)
-            const apiBindings = bindings.map(b => this.toBindingTarget(b));
-            const results = await this.client.setNodeBinding(this.node!.node_id, endpoint, apiBindings);
-
-            const batchResult = analyzeBatchResults(results);
-            if (batchResult.outcome !== "all_success") {
-                console.error(`Set binding: ${batchResult.message}`);
-            }
-            return batchResult;
-        } catch (err) {
-            console.error("Add bindings error:", err);
-            return {
-                outcome: "all_failed",
-                successCount: 0,
-                failureCount: 1,
-                errorCounts: { 1: 1 },
-                message: `Exception: ${err instanceof Error ? err.message : String(err)}`,
-            };
-        }
-    }
-
-    async addBindingHandler() {
-        let targetNodeId: bigint | undefined;
-        const rawNodeId = this._targetNodeId.value?.trim();
-        if (rawNodeId) {
-            if (!/^\d+$/.test(rawNodeId)) {
-                showAlertDialog({ title: "Validation error", text: "Please enter a valid target node ID" });
-                return;
-            }
-            targetNodeId = BigInt(rawNodeId);
-        }
-        const targetEndpoint = this._targetEndpoint.value ? parseInt(this._targetEndpoint.value, 10) : undefined;
-        const targetCluster = this._targetCluster.value ? parseInt(this._targetCluster.value, 10) : undefined;
-
-        if (targetNodeId === undefined || targetNodeId <= 0n) {
-            showAlertDialog({ title: "Validation error", text: "Please enter a valid target node ID" });
+        const targetNodeId = BigInt(rawNodeId);
+        const endpoint = parseInt(this._endpointInput, 10);
+        if (Number.isNaN(endpoint) || endpoint < 0 || endpoint > 0xfffe) {
+            await showAlertDialog({ title: "Validation error", text: "Please enter a valid target endpoint." });
             return;
         }
 
-        if (targetEndpoint === undefined || targetEndpoint <= 0 || targetEndpoint > 0xfffe) {
-            showAlertDialog({ title: "Validation error", text: "Please enter a valid target endpoint" });
-            return;
-        }
-
-        // cluster optional
-        if (targetCluster !== undefined) {
-            // We ignore vendor specific clusters for now
-            if (targetCluster < 0 || targetCluster > 0x7fff) {
-                showAlertDialog({ title: "Validation error", text: "Please enter a valid target cluster" });
+        let cluster: number | undefined;
+        if (this._clusterSelection === ALL_CLUSTERS) {
+            cluster = undefined;
+        } else if (this._clusterSelection === CUSTOM_CLUSTER) {
+            const c = parseInt(this._customClusterInput, 10);
+            if (Number.isNaN(c) || c < 0 || c > 0x7fff) {
+                await showAlertDialog({ title: "Validation error", text: "Please enter a valid cluster id." });
                 return;
             }
-        }
-
-        const targets: AccessControlTargetStruct = {
-            endpoint: targetEndpoint,
-            cluster: targetCluster,
-            deviceType: undefined,
-        };
-
-        // Note: fabricIndex is assigned by the server based on the device's fabric table
-        const acl_entry: AccessControlEntryStruct = {
-            privilege: 3,
-            authMode: 2,
-            subjects: [this.node!.node_id],
-            targets: [targets],
-            fabricIndex: 0, // Placeholder - server will use correct fabric index
-        };
-
-        const aclResult = await this.add_target_acl(targetNodeId, acl_entry);
-        if (aclResult.outcome === "all_failed") {
-            showAlertDialog({ title: "Failed to add ACL entry", text: aclResult.message });
-            return;
-        }
-        if (aclResult.outcome === "partial") {
-            showAlertDialog({ title: "ACL entry partially failed", text: aclResult.message });
-            // Continue with binding attempt since some ACL entries succeeded
-        }
-
-        const endpoint = this.endpoint;
-        // Note: fabricIndex is assigned by the server based on the device's fabric table
-        const bindingEntry: BindingEntryStruct = {
-            node: targetNodeId,
-            endpoint: targetEndpoint,
-            group: undefined,
-            cluster: targetCluster,
-            fabricIndex: undefined, // Server will use correct fabric index
-        };
-
-        const bindingResult = await this.add_bindings(endpoint, bindingEntry);
-
-        if (bindingResult.outcome === "all_success") {
-            this._targetNodeId.value = "";
-            this._targetEndpoint.value = "";
-            this._targetCluster.value = "";
-            this.requestUpdate();
-        } else if (bindingResult.outcome === "partial") {
-            showAlertDialog({ title: "Binding partially failed", text: bindingResult.message });
-            this.requestUpdate(); // Update UI to show what succeeded
+            cluster = c;
         } else {
-            showAlertDialog({ title: "Failed to add binding", text: bindingResult.message });
+            cluster = parseInt(this._clusterSelection, 10);
+        }
+
+        if (target) {
+            const capacity = targetAclCapacityForBinding(target, this.node!.node_id);
+            if (!capacity.canAdd) {
+                await showAlertDialog({ title: "Cannot add binding", text: capacity.reason ?? "Target ACL is full." });
+                return;
+            }
+        }
+
+        this._busy = true;
+        try {
+            await addBinding(this.client, this.node!, this.endpoint, targetNodeId, endpoint, cluster);
+            this._close();
+        } catch (err) {
+            await showAlertDialog({
+                title: "Failed to add binding",
+                text: err instanceof Error ? err.message : String(err),
+            });
+        } finally {
+            this._busy = false;
         }
     }
 
@@ -332,149 +137,166 @@ export class NodeBindingDialog extends LitElement {
     }
 
     private _handleClosed() {
-        this.parentNode!.removeChild(this);
+        this.parentNode?.removeChild(this);
     }
 
-    private onChange(e: Event) {
-        const textfield = e.target as MdOutlinedTextField;
-        if (textfield.type === "number" && textfield.max && textfield.min) {
-            const value = parseInt(textfield.value, 10);
-            if (parseInt(textfield.max, 10) < value || value < parseInt(textfield.min, 10)) {
-                textfield.error = true;
-                textfield.errorText = "value error";
-            } else {
-                textfield.error = false;
-            }
-        } else {
-            // Text field with pattern validation (e.g. node ID)
-            textfield.error = textfield.value !== "" && !/^[0-9]+$/.test(textfield.value);
-            if (textfield.error) {
-                textfield.errorText = "must be a numeric value";
-            }
-        }
+    private _renderClusterField(target: MatterNode | undefined, endpoint: number | undefined) {
+        const known = target !== undefined && endpoint !== undefined && !Number.isNaN(endpoint);
+        const split = known ? bindableClusters(this.node!, this.endpoint, target, endpoint) : undefined;
+        const nonBindable =
+            split !== undefined &&
+            this._clusterSelection !== ALL_CLUSTERS &&
+            this._clusterSelection !== CUSTOM_CLUSTER &&
+            split.otherTarget.includes(parseInt(this._clusterSelection, 10));
+
+        return html`
+            <md-outlined-select
+                label="Cluster"
+                .value=${this._clusterSelection}
+                ?disabled=${this._busy}
+                @change=${(e: Event) => (this._clusterSelection = (e.target as HTMLSelectElement).value)}
+            >
+                <md-select-option value=${ALL_CLUSTERS}>
+                    <div slot="headline">All clusters (any eligible)</div>
+                </md-select-option>
+                ${split && split.bindable.length
+                    ? html`<md-select-option disabled><div slot="headline">— Bindable —</div></md-select-option>
+                          ${split.bindable.map(
+                              c =>
+                                  html`<md-select-option value=${String(c)}
+                                      ><div slot="headline">${this._clusterLabel(c)}</div></md-select-option
+                                  >`,
+                          )}`
+                    : nothing}
+                ${split && split.otherTarget.length
+                    ? html`<md-select-option disabled
+                              ><div slot="headline">— Other target clusters (⚠) —</div></md-select-option
+                          >
+                          ${split.otherTarget.map(
+                              c =>
+                                  html`<md-select-option value=${String(c)}
+                                      ><div slot="headline">${this._clusterLabel(c)}</div></md-select-option
+                                  >`,
+                          )}`
+                    : nothing}
+                <md-select-option value=${CUSTOM_CLUSTER}
+                    ><div slot="headline">Custom cluster id…</div></md-select-option
+                >
+            </md-outlined-select>
+            ${this._clusterSelection === CUSTOM_CLUSTER
+                ? html`<md-outlined-text-field
+                      label="cluster id"
+                      type="number"
+                      min="0"
+                      max="32767"
+                      .value=${this._customClusterInput}
+                      ?disabled=${this._busy}
+                      @input=${(e: Event) => (this._customClusterInput = (e.target as HTMLInputElement).value)}
+                  ></md-outlined-text-field>`
+                : nothing}
+            ${nonBindable
+                ? html`<div class="warn">
+                      ⚠ This cluster is not a client cluster on the source endpoint. The binding may not function — it
+                      will be added anyway on your request.
+                  </div>`
+                : nothing}
+        `;
     }
 
     protected override render() {
-        const rawBindings = this.node!.attributes[this.endpoint + "/30/0"] as InputType[] | undefined;
-        const bindings = rawBindings
-            ? Object.values(rawBindings).map(entry => BindingEntryDataTransformer.transform(entry))
-            : [];
+        if (!this.node) return nothing;
+        const target = this._resolveTarget();
+        const endpoint = this._endpointInput === "" ? undefined : parseInt(this._endpointInput, 10);
+        const endpoints = target ? this._nodeEndpoints(target) : [];
 
         return html`
             <md-dialog open @cancel=${preventDefault} @closed=${this._handleClosed}>
-                <div slot="headline">
-                    <div>Binding</div>
-                </div>
+                <div slot="headline">Add binding</div>
                 <div slot="content">
-                    <div>
-                        <md-list style="padding-bottom:16px;">
-                            ${Object.values(bindings).map(
-                                (entry, index) => html`
-                  <md-list-item class="binding-item">
-                    <div style="display:flex;gap:8px;">
-                        <div>node:${entry["node"]}</div>
-                        <div>endpoint:${entry["endpoint"]}</div>
-                        ${entry["cluster"] ? html` <div>cluster:${entry["cluster"]}</div> ` : nothing}
-                    </div>
-                    <div slot="end">
-                      <md-text-button
-                        @click=${handleAsync(() => this.deleteBindingHandler(index))}
-                      >delete</md-text-button
-                    </div>
-                  </md-list-item>
-                `,
+                    <div class="form">
+                        <md-outlined-select
+                            label="Known nodes"
+                            ?disabled=${this._busy}
+                            .value=${target ? this._nodeIdInput : ""}
+                            @change=${this._onNodeSelect}
+                        >
+                            <md-select-option value=""><div slot="headline">— pick a node —</div></md-select-option>
+                            ${this._knownNodes().map(
+                                n =>
+                                    html`<md-select-option value=${nodeIdKey(n.node_id)}>
+                                        <div slot="headline">${n.node_id.toString()} · ${getDeviceName(n)}</div>
+                                    </md-select-option>`,
                             )}
-                        </md-list>
-                        <div class="inline-group">
-                            <div class="group-label">target</div>
-                            <div class="group-input">
-                                <md-outlined-text-field
-                                    label="node id"
-                                    name="NodeId"
-                                    type="text"
-                                    pattern="[0-9]+"
-                                    class="target-item"
-                                    @change=${this.onChange}
-                                    supporting-text="required"
-                                ></md-outlined-text-field>
-                                <md-outlined-text-field
-                                    label="endpoint"
-                                    name="Endpoint"
-                                    type="number"
-                                    min="0"
-                                    max="65534"
-                                    @change=${this.onChange}
-                                    class="target-item"
-                                    supporting-text="required"
-                                ></md-outlined-text-field>
-                                <md-outlined-text-field
-                                    label="cluster"
-                                    name="Cluster"
-                                    type="number"
-                                    min="0"
-                                    max="32767"
-                                    @change=${this.onChange}
-                                    class="target-item"
-                                    supporting-text="optional"
-                                ></md-outlined-text-field>
-                            </div>
-                        </div>
-                        <div style="margin:8px;">
-                            <span style="font-size: 0.75rem;font-style: italic;font-weight: bold;">
-                                Note: The Cluster ID field is optional according to the Matter specification. If you
-                                leave it blank, the binding applies to all eligible clusters on the target endpoint.
-                                However, some devices may require a specific cluster to be set in order for the binding
-                                to function correctly. If you experience unexpected behavior, try specifying the cluster
-                                explicitly.
-                            </span>
-                        </div>
+                        </md-outlined-select>
+                        <md-outlined-text-field
+                            label="Target node id"
+                            type="text"
+                            pattern="[0-9]+"
+                            supporting-text="required — pick above or enter a raw node id"
+                            .value=${this._nodeIdInput}
+                            ?disabled=${this._busy}
+                            @input=${(e: Event) => {
+                                this._nodeIdInput = (e.target as HTMLInputElement).value;
+                                this._endpointInput = "";
+                                this._clusterSelection = ALL_CLUSTERS;
+                            }}
+                        ></md-outlined-text-field>
+
+                        ${target
+                            ? html`<md-outlined-select
+                                  label="Target endpoint"
+                                  ?disabled=${this._busy}
+                                  .value=${this._endpointInput}
+                                  @change=${(e: Event) => {
+                                      this._endpointInput = (e.target as HTMLSelectElement).value;
+                                      this._clusterSelection = ALL_CLUSTERS;
+                                  }}
+                              >
+                                  ${endpoints.map(ep => {
+                                      const dt = getEndpointDeviceTypes(target, ep)[0];
+                                      return html`<md-select-option value=${String(ep)}>
+                                          <div slot="headline">EP ${ep}${dt ? ` · ${dt.label}` : ""}</div>
+                                      </md-select-option>`;
+                                  })}
+                              </md-outlined-select>`
+                            : html`<md-outlined-text-field
+                                  label="Target endpoint"
+                                  type="number"
+                                  min="0"
+                                  max="65534"
+                                  supporting-text=${this._nodeIdInput.trim() === ""
+                                      ? "enter a node id first"
+                                      : "unknown node — enter endpoint manually"}
+                                  ?disabled=${this._busy || this._nodeIdInput.trim() === ""}
+                                  .value=${this._endpointInput}
+                                  @input=${(e: Event) => (this._endpointInput = (e.target as HTMLInputElement).value)}
+                              ></md-outlined-text-field>`}
+                        ${this._renderClusterField(target, endpoint)}
                     </div>
                 </div>
                 <div slot="actions">
-                    <md-text-button @click=${handleAsync(() => this.addBindingHandler())}>Add</md-text-button>
-                    <md-text-button @click=${this._close}>Cancel</md-text-button>
+                    <md-text-button ?disabled=${this._busy} @click=${handleAsync(() => this._add())}
+                        >Add</md-text-button
+                    >
+                    <md-text-button ?disabled=${this._busy} @click=${this._close}>Cancel</md-text-button>
                 </div>
             </md-dialog>
         `;
     }
 
     static override styles = css`
-        .binding-item {
-            background: var(--md-sys-color-surface-container-high);
-        }
-
-        .inline-group {
+        .form {
             display: flex;
-            border: 2px solid var(--md-sys-color-primary);
-            padding: 1px;
-            border-radius: 8px;
-            position: relative;
-            margin: 8px;
+            flex-direction: column;
+            gap: 12px;
+            min-width: 320px;
         }
-
-        .group-input {
-            display: flex;
-            width: -webkit-fill-available;
-        }
-
-        .target-item {
-            display: inline-block;
-            padding: 16px 8px 8px 8px;
-            border-radius: 4px;
-            vertical-align: middle;
-            min-width: 80px;
-            text-align: center;
-            width: -webkit-fill-available;
-        }
-
-        .group-label {
-            position: absolute;
-            left: 16px;
-            top: -12px;
-            background: var(--md-sys-color-primary);
-            color: var(--md-sys-color-on-primary);
-            padding: 4px 16px;
-            border-radius: 4px;
+        .warn {
+            font-size: 12px;
+            padding: 8px 10px;
+            border-radius: 7px;
+            background: var(--md-sys-color-error-container);
+            color: var(--md-sys-color-on-error-container);
         }
     `;
 }

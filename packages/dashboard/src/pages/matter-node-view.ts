@@ -18,11 +18,11 @@ import { guard } from "lit/directives/guard.js";
 import { clientContext, tickContext } from "../client/client-context.js";
 import "../components/ha-svg-icon";
 import { getDeviceIcon, getEndpointIcon } from "../util/device-icons.js";
+import { getEndpointDeviceTypes } from "../util/endpoints.js";
 import { formatNodeAddress, getEffectiveFabricIndex } from "../util/format_hex.js";
-import { notFoundStyles, reducedMotionStyles } from "../util/shared-styles.js";
 import "./components/header";
 import "./components/node-details";
-import { getEndpointDeviceTypes } from "./matter-endpoint-view.js";
+import { notFoundStyles, reducedMotionStyles } from "../util/shared-styles.js";
 import { getNetworkType } from "./network/network-utils.js";
 
 declare global {

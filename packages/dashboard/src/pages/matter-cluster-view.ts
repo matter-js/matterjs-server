@@ -351,7 +351,10 @@ class MatterClusterView extends LitElement {
 
     private _renderClusterCommands() {
         if (this.cluster === undefined) return html``;
-        if (!this.node?.available) return html``; // Don't show commands when device is offline
+        // ACL (31) and Binding (30) panels stay visible read-only for offline nodes; commands for
+        // other clusters are hidden while the device is unreachable.
+        const RENDER_WHEN_OFFLINE = new Set<number>([30, 31]);
+        if (!this.node?.available && !RENDER_WHEN_OFFLINE.has(this.cluster)) return html``;
 
         const tagName = getClusterCommandsTag(this.cluster);
         if (!tagName) return html``;
