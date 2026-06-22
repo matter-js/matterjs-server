@@ -7,6 +7,10 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
+## **WORK IN PROGRESS**
+
+- Enhancement: Do not send node_updated event when only NodeLabel changes
+
 ## 1.1.0 (2026-06-17)
 
 - Enhancement: Revamped the experimental Binding overview and editor in Dashboard

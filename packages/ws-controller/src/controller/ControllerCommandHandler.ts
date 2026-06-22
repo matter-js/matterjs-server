@@ -105,13 +105,6 @@ const logger = Logger.get("ControllerCommandHandler");
 const RECONNECT_TIMEOUT = Minutes(3);
 
 /**
- * Cluster IDs whose attribute changes should trigger a full node_updated broadcast.
- * BasicInformation (0x28) covers firmware version, product name, etc.
- * BridgedDeviceBasicInformation (0x39) covers the same for bridged child nodes.
- */
-const FULL_UPDATE_CLUSTER_IDS = new Set<ClusterId>([BasicInformation.id, BridgedDeviceBasicInformation.id]);
-
-/**
  * Determine the Matter specification version from cached attributes.
  * Uses SpecificationVersion attribute (0/40/21) if available, otherwise
  * estimates from DataModelRevision attribute (0/40/0).
@@ -399,7 +392,11 @@ export class ControllerCommandHandler {
         node.events.attributeChanged.on(data => {
             attributeCache.updateAttribute(nodeId, data);
             this.events.attributeChanged.emit(nodeId, data);
-            if (FULL_UPDATE_CLUSTER_IDS.has(data.path.clusterId)) {
+            if (
+                (data.path.clusterId === BasicInformation.id ||
+                    data.path.clusterId === BridgedDeviceBasicInformation.id) &&
+                data.path.attributeId !== BasicInformation.attributes.nodeLabel.id
+            ) {
                 basicInfoChangedInBatch = true;
             }
         });
