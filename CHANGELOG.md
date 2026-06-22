@@ -10,6 +10,7 @@ This page shows a detailed overview of the changes between versions without the 
 ## **WORK IN PROGRESS**
 
 - Enhancement: Do not send node_updated event when only NodeLabel changes
+- Enhancement: Detect Self-Bindings (Node-to-same-Node-Binding) and prevent ACL creation for these cases and show in UI
 
 ## 1.1.0 (2026-06-17)
 

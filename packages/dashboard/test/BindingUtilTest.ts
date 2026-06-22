@@ -77,6 +77,13 @@ describe("binding util", () => {
             2,
         );
         expect(reverseAclState(1, binding({ cluster: 6 }), overTarget).state).to.equal("overPrivileged");
+        // Self-binding (binding target == source) needs no ACL.
+        expect(reverseAclState(7, binding({ node: 7 }), node({}, 7)).state).to.equal("self");
+    });
+
+    it("targetAclCapacityForBinding treats a self-binding as free (no ACL needed)", () => {
+        const self = node({ "0/62/5": 1, "0/31/4": 1, "0/31/0": [{ "1": 5, "2": 2, "3": [99], "254": 1 }] }, 7);
+        expect(targetAclCapacityForBinding(self, 7).canAdd).to.equal(true);
     });
 
     it("targetAclCapacityForBinding gates on the node's CurrentFabricIndex (0/62/5) and reusable room", () => {

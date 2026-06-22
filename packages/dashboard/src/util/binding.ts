@@ -82,7 +82,7 @@ export function bindableClusters(
     return { bindable, otherTarget };
 }
 
-export type ReverseAclState = "present" | "missing" | "overPrivileged" | "cannotVerify";
+export type ReverseAclState = "present" | "missing" | "overPrivileged" | "cannotVerify" | "self";
 
 export interface ReverseAclResult {
     state: ReverseAclState;
@@ -90,6 +90,7 @@ export interface ReverseAclResult {
 
 /**
  * Whether the target node's ACL grants the source the access this binding needs:
+ *  - self:           target is the source node itself — no ACL needed
  *  - present:        a matching CASE entry at Operate exists
  *  - overPrivileged: the only matching grant is above Operate (Manage/Administer)
  *  - missing:        no matching grant (or only below Operate)
@@ -100,6 +101,7 @@ export function reverseAclState(
     binding: BindingEntryStruct,
     targetNode: MatterNode | undefined,
 ): ReverseAclResult {
+    if (binding.node != null && nodeIdKey(binding.node) === nodeIdKey(sourceNodeId)) return { state: "self" };
     if (!targetNode || !targetNode.available) return { state: "cannotVerify" };
     const matching = entriesForFabric(readAclEntries(targetNode), nodeFabricIndex(targetNode)).filter(
         e =>
@@ -158,6 +160,8 @@ export interface AddBindingCapacity {
  * source can absorb it — mirrors the merge behavior the writer implements.
  */
 export function targetAclCapacityForBinding(targetNode: MatterNode, sourceNodeId: number | bigint): AddBindingCapacity {
+    // A self-binding (target is the source node) needs no ACL entry, so no capacity is consumed.
+    if (nodeIdKey(targetNode.node_id) === nodeIdKey(sourceNodeId)) return { canAdd: true };
     const fabricIndex = nodeFabricIndex(targetNode);
     // Advisory pre-check only. If CurrentFabricIndex isn't cached for this target yet, don't block:
     // the write path (ensureBindingAcl → freshOurAcl) reads 0/62/5 fresh and fails cleanly if absent.

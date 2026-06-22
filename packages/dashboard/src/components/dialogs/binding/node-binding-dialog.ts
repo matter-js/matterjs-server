@@ -47,13 +47,13 @@ export class NodeBindingDialog extends LitElement {
     @state() private _busy = false;
 
     private _knownNodes(): MatterNode[] {
-        return Object.values(this.client.nodes)
-            .filter(n => nodeIdKey(n.node_id) !== nodeIdKey(this.node!.node_id))
-            .sort((a, b) => {
-                const x = BigInt(a.node_id);
-                const y = BigInt(b.node_id);
-                return x < y ? -1 : x > y ? 1 : 0;
-            });
+        // Includes the source node itself — a self-binding (e.g. switch → light on the same node)
+        // is valid and needs no ACL.
+        return Object.values(this.client.nodes).sort((a, b) => {
+            const x = BigInt(a.node_id);
+            const y = BigInt(b.node_id);
+            return x < y ? -1 : x > y ? 1 : 0;
+        });
     }
 
     private _resolveTarget(): MatterNode | undefined {
