@@ -16,8 +16,10 @@ export { getClusterCommandsTag, hasClusterCommands, registerClusterCommands } fr
 export { BaseClusterCommands } from "./base-cluster-commands.js";
 
 // Cluster command components (auto-register on import)
+import "./clusters/access-control-commands.js";
 import "./clusters/avsum-commands.js";
 import "./clusters/basic-information-commands.js";
+import "./clusters/binding-commands.js";
 import "./clusters/chime-commands.js";
 import "./clusters/level-control-commands.js";
 import "./clusters/on-off-commands.js";

@@ -631,6 +631,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             thread_credentials_set: !!this.#config.threadDataset,
             bluetooth_enabled: this.#commandHandler.bleEnabled,
             ble_proxy_enabled: this.#commandHandler.bleProxyEnabled,
+            controller_node_id: this.#commandHandler.getCommissionerNodeId(),
         };
     }
 

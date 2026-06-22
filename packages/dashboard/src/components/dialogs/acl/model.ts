@@ -26,6 +26,10 @@ export type AccessControlEntryStruct = {
     fabricIndex: number;
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null;
+}
+
 export class AccessControlTargetTransformer {
     private static readonly KEY_MAPPING: {
         [inputKey: string]: keyof AccessControlTargetStruct;
@@ -35,8 +39,8 @@ export class AccessControlTargetTransformer {
         "2": "deviceType",
     };
 
-    public static transform(input: any): AccessControlTargetStruct {
-        if (!input || typeof input !== "object") {
+    public static transform(input: unknown): AccessControlTargetStruct {
+        if (!isRecord(input)) {
             throw new Error("Invalid input: expected an object");
         }
 
@@ -48,8 +52,9 @@ export class AccessControlTargetTransformer {
                 const mappedKey = keyMapping[key];
                 if (mappedKey) {
                     const value = input[key];
-                    if (value === undefined) continue;
-                    result[mappedKey] = value;
+                    // Treat unset/wildcard fields (null or absent) as omitted, not numeric 0.
+                    if (value == null) continue;
+                    result[mappedKey] = Number(value);
                 }
             }
         }
@@ -68,8 +73,8 @@ export class AccessControlEntryDataTransformer {
         "254": "fabricIndex",
     };
 
-    public static transform(input: any): AccessControlEntryStruct {
-        if (!input || typeof input !== "object") {
+    public static transform(input: unknown): AccessControlEntryStruct {
+        if (!isRecord(input)) {
             throw new Error("Invalid input: expected an object");
         }
 
@@ -81,20 +86,16 @@ export class AccessControlEntryDataTransformer {
                 const mappedKey = keyMapping[key];
                 if (mappedKey) {
                     const value = input[key];
-                    if (value === undefined) continue;
+                    if (value == null) continue;
                     if (mappedKey === "subjects") {
-                        result[mappedKey] = Array.isArray(value) ? value : undefined;
+                        result.subjects = Array.isArray(value) ? value : undefined;
                     } else if (mappedKey === "targets") {
-                        if (Array.isArray(value)) {
-                            const _targets = Object.values(value).map(val =>
-                                AccessControlTargetTransformer.transform(val),
-                            );
-                            result[mappedKey] = _targets;
-                        } else {
-                            result[mappedKey] = undefined;
-                        }
+                        result.targets = Array.isArray(value)
+                            ? value.map(val => AccessControlTargetTransformer.transform(val))
+                            : undefined;
                     } else {
-                        result[mappedKey] = value;
+                        // privilege, authMode, fabricIndex are numeric
+                        result[mappedKey] = Number(value);
                     }
                 }
             }

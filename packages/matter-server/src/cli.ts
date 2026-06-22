@@ -276,10 +276,21 @@ export function parseCliArgs(argv?: string[]): CliOptions {
 
 // Export parsed options as singleton for use across modules
 let cliOptions: CliOptions | undefined;
+let originalArgv: string[] = [];
 
 export function getCliOptions(): CliOptions {
     if (!cliOptions) {
+        originalArgv = process.argv.slice(2);
         cliOptions = parseCliArgs();
     }
     return cliOptions;
+}
+
+/**
+ * Command-line arguments as passed to the process, captured before
+ * {@link pre-init} strips `process.argv` to keep matter.js from re-interpreting
+ * our flags as its own environment variables.
+ */
+export function getOriginalArgv(): string[] {
+    return originalArgv;
 }
