@@ -41,7 +41,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--hci-id",
         default=None,
         type=int,
-        help="Bluetooth adapter HCI ID (e.g., 0 for hci0)",
+        help="Bluetooth adapter HCI ID (e.g., 0 for hci0). Use only on Linux with BlueZ.",
     )
     parser.add_argument(
         "--log-level",
@@ -53,7 +53,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
 
 
 async def _run(server_url: str, hci_id: int | None) -> int:
-    scan_source = BleakScanSource(hci_id)
+    scan_source = BleakScanSource(hci_device=hci_id)
     device_resolver = BleakDeviceResolver(scan_source)
     proxy = MatterBleProxy(server_url, scan_source, device_resolver)
 

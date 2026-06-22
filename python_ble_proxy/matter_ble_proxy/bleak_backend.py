@@ -56,14 +56,17 @@ class BleakScanSource(BleScanSource):
         if self._scanner is not None:
             return
 
-        bluez_args: BlueZScannerArgs = {}
+        # Bleak only supports specifying a hci device on Linux with BlueZ;
+        # per https://github.com/hbldh/bleak/discussions/867
         if self._hci_device is not None:
-            bluez_args["adapter"] = f"hci{self._hci_device}"
+            bluez_args: BlueZScannerArgs = {"adapter": f"hci{self._hci_device}"}
+            self._scanner = BleakScanner(
+                detection_callback=self._on_detection,
+                bluez=bluez_args,
+            )
+        else:
+            self._scanner = BleakScanner(detection_callback=self._on_detection)
 
-        self._scanner = BleakScanner(
-            detection_callback=self._on_detection,
-            bluez=bluez_args,
-        )
         await self._scanner.start()
 
     async def stop(self) -> None:
