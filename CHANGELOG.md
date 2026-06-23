@@ -7,7 +7,7 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
-## **WORK IN PROGRESS**
+## 1.1.1 (2026-06-23)
 
 - Adjustment: Adjust the default Docker Healthcheck durations a bit to better allow migrations
 - Enhancement: Do not send node_updated event when only NodeLabel changes
