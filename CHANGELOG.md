@@ -15,8 +15,8 @@ This page shows a detailed overview of the changes between versions without the 
     - Allows attribute writes with invalid enum or bitmap values and lets the device decide, but logs a warning
     - Reduces data duplication in RAM in some places
     - Allows connections even for "at-the-edge-of-spec" devices with >1 hour of idle interval
-    - Optimizes peer probing when mdns addresses change
-    - Hide GitHub rate limit errors when fetching certificates when we have some in the storage already
+    - Optimizes peer probing when mDNS addresses change
+    - Hides GitHub rate limit errors when fetching certificates when some are already in storage
 
 ## 1.1.1 (2026-06-23)
 
