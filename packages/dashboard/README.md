@@ -13,6 +13,7 @@ Please refer to https://github.com/matter-js/matterjs-server/blob/main/README.md
 ## Theme Support
 
 The dashboard supports light and dark modes with three options:
+
 - **Light** - Light theme
 - **Dark** - Dark theme
 - **System** - Automatically follows your operating system's theme preference
@@ -20,6 +21,7 @@ The dashboard supports light and dark modes with three options:
 Click the theme icon in the header to cycle through the modes. Your preference is saved in the browser's localStorage.
 
 You can also set the theme via URL query parameter:
+
 - `?theme=light` - Switch to light mode
 - `?theme=dark` - Switch to dark mode
 - `?theme=system` - Switch to system auto-detect
@@ -64,6 +66,7 @@ Other node icons:
 ### Understanding Connection Lines
 
 Connection lines represent the communication links between devices.
+If the lines are missing, and also most data are missing when selecting the node, this means that the device does not include the "Thread Network Diagnostics" cluster, where we mainly gather the data from.
 
 **Line style:**
 
@@ -156,7 +159,7 @@ Developer mode is browser-only and is not persisted. Reloading without the `?dev
 ### What developer mode adds on a cluster view
 
 - **Per-attribute Read button** — forces an immediate read of a single attribute. On success the icon briefly flashes; on failure the raw server error is shown in a popup.
-- **Per-attribute Write button** — shown only for writable attributes. Opens an editor prefilled with the current value as JSON; pressing *Write* sends the exact value to the server.
-- **Commands panel** (collapsed by default) — lists every command the cluster reports as supported. Each entry opens a payload editor; pressing *Invoke* sends the command and shows the server response as JSON, or the raw error if the invocation fails.
+- **Per-attribute Write button** — shown only for writable attributes. Opens an editor prefilled with the current value as JSON; pressing _Write_ sends the exact value to the server.
+- **Commands panel** (collapsed by default) — lists every command the cluster reports as supported. Each entry opens a payload editor; pressing _Invoke_ sends the command and shows the server response as JSON, or the raw error if the invocation fails.
 
 Unknown attributes (not present in the dashboard's metadata) cannot be written. Unknown commands (in the cluster's accepted list but missing from the metadata) are not listed. All server errors are shown verbatim so the exact response from the device is visible.

@@ -131,7 +131,7 @@ All CLI options can be configured via environment variables, making it easy to c
 ### Advanced matter.js Configuration
 
 For advanced matter.js library configuration via `MATTER_*` environment variables (e.g.
-`MATTER_DCL_PRODUCTION_URL` for a self-hosted DCL node), see
+`MATTER_DCL_PRODUCTIONURL` for a self-hosted DCL node), see
 [Advanced matter.js Configuration](cli.md#advanced-matterjs-configuration) in the CLI docs.
 
 Example with environment variables:

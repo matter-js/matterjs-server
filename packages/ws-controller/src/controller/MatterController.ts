@@ -201,6 +201,16 @@ export class MatterController {
     ) {
         this.#legacyCommissionedDates = legacyCommissionedDates?.size ? legacyCommissionedDates : undefined;
 
+        // Mimic Dcl configuration from DCL Behavior override settings
+        const dclConfig = this.#env.vars.has("dcl.productionurl")
+            ? { url: this.#env.vars.string("dcl.productionurl") }
+            : undefined;
+        const testDclConfig = this.#env.vars.has("dcl.testurl")
+            ? { url: this.#env.vars.string("dcl.testurl") }
+            : undefined;
+        const fetchTestCertificates = this.#env.vars.get("dcl.fetchtestcertificates", true);
+        const fetchGithubCertificates = this.#env.vars.get("dcl.fetchgithubcertificates", true);
+
         // Register DCL services on the root environment; DclBehavior picks them up.
         // When seeding is enabled (default), pre-populate from the bundled offline snapshot so
         // commissioning works without internet access.
@@ -212,12 +222,18 @@ export class MatterController {
         const trustTestCertificates = this.#enableTestNetDcl;
         if (this.#disableDclSeed) {
             new DclCertificateService(this.#env.root, {
-                fetchTestCertificates: true,
+                dclConfig,
+                testDclConfig,
+                fetchTestCertificates,
+                fetchGithubCertificates,
                 acceptTestCertificates: trustTestCertificates,
             });
         } else {
             new DclCertificateService(this.#env.root, {
-                fetchTestCertificates: true,
+                dclConfig,
+                testDclConfig,
+                fetchTestCertificates,
+                fetchGithubCertificates,
                 acceptTestCertificates: trustTestCertificates,
                 seed: {
                     paaRoots: paaRoots({ includeTest: true }),
@@ -225,6 +241,7 @@ export class MatterController {
                 },
             });
             new DclVendorInfoService(this.#env.root, {
+                dclConfig,
                 seed: { vendors: vendors({ includeTest: trustTestCertificates }) },
             });
             this.#services.get(DclVendorInfoService);
