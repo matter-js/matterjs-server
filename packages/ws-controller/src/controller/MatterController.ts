@@ -215,10 +215,11 @@ export class MatterController {
         // When seeding is enabled (default), pre-populate from the bundled offline snapshot so
         // commissioning works without internet access.
         //
-        // Test PAA roots/CD signers are always loaded (fetchTestCertificates). Trust is gated
-        // separately via acceptTestCertificates: a test device is only commissioned when
-        // enableTestNetDcl is set; otherwise the attestation validator reports TrustedAsTestCertificate
-        // and onAttestationFailure rejects with an actionable hint instead of an opaque PaaNotTrusted.
+        // Test PAA roots/CD signers are always loaded (fetchTestCertificates, unless turned off by ENV
+        // variables). Trust is gated separately via acceptTestCertificates: a test device is only
+        // commissioned when enableTestNetDcl is set; otherwise the attestation validator reports
+        // TrustedAsTestCertificate and onAttestationFailure rejects with an actionable hint instead of
+        // an opaque PaaNotTrusted.
         const trustTestCertificates = this.#enableTestNetDcl;
         if (this.#disableDclSeed) {
             new DclCertificateService(this.#env.root, {
