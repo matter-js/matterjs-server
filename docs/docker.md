@@ -238,8 +238,9 @@ If devices are not being discovered, ensure:
 If you encounter permission issues with the data volume:
 
 ```bash
-# Ensure the data directory is writable
-chmod 755 data
+# Ensure the data directory and its contents are writable and owned by the correct user
+chown -r 1000:1000 data
+chmod -r 755 data
 ```
 
 ### Viewing Logs

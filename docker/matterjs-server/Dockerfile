@@ -88,7 +88,7 @@ EXPOSE 5580
 COPY --chmod=0755 healthcheck.sh /usr/local/bin/healthcheck.sh
 
 # Health check - verify the server is responding
-HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --start-interval=5s --retries=3 \
+HEALTHCHECK --interval=60s --timeout=10s --start-period=900s --start-interval=5s --retries=6 \
     CMD ["/usr/local/bin/healthcheck.sh"]
 
 # Run the matter server directly (all config via environment variables)
