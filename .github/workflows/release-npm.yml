@@ -1,5 +1,5 @@
 # This workflow reacts on a PR labeled with "automated-npm-release" will automatically merge it and
-# create a new release on npm, pypi, docker nd such.
+# create a new release on npm, pypi, docker and such.
 name: Automatic Labeled Release
 
 permissions:
