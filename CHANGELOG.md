@@ -12,8 +12,8 @@ This page shows a detailed overview of the changes between versions without the 
 - Fix: Respect matter.js DCL config also for Certificate and Vendor service initialization
 - Enhancement: Update matter.js to latest 0.17.4-alpha
     - Improves data migration for non-compliant device data (e.g. Tasmota 14.x empty attribute lists)
-    - Allows attribute writes with invalid enum- or bitmap-values and lets the device decide, but log
-    - Reduce data duplication in RAM in some places
+    - Allows attribute writes with invalid enum or bitmap values and lets the device decide, but logs a warning
+    - Reduces data duplication in RAM in some places
     - Allows connections even for "at-the-edge-of-spec" devices with >1 hour of idle interval
     - Optimizes peer probing when mdns addresses change
     - Hide GitHub rate limit errors when fetching certificates when we have some in the storage already
