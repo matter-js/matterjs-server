@@ -66,7 +66,7 @@ Other node icons:
 ### Understanding Connection Lines
 
 Connection lines represent the communication links between devices.
-If the lines are missing, and also most data are missing when selecting the node, this means that the device does not include the "Thread Network Diagnostics" cluster, where we mainly gather the data from.
+If the lines are missing and most data is also missing when selecting the node, the device likely does not include the "Thread Network Diagnostics" cluster, which is where most of this data comes from.
 
 **Line style:**
 
