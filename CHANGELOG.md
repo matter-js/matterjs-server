@@ -7,7 +7,7 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
-## **WORK IN PROGRESS**
+## 1.1.2 (2026-06-25)
 
 - Fix: Respect matter.js DCL config also for Certificate and Vendor service initialization
 - Enhancement: Update matter.js to latest 0.17.4-alpha
