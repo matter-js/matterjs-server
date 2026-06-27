@@ -20,7 +20,7 @@ const PEER_1 = PeerAddress({ fabricIndex: FabricIndex(1), nodeId: NodeId(1) });
 const PEER_2 = PeerAddress({ fabricIndex: FabricIndex(1), nodeId: NodeId(2) });
 
 function makeTimeSyncAttrs(): AttributesData {
-    return { [`0/${TIME_SYNC_CLUSTER_ID}/0`]: 1 };
+    return { [`0/${TIME_SYNC_CLUSTER_ID}/1`]: 1 };
 }
 
 class StubConnector implements TimeSyncConnector {
@@ -51,12 +51,12 @@ class StubConnector implements TimeSyncConnector {
 }
 
 describe("hasTimeSyncCluster", () => {
-    it("returns true when TimeSynchronization cluster attributes are present", () => {
-        expect(hasTimeSyncCluster({ [`0/${TIME_SYNC_CLUSTER_ID}/0`]: 1 })).to.equal(true);
+    it("returns true when Granularity attribute (1) is present", () => {
+        expect(hasTimeSyncCluster({ [`0/${TIME_SYNC_CLUSTER_ID}/1`]: 1 })).to.equal(true);
     });
 
-    it("returns true for any attribute index on the cluster", () => {
-        expect(hasTimeSyncCluster({ [`0/${TIME_SYNC_CLUSTER_ID}/255`]: "x" })).to.equal(true);
+    it("returns false when only non-Granularity attributes are present", () => {
+        expect(hasTimeSyncCluster({ [`0/${TIME_SYNC_CLUSTER_ID}/0`]: 1 })).to.equal(false);
     });
 
     it("returns false when no attributes are present", () => {
@@ -68,7 +68,7 @@ describe("hasTimeSyncCluster", () => {
     });
 
     it("only matches endpoint 0 per Matter spec", () => {
-        expect(hasTimeSyncCluster({ [`1/${TIME_SYNC_CLUSTER_ID}/0`]: 1 })).to.equal(false);
+        expect(hasTimeSyncCluster({ [`1/${TIME_SYNC_CLUSTER_ID}/1`]: 1 })).to.equal(false);
     });
 });
 
