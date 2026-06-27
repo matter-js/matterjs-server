@@ -472,8 +472,9 @@ export class ControllerCommandHandler {
                 attributeCache.update(node);
                 const attributes = attributeCache.get(nodeId);
                 if (attributes) {
-                    this.#customClusterPoller.registerNode(this.#peerOf(nodeId), attributes);
-                    this.#timeSyncManager?.registerNode(this.#peerOf(nodeId), attributes);
+                    const peer = this.#peerOf(nodeId);
+                    this.#customClusterPoller.registerNode(peer, attributes);
+                    this.#timeSyncManager?.registerNode(peer, attributes);
                 }
             }
 
@@ -546,8 +547,9 @@ export class ControllerCommandHandler {
             attributeCache.add(node);
             const attributes = attributeCache.get(nodeId);
             if (attributes) {
-                this.#customClusterPoller.registerNode(this.#peerOf(nodeId), attributes);
-                this.#timeSyncManager?.registerNode(this.#peerOf(nodeId), attributes);
+                const peer = this.#peerOf(nodeId);
+                this.#customClusterPoller.registerNode(peer, attributes);
+                this.#timeSyncManager?.registerNode(peer, attributes);
             }
         }
 
@@ -1243,8 +1245,9 @@ export class ControllerCommandHandler {
         this.#nodeObservers.get(nodeId)?.close();
         this.#nodeObservers.delete(nodeId);
         this.#nodes.delete(nodeId);
-        this.#customClusterPoller.unregisterNode(this.#peerOf(nodeId));
-        this.#timeSyncManager?.unregisterNode(this.#peerOf(nodeId));
+        const peer = this.#peerOf(nodeId);
+        this.#customClusterPoller.unregisterNode(peer);
+        this.#timeSyncManager?.unregisterNode(peer);
         this.#availableUpdates.delete(nodeId);
     }
 

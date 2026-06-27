@@ -39,13 +39,8 @@ export interface TimeSyncConnector {
  * The cluster is always on endpoint 0 per the Matter spec.
  */
 export function hasTimeSyncCluster(attributes: AttributesData): boolean {
-    const prefix = `0/${TIME_SYNC_CLUSTER_ID}/`;
-    for (const key of Object.keys(attributes)) {
-        if (key.startsWith(prefix)) {
-            return true;
-        }
-    }
-    return false;
+    // Checks the existence of the Granularity Attribute 1
+    return attributes[`0/${TIME_SYNC_CLUSTER_ID}/1`] !== undefined;
 }
 
 /**
