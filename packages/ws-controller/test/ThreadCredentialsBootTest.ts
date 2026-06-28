@@ -10,13 +10,13 @@ import { Bytes } from "@matter/main";
 import { registerThreadCredentialsFromHex } from "../src/controller/MatterController.js";
 import { ConfigStorage } from "../src/server/ConfigStorage.js";
 
-// Inline copies of thread-br fixtures — avoids cross-package path dependencies.
-// synthetic-1.hex — extPanId = 11:22:33:44:55:66:77:88, network = "OpenThread"
+// Hand-built valid operational datasets with distinct extPanIds (no external fixture files).
+// extPanId = 11:22:33:44:55:66:77:88, network = "OpenThread"
 const DATASET_A_HEX =
     "00010f02081122334455667788030a4f70656e5468726561640410000102030405060708090a0b0c0d0e0f0e080000000000010000";
 const EXT_PAN_A = "1122334455667788";
 
-// agners-vector-1.hex — extPanId = DE:AD:BE:EF:CA:FE:BA:BE, network = "TestNet"
+// extPanId = DE:AD:BE:EF:CA:FE:BA:BE, network = "TestNet"
 const DATASET_B_HEX =
     "0003000019010212340208deadbeefcafebabe0307546573744e6574041055545756515053525d5c5f5e59585b5a0510a0a1a2a3a4a5a6a7a8a9aaabacadaeaf0708fd112233445566770c0402a0fff80e0800000000000100003508000800000000e0f0ee02feed";
 const EXT_PAN_B = "deadbeefcafebabe";
