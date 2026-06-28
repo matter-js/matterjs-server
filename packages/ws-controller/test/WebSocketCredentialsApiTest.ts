@@ -11,9 +11,9 @@ import WebSocket from "ws";
 import { ConfigStorage } from "../src/server/ConfigStorage.js";
 import { WebSocketControllerHandler } from "../src/server/WebSocketControllerHandler.js";
 
-// Minimal dataset that decodes cleanly (extPanId = 11:22:33:44:55:66:77:88, network = "OpenThread").
+// Minimal dataset: extPanId = DE:AD:BE:EF:CA:FE:11:22 (a-f bytes exercise the UPPERCASE invariant), network = "OpenThread".
 const DATASET_HEX =
-    "00010f02081122334455667788030a4f70656e5468726561640410000102030405060708090a0b0c0d0e0f0e080000000000010000";
+    "00010f0208deadbeefcafe1122030a4f70656e5468726561640410000102030405060708090a0b0c0d0e0f0e080000000000010000";
 
 function freshEnv(): Environment {
     const env = new Environment("test");
@@ -195,7 +195,9 @@ describe("WebSocket Credentials API", () => {
         }>("get_all_credentials", {});
         const def = res.thread.find(e => e.id === "default");
         expect(def?.networkName).to.equal("OpenThread");
-        expect(def?.extPanId).to.equal("1122334455667788");
+        expect(def?.extPanId).to.equal("DEADBEEFCAFE1122");
+        // Self-check guards against a lowercase regression.
+        expect(def?.extPanId).to.equal(def?.extPanId?.toUpperCase());
     });
 
     it("server_info reports schema 12 / min 11", async () => {

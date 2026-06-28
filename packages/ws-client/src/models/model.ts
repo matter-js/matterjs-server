@@ -223,8 +223,6 @@ export interface APICommands {
             filter?: number;
             /** Direct IP address for commissioning */
             ip_addr?: string;
-            wifi_credentials_id?: string;
-            thread_dataset_id?: string;
         };
         response: MatterNodeData;
     };

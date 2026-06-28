@@ -777,18 +777,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
     async #handleCommissionOnNetwork(
         args: ArgsOf<"commission_on_network">,
     ): Promise<ResponseOf<"commission_on_network">> {
-        const { setup_pin_code, filter_type, filter, ip_addr, wifi_credentials_id, thread_dataset_id } = args;
-
-        const wifiId = wifi_credentials_id ?? ConfigStorage.DEFAULT_CREDENTIAL_ID;
-        const threadId = thread_dataset_id ?? ConfigStorage.DEFAULT_CREDENTIAL_ID;
-        const wifiEntry = this.#config.getWifiCredentials(wifiId);
-        const threadEntry = this.#config.getThreadCredentials(threadId);
-        if (wifi_credentials_id !== undefined && wifiEntry === undefined) {
-            throw ServerError.invalidArguments(`Unknown wifi_credentials_id: ${wifiId}`);
-        }
-        if (thread_dataset_id !== undefined && threadEntry === undefined) {
-            throw ServerError.invalidArguments(`Unknown thread_dataset_id: ${threadId}`);
-        }
+        const { setup_pin_code, filter_type, filter, ip_addr } = args;
 
         // Build commissioning request based on filter type
         // Filter types: 0=None, 1=ShortDiscriminator, 2=LongDiscriminator, 3=VendorId, 4=DeviceType
