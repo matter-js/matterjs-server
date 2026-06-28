@@ -39,7 +39,7 @@
         "build-clean": "nacho-build --clean"
     },
     "dependencies": {
-        "@matter/main": "0.17.4-alpha.0-20260625-0f2168fd4"
+        "@matter/main": "0.17.4-alpha.0-20260628-67a669f75"
     },
     "engines": {
         "node": ">=22.13.0"

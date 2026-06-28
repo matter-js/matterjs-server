@@ -7,10 +7,16 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
+## **WORK IN PROGRESS**
+
+- Enhancement: Update matter.js to the latest 0.17.4-alpha
+  - Added more optimizations for data of non-compliant devices (keep non-declared clusters, accept int/uint mismatches in reported data)
+  - Optimize MDNS scanner to drop irrelevant messages before decoding (optimizes CPU usage in MDNS-spammy networks)
+
 ## 1.1.2 (2026-06-25)
 
 - Fix: Respect matter.js DCL config also for Certificate and Vendor service initialization
-- Enhancement: Update matter.js to latest 0.17.4-alpha
+- Enhancement: Update matter.js to the latest 0.17.4-alpha
     - Improves data migration for non-compliant device data (e.g. Tasmota 14.x empty attribute lists)
     - Allows attribute writes with invalid enum or bitmap values and lets the device decide, but logs a warning
     - Reduces data duplication in RAM in some places
