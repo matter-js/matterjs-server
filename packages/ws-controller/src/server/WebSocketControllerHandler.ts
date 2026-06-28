@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { ThreadCredentialsRegistry } from "@matter-server/thread-br";
+import { OperationalDataset, ThreadCredentialsRegistry } from "@matter-server/thread-br";
 import {
     MatterError,
     Diagnostic,
@@ -86,11 +86,12 @@ function generateConnectionId(): string {
     return id.toString(16);
 }
 
-const SCHEMA_VERSION = 11;
+const SCHEMA_VERSION = 12;
+const MIN_SUPPORTED_SCHEMA_VERSION = 11;
 
 const skipMessageContentInLogFor = ["start_listening"];
 
-/** WebSocket Server compatible with Schema version 11 */
+/** WebSocket Server compatible with Schema version 12, minimum supported 11 */
 export class WebSocketControllerHandler implements WebServerHandler {
     #controller: MatterController;
     #commandHandler: ControllerCommandHandler;
@@ -541,10 +542,13 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     result = await this.#handleSetThreadDataset(args);
                     break;
                 case "remove_wifi_credentials":
-                    result = await this.#handleRemoveWifiCredentials();
+                    result = await this.#handleRemoveWifiCredentials(args);
                     break;
                 case "remove_thread_dataset":
-                    result = await this.#handleRemoveThreadDataset();
+                    result = await this.#handleRemoveThreadDataset(args);
+                    break;
+                case "get_all_credentials":
+                    result = await this.#handleGetAllCredentials();
                     break;
                 case "get_thread_border_routers":
                     result = this.#controller.borderRouters.list();
@@ -634,7 +638,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             compressed_fabric_id,
             fabric_index,
             schema_version: SCHEMA_VERSION,
-            min_supported_schema_version: SCHEMA_VERSION,
+            min_supported_schema_version: MIN_SUPPORTED_SCHEMA_VERSION,
             sdk_version: `matter-server/${this.#serverVersion} (matter.js/${MATTER_VERSION})`,
             wifi_credentials_set: !!(this.#config.wifiSsid && this.#config.wifiCredentials),
             wifi_ssid: this.#config.wifiSsid && this.#config.wifiCredentials ? this.#config.wifiSsid : undefined,
@@ -725,22 +729,33 @@ export class WebSocketControllerHandler implements WebServerHandler {
     }
 
     async #handleCommissionWithCode(args: ArgsOf<"commission_with_code">): Promise<ResponseOf<"commission_with_code">> {
-        const { code, network_only } = args;
+        const { code, network_only, wifi_credentials_id, thread_dataset_id } = args;
         const isQrCode = code.startsWith("MT:");
+
+        const wifiId = wifi_credentials_id ?? ConfigStorage.DEFAULT_CREDENTIAL_ID;
+        const threadId = thread_dataset_id ?? ConfigStorage.DEFAULT_CREDENTIAL_ID;
+        const wifiEntry = this.#config.getWifiCredentials(wifiId);
+        const threadEntry = this.#config.getThreadCredentials(threadId);
+        if (wifi_credentials_id !== undefined && wifiEntry === undefined) {
+            throw ServerError.invalidArguments(`Unknown wifi_credentials_id: ${wifiId}`);
+        }
+        if (thread_dataset_id !== undefined && threadEntry === undefined) {
+            throw ServerError.invalidArguments(`Unknown thread_dataset_id: ${threadId}`);
+        }
 
         let wifiCredentials: ControllerCommissioningFlowOptions["wifiNetwork"] | undefined = undefined;
         let threadCredentials: ControllerCommissioningFlowOptions["threadNetwork"] | undefined = undefined;
         if (!network_only && this.#commandHandler.bleEnabled) {
-            if (this.#config.wifiSsid && this.#config.wifiCredentials) {
+            if (wifiEntry !== undefined) {
                 wifiCredentials = {
-                    wifiSsid: this.#config.wifiSsid,
-                    wifiCredentials: this.#config.wifiCredentials,
+                    wifiSsid: wifiEntry.ssid,
+                    wifiCredentials: wifiEntry.credentials,
                 };
             }
-            if (this.#config.threadDataset) {
+            if (threadEntry !== undefined) {
                 threadCredentials = {
-                    networkName: "", // Thread network name is not needed when providing operational dataset
-                    operationalDataset: this.#config.threadDataset,
+                    networkName: "",
+                    operationalDataset: threadEntry.dataset,
                 };
             }
         }
@@ -762,7 +777,18 @@ export class WebSocketControllerHandler implements WebServerHandler {
     async #handleCommissionOnNetwork(
         args: ArgsOf<"commission_on_network">,
     ): Promise<ResponseOf<"commission_on_network">> {
-        const { setup_pin_code, filter_type, filter, ip_addr } = args;
+        const { setup_pin_code, filter_type, filter, ip_addr, wifi_credentials_id, thread_dataset_id } = args;
+
+        const wifiId = wifi_credentials_id ?? ConfigStorage.DEFAULT_CREDENTIAL_ID;
+        const threadId = thread_dataset_id ?? ConfigStorage.DEFAULT_CREDENTIAL_ID;
+        const wifiEntry = this.#config.getWifiCredentials(wifiId);
+        const threadEntry = this.#config.getThreadCredentials(threadId);
+        if (wifi_credentials_id !== undefined && wifiEntry === undefined) {
+            throw ServerError.invalidArguments(`Unknown wifi_credentials_id: ${wifiId}`);
+        }
+        if (thread_dataset_id !== undefined && threadEntry === undefined) {
+            throw ServerError.invalidArguments(`Unknown thread_dataset_id: ${threadId}`);
+        }
 
         // Build commissioning request based on filter type
         // Filter types: 0=None, 1=ShortDiscriminator, 2=LongDiscriminator, 3=VendorId, 4=DeviceType
@@ -1012,42 +1038,29 @@ export class WebSocketControllerHandler implements WebServerHandler {
     }
 
     async #handleSetWifiCredentials(args: ArgsOf<"set_wifi_credentials">): Promise<ResponseOf<"set_wifi_credentials">> {
-        const { ssid, credentials } = args;
-        await this.#config.set({ wifiSsid: ssid, wifiCredentials: credentials });
-        // Broadcast server_info_updated event to notify clients of credential change
+        const { ssid, credentials, id } = args;
         try {
-            await this.#broadcastServerInfoUpdated();
-        } catch (error) {
-            logger.warn("Failed to broadcast server info update", error);
+            await this.#config.setWifiCredentials(id ?? ConfigStorage.DEFAULT_CREDENTIAL_ID, ssid, credentials);
+        } catch (e) {
+            throw ServerError.invalidArguments(e instanceof Error ? e.message : String(e));
         }
+        await this.#safeBroadcastServerInfo();
         return {};
     }
 
     async #handleSetThreadDataset(args: ArgsOf<"set_thread_dataset">): Promise<ResponseOf<"set_thread_dataset">> {
-        const { dataset } = args;
-        if (!/^[0-9a-fA-F]*$/.test(dataset) || dataset.length % 2 !== 0) {
-            throw ServerError.invalidArguments(
-                "Invalid Thread operational dataset: must be a hex string with even length (each byte is two hex characters)",
-            );
-        }
+        const { dataset, id } = args;
+        this.#assertValidDatasetHex(dataset);
+        const credId = id ?? ConfigStorage.DEFAULT_CREDENTIAL_ID;
+        const previousDataset = this.#config.getThreadCredentials(credId)?.dataset;
         try {
-            Bytes.fromHex(dataset);
-        } catch (error) {
-            MatterError.accept(error);
-            throw ServerError.invalidArguments(
-                `Invalid Thread operational dataset: failed to parse hex string: ${Diagnostic.errorMessage(error)}`,
-            );
+            await this.#config.setThreadCredentials(credId, dataset);
+        } catch (e) {
+            throw ServerError.invalidArguments(e instanceof Error ? e.message : String(e));
         }
-        await this.#config.set({ threadDataset: dataset });
-
-        syncThreadCredentialsToDataset(this.#controller.credentials, dataset);
-
-        // Broadcast server_info_updated event to notify clients of credential change
-        try {
-            await this.#broadcastServerInfoUpdated();
-        } catch (error) {
-            logger.warn("Failed to broadcast server info update", error);
-        }
+        registerThreadCredentialsFromHex(this.#controller.credentials, dataset, `set_thread_dataset:${credId}`);
+        this.#unregisterThreadIfUnreferenced(previousDataset);
+        await this.#safeBroadcastServerInfo();
         return {};
     }
 
@@ -1085,24 +1098,89 @@ export class WebSocketControllerHandler implements WebServerHandler {
         }
     }
 
-    async #handleRemoveWifiCredentials(): Promise<ResponseOf<"remove_wifi_credentials">> {
-        await this.#config.removeWifiCredentials();
-        try {
-            await this.#broadcastServerInfoUpdated();
-        } catch (error) {
-            logger.warn("Failed to broadcast server info update", error);
-        }
+    async #handleRemoveWifiCredentials(
+        args: ArgsOf<"remove_wifi_credentials">,
+    ): Promise<ResponseOf<"remove_wifi_credentials">> {
+        await this.#config.removeWifiCredentials(args?.id ?? ConfigStorage.DEFAULT_CREDENTIAL_ID);
+        await this.#safeBroadcastServerInfo();
         return {};
     }
 
-    async #handleRemoveThreadDataset(): Promise<ResponseOf<"remove_thread_dataset">> {
-        await this.#config.removeThreadDataset();
+    async #handleRemoveThreadDataset(
+        args: ArgsOf<"remove_thread_dataset">,
+    ): Promise<ResponseOf<"remove_thread_dataset">> {
+        const credId = args?.id ?? ConfigStorage.DEFAULT_CREDENTIAL_ID;
+        const removed = this.#config.getThreadCredentials(credId);
+        await this.#config.removeThreadCredentials(credId);
+        this.#unregisterThreadIfUnreferenced(removed?.dataset);
+        await this.#safeBroadcastServerInfo();
+        return {};
+    }
+
+    async #handleGetAllCredentials(): Promise<ResponseOf<"get_all_credentials">> {
+        const wifi = this.#config.listWifiCredentials().map(e => ({ id: e.id, ssid: e.ssid }));
+        const ensureDefault = <T extends { id: string }>(arr: T[], def: T): T[] =>
+            arr.some(e => e.id === ConfigStorage.DEFAULT_CREDENTIAL_ID) ? arr : [def, ...arr];
+        const wifiOut = ensureDefault(wifi, { id: ConfigStorage.DEFAULT_CREDENTIAL_ID, ssid: "" });
+        const thread = this.#config.listThreadCredentials().map(e => {
+            try {
+                const ds = OperationalDataset.decode(Bytes.of(Bytes.fromHex(e.dataset)));
+                return {
+                    id: e.id,
+                    networkName: ds.networkName,
+                    extPanId: ds.extPanId === undefined ? undefined : Bytes.toHex(ds.extPanId).toUpperCase(),
+                };
+            } catch {
+                return { id: e.id };
+            }
+        });
+        const threadOut = ensureDefault(thread, { id: ConfigStorage.DEFAULT_CREDENTIAL_ID });
+        return { wifi: wifiOut, thread: threadOut };
+    }
+
+    #assertValidDatasetHex(dataset: string): void {
+        if (!/^[0-9a-fA-F]*$/.test(dataset) || dataset.length % 2 !== 0) {
+            throw ServerError.invalidArguments(
+                "Invalid Thread operational dataset: must be a hex string with even length (each byte is two hex characters)",
+            );
+        }
+        try {
+            Bytes.fromHex(dataset);
+        } catch (error) {
+            MatterError.accept(error);
+            throw ServerError.invalidArguments(
+                `Invalid Thread operational dataset: failed to parse hex string: ${Diagnostic.errorMessage(error)}`,
+            );
+        }
+    }
+
+    async #safeBroadcastServerInfo(): Promise<void> {
         try {
             await this.#broadcastServerInfoUpdated();
         } catch (error) {
             logger.warn("Failed to broadcast server info update", error);
         }
-        return {};
+    }
+
+    #unregisterThreadIfUnreferenced(removedDataset: string | undefined): void {
+        if (removedDataset === undefined || removedDataset === "") return;
+        let removedExtPanId: Uint8Array | undefined;
+        try {
+            removedExtPanId = OperationalDataset.decode(Bytes.of(Bytes.fromHex(removedDataset))).extPanId;
+        } catch {
+            return;
+        }
+        if (removedExtPanId === undefined) return;
+        const target = removedExtPanId;
+        const stillReferenced = this.#config.listThreadCredentials().some(e => {
+            try {
+                const xp = OperationalDataset.decode(Bytes.of(Bytes.fromHex(e.dataset))).extPanId;
+                return xp !== undefined && Bytes.areEqual(xp, target);
+            } catch {
+                return false;
+            }
+        });
+        if (!stillReferenced) this.#controller.credentials.unregister(target);
     }
 
     async #handleOpenCommissioningWindow(

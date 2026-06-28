@@ -15,6 +15,7 @@
 export {
     type AccessControlEntry,
     type AccessControlTarget,
+    type AllCredentialsSummary,
     type APICommands,
     type APIEvents,
     type ArgsOf,

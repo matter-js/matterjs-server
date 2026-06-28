@@ -211,7 +211,7 @@ export interface APICommands {
         response: MatterNodeData;
     };
     commission_with_code: {
-        requestArgs: { code: string; network_only?: boolean };
+        requestArgs: { code: string; network_only?: boolean; wifi_credentials_id?: string; thread_dataset_id?: string };
         response: MatterNodeData;
     };
     commission_on_network: {
@@ -223,24 +223,30 @@ export interface APICommands {
             filter?: number;
             /** Direct IP address for commissioning */
             ip_addr?: string;
+            wifi_credentials_id?: string;
+            thread_dataset_id?: string;
         };
         response: MatterNodeData;
     };
     set_wifi_credentials: {
-        requestArgs: { ssid: string; credentials: string };
+        requestArgs: { ssid: string; credentials: string; id?: string };
         response: Record<string, never>;
     };
     set_thread_dataset: {
-        requestArgs: { dataset: string };
+        requestArgs: { dataset: string; id?: string };
         response: Record<string, never>;
     };
     remove_wifi_credentials: {
-        requestArgs: Record<string, never>;
+        requestArgs: { id?: string };
         response: Record<string, never>;
     };
     remove_thread_dataset: {
-        requestArgs: Record<string, never>;
+        requestArgs: { id?: string };
         response: Record<string, never>;
+    };
+    get_all_credentials: {
+        requestArgs: Record<string, never>;
+        response: AllCredentialsSummary;
     };
     get_thread_border_routers: {
         requestArgs: Record<string, never>;
@@ -452,6 +458,11 @@ export interface CommandMessage {
     message_id: string;
     command: keyof APICommands;
     args?: APICommands[keyof APICommands]["requestArgs"];
+}
+
+export interface AllCredentialsSummary {
+    wifi: Array<{ id: string; ssid: string }>;
+    thread: Array<{ id: string; networkName?: string; extPanId?: string }>;
 }
 
 export interface ServerInfoMessage {
