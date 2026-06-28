@@ -201,7 +201,10 @@ class MatterClient:
         )
 
     async def remove_wifi_credentials(self, entry_id: str = "default") -> None:
-        """Remove stored WiFi credentials from the server."""
+        """Remove stored WiFi credentials from the server.
+
+        :param entry_id: Id of the entry to remove; "default" removes the default entry.
+        """
         await self.send_command(
             APICommand.REMOVE_WIFI_CREDENTIALS,
             require_schema=12 if entry_id != "default" else None,
@@ -209,7 +212,10 @@ class MatterClient:
         )
 
     async def remove_thread_dataset(self, entry_id: str = "default") -> None:
-        """Remove a stored Thread Operational dataset from the server."""
+        """Remove a stored Thread Operational dataset from the server.
+
+        :param entry_id: Id of the entry to remove; "default" removes the default entry.
+        """
         await self.send_command(
             APICommand.REMOVE_THREAD_DATASET,
             require_schema=12 if entry_id != "default" else None,

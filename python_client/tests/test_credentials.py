@@ -156,6 +156,8 @@ async def test_commission_default_no_schema_gate() -> None:
     await c.commission_with_code("MT:x")
     _, kwargs = c.send_command.call_args
     assert kwargs.get("require_schema") is None
+    assert "wifi_credentials_id" not in kwargs
+    assert "thread_dataset_id" not in kwargs
 
 
 async def test_schema_gate_raises_server_version_too_old() -> None:

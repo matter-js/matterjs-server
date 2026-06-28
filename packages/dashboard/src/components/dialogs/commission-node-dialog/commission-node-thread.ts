@@ -80,6 +80,7 @@ export class CommissionNodeThread extends LitElement {
     }
 
     private async _loadCredentials(): Promise<void> {
+        if (this._credentials !== null) return;
         if (!this.client || this.client.serverInfo.schema_version < 12) return;
         try {
             this._credentials = await this.client.getAllCredentials();
@@ -143,7 +144,7 @@ export class CommissionNodeThread extends LitElement {
                           ${threadList.map(
                               entry => html`
                                   <md-select-option value=${entry.id}>
-                                      <div slot="headline">${entry.networkName ?? entry.id}</div>
+                                      <div slot="headline">${entry.networkName || entry.id}</div>
                                   </md-select-option>
                               `,
                           )}

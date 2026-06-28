@@ -304,7 +304,10 @@ export class SettingsDialog extends LitElement {
                         <ha-svg-icon .path=${mdiWifi}></ha-svg-icon>
                         <span class="cred-label">WiFi</span>
                     </div>
-                    <md-text-button @click=${this._addWifi} .disabled=${this._credLoading || this._wifiAdding}>
+                    <md-text-button
+                        @click=${this._addWifi}
+                        .disabled=${this._credLoading || this._wifiAdding || this._wifiEditId !== null}
+                    >
                         <ha-svg-icon slot="icon" .path=${mdiPlus}></ha-svg-icon>Add
                     </md-text-button>
                 </div>
@@ -377,7 +380,7 @@ export class SettingsDialog extends LitElement {
                         id="cred-wifi-password"
                         label="Password"
                         .type=${this._showPassword ? "text" : "password"}
-                        placeholder=${isAdd ? "" : "leave blank to keep"}
+                        .placeholder=${isAdd ? "" : "leave blank to keep"}
                         .disabled=${this._credLoading}
                     ></md-outlined-text-field>
                     <md-icon-button @click=${this._togglePassword}>
@@ -406,7 +409,10 @@ export class SettingsDialog extends LitElement {
                         <ha-svg-icon .path=${mdiAccessPoint}></ha-svg-icon>
                         <span class="cred-label">Thread</span>
                     </div>
-                    <md-text-button @click=${this._addThread} .disabled=${this._credLoading || this._threadAdding}>
+                    <md-text-button
+                        @click=${this._addThread}
+                        .disabled=${this._credLoading || this._threadAdding || this._threadEditId !== null}
+                    >
                         <ha-svg-icon slot="icon" .path=${mdiPlus}></ha-svg-icon>Add
                     </md-text-button>
                 </div>

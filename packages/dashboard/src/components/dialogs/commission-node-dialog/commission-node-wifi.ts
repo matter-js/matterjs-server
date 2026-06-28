@@ -82,6 +82,7 @@ export class CommissionNodeWifi extends LitElement {
     }
 
     private async _loadCredentials(): Promise<void> {
+        if (this._credentials !== null) return;
         if (!this.client || this.client.serverInfo.schema_version < 12) return;
         try {
             this._credentials = await this.client.getAllCredentials();
