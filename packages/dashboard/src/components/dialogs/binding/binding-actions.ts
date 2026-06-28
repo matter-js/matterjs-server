@@ -82,6 +82,9 @@ export async function ensureBindingAcl(
     targetEndpoint: number,
     cluster: number | undefined,
 ): Promise<void> {
+    // A self-binding (source == target) needs no ACL — a node always has access to itself.
+    if (nodeIdKey(targetNodeId) === nodeIdKey(sourceNodeId)) return;
+
     const acl = await freshOurAcl(client, targetNodeId);
 
     const alreadyGranted = acl.some(
@@ -176,6 +179,8 @@ export async function deleteBindingAtIndex(
     await client.setNodeBinding(sourceNode.node_id, sourceEndpoint, updated.map(toBindingTarget));
 
     if (removed.node == null || removed.endpoint == null) return;
+    // A self-binding never created an ACL entry, so there is nothing to clean up.
+    if (nodeIdKey(removed.node) === nodeIdKey(sourceNode.node_id)) return;
     const targetEndpoint = removed.endpoint;
     const removedCluster = removed.cluster;
     try {

@@ -26,7 +26,7 @@ export interface DnssdNameLike {
 }
 
 export interface DnssdNamesFiltersLike {
-    add(filter: (record: DnsRecord) => boolean): unknown;
+    add(filter: (record: DnsRecord) => boolean, names: Iterable<string> | "all"): unknown;
     delete(filter: (record: DnsRecord) => boolean): unknown;
 }
 

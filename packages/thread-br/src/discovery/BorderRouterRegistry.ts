@@ -122,7 +122,7 @@ export class BorderRouterRegistry {
             return lower.endsWith(MESHCOP_SUFFIX) || lower.endsWith(TREL_SUFFIX);
         };
         this.#suffixFilter = suffixFilter;
-        names.filters.add(suffixFilter);
+        names.filters.add(suffixFilter, [MESHCOP_TYPE_QNAME, TREL_TYPE_QNAME]);
 
         const meshcopType = names.get(MESHCOP_TYPE_QNAME);
         const trelType = names.get(TREL_TYPE_QNAME);

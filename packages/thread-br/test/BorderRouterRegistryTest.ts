@@ -1062,7 +1062,7 @@ class StubDnssdNames {
 class StubFilters {
     readonly #filters = new Set<(record: DnsRecord) => boolean>();
 
-    add(filter: (record: DnsRecord) => boolean): void {
+    add(filter: (record: DnsRecord) => boolean, _names: Iterable<string> | "all"): void {
         this.#filters.add(filter);
     }
 

@@ -193,6 +193,7 @@ class BindingClusterCommands extends BaseClusterCommands {
     }
 
     private _aclCell(b: BindingEntryStruct, state: ReverseAclState): TemplateResult {
+        if (state === "self") return html`<span class="status mut">self — no ACL needed</span>`;
         if (state === "present") return html`<span class="status ok">ACL present</span>`;
         if (state === "cannotVerify") return html`<span class="status mut">can't verify</span>`;
         const label = state === "missing" ? "ACL missing" : "ACL > Operate";

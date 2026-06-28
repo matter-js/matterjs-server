@@ -18,6 +18,28 @@ This page shows a detailed overview of the changes between versions without the 
 - Internal: Move Thread Border Router discovery into the new `@matter-server/thread-br` package. The class is renamed from `BorderRouterDiscovery` to `BorderRouterRegistry`; behaviour is unchanged. `BorderRouterEntry` is now sourced from `@matter-server/thread-br` and re-exported from `@matter-server/ws-client` so the wire format and dashboard imports are unchanged. Foundation for upcoming MeshCoP / OTBR REST diagnostic queries.
 - Internal: `@matter-server/thread-br` package gained diagnostic primitives: `DiagnosticSource` interface, `MeshCopDiagnosticSource`, `OtbrRestDiagnosticSource`, BR selection / per-network mutex / source strategy, OTBR REST adapter, and `connectMeshcop` factory.
 - Internal: New `ThreadDiagnosticsService` in `@matter-server/ws-controller` provides per-extPanId cache (1h TTL), source selection (REST > MeshCoP > none), per-network mutex, and event emission.
+## 1.1.3 (2026-06-28)
+
+- Enhancement: Update matter.js to the latest 0.17.4-alpha
+  - Added more optimizations for data of non-compliant devices (keep non-declared clusters, accept int/uint mismatches in reported data)
+  - Optimize MDNS scanner to drop irrelevant messages before decoding (optimizes CPU usage in MDNS-spammy networks)
+
+## 1.1.2 (2026-06-25)
+
+- Fix: Respect matter.js DCL config also for Certificate and Vendor service initialization
+- Enhancement: Update matter.js to the latest 0.17.4-alpha
+    - Improves data migration for non-compliant device data (e.g. Tasmota 14.x empty attribute lists)
+    - Allows attribute writes with invalid enum or bitmap values and lets the device decide, but logs a warning
+    - Reduces data duplication in RAM in some places
+    - Allows connections even for "at-the-edge-of-spec" devices with >1 hour of idle interval
+    - Optimizes peer probing when mDNS addresses change
+    - Hides GitHub rate limit errors when fetching certificates when some are already in storage
+
+## 1.1.1 (2026-06-23)
+
+- Adjustment: Adjust the default Docker Healthcheck durations a bit to better allow migrations
+- Enhancement: Do not send node_updated event when only NodeLabel changes
+- Enhancement: Detect Self-Bindings (Node-to-same-Node-Binding) and prevent ACL creation for these cases and show in UI
 
 ## 1.1.0 (2026-06-17)
 
@@ -27,7 +49,6 @@ This page shows a detailed overview of the changes between versions without the 
     - Fixes attestation certificate validation error for Nuki SmartLocks
     - Ensures to use the increased thread message retransmission timings also for commands
 - Adjustment: Ensure that Matter-Server CLI options do not interfere with matter.js
->>>>>>> origin/main
 
 ## 1.0.0 (2026-06-09)
 

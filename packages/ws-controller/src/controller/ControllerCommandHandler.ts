@@ -105,13 +105,6 @@ const logger = Logger.get("ControllerCommandHandler");
 const RECONNECT_TIMEOUT = Minutes(3);
 
 /**
- * Cluster IDs whose attribute changes should trigger a full node_updated broadcast.
- * BasicInformation (0x28) covers firmware version, product name, etc.
- * BridgedDeviceBasicInformation (0x39) covers the same for bridged child nodes.
- */
-const FULL_UPDATE_CLUSTER_IDS = new Set<ClusterId>([BasicInformation.id, BridgedDeviceBasicInformation.id]);
-
-/**
  * Determine the Matter specification version from cached attributes.
  * Uses SpecificationVersion attribute (0/40/21) if available, otherwise
  * estimates from DataModelRevision attribute (0/40/0).
@@ -399,7 +392,11 @@ export class ControllerCommandHandler {
         node.events.attributeChanged.on(data => {
             attributeCache.updateAttribute(nodeId, data);
             this.events.attributeChanged.emit(nodeId, data);
-            if (FULL_UPDATE_CLUSTER_IDS.has(data.path.clusterId)) {
+            if (
+                (data.path.clusterId === BasicInformation.id ||
+                    data.path.clusterId === BridgedDeviceBasicInformation.id) &&
+                data.path.attributeId !== BasicInformation.attributes.nodeLabel.id
+            ) {
                 basicInfoChangedInBatch = true;
             }
         });
@@ -1260,9 +1257,35 @@ export class ControllerCommandHandler {
             fabricIndex,
         }));
 
-        logger.info("Setting ACL entries", aclEntries);
+        // A node always has access to itself, so an ACL entry naming the node's own id as a subject
+        // (a "self-ACL") is meaningless. Strip such subjects (and drop entries left with none) rather
+        // than write them to the device, but still report success to the caller.
+        const nodeKey = nodeId.toString();
+        let selfRemoved = false;
+        const filteredEntries = aclEntries
+            .map(entry => {
+                if (!entry.subjects) return entry;
+                const subjects = entry.subjects.filter(s => s.toString() !== nodeKey);
+                if (subjects.length === entry.subjects.length) return entry;
+                selfRemoved = true;
+                return subjects.length > 0 ? { ...entry, subjects } : undefined;
+            })
+            .filter((entry): entry is AccessControl.AccessControlEntry => entry !== undefined);
+        if (selfRemoved) {
+            logger.warn(
+                `ACL for node ${nodeId} named the node's own id as a subject (self-ACL); a node always has access to itself, so those subjects are not written to the device. Reporting success.`,
+            );
+        }
 
-        const { status } = await this.#writeAttribute(nodeId, EndpointNumber(0), AccessControl.id, "acl", aclEntries);
+        logger.info("Setting ACL entries", filteredEntries);
+
+        const { status } = await this.#writeAttribute(
+            nodeId,
+            EndpointNumber(0),
+            AccessControl.id,
+            "acl",
+            filteredEntries,
+        );
         return [
             {
                 path: { endpoint_id: 0, cluster_id: AccessControl.id, attribute_id: 0 },

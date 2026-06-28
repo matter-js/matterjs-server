@@ -41,15 +41,15 @@
         "vis-network": "^10.1.0"
     },
     "devDependencies": {
-        "@babel/preset-env": "^8.0.1",
-        "@matter/main": "0.17.3",
+        "@babel/preset-env": "^8.0.2",
+        "@matter/main": "0.17.4-alpha.0-20260628-67a669f75",
         "@rollup/plugin-babel": "^7.1.0",
         "@rollup/plugin-commonjs": "^29.0.3",
         "@rollup/plugin-json": "^6.1.0",
         "@rollup/plugin-node-resolve": "^16.0.3",
         "@rollup/plugin-terser": "^1.0.0",
         "@rollup/plugin-typescript": "^12.3.0",
-        "rollup": "^4.61.0",
+        "rollup": "^4.62.2",
         "rollup-plugin-copy": "^3.5.0",
         "serve": "^14.2.6"
     }

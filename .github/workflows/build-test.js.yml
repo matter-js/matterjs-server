@@ -20,7 +20,7 @@ jobs:
             docker-changes: ${{ steps.changes.outputs.docker }}
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v6
+            - uses: actions/checkout@v7
             - uses: dorny/paths-filter@v4
               id: changes
               if: github.event.pull_request.user.login != 'dependabot[bot]'
@@ -49,7 +49,7 @@ jobs:
                 node-version: [22.x, 24.x, 26.x]
                 os: [macos-latest, windows-latest]
         steps:
-            - uses: actions/checkout@v6
+            - uses: actions/checkout@v7
               if: needs.check-and-lint.outputs.package-changes == 'true' || github.event.pull_request.user.login == 'dependabot[bot]'
             - uses: actions/setup-python@v6
               if: needs.check-and-lint.outputs.package-changes == 'true' || github.event.pull_request.user.login == 'dependabot[bot]'
@@ -70,7 +70,7 @@ jobs:
             matrix:
                 node-version: [22.x, 24.x, 26.x]
         steps:
-            - uses: actions/checkout@v6
+            - uses: actions/checkout@v7
             - name: Prepare testing environment
               uses: ./.github/actions/prepare-env
               with:
@@ -86,7 +86,7 @@ jobs:
         needs: [check-and-lint]
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v6
+            - uses: actions/checkout@v7
               if: needs.check-and-lint.outputs.docker-changes == 'true' || github.event.pull_request.user.login == 'dependabot[bot]'
             - name: Set up Docker Buildx
               if: needs.check-and-lint.outputs.docker-changes == 'true' || github.event.pull_request.user.login == 'dependabot[bot]'
@@ -108,7 +108,7 @@ jobs:
         needs: [check-and-lint, docker-build]
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v6
+            - uses: actions/checkout@v7
               if: needs.check-and-lint.outputs.docker-changes == 'true' || github.event.pull_request.user.login == 'dependabot[bot]'
             - name: Set up Docker Buildx
               if: needs.check-and-lint.outputs.docker-changes == 'true' || github.event.pull_request.user.login == 'dependabot[bot]'
