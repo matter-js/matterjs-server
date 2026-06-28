@@ -6,9 +6,11 @@
 
 import { consume } from "@lit/context";
 import "@material/web/progress/circular-progress";
+import "@material/web/select/outlined-select";
+import "@material/web/select/select-option";
 import "@material/web/textfield/outlined-text-field";
 import type { MdOutlinedTextField } from "@material/web/textfield/outlined-text-field.js";
-import { MatterClient } from "@matter-server/ws-client";
+import { AllCredentialsSummary, MatterClient } from "@matter-server/ws-client";
 import { mdiWifi } from "@mdi/js";
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
@@ -58,6 +60,12 @@ export class CommissionNodeWifi extends LitElement {
     @state()
     private _loading: boolean = false;
 
+    @state()
+    private _credentials: AllCredentialsSummary | null = null;
+
+    @state()
+    private _selectedId: string = "default";
+
     @query("md-outlined-text-field[label='SSID']")
     private _ssidField!: MdOutlinedTextField;
     @query("md-outlined-text-field[label='Password']")
@@ -67,6 +75,20 @@ export class CommissionNodeWifi extends LitElement {
 
     private _pairingFocused = false;
     private _credsFocused = false;
+
+    override connectedCallback(): void {
+        super.connectedCallback();
+        void this._loadCredentials().catch(err => console.warn("Failed to load credentials:", err));
+    }
+
+    private async _loadCredentials(): Promise<void> {
+        if (!this.client || this.client.serverInfo.schema_version < 12) return;
+        try {
+            this._credentials = await this.client.getAllCredentials();
+        } catch {
+            // Leave _credentials null → no picker shown
+        }
+    }
 
     protected override updated(): void {
         void this._maybeAutofocus().catch(err => console.warn("Autofocus failed:", err));
@@ -100,6 +122,8 @@ export class CommissionNodeWifi extends LitElement {
                     >Set WiFi Credentials</md-outlined-button
                 >${this._loading ? html`<md-circular-progress indeterminate></md-circular-progress>` : nothing}`;
         }
+        const wifiList = this._credentials?.wifi ?? [];
+        const showPicker = wifiList.length > 1;
         return html`<div class="cred-chip">
                 <ha-svg-icon .path=${mdiWifi}></ha-svg-icon>
                 <span>WiFi: ${this.client.serverInfo.wifi_ssid ?? "network set"}</span>
@@ -108,6 +132,29 @@ export class CommissionNodeWifi extends LitElement {
                     Edit in Settings
                 </button>
             </div>
+            ${showPicker
+                ? html`<md-outlined-select
+                          label="WiFi network"
+                          .disabled=${this._loading}
+                          .value=${this._selectedId}
+                          @change=${(e: Event) => {
+                              this._selectedId = (e.target as HTMLSelectElement).value;
+                          }}
+                      >
+                          <md-select-option value="default">
+                              <div slot="headline">Default</div>
+                          </md-select-option>
+                          ${wifiList.map(
+                              entry => html`
+                                  <md-select-option value=${entry.id}>
+                                      <div slot="headline">${entry.ssid || entry.id}</div>
+                                  </md-select-option>
+                              `,
+                          )}
+                      </md-outlined-select>
+                      <br />
+                      <br />`
+                : nothing}
             <md-outlined-text-field label="Pairing code" .disabled="${this._loading}"> </md-outlined-text-field>
             <br />
             <br />
@@ -144,7 +191,8 @@ export class CommissionNodeWifi extends LitElement {
                 return;
             }
             this._loading = true;
-            const node = await this.client.commissionWithCode(this._pairingCodeField.value, false);
+            const opts = this._selectedId !== "default" ? { wifiCredentialsId: this._selectedId } : undefined;
+            const node = await this.client.commissionWithCode(this._pairingCodeField.value, false, opts);
             fireEvent(this, "node-commissioned", node);
         } catch (err) {
             showAlertDialog({ title: "Error commissioning node", text: (err as Error).message });
