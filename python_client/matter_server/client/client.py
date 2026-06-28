@@ -132,21 +132,33 @@ class MatterClient:
         )
 
     async def commission_with_code(
-        self, code: str, network_only: bool = False
+        self,
+        code: str,
+        network_only: bool = False,
+        wifi_credentials_id: str | None = None,
+        thread_dataset_id: str | None = None,
     ) -> MatterNodeData:
         """
         Commission a device using a QR Code or Manual Pairing Code.
 
         :param code: The QR Code or Manual Pairing Code for device commissioning.
         :param network_only: If True, restricts device discovery to network only.
+        :param wifi_credentials_id: Optional id of the WiFi credentials entry to use.
+        :param thread_dataset_id: Optional id of the Thread dataset entry to use.
 
         :return: The NodeInfo of the commissioned device.
         """
+        extra: dict[str, str] = {}
+        if wifi_credentials_id is not None:
+            extra["wifi_credentials_id"] = wifi_credentials_id
+        if thread_dataset_id is not None:
+            extra["thread_dataset_id"] = thread_dataset_id
         data = await self.send_command(
             APICommand.COMMISSION_WITH_CODE,
-            require_schema=6 if network_only else None,
+            require_schema=12 if extra else (6 if network_only else None),
             code=code,
             network_only=network_only,
+            **extra,
         )
         return dataclass_from_dict(MatterNodeData, data)
 
@@ -169,23 +181,44 @@ class MatterClient:
         )
         return dataclass_from_dict(MatterNodeData, data)
 
-    async def set_wifi_credentials(self, ssid: str, credentials: str) -> None:
+    async def set_wifi_credentials(self, ssid: str, credentials: str, entry_id: str = "default") -> None:
         """Set WiFi credentials for commissioning to a (new) device."""
         await self.send_command(
-            APICommand.SET_WIFI_CREDENTIALS, ssid=ssid, credentials=credentials
+            APICommand.SET_WIFI_CREDENTIALS,
+            require_schema=12 if entry_id != "default" else None,
+            ssid=ssid,
+            credentials=credentials,
+            id=entry_id,
         )
 
-    async def set_thread_operational_dataset(self, dataset: str) -> None:
+    async def set_thread_operational_dataset(self, dataset: str, entry_id: str = "default") -> None:
         """Set Thread Operational dataset in the stack."""
-        await self.send_command(APICommand.SET_THREAD_DATASET, dataset=dataset)
+        await self.send_command(
+            APICommand.SET_THREAD_DATASET,
+            require_schema=12 if entry_id != "default" else None,
+            dataset=dataset,
+            id=entry_id,
+        )
 
-    async def remove_wifi_credentials(self) -> None:
-        """Remove any stored WiFi credentials from the server."""
-        await self.send_command(APICommand.REMOVE_WIFI_CREDENTIALS)
+    async def remove_wifi_credentials(self, entry_id: str = "default") -> None:
+        """Remove stored WiFi credentials from the server."""
+        await self.send_command(
+            APICommand.REMOVE_WIFI_CREDENTIALS,
+            require_schema=12 if entry_id != "default" else None,
+            id=entry_id,
+        )
 
-    async def remove_thread_dataset(self) -> None:
-        """Remove the stored Thread Operational dataset from the server."""
-        await self.send_command(APICommand.REMOVE_THREAD_DATASET)
+    async def remove_thread_dataset(self, entry_id: str = "default") -> None:
+        """Remove a stored Thread Operational dataset from the server."""
+        await self.send_command(
+            APICommand.REMOVE_THREAD_DATASET,
+            require_schema=12 if entry_id != "default" else None,
+            id=entry_id,
+        )
+
+    async def get_all_credentials(self) -> dict[str, Any]:
+        """Return summaries (no secrets) of all stored WiFi and Thread credentials."""
+        return await self.send_command(APICommand.GET_ALL_CREDENTIALS, require_schema=12)
 
     async def open_commissioning_window(
         self,

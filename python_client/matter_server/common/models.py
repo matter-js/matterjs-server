@@ -57,6 +57,7 @@ class APICommand(str, Enum):
     SET_ACL_ENTRY = "set_acl_entry"
     SET_NODE_BINDING = "set_node_binding"
     SEND_WEBRTC_PROVIDER_COMMAND = "send_webrtc_provider_command"
+    GET_ALL_CREDENTIALS = "get_all_credentials"
 
 
 EventCallBackType = Callable[[EventType, Any], None]
