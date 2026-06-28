@@ -248,6 +248,7 @@ export class ConfigStorage {
             this.#data.wifiCredentials = undefined;
             await this.#configStore?.delete("wifiSsid");
             await this.#configStore?.delete("wifiCredentials");
+            logger.info("Removed WiFi credentials");
             return;
         }
         const list = this.#additionalWifiCredentials.filter(e => e.id.toLowerCase() !== id.trim().toLowerCase());
@@ -311,17 +312,23 @@ export class ConfigStorage {
     }
 
     async #saveAdditionalWifiCredentials(list: WifiCredentialEntry[]): Promise<void> {
+        if (!this.#configStore) {
+            throw new Error("Storage not open");
+        }
         this.#additionalWifiCredentials = list;
         logger.info(`Set config key additionalWifiCredentials to ${sanitizeForLog("additionalWifiCredentials", list)}`);
-        await this.#configStore?.set("additionalWifiCredentials", ConfigStorage.#toStoredWifi(list));
+        await this.#configStore.set("additionalWifiCredentials", ConfigStorage.#toStoredWifi(list));
     }
 
     async #saveAdditionalThreadCredentials(list: ThreadCredentialEntry[]): Promise<void> {
+        if (!this.#configStore) {
+            throw new Error("Storage not open");
+        }
         this.#additionalThreadCredentials = list;
         logger.info(
             `Set config key additionalThreadCredentials to ${sanitizeForLog("additionalThreadCredentials", list)}`,
         );
-        await this.#configStore?.set("additionalThreadCredentials", ConfigStorage.#toStoredThread(list));
+        await this.#configStore.set("additionalThreadCredentials", ConfigStorage.#toStoredThread(list));
     }
 
     async close() {

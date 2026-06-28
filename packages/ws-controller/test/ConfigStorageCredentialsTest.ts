@@ -52,6 +52,18 @@ describe("ConfigStorage credentials", () => {
         expect(config.listWifiCredentials()).to.have.length(1); // only "Garage" — no default set
     });
 
+    it("matches thread ids case-insensitively and rejects duplicates", async () => {
+        await config.setThreadCredentials("Net", "aabbccdd");
+        let err: unknown;
+        try {
+            await config.setThreadCredentials("net", "11223344");
+        } catch (e) {
+            err = e;
+        }
+        expect(String(err)).to.contain("invalid-credential-id");
+        expect(config.listThreadCredentials()).to.have.length(1); // only "Net" — no default set
+    });
+
     it("rejects reserved name 'delete' and empty ids", async () => {
         for (const bad of ["delete", "DELETE", "  ", ""]) {
             let err: unknown;
