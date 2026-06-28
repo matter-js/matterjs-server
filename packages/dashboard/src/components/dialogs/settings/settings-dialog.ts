@@ -216,8 +216,7 @@ export class SettingsDialog extends LitElement {
             targetId = validated;
         }
         const password = this._wifiPasswordField.value;
-        // Blank password is only allowed when editing an entry that already holds a secret (it is kept).
-        // The default entry is always present in the list but may be unset, so check the server-info flag for it.
+        // Default entry may be unset, so its stored-secret state comes from the server-info flag, not the list.
         const hasStoredSecret =
             id !== undefined && (id === "default" ? (this.client.serverInfo.wifi_credentials_set ?? false) : true);
         if (!password && !hasStoredSecret) {
