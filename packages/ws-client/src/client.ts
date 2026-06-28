@@ -8,6 +8,7 @@ import { Connection, WebSocketFactory } from "./connection.js";
 import { CommandTimeoutError, ConnectionClosedError, InvalidServerVersion } from "./exceptions.js";
 import {
     AccessControlEntry,
+    AllCredentialsSummary,
     APICommands,
     BindingTarget,
     CommissionableNodeData,
@@ -114,40 +115,45 @@ export class MatterClient {
         };
     }
 
-    async commissionWithCode(code: string, networkOnly = true, timeout?: number): Promise<MatterNode> {
-        // Commission a device using a QR Code or Manual Pairing Code.
-        // code: The QR Code or Manual Pairing Code for device commissioning.
-        // network_only: If True, restricts device discovery to network only.
-        // timeout: Optional command timeout in milliseconds.
-        // Returns: The NodeInfo of the commissioned device.
+    async commissionWithCode(
+        code: string,
+        networkOnly = true,
+        opts?: { wifiCredentialsId?: string; threadDatasetId?: string },
+        timeout?: number,
+    ): Promise<MatterNode> {
+        const usesIds = opts?.wifiCredentialsId !== undefined || opts?.threadDatasetId !== undefined;
         const data = await this.sendCommand(
             "commission_with_code",
-            0,
+            usesIds ? 12 : 0,
             {
-                code: code,
+                code,
                 network_only: networkOnly,
+                wifi_credentials_id: opts?.wifiCredentialsId,
+                thread_dataset_id: opts?.threadDatasetId,
             },
             timeout,
         );
         return new MatterNode(data);
     }
 
-    async setWifiCredentials(ssid: string, credentials: string, timeout?: number): Promise<void> {
-        // Set WiFi credentials for commissioning to a (new) device.
-        await this.sendCommand("set_wifi_credentials", 0, { ssid, credentials }, timeout);
+    async setWifiCredentials(ssid: string, credentials: string, id?: string, timeout?: number): Promise<void> {
+        await this.sendCommand("set_wifi_credentials", id === undefined ? 0 : 12, { ssid, credentials, id }, timeout);
     }
 
-    async setThreadOperationalDataset(dataset: string, timeout?: number): Promise<void> {
-        // Set Thread Operational dataset in the stack.
-        await this.sendCommand("set_thread_dataset", 0, { dataset }, timeout);
+    async setThreadOperationalDataset(dataset: string, id?: string, timeout?: number): Promise<void> {
+        await this.sendCommand("set_thread_dataset", id === undefined ? 0 : 12, { dataset, id }, timeout);
     }
 
-    async removeWifiCredentials(timeout?: number): Promise<void> {
-        await this.sendCommand("remove_wifi_credentials", 0, {}, timeout);
+    async removeWifiCredentials(id?: string, timeout?: number): Promise<void> {
+        await this.sendCommand("remove_wifi_credentials", id === undefined ? 0 : 12, { id }, timeout);
     }
 
-    async removeThreadDataset(timeout?: number): Promise<void> {
-        await this.sendCommand("remove_thread_dataset", 0, {}, timeout);
+    async removeThreadDataset(id?: string, timeout?: number): Promise<void> {
+        await this.sendCommand("remove_thread_dataset", id === undefined ? 0 : 12, { id }, timeout);
+    }
+
+    async getAllCredentials(timeout?: number): Promise<AllCredentialsSummary> {
+        return this.sendCommand("get_all_credentials", 12, {}, timeout);
     }
 
     async openCommissioningWindow(
