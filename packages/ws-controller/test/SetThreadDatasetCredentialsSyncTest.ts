@@ -5,15 +5,22 @@
  */
 
 import { ThreadCredentialsRegistry } from "@matter-server/thread-br";
+import { AsyncObservable, Environment, MockStorageService, Observable } from "@matter/general";
 import { Bytes } from "@matter/main";
-import { syncThreadCredentialsToDataset } from "../src/server/WebSocketControllerHandler.js";
+import { createServer } from "node:http";
+import WebSocket from "ws";
+import { ConfigStorage } from "../src/server/ConfigStorage.js";
+import { WebSocketControllerHandler } from "../src/server/WebSocketControllerHandler.js";
 
 // extPanId = 11:22:33:44:55:66:77:88, network = "OpenThread" — mirrors synthetic-1 fixture.
-const DATASET_OPENTHREAD =
+const DATASET_A =
     "00010f02081122334455667788030a4f70656e5468726561640410000102030405060708090a0b0c0d0e0f0e080000000000010000";
 
+// extPanId = DE:AD:BE:EF:CA:FE:BA:BE, network = "TestNet" — distinct extPanId for multi-entry tests.
+const DATASET_B = buildDataset("DEADBEEFCAFEBABE", "TestNet");
+
 function buildDataset(extPanIdHex: string, networkName: string): string {
-    const bytes: number[] = [];
+    const bytes = new Array<number>();
     // CHANNEL TLV
     bytes.push(0x00, 0x01, 0x0f);
     // EXTPANID TLV
@@ -30,50 +37,181 @@ function buildDataset(extPanIdHex: string, networkName: string): string {
     return Bytes.toHex(new Uint8Array(bytes));
 }
 
-describe("syncThreadCredentialsToDataset", () => {
-    let registry: ThreadCredentialsRegistry;
+function freshEnv(): Environment {
+    const env = new Environment("test");
+    new MockStorageService(env);
+    return env;
+}
 
-    beforeEach(() => {
-        registry = new ThreadCredentialsRegistry();
+function makeStubController(credentials: ThreadCredentialsRegistry) {
+    const stubEvents = {
+        started: new AsyncObservable(),
+        attributeChanged: new Observable(),
+        eventChanged: new Observable(),
+        nodeAdded: new Observable(),
+        nodeStateChanged: new Observable(),
+        nodeAvailabilityChanged: new Observable(),
+        nodeStructureChanged: new Observable(),
+        nodeDecommissioned: new Observable(),
+        nodeEndpointAdded: new Observable(),
+        nodeEndpointRemoved: new Observable(),
+        webRtcCallback: new Observable(),
+    };
+
+    const stubCommandHandler = {
+        events: stubEvents,
+        bleEnabled: false,
+        bleProxyEnabled: false,
+        async start() {},
+        async getCommissionerFabricData() {
+            return { fabricId: 1n, compressedFabricId: 2n, fabricIndex: 1 };
+        },
+        getCommissionerNodeId() {
+            return 0n;
+        },
+        getNodeIds() {
+            return [];
+        },
+        async initializeNodes() {},
+    };
+
+    const stubDiagnostics = {
+        events: { batchUpdated: new Observable() },
+    };
+
+    const stubBorderRouters = {
+        list() {
+            return [];
+        },
+    };
+
+    return {
+        get commandHandler() {
+            return stubCommandHandler as unknown as InstanceType<
+                typeof import("../src/controller/ControllerCommandHandler.js").ControllerCommandHandler
+            >;
+        },
+        get credentials() {
+            return credentials;
+        },
+        get threadDiagnostics() {
+            return stubDiagnostics as unknown as InstanceType<
+                typeof import("../src/controller/ThreadDiagnosticsService.js").ThreadDiagnosticsService
+            >;
+        },
+        get borderRouters() {
+            return stubBorderRouters as unknown as InstanceType<
+                typeof import("@matter-server/thread-br").BorderRouterRegistry
+            >;
+        },
+    };
+}
+
+interface TestHarness {
+    handle<T = unknown>(command: string, args: unknown): Promise<T>;
+    config: ConfigStorage;
+    credentials: ThreadCredentialsRegistry;
+    close(): Promise<void>;
+}
+
+async function createHarness(): Promise<TestHarness> {
+    const config = await ConfigStorage.create(freshEnv());
+    const credentials = new ThreadCredentialsRegistry();
+    const controller = makeStubController(credentials);
+
+    const handler = new WebSocketControllerHandler(
+        controller as unknown as InstanceType<typeof import("../src/controller/MatterController.js").MatterController>,
+        config,
+        "0.0.0-test",
+    );
+
+    const httpServer = createServer();
+    await handler.register({
+        on: httpServer.on.bind(httpServer),
+        removeListener: httpServer.removeListener.bind(httpServer),
+    } as unknown as Parameters<typeof handler.register>[0]);
+
+    await new Promise<void>(resolve => httpServer.listen(0, "127.0.0.1", resolve));
+    const { port } = httpServer.address() as { port: number };
+
+    async function openClient(): Promise<WebSocket> {
+        return new Promise((resolve, reject) => {
+            const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+            ws.once("message", () => resolve(ws));
+            ws.once("error", reject);
+        });
+    }
+
+    async function handle<T>(command: string, args: unknown): Promise<T> {
+        const ws = await openClient();
+        return new Promise<T>((resolve, reject) => {
+            const messageId = `test-${Date.now()}-${Math.random()}`;
+            ws.send(JSON.stringify({ message_id: messageId, command, args }));
+            ws.once("message", raw => {
+                ws.close();
+                const msg = JSON.parse(raw.toString()) as { result?: T; error_code?: number; details?: string };
+                if (msg.error_code !== undefined) {
+                    reject(new Error(msg.details ?? `ServerError ${msg.error_code}`));
+                } else {
+                    resolve(msg.result as T);
+                }
+            });
+            ws.once("error", reject);
+        });
+    }
+
+    async function close(): Promise<void> {
+        await handler.unregister();
+        await new Promise<void>(resolve => httpServer.close(() => resolve()));
+    }
+
+    return { handle, config, credentials, close };
+}
+
+describe("Thread credential registry — per-entry set/remove behavior", () => {
+    let h: TestHarness;
+
+    beforeEach(async () => {
+        h = await createHarness();
     });
 
-    it("registers credentials for a valid dataset", () => {
-        syncThreadCredentialsToDataset(registry, DATASET_OPENTHREAD);
-        const list = registry.list();
-        expect(list).to.have.lengthOf(1);
-        expect(Bytes.toHex(list[0].extPanId).toUpperCase()).to.equal("1122334455667788");
-        expect(list[0].networkName).to.equal("OpenThread");
+    afterEach(async () => {
+        await h.close();
     });
 
-    it("clears the registry when called with an empty dataset", () => {
-        syncThreadCredentialsToDataset(registry, DATASET_OPENTHREAD);
-        expect(registry.list()).to.have.lengthOf(1);
-        syncThreadCredentialsToDataset(registry, "");
-        expect(registry.list()).to.deep.equal([]);
+    it("setting a thread dataset registers its extPanId in the registry", async () => {
+        await h.handle("set_thread_dataset", { dataset: DATASET_A });
+        const xps = h.credentials.list().map(c => Bytes.toHex(c.extPanId).toUpperCase());
+        expect(xps).to.include("1122334455667788");
     });
 
-    it("replaces credentials in place when re-applied with the same extPanId", () => {
-        syncThreadCredentialsToDataset(registry, DATASET_OPENTHREAD);
-        syncThreadCredentialsToDataset(registry, DATASET_OPENTHREAD);
-        expect(registry.list()).to.have.lengthOf(1);
+    it("setting a second distinct dataset registers a second extPanId (both coexist)", async () => {
+        await h.handle("set_thread_dataset", { dataset: DATASET_A });
+        await h.handle("set_thread_dataset", { dataset: DATASET_B, id: "Extra" });
+        const xps = h.credentials.list().map(c => Bytes.toHex(c.extPanId).toUpperCase());
+        expect(xps).to.include("1122334455667788");
+        expect(xps).to.include("DEADBEEFCAFEBABE");
+        expect(h.credentials.list()).to.have.lengthOf(2);
     });
 
-    it("drops the prior entry when the new dataset has a different extPanId", () => {
-        syncThreadCredentialsToDataset(registry, DATASET_OPENTHREAD);
-        const otherHex = buildDataset("AABBCCDDEEFF0011", "OtherNet");
-        syncThreadCredentialsToDataset(registry, otherHex);
-        const list = registry.list();
-        expect(list).to.have.lengthOf(1);
-        expect(Bytes.toHex(list[0].extPanId).toUpperCase()).to.equal("AABBCCDDEEFF0011");
-        expect(list[0].networkName).to.equal("OtherNet");
+    it("removing one entry unregisters only its extPanId and leaves the other", async () => {
+        await h.handle("set_thread_dataset", { dataset: DATASET_A });
+        await h.handle("set_thread_dataset", { dataset: DATASET_B, id: "Extra" });
+        await h.handle("remove_thread_dataset", { id: "Extra" });
+        const xps = h.credentials.list().map(c => Bytes.toHex(c.extPanId).toUpperCase());
+        expect(xps).to.deep.equal(["1122334455667788"]);
+        expect(xps).to.not.include("DEADBEEFCAFEBABE");
     });
 
-    it("leaves the registry unchanged when the new dataset fails to decode", () => {
-        syncThreadCredentialsToDataset(registry, DATASET_OPENTHREAD);
-        // Valid hex but invalid TLV stream (zero-length CHANNEL throws).
-        syncThreadCredentialsToDataset(registry, "0000");
-        const list = registry.list();
-        expect(list).to.have.lengthOf(1);
-        expect(Bytes.toHex(list[0].extPanId).toUpperCase()).to.equal("1122334455667788");
+    it("removing an entry whose extPanId is still referenced by another stored entry does NOT unregister it", async () => {
+        // Store the same dataset under two different ids (same extPanId).
+        await h.handle("set_thread_dataset", { dataset: DATASET_A });
+        await h.handle("set_thread_dataset", { dataset: DATASET_A, id: "Duplicate" });
+        // Registry should still deduplicate to one entry (register is idempotent by extPanId).
+        expect(h.credentials.list()).to.have.lengthOf(1);
+        // Removing one id must NOT drop the extPanId because the other id still holds it.
+        await h.handle("remove_thread_dataset", { id: "Duplicate" });
+        const xps = h.credentials.list().map(c => Bytes.toHex(c.extPanId).toUpperCase());
+        expect(xps).to.include("1122334455667788");
     });
 });
