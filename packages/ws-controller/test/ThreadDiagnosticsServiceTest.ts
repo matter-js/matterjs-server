@@ -166,6 +166,7 @@ function syncRestSource(nodes: DiagnosticResponse[]): DiagnosticSource {
         canQuery: () => true,
         queryUnicast: async () => nodes[0] ?? { unknown: [] },
         queryMulticast: () => scriptedHandle({ nodes }),
+        resetCounters: async () => {},
     };
 }
 
@@ -175,6 +176,7 @@ function syncMeshcopSource(nodes: DiagnosticResponse[]): DiagnosticSource {
         canQuery: () => true,
         queryUnicast: async () => nodes[0] ?? { unknown: [] },
         queryMulticast: () => scriptedHandle({ nodes }),
+        resetCounters: async () => {},
     };
 }
 
@@ -186,6 +188,7 @@ function failingMeshcopSource(err: Error): DiagnosticSource {
         queryMulticast: () => {
             throw err;
         },
+        resetCounters: async () => {},
     };
 }
 
@@ -197,6 +200,7 @@ function failingRestSource(err: OtbrRestError): DiagnosticSource {
         queryMulticast: () => {
             throw err;
         },
+        resetCounters: async () => {},
     };
 }
 
@@ -355,6 +359,7 @@ describe("ThreadDiagnosticsService", () => {
                     canQuery: () => true,
                     queryUnicast: async () => ({ unknown: [] }),
                     queryMulticast: () => scriptedHandle({ nodes: [SAMPLE_NODE], delayMs: 5 }),
+                    resetCounters: async () => {},
                 };
                 return meshcopHandle(source);
             },
@@ -401,6 +406,7 @@ describe("ThreadDiagnosticsService", () => {
                     canQuery: () => true,
                     queryUnicast: async () => ({ unknown: [] }),
                     queryMulticast: () => scriptedHandle({ delayMs: 20 }),
+                    resetCounters: async () => {},
                 };
                 return meshcopHandle(source, () => {
                     active -= 1;
@@ -832,6 +838,7 @@ describe("ThreadDiagnosticsService", () => {
                         canQuery: () => true,
                         queryUnicast: async () => ({ unknown: [] }),
                         queryMulticast: () => handle,
+                        resetCounters: async () => {},
                     },
                     close: async () => {},
                 };
@@ -873,6 +880,7 @@ describe("ThreadDiagnosticsService", () => {
                     canQuery: () => true,
                     queryUnicast: async () => ({ unknown: [] }),
                     queryMulticast: () => scriptedHandle({ keepOpen: true }),
+                    resetCounters: async () => {},
                 }),
         });
 
@@ -910,6 +918,7 @@ describe("ThreadDiagnosticsService", () => {
                         canQuery: () => true,
                         queryUnicast: async () => ({ unknown: [] }),
                         queryMulticast: () => handle,
+                        resetCounters: async () => {},
                     },
                     close: async () => {},
                 };

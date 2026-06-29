@@ -193,6 +193,43 @@ export class OtbrRestClient {
         return out;
     }
 
+    /**
+     * POST an action body to the OTBR `/api/actions` endpoint.
+     *
+     * Only available on camelCase (post-2024) OTBR builds — callers must guard
+     * on `OtbrRestCapability.keyFormat === "camel"` before calling this method.
+     *
+     * @param body - The action payload (e.g. `{ action: "resetNetworkDiagCounterTask" }`).
+     * @throws {@link OtbrRestError} with code `"rest_unreachable"` on network error.
+     * @throws {@link OtbrRestError} with code `"rest_protocol"` on a non-2xx response.
+     */
+    async resetDiagnosticCounters(body: Record<string, unknown>): Promise<void> {
+        const url = `${this.#baseUrl}/api/actions`;
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), this.#timeoutMs);
+        let response: Response;
+        try {
+            response = await fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+                signal: controller.signal,
+            });
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            throw new OtbrRestError("rest_unreachable", `POST /api/actions failed: ${message}`, {
+                cause: err instanceof Error ? err : undefined,
+            });
+        } finally {
+            clearTimeout(timer);
+        }
+        if (!response.ok) {
+            throw new OtbrRestError("rest_protocol", `POST /api/actions returned ${response.status}`, {
+                httpStatus: response.status,
+            });
+        }
+    }
+
     async #fetchJson(path: string): Promise<FetchedJson> {
         const response = await this.#doFetch(path, "application/json");
         if (response.status === HTTP_NO_CONTENT) {

@@ -51,6 +51,7 @@ import {
     formatIp6,
 } from "../util/meshLocalAddr.js";
 import type { DiagnosticResponse } from "./DiagnosticResponse.js";
+import { DEFAULT_RESET_TLV_TYPES } from "./DiagnosticSource.js";
 import type { DiagnosticSource, QueryMulticastHandle, QueryMulticastOptions } from "./DiagnosticSource.js";
 
 const logger = Logger.get("MeshCopDiagnosticSource");
@@ -69,6 +70,7 @@ const PROXY_RX_URI = ["c", "ur"];
 /** Network-diagnostic URIs carried inside the proxied inner CoAP message. */
 const DIAG_GET_URI = ["d", "dg"];
 const DIAG_QUERY_URI = ["d", "dq"];
+const DIAG_RESET_URI = ["d", "dr"];
 
 /**
  * MeshCoP network-diagnostic source.
@@ -313,6 +315,32 @@ export class MeshCopDiagnosticSource implements DiagnosticSource {
                 await sessionPromise;
             },
         };
+    }
+
+    async resetCounters(target: { rloc16?: number; ip?: string }, tlvTypes = DEFAULT_RESET_TLV_TYPES): Promise<void> {
+        if (target.rloc16 === undefined) {
+            throw new Error("MeshCopDiagnosticSource: resetCounters requires target.rloc16");
+        }
+        if (this.#mlPrefix === undefined) {
+            throw new Error(
+                "MeshCopDiagnosticSource: resetCounters requires the mesh-local prefix; none was provided to the constructor",
+            );
+        }
+        const targetAddr = deriveMeshLocalAddress(this.#mlPrefix, target.rloc16);
+        const token = this.#freshToken();
+        const innerBytes = this.#encodeInnerDiag("CON", DIAG_RESET_URI, [...tlvTypes], token);
+        const proxyPayload = this.#wrapProxyTx(targetAddr, innerBytes);
+
+        await this.#commissioner.withSession(async () => {
+            // ProxyTx is fire-and-forget: same as d/dg unicast but no reply is
+            // expected — MGMT_DIAG_RESET has no response payload.
+            await this.#coap.request({
+                type: "NON",
+                code: "0.02",
+                uriPath: PROXY_TX_URI,
+                payload: proxyPayload,
+            });
+        });
     }
 
     #encodeInnerDiag(type: "CON" | "NON", uriPath: string[], tlvTypes: number[], token: Uint8Array): Uint8Array {

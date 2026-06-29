@@ -70,6 +70,7 @@ const STUB_REST: DiagnosticSource = {
     canQuery: () => true,
     queryUnicast: async (): Promise<DiagnosticResponse> => ({ unknown: [] }),
     queryMulticast: () => emptyHandle(),
+    resetCounters: async () => {},
 };
 
 const STUB_MESHCOP: DiagnosticSource = {
@@ -77,6 +78,7 @@ const STUB_MESHCOP: DiagnosticSource = {
     canQuery: () => true,
     queryUnicast: async (): Promise<DiagnosticResponse> => ({ unknown: [] }),
     queryMulticast: () => emptyHandle(),
+    resetCounters: async () => {},
 };
 
 describe("selectSource", () => {

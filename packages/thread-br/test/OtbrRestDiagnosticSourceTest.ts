@@ -18,7 +18,7 @@ const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../.."
 const FIXTURE_DIR = resolve(PACKAGE_ROOT, "test/fixtures/otbr-rest");
 const RAW_DIAGNOSTICS: unknown = JSON.parse(readFileSync(resolve(FIXTURE_DIR, "diagnostics.json"), "utf8"));
 
-type ClientLike = Pick<OtbrRestClient, "getDiagnostics" | "getNode">;
+type ClientLike = Pick<OtbrRestClient, "getDiagnostics" | "getNode" | "resetDiagnosticCounters">;
 
 function normalizedDiagnostics(): unknown[] {
     const normalized = normalizeKeys(RAW_DIAGNOSTICS);
@@ -42,6 +42,7 @@ function mockClient(): ClientLike {
         getNode: async (): Promise<OtbrNodeInfo> => {
             throw new Error("not used in tests");
         },
+        resetDiagnosticCounters: async () => {},
     };
 }
 

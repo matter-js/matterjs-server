@@ -6,6 +6,7 @@
 
 import { Bytes, Logger, Observable } from "@matter/main";
 import type { DiagnosticResponse } from "../diagnostic/DiagnosticResponse.js";
+import { DEFAULT_RESET_TLV_TYPES } from "../diagnostic/DiagnosticSource.js";
 import type { DiagnosticSource, QueryMulticastHandle, QueryMulticastOptions } from "../diagnostic/DiagnosticSource.js";
 import type { OtbrRestCapability } from "./OtbrRestCapability.js";
 import type { OtbrRestClient } from "./OtbrRestClient.js";
@@ -14,7 +15,7 @@ import { translateNodeJson } from "./translation.js";
 
 const logger = Logger.get("OtbrRestDiagnosticSource");
 
-type ClientLike = Pick<OtbrRestClient, "getDiagnostics" | "getNode">;
+type ClientLike = Pick<OtbrRestClient, "getDiagnostics" | "getNode" | "resetDiagnosticCounters">;
 
 /**
  * {@link DiagnosticSource} implementation that wraps the OTBR REST `/diagnostics`
@@ -140,5 +141,32 @@ export class OtbrRestDiagnosticSource implements DiagnosticSource {
                 await done.catch(() => {});
             },
         };
+    }
+
+    /**
+     * Zero MAC and MLE counters on a single mesh node via the OTBR REST API.
+     *
+     * Posts a `resetNetworkDiagCounterTask` action to `/api/actions`. Only
+     * available on camelCase OTBR backends (post-2024 builds detected as
+     * `keyFormat === "camel"` during probing). Throws {@link OtbrRestError}
+     * with code `"rest_disabled"` when the backend does not support this
+     * endpoint. Mutating but low-risk — counters only, no network state altered.
+     *
+     * @param _target - Accepted for interface compatibility; REST resets all
+     *   nodes atomically, so target is not forwarded on the wire.
+     * @param _tlvTypes - Accepted for interface compatibility; the REST action
+     *   always resets all diagnostic counters regardless of tlvTypes.
+     */
+    async resetCounters(
+        _target: { rloc16?: number; ip?: string },
+        _tlvTypes: ReadonlyArray<number> = DEFAULT_RESET_TLV_TYPES,
+    ): Promise<void> {
+        if (this.#capability.keyFormat !== "camel") {
+            throw new OtbrRestError(
+                "rest_disabled",
+                "OtbrRestDiagnosticSource: resetCounters requires the camelCase (/api/actions) OTBR backend",
+            );
+        }
+        await this.#client.resetDiagnosticCounters({ action: "resetNetworkDiagCounterTask" });
     }
 }

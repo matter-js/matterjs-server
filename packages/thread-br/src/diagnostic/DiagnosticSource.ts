@@ -5,6 +5,7 @@
  */
 
 import type { Observable } from "@matter/main";
+import { NetworkDiagTlvType } from "../tlv/networkDiagTlvTypes.js";
 import type { DiagnosticResponse } from "./DiagnosticResponse.js";
 
 export interface QueryMulticastOptions {
@@ -12,6 +13,12 @@ export interface QueryMulticastOptions {
     /** Total window during which responses are accepted. Default 20_000 ms. */
     windowMs?: number;
 }
+
+/** Default TLV types zeroed by {@link DiagnosticSource.resetCounters} when none are specified. */
+export const DEFAULT_RESET_TLV_TYPES: ReadonlyArray<number> = [
+    NetworkDiagTlvType.MAC_COUNTERS,
+    NetworkDiagTlvType.MLE_COUNTERS,
+];
 
 /**
  * Live handle for a streaming multicast diagnostic query.
@@ -43,4 +50,17 @@ export interface DiagnosticSource {
      * unless closed explicitly.
      */
     queryMulticast(scope: "ff03::1" | "ff03::2", opts: QueryMulticastOptions): QueryMulticastHandle;
+    /**
+     * Zero MAC and MLE counters on a single mesh node (MGMT_DIAG_RESET).
+     *
+     * Sends a DIAG_RESET command to the target node. Only counter TLV types
+     * are meaningful here; non-counter types in `tlvTypes` are passed through
+     * unchanged and the node will ignore them. Mutating but low-risk —
+     * counters only, no network state is altered.
+     *
+     * @param target - Node to reset. `rloc16` is required for both sources.
+     * @param tlvTypes - TLV type IDs to include in the TypeList. Defaults to
+     *   `[MAC_COUNTERS, MLE_COUNTERS]` (types 9 and 34).
+     */
+    resetCounters(target: { rloc16?: number; ip?: string }, tlvTypes?: ReadonlyArray<number>): Promise<void>;
 }
