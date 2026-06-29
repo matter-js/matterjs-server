@@ -39,7 +39,16 @@ export interface OperationalDataset {
 }
 
 export namespace OperationalDataset {
-    export function decode(blob: Uint8Array): OperationalDataset {
+    /**
+     * Decodes a Thread Operational Dataset from either raw bytes or a hex string.
+     *
+     * Accepts a whitespace-tolerant hex string (whitespace is stripped before
+     * parsing) or a `Uint8Array` of MeshCoP TLV bytes. Unknown TLVs survive the
+     * round-trip via {@link OperationalDataset.unknownTlvs}. Throws on malformed
+     * input (bad hex or TLV structure violations).
+     */
+    export function decode(input: Uint8Array | string): OperationalDataset {
+        const blob = typeof input === "string" ? Bytes.of(Bytes.fromHex(input.replace(/\s+/g, ""))) : input;
         const entries = BasicTlv.walk(blob);
         const unknownTlvs = new Array<{ type: number; value: Uint8Array }>();
         const originalTlvs = entries.map(e => ({ type: e.type, value: e.value.slice() }));

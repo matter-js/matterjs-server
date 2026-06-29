@@ -128,6 +128,32 @@ describe("OperationalDataset.encode", () => {
     });
 });
 
+const SYNTHETIC_1_HEX =
+    "00010f02081122334455667788030a4f70656e5468726561640410000102030405060708090a0b0c0d0e0f0e080000000000010000";
+
+describe("OperationalDataset.decode hex input", () => {
+    it("decodes a hex string identically to the byte form", () => {
+        const fromHex = OperationalDataset.decode(SYNTHETIC_1_HEX);
+        const fromBytes = OperationalDataset.decode(Bytes.of(Bytes.fromHex(SYNTHETIC_1_HEX)));
+        expect(fromHex).to.deep.equal(fromBytes);
+    });
+    it("tolerates whitespace in the hex", () => {
+        const ds = OperationalDataset.decode(
+            "00 01 0f  02 08 1122334455667788  03 0a 4f70656e5468726561640410000102030405060708090a0b0c0d0e0f 0e08 0000000000010000",
+        );
+        expect(ds.extPanId).to.not.equal(undefined);
+    });
+    it("throws a typed error on malformed hex", () => {
+        let err: unknown;
+        try {
+            OperationalDataset.decode("zzzz");
+        } catch (e) {
+            err = e;
+        }
+        expect(err).to.be.instanceOf(Error);
+    });
+});
+
 describe("OperationalDataset.redact", () => {
     it("drops PSKC and NETWORK_KEY but preserves other fields", () => {
         const ds: OperationalDataset = {
