@@ -16,21 +16,55 @@ const logger = Logger.get("OtbrRestDiagnosticSource");
 
 type ClientLike = Pick<OtbrRestClient, "getDiagnostics" | "getNode">;
 
+/**
+ * {@link DiagnosticSource} implementation that wraps the OTBR REST `/diagnostics`
+ * endpoint.
+ *
+ * Unlike the MeshCoP path (DTLS + CoAP), this source requires no DTLS handshake;
+ * the BR exposes a pre-collected mesh-wide diagnostic snapshot over plain HTTP.
+ * TLV type filtering and multicast scoping are not supported on the wire — the
+ * full snapshot is always fetched and filtered client-side.
+ *
+ * Bind one instance per discovered OTBR REST endpoint. The `capability` object
+ * from {@link OtbrRestProbe} records which network this source covers.
+ */
 export class OtbrRestDiagnosticSource implements DiagnosticSource {
     readonly kind = "otbr-rest" as const;
 
     readonly #client: ClientLike;
     readonly #capability: OtbrRestCapability;
 
+    /**
+     * @param client - REST client (or compatible duck type) for the target BR.
+     * @param capability - Probed metadata identifying the network this source covers.
+     */
     constructor(client: ClientLike, capability: OtbrRestCapability) {
         this.#client = client;
         this.#capability = capability;
     }
 
+    /**
+     * Returns `true` when `extPanId` matches the network this source was probed for.
+     *
+     * @param extPanId - 8-byte Extended PAN ID of the network to query.
+     */
     canQuery(extPanId: Uint8Array): boolean {
         return Bytes.areEqual(extPanId, this.#capability.extPanId);
     }
 
+    /**
+     * Query diagnostics for a single mesh node by RLOC16.
+     *
+     * Fetches the full `/diagnostics` snapshot from the BR and returns the entry
+     * matching `target.rloc16`. IP-only targets are not supported via REST — the
+     * OTBR per-RLOC16 endpoint is not universally available.
+     *
+     * @param target - Must include `rloc16`; `ip` without `rloc16` is rejected.
+     * @param _tlvTypes - Ignored; REST returns the BR's full snapshot unconditionally.
+     * @throws {@link OtbrRestError} with code `"rest_protocol"` when `rloc16` is
+     *   missing, when an ip-only target is supplied, or when no entry matches `rloc16`.
+     * @throws {@link OtbrRestError} when the underlying REST fetch fails.
+     */
     async queryUnicast(target: { rloc16?: number; ip?: string }, _tlvTypes: number[]): Promise<DiagnosticResponse> {
         if (target.ip !== undefined && target.rloc16 === undefined) {
             throw new OtbrRestError(
@@ -53,6 +87,19 @@ export class OtbrRestDiagnosticSource implements DiagnosticSource {
         throw new OtbrRestError("rest_protocol", `rloc16 0x${target.rloc16.toString(16)} not found in /diagnostics`);
     }
 
+    /**
+     * Stream all mesh-node diagnostics from the OTBR `/diagnostics` endpoint.
+     *
+     * Because the REST surface returns a pre-collected snapshot in a single HTTP
+     * response, multicast scope and `opts.windowMs` have no effect — all nodes are
+     * emitted in one burst and `done` resolves immediately after. The returned
+     * handle is still conformant to {@link QueryMulticastHandle}; callers may
+     * call `close()` before `done` resolves with no ill effect.
+     *
+     * @param _scope - Ignored; REST has no per-scope filtering.
+     * @param _opts - Ignored; see above.
+     * @returns Handle with `onNode`, `onError`, `done`, and `close`.
+     */
     queryMulticast(_scope: "ff03::1" | "ff03::2", _opts: QueryMulticastOptions): QueryMulticastHandle {
         // scope/tlvTypes/windowMs are no-ops for REST: the BR has already
         // collected diagnostics for the whole mesh and exposes the snapshot

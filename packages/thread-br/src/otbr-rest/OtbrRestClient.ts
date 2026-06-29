@@ -86,10 +86,27 @@ function parseHexBytes(hex: string, expectedLen: number, where: string): Uint8Ar
     return Bytes.of(Bytes.fromHex(hex));
 }
 
+/**
+ * Thin HTTP client for the OpenThread Border Router (OTBR) REST API.
+ *
+ * Wraps the OTBR REST endpoints under `/node` and `/diagnostics`. All methods
+ * reject with {@link OtbrRestError} on network failure or a response that
+ * violates the expected shape. IPv6 host literals are bracket-escaped
+ * automatically; bare IPv4 hosts and hostnames are passed through unchanged.
+ *
+ * @example
+ * ```ts
+ * const client = new OtbrRestClient({ host: "fd12::1" });
+ * const info = await client.getNode();
+ * ```
+ */
 export class OtbrRestClient {
     readonly #baseUrl: string;
     readonly #timeoutMs: number;
 
+    /**
+     * @param opts - Connection parameters; `host` is required.
+     */
     constructor(opts: OtbrRestClientOptions) {
         const port = opts.port ?? DEFAULT_PORT;
         const host = opts.host.includes(":") && !opts.host.startsWith("[") ? `[${opts.host}]` : opts.host;
@@ -101,6 +118,14 @@ export class OtbrRestClient {
         return this.#baseUrl;
     }
 
+    /**
+     * Fetch the current node summary from the OTBR `/node` endpoint.
+     *
+     * @returns Parsed node info with typed fields (binary fields as `Uint8Array`).
+     * @throws {@link OtbrRestError} with code `"rest_unreachable"` on network error or timeout.
+     * @throws {@link OtbrRestError} with code `"rest_protocol"` when the response is
+     *   not a valid JSON object or a required field is missing or has the wrong type.
+     */
     async getNode(): Promise<OtbrNodeInfo> {
         const { body } = await this.#fetchJson("/node");
         if (!isRecord(body)) {
@@ -128,6 +153,17 @@ export class OtbrRestClient {
         };
     }
 
+    /**
+     * Fetch the raw diagnostics array from the OTBR `/diagnostics` endpoint.
+     *
+     * The response is returned as-is — callers are responsible for interpreting
+     * the per-node objects. Use `OtbrRestDiagnosticSource` for a typed interface
+     * that translates this payload into `DiagnosticResponse` values.
+     *
+     * @returns Array of raw node diagnostic objects as returned by the BR.
+     * @throws {@link OtbrRestError} with code `"rest_unreachable"` on network error or timeout.
+     * @throws {@link OtbrRestError} with code `"rest_protocol"` when the response is not a JSON array.
+     */
     async getDiagnostics(): Promise<unknown[]> {
         const { body } = await this.#fetchJson("/diagnostics");
         if (!Array.isArray(body)) {
@@ -136,6 +172,18 @@ export class OtbrRestClient {
         return body;
     }
 
+    /**
+     * Fetch the active and pending dataset hex strings from the OTBR REST API.
+     *
+     * Each dataset is fetched independently from `/node/dataset/active` and
+     * `/node/dataset/pending`. A `204 No Content` response means the dataset is
+     * absent, in which case the corresponding field is omitted from the result.
+     *
+     * @returns Object with `activeHex` and/or `pendingHex` hex strings; fields
+     *   are absent when the BR has no dataset of that type.
+     * @throws {@link OtbrRestError} with code `"rest_unreachable"` on network error or timeout.
+     * @throws {@link OtbrRestError} with code `"rest_protocol"` on a non-2xx HTTP status.
+     */
     async getDataset(): Promise<OtbrDatasetHex> {
         const active = await this.#fetchText("/node/dataset/active");
         const pending = await this.#fetchText("/node/dataset/pending");

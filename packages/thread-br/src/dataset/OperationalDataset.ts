@@ -65,6 +65,18 @@ export namespace OperationalDataset {
         return ds;
     }
 
+    /**
+     * Encode a Thread Operational Dataset to MeshCoP TLV bytes.
+     *
+     * Datasets produced by {@link decode} are re-encoded with replay fidelity:
+     * unmodified known TLVs reproduce their original bytes (preserving non-canonical
+     * encodings from real Border Routers), while mutated fields are re-encoded
+     * canonically. Datasets constructed directly (without a prior `decode`) are
+     * always encoded in canonical form.
+     *
+     * @param ds - Dataset to encode; may be a decoded or manually constructed object.
+     * @returns MeshCoP TLV byte sequence.
+     */
     export function encode(ds: OperationalDataset): Uint8Array {
         const originals = ORIGINAL_TLVS.get(ds);
         if (originals !== undefined) {
@@ -73,6 +85,15 @@ export namespace OperationalDataset {
         return BasicTlv.encode(canonicalEntries(ds));
     }
 
+    /**
+     * Return a copy of the dataset with `pskc` and `networkKey` cleared.
+     *
+     * Safe to log or expose via the public API — secret material is removed
+     * while all other fields (channel, network name, timestamps, etc.) are retained.
+     *
+     * @param ds - Source dataset; not mutated.
+     * @returns Shallow copy with secret fields set to `undefined`.
+     */
     export function redact(ds: OperationalDataset): OperationalDataset {
         return { ...ds, pskc: undefined, networkKey: undefined };
     }
