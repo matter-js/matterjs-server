@@ -140,6 +140,38 @@ describe("translateNodeJson", () => {
         expect(() => __testables.parseIpv6("1::2::3")).to.throw();
     });
 
+    it("translates mleCounters object from normalized OTBR JSON", () => {
+        const decoded = translateNodeJson({
+            mleCounters: {
+                disabledRole: 1,
+                detachedRole: 2,
+                childRole: 3,
+                routerRole: 4,
+                leaderRole: 5,
+                attachAttempts: 6,
+                partitionIdChanges: 7,
+                betterPartitionAttachAttempts: 8,
+                parentChanges: 9,
+                trackedTime: 100000,
+                disabledTime: 200000,
+                detachedTime: 300000,
+                childTime: 400000,
+                routerTime: 500000,
+                leaderTime: 600000,
+            },
+        });
+        expect(decoded.mleCounters).to.not.be.undefined;
+        expect(decoded.mleCounters!.disabledRole).to.equal(1);
+        expect(decoded.mleCounters!.parentChanges).to.equal(9);
+        expect(decoded.mleCounters!.trackedTime).to.equal(100000n);
+        expect(decoded.mleCounters!.leaderTime).to.equal(600000n);
+    });
+
+    it("omits mleCounters when field is absent", () => {
+        const decoded = translateNodeJson({ rloc16: 0 });
+        expect(decoded.mleCounters).to.be.undefined;
+    });
+
     it("translates mode with all-zero flags", () => {
         const decoded = translateNodeJson({
             extAddress: "0011223344556677",

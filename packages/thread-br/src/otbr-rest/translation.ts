@@ -10,6 +10,7 @@ import type { ChildTableEntry } from "../tlv/diag/ChildTable.js";
 import type { Connectivity, ParentPriority } from "../tlv/diag/Connectivity.js";
 import type { LeaderData } from "../tlv/diag/LeaderData.js";
 import type { MacCounters } from "../tlv/diag/MacCounters.js";
+import type { MleCounters } from "../tlv/diag/MleCounters.js";
 import type { Mode } from "../tlv/diag/Mode.js";
 import type { Route64, Route64Entry } from "../tlv/diag/Route64.js";
 import { OtbrRestError } from "./OtbrRestError.js";
@@ -128,6 +129,34 @@ function translateMacCounters(input: Record<string, unknown>): MacCounters {
         ifOutUcastPkts: requireNumber(input, "ifOutUcastPkts", "macCounters"),
         ifOutBroadcastPkts: requireNumber(input, "ifOutBroadcastPkts", "macCounters"),
         ifOutDiscards: requireNumber(input, "ifOutDiscards", "macCounters"),
+    };
+}
+
+function requireBigInt(record: Record<string, unknown>, key: string, where: string): bigint {
+    const v = record[key];
+    if (typeof v === "bigint") return v;
+    const n = asNumber(v);
+    if (n === undefined) throw new OtbrRestError("rest_protocol", `${where}: missing numeric ${key}`);
+    return BigInt(Math.trunc(n));
+}
+
+function translateMleCounters(input: Record<string, unknown>): MleCounters {
+    return {
+        disabledRole: requireNumber(input, "disabledRole", "mleCounters"),
+        detachedRole: requireNumber(input, "detachedRole", "mleCounters"),
+        childRole: requireNumber(input, "childRole", "mleCounters"),
+        routerRole: requireNumber(input, "routerRole", "mleCounters"),
+        leaderRole: requireNumber(input, "leaderRole", "mleCounters"),
+        attachAttempts: requireNumber(input, "attachAttempts", "mleCounters"),
+        partitionIdChanges: requireNumber(input, "partitionIdChanges", "mleCounters"),
+        betterPartitionAttachAttempts: requireNumber(input, "betterPartitionAttachAttempts", "mleCounters"),
+        parentChanges: requireNumber(input, "parentChanges", "mleCounters"),
+        trackedTime: requireBigInt(input, "trackedTime", "mleCounters"),
+        disabledTime: requireBigInt(input, "disabledTime", "mleCounters"),
+        detachedTime: requireBigInt(input, "detachedTime", "mleCounters"),
+        childTime: requireBigInt(input, "childTime", "mleCounters"),
+        routerTime: requireBigInt(input, "routerTime", "mleCounters"),
+        leaderTime: requireBigInt(input, "leaderTime", "mleCounters"),
     };
 }
 
@@ -263,6 +292,9 @@ export function translateNodeJson(json: unknown): DiagnosticResponse {
 
     const macCounters = asRecord(json["macCounters"]);
     if (macCounters !== undefined) result.macCounters = translateMacCounters(macCounters);
+
+    const mleCounters = asRecord(json["mleCounters"]);
+    if (mleCounters !== undefined) result.mleCounters = translateMleCounters(mleCounters);
 
     const childTable = asArray(json["childTable"]);
     if (childTable !== undefined) result.childTable = translateChildTable(childTable);

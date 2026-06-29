@@ -6,7 +6,7 @@
 
 import { NetworkDiagTlvType } from "../tlv/networkDiagTlvTypes.js";
 
-/** Default diagnostic TLV set (spec §4.9) for topology + per-node identity. */
+/** Default diagnostic TLV set: spec §4.9 core topology + identity + health (counters, power, firmware). */
 export const DefaultTlvSet: ReadonlyArray<number> = [
     NetworkDiagTlvType.EXT_MAC_ADDRESS,
     NetworkDiagTlvType.ADDRESS16,
@@ -20,4 +20,12 @@ export const DefaultTlvSet: ReadonlyArray<number> = [
     NetworkDiagTlvType.VENDOR_NAME,
     NetworkDiagTlvType.VENDOR_MODEL,
     NetworkDiagTlvType.VENDOR_SW_VERSION,
+    NetworkDiagTlvType.TIMEOUT,
+    NetworkDiagTlvType.MAC_COUNTERS,
+    NetworkDiagTlvType.MLE_COUNTERS,
+    NetworkDiagTlvType.BATTERY_LEVEL,
+    NetworkDiagTlvType.SUPPLY_VOLTAGE,
+    NetworkDiagTlvType.MAX_CHILD_TIMEOUT,
+    NetworkDiagTlvType.EUI64,
+    NetworkDiagTlvType.THREAD_STACK_VERSION,
 ];
