@@ -17,6 +17,7 @@ import { LeaderData } from "../tlv/diag/LeaderData.js";
 import { MacCounters } from "../tlv/diag/MacCounters.js";
 import { MleCounters } from "../tlv/diag/MleCounters.js";
 import { Mode } from "../tlv/diag/Mode.js";
+import { NetworkData } from "../tlv/diag/NetworkData.js";
 import {
     Address16,
     BatteryLevel,
@@ -477,7 +478,7 @@ function decodeResponse(payload: Uint8Array): DiagnosticResponse {
                 result.leaderData = LeaderData.decode(entry.value);
                 break;
             case NetworkDiagTlvType.NETWORK_DATA:
-                result.networkData = entry.value;
+                result.networkData = NetworkData.decode(entry.value);
                 break;
             case NetworkDiagTlvType.IPV6_ADDRESS_LIST:
                 result.ipv6Addresses = Ipv6AddressList.decode(entry.value);

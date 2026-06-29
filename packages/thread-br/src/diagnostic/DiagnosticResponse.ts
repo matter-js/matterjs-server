@@ -10,6 +10,7 @@ import type { LeaderData } from "../tlv/diag/LeaderData.js";
 import type { MacCounters } from "../tlv/diag/MacCounters.js";
 import type { MleCounters } from "../tlv/diag/MleCounters.js";
 import type { Mode } from "../tlv/diag/Mode.js";
+import type { ThreadNetworkData } from "../tlv/diag/NetworkData.js";
 import type { Route64 } from "../tlv/diag/Route64.js";
 
 export interface DiagnosticResponse {
@@ -20,7 +21,7 @@ export interface DiagnosticResponse {
     connectivity?: Connectivity;
     route64?: Route64;
     leaderData?: LeaderData;
-    networkData?: Uint8Array;
+    networkData?: ThreadNetworkData;
     ipv6Addresses?: Uint8Array[];
     macCounters?: MacCounters;
     batteryLevel?: number;

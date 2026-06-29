@@ -12,6 +12,7 @@ import type { LeaderData } from "../tlv/diag/LeaderData.js";
 import type { MacCounters } from "../tlv/diag/MacCounters.js";
 import type { MleCounters } from "../tlv/diag/MleCounters.js";
 import type { Mode } from "../tlv/diag/Mode.js";
+import { NetworkData } from "../tlv/diag/NetworkData.js";
 import type { Route64, Route64Entry } from "../tlv/diag/Route64.js";
 import { OtbrRestError } from "./OtbrRestError.js";
 
@@ -275,7 +276,9 @@ export function translateNodeJson(json: unknown): DiagnosticResponse {
     if (leaderData !== undefined) result.leaderData = translateLeaderData(leaderData);
 
     const networkData = asString(json["networkData"]);
-    if (networkData !== undefined) result.networkData = parseHexBytes(networkData, "networkData");
+    if (networkData !== undefined) {
+        result.networkData = NetworkData.decode(parseHexBytes(networkData, "networkData"));
+    }
 
     const ip6Addresses = asArray(json["ip6AddressList"]);
     if (ip6Addresses !== undefined) {

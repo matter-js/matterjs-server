@@ -39,7 +39,7 @@ function serializeNode(r: DiagnosticResponse): ThreadDiagnosticsNodeWire {
         };
     }
     if (r.leaderData !== undefined) out.leaderData = { ...r.leaderData };
-    if (r.networkData !== undefined) out.networkData = hex(r.networkData);
+    if (r.networkData !== undefined) out.networkData = hex(r.networkData.raw);
     if (r.ipv6Addresses !== undefined) out.ipv6Addresses = r.ipv6Addresses.map(addr => hex(addr));
     if (r.macCounters !== undefined) out.macCounters = { ...r.macCounters };
     if (r.batteryLevel !== undefined) out.batteryLevel = r.batteryLevel;

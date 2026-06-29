@@ -24,6 +24,17 @@ export { MleCounters } from "./MleCounters.js";
 
 export { Mode } from "./Mode.js";
 
+export { NetworkData } from "./NetworkData.js";
+export type {
+    BorderRouterEntry,
+    HasRouteEntry,
+    NetworkDataEntry,
+    NetworkDataPrefix,
+    NetworkDataServer,
+    NetworkDataService,
+    ThreadNetworkData,
+} from "./NetworkData.js";
+
 export {
     Address16,
     BatteryLevel,
