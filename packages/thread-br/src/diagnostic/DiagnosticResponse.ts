@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import type { ChildIpv6Addresses } from "../tlv/diag/ChildIpv6AddressList.js";
 import type { ChildTableEntry } from "../tlv/diag/ChildTable.js";
 import type { Connectivity } from "../tlv/diag/Connectivity.js";
 import type { LeaderData } from "../tlv/diag/LeaderData.js";
@@ -27,6 +28,7 @@ export interface DiagnosticResponse {
     batteryLevel?: number;
     supplyVoltage?: number;
     childTable?: ChildTableEntry[];
+    childIpv6Addresses?: ChildIpv6Addresses;
     channelPages?: number[];
     maxChildTimeout?: number;
     eui64?: Uint8Array;

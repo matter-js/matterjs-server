@@ -10,6 +10,7 @@ import { CoapMessage } from "../coap/CoapMessage.js";
 import type { Commissioner } from "../commissioner/Commissioner.js";
 import { MeshCopTlvType } from "../dataset/meshcopTlvTypes.js";
 import { BasicTlv } from "../tlv/BasicTlvCodec.js";
+import { ChildIpv6AddressList } from "../tlv/diag/ChildIpv6AddressList.js";
 import { ChildTable } from "../tlv/diag/ChildTable.js";
 import { Connectivity } from "../tlv/diag/Connectivity.js";
 import { Ipv6AddressList } from "../tlv/diag/Ipv6AddressList.js";
@@ -494,6 +495,9 @@ function decodeResponse(payload: Uint8Array): DiagnosticResponse {
                 break;
             case NetworkDiagTlvType.CHILD_TABLE:
                 result.childTable = ChildTable.decode(entry.value);
+                break;
+            case NetworkDiagTlvType.CHILD_IPV6_ADDRESS_LIST:
+                result.childIpv6Addresses = ChildIpv6AddressList.decode(entry.value);
                 break;
             case NetworkDiagTlvType.CHANNEL_PAGES:
                 result.channelPages = ChannelPages.decode(entry.value);

@@ -8,6 +8,9 @@
 // Declaration merging means a single re-export carries both the type and the
 // value (decode/encode functions) under one identifier.
 
+export { ChildIpv6AddressList } from "./ChildIpv6AddressList.js";
+export type { ChildIpv6Addresses } from "./ChildIpv6AddressList.js";
+
 export { ChildTable } from "./ChildTable.js";
 export type { ChildTableEntry } from "./ChildTable.js";
 
