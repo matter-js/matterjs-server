@@ -6,6 +6,54 @@ Thread Border Router communication for the [OHF Matter Server](https://github.co
 
 This package is consumed internally by `@matter-server/ws-controller` to feed Thread BR-perspective routing, link-quality, child-table, and vendor data into the Matter Server dashboard for the entire Thread mesh — including non-Matter nodes.
 
+## Using this package
+
+### Discover Thread Border Routers (passive mDNS)
+
+```ts
+import { Environment } from "@matter/main";
+import { BorderRouterRegistry } from "@matter-server/thread-br";
+
+const registry = new BorderRouterRegistry(Environment.default);
+await registry.start();
+registry.events.added.on(br => console.log(br.networkName, br.extAddressHex, br.addresses));
+// … later: await registry.stop();
+```
+
+### Decode a Thread Operational Dataset
+
+```ts
+import { OperationalDataset } from "@matter-server/thread-br";
+
+const ds = OperationalDataset.decode("0e08...");   // hex from `ot-ctl dataset active -x`
+console.log(ds.networkName, ds.channel);
+const safe = OperationalDataset.redact(ds);        // clears pskc / networkKey for display
+console.log(safe.networkName, safe.channel);       // secrets are undefined
+```
+
+### Query network diagnostics
+
+Two paths, picked per Border Router:
+
+- **OTBR REST** (auto-detected): when the BR exposes the OpenThread REST API.
+- **MeshCoP** (CoAP over DTLS-EC-JPAKE): requires the network's credentials (PSKc), looked
+  up by extended PAN ID from a `ThreadCredentialsRegistry`.
+
+```ts
+import { DefaultTlvSet, OtbrRestClient, OtbrRestDiagnosticSource, OtbrRestProbe } from "@matter-server/thread-br";
+
+const cap = await OtbrRestProbe.probe(host, 8081, 1500);
+if (cap) {
+    const client = new OtbrRestClient({ host, port: 8081 });
+    const source = new OtbrRestDiagnosticSource(client, cap);
+    const handle = source.queryMulticast("ff03::2", { tlvTypes: [...DefaultTlvSet] });
+    handle.onNode.on(node => console.log(node.extMacAddress, node.rloc16));
+    await handle.done;
+}
+```
+
+(For the MeshCoP path see `connectMeshcop` + `ThreadCredentialsRegistry`.)
+
 ## Development
 
 Examples and integration scripts target a local OpenThread CLI simulator:
