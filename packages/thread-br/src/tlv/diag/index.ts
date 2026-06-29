@@ -51,6 +51,9 @@ export {
 export { Route64 } from "./Route64.js";
 export type { Route64Entry } from "./Route64.js";
 
+export { RouterNeighbor } from "./RouterNeighbor.js";
+export type { RouterNeighborEntry } from "./RouterNeighbor.js";
+
 export { Timeout } from "./Timeout.js";
 
 export { ThreadStackVersion, VendorAppUrl, VendorModel, VendorName, VendorSwVersion, Version } from "./VendorInfo.js";

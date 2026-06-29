@@ -29,6 +29,7 @@ import {
     SupplyVoltage,
 } from "../tlv/diag/Primitives.js";
 import { Route64 } from "../tlv/diag/Route64.js";
+import { RouterNeighbor } from "../tlv/diag/RouterNeighbor.js";
 import { Timeout } from "../tlv/diag/Timeout.js";
 import {
     ThreadStackVersion,
@@ -498,6 +499,9 @@ function decodeResponse(payload: Uint8Array): DiagnosticResponse {
                 break;
             case NetworkDiagTlvType.CHILD_IPV6_ADDRESS_LIST:
                 result.childIpv6Addresses = ChildIpv6AddressList.decode(entry.value);
+                break;
+            case NetworkDiagTlvType.ROUTER_NEIGHBOR:
+                result.routerNeighbors = RouterNeighbor.decode(entry.value);
                 break;
             case NetworkDiagTlvType.CHANNEL_PAGES:
                 result.channelPages = ChannelPages.decode(entry.value);

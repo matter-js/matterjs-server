@@ -13,6 +13,7 @@ import type { MleCounters } from "../tlv/diag/MleCounters.js";
 import type { Mode } from "../tlv/diag/Mode.js";
 import type { ThreadNetworkData } from "../tlv/diag/NetworkData.js";
 import type { Route64 } from "../tlv/diag/Route64.js";
+import type { RouterNeighborEntry } from "../tlv/diag/RouterNeighbor.js";
 
 export interface DiagnosticResponse {
     extMacAddress?: Uint8Array;
@@ -29,6 +30,7 @@ export interface DiagnosticResponse {
     supplyVoltage?: number;
     childTable?: ChildTableEntry[];
     childIpv6Addresses?: ChildIpv6Addresses;
+    routerNeighbors?: RouterNeighborEntry[];
     channelPages?: number[];
     maxChildTimeout?: number;
     eui64?: Uint8Array;
