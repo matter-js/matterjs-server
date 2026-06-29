@@ -7,11 +7,16 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
+## **WORK IN PROGRESS**
+
+- Enhancement: Update matter.js to the latest 0.17.4-alpha
+    - Speed up subscription DataReport handling
+
 ## 1.1.3 (2026-06-28)
 
 - Enhancement: Update matter.js to the latest 0.17.4-alpha
-  - Added more optimizations for data of non-compliant devices (keep non-declared clusters, accept int/uint mismatches in reported data)
-  - Optimize MDNS scanner to drop irrelevant messages before decoding (optimizes CPU usage in MDNS-spammy networks)
+    - Added more optimizations for data of non-compliant devices (keep non-declared clusters, accept int/uint mismatches in reported data)
+    - Optimize MDNS scanner to drop irrelevant messages before decoding (optimizes CPU usage in MDNS-spammy networks)
 
 ## 1.1.2 (2026-06-25)
 

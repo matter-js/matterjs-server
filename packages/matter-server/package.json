@@ -44,14 +44,14 @@
         "@matter-server/custom-clusters": "*",
         "@matter-server/dashboard": "*",
         "@matter-server/ws-controller": "*",
-        "@matter/main": "0.17.4-alpha.0-20260628-67a669f75",
+        "@matter/main": "0.17.4-alpha.0-20260629-e2d2715b7",
         "commander": "^15.0.0",
         "express": "^5.2.1"
     },
     "devDependencies": {
         "@matter-server/ws-client": "*",
-        "@matter/nodejs": "0.17.4-alpha.0-20260628-67a669f75",
-        "@matter/testing": "0.17.4-alpha.0-20260628-67a669f75",
+        "@matter/nodejs": "0.17.4-alpha.0-20260629-e2d2715b7",
+        "@matter/testing": "0.17.4-alpha.0-20260629-e2d2715b7",
         "@types/express": "^5.0.6",
         "@types/node": "^26.0.0"
     },
