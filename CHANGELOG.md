@@ -18,6 +18,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Internal: Move Thread Border Router discovery into the new `@matter-server/thread-br` package. The class is renamed from `BorderRouterDiscovery` to `BorderRouterRegistry`; behaviour is unchanged. `BorderRouterEntry` is now sourced from `@matter-server/thread-br` and re-exported from `@matter-server/ws-client` so the wire format and dashboard imports are unchanged. Foundation for upcoming MeshCoP / OTBR REST diagnostic queries.
 - Internal: `@matter-server/thread-br` package gained diagnostic primitives: `DiagnosticSource` interface, `MeshCopDiagnosticSource`, `OtbrRestDiagnosticSource`, BR selection / per-network mutex / source strategy, OTBR REST adapter, and `connectMeshcop` factory.
 - Internal: New `ThreadDiagnosticsService` in `@matter-server/ws-controller` provides per-extPanId cache (1h TTL), source selection (REST > MeshCoP > none), per-network mutex, and event emission.
+- Enhancement: `@matter-server/thread-br` is now a curated, documented library surface (matter.js codec idioms, `OperationalDataset.decode` accepts hex, internal codecs hidden) with richer read-only diagnostics — more default TLVs (link/MLE counters, battery, EUI64, stack version), decoders for Network Data, child IPv6 addresses, and router-neighbor link metrics, plus diagnostic-counter RESET and energy-scan / PAN-ID-conflict queries.
 ## 1.1.3 (2026-06-28)
 
 - Enhancement: Update matter.js to the latest 0.17.4-alpha
