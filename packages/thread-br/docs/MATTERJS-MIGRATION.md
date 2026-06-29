@@ -126,7 +126,7 @@ The curated surface (`src/index.ts` after Track A) exports the following identif
 
 ### Compliant (follows matter.js conventions)
 
-- **`interface X` + `namespace X { decode/encode }`** (declaration merging) — used by `OperationalDataset`, and all TLV decoders under `src/tlv/diag/` (`MacCounters`, `MleCounters`, `Connectivity`, `LeaderData`, `Mode`, `Route64`, `ChildTable`, `NetworkData`, `RouterNeighbor`, `ChildIpv6AddressList`, etc.). This is the matter.js codec idiom; compliant.
+- **`interface X` + `namespace X { decode/encode }`** (declaration merging) — used by `OperationalDataset`. The TLV decoder namespaces under `src/tlv/diag/` (`MacCounters`, `MleCounters`, `Connectivity`, `LeaderData`, `Mode`, `Route64`, `ChildTable`, `NetworkData`, `RouterNeighbor`, `ChildIpv6AddressList`, etc.) follow the same codec idiom but are **internal** — they are not exported from `src/index.ts`. Only their decoded result types reach the public surface transitively via `DiagnosticResponse` fields (`networkData?: ThreadNetworkData`, `childIpv6Addresses?: ChildIpv6Addresses`, `routerNeighbors?: RouterNeighborEntry[]`, etc.). The public `src/index.ts` exports the concrete result types (`ChildTableEntry`, `Connectivity`, `LeaderData`, etc.) but not the codec namespaces themselves. This follows the matter.js codec idiom; compliant.
 - **`Bytes` from `@matter/main`** used throughout for byte arrays — compliant.
 - **`Logger` from `@matter/main`** used for structured logging — compliant.
 - **`Observable` from `@matter/main`** used on `BorderRouterRegistry.events` and credential/diagnostic events — compliant.

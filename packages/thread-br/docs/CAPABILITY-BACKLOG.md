@@ -20,6 +20,15 @@ They require a confirmation step in the UI and careful error handling before exp
 
 ---
 
+## Built but not yet wired (decoder / source exists; no WS command or dashboard consumer)
+
+| Capability | What exists | Gap |
+|---|---|---|
+| ROUTER_NEIGHBOR (TLV 31) + CHILD_IPV6_ADDRESS_LIST (TLV 30) | Decoded into `DiagnosticResponse.routerNeighbors` / `.childIpv6Addresses` | Not emitted by `serializeBatch` / `ThreadDiagnosticsNode`; not shown in dashboard |
+| `energyScan` (c/es) / `panIdQuery` (c/pq) / REST `getEnergyScanTask` | Implemented on `MeshCopDiagnosticSource` and `OtbrRestClient` | No WS command or caller wires them; dashboard has no scan UI |
+
+---
+
 ## Later / read-only (not built now)
 
 Low-risk reads that were not prioritised in this effort. Safe to add incrementally.

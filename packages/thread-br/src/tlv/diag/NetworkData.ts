@@ -199,6 +199,7 @@ function parseService(value: Uint8Array): NetworkDataService {
     const servers = new Array<NetworkDataServer>();
     for (const sub of walkTlvs(value.subarray(offset))) {
         if (sub.type === NetworkDataTlvType.Server) {
+            if (sub.value.length < 2) continue;
             servers.push({ rloc16: (sub.value[0] << 8) | sub.value[1], serverData: sub.value.slice(2) });
         }
     }

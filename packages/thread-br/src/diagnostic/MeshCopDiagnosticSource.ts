@@ -360,8 +360,7 @@ export class MeshCopDiagnosticSource implements DiagnosticSource {
         const proxyPayload = this.#wrapProxyTx(targetAddr, innerBytes);
 
         await this.#commissioner.withSession(async () => {
-            // ProxyTx is fire-and-forget: same as d/dg unicast but no reply is
-            // expected — MGMT_DIAG_RESET has no response payload.
+            // MGMT_DIAG_RESET has no response payload — no reply expected.
             await this.#coap.request({
                 type: "NON",
                 code: "0.02",

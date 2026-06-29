@@ -31,7 +31,11 @@ export type {
     ConnectMeshcopOpts,
     DiagnosticResponse,
     DiagnosticSource,
+    EnergyScanEntry,
+    EnergyScanOpts,
     MeshcopHandle,
+    PanIdConflict,
+    PanIdQueryOpts,
     QueryMulticastHandle,
     QueryMulticastOptions,
 } from "./diagnostic/index.js";

@@ -82,4 +82,14 @@ describe("NetworkData.decode", () => {
         expect(nd.entries[0].type).to.equal(1);
         expect(nd.prefixes).to.have.lengthOf(0);
     });
+
+    it("skips a Server sub-TLV with fewer than 2 bytes (no rloc16:0 ghost entry)", () => {
+        // walkTlvs encodes type as typeByte >> 1, so:
+        //   Service(5) → typeByte=0x0A, Server(6) → typeByte=0x0C
+        // Top-level: [0x0A][len=5][flags=0x80][svcDataLen=0x00][Server sub-TLV: 0x0C 0x01 0x40]
+        // The Server sub-TLV value is 1 byte — too short for rloc16. Guard must skip it.
+        const nd = NetworkData.decode(Bytes.of(Bytes.fromHex("0A0580000C0140")));
+        expect(nd.services).to.have.lengthOf(1);
+        expect(nd.services[0].servers).to.have.lengthOf(0);
+    });
 });
