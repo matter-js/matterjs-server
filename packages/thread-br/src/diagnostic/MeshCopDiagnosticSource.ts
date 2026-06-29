@@ -71,6 +71,34 @@ const PROXY_RX_URI = ["c", "ur"];
 const DIAG_GET_URI = ["d", "dg"];
 const DIAG_QUERY_URI = ["d", "dq"];
 const DIAG_RESET_URI = ["d", "dr"];
+/** Commissioner management scan/query URIs (sent directly on the commissioner channel). */
+const ENERGY_SCAN_URI = ["c", "es"];
+const ENERGY_REPORT_URI = ["c", "er"];
+const PANID_QUERY_URI = ["c", "pq"];
+const PANID_CONFLICT_URI = ["c", "pc"];
+
+const DEFAULT_SCAN_TIMEOUT_MS = 30_000;
+
+export interface EnergyScanOpts {
+    channelMask: number;
+    count: number;
+    period: number;
+    scanDuration: number;
+}
+
+export interface EnergyScanEntry {
+    channel: number;
+    energy: number;
+}
+
+export interface PanIdQueryOpts {
+    panId: number;
+    channelMask: number;
+}
+
+export interface PanIdConflict {
+    conflictChannelMask: number;
+}
 
 /**
  * MeshCoP network-diagnostic source.
@@ -343,6 +371,104 @@ export class MeshCopDiagnosticSource implements DiagnosticSource {
         });
     }
 
+    /**
+     * Request an energy scan (MGMT_ED_SCAN) via the commissioner channel.
+     *
+     * Sends a `c/es` request with the four scan parameters encoded as MeshCoP TLVs.
+     * The Border Router performs the scan and delivers results asynchronously in a
+     * `c/er` (MGMT_ED_REPORT) message containing an ENERGY_LIST TLV — one signed
+     * byte per channel in channel-number order within the mask.
+     *
+     * @returns Parsed energy entries sorted by channel number.
+     */
+    async energyScan(opts: EnergyScanOpts): Promise<Array<EnergyScanEntry>> {
+        const payload = encodeScanRequest(opts);
+
+        return this.#commissioner.withSession(async () => {
+            let resolveReport!: (entries: Array<EnergyScanEntry>) => void;
+            let rejectReport!: (e: Error) => void;
+            const reportPromise = new Promise<Array<EnergyScanEntry>>((res, rej) => {
+                resolveReport = res;
+                rejectReport = rej;
+            });
+
+            const unsubscribe = this.#coap.listen(ENERGY_REPORT_URI, msg => {
+                try {
+                    resolveReport(decodeEnergyReport(msg.payload, opts.channelMask));
+                } catch (err) {
+                    rejectReport(err instanceof Error ? err : new Error(String(err)));
+                }
+            });
+
+            const timer = setTimeout(() => {
+                rejectReport(new Error("MeshCopDiagnosticSource: energyScan timed out waiting for c/er"));
+            }, DEFAULT_SCAN_TIMEOUT_MS);
+
+            try {
+                await this.#coap.request({
+                    type: "NON",
+                    code: "0.02",
+                    uriPath: ENERGY_SCAN_URI,
+                    payload,
+                });
+                return await reportPromise;
+            } finally {
+                clearTimeout(timer);
+                unsubscribe();
+            }
+        });
+    }
+
+    /**
+     * Request a PAN-ID conflict query (MGMT_PANID_QUERY) via the commissioner channel.
+     *
+     * Sends a `c/pq` request with CHANNEL_MASK and PAN_ID TLVs. If a conflict is
+     * detected the Border Router responds with a `c/pc` (MGMT_PANID_CONFLICT) carrying
+     * the conflicting channel mask and the queried PAN-ID. When no conflict is found,
+     * no `c/pc` arrives and the method returns `undefined` after the timeout.
+     *
+     * @returns Conflict channel mask, or `undefined` when no conflict was detected
+     *   within the timeout window.
+     */
+    async panIdQuery(opts: PanIdQueryOpts): Promise<PanIdConflict | undefined> {
+        const payload = encodePanIdQuery(opts);
+
+        return this.#commissioner.withSession(async () => {
+            let resolveReport!: (result: PanIdConflict | undefined) => void;
+            let rejectReport!: (e: Error) => void;
+            const reportPromise = new Promise<PanIdConflict | undefined>((res, rej) => {
+                resolveReport = res;
+                rejectReport = rej;
+            });
+
+            const unsubscribe = this.#coap.listen(PANID_CONFLICT_URI, msg => {
+                try {
+                    resolveReport(decodePanIdConflict(msg.payload, opts.panId));
+                } catch (err) {
+                    rejectReport(err instanceof Error ? err : new Error(String(err)));
+                }
+            });
+
+            // No conflict = no c/pc arrives; resolve undefined after timeout.
+            const timer = setTimeout(() => {
+                resolveReport(undefined);
+            }, DEFAULT_SCAN_TIMEOUT_MS);
+
+            try {
+                await this.#coap.request({
+                    type: "NON",
+                    code: "0.02",
+                    uriPath: PANID_QUERY_URI,
+                    payload,
+                });
+                return await reportPromise;
+            } finally {
+                clearTimeout(timer);
+                unsubscribe();
+            }
+        });
+    }
+
     #encodeInnerDiag(type: "CON" | "NON", uriPath: string[], tlvTypes: number[], token: Uint8Array): Uint8Array {
         return CoapMessage.encode({
             type,
@@ -461,6 +587,92 @@ function tokensEqual(a: Uint8Array, b: Uint8Array): boolean {
         if (a[i] !== b[i]) return false;
     }
     return true;
+}
+
+function encodeScanRequest(opts: EnergyScanOpts): Uint8Array {
+    const mask = new Uint8Array(4);
+    mask[0] = (opts.channelMask >> 24) & 0xff;
+    mask[1] = (opts.channelMask >> 16) & 0xff;
+    mask[2] = (opts.channelMask >> 8) & 0xff;
+    mask[3] = opts.channelMask & 0xff;
+
+    const count = new Uint8Array([opts.count & 0xff]);
+    const period = new Uint8Array(2);
+    period[0] = (opts.period >> 8) & 0xff;
+    period[1] = opts.period & 0xff;
+    const scanDuration = new Uint8Array(2);
+    scanDuration[0] = (opts.scanDuration >> 8) & 0xff;
+    scanDuration[1] = opts.scanDuration & 0xff;
+
+    return BasicTlv.encode([
+        { type: MeshCopTlvType.CHANNEL_MASK, value: mask },
+        { type: MeshCopTlvType.COUNT, value: count },
+        { type: MeshCopTlvType.PERIOD, value: period },
+        { type: MeshCopTlvType.SCAN_DURATION, value: scanDuration },
+    ]);
+}
+
+function decodeEnergyReport(payload: Uint8Array, channelMask: number): Array<EnergyScanEntry> {
+    const entries = BasicTlv.walk(payload);
+    const energyEntry = entries.find(e => e.type === MeshCopTlvType.ENERGY_LIST);
+    if (energyEntry === undefined) {
+        throw new Error("MeshCopDiagnosticSource: c/er missing ENERGY_LIST TLV");
+    }
+    const energyBytes = energyEntry.value;
+    const result = new Array<EnergyScanEntry>();
+    let byteIndex = 0;
+    for (let ch = 0; ch < 32; ch++) {
+        if ((channelMask & (1 << ch)) !== 0) {
+            if (byteIndex >= energyBytes.length) break;
+            // Energy bytes are signed (dBm), stored as two's complement.
+            const raw = energyBytes[byteIndex++];
+            const energy = raw >= 0x80 ? raw - 0x100 : raw;
+            result.push({ channel: ch, energy });
+        }
+    }
+    return result;
+}
+
+function encodePanIdQuery(opts: PanIdQueryOpts): Uint8Array {
+    const mask = new Uint8Array(4);
+    mask[0] = (opts.channelMask >> 24) & 0xff;
+    mask[1] = (opts.channelMask >> 16) & 0xff;
+    mask[2] = (opts.channelMask >> 8) & 0xff;
+    mask[3] = opts.channelMask & 0xff;
+
+    const panId = new Uint8Array(2);
+    panId[0] = (opts.panId >> 8) & 0xff;
+    panId[1] = opts.panId & 0xff;
+
+    return BasicTlv.encode([
+        { type: MeshCopTlvType.CHANNEL_MASK, value: mask },
+        { type: MeshCopTlvType.PANID, value: panId },
+    ]);
+}
+
+function decodePanIdConflict(payload: Uint8Array, expectedPanId: number): PanIdConflict {
+    const entries = BasicTlv.walk(payload);
+    const maskEntry = entries.find(e => e.type === MeshCopTlvType.CHANNEL_MASK);
+    if (maskEntry === undefined) {
+        throw new Error("MeshCopDiagnosticSource: c/pc missing CHANNEL_MASK TLV");
+    }
+    const mv = maskEntry.value;
+    if (mv.length < 4) {
+        throw new Error(`MeshCopDiagnosticSource: c/pc CHANNEL_MASK too short (${mv.length} bytes)`);
+    }
+    const conflictChannelMask = ((mv[0] << 24) | (mv[1] << 16) | (mv[2] << 8) | mv[3]) >>> 0;
+
+    const panIdEntry = entries.find(e => e.type === MeshCopTlvType.PANID);
+    if (panIdEntry !== undefined && panIdEntry.value.length >= 2) {
+        const reportedPanId = (panIdEntry.value[0] << 8) | panIdEntry.value[1];
+        if (reportedPanId !== expectedPanId) {
+            logger.warn(
+                `[ThreadDiag] c/pc PAN-ID mismatch: expected=0x${expectedPanId.toString(16)} got=0x${reportedPanId.toString(16)}, ignoring`,
+            );
+        }
+    }
+
+    return { conflictChannelMask };
 }
 
 // Router id = rloc16 top 6 bits (Thread spec); route64 entries carry router ids directly.

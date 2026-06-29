@@ -204,6 +204,24 @@ export class OtbrRestClient {
      * @throws {@link OtbrRestError} with code `"rest_protocol"` on a non-2xx response.
      */
     async resetDiagnosticCounters(body: Record<string, unknown>): Promise<void> {
+        await this.#postActions(body);
+    }
+
+    /**
+     * POST a `getEnergyScanTask` action to the OTBR `/api/actions` endpoint.
+     *
+     * Only available on camelCase (post-2024) OTBR builds — callers must guard
+     * on `OtbrRestCapability.keyFormat === "camel"` before calling this method.
+     *
+     * @param body - The action payload (e.g. `{ action: "getEnergyScanTask" }`).
+     * @throws {@link OtbrRestError} with code `"rest_unreachable"` on network error.
+     * @throws {@link OtbrRestError} with code `"rest_protocol"` on a non-2xx response.
+     */
+    async getEnergyScanTask(body: Record<string, unknown>): Promise<void> {
+        await this.#postActions(body);
+    }
+
+    async #postActions(body: Record<string, unknown>): Promise<void> {
         const url = `${this.#baseUrl}/api/actions`;
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), this.#timeoutMs);
