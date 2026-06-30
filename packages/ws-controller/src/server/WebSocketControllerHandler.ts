@@ -826,6 +826,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
         // Pass the last interview date for real nodes
         if (handler === this.#commandHandler) {
+            await this.#commandHandler.ensureNodePopulated(nodeId);
             return this.#commandHandler.getNodeDetails(nodeId, this.#lastInterviewDates.get(nodeId));
         }
         return handler.getNodeDetails(nodeId);

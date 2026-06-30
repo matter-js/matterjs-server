@@ -194,8 +194,11 @@ const modelKindCache = new WeakMap<ValueModel, ConvKind>();
 type StructMemberEntry = { readonly name: string; readonly id: number; readonly model: ValueModel };
 const structMemberCache = new WeakMap<ValueModel, StructMemberEntry[]>();
 
-/** Cached bitmap member resolution: bit fields resolve via cluster scope, not model.members. */
-const bitmapMemberCache = new WeakMap<ValueModel, FieldModel[]>();
+/**
+ * Cached bitmap member resolution. Unlike struct members (intrinsic to the model), bitmap bit
+ * fields resolve via the cluster scope, so the cache is keyed by clusterModel first, then model.
+ */
+const bitmapMemberCache = new WeakMap<ClusterModel, WeakMap<ValueModel, FieldModel[]>>();
 
 function classifyModel(model: ValueModel): ConvKind {
     let kind = modelKindCache.get(model);
@@ -239,11 +242,17 @@ function getStructMembers(model: ValueModel): StructMemberEntry[] {
 }
 
 function getBitmapMembers(model: ValueModel, clusterModel: ClusterModel): FieldModel[] {
-    let members = bitmapMemberCache.get(model);
+    let byModel = bitmapMemberCache.get(clusterModel);
+    if (byModel === undefined) {
+        byModel = new WeakMap();
+        bitmapMemberCache.set(clusterModel, byModel);
+    }
+
+    let members = byModel.get(model);
     if (members !== undefined) return members;
 
     members = [...clusterModel.scope.membersOf(model)];
-    bitmapMemberCache.set(model, members);
+    byModel.set(model, members);
     return members;
 }
 

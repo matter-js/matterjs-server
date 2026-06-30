@@ -7,6 +7,11 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
+## **WORK IN PROGRESS**
+
+- Ensure that rebuilding of node structures after updates does not block the event loop for big bridges
+- Skip rebuilding node structures when the device just resubscribed
+
 ## 1.1.5 (2026-06-30)
 
 - Speed up Bitmap Conversion for WebSocket messaging and data migration
