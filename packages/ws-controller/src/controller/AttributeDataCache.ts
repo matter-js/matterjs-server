@@ -15,13 +15,6 @@ import { formatNodeId } from "../util/formatNodeId.js";
 const logger = Logger.get("AttributeDataCache");
 
 /**
- * Cache for node attributes in WebSocket format.
- *
- * Stores attributes pre-converted to WebSocket tag-based format as flat
- * "endpoint/cluster/attribute" keyed objects for direct retrieval when
- * clients request node data.
- */
-/**
  * Tracks an in-flight asynchronous populate so concurrent populate requests collapse onto a single
  * run, and single-attribute updates arriving mid-run are replayed onto the freshly built snapshot.
  */
@@ -32,6 +25,13 @@ type PopulateContext = {
     promise: Promise<void>;
 };
 
+/**
+ * Cache for node attributes in WebSocket format.
+ *
+ * Stores attributes pre-converted to WebSocket tag-based format as flat
+ * "endpoint/cluster/attribute" keyed objects for direct retrieval when
+ * clients request node data.
+ */
 export class AttributeDataCache {
     #cache = new Map<NodeId, AttributesData>();
     #inFlight = new Map<NodeId, PopulateContext>();
