@@ -244,7 +244,7 @@ function getStructMembers(model: ValueModel): StructMemberEntry[] {
 function getBitmapMembers(model: ValueModel, clusterModel: ClusterModel): FieldModel[] {
     let byModel = bitmapMemberCache.get(clusterModel);
     if (byModel === undefined) {
-        byModel = new WeakMap();
+        byModel = new WeakMap<ValueModel, FieldModel[]>();
         bitmapMemberCache.set(clusterModel, byModel);
     }
 

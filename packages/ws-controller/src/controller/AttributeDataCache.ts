@@ -87,13 +87,14 @@ export class AttributeDataCache {
         const inFlight = this.#inFlight.get(nodeId);
         const attributes = this.#cache.get(nodeId);
 
+        // Only patch an existing complete snapshot. Never create an entry from a single attribute:
+        // has() must not report a node as cached from a partial write, or ensureNodePopulated /
+        // getNodeDetails would serve a truncated snapshot and skip the real populate. With no snapshot
+        // yet, the value is captured by the in-flight populate's pending replay, or by the next full
+        // populate (which reads live state) when none is running.
         if (attributes !== undefined) {
             attributes[path] = convertedValue;
-        } else if (inFlight === undefined) {
-            this.#cache.set(nodeId, { [path]: convertedValue });
         }
-        // else: a first populate is in flight and no complete snapshot exists yet — skip the live
-        // write so has() does not report a partial snapshot; the pending replay below applies it.
 
         // A full populate builds into a detached snapshot and swaps it in at the end, so a write
         // landing mid-run would be lost. Record it for replay onto that snapshot.

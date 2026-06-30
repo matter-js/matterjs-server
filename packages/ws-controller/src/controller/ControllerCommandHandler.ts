@@ -450,8 +450,9 @@ export class ControllerCommandHandler {
         // non-Connected states; cancel on return to Connected.
         let fastReconnect = false;
         if (state === NodeStates.Connected) {
-            // A still-armed reconnect timer means we dropped to Reconnecting and returned before the
-            // grace period expired — a brief blip during which the node's data did not change.
+            // A still-armed reconnect timer means we returned to Connected within the grace period.
+            // Treat it as a blip and skip the rebuild, relying on attributeChanged/structureChanged to
+            // repair any deltas — a perf tradeoff that assumes resubscription re-reports what changed.
             const reconnectTimer = this.#reconnectTimers.get(nodeId);
             fastReconnect = reconnectTimer !== undefined;
             reconnectTimer?.stop();
