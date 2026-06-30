@@ -156,6 +156,8 @@ export class ControllerCommandHandler {
      * is deferred until the batch ends (connectionAlive) so consumers see one update per batch.
      */
     #basicInfoChangedInBatch = new Set<NodeId>();
+    /** Nodes with a lazy getNodeDetails populate in flight, so concurrent reads emit node_updated once. */
+    #pendingLazyPopulate = new Set<NodeId>();
     /** Track in-flight invoke-commands for deduplication across all WebSocket connections */
     readonly #inFlightInvokes = new Map<string, Promise<unknown>>();
     events = {
@@ -621,9 +623,12 @@ export class ControllerCommandHandler {
 
         // Ensure the cache is populated if node is initialized but cache doesn't exist yet.
         // Populate runs asynchronously, so this call returns an empty snapshot; emit node_updated once
-        // it completes so the requester receives the populated data. Guard on has() to avoid a loop for
-        // an uninitialized node whose populate never fills the cache.
-        if (!attributeCache.has(nodeId)) {
+        // it completes so the requester receives the populated data. The #pendingLazyPopulate guard
+        // registers the emit only once per populate, so concurrent reads don't fan out duplicate
+        // node_updated broadcasts. has() in the callback avoids a loop for an uninitialized node whose
+        // populate never fills the cache.
+        if (!attributeCache.has(nodeId) && !this.#pendingLazyPopulate.has(nodeId)) {
+            this.#pendingLazyPopulate.add(nodeId);
             attributeCache
                 .add(node)
                 .then(() => {
@@ -631,7 +636,8 @@ export class ControllerCommandHandler {
                         this.events.nodeStructureChanged.emit(nodeId);
                     }
                 })
-                .catch(error => logger.warn(`Failed to populate cache for node ${this.formatNode(nodeId)}:`, error));
+                .catch(error => logger.warn(`Failed to populate cache for node ${this.formatNode(nodeId)}:`, error))
+                .finally(() => this.#pendingLazyPopulate.delete(nodeId));
         }
 
         // Get cached attributes (empty object if node not yet initialized)
@@ -1221,6 +1227,7 @@ export class ControllerCommandHandler {
         this.#reconnectTimers.get(nodeId)?.stop();
         this.#reconnectTimers.delete(nodeId);
         this.#basicInfoChangedInBatch.delete(nodeId);
+        this.#pendingLazyPopulate.delete(nodeId);
         this.#nodes.delete(nodeId);
         this.#customClusterPoller.unregisterNode(this.#peerOf(nodeId));
         this.#availableUpdates.delete(nodeId);

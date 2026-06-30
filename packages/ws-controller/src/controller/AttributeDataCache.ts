@@ -38,7 +38,7 @@ export class AttributeDataCache {
 
     /**
      * Add a node to the cache and populate its attributes.
-     * If the node is not initialized, the cache entry will be empty.
+     * No entry is created if the node is not yet initialized.
      */
     add(node: PairedNode): Promise<void> {
         return this.#populateFromNode(node, false);
