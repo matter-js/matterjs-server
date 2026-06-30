@@ -78,6 +78,8 @@ export interface MatterControllerOptions {
     serverVersion?: string;
     /** BLE proxy mode: skip the `@matter/nodejs-ble` import; caller supplies the Ble implementation. */
     bleProxyEnabled?: boolean;
+    /** Enable time synchronization for nodes with the TimeSynchronization cluster. Only enable when host NTP is reliable. */
+    enableTimeSync?: boolean;
 }
 
 /**
@@ -109,6 +111,7 @@ export class MatterController {
     #disableOtaProvider = true;
     #disableDclSeed = false;
     #bleProxyEnabled = false;
+    #enableTimeSync = false;
     readonly #borderRouterDiscovery: BorderRouterDiscovery;
     #webRtcRequestor?: Endpoint<typeof CameraControllerDevice>;
     #services: SharedEnvironmentServices;
@@ -191,6 +194,7 @@ export class MatterController {
         this.#disableOtaProvider = options.disableOtaProvider ?? this.#disableOtaProvider;
         this.#disableDclSeed = options.disableDclSeed ?? this.#disableDclSeed;
         this.#bleProxyEnabled = options.bleProxyEnabled ?? this.#bleProxyEnabled;
+        this.#enableTimeSync = options.enableTimeSync ?? this.#enableTimeSync;
         this.#services = this.#env.asDependent();
     }
 
@@ -284,6 +288,7 @@ export class MatterController {
                 this.#env.vars.get("ble.enable", false),
                 this.#bleProxyEnabled,
                 !this.#disableOtaProvider,
+                this.#enableTimeSync,
             );
 
             this.#commandHandler.events.started.once(async () => {
