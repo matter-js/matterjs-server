@@ -41,7 +41,7 @@ export class AttributeDataCache {
      * If the node is not initialized, the cache entry will be empty.
      */
     add(node: PairedNode): Promise<void> {
-        return this.#populateFromNode(node);
+        return this.#populateFromNode(node, false);
     }
 
     /**
@@ -64,7 +64,7 @@ export class AttributeDataCache {
      * Use this when the node structure may have changed (endpoints added/removed).
      */
     update(node: PairedNode): Promise<void> {
-        return this.#populateFromNode(node);
+        return this.#populateFromNode(node, true);
     }
 
     /**
@@ -74,13 +74,6 @@ export class AttributeDataCache {
     updateAttribute(nodeId: NodeId, data: DecodedAttributeReportValue<any>): void {
         const { endpointId, clusterId, attributeId } = data.path;
 
-        let attributes = this.#cache.get(nodeId);
-        if (!attributes) {
-            attributes = {};
-            this.#cache.set(nodeId, attributes);
-        }
-
-        // Convert and store the value
         const clusterData = ClusterMap[clusterId];
         const convertedValue = convertMatterToWebSocketTagBased(
             data.value,
@@ -91,11 +84,20 @@ export class AttributeDataCache {
             return;
         }
         const path = buildAttributePath(endpointId, clusterId, attributeId);
-        attributes[path] = convertedValue;
+        const inFlight = this.#inFlight.get(nodeId);
+        const attributes = this.#cache.get(nodeId);
+
+        if (attributes !== undefined) {
+            attributes[path] = convertedValue;
+        } else if (inFlight === undefined) {
+            this.#cache.set(nodeId, { [path]: convertedValue });
+        }
+        // else: a first populate is in flight and no complete snapshot exists yet — skip the live
+        // write so has() does not report a partial snapshot; the pending replay below applies it.
 
         // A full populate builds into a detached snapshot and swaps it in at the end, so a write
         // landing mid-run would be lost. Record it for replay onto that snapshot.
-        this.#inFlight.get(nodeId)?.pending.push([path, convertedValue]);
+        inFlight?.pending.push([path, convertedValue]);
     }
 
     /**
@@ -119,9 +121,13 @@ export class AttributeDataCache {
      *
      * Collecting attributes for a large node (~90 endpoints) is heavy synchronous work, so it is
      * chunked with event-loop yields. Concurrent calls for the same node collapse onto the running
-     * populate (re-run once more if requested) instead of building competing snapshots.
+     * populate instead of building competing snapshots.
+     *
+     * `rebuild` distinguishes a data-changed caller (state/structure change) that needs the running
+     * pass redone from a caller that merely awaits completion (a read). Only the former schedules a
+     * re-run; reads just await the in-flight promise, so frequent reads can never thrash the populate.
      */
-    #populateFromNode(node: PairedNode): Promise<void> {
+    #populateFromNode(node: PairedNode, rebuild: boolean): Promise<void> {
         const nodeId = node.nodeId;
         if (!node.initialized || !node.node.lifecycle.isCommissioned || !node.node.lifecycle.isReady) {
             logger.debug(`Node ${formatNodeId(nodeId)} not initialized, skipping cache population`);
@@ -130,8 +136,10 @@ export class AttributeDataCache {
 
         const inFlight = this.#inFlight.get(nodeId);
         if (inFlight !== undefined) {
-            inFlight.rerun = true;
-            logger.debug(`Populate for node ${formatNodeId(nodeId)} already running, scheduling re-run`);
+            if (rebuild) {
+                inFlight.rerun = true;
+                logger.debug(`Populate for node ${formatNodeId(nodeId)} already running, scheduling re-run`);
+            }
             return inFlight.promise;
         }
 
