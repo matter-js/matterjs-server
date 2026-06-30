@@ -7,7 +7,7 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
-## 1.1.4 (2026-06-29)
+## **WORK IN PROGRESS**
 
 - Speed up Bitmap Conversion for WebSocket messaging and data migration
 - Enhancement: Update matter.js to the latest 0.17.4-alpha
