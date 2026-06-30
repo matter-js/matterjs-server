@@ -5,7 +5,7 @@
  */
 
 import { AttributeId, Bytes, camelize, ClusterId, isObject, Logger } from "@matter/main";
-import { ClusterModel, FieldValue, ValueModel } from "@matter/main/model";
+import { ClusterModel, FieldModel, FieldValue, ValueModel } from "@matter/main/model";
 import { EndpointNumber, MATTER_EPOCH_OFFSET_S, MATTER_EPOCH_OFFSET_US } from "@matter/main/types";
 
 const logger = new Logger("ChipToolWebSocketHandler");
@@ -24,7 +24,7 @@ function convertWebSocketGenericToMatter(value: unknown, model: ValueModel, clus
     if (typeof value === "number" && model.metabase?.metatype === "bitmap") {
         const bitmapValue: { [key: string]: boolean | number } = {};
 
-        for (const member of clusterModel.scope.membersOf(model)) {
+        for (const member of getBitmapMembers(model, clusterModel)) {
             const memberName =
                 member.name !== undefined && model.name !== "FeatureMap"
                     ? member.propertyName
@@ -194,6 +194,9 @@ const modelKindCache = new WeakMap<ValueModel, ConvKind>();
 type StructMemberEntry = { readonly name: string; readonly id: number; readonly model: ValueModel };
 const structMemberCache = new WeakMap<ValueModel, StructMemberEntry[]>();
 
+/** Cached bitmap member resolution: bit fields resolve via cluster scope, not model.members. */
+const bitmapMemberCache = new WeakMap<ValueModel, FieldModel[]>();
+
 function classifyModel(model: ValueModel): ConvKind {
     let kind = modelKindCache.get(model);
     if (kind !== undefined) return kind;
@@ -232,6 +235,15 @@ function getStructMembers(model: ValueModel): StructMemberEntry[] {
         }
     }
     structMemberCache.set(model, members);
+    return members;
+}
+
+function getBitmapMembers(model: ValueModel, clusterModel: ClusterModel): FieldModel[] {
+    let members = bitmapMemberCache.get(model);
+    if (members !== undefined) return members;
+
+    members = [...clusterModel.scope.membersOf(model)];
+    bitmapMemberCache.set(model, members);
     return members;
 }
 
@@ -325,7 +337,7 @@ function convertMatterToWebSocket(
         case ConvKind.Bitmap: {
             if (!isObject(value) || clusterModel === undefined) return value;
             let numberValue = 0;
-            for (const member of clusterModel.scope.membersOf(model)) {
+            for (const member of getBitmapMembers(model, clusterModel)) {
                 const memberTitle = member.title !== undefined ? camelize(member.title) : undefined;
                 const memberValue =
                     member.name !== undefined && value[member.propertyName]
