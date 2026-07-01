@@ -9,7 +9,7 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## **WORK IN PROGRESS**
 
-- Speed up attribute conversion for list attributes (~3x faster node population)
+- Speed up attribute conversion for list and struct attributes (~3x faster node population, faster legacy-data migration)
 
 ## 1.1.6 (2026-06-30)
 

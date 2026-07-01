@@ -99,18 +99,10 @@ export function convertWebSocketTagBasedToMatter(
         const valueKeys = Object.keys(value);
         const result: { [key: string]: unknown } = {};
 
-        // Build a map of member ID to member for efficient lookup
-        const memberById: { [id: number]: ValueModel } = {};
-        for (const member of model.members) {
-            if (member.id !== undefined) {
-                memberById[member.id] = member;
-            }
-        }
-
+        const memberById = getStructMembersById(model);
         for (const key of valueKeys) {
-            const memberId = parseInt(key);
-            if (!isNaN(memberId) && memberById[memberId]) {
-                const member = memberById[memberId];
+            const member = memberById.get(parseInt(key));
+            if (member !== undefined) {
                 result[member.propertyName] = convertWebSocketTagBasedToMatter(value[key], member, clusterModel);
             } else {
                 // Keep unknown keys as-is (fallback for unknown attributes)
@@ -146,19 +138,12 @@ export function convertCommandDataToMatter(
         const valueKeys = Object.keys(value);
         const result: { [key: string]: unknown } = {};
 
-        // Build a map of member ID to member for efficient lookup
-        const memberByName: { [name: string]: ValueModel } = {};
-        for (const member of model.members) {
-            if (member.name !== undefined) {
-                memberByName[member.propertyName] = member;
-            }
-        }
-
+        const memberByName = getStructMembersByPropertyName(model);
         for (const key of valueKeys) {
             // Camelize the key to normalize PascalCase from Python CHIP SDK (e.g. DSTOffset -> dstOffset)
             const camelizedKey = camelize(key);
-            if (memberByName[camelizedKey]) {
-                const member = memberByName[camelizedKey];
+            const member = memberByName.get(camelizedKey);
+            if (member !== undefined) {
                 // Treat null for optional non-nullable fields as omitted (e.g. PINCode: null).
                 // This preserves compatibility with clients that send null instead of omitting the field.
                 if (value[key] === null && !member.mandatory && !member.nullable) {
@@ -243,6 +228,50 @@ function getStructMembers(model: ValueModel): StructMemberEntry[] {
         }
     }
     structMemberCache.set(model, members);
+    return members;
+}
+
+/**
+ * Struct member lookups for the incoming (WebSocket/legacy -> Matter) converters, cached per model so
+ * bulk conversions (e.g. legacy data migration) don't rebuild the map for every struct value.
+ */
+const structMembersByIdCache = new WeakMap<ValueModel, Map<number, ValueModel>>();
+const structMembersByPropertyNameCache = new WeakMap<ValueModel, Map<string, ValueModel>>();
+const structMembersByLowerNameCache = new WeakMap<ValueModel, Map<string, ValueModel>>();
+
+function getStructMembersById(model: ValueModel): Map<number, ValueModel> {
+    let members = structMembersByIdCache.get(model);
+    if (members !== undefined) return members;
+
+    members = new Map();
+    for (const member of model.members) {
+        if (member.id !== undefined) members.set(member.id, member);
+    }
+    structMembersByIdCache.set(model, members);
+    return members;
+}
+
+function getStructMembersByPropertyName(model: ValueModel): Map<string, ValueModel> {
+    let members = structMembersByPropertyNameCache.get(model);
+    if (members !== undefined) return members;
+
+    members = new Map();
+    for (const member of model.members) {
+        if (member.name !== undefined) members.set(member.propertyName, member);
+    }
+    structMembersByPropertyNameCache.set(model, members);
+    return members;
+}
+
+function getStructMembersByLowerName(model: ValueModel): Map<string, ValueModel> {
+    let members = structMembersByLowerNameCache.get(model);
+    if (members !== undefined) return members;
+
+    members = new Map();
+    for (const member of model.members) {
+        if (member.name !== undefined) members.set(member.name.toLowerCase(), member);
+    }
+    structMembersByLowerNameCache.set(model, members);
     return members;
 }
 
@@ -567,19 +596,11 @@ export function convertWebsocketDataToMatter(value: any, model: ValueModel): any
             value = parseChipJSON(value);
         }
         if (typeof value === "object") {
-            const members = model.members.reduce(
-                (acc, member) => {
-                    if (member.name !== undefined) {
-                        acc[member.name.toLowerCase()] = member;
-                    }
-                    return acc;
-                },
-                {} as { [key: string]: ValueModel },
-            );
+            const members = getStructMembersByLowerName(model);
             const valueKeys = Object.keys(value);
             const result: { [key: string]: unknown } = {};
             valueKeys.forEach(key => {
-                const member = members[camelize(key).toLowerCase()];
+                const member = members.get(camelize(key).toLowerCase());
                 if (member !== undefined) {
                     result[member.propertyName] = convertWebsocketDataToMatter(value[key], member);
                 }
