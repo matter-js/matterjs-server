@@ -441,7 +441,7 @@ export class MatterClient {
 
             // Type-erased storage: resolve/reject are stored as unknown handlers
             this.result_futures[messageId] = {
-                resolve: resolve as (value: unknown) => void,
+                resolve,
                 reject,
                 timeoutId,
             };

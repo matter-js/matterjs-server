@@ -1300,8 +1300,8 @@ export class ControllerCommandHandler {
     async setAclEntry(nodeId: NodeId, entries: AccessControlEntry[]): Promise<AttributeWriteResult[] | null> {
         const fabricIndex = this.#currentFabricIndex(nodeId);
         const aclEntries: AccessControl.AccessControlEntry[] = entries.map(entry => ({
-            privilege: entry.privilege as AccessControl.AccessControlEntryPrivilege,
-            authMode: entry.auth_mode as AccessControl.AccessControlEntryAuthMode,
+            privilege: entry.privilege,
+            authMode: entry.auth_mode,
             subjects: entry.subjects?.map(s => NodeId(BigInt(s))) ?? null,
             targets:
                 entry.targets?.map((t: AccessControlTarget) => ({

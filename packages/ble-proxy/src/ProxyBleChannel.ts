@@ -402,7 +402,7 @@ export class ProxyBleChannel extends BleChannel<Bytes> {
     #terminateIterator(): void {
         if (!this.#iteratorDone) {
             this.#iteratorDone = true;
-            this.#iteratorWaiter?.({ value: undefined as unknown as Bytes, done: true });
+            this.#iteratorWaiter?.({ value: undefined, done: true });
             this.#iteratorWaiter = undefined;
         }
     }
