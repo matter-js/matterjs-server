@@ -7,8 +7,9 @@ a different backend that wires into its bluetooth component.
 
 from __future__ import annotations
 
+from importlib.metadata import version
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from bleak import BleakScanner
 
@@ -18,6 +19,7 @@ from .protocol import AdvertisementData
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from bleak.args.bluez import BlueZScannerArgs
     from bleak.backends.device import BLEDevice
     from bleak.backends.scanner import AdvertisementData as BleakAdvertisementData
 
@@ -34,8 +36,9 @@ class BleakScanSource(BleScanSource):
     handshake) — typically tens to hundreds of milliseconds.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, hci_device: int | None = None) -> None:
         """Initialize."""
+        self._hci_device = hci_device
         self._scanner: BleakScanner | None = None
         self._callback: Callable[[AdvertisementData], None] | None = None
         # Cache the most recent BLEDevice per address so BleakDeviceResolver
@@ -53,7 +56,9 @@ class BleakScanSource(BleScanSource):
         self._callback = callback
         if self._scanner is not None:
             return
-        self._scanner = BleakScanner(detection_callback=self._on_detection)
+
+        self._scanner = self._get_bleak_scanner()
+
         await self._scanner.start()
 
     async def stop(self) -> None:
@@ -67,7 +72,37 @@ class BleakScanSource(BleScanSource):
             except Exception:
                 _LOGGER.debug("Error stopping BleakScanner", exc_info=True)
 
-    def _on_detection(self, device: BLEDevice, advertisement: BleakAdvertisementData) -> None:
+    def _get_bleak_scanner(self) -> BleakScanner:
+        # Bleak only supports specifying a hci device on Linux with BlueZ;
+        # per https://github.com/hbldh/bleak/discussions/867
+
+        if self._hci_device is None:
+            return BleakScanner(detection_callback=self._on_detection)
+
+        bleak_major_version = int(version("bleak").split(".")[0])
+        min_bleak_version_with_bluez_adapter = 3
+        adapter = f"hci{self._hci_device}"
+
+        # the "adapter" key of BlueZScannerArgs only exists on bleak >= 3.0.0;
+        # on older bleak, pass adapter= to BleakScanner directly
+        # (https://bleak.readthedocs.io/en/latest/history.html)
+        if bleak_major_version >= min_bleak_version_with_bluez_adapter:
+            bluez_args = cast(
+                "BlueZScannerArgs", {"adapter": adapter}
+            )
+            return BleakScanner(
+                detection_callback=self._on_detection,
+                bluez=bluez_args,
+            )
+
+        return BleakScanner(
+            detection_callback=self._on_detection,
+            adapter=adapter,
+        )
+
+    def _on_detection(
+        self, device: BLEDevice, advertisement: BleakAdvertisementData
+    ) -> None:
         self._device_cache[device.address] = device
         cb = self._callback
         if cb is None:
