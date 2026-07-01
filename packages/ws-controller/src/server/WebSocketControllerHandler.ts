@@ -1289,7 +1289,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             const fileDestination = Logger.destinations.file;
             const fileLevelValue =
                 typeof fileDestination.level === "string"
-                    ? this.#stringToLogLevel(fileDestination.level as SettableLogLevelString)
+                    ? this.#stringToLogLevel(fileDestination.level)
                     : fileDestination.level;
             fileLevel = this.#logLevelToString(fileLevelValue);
         } catch {
