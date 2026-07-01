@@ -90,7 +90,8 @@ export function convertWebSocketTagBasedToMatter(
 
     // Handle lists
     if (Array.isArray(value) && model.type === "list") {
-        return value.map(v => convertWebSocketTagBasedToMatter(v, model.members.at(0), clusterModel));
+        const memberModel = model.members.at(0);
+        return value.map(v => convertWebSocketTagBasedToMatter(v, memberModel, clusterModel));
     }
 
     // Handle structs - convert numeric keys to camelCased member names
@@ -136,7 +137,8 @@ export function convertCommandDataToMatter(
 
     // Handle lists
     if (Array.isArray(value) && model.type === "list") {
-        return value.map(v => convertCommandDataToMatter(v, model.members.at(0), clusterModel));
+        const memberModel = model.members.at(0);
+        return value.map(v => convertCommandDataToMatter(v, memberModel, clusterModel));
     }
 
     // Handle structs - convert numeric keys to camelCased member names
@@ -186,6 +188,9 @@ const enum ConvKind {
     Struct,
     List,
 }
+
+/** Primitive `typeof` results that pass through unchanged for schema-less (unknown) attributes. */
+const PRIMITIVE_TYPEOF = new Set(["string", "number", "bigint", "boolean", "undefined"]);
 
 /** Cached model-to-kind classification. Avoids repeated metabase property traversal. */
 const modelKindCache = new WeakMap<ValueModel, ConvKind>();
@@ -301,7 +306,7 @@ function convertMatterToWebSocket(
             // Best-effort: recursively convert elements without schema
             return value.map(v => convertMatterToWebSocket(v, undefined, clusterModel, tagBased));
         }
-        if (isObject(value) || !["string", "number", "bigint", "boolean", "undefined"].includes(typeof value)) {
+        if (isObject(value) || !PRIMITIVE_TYPEOF.has(typeof value)) {
             return null;
         }
         return value;
@@ -322,10 +327,13 @@ function convertMatterToWebSocket(
         case ConvKind.Bytes:
             return value instanceof Uint8Array ? Bytes.toBase64(value) : value;
 
-        case ConvKind.List:
-            return Array.isArray(value)
-                ? value.map(v => convertMatterToWebSocket(v, model.members.at(0), clusterModel, tagBased))
-                : value;
+        case ConvKind.List: {
+            if (!Array.isArray(value)) return value;
+            // Hoist the element model: `model.members` is a getter that rebuilds its array on every
+            // access, so reading it inside the map would rebuild it once per element.
+            const memberModel = model.members.at(0);
+            return value.map(v => convertMatterToWebSocket(v, memberModel, clusterModel, tagBased));
+        }
 
         case ConvKind.Struct: {
             if (!isObject(value)) return value;
@@ -549,7 +557,8 @@ export function convertWebsocketDataToMatter(value: any, model: ValueModel): any
             value = parseChipJSON(value);
         }
         if (Array.isArray(value)) {
-            return value.map(v => convertWebsocketDataToMatter(v, model.members.at(0)!));
+            const memberModel = model.members.at(0)!;
+            return value.map(v => convertWebsocketDataToMatter(v, memberModel));
         }
     }
 

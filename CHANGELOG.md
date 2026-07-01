@@ -11,6 +11,7 @@ This page shows a detailed overview of the changes between versions without the 
 
 - Ensure that rebuilding of node structures after updates does not block the event loop for big bridges
 - Skip rebuilding node structures when the device just resubscribed
+- Speed up attribute conversion for list attributes (~3x faster node population)
 
 ## 1.1.5 (2026-06-30)
 
