@@ -199,6 +199,17 @@ export class WebSocketControllerHandler implements WebServerHandler {
             this.#broadcastEvent("webrtc_callback", data);
         });
 
+        // Group lifecycle events fan out to every connected client as well.
+        this.#serverObservers.on(this.#commandHandler.events.groupAdded, data => {
+            this.#broadcastEvent("group_added", data);
+        });
+        this.#serverObservers.on(this.#commandHandler.events.groupUpdated, data => {
+            this.#broadcastEvent("group_updated", data);
+        });
+        this.#serverObservers.on(this.#commandHandler.events.groupRemoved, groupId => {
+            this.#broadcastEvent("group_removed", groupId);
+        });
+
         wss.on("connection", ws => {
             if (this.#closed || this.#shuttingDown) {
                 try {
@@ -613,6 +624,27 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 case "set_loglevel":
                     result = this.#handleSetLogLevel(args);
                     break;
+                case "create_group":
+                    result = await this.#handleCreateGroup(args);
+                    break;
+                case "delete_group":
+                    result = await this.#handleDeleteGroup(args);
+                    break;
+                case "get_groups":
+                    result = this.#handleGetGroups();
+                    break;
+                case "add_group_member":
+                    result = await this.#handleAddGroupMember(args);
+                    break;
+                case "remove_group_member":
+                    result = await this.#handleRemoveGroupMember(args);
+                    break;
+                case "send_group_command":
+                    result = await this.#handleSendGroupCommand(args);
+                    break;
+                case "reconcile_group":
+                    result = await this.#handleReconcileGroup(args);
+                    break;
                 default:
                     throw ServerError.invalidCommand(command);
             }
@@ -664,6 +696,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             bluetooth_enabled: this.#commandHandler.bleEnabled,
             ble_proxy_enabled: this.#commandHandler.bleProxyEnabled,
             controller_node_id: this.#commandHandler.getCommissionerNodeId(),
+            groups_supported: true,
         };
     }
 
@@ -1178,6 +1211,41 @@ export class WebSocketControllerHandler implements WebServerHandler {
     async #handleSetNodeBinding(args: ArgsOf<"set_node_binding">): Promise<ResponseOf<"set_node_binding">> {
         const { node_id, endpoint, bindings } = args;
         return await this.#commandHandler.setNodeBinding(NodeId(node_id), EndpointNumber(endpoint), bindings);
+    }
+
+    async #handleCreateGroup(args: ArgsOf<"create_group">): Promise<ResponseOf<"create_group">> {
+        const { name, group_id, acl_targets } = args;
+        return await this.#commandHandler.groups.createGroup(name, group_id, acl_targets);
+    }
+
+    async #handleReconcileGroup(args: ArgsOf<"reconcile_group">): Promise<ResponseOf<"reconcile_group">> {
+        const { group_id, repair } = args;
+        return await this.#commandHandler.groups.reconcileGroup(group_id, repair);
+    }
+
+    async #handleDeleteGroup(args: ArgsOf<"delete_group">): Promise<ResponseOf<"delete_group">> {
+        await this.#commandHandler.groups.deleteGroup(args.group_id);
+        return null;
+    }
+
+    #handleGetGroups(): ResponseOf<"get_groups"> {
+        return this.#commandHandler.groups.list();
+    }
+
+    async #handleAddGroupMember(args: ArgsOf<"add_group_member">): Promise<ResponseOf<"add_group_member">> {
+        const { group_id, node_id, endpoint_id } = args;
+        return await this.#commandHandler.groups.addMember(group_id, NodeId(node_id), EndpointNumber(endpoint_id));
+    }
+
+    async #handleRemoveGroupMember(args: ArgsOf<"remove_group_member">): Promise<ResponseOf<"remove_group_member">> {
+        const { group_id, node_id, endpoint_id } = args;
+        return await this.#commandHandler.groups.removeMember(group_id, NodeId(node_id), EndpointNumber(endpoint_id));
+    }
+
+    async #handleSendGroupCommand(args: ArgsOf<"send_group_command">): Promise<ResponseOf<"send_group_command">> {
+        const { group_id, cluster_id, command_name, payload } = args;
+        await this.#commandHandler.groups.sendCommand(group_id, cluster_id, command_name, payload);
+        return null;
     }
 
     async #handleImportTestNode(args: ArgsOf<"import_test_node">): Promise<ResponseOf<"import_test_node">> {

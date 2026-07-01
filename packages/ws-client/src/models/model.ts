@@ -295,6 +295,63 @@ export interface APICommands {
         requestArgs: { console_loglevel?: SettableLogLevelString; file_loglevel?: SettableLogLevelString };
         response: LogLevelResponse;
     };
+    /**
+     * Matter multicast group management (`create_group` … `reconcile_group`).
+     *
+     * OHF Matter Server extension — NOT part of the Python Matter Server API, which has
+     * no group commands and tracks the gap upstream in home-assistant-libs/python-matter-server#1071.
+     * Group multicast send (`send_group_command`) cannot be expressed via the unicast-only
+     * `device_command`, and installing the operational group key on the controller's own
+     * fabric is inherently server-side, so these are first-class commands rather than
+     * client-driven `device_command` sequences. Clients can feature-detect via
+     * `ServerInfoMessage.groups_supported`. Command names may change to track #1071.
+     */
+    create_group: {
+        requestArgs: {
+            name: string;
+            /** Optional explicit application group id (0x0001..0xFEFF). Auto-allocated when omitted. */
+            group_id?: number;
+            /**
+             * Optional ACL targets scoping the group's access on each member (least
+             * privilege). When omitted the group is granted Operate on all clusters.
+             */
+            acl_targets?: AccessControlTarget[];
+        };
+        response: MatterGroupData;
+    };
+    delete_group: {
+        requestArgs: { group_id: number };
+        response: null;
+    };
+    get_groups: {
+        requestArgs: Record<string, never>;
+        response: MatterGroupData[];
+    };
+    add_group_member: {
+        requestArgs: { group_id: number; node_id: number | bigint; endpoint_id: number };
+        response: MatterGroupData;
+    };
+    remove_group_member: {
+        requestArgs: { group_id: number; node_id: number | bigint; endpoint_id: number };
+        response: MatterGroupData;
+    };
+    send_group_command: {
+        requestArgs: {
+            group_id: number;
+            cluster_id: number;
+            command_name: string;
+            payload?: unknown;
+        };
+        response: null;
+    };
+    reconcile_group: {
+        requestArgs: {
+            group_id: number;
+            /** When true, re-provision members whose on-device membership has drifted. */
+            repair?: boolean;
+        };
+        response: GroupReconciliation;
+    };
 }
 
 /** Utility type to extract request args for a command */
@@ -333,6 +390,55 @@ export interface AccessControlTarget {
     cluster: number | null;
     endpoint: number | null;
     device_type: number | null;
+}
+
+/** A single (node, endpoint) member of a Matter group. */
+export interface MatterGroupMember {
+    node_id: number | bigint;
+    endpoint_id: number;
+}
+
+/**
+ * A Matter multicast group managed by the controller.
+ *
+ * The controller owns the operational group key for the group on its own fabric
+ * and provisions the same key + membership onto each member device, so a single
+ * `send_group_command` reaches every member via IPv6 group multicast.
+ *
+ * The operational epoch key itself is sensitive and is never exposed over the API.
+ */
+export interface MatterGroupData {
+    /** Matter group id (1..0xFFFF). */
+    group_id: number;
+    /** Human-readable group name (<=16 chars, per the Groups cluster). */
+    name: string;
+    /** Group key set id binding the group to its operational key on the fabric. */
+    group_key_set_id: number;
+    /** Devices that have been provisioned into the group. */
+    members: MatterGroupMember[];
+    /**
+     * ACL targets scoping the group's access on each member. When absent the group
+     * is granted Operate on all clusters/endpoints.
+     */
+    acl_targets?: AccessControlTarget[];
+}
+
+/** Per-member result of reconciling a group's registry against on-device state. */
+export interface GroupMemberReconciliation {
+    node_id: number | bigint;
+    endpoint_id: number;
+    /** Whether the node was reachable for inspection. */
+    reachable: boolean;
+    /** Whether the membership is present in the device's GroupKeyManagement.GroupTable. */
+    on_device: boolean;
+    /** Whether this member was re-provisioned during this reconcile (repair mode). */
+    repaired: boolean;
+}
+
+/** Result of `reconcile_group`: registry membership checked against device truth. */
+export interface GroupReconciliation {
+    group_id: number;
+    members: GroupMemberReconciliation[];
 }
 
 /** Binding target for set_node_binding command */
@@ -384,6 +490,8 @@ export interface ServerInfoMessage {
     ble_proxy_enabled?: boolean;
     /** The controller's own operational (CASE) node id. Note: Only available with OHF Matter Server, not Python Matter Server. */
     controller_node_id?: number | bigint;
+    /** True when the server supports Matter multicast group commands (`create_group`, `send_group_command`, …). OHF Matter Server extension; absent on Python Matter Server. */
+    groups_supported?: boolean;
 }
 
 /** WebSocket event types and their data payloads */
@@ -417,6 +525,15 @@ export interface APIEvents {
     };
     webrtc_callback: {
         data: WebRtcCallbackData;
+    };
+    group_added: {
+        data: MatterGroupData;
+    };
+    group_updated: {
+        data: MatterGroupData;
+    };
+    group_removed: {
+        data: number;
     };
 }
 
@@ -463,6 +580,18 @@ interface ServerEventWebRtcCallback {
     event: "webrtc_callback";
     data: WebRtcCallbackData;
 }
+interface ServerEventGroupAdded {
+    event: "group_added";
+    data: MatterGroupData;
+}
+interface ServerEventGroupUpdated {
+    event: "group_updated";
+    data: MatterGroupData;
+}
+interface ServerEventGroupRemoved {
+    event: "group_removed";
+    data: number;
+}
 
 export type EventMessage =
     | ServerEventNodeAdded
@@ -474,7 +603,10 @@ export type EventMessage =
     | ServerEventEndpointAdded
     | ServerEventEndpointRemoved
     | ServerEventInfoUpdated
-    | ServerEventWebRtcCallback;
+    | ServerEventWebRtcCallback
+    | ServerEventGroupAdded
+    | ServerEventGroupUpdated
+    | ServerEventGroupRemoved;
 
 export interface ResultMessageBase {
     message_id: string;
