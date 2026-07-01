@@ -7,7 +7,7 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
-## **WORK IN PROGRESS**
+## 1.1.7 (2026-07-01)
 
 - Speed up attribute data conversion for migration and websocket communication
 - Enhancement: Update matter.js to 0.17.4
