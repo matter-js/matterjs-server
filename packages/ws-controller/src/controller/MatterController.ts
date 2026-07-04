@@ -128,13 +128,12 @@ export function registerThreadCredentialsFromHex(
 ): OperationalDataset | undefined {
     if (hex === undefined || hex === "") return undefined;
     try {
-        const blob = Bytes.of(Bytes.fromHex(hex));
-        const ds = OperationalDataset.decode(blob);
+        const ds = OperationalDataset.decode(hex);
         credentials.register(ds);
-        logger.info(`[ThreadDiag] Registered Thread credentials from ${source} (${formatDatasetForLog(ds)})`);
+        logger.info(`Registered Thread credentials from ${source} (${formatDatasetForLog(ds)})`);
         return ds;
     } catch (e) {
-        logger.warn(`[ThreadDiag] Could not register Thread credentials from ${source}: ${e}`);
+        logger.warn(`Could not register Thread credentials from ${source}: ${e}`);
         return undefined;
     }
 }
@@ -396,12 +395,10 @@ export class MatterController {
                     initPromises.push(this.#enableTestOtaImages());
                 }
 
-                if (!this.#threadDiagnosticsDisabled) {
-                    initPromises.push(this.#borderRouterRegistry.start());
-                }
                 initPromises.push(this.#enableWebRtcRequestor());
 
                 if (!this.#threadDiagnosticsDisabled) {
+                    initPromises.push(this.#borderRouterRegistry.start());
                     this.#registerStoredThreadCredentials();
                 }
 

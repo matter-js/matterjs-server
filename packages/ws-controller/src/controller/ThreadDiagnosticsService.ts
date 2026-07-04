@@ -151,7 +151,7 @@ export class ThreadDiagnosticsService {
         if (this.#enabled) {
             opts.borderRouters.events.added.on(br => {
                 this.#probeBrForRest(br).catch(err =>
-                    logger.warn(`[ThreadDiag] REST probe failed xp=${br.extendedPanIdHex ?? "?"}: ${err}`),
+                    logger.warn(`REST probe failed xp=${br.extendedPanIdHex ?? "?"}: ${err}`),
                 );
             });
             opts.borderRouters.events.removed.on(br => {
@@ -180,7 +180,7 @@ export class ThreadDiagnosticsService {
             if (seen.has(key)) continue;
             seen.add(key);
             this.getOrFetch(key).catch(err => {
-                logger.warn(`[ThreadDiag] background fetch xp=${xp.toUpperCase()} failed: ${err}`);
+                logger.warn(`background fetch xp=${xp.toUpperCase()} failed: ${err}`);
             });
         }
     }
@@ -202,7 +202,7 @@ export class ThreadDiagnosticsService {
 
         if (!this.#enabled) return undefined;
 
-        logger.debug(`[ThreadDiag] getOrFetch xp=${xp} force=${force}`);
+        logger.debug(`getOrFetch xp=${xp} force=${force}`);
 
         if (!force) {
             const cached = this.#cache.get(key);
@@ -216,13 +216,13 @@ export class ThreadDiagnosticsService {
                 Date.now() - cached.collectedAt < this.#cacheTtlMs
             ) {
                 logger.debug(
-                    `[ThreadDiag] cache HIT xp=${xp} age=${Date.now() - cached.collectedAt}ms source=${cached.source} nodes=${cached.nodes.length}`,
+                    `cache HIT xp=${xp} age=${Date.now() - cached.collectedAt}ms source=${cached.source} nodes=${cached.nodes.length}`,
                 );
                 return cached;
             }
             const inFlight = this.#streamsInFlight.get(key);
             if (inFlight !== undefined) {
-                logger.debug(`[ThreadDiag] join in-flight stream xp=${xp}`);
+                logger.debug(`join in-flight stream xp=${xp}`);
                 return inFlight.firstBatch;
             }
         }
@@ -234,7 +234,7 @@ export class ThreadDiagnosticsService {
             .filter(br => br.extendedPanIdHex !== undefined && br.extendedPanIdHex.toLowerCase() === key);
 
         if (matchingBrs.length === 0) {
-            logger.info(`[ThreadDiag] no BR matches xp=${xp} -> partial(border_router_unreachable)`);
+            logger.info(`no BR matches xp=${xp} -> partial(border_router_unreachable)`);
             const networkName = this.#cache.get(key)?.networkName ?? "";
             return this.#publish(this.#partial(key, networkName, "border_router_unreachable"));
         }
@@ -242,14 +242,14 @@ export class ThreadDiagnosticsService {
         const ranked = rankBrs(matchingBrs);
         const br = ranked[0];
         if (br === undefined) {
-            logger.info(`[ThreadDiag] selectBr returned none xp=${xp} candidates=${matchingBrs.length}`);
+            logger.info(`selectBr returned none xp=${xp} candidates=${matchingBrs.length}`);
             const networkName = matchingBrs[0].networkName ?? this.#cache.get(key)?.networkName ?? "";
             return this.#publish(this.#partial(key, networkName, "border_router_unreachable"));
         }
 
         const networkName = br.networkName ?? this.#cache.get(key)?.networkName ?? "";
         logger.debug(
-            `[ThreadDiag] BR picked xp=${xp} network="${networkName}" host="${br.hostname ?? "?"}" candidates=${matchingBrs.length}`,
+            `BR picked xp=${xp} network="${networkName}" host="${br.hostname ?? "?"}" candidates=${matchingBrs.length}`,
         );
 
         // Ensure a REST-capability probe has settled before transport selection: if
@@ -263,7 +263,7 @@ export class ThreadDiagnosticsService {
             if (!force) {
                 const joined = this.#streamsInFlight.get(key);
                 if (joined !== undefined) {
-                    logger.debug(`[ThreadDiag] join in-flight stream (post-probe) xp=${xp}`);
+                    logger.debug(`join in-flight stream (post-probe) xp=${xp}`);
                     return joined.firstBatch;
                 }
             }
@@ -272,7 +272,7 @@ export class ThreadDiagnosticsService {
         if (force) {
             const existing = this.#streamsInFlight.get(key);
             if (existing !== undefined) {
-                logger.debug(`[ThreadDiag] force=true canceling in-flight stream xp=${xp}`);
+                logger.debug(`force=true canceling in-flight stream xp=${xp}`);
                 await existing.cancel();
             }
         }
@@ -290,7 +290,7 @@ export class ThreadDiagnosticsService {
         const restCap = this.#restCaps.get(extPanIdHex);
 
         if (restCap !== undefined) {
-            logger.debug(`[ThreadDiag] source=REST xp=${xp} baseUrl=${restCap.baseUrl}`);
+            logger.debug(`source=REST xp=${xp} baseUrl=${restCap.baseUrl}`);
             return this.#launchStream(extPanIdHex, networkName, "otbr-rest", async () => ({
                 source: this.#opts.makeRestSource(restCap),
                 close: async () => {},
@@ -299,7 +299,7 @@ export class ThreadDiagnosticsService {
 
         const creds = this.#opts.credentials.getCredentials(extPanIdBytes);
         if (creds === undefined) {
-            logger.info(`[ThreadDiag] no source xp=${xp} -> partial(no_credentials)`);
+            logger.info(`no source xp=${xp} -> partial(no_credentials)`);
             const partial = this.#partial(extPanIdHex, networkName, "no_credentials");
             this.#publish(partial);
             const settled = Promise.resolve();
@@ -310,7 +310,7 @@ export class ThreadDiagnosticsService {
             };
         }
 
-        logger.debug(`[ThreadDiag] source=MeshCoP xp=${xp} pskc-registered=true candidates=${brs.length}`);
+        logger.debug(`source=MeshCoP xp=${xp} pskc-registered=true candidates=${brs.length}`);
         return this.#launchStream(extPanIdHex, networkName, "meshcop", () =>
             this.#acquireMeshcopWithFallback(xp, creds, brs),
         );
@@ -334,7 +334,7 @@ export class ThreadDiagnosticsService {
             } catch (err) {
                 lastErr = err;
                 logger.warn(
-                    `[ThreadDiag] meshcop connect FAIL xp=${xp} host="${br.hostname ?? "?"}" candidate=${i + 1}/${brs.length}: ${err}`,
+                    `meshcop connect FAIL xp=${xp} host="${br.hostname ?? "?"}" candidate=${i + 1}/${brs.length}: ${err}`,
                 );
             }
         }
@@ -386,9 +386,9 @@ export class ThreadDiagnosticsService {
                     windowMs: this.#windowMs,
                 });
                 await this.#driveStream(extPanIdHex, networkName, sourceKind, activeHandle, resolveFirstBatchOnce);
-                logger.debug(`[ThreadDiag] ${sourceKind} DONE xp=${xp} duration=${Date.now() - start}ms`);
+                logger.debug(`${sourceKind} DONE xp=${xp} duration=${Date.now() - start}ms`);
             } catch (err) {
-                logger.warn(`[ThreadDiag] ${sourceKind} FAIL xp=${xp} duration=${Date.now() - start}ms: ${err}`);
+                logger.warn(`${sourceKind} FAIL xp=${xp} duration=${Date.now() - start}ms: ${err}`);
                 const reason = sourceKind === "otbr-rest" ? mapRestError(err) : mapMeshcopError(err);
                 const partial = this.#partialOf(extPanIdHex, networkName, sourceKind, reason);
                 this.#publish(partial);
@@ -401,7 +401,7 @@ export class ThreadDiagnosticsService {
                     try {
                         await activeSourceHandle.close();
                     } catch (closeErr) {
-                        logger.warn(`[ThreadDiag] ${sourceKind} close FAIL xp=${xp}: ${closeErr}`);
+                        logger.warn(`${sourceKind} close FAIL xp=${xp}: ${closeErr}`);
                     }
                 }
                 this.#streamsInFlight.delete(extPanIdHex);
@@ -451,7 +451,7 @@ export class ThreadDiagnosticsService {
             if (debounceTimer !== undefined) clearTimeout(debounceTimer);
             debounceTimer = setTimeout(() => {
                 debounceTimer = undefined;
-                logger.debug(`[ThreadDiag] stream debounced flush xp=${xp} acc=${acc.size}`);
+                logger.debug(`stream debounced flush xp=${xp} acc=${acc.size}`);
                 this.#publish(snapshot("in_progress"));
             }, this.#debounceMs);
         };
@@ -467,21 +467,21 @@ export class ThreadDiagnosticsService {
             acc.set(key, node);
             const rloc = node.rloc16 !== undefined ? `0x${node.rloc16.toString(16).padStart(4, "0")}` : "?";
             logger.debug(
-                `[ThreadDiag] stream arrival xp=${xp} source=${sourceKind} mac=${key} rloc16=${rloc} new=${isNew} acc=${acc.size} t+${Date.now() - streamStart}ms`,
+                `stream arrival xp=${xp} source=${sourceKind} mac=${key} rloc16=${rloc} new=${isNew} acc=${acc.size} t+${Date.now() - streamStart}ms`,
             );
             if (firstBatchFired) {
                 scheduleDebouncedFlush();
             }
         });
         handle.onError.on((err: Error) => {
-            logger.warn(`[ThreadDiag] stream error xp=${xp}: ${err.message}`);
+            logger.warn(`stream error xp=${xp}: ${err.message}`);
         });
 
         const firstBatchTimer = setTimeout(() => {
             firstBatchFired = true;
             const reason = acc.size === 0 ? "meshcop_no_responses_yet" : "in_progress";
             logger.debug(
-                `[ThreadDiag] stream firstBatch xp=${xp} acc=${acc.size} partial=${reason} t+${Date.now() - streamStart}ms`,
+                `stream firstBatch xp=${xp} acc=${acc.size} partial=${reason} t+${Date.now() - streamStart}ms`,
             );
             resolveFirstBatch(this.#publish(snapshot(reason)));
         }, this.#firstBatchMs);
@@ -497,7 +497,7 @@ export class ThreadDiagnosticsService {
         }
 
         firstBatchFired = true;
-        logger.info(`[ThreadDiag] ${sourceKind} OK xp=${xp} nodes=${acc.size} t+${Date.now() - streamStart}ms`);
+        logger.info(`${sourceKind} OK xp=${xp} nodes=${acc.size} t+${Date.now() - streamStart}ms`);
         const finalBatch = this.#publish(snapshot(undefined));
         resolveFirstBatch(finalBatch);
     }
@@ -531,7 +531,7 @@ export class ThreadDiagnosticsService {
             try {
                 const cap = await Promise.any(probes);
                 this.#restCaps.set(key, cap);
-                logger.info(`[ThreadDiag] REST auto-registered xp=${xp.toUpperCase()} baseUrl=${cap.baseUrl}`);
+                logger.info(`REST auto-registered xp=${xp.toUpperCase()} baseUrl=${cap.baseUrl}`);
             } catch {
                 // AggregateError — every probe rejected. Normal when BR has no REST endpoint.
             }
@@ -555,9 +555,7 @@ export class ThreadDiagnosticsService {
             .some(br => br.extendedPanIdHex !== undefined && br.extendedPanIdHex.toLowerCase() === key);
         if (stillPresent) return;
         if (this.#restCaps.delete(key)) {
-            logger.info(
-                `[ThreadDiag] REST capability unregistered xp=${xp.toUpperCase()} (last BR for network removed)`,
-            );
+            logger.info(`REST capability unregistered xp=${xp.toUpperCase()} (last BR for network removed)`);
         }
         this.#probeAttempted.delete(key);
     }
@@ -589,7 +587,7 @@ export class ThreadDiagnosticsService {
     #publish(batch: ThreadDiagnosticsBatch): ThreadDiagnosticsBatch {
         this.#cache.set(batch.extPanIdHex, batch);
         logger.debug(
-            `[ThreadDiag] publish xp=${batch.extPanIdHex.toUpperCase()} source=${batch.source} nodes=${batch.nodes.length}${batch.partialReason ? ` partial=${batch.partialReason}` : ""}`,
+            `publish xp=${batch.extPanIdHex.toUpperCase()} source=${batch.source} nodes=${batch.nodes.length}${batch.partialReason ? ` partial=${batch.partialReason}` : ""}`,
         );
         if (batch.nodes.length > 0) {
             let withConnectivity = 0;
@@ -609,7 +607,7 @@ export class ThreadDiagnosticsService {
                 }
             }
             logger.debug(
-                `[ThreadDiag] batch contents xp=${batch.extPanIdHex.toUpperCase()} connectivity=${withConnectivity}/${batch.nodes.length} route64=${withRoute64}/${batch.nodes.length} (${totalRoute64Entries} entries) childTable=${withChildTable}/${batch.nodes.length} (${totalChildTableEntries} entries)`,
+                `batch contents xp=${batch.extPanIdHex.toUpperCase()} connectivity=${withConnectivity}/${batch.nodes.length} route64=${withRoute64}/${batch.nodes.length} (${totalRoute64Entries} entries) childTable=${withChildTable}/${batch.nodes.length} (${totalChildTableEntries} entries)`,
             );
         }
         this.events.batchUpdated.emit(batch);

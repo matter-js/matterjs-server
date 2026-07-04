@@ -24,6 +24,7 @@ class EventType(Enum):
     ENDPOINT_ADDED = "endpoint_added"
     ENDPOINT_REMOVED = "endpoint_removed"
     WEBRTC_CALLBACK = "webrtc_callback"
+    THREAD_DIAGNOSTICS_UPDATED = "thread_diagnostics_updated"  # schema 12+
 
 
 class APICommand(str, Enum):
@@ -58,6 +59,8 @@ class APICommand(str, Enum):
     SET_NODE_BINDING = "set_node_binding"
     SEND_WEBRTC_PROVIDER_COMMAND = "send_webrtc_provider_command"
     GET_ALL_CREDENTIALS = "get_all_credentials"
+    GET_THREAD_BORDER_ROUTERS = "get_thread_border_routers"
+    GET_THREAD_DIAGNOSTICS = "get_thread_diagnostics"
 
 
 EventCallBackType = Callable[[EventType, Any], None]
@@ -92,9 +95,7 @@ class MatterNodeData:
     # all attribute subscriptions we need to persist for this node,
     # a set of tuples in format (endpoint_id, cluster_id, attribute_id)
     # where each value can also be a None for wildcard
-    attribute_subscriptions: set[tuple[int | None, int | None, int | None]] = field(
-        default_factory=set
-    )
+    attribute_subscriptions: set[tuple[int | None, int | None, int | None]] = field(default_factory=set)
 
 
 @dataclass
@@ -213,13 +214,7 @@ class ServerInfoMessage:
     ble_proxy_enabled: bool = False
 
 
-MessageType = (
-    CommandMessage
-    | EventMessage
-    | SuccessResultMessage
-    | ErrorResultMessage
-    | ServerInfoMessage
-)
+MessageType = CommandMessage | EventMessage | SuccessResultMessage | ErrorResultMessage | ServerInfoMessage
 
 
 @dataclass

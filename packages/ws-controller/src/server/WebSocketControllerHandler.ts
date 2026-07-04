@@ -108,8 +108,6 @@ export class WebSocketControllerHandler implements WebServerHandler {
     #eventHistory: MatterNodeEvent[] = [];
     /** Track when each node was last interviewed (connected) - keyed by nodeId */
     #lastInterviewDates = new Map<NodeId, Date>();
-    /** Service-level observer cleanup; populated in {@link register}. */
-    #serviceObservers = new ObserverGroup();
 
     constructor(controller: MatterController, config: ConfigStorage, serverVersion: string) {
         this.#controller = controller;
@@ -198,7 +196,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             return;
         }
 
-        this.#serviceObservers.on(this.#controller.threadDiagnostics.events.batchUpdated, batch => {
+        this.#serverObservers.on(this.#controller.threadDiagnostics.events.batchUpdated, batch => {
             this.#broadcastEvent("thread_diagnostics_updated", serializeBatch(batch));
         });
 
@@ -468,7 +466,6 @@ export class WebSocketControllerHandler implements WebServerHandler {
         }
 
         this.#closed = true;
-        this.#serviceObservers.close();
         this.#serverObservers.close();
         for (const remove of this.#removeUpgradeListeners) remove();
         this.#removeUpgradeListeners = [];
@@ -1127,7 +1124,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         const wifiOut = ensureDefault(wifi, { id: ConfigStorage.DEFAULT_CREDENTIAL_ID, ssid: "" });
         const thread = this.#config.listThreadCredentials().map(e => {
             try {
-                const ds = OperationalDataset.decode(Bytes.of(Bytes.fromHex(e.dataset)));
+                const ds = OperationalDataset.decode(e.dataset);
                 return {
                     id: e.id,
                     networkName: ds.networkName,
@@ -1169,7 +1166,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         if (removedDataset === undefined || removedDataset === "") return;
         let removedExtPanId: Uint8Array | undefined;
         try {
-            removedExtPanId = OperationalDataset.decode(Bytes.of(Bytes.fromHex(removedDataset))).extPanId;
+            removedExtPanId = OperationalDataset.decode(removedDataset).extPanId;
         } catch {
             return;
         }
@@ -1177,7 +1174,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         const target = removedExtPanId;
         const stillReferenced = this.#config.listThreadCredentials().some(e => {
             try {
-                const xp = OperationalDataset.decode(Bytes.of(Bytes.fromHex(e.dataset))).extPanId;
+                const xp = OperationalDataset.decode(e.dataset).extPanId;
                 return xp !== undefined && Bytes.areEqual(xp, target);
             } catch {
                 return false;

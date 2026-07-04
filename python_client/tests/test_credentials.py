@@ -166,3 +166,32 @@ async def test_schema_gate_raises_server_version_too_old() -> None:
     # Exercise _prepare_message directly — send_command also checks _loop before the gate.
     with pytest.raises(ServerVersionTooOld):
         c._prepare_message(APICommand.SET_WIFI_CREDENTIALS, require_schema=12, ssid="S", credentials="C", id="Garage")
+
+
+async def test_get_thread_border_routers_uses_schema_12() -> None:
+    c = _bare_client()
+    c.send_command = AsyncMock(return_value=[])
+    await c.get_thread_border_routers()
+    args, kwargs = c.send_command.call_args
+    assert args[0] == APICommand.GET_THREAD_BORDER_ROUTERS
+    assert kwargs.get("require_schema") == 12
+
+
+async def test_get_thread_diagnostics_all_networks() -> None:
+    c = _bare_client()
+    c.send_command = AsyncMock(return_value=[])
+    await c.get_thread_diagnostics()
+    args, kwargs = c.send_command.call_args
+    assert args[0] == APICommand.GET_THREAD_DIAGNOSTICS
+    assert kwargs.get("require_schema") == 12
+    assert "extPanId" not in kwargs
+    assert "force" not in kwargs
+
+
+async def test_get_thread_diagnostics_single_network_forced() -> None:
+    c = _bare_client()
+    c.send_command = AsyncMock(return_value=None)
+    await c.get_thread_diagnostics(ext_pan_id="2011201402051977", force=True)
+    _, kwargs = c.send_command.call_args
+    assert kwargs["extPanId"] == "2011201402051977"
+    assert kwargs["force"] is True
