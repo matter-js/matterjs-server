@@ -137,19 +137,34 @@ export class MatterClient {
     }
 
     async setWifiCredentials(ssid: string, credentials: string, id?: string, timeout?: number): Promise<void> {
-        await this.sendCommand("set_wifi_credentials", id === undefined ? 0 : 12, { ssid, credentials, id }, timeout);
+        await this.sendCommand(
+            "set_wifi_credentials",
+            id === undefined || id === "default" ? 0 : 12,
+            { ssid, credentials, id },
+            timeout,
+        );
     }
 
     async setThreadOperationalDataset(dataset: string, id?: string, timeout?: number): Promise<void> {
-        await this.sendCommand("set_thread_dataset", id === undefined ? 0 : 12, { dataset, id }, timeout);
+        await this.sendCommand(
+            "set_thread_dataset",
+            id === undefined || id === "default" ? 0 : 12,
+            { dataset, id },
+            timeout,
+        );
     }
 
     async removeWifiCredentials(id?: string, timeout?: number): Promise<void> {
-        await this.sendCommand("remove_wifi_credentials", id === undefined ? 0 : 12, { id }, timeout);
+        await this.sendCommand(
+            "remove_wifi_credentials",
+            id === undefined || id === "default" ? 0 : 12,
+            { id },
+            timeout,
+        );
     }
 
     async removeThreadDataset(id?: string, timeout?: number): Promise<void> {
-        await this.sendCommand("remove_thread_dataset", id === undefined ? 0 : 12, { id }, timeout);
+        await this.sendCommand("remove_thread_dataset", id === undefined || id === "default" ? 0 : 12, { id }, timeout);
     }
 
     async getAllCredentials(timeout?: number): Promise<AllCredentialsSummary> {

@@ -775,13 +775,15 @@ export class WebSocketControllerHandler implements WebServerHandler {
         let wifiCredentials: ControllerCommissioningFlowOptions["wifiNetwork"] | undefined = undefined;
         let threadCredentials: ControllerCommissioningFlowOptions["threadNetwork"] | undefined = undefined;
         if (!network_only && this.#commandHandler.bleEnabled) {
-            if (wifiEntry !== undefined) {
+            // Only apply a stored credential when its values are actually present —
+            // an empty ssid/password or dataset would otherwise be pushed to the device.
+            if (wifiEntry?.ssid && wifiEntry.credentials) {
                 wifiCredentials = {
                     wifiSsid: wifiEntry.ssid,
                     wifiCredentials: wifiEntry.credentials,
                 };
             }
-            if (threadEntry !== undefined) {
+            if (threadEntry?.dataset) {
                 threadCredentials = {
                     networkName: "",
                     operationalDataset: threadEntry.dataset,
