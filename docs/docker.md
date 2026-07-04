@@ -319,9 +319,8 @@ docker run -d \
 The `dbus-next` package required by this backend ships as an optional dependency of the server image, so no extra install step is required. Host requirements: BlueZ running on the host (`bluetoothd`) and the adapter powered (`bluetoothctl power on`). Select a specific adapter with `BLUETOOTH_ADAPTER` if more than one is present.
 
 > [!NOTE]
-> The `dbus-next` library authenticates by providing process UID to the DBus server. When running in a rootless container this will fail since the process UID in the child namespace in general does not match the UID seen by the DBus server on the host.
-> Make sure to map the UID 1000 used by matter.js inside the container to the UID of the host user running the container. When using podman this is done with the option `--userns=keep-id:uid=1000,gid=1000`. You also need to set the ownership of `data`
-> directory and the files underneath to the host user running the container.
+> The `dbus-next` library authenticates to the system D-Bus using the peer process UID (Unix socket credentials). In a rootless container this can fail because the UID inside the user namespace does not match the UID seen by the host D-Bus daemon.
+> Make sure the container's UID 1000 (the default user in this image) is mapped to the UID of the host user running the container. With Podman this can be done with `--userns=keep-id:uid=1000,gid=1000`. You also need to set the ownership of the `data` directory and the files underneath to the host user running the container.
 
 #### Raw HCI socket backend
 
