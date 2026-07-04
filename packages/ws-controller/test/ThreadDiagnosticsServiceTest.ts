@@ -249,6 +249,34 @@ describe("ThreadDiagnosticsService", () => {
         expect(restCalls).to.deep.equal([]);
     });
 
+    it("re-fetches after a terminal partial instead of serving it stale", async () => {
+        // A cached partial (e.g. no_credentials) must not stick for the TTL: a
+        // non-force fetch after credentials are registered must re-run, not HIT.
+        const credsMap = new Map<string, ThreadNetworkCredentials>();
+        let meshcopCalls = 0;
+        const service = new ThreadDiagnosticsService({
+            ...FAST_TIMING,
+            borderRouters: brRegistryFrom(brsListing([makeBr()])),
+            credentials: credsRegistryFrom(credsLookup(credsMap)),
+            makeRestSource: () => syncRestSource([]),
+            makeMeshcopSource: async () => {
+                meshcopCalls += 1;
+                return meshcopHandle(syncMeshcopSource([SAMPLE_NODE]));
+            },
+            probeRest: async () => null,
+        });
+
+        const first = await service.getOrFetch(EXT_PAN_HEX_LOWER);
+        expect(first?.partialReason).to.equal("no_credentials");
+        expect(meshcopCalls).to.equal(0);
+
+        credsMap.set(EXT_PAN_HEX_LOWER, makeCreds());
+        const second = await service.getOrFetch(EXT_PAN_HEX_LOWER);
+        expect(second?.partialReason).to.equal(undefined);
+        expect(second?.nodes).to.have.lengthOf(1);
+        expect(meshcopCalls).to.equal(1);
+    });
+
     it("force=true bypasses the cache", async () => {
         let calls = 0;
         const service = new ThreadDiagnosticsService({

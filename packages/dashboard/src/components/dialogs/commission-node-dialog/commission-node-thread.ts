@@ -138,9 +138,6 @@ export class CommissionNodeThread extends LitElement {
                               this._selectedId = (e.target as HTMLSelectElement).value;
                           }}
                       >
-                          <md-select-option value="default">
-                              <div slot="headline">Default</div>
-                          </md-select-option>
                           ${threadList.map(
                               entry => html`
                                   <md-select-option value=${entry.id}>

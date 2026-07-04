@@ -861,8 +861,9 @@ export class ThreadGraph extends BaseNetworkGraph {
             });
         } else if (nodeId.startsWith("thread_") || nodeId.startsWith("meshrloc_")) {
             // Diagnostic mesh node. Router id scheme: `thread_<MAC>` (always a router) or
-            // `meshrloc_<rloc16>` where a router has the low 10 child bits clear.
-            const isRouter = nodeId.startsWith("thread_") || (Number(nodeId.slice("meshrloc_".length)) & 0x3ff) === 0;
+            // `meshrloc_<EXTPANID>_<rloc16>` where a router has the low 10 child bits clear.
+            const rloc16 = Number(nodeId.slice(nodeId.lastIndexOf("_") + 1));
+            const isRouter = nodeId.startsWith("thread_") || (Number.isFinite(rloc16) && (rloc16 & 0x3ff) === 0);
             this._nodesDataSet.update({
                 id: nodeId,
                 image: createUnknownDeviceIconDataUrl(isRouter, isHighlighted),

@@ -150,7 +150,9 @@ export class ThreadDiagnosticsService {
 
         if (this.#enabled) {
             opts.borderRouters.events.added.on(br => {
-                void this.#probeBrForRest(br);
+                this.#probeBrForRest(br).catch(err =>
+                    logger.warn(`[ThreadDiag] REST probe failed xp=${br.extendedPanIdHex ?? "?"}: ${err}`),
+                );
             });
             opts.borderRouters.events.removed.on(br => {
                 this.#handleBrRemoved(br);
@@ -204,7 +206,15 @@ export class ThreadDiagnosticsService {
 
         if (!force) {
             const cached = this.#cache.get(key);
-            if (cached !== undefined && Date.now() - cached.collectedAt < this.#cacheTtlMs) {
+            // Only a completed fetch (no partialReason) is a cache hit. Terminal partials
+            // (no_credentials, *_unreachable, dtls_failed, …) must not stick for the full
+            // TTL — re-fetch so a later credential registration or a recovered BR is picked
+            // up. A mid-stream snapshot falls through to the in-flight join below.
+            if (
+                cached !== undefined &&
+                cached.partialReason === undefined &&
+                Date.now() - cached.collectedAt < this.#cacheTtlMs
+            ) {
                 logger.debug(
                     `[ThreadDiag] cache HIT xp=${xp} age=${Date.now() - cached.collectedAt}ms source=${cached.source} nodes=${cached.nodes.length}`,
                 );
