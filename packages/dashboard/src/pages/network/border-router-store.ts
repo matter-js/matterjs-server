@@ -38,13 +38,19 @@ export class BorderRouterStore {
         }
         this.#entries = next;
 
-        const result = await client.sendCommand("get_thread_diagnostics", 0, {});
-        const batches = Array.isArray(result) ? result : result === undefined ? [] : [result];
-        const nextDiag = new Map<string, ThreadDiagnosticsBatch>();
-        for (const batch of batches) {
-            nextDiag.set(batch.extPanIdHex.toUpperCase(), batch);
+        // Diagnostics are a schema-12, best-effort feature: their failure (an older
+        // server, or a transient error) must never abort the border-router refresh.
+        try {
+            const result = await client.sendCommand("get_thread_diagnostics", 12, {});
+            const batches = Array.isArray(result) ? result : result === undefined ? [] : [result];
+            const nextDiag = new Map<string, ThreadDiagnosticsBatch>();
+            for (const batch of batches) {
+                nextDiag.set(batch.extPanIdHex.toUpperCase(), batch);
+            }
+            this.#diagnostics = nextDiag;
+        } catch (err) {
+            console.warn("Thread diagnostics refresh skipped:", err);
         }
-        this.#diagnostics = nextDiag;
     }
 
     /** Apply a single batch update from a thread_diagnostics_updated event. */
@@ -56,15 +62,19 @@ export class BorderRouterStore {
 
     /** Force-refresh diagnostics for a single network. */
     async refreshDiagnosticsFor(client: MatterClient, extPanIdHex: string): Promise<void> {
-        const result = await client.sendCommand("get_thread_diagnostics", 0, {
-            extPanId: extPanIdHex.toLowerCase(),
-            force: true,
-        });
-        if (result === undefined) return;
-        if (Array.isArray(result)) {
-            for (const batch of result) this.applyBatch(batch);
-        } else {
-            this.applyBatch(result);
+        try {
+            const result = await client.sendCommand("get_thread_diagnostics", 12, {
+                extPanId: extPanIdHex.toLowerCase(),
+                force: true,
+            });
+            if (result === undefined) return;
+            if (Array.isArray(result)) {
+                for (const batch of result) this.applyBatch(batch);
+            } else {
+                this.applyBatch(result);
+            }
+        } catch (err) {
+            console.warn("Thread diagnostics refresh skipped:", err);
         }
     }
 

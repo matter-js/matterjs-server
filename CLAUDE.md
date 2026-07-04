@@ -41,12 +41,14 @@ npm run format-verify
 
 ## Monorepo Structure
 
-This is an npm workspaces monorepo with five packages:
+This is an npm workspaces monorepo with six packages:
 
-- **packages/ws-controller** (`@matter-server/ws-controller`): Core Matter controller library wrapping `@project-chip/matter.js`. Exports `MatterController`, `ControllerCommandHandler`, `WebSocketControllerHandler`, `ConfigStorage`
+- **packages/ws-controller** (`@matter-server/ws-controller`): Core Matter controller library wrapping `@project-chip/matter.js`. Exports `MatterController`, `ControllerCommandHandler`, `WebSocketControllerHandler`, `ConfigStorage`, `ThreadDiagnosticsService`. Consumes `@matter/thread-br-client` for Thread Border Router discovery/diagnostics.
+- **packages/ws-client** (`@matter-server/ws-client`): WebSocket client library + wire models for the Matter server (used by the dashboard and external clients)
 - **packages/dashboard** (`@matter-server/dashboard`): Web UI built with Lit, Rollup, and Material Web Components. Connects to server via WebSocket
 - **packages/matter-server** (`matter-server`): Main entry point. HTTP/WebSocket server using Express, combines controller + dashboard
-- **packages/thread-br** (`@matter-server/thread-br`): Thread Border Router protocol stack — DTLS-EC-JPAKE handshake (via `@noble/curves`), CoAP, MeshCoP TLV codecs, Network Diagnostic TLV codecs, OperationalDataset namespace, ThreadCredentialsRegistry, OTBR REST adapter. ESM-only. Tests use `@matter/testing` (mocha/chai, `matter-test` runner).
+- **packages/ble-proxy** (`@matter-server/ble-proxy`): BLE proxy implementation — proxies BLE operations over WebSocket for remote commissioning
+- **packages/custom-clusters** (`@matter-server/custom-clusters`): Custom cluster definitions for matter.js-based projects
 - Build tooling is provided by the external `@nacho-iot/js-tools` dev dependency (CLI binaries `nacho-build`, `nacho-run`).
 
 ## Architecture
@@ -121,10 +123,10 @@ All four checks must pass **in this order**. `npm run format` must be run **befo
 
 #### Test scoping during iteration
 
-For fast iteration while working on a single workspace package, run scoped tests via the npm `-w` flag from the repo root. Example for `thread-br`:
+For fast iteration while working on a single workspace package, run scoped tests via the npm `-w` flag from the repo root. Example for `ws-controller`:
 
 ```bash
-npm test -w @matter-server/thread-br
+npm test -w @matter-server/ws-controller
 ```
 
 This is the preferred verification mode for in-package work; the full `npm test` is the final gate before declaring work done.
@@ -136,7 +138,7 @@ This is the preferred verification mode for in-package work; the full `npm test`
 - `Integration Test > Device Discovery > should discover commissionable nodes via discover command — expected undefined to exist`
 - `Integration Test > Commission On Network > should commission device using passcode and long discriminator — expected '<vendor>' to equal 'Test Vendor'`
 
-When the full `npm test` reports only these matter-server integration failures and your changes are confined to other packages (e.g. `thread-br`, `ws-controller` non-discovery code paths), treat them as pre-existing environment failures rather than regressions. Confirm by running scoped tests for your package via `npm test -w <workspace>`. Per the global "When tests fail" rule, ask before chasing failures you suspect are pre-existing.
+When the full `npm test` reports only these matter-server integration failures and your changes are confined to other packages (e.g. `ws-controller` non-discovery code paths, `dashboard`), treat them as pre-existing environment failures rather than regressions. Confirm by running scoped tests for your package via `npm test -w <workspace>`. Per the global "When tests fail" rule, ask before chasing failures you suspect are pre-existing.
 
 ### Plan Documents
 
