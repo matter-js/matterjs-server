@@ -87,6 +87,7 @@ class OccupancySensing(Cluster):
             kRadar = 0x20
             kRFSensing = 0x40
             kVision = 0x80
+            kOccupancyEvent = 0x200
 
         class OccupancyBitmap(IntFlag):
             kOccupied = 0x1

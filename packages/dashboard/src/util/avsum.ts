@@ -7,7 +7,7 @@
 import type { MatterClient, MatterNode } from "@matter-server/ws-client";
 import { asObject, pickNumber, pickString } from "./attribute-shapes.js";
 
-/** Camera AV Settings User Level Management cluster (spec 1.5.1 §11.3). */
+/** Camera AV Settings User Level Management cluster (Matter spec). */
 export const AVSUM_CLUSTER_ID = 1362; // 0x0552
 
 // Attribute IDs (spec §11.3.6).

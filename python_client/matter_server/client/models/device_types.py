@@ -745,6 +745,7 @@ class RainSensor(DeviceType):
 class Refrigerator(DeviceType):
     device_type: int = 0x0070
     clusters: set[type[Cluster]] = {
+        all_clusters.ActivatedCarbonFilterMonitoring,
         all_clusters.Descriptor,
         all_clusters.Identify,
         all_clusters.RefrigeratorAlarm,
@@ -880,6 +881,7 @@ class TemperatureControlledCabinet(DeviceType):
         all_clusters.OvenCavityOperationalState,
         all_clusters.OvenMode,
         all_clusters.RefrigeratorAndTemperatureControlledCabinetMode,
+        all_clusters.TemperatureAlarm,
         all_clusters.TemperatureControl,
         all_clusters.TemperatureMeasurement,
     }

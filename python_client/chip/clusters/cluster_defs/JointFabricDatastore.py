@@ -23,20 +23,20 @@ class JointFabricDatastore(Cluster):
     def descriptor(cls) -> ClusterObjectDescriptor:
         return ClusterObjectDescriptor(
             Fields=[
-                ClusterObjectFieldDescriptor(Label="anchorRootCa", Tag=0x00000000, Type=typing.Optional[bytes]),
-                ClusterObjectFieldDescriptor(Label="anchorNodeID", Tag=0x00000001, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="anchorVendorID", Tag=0x00000002, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="friendlyName", Tag=0x00000003, Type=typing.Optional[str]),
-                ClusterObjectFieldDescriptor(Label="groupKeySetList", Tag=0x00000004, Type=typing.Optional[typing.List[JointFabricDatastore.Structs.DatastoreGroupKeySetStruct]]),
-                ClusterObjectFieldDescriptor(Label="groupList", Tag=0x00000005, Type=typing.Optional[typing.List[JointFabricDatastore.Structs.DatastoreGroupInformationEntryStruct]]),
-                ClusterObjectFieldDescriptor(Label="nodeList", Tag=0x00000006, Type=typing.Optional[typing.List[JointFabricDatastore.Structs.DatastoreNodeInformationEntryStruct]]),
-                ClusterObjectFieldDescriptor(Label="adminList", Tag=0x00000007, Type=typing.Optional[typing.List[JointFabricDatastore.Structs.DatastoreAdministratorInformationEntryStruct]]),
-                ClusterObjectFieldDescriptor(Label="status", Tag=0x00000008, Type=typing.Optional[JointFabricDatastore.Structs.DatastoreStatusEntryStruct]),
-                ClusterObjectFieldDescriptor(Label="endpointGroupIDList", Tag=0x00000009, Type=typing.Optional[typing.List[JointFabricDatastore.Structs.DatastoreEndpointGroupIDEntryStruct]]),
-                ClusterObjectFieldDescriptor(Label="endpointBindingList", Tag=0x0000000A, Type=typing.Optional[typing.List[JointFabricDatastore.Structs.DatastoreEndpointBindingEntryStruct]]),
-                ClusterObjectFieldDescriptor(Label="nodeKeySetList", Tag=0x0000000B, Type=typing.Optional[typing.List[JointFabricDatastore.Structs.DatastoreNodeKeySetEntryStruct]]),
-                ClusterObjectFieldDescriptor(Label="nodeAclList", Tag=0x0000000C, Type=typing.Optional[typing.List[JointFabricDatastore.Structs.DatastoreACLEntryStruct]]),
-                ClusterObjectFieldDescriptor(Label="nodeEndpointList", Tag=0x0000000D, Type=typing.Optional[typing.List[JointFabricDatastore.Structs.DatastoreEndpointEntryStruct]]),
+                ClusterObjectFieldDescriptor(Label="anchorRootCa", Tag=0x00000000, Type=bytes),
+                ClusterObjectFieldDescriptor(Label="anchorNodeID", Tag=0x00000001, Type=uint),
+                ClusterObjectFieldDescriptor(Label="anchorVendorID", Tag=0x00000002, Type=uint),
+                ClusterObjectFieldDescriptor(Label="friendlyName", Tag=0x00000003, Type=str),
+                ClusterObjectFieldDescriptor(Label="groupKeySetList", Tag=0x00000004, Type=typing.List[JointFabricDatastore.Structs.DatastoreGroupKeySetStruct]),
+                ClusterObjectFieldDescriptor(Label="groupList", Tag=0x00000005, Type=typing.List[JointFabricDatastore.Structs.DatastoreGroupInformationEntryStruct]),
+                ClusterObjectFieldDescriptor(Label="nodeList", Tag=0x00000006, Type=typing.List[JointFabricDatastore.Structs.DatastoreNodeInformationEntryStruct]),
+                ClusterObjectFieldDescriptor(Label="adminList", Tag=0x00000007, Type=typing.List[JointFabricDatastore.Structs.DatastoreAdministratorInformationEntryStruct]),
+                ClusterObjectFieldDescriptor(Label="status", Tag=0x00000008, Type=JointFabricDatastore.Structs.DatastoreStatusEntryStruct),
+                ClusterObjectFieldDescriptor(Label="endpointGroupIDList", Tag=0x00000009, Type=typing.List[JointFabricDatastore.Structs.DatastoreEndpointGroupIDEntryStruct]),
+                ClusterObjectFieldDescriptor(Label="endpointBindingList", Tag=0x0000000A, Type=typing.List[JointFabricDatastore.Structs.DatastoreEndpointBindingEntryStruct]),
+                ClusterObjectFieldDescriptor(Label="nodeKeySetList", Tag=0x0000000B, Type=typing.List[JointFabricDatastore.Structs.DatastoreNodeKeySetEntryStruct]),
+                ClusterObjectFieldDescriptor(Label="nodeAclList", Tag=0x0000000C, Type=typing.List[JointFabricDatastore.Structs.DatastoreACLEntryStruct]),
+                ClusterObjectFieldDescriptor(Label="nodeEndpointList", Tag=0x0000000D, Type=typing.List[JointFabricDatastore.Structs.DatastoreEndpointEntryStruct]),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="eventList", Tag=0x0000FFFA, Type=typing.List[uint]),
@@ -45,20 +45,20 @@ class JointFabricDatastore(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    anchorRootCa: typing.Optional[bytes] = None
-    anchorNodeID: typing.Optional[uint] = None
-    anchorVendorID: typing.Optional[uint] = None
-    friendlyName: typing.Optional[str] = None
-    groupKeySetList: typing.Optional[typing.List[JointFabricDatastore.Structs.DatastoreGroupKeySetStruct]] = None
-    groupList: typing.Optional[typing.List[JointFabricDatastore.Structs.DatastoreGroupInformationEntryStruct]] = None
-    nodeList: typing.Optional[typing.List[JointFabricDatastore.Structs.DatastoreNodeInformationEntryStruct]] = None
-    adminList: typing.Optional[typing.List[JointFabricDatastore.Structs.DatastoreAdministratorInformationEntryStruct]] = None
-    status: typing.Optional[JointFabricDatastore.Structs.DatastoreStatusEntryStruct] = None
-    endpointGroupIDList: typing.Optional[typing.List[JointFabricDatastore.Structs.DatastoreEndpointGroupIDEntryStruct]] = None
-    endpointBindingList: typing.Optional[typing.List[JointFabricDatastore.Structs.DatastoreEndpointBindingEntryStruct]] = None
-    nodeKeySetList: typing.Optional[typing.List[JointFabricDatastore.Structs.DatastoreNodeKeySetEntryStruct]] = None
-    nodeAclList: typing.Optional[typing.List[JointFabricDatastore.Structs.DatastoreACLEntryStruct]] = None
-    nodeEndpointList: typing.Optional[typing.List[JointFabricDatastore.Structs.DatastoreEndpointEntryStruct]] = None
+    anchorRootCa: bytes = b""
+    anchorNodeID: uint = 0
+    anchorVendorID: uint = 0
+    friendlyName: str = ""
+    groupKeySetList: typing.List[JointFabricDatastore.Structs.DatastoreGroupKeySetStruct] = field(default_factory=lambda: [])
+    groupList: typing.List[JointFabricDatastore.Structs.DatastoreGroupInformationEntryStruct] = field(default_factory=lambda: [])
+    nodeList: typing.List[JointFabricDatastore.Structs.DatastoreNodeInformationEntryStruct] = field(default_factory=lambda: [])
+    adminList: typing.List[JointFabricDatastore.Structs.DatastoreAdministratorInformationEntryStruct] = field(default_factory=lambda: [])
+    status: JointFabricDatastore.Structs.DatastoreStatusEntryStruct = field(default_factory=lambda: JointFabricDatastore.Structs.DatastoreStatusEntryStruct())
+    endpointGroupIDList: typing.List[JointFabricDatastore.Structs.DatastoreEndpointGroupIDEntryStruct] = field(default_factory=lambda: [])
+    endpointBindingList: typing.List[JointFabricDatastore.Structs.DatastoreEndpointBindingEntryStruct] = field(default_factory=lambda: [])
+    nodeKeySetList: typing.List[JointFabricDatastore.Structs.DatastoreNodeKeySetEntryStruct] = field(default_factory=lambda: [])
+    nodeAclList: typing.List[JointFabricDatastore.Structs.DatastoreACLEntryStruct] = field(default_factory=lambda: [])
+    nodeEndpointList: typing.List[JointFabricDatastore.Structs.DatastoreEndpointEntryStruct] = field(default_factory=lambda: [])
     generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
     acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
     eventList: typing.List[uint] = field(default_factory=lambda: [])
@@ -80,7 +80,6 @@ class JointFabricDatastore(Cluster):
 
         class DatastoreAccessControlEntryPrivilegeEnum(MatterIntEnum):
             kView = 0x01
-            kProxyView = 0x02
             kOperate = 0x03
             kManage = 0x04
             kAdminister = 0x05
@@ -231,13 +230,11 @@ class JointFabricDatastore(Cluster):
                         ClusterObjectFieldDescriptor(Label="endpointID", Tag=0, Type=uint),
                         ClusterObjectFieldDescriptor(Label="nodeID", Tag=1, Type=uint),
                         ClusterObjectFieldDescriptor(Label="friendlyName", Tag=2, Type=str),
-                        ClusterObjectFieldDescriptor(Label="statusEntry", Tag=3, Type=JointFabricDatastore.Structs.DatastoreStatusEntryStruct),
                     ])
 
             endpointID: uint = 0
             nodeID: uint = 0
             friendlyName: str = ""
-            statusEntry: JointFabricDatastore.Structs.DatastoreStatusEntryStruct = field(default_factory=lambda: JointFabricDatastore.Structs.DatastoreStatusEntryStruct())
 
         @dataclass
         class DatastoreAccessControlTargetStruct(ClusterObject):
@@ -294,9 +291,9 @@ class JointFabricDatastore(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="nodeID", Tag=1, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="friendlyName", Tag=2, Type=str),
-                        ClusterObjectFieldDescriptor(Label="commissioningStatusEntry", Tag=3, Type=JointFabricDatastore.Structs.DatastoreStatusEntryStruct),
+                        ClusterObjectFieldDescriptor(Label="nodeID", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="friendlyName", Tag=1, Type=str),
+                        ClusterObjectFieldDescriptor(Label="commissioningStatusEntry", Tag=2, Type=JointFabricDatastore.Structs.DatastoreStatusEntryStruct),
                     ])
 
             nodeID: uint = 0
@@ -309,10 +306,10 @@ class JointFabricDatastore(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="nodeID", Tag=1, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="friendlyName", Tag=2, Type=str),
-                        ClusterObjectFieldDescriptor(Label="vendorID", Tag=3, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="icac", Tag=4, Type=bytes),
+                        ClusterObjectFieldDescriptor(Label="nodeID", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="friendlyName", Tag=1, Type=str),
+                        ClusterObjectFieldDescriptor(Label="vendorID", Tag=2, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="icac", Tag=3, Type=bytes),
                     ])
 
             nodeID: uint = 0
@@ -475,10 +472,10 @@ class JointFabricDatastore(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="nodeID", Tag=1, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="friendlyName", Tag=2, Type=str),
-                        ClusterObjectFieldDescriptor(Label="vendorID", Tag=3, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="icac", Tag=4, Type=bytes),
+                        ClusterObjectFieldDescriptor(Label="nodeID", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="friendlyName", Tag=1, Type=str),
+                        ClusterObjectFieldDescriptor(Label="vendorID", Tag=2, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="icac", Tag=3, Type=bytes),
                     ])
 
             nodeID: uint = 0
@@ -497,14 +494,14 @@ class JointFabricDatastore(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="nodeID", Tag=0, Type=typing.Union[Nullable, uint]),
-                        ClusterObjectFieldDescriptor(Label="friendlyName", Tag=1, Type=typing.Union[Nullable, str]),
-                        ClusterObjectFieldDescriptor(Label="icac", Tag=2, Type=typing.Union[Nullable, bytes]),
+                        ClusterObjectFieldDescriptor(Label="nodeID", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="friendlyName", Tag=1, Type=typing.Optional[str]),
+                        ClusterObjectFieldDescriptor(Label="icac", Tag=2, Type=typing.Optional[bytes]),
                     ])
 
-            nodeID: typing.Union[Nullable, uint] = NullValue
-            friendlyName: typing.Union[Nullable, str] = NullValue
-            icac: typing.Union[Nullable, bytes] = NullValue
+            nodeID: uint = 0
+            friendlyName: typing.Optional[str] = None
+            icac: typing.Optional[bytes] = None
 
         @dataclass
         class RemoveAdmin(ClusterCommand):
@@ -739,9 +736,9 @@ class JointFabricDatastore(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[bytes])
+                return ClusterObjectFieldDescriptor(Type=bytes)
 
-            value: typing.Optional[bytes] = None
+            value: bytes = b""
 
         @dataclass
         class AnchorNodeID(ClusterAttributeDescriptor):
@@ -755,9 +752,9 @@ class JointFabricDatastore(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+                return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: typing.Optional[uint] = None
+            value: uint = 0
 
         @dataclass
         class AnchorVendorID(ClusterAttributeDescriptor):
@@ -771,9 +768,9 @@ class JointFabricDatastore(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+                return ClusterObjectFieldDescriptor(Type=uint)
 
-            value: typing.Optional[uint] = None
+            value: uint = 0
 
         @dataclass
         class FriendlyName(ClusterAttributeDescriptor):
@@ -787,9 +784,9 @@ class JointFabricDatastore(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[str])
+                return ClusterObjectFieldDescriptor(Type=str)
 
-            value: typing.Optional[str] = None
+            value: str = ""
 
         @dataclass
         class GroupKeySetList(ClusterAttributeDescriptor):
@@ -803,9 +800,9 @@ class JointFabricDatastore(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[JointFabricDatastore.Structs.DatastoreGroupKeySetStruct]])
+                return ClusterObjectFieldDescriptor(Type=typing.List[JointFabricDatastore.Structs.DatastoreGroupKeySetStruct])
 
-            value: typing.Optional[typing.List[JointFabricDatastore.Structs.DatastoreGroupKeySetStruct]] = None
+            value: typing.List[JointFabricDatastore.Structs.DatastoreGroupKeySetStruct] = field(default_factory=lambda: [])
 
         @dataclass
         class GroupList(ClusterAttributeDescriptor):
@@ -819,9 +816,9 @@ class JointFabricDatastore(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[JointFabricDatastore.Structs.DatastoreGroupInformationEntryStruct]])
+                return ClusterObjectFieldDescriptor(Type=typing.List[JointFabricDatastore.Structs.DatastoreGroupInformationEntryStruct])
 
-            value: typing.Optional[typing.List[JointFabricDatastore.Structs.DatastoreGroupInformationEntryStruct]] = None
+            value: typing.List[JointFabricDatastore.Structs.DatastoreGroupInformationEntryStruct] = field(default_factory=lambda: [])
 
         @dataclass
         class NodeList(ClusterAttributeDescriptor):
@@ -835,9 +832,9 @@ class JointFabricDatastore(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[JointFabricDatastore.Structs.DatastoreNodeInformationEntryStruct]])
+                return ClusterObjectFieldDescriptor(Type=typing.List[JointFabricDatastore.Structs.DatastoreNodeInformationEntryStruct])
 
-            value: typing.Optional[typing.List[JointFabricDatastore.Structs.DatastoreNodeInformationEntryStruct]] = None
+            value: typing.List[JointFabricDatastore.Structs.DatastoreNodeInformationEntryStruct] = field(default_factory=lambda: [])
 
         @dataclass
         class AdminList(ClusterAttributeDescriptor):
@@ -851,9 +848,9 @@ class JointFabricDatastore(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[JointFabricDatastore.Structs.DatastoreAdministratorInformationEntryStruct]])
+                return ClusterObjectFieldDescriptor(Type=typing.List[JointFabricDatastore.Structs.DatastoreAdministratorInformationEntryStruct])
 
-            value: typing.Optional[typing.List[JointFabricDatastore.Structs.DatastoreAdministratorInformationEntryStruct]] = None
+            value: typing.List[JointFabricDatastore.Structs.DatastoreAdministratorInformationEntryStruct] = field(default_factory=lambda: [])
 
         @dataclass
         class Status(ClusterAttributeDescriptor):
@@ -867,9 +864,9 @@ class JointFabricDatastore(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[JointFabricDatastore.Structs.DatastoreStatusEntryStruct])
+                return ClusterObjectFieldDescriptor(Type=JointFabricDatastore.Structs.DatastoreStatusEntryStruct)
 
-            value: typing.Optional[JointFabricDatastore.Structs.DatastoreStatusEntryStruct] = None
+            value: JointFabricDatastore.Structs.DatastoreStatusEntryStruct = field(default_factory=lambda: JointFabricDatastore.Structs.DatastoreStatusEntryStruct())
 
         @dataclass
         class EndpointGroupIDList(ClusterAttributeDescriptor):
@@ -883,9 +880,9 @@ class JointFabricDatastore(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[JointFabricDatastore.Structs.DatastoreEndpointGroupIDEntryStruct]])
+                return ClusterObjectFieldDescriptor(Type=typing.List[JointFabricDatastore.Structs.DatastoreEndpointGroupIDEntryStruct])
 
-            value: typing.Optional[typing.List[JointFabricDatastore.Structs.DatastoreEndpointGroupIDEntryStruct]] = None
+            value: typing.List[JointFabricDatastore.Structs.DatastoreEndpointGroupIDEntryStruct] = field(default_factory=lambda: [])
 
         @dataclass
         class EndpointBindingList(ClusterAttributeDescriptor):
@@ -899,9 +896,9 @@ class JointFabricDatastore(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[JointFabricDatastore.Structs.DatastoreEndpointBindingEntryStruct]])
+                return ClusterObjectFieldDescriptor(Type=typing.List[JointFabricDatastore.Structs.DatastoreEndpointBindingEntryStruct])
 
-            value: typing.Optional[typing.List[JointFabricDatastore.Structs.DatastoreEndpointBindingEntryStruct]] = None
+            value: typing.List[JointFabricDatastore.Structs.DatastoreEndpointBindingEntryStruct] = field(default_factory=lambda: [])
 
         @dataclass
         class NodeKeySetList(ClusterAttributeDescriptor):
@@ -915,9 +912,9 @@ class JointFabricDatastore(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[JointFabricDatastore.Structs.DatastoreNodeKeySetEntryStruct]])
+                return ClusterObjectFieldDescriptor(Type=typing.List[JointFabricDatastore.Structs.DatastoreNodeKeySetEntryStruct])
 
-            value: typing.Optional[typing.List[JointFabricDatastore.Structs.DatastoreNodeKeySetEntryStruct]] = None
+            value: typing.List[JointFabricDatastore.Structs.DatastoreNodeKeySetEntryStruct] = field(default_factory=lambda: [])
 
         @dataclass
         class NodeACLList(ClusterAttributeDescriptor):
@@ -931,9 +928,9 @@ class JointFabricDatastore(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[JointFabricDatastore.Structs.DatastoreACLEntryStruct]])
+                return ClusterObjectFieldDescriptor(Type=typing.List[JointFabricDatastore.Structs.DatastoreACLEntryStruct])
 
-            value: typing.Optional[typing.List[JointFabricDatastore.Structs.DatastoreACLEntryStruct]] = None
+            value: typing.List[JointFabricDatastore.Structs.DatastoreACLEntryStruct] = field(default_factory=lambda: [])
 
         @dataclass
         class NodeEndpointList(ClusterAttributeDescriptor):
@@ -947,9 +944,9 @@ class JointFabricDatastore(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[JointFabricDatastore.Structs.DatastoreEndpointEntryStruct]])
+                return ClusterObjectFieldDescriptor(Type=typing.List[JointFabricDatastore.Structs.DatastoreEndpointEntryStruct])
 
-            value: typing.Optional[typing.List[JointFabricDatastore.Structs.DatastoreEndpointEntryStruct]] = None
+            value: typing.List[JointFabricDatastore.Structs.DatastoreEndpointEntryStruct] = field(default_factory=lambda: [])
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):

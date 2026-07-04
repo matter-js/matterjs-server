@@ -22,7 +22,7 @@ class JointFabricAdministrator(Cluster):
     def descriptor(cls) -> ClusterObjectDescriptor:
         return ClusterObjectDescriptor(
             Fields=[
-                ClusterObjectFieldDescriptor(Label="administratorFabricIndex", Tag=0x00000000, Type=typing.Union[None, Nullable, uint]),
+                ClusterObjectFieldDescriptor(Label="administratorFabricIndex", Tag=0x00000000, Type=typing.Union[Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="eventList", Tag=0x0000FFFA, Type=typing.List[uint]),
@@ -31,7 +31,7 @@ class JointFabricAdministrator(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    administratorFabricIndex: typing.Union[None, Nullable, uint] = None
+    administratorFabricIndex: typing.Union[Nullable, uint] = NullValue
     generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
     acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
     eventList: typing.List[uint] = field(default_factory=lambda: [])
@@ -60,17 +60,18 @@ class JointFabricAdministrator(Cluster):
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 3
 
-        class StatusCodeEnum(MatterIntEnum):
-            kBusy = 0x02
-            kPAKEParameterError = 0x03
-            kWindowNotOpen = 0x04
-            kVIDNotVerified = 0x05
-            kInvalidAdministratorFabricIndex = 0x06
+        class ICACCSRResponseStatusCodeEnum(MatterIntEnum):
+            kOk = 0x00
+            kBusy = 0x01
+            kPAKEParameterError = 0x02
+            kWindowNotOpen = 0x03
+            kVIDNotVerified = 0x04
+            kInvalidAdministratorFabricIndex = 0x05
             # All received enum values that are not listed above will be mapped
             # to kUnknownEnumValue. This is a helper enum value that should only
             # be used by code to process how it handles receiving an unknown
             # enum value. This specific value should never be transmitted.
-            kUnknownEnumValue = 7
+            kUnknownEnumValue = 6
 
     class Commands:
         @dataclass
@@ -98,7 +99,7 @@ class JointFabricAdministrator(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="ICACValue", Tag=1, Type=bytes),
+                        ClusterObjectFieldDescriptor(Label="ICACValue", Tag=0, Type=bytes),
                     ])
 
             ICACValue: bytes = b""
@@ -182,10 +183,12 @@ class JointFabricAdministrator(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="icaccsr", Tag=0, Type=bytes),
+                        ClusterObjectFieldDescriptor(Label="statusCode", Tag=0, Type=JointFabricAdministrator.Enums.ICACCSRResponseStatusCodeEnum),
+                        ClusterObjectFieldDescriptor(Label="icaccsr", Tag=1, Type=typing.Optional[bytes]),
                     ])
 
-            icaccsr: bytes = b""
+            statusCode: JointFabricAdministrator.Enums.ICACCSRResponseStatusCodeEnum = 0
+            icaccsr: typing.Optional[bytes] = None
 
         @dataclass
         class ICACResponse(ClusterCommand):
@@ -232,9 +235,9 @@ class JointFabricAdministrator(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Union[None, Nullable, uint])
+                return ClusterObjectFieldDescriptor(Type=typing.Union[Nullable, uint])
 
-            value: typing.Union[None, Nullable, uint] = None
+            value: typing.Union[Nullable, uint] = NullValue
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):

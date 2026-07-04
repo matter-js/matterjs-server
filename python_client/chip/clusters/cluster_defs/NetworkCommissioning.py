@@ -133,18 +133,18 @@ class NetworkCommissioning(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="security", Tag=0, Type=typing.Optional[NetworkCommissioning.Bitmaps.WiFiSecurityBitmap]),
-                        ClusterObjectFieldDescriptor(Label="ssid", Tag=1, Type=typing.Optional[bytes]),
-                        ClusterObjectFieldDescriptor(Label="bssid", Tag=2, Type=typing.Optional[bytes]),
-                        ClusterObjectFieldDescriptor(Label="channel", Tag=3, Type=typing.Optional[uint]),
+                        ClusterObjectFieldDescriptor(Label="security", Tag=0, Type=NetworkCommissioning.Bitmaps.WiFiSecurityBitmap),
+                        ClusterObjectFieldDescriptor(Label="ssid", Tag=1, Type=bytes),
+                        ClusterObjectFieldDescriptor(Label="bssid", Tag=2, Type=bytes),
+                        ClusterObjectFieldDescriptor(Label="channel", Tag=3, Type=uint),
                         ClusterObjectFieldDescriptor(Label="wiFiBand", Tag=4, Type=typing.Optional[NetworkCommissioning.Enums.WiFiBandEnum]),
                         ClusterObjectFieldDescriptor(Label="rssi", Tag=5, Type=typing.Optional[int]),
                     ])
 
-            security: typing.Optional[NetworkCommissioning.Bitmaps.WiFiSecurityBitmap] = None
-            ssid: typing.Optional[bytes] = None
-            bssid: typing.Optional[bytes] = None
-            channel: typing.Optional[uint] = None
+            security: NetworkCommissioning.Bitmaps.WiFiSecurityBitmap = 0
+            ssid: bytes = b""
+            bssid: bytes = b""
+            channel: uint = 0
             wiFiBand: typing.Optional[NetworkCommissioning.Enums.WiFiBandEnum] = None
             rssi: typing.Optional[int] = None
 
@@ -154,24 +154,24 @@ class NetworkCommissioning(Cluster):
             def descriptor(cls) -> ClusterObjectDescriptor:
                 return ClusterObjectDescriptor(
                     Fields=[
-                        ClusterObjectFieldDescriptor(Label="panId", Tag=0, Type=typing.Optional[uint]),
-                        ClusterObjectFieldDescriptor(Label="extendedPanId", Tag=1, Type=typing.Optional[uint]),
-                        ClusterObjectFieldDescriptor(Label="networkName", Tag=2, Type=typing.Optional[str]),
-                        ClusterObjectFieldDescriptor(Label="channel", Tag=3, Type=typing.Optional[uint]),
-                        ClusterObjectFieldDescriptor(Label="version", Tag=4, Type=typing.Optional[uint]),
-                        ClusterObjectFieldDescriptor(Label="extendedAddress", Tag=5, Type=typing.Optional[bytes]),
-                        ClusterObjectFieldDescriptor(Label="rssi", Tag=6, Type=typing.Optional[int]),
-                        ClusterObjectFieldDescriptor(Label="lqi", Tag=7, Type=typing.Optional[uint]),
+                        ClusterObjectFieldDescriptor(Label="panId", Tag=0, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="extendedPanId", Tag=1, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="networkName", Tag=2, Type=str),
+                        ClusterObjectFieldDescriptor(Label="channel", Tag=3, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="version", Tag=4, Type=uint),
+                        ClusterObjectFieldDescriptor(Label="extendedAddress", Tag=5, Type=bytes),
+                        ClusterObjectFieldDescriptor(Label="rssi", Tag=6, Type=int),
+                        ClusterObjectFieldDescriptor(Label="lqi", Tag=7, Type=uint),
                     ])
 
-            panId: typing.Optional[uint] = None
-            extendedPanId: typing.Optional[uint] = None
-            networkName: typing.Optional[str] = None
-            channel: typing.Optional[uint] = None
-            version: typing.Optional[uint] = None
-            extendedAddress: typing.Optional[bytes] = None
-            rssi: typing.Optional[int] = None
-            lqi: typing.Optional[uint] = None
+            panId: uint = 0
+            extendedPanId: uint = 0
+            networkName: str = ""
+            channel: uint = 0
+            version: uint = 0
+            extendedAddress: bytes = b""
+            rssi: int = 0
+            lqi: uint = 0
 
     class Commands:
         @dataclass
