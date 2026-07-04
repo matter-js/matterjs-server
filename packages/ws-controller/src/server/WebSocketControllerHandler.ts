@@ -1092,6 +1092,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
             this.#controller.threadDiagnostics.refreshAllKnown();
             return this.#controller.threadDiagnostics.listCached().map(serializeBatch);
         }
+        if (!/^[0-9a-fA-F]{16}$/.test(args.extPanId)) {
+            throw ServerError.invalidArguments(`Invalid extPanId "${args.extPanId}": expected 16 hex characters`);
+        }
         const batch = await this.#controller.threadDiagnostics.getOrFetch(args.extPanId.toLowerCase(), {
             force: args.force,
         });
