@@ -4,14 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import {
-    BorderRouterRegistry,
-    connectMeshcop,
-    OperationalDataset,
-    OtbrRestClient,
-    OtbrRestDiagnosticSource,
-    ThreadCredentialsRegistry,
-} from "@matter-server/thread-br";
 import { cdSigners, paaRoots, vendors } from "@matter/dcl-data/node";
 import {
     Bytes,
@@ -32,6 +24,14 @@ import { VendorInfo, DclCertificateService, DclVendorInfoService } from "@matter
 import { VendorId } from "@matter/main/types";
 import { Endpoint } from "@matter/node";
 import { CameraControllerDevice } from "@matter/node/devices/camera-controller";
+import {
+    BorderRouterRegistry,
+    connectMeshcop,
+    OperationalDataset,
+    OtbrRestClient,
+    OtbrRestDiagnosticSource,
+    ThreadCredentialsRegistry,
+} from "@matter/thread-br-client";
 import { CommissioningController } from "@project-chip/matter.js";
 import { Readable } from "node:stream";
 import { ConfigStorage } from "../server/ConfigStorage.js";
@@ -86,6 +86,12 @@ export interface MatterControllerOptions {
     serverVersion?: string;
     /** BLE proxy mode: skip the `@matter/nodejs-ble` import; caller supplies the Ble implementation. */
     bleProxyEnabled?: boolean;
+    /**
+     * Disable the Thread Border Router subsystem: no mDNS BR discovery, no REST/CoAP
+     * probing or diagnostics. Matter-over-Thread commissioning (which reads the stored
+     * dataset from config) is unaffected. Defaults to false.
+     */
+    disableThreadDiagnostics?: boolean;
 }
 
 /**
@@ -178,6 +184,7 @@ export class MatterController {
     #disableOtaProvider = true;
     #disableDclSeed = false;
     #bleProxyEnabled = false;
+    #threadDiagnosticsDisabled = false;
     readonly #borderRouterRegistry: BorderRouterRegistry;
     readonly #credentials = new ThreadCredentialsRegistry();
     readonly #threadDiagnostics: ThreadDiagnosticsService;
@@ -262,15 +269,17 @@ export class MatterController {
         this.#disableOtaProvider = options.disableOtaProvider ?? this.#disableOtaProvider;
         this.#disableDclSeed = options.disableDclSeed ?? this.#disableDclSeed;
         this.#bleProxyEnabled = options.bleProxyEnabled ?? this.#bleProxyEnabled;
+        this.#threadDiagnosticsDisabled = options.disableThreadDiagnostics ?? this.#threadDiagnosticsDisabled;
         this.#services = this.#env.asDependent();
         this.#threadDiagnostics = new ThreadDiagnosticsService({
+            enabled: !this.#threadDiagnosticsDisabled,
             borderRouters: this.#borderRouterRegistry,
             credentials: this.#credentials,
             makeRestSource: cap => {
                 const { host, port } = parseRestBaseUrl(cap.baseUrl);
                 return new OtbrRestDiagnosticSource(new OtbrRestClient({ host, port }), cap);
             },
-            makeMeshcopSource: (creds, br) => connectMeshcop({ creds, br }),
+            makeMeshcopSource: (creds, br) => connectMeshcop({ environment: this.#env, creds, br }),
         });
     }
 
@@ -387,10 +396,14 @@ export class MatterController {
                     initPromises.push(this.#enableTestOtaImages());
                 }
 
-                initPromises.push(this.#borderRouterRegistry.start());
+                if (!this.#threadDiagnosticsDisabled) {
+                    initPromises.push(this.#borderRouterRegistry.start());
+                }
                 initPromises.push(this.#enableWebRtcRequestor());
 
-                this.#registerStoredThreadCredentials();
+                if (!this.#threadDiagnosticsDisabled) {
+                    this.#registerStoredThreadCredentials();
+                }
 
                 try {
                     await MatterAggregateError.allSettled(initPromises);
@@ -409,6 +422,11 @@ export class MatterController {
 
     get credentials(): ThreadCredentialsRegistry {
         return this.#credentials;
+    }
+
+    /** False when the Thread BR subsystem is disabled via `disableThreadDiagnostics`. */
+    get threadDiagnosticsEnabled(): boolean {
+        return !this.#threadDiagnosticsDisabled;
     }
 
     get threadDiagnostics(): ThreadDiagnosticsService {
@@ -516,7 +534,9 @@ export class MatterController {
 
     async stop() {
         await this.certificateService(); // Ensure it was initialized so that shutdown works
-        await this.#borderRouterRegistry.stop();
+        if (!this.#threadDiagnosticsDisabled) {
+            await this.#borderRouterRegistry.stop();
+        }
         await this.#commandHandler?.close(); // This closes also the controller instance if started
         await this.#services.close();
     }

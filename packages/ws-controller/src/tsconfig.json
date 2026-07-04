@@ -9,9 +9,6 @@
     },
     "references": [
         {
-            "path": "../../thread-br/src"
-        },
-        {
             "path": "../../ws-client/src"
         }
     ]

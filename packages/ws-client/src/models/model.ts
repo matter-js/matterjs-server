@@ -4,11 +4,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type { BorderRouterEntry } from "@matter-server/thread-br";
+import type { BorderRouterEntry } from "@matter/thread-br-client";
 import type { MatterNodeData } from "./node.js";
 // Re-export so consumers can import the MatterNodeData type from this module
 export type { MatterNodeData } from "./node.js";
-export type { BorderRouterEntry } from "@matter-server/thread-br";
+export type { BorderRouterEntry } from "@matter/thread-br-client";
 
 /** Attribute data stored as path -> value mapping */
 export type AttributesData = { [key: string]: unknown };

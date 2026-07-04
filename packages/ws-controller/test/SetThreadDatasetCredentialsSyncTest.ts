@@ -4,9 +4,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { ThreadCredentialsRegistry } from "@matter-server/thread-br";
 import { AsyncObservable, Environment, MockStorageService, Observable } from "@matter/general";
 import { Bytes } from "@matter/main";
+import { ThreadCredentialsRegistry } from "@matter/thread-br-client";
 import { createServer } from "node:http";
 import WebSocket from "ws";
 import { ConfigStorage } from "../src/server/ConfigStorage.js";
@@ -94,6 +94,9 @@ function makeStubController(credentials: ThreadCredentialsRegistry) {
         get credentials() {
             return credentials;
         },
+        get threadDiagnosticsEnabled() {
+            return true;
+        },
         get threadDiagnostics() {
             return stubDiagnostics as unknown as InstanceType<
                 typeof import("../src/controller/ThreadDiagnosticsService.js").ThreadDiagnosticsService
@@ -101,7 +104,7 @@ function makeStubController(credentials: ThreadCredentialsRegistry) {
         },
         get borderRouters() {
             return stubBorderRouters as unknown as InstanceType<
-                typeof import("@matter-server/thread-br").BorderRouterRegistry
+                typeof import("@matter/thread-br-client").BorderRouterRegistry
             >;
         },
     };

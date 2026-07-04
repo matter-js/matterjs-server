@@ -4,12 +4,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type { DiagnosticResponse } from "@matter-server/thread-br";
 import type {
     ThreadDiagnosticsBatch as ThreadDiagnosticsBatchWire,
     ThreadDiagnosticsNode as ThreadDiagnosticsNodeWire,
 } from "@matter-server/ws-client";
 import { Bytes } from "@matter/main";
+import type { DiagnosticResponse } from "@matter/thread-br-client";
 import type { ThreadDiagnosticsBatch } from "../controller/ThreadDiagnosticsService.js";
 
 function hex(bytes: Uint8Array): string {

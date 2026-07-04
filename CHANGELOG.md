@@ -9,6 +9,9 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## **WORK IN PROGRESS**
 
+- Internal: The `thread-br` package moved into the matter.js monorepo and is now consumed as the published `@matter/thread-br-client` dependency; the in-tree `@matter-server/thread-br` package is removed. No functional change to Thread discovery/diagnostics.
+- Feature: New `--disable-thread-diagnostics` flag (env `DISABLE_THREAD_DIAGNOSTICS`) turns off the entire Thread Border Router subsystem — mDNS discovery, REST/CoAP probing, and diagnostic queries — for plain Matter-controller deployments. Matter-over-Thread commissioning is unaffected.
+- Fix: Thread diagnostics probe the OTBR REST capability at query time (not only on manual refresh), so a network is no longer forced onto the MeshCoP path when the startup probe has not yet completed.
 - Feature: WiFi and Thread credentials are now lists of named entries (each with an `id`). The existing single credential is the reserved `default` entry (undeletable, kept in the legacy storage keys for version-switch safety); extra entries are stored separately. New `get_all_credentials` WS command (summary only — secrets stay write-only); `set_wifi_credentials`/`set_thread_dataset`/`remove_wifi_credentials`/`remove_thread_dataset` accept an optional `id`; `commission_with_code` accepts `wifi_credentials_id` / `thread_dataset_id`. WS schema raised to 12 (minimum supported stays 11, so older clients keep working with the no-id commands).
 - Feature: Dashboard settings let you add/edit/delete multiple WiFi and Thread credentials, and the commissioning dialog lets you pick which network to use when more than one is configured.
 - Internal: All stored Thread credentials are registered for MeshCoP/REST diagnostics at boot (replacing the temporary hardcoded test datasets).

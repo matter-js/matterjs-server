@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { Bytes, Logger, Observable } from "@matter/main";
 import {
     type BorderRouterEntry,
     type BorderRouterRegistry,
@@ -19,8 +20,7 @@ import {
     type ThreadCredentialsRegistry,
     type ThreadNetworkCredentials,
     rankBrs,
-} from "@matter-server/thread-br";
-import { Bytes, Logger, Observable } from "@matter/main";
+} from "@matter/thread-br-client";
 
 const logger = Logger.get("ThreadDiagnosticsService");
 
@@ -76,6 +76,11 @@ export interface ThreadDiagnosticsServiceOpts {
     restProbeTimeoutMs?: number;
     /** @internal — for testing. Override the probe factory. */
     probeRest?: (host: string, port: number, timeoutMs: number) => Promise<OtbrRestCapability | null>;
+    /**
+     * When false, the service performs no Thread BR interaction: it never probes
+     * on discovery and every `getOrFetch` returns undefined. Defaults to true.
+     */
+    enabled?: boolean;
 }
 
 // Aggregation across networks lives in the dashboard (Phase 10) — clients merge by
@@ -130,9 +135,11 @@ export class ThreadDiagnosticsService {
     readonly #restProbePort: number;
     readonly #restProbeTimeoutMs: number;
     readonly #probeRest: (host: string, port: number, timeoutMs: number) => Promise<OtbrRestCapability | null>;
+    readonly #enabled: boolean;
 
     constructor(opts: ThreadDiagnosticsServiceOpts) {
         this.#opts = opts;
+        this.#enabled = opts.enabled ?? true;
         this.#cacheTtlMs = opts.cacheTtlMs ?? ThreadDiagnosticsService.DEFAULT_TTL_MS;
         this.#windowMs = opts.windowMs ?? ThreadDiagnosticsService.DEFAULT_WINDOW_MS;
         this.#firstBatchMs = opts.firstBatchMs ?? ThreadDiagnosticsService.DEFAULT_FIRST_BATCH_MS;
@@ -141,28 +148,47 @@ export class ThreadDiagnosticsService {
         this.#restProbeTimeoutMs = opts.restProbeTimeoutMs ?? ThreadDiagnosticsService.DEFAULT_REST_PROBE_TIMEOUT_MS;
         this.#probeRest = opts.probeRest ?? ((host, port, timeoutMs) => OtbrRestProbe.probe(host, port, timeoutMs));
 
-        opts.borderRouters.events.added.on(br => {
-            // TEMPORARY: env-var gate to force MeshCoP path for testing.
-            // REMOVE BEFORE COMMIT.
-            if (process.env.MATTER_DISABLE_REST === "1") {
-                logger.info(`[ThreadDiag] REST probe SKIPPED (MATTER_DISABLE_REST=1) xp=${br.extendedPanIdHex ?? "?"}`);
-                return;
-            }
-            void this.#probeBrForRest(br);
-        });
-        opts.borderRouters.events.removed.on(br => {
-            this.#handleBrRemoved(br);
-        });
+        if (this.#enabled) {
+            opts.borderRouters.events.added.on(br => {
+                void this.#probeBrForRest(br);
+            });
+            opts.borderRouters.events.removed.on(br => {
+                this.#handleBrRemoved(br);
+            });
+        }
     }
 
     listCached(): ReadonlyArray<ThreadDiagnosticsBatch> {
         return Array.from(this.#cache.values());
     }
 
+    /**
+     * Fire-and-forget `getOrFetch` for every distinct Thread network currently
+     * advertised by a discovered Border Router. Used to populate diagnostics for
+     * all known networks (e.g. when the Thread panel opens) without the caller
+     * waiting on each; batches arrive via `events.batchUpdated`. No-op when disabled.
+     */
+    refreshAllKnown(): void {
+        if (!this.#enabled) return;
+        const seen = new Set<string>();
+        for (const br of this.#opts.borderRouters.list()) {
+            const xp = br.extendedPanIdHex;
+            if (xp === undefined) continue;
+            const key = xp.toLowerCase();
+            if (seen.has(key)) continue;
+            seen.add(key);
+            this.getOrFetch(key).catch(err => {
+                logger.warn(`[ThreadDiag] background fetch xp=${xp.toUpperCase()} failed: ${err}`);
+            });
+        }
+    }
+
+    /** @internal — test seam: seed a REST capability without a live probe. */
     registerRestCapability(extPanIdHex: string, cap: OtbrRestCapability): void {
         this.#restCaps.set(extPanIdHex.toLowerCase(), cap);
     }
 
+    /** @internal — test seam: clear a seeded REST capability. */
     unregisterRestCapability(extPanIdHex: string): void {
         this.#restCaps.delete(extPanIdHex.toLowerCase());
     }
@@ -171,6 +197,8 @@ export class ThreadDiagnosticsService {
         const key = extPanIdHex.toLowerCase();
         const xp = key.toUpperCase();
         const force = opts?.force === true;
+
+        if (!this.#enabled) return undefined;
 
         logger.debug(`[ThreadDiag] getOrFetch xp=${xp} force=${force}`);
 
@@ -214,17 +242,24 @@ export class ThreadDiagnosticsService {
             `[ThreadDiag] BR picked xp=${xp} network="${networkName}" host="${br.hostname ?? "?"}" candidates=${matchingBrs.length}`,
         );
 
-        if (force) {
-            // A manual refresh re-pulls diagnostics; it does not re-discover the
-            // transport. Trust the first-seen probe result — REST present OR absent —
-            // and only probe a BR we have never probed. #probeBrForRest is a no-op
-            // once a BR has been probed (see its #probeAttempted guard), so a known
-            // REST-less network (e.g. Aqara) is not re-checked on every reload. A BR
-            // that gains REST later is re-probed when it is re-announced via mDNS.
-            // TEMPORARY gate — see constructor. REMOVE BEFORE COMMIT.
-            if (process.env.MATTER_DISABLE_REST !== "1") {
-                await this.#probeBrForRest(br);
+        // Ensure a REST-capability probe has settled before transport selection: if
+        // no capability is cached for this network, probe the chosen BR now (the
+        // #probeAttempted guard keeps this a no-op once a BR has been probed, so a
+        // known REST-less network is not re-checked on every query).
+        if (this.#restCaps.get(key) === undefined) {
+            await this.#probeBrForRest(br);
+            // The probe's await yields; a concurrent non-force fetch may have
+            // registered the shared stream meanwhile. Join it, don't start a second.
+            if (!force) {
+                const joined = this.#streamsInFlight.get(key);
+                if (joined !== undefined) {
+                    logger.debug(`[ThreadDiag] join in-flight stream (post-probe) xp=${xp}`);
+                    return joined.firstBatch;
+                }
             }
+        }
+
+        if (force) {
             const existing = this.#streamsInFlight.get(key);
             if (existing !== undefined) {
                 logger.debug(`[ThreadDiag] force=true canceling in-flight stream xp=${xp}`);

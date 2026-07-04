@@ -4,9 +4,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { ThreadCredentialsRegistry } from "@matter-server/thread-br";
 import { Environment, MockStorageService } from "@matter/general";
 import { Bytes } from "@matter/main";
+import { ThreadCredentialsRegistry } from "@matter/thread-br-client";
 import { registerThreadCredentialsFromHex } from "../src/controller/MatterController.js";
 import { ConfigStorage } from "../src/server/ConfigStorage.js";
 

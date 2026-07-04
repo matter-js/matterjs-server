@@ -40,11 +40,11 @@
         "test": "matter-test --force-exit"
     },
     "dependencies": {
-        "@matter-server/thread-br": "*",
+        "@matter/thread-br-client": "0.17.5-alpha.0-20260704-9ea70abfa",
         "@matter-server/ws-client": "*",
         "@matter/dcl-data": ">=2026.6.24",
-        "@matter/main": "0.17.4-alpha.0-20260628-67a669f75",
-        "@project-chip/matter.js": "0.17.4-alpha.0-20260628-67a669f75",
+        "@matter/main": "0.17.5-alpha.0-20260704-9ea70abfa",
+        "@project-chip/matter.js": "0.17.5-alpha.0-20260704-9ea70abfa",
         "ws": "^8.21.0"
     },
     "devDependencies": {
@@ -52,7 +52,7 @@
         "@types/ws": "^8.18.1"
     },
     "optionalDependencies": {
-        "@matter/nodejs-ble": "0.17.4-alpha.0-20260628-67a669f75",
+        "@matter/nodejs-ble": "0.17.5-alpha.0-20260704-9ea70abfa",
         "dbus-next": "npm:@jellybrick/dbus-next@^0.10.3"
     },
     "engines": {

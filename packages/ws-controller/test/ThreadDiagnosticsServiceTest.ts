@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { Observable } from "@matter/main";
 import {
     type BorderRouterEntry,
     type BorderRouterRegistry,
@@ -16,8 +17,7 @@ import {
     type QueryMulticastHandle,
     type ThreadCredentialsRegistry,
     type ThreadNetworkCredentials,
-} from "@matter-server/thread-br";
-import { Observable } from "@matter/main";
+} from "@matter/thread-br-client";
 import {
     type MeshcopSourceHandle,
     ThreadDiagnosticsBatch,
@@ -373,6 +373,45 @@ describe("ThreadDiagnosticsService", () => {
         expect(a).to.equal(b);
     });
 
+    it("concurrent fetches still share one stream when the REST probe must resolve first", async () => {
+        // Regression: the query-time REST probe inserts an await between the
+        // in-flight dedup check and stream registration. With no cached capability,
+        // every concurrent non-force fetch takes that await; they must still join a
+        // single stream via the post-probe re-check, not each start their own.
+        let acquireCalls = 0;
+        let probeCalls = 0;
+        const service = new ThreadDiagnosticsService({
+            ...FAST_TIMING,
+            windowMs: 50,
+            firstBatchMs: 10,
+            // A non-link-local address so the probe has a candidate and actually
+            // invokes #probeRest (address-less BRs skip it before the network call).
+            borderRouters: brRegistryFrom(brsListing([makeBr({ addresses: ["fd00::1"] })])),
+            credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
+            makeRestSource: () => syncRestSource([]),
+            makeMeshcopSource: async () => {
+                acquireCalls += 1;
+                return meshcopHandle(syncMeshcopSource([SAMPLE_NODE]));
+            },
+            // Miss, but only after a microtask — the yield the dedup must tolerate.
+            probeRest: async () => {
+                probeCalls += 1;
+                await Promise.resolve();
+                return null;
+            },
+        });
+
+        const [a, b, c] = await Promise.all([
+            service.getOrFetch(EXT_PAN_HEX_LOWER),
+            service.getOrFetch(EXT_PAN_HEX_LOWER),
+            service.getOrFetch(EXT_PAN_HEX_LOWER),
+        ]);
+        expect(probeCalls).to.be.greaterThan(0);
+        expect(acquireCalls).to.equal(1);
+        expect(a).to.equal(b);
+        expect(b).to.equal(c);
+    });
+
     it("runs fetches for distinct extPanIds in parallel", async () => {
         let active = 0;
         let maxActive = 0;
@@ -563,6 +602,83 @@ describe("ThreadDiagnosticsService", () => {
         expect(probeCalls).to.have.lengthOf(2);
         expect(probeCalls.map(c => c.host).sort()).to.deep.equal(["192.0.2.1", "fd00::1"]);
         void service;
+    });
+
+    it("when disabled: no probe on add, getOrFetch returns undefined, no source built", async () => {
+        let probeCalls = 0;
+        let restCalls = 0;
+        let meshcopCalls = 0;
+        const stub = brsListing([makeBr({ addresses: ["fd00::1"] })]);
+        const service = new ThreadDiagnosticsService({
+            ...FAST_TIMING,
+            enabled: false,
+            borderRouters: brRegistryFrom(stub),
+            credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
+            makeRestSource: () => {
+                restCalls += 1;
+                return syncRestSource([SAMPLE_NODE]);
+            },
+            makeMeshcopSource: async () => {
+                meshcopCalls += 1;
+                return meshcopHandle(syncMeshcopSource([SAMPLE_NODE]));
+            },
+            probeRest: async () => {
+                probeCalls += 1;
+                return makeCap();
+            },
+        });
+
+        stub.events.added.emit(makeBr({ addresses: ["fd00::1", "192.0.2.1"] }));
+        await new Promise(r => setTimeout(r, 5));
+
+        const batch = await service.getOrFetch(EXT_PAN_HEX_LOWER);
+        service.refreshAllKnown();
+        await new Promise(r => setTimeout(r, 5));
+        expect(batch).to.equal(undefined);
+        expect(service.listCached()).to.have.lengthOf(0);
+        expect(probeCalls).to.equal(0);
+        expect(restCalls).to.equal(0);
+        expect(meshcopCalls).to.equal(0);
+    });
+
+    it("refreshAllKnown fetches each distinct Thread network once", async () => {
+        let meshcopCalls = 0;
+        const service = new ThreadDiagnosticsService({
+            ...FAST_TIMING,
+            windowMs: 30,
+            firstBatchMs: 10,
+            borderRouters: brRegistryFrom(
+                brsListing([
+                    makeBr(),
+                    // Duplicate extPanId (second BR for the same network) — must not double-fetch.
+                    makeBr({ extAddressHex: "BBBBBBBBBBBBBBBB", extendedPanIdHex: EXT_PAN_HEX_UPPER }),
+                    makeBr({
+                        extAddressHex: "CCCCCCCCCCCCCCCC",
+                        extendedPanIdHex: OTHER_EXT_PAN_HEX_LOWER.toUpperCase(),
+                    }),
+                ]),
+            ),
+            credentials: credsRegistryFrom(
+                credsLookup(
+                    new Map([
+                        [EXT_PAN_HEX_LOWER, makeCreds()],
+                        [OTHER_EXT_PAN_HEX_LOWER, makeCreds(OTHER_EXT_PAN_BYTES)],
+                    ]),
+                ),
+            ),
+            makeRestSource: () => syncRestSource([]),
+            makeMeshcopSource: async () => {
+                meshcopCalls += 1;
+                return meshcopHandle(syncMeshcopSource([SAMPLE_NODE]));
+            },
+            probeRest: async () => null,
+        });
+
+        service.refreshAllKnown();
+        await new Promise(r => setTimeout(r, 60));
+
+        expect(meshcopCalls).to.equal(2);
+        expect(service.listCached()).to.have.lengthOf(2);
     });
 
     it("probe on `added` lets the next fetch hit the REST source without probing again", async () => {

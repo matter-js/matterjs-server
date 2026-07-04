@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { ThreadCredentialsRegistry } from "@matter-server/thread-br";
 import { Bytes } from "@matter/main";
+import { ThreadCredentialsRegistry } from "@matter/thread-br-client";
 import { registerThreadCredentialsFromHex } from "../src/controller/MatterController.js";
 
 // Mirrors packages/thread-br/test/fixtures/datasets/synthetic-1.hex. Kept inline so this
