@@ -42,13 +42,13 @@
     "dependencies": {
         "@matter/thread-br-client": "0.17.5-alpha.0-20260704-9ea70abfa",
         "@matter-server/ws-client": "*",
-        "@matter/dcl-data": ">=2026.6.24",
+        "@matter/dcl-data": ">=2026.7.1",
         "@matter/main": "0.17.5-alpha.0-20260704-9ea70abfa",
         "@project-chip/matter.js": "0.17.5-alpha.0-20260704-9ea70abfa",
         "ws": "^8.21.0"
     },
     "devDependencies": {
-        "@types/node": "^26.0.0",
+        "@types/node": "^26.0.1",
         "@types/ws": "^8.18.1"
     },
     "optionalDependencies": {

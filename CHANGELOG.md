@@ -15,11 +15,33 @@ This page shows a detailed overview of the changes between versions without the 
 - Feature: Surface mDNS TXT keys `sv` (software version) and `rv` (record version) on Border Router cards. The existing `borderAgentIdHex` field now also populates from the `ai` TXT key (OpenThread upstream spec), with `dd` as a fallback (legacy/Apple variant). The `id` TXT key is deferred until a real-world sample with a confirmed meaning is available.
 - Feature: Thread Network diagnostics — new `get_thread_diagnostics` WS command and `thread_diagnostics_updated` WS event deliver per-Thread-network diagnostic batches collected from Border Routers via MeshCoP (CoAP over DTLS) or the OTBR REST API (auto-selected per Border Router, cached per extPanId with a 1h TTL). Rich read-only data: topology plus link/MLE counters, battery, supply voltage, EUI64, stack version, Network Data, child IPv6 addresses, and router-neighbor link metrics; plus diagnostic-counter reset and energy-scan / PAN-ID-conflict queries.
 - Feature: Dashboard Thread graph now renders the real mesh from Border Router / router diagnostics (route64 router links + childTable child counts), merged per Thread network into the existing graph. Diagnostic-only nodes appear only when reachable from a commissioned Matter device.
+
+## 1.1.7 (2026-07-01)
+
+- Speed up attribute data conversion for migration and websocket communication
+- Enhancement: Update matter.js to 0.17.4
+
+## 1.1.6 (2026-06-30)
+
+- Ensure that rebuilding of node structures after updates does not block the event loop for big bridges
+- Skip rebuilding node structures when the device just resubscribed
+
+## 1.1.5 (2026-06-30)
+
+- Speed up Bitmap Conversion for WebSocket messaging and data migration
+- Enhancement: Update matter.js to the latest 0.17.4-alpha
+    - Speed up DataReport decoding even more
+
+## 1.1.4 (2026-06-29)
+
+- Enhancement: Update matter.js to the latest 0.17.4-alpha
+    - Speed up subscription DataReport handling
+
 ## 1.1.3 (2026-06-28)
 
 - Enhancement: Update matter.js to the latest 0.17.4-alpha
-  - Added more optimizations for data of non-compliant devices (keep non-declared clusters, accept int/uint mismatches in reported data)
-  - Optimize MDNS scanner to drop irrelevant messages before decoding (optimizes CPU usage in MDNS-spammy networks)
+    - Added more optimizations for data of non-compliant devices (keep non-declared clusters, accept int/uint mismatches in reported data)
+    - Optimize MDNS scanner to drop irrelevant messages before decoding (optimizes CPU usage in MDNS-spammy networks)
 
 ## 1.1.2 (2026-06-25)
 

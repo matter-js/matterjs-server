@@ -53,7 +53,7 @@
         "@matter/nodejs": "0.17.5-alpha.0-20260704-9ea70abfa",
         "@matter/testing": "0.17.5-alpha.0-20260704-9ea70abfa",
         "@types/express": "^5.0.6",
-        "@types/node": "^26.0.0"
+        "@types/node": "^26.0.1"
     },
     "engines": {
         "node": ">=22.13.0"
