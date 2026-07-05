@@ -26,6 +26,16 @@ class Globals:
             # enum value. This specific value should never be transmitted.
             kUnknownEnumValue = 3
 
+        class CertificationTypeEnum(MatterIntEnum):
+            kDeviceAttestationPki = 0x00
+            kOperationalPki = 0x01
+            kVIDSignerPki = 0x02
+            # All received enum values that are not listed above will be mapped
+            # to kUnknownEnumValue. This is a helper enum value that should only
+            # be used by code to process how it handles receiving an unknown
+            # enum value. This specific value should never be transmitted.
+            kUnknownEnumValue = 3
+
         class MeasurementTypeEnum(MatterIntEnum):
             kUnspecified = 0x00
             kVoltage = 0x01
@@ -155,11 +165,14 @@ class Globals:
             kClosureCovering = 0x46
             kClosureWindow = 0x47
             kClosureCabinet = 0x48
+            kIdentifiedObject = 0x49
+            kIdentifiedSound = 0x4A
+            kIdentifiedHumanActivity = 0x4B
             # All received enum values that are not listed above will be mapped
             # to kUnknownEnumValue. This is a helper enum value that should only
             # be used by code to process how it handles receiving an unknown
             # enum value. This specific value should never be transmitted.
-            kUnknownEnumValue = 73
+            kUnknownEnumValue = 76
 
         class priority(MatterIntEnum):
             kDebug = 0x00
