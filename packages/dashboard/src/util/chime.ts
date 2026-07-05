@@ -7,7 +7,7 @@
 import type { MatterClient, MatterNode } from "@matter-server/ws-client";
 import { asObject, pickNumber, pickString } from "./attribute-shapes.js";
 
-/** Chime cluster (spec 1.5.1 §11.8). */
+/** Chime cluster (Matter spec). */
 export const CHIME_CLUSTER_ID = 1366; // 0x0556
 
 const ATTR_INSTALLED_SOUNDS = 0;

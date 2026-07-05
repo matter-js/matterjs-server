@@ -7,6 +7,10 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
+## **WORK IN PROGRESS**
+
+- Enhancement: Update matter.js to add Matter 1.6 support
+
 ## 1.1.7 (2026-07-01)
 
 - Speed up attribute data conversion for migration and websocket communication

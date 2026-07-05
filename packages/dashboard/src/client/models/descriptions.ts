@@ -1090,6 +1090,13 @@ export const clusters: Record<number, ClusterDescription> = {
                 "type": "List[AccessRestrictionEntryStruct]",
                 "writable": false
             },
+            "7": {
+                "id": 7,
+                "cluster_id": 31,
+                "label": "AuxiliaryAcl",
+                "type": "List[AccessControlEntryStruct]",
+                "writable": false
+            },
             "65528": {
                 "id": 65528,
                 "cluster_id": 31,
@@ -2636,6 +2643,13 @@ export const clusters: Record<number, ClusterDescription> = {
                 "label": "DoNotUse",
                 "type": "Optional[unknown]",
                 "writable": true
+            },
+            "10": {
+                "id": 10,
+                "cluster_id": 51,
+                "label": "DeviceLoadStatus",
+                "type": "Optional[DeviceLoadStruct]",
+                "writable": false
             },
             "65528": {
                 "id": 65528,
@@ -4300,6 +4314,13 @@ export const clusters: Record<number, ClusterDescription> = {
                 "type": "uint16",
                 "writable": false
             },
+            "4": {
+                "id": 4,
+                "cluster_id": 63,
+                "label": "GroupcastAdoption",
+                "type": "List[GroupcastAdoptionStruct]",
+                "writable": true
+            },
             "65528": {
                 "id": 65528,
                 "cluster_id": 63,
@@ -4525,7 +4546,7 @@ export const clusters: Record<number, ClusterDescription> = {
                 "id": 65532,
                 "cluster_id": 69,
                 "label": "FeatureMap",
-                "type": "map32",
+                "type": "FeatureMap",
                 "writable": false
             },
             "65533": {
@@ -5873,6 +5894,13 @@ export const clusters: Record<number, ClusterDescription> = {
                 "type": "Optional[epoch-s]",
                 "writable": false
             },
+            "13": {
+                "id": 13,
+                "cluster_id": 92,
+                "label": "Unmounted",
+                "type": "Optional[bool]",
+                "writable": false
+            },
             "65528": {
                 "id": 65528,
                 "cluster_id": 92,
@@ -6578,6 +6606,259 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 98,
                 "name": "CopyScene",
                 "label": "Copy Scene"
+            }
+        }
+    },
+    "100": {
+        "id": 100,
+        "label": "TemperatureAlarm",
+        "attributes": {
+            "0": {
+                "id": 0,
+                "cluster_id": 100,
+                "label": "Mask",
+                "type": "AlarmBitmap",
+                "writable": false
+            },
+            "1": {
+                "id": 1,
+                "cluster_id": 100,
+                "label": "Latch",
+                "type": "Optional[AlarmBitmap]",
+                "writable": false
+            },
+            "2": {
+                "id": 2,
+                "cluster_id": 100,
+                "label": "State",
+                "type": "AlarmBitmap",
+                "writable": false
+            },
+            "3": {
+                "id": 3,
+                "cluster_id": 100,
+                "label": "Supported",
+                "type": "AlarmBitmap",
+                "writable": false
+            },
+            "128": {
+                "id": 128,
+                "cluster_id": 100,
+                "label": "CriticalOverTemperatureThreshold",
+                "type": "Optional[temperature]",
+                "writable": false
+            },
+            "129": {
+                "id": 129,
+                "cluster_id": 100,
+                "label": "MajorOverTemperatureThreshold",
+                "type": "Optional[temperature]",
+                "writable": false
+            },
+            "130": {
+                "id": 130,
+                "cluster_id": 100,
+                "label": "MinorOverTemperatureThreshold",
+                "type": "Optional[temperature]",
+                "writable": false
+            },
+            "131": {
+                "id": 131,
+                "cluster_id": 100,
+                "label": "MinorUnderTemperatureThreshold",
+                "type": "Optional[temperature]",
+                "writable": false
+            },
+            "132": {
+                "id": 132,
+                "cluster_id": 100,
+                "label": "MajorUnderTemperatureThreshold",
+                "type": "Optional[temperature]",
+                "writable": false
+            },
+            "133": {
+                "id": 133,
+                "cluster_id": 100,
+                "label": "CriticalUnderTemperatureThreshold",
+                "type": "Optional[temperature]",
+                "writable": false
+            },
+            "65528": {
+                "id": 65528,
+                "cluster_id": 100,
+                "label": "GeneratedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65529": {
+                "id": 65529,
+                "cluster_id": 100,
+                "label": "AcceptedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65530": {
+                "id": 65530,
+                "cluster_id": 100,
+                "label": "EventList",
+                "type": "Optional[unknown]",
+                "writable": true
+            },
+            "65531": {
+                "id": 65531,
+                "cluster_id": 100,
+                "label": "AttributeList",
+                "type": "List[attrib-id]",
+                "writable": false
+            },
+            "65532": {
+                "id": 65532,
+                "cluster_id": 100,
+                "label": "FeatureMap",
+                "type": "FeatureMap",
+                "writable": false
+            },
+            "65533": {
+                "id": 65533,
+                "cluster_id": 100,
+                "label": "ClusterRevision",
+                "type": "ClusterRevision",
+                "writable": false
+            }
+        },
+        "commands": {
+            "0": {
+                "id": 0,
+                "cluster_id": 100,
+                "name": "Reset",
+                "label": "Reset"
+            },
+            "1": {
+                "id": 1,
+                "cluster_id": 100,
+                "name": "ModifyEnabledAlarms",
+                "label": "Modify Enabled Alarms"
+            },
+            "128": {
+                "id": 128,
+                "cluster_id": 100,
+                "name": "SetTemperatureAlarmThresholds",
+                "label": "Set Temperature Alarm Thresholds"
+            }
+        }
+    },
+    "101": {
+        "id": 101,
+        "label": "Groupcast",
+        "attributes": {
+            "0": {
+                "id": 0,
+                "cluster_id": 101,
+                "label": "Membership",
+                "type": "List[MembershipStruct]",
+                "writable": false
+            },
+            "1": {
+                "id": 1,
+                "cluster_id": 101,
+                "label": "MaxMembershipCount",
+                "type": "Optional[uint16]",
+                "writable": false
+            },
+            "2": {
+                "id": 2,
+                "cluster_id": 101,
+                "label": "MaxMcastAddrCount",
+                "type": "Optional[uint16]",
+                "writable": false
+            },
+            "3": {
+                "id": 3,
+                "cluster_id": 101,
+                "label": "UsedMcastAddrCount",
+                "type": "Optional[uint16]",
+                "writable": false
+            },
+            "4": {
+                "id": 4,
+                "cluster_id": 101,
+                "label": "FabricUnderTest",
+                "type": "Optional[fabric-idx]",
+                "writable": false
+            },
+            "65528": {
+                "id": 65528,
+                "cluster_id": 101,
+                "label": "GeneratedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65529": {
+                "id": 65529,
+                "cluster_id": 101,
+                "label": "AcceptedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65530": {
+                "id": 65530,
+                "cluster_id": 101,
+                "label": "EventList",
+                "type": "Optional[unknown]",
+                "writable": true
+            },
+            "65531": {
+                "id": 65531,
+                "cluster_id": 101,
+                "label": "AttributeList",
+                "type": "List[attrib-id]",
+                "writable": false
+            },
+            "65532": {
+                "id": 65532,
+                "cluster_id": 101,
+                "label": "FeatureMap",
+                "type": "FeatureMap",
+                "writable": false
+            },
+            "65533": {
+                "id": 65533,
+                "cluster_id": 101,
+                "label": "ClusterRevision",
+                "type": "ClusterRevision",
+                "writable": false
+            }
+        },
+        "commands": {
+            "0": {
+                "id": 0,
+                "cluster_id": 101,
+                "name": "JoinGroup",
+                "label": "Join Group"
+            },
+            "1": {
+                "id": 1,
+                "cluster_id": 101,
+                "name": "LeaveGroup",
+                "label": "Leave Group"
+            },
+            "3": {
+                "id": 3,
+                "cluster_id": 101,
+                "name": "UpdateGroupKey",
+                "label": "Update Group Key"
+            },
+            "4": {
+                "id": 4,
+                "cluster_id": 101,
+                "name": "ConfigureAuxiliaryAcl",
+                "label": "Configure Auxiliary Acl"
+            },
+            "5": {
+                "id": 5,
+                "cluster_id": 101,
+                "name": "GroupcastTesting",
+                "label": "Groupcast Testing"
             }
         }
     },
@@ -10213,6 +10494,34 @@ export const clusters: Record<number, ClusterDescription> = {
                 "type": "Optional[Nullable[epoch-s]]",
                 "writable": false
             },
+            "83": {
+                "id": 83,
+                "cluster_id": 513,
+                "label": "MaxThermostatSuggestions",
+                "type": "Optional[uint8]",
+                "writable": false
+            },
+            "84": {
+                "id": 84,
+                "cluster_id": 513,
+                "label": "ThermostatSuggestions",
+                "type": "List[ThermostatSuggestionStruct]",
+                "writable": false
+            },
+            "85": {
+                "id": 85,
+                "cluster_id": 513,
+                "label": "CurrentThermostatSuggestion",
+                "type": "Optional[Nullable[ThermostatSuggestionStruct]]",
+                "writable": false
+            },
+            "86": {
+                "id": 86,
+                "cluster_id": 513,
+                "label": "ThermostatSuggestionNotFollowingReason",
+                "type": "Optional[Nullable[ThermostatSuggestionNotFollowingReasonBitmap]]",
+                "writable": false
+            },
             "65528": {
                 "id": 65528,
                 "cluster_id": 513,
@@ -10274,6 +10583,18 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 513,
                 "name": "SetActivePresetRequest",
                 "label": "Set Active Preset Request"
+            },
+            "7": {
+                "id": 7,
+                "cluster_id": 513,
+                "name": "AddThermostatSuggestion",
+                "label": "Add Thermostat Suggestion"
+            },
+            "8": {
+                "id": 8,
+                "cluster_id": 513,
+                "name": "RemoveThermostatSuggestion",
+                "label": "Remove Thermostat Suggestion"
             },
             "254": {
                 "id": 254,
@@ -12918,6 +13239,139 @@ export const clusters: Record<number, ClusterDescription> = {
         },
         "commands": {}
     },
+    "1073": {
+        "id": 1073,
+        "label": "AmbientContextSensing",
+        "attributes": {
+            "0": {
+                "id": 0,
+                "cluster_id": 1073,
+                "label": "HumanActivityDetected",
+                "type": "Optional[bool]",
+                "writable": false
+            },
+            "1": {
+                "id": 1,
+                "cluster_id": 1073,
+                "label": "ObjectIdentified",
+                "type": "Optional[bool]",
+                "writable": false
+            },
+            "2": {
+                "id": 2,
+                "cluster_id": 1073,
+                "label": "AudioContextDetected",
+                "type": "Optional[bool]",
+                "writable": false
+            },
+            "3": {
+                "id": 3,
+                "cluster_id": 1073,
+                "label": "AmbientContextType",
+                "type": "List[AmbientContextTypeStruct]",
+                "writable": false
+            },
+            "4": {
+                "id": 4,
+                "cluster_id": 1073,
+                "label": "AmbientContextTypeSupported",
+                "type": "List[ModeSelect.SemanticTagStruct]",
+                "writable": false
+            },
+            "5": {
+                "id": 5,
+                "cluster_id": 1073,
+                "label": "ObjectCountReached",
+                "type": "Optional[bool]",
+                "writable": false
+            },
+            "6": {
+                "id": 6,
+                "cluster_id": 1073,
+                "label": "ObjectCountConfig",
+                "type": "Optional[ObjectCountConfigStruct]",
+                "writable": true
+            },
+            "7": {
+                "id": 7,
+                "cluster_id": 1073,
+                "label": "ObjectCount",
+                "type": "Optional[uint16]",
+                "writable": false
+            },
+            "8": {
+                "id": 8,
+                "cluster_id": 1073,
+                "label": "SimultaneousDetectionLimit",
+                "type": "Optional[uint8]",
+                "writable": true
+            },
+            "9": {
+                "id": 9,
+                "cluster_id": 1073,
+                "label": "HoldTime",
+                "type": "Optional[uint16]",
+                "writable": true
+            },
+            "10": {
+                "id": 10,
+                "cluster_id": 1073,
+                "label": "HoldTimeLimits",
+                "type": "Optional[HoldTimeLimitsStruct]",
+                "writable": false
+            },
+            "11": {
+                "id": 11,
+                "cluster_id": 1073,
+                "label": "PredictedActivity",
+                "type": "List[PredictedActivityStruct]",
+                "writable": false
+            },
+            "65528": {
+                "id": 65528,
+                "cluster_id": 1073,
+                "label": "GeneratedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65529": {
+                "id": 65529,
+                "cluster_id": 1073,
+                "label": "AcceptedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65530": {
+                "id": 65530,
+                "cluster_id": 1073,
+                "label": "EventList",
+                "type": "Optional[unknown]",
+                "writable": true
+            },
+            "65531": {
+                "id": 65531,
+                "cluster_id": 1073,
+                "label": "AttributeList",
+                "type": "List[attrib-id]",
+                "writable": false
+            },
+            "65532": {
+                "id": 65532,
+                "cluster_id": 1073,
+                "label": "FeatureMap",
+                "type": "FeatureMap",
+                "writable": false
+            },
+            "65533": {
+                "id": 65533,
+                "cluster_id": 1073,
+                "label": "ClusterRevision",
+                "type": "ClusterRevision",
+                "writable": false
+            }
+        },
+        "commands": {}
+    },
     "1105": {
         "id": 1105,
         "label": "WiFiNetworkManagement",
@@ -14950,6 +15404,13 @@ export const clusters: Record<number, ClusterDescription> = {
                 "type": "Optional[ThreeLevelAutoEnum]",
                 "writable": true
             },
+            "41": {
+                "id": 41,
+                "cluster_id": 1361,
+                "label": "ImageRotationDiscreteAngles",
+                "type": "Optional[uint16]",
+                "writable": true
+            },
             "65528": {
                 "id": 65528,
                 "cluster_id": 1361,
@@ -15898,28 +16359,28 @@ export const clusters: Record<number, ClusterDescription> = {
                 "id": 0,
                 "cluster_id": 1874,
                 "label": "AnchorRootCa",
-                "type": "Optional[bytes]",
+                "type": "bytes",
                 "writable": false
             },
             "1": {
                 "id": 1,
                 "cluster_id": 1874,
                 "label": "AnchorNodeId",
-                "type": "Optional[node-id]",
+                "type": "node-id",
                 "writable": false
             },
             "2": {
                 "id": 2,
                 "cluster_id": 1874,
                 "label": "AnchorVendorId",
-                "type": "Optional[vendor-id]",
+                "type": "vendor-id",
                 "writable": false
             },
             "3": {
                 "id": 3,
                 "cluster_id": 1874,
                 "label": "FriendlyName",
-                "type": "Optional[string]",
+                "type": "string",
                 "writable": false
             },
             "4": {
@@ -15954,7 +16415,7 @@ export const clusters: Record<number, ClusterDescription> = {
                 "id": 8,
                 "cluster_id": 1874,
                 "label": "Status",
-                "type": "Optional[DatastoreStatusEntryStruct]",
+                "type": "DatastoreStatusEntryStruct",
                 "writable": false
             },
             "9": {
@@ -16166,7 +16627,7 @@ export const clusters: Record<number, ClusterDescription> = {
                 "id": 0,
                 "cluster_id": 1875,
                 "label": "AdministratorFabricIndex",
-                "type": "Optional[Nullable[fabric-idx]]",
+                "type": "Nullable[fabric-idx]",
                 "writable": true
             },
             "65528": {
