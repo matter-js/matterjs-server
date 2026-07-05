@@ -530,7 +530,6 @@ export class MatterController {
     }
 
     async stop() {
-        await this.certificateService(); // Ensure it was initialized so that shutdown works
         if (!this.#threadDiagnosticsDisabled) {
             await this.#borderRouterRegistry.stop();
         }

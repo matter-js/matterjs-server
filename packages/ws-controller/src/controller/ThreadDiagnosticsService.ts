@@ -253,11 +253,13 @@ export class ThreadDiagnosticsService {
         );
 
         // Ensure a REST-capability probe has settled before transport selection: if
-        // no capability is cached for this network, probe the chosen BR now (the
-        // #probeAttempted guard keeps this a no-op once a BR has been probed, so a
-        // known REST-less network is not re-checked on every query).
+        // no capability is cached for this network, probe the chosen BR now. The
+        // #probeAttempted guard keeps this a no-op once a BR has been probed (so a
+        // known REST-less network is not re-checked on every passive query) — but a
+        // force refresh re-probes, so a transient earlier miss can recover instead of
+        // pinning the network to MeshCoP until the next mDNS re-announce.
         if (this.#restCaps.get(key) === undefined) {
-            await this.#probeBrForRest(br);
+            await this.#probeBrForRest(br, { force });
             // The probe's await yields; a concurrent non-force fetch may have
             // registered the shared stream meanwhile. Join it, don't start a second.
             if (!force) {

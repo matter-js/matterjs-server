@@ -821,7 +821,7 @@ describe("ThreadDiagnosticsService", () => {
         expect(probeCalls).to.equal(1);
     });
 
-    it("force=true does not re-probe a known REST-less BR (trusts the first-seen miss)", async () => {
+    it("force=true re-probes a known REST-less BR (recovers a transient miss)", async () => {
         let probeCalls = 0;
         let meshcopCalls = 0;
         const stub = brsListing([makeBr({ addresses: ["fd00::1"] })]);
@@ -844,14 +844,16 @@ describe("ThreadDiagnosticsService", () => {
         await new Promise(r => setTimeout(r, 5));
         expect(probeCalls).to.equal(1);
 
+        // Passive fetch trusts the sticky first-seen miss (no re-probe).
         const first = await service.getOrFetch(EXT_PAN_HEX_LOWER);
         expect(first?.source).to.equal("meshcop");
+        expect(probeCalls).to.equal(1);
 
-        // Reload: re-runs MeshCoP but must not re-probe REST — the first-seen miss stands.
+        // Force refresh re-probes REST, so a transient miss can recover.
         const second = await service.getOrFetch(EXT_PAN_HEX_LOWER, { force: true });
         expect(second?.source).to.equal("meshcop");
         expect(meshcopCalls).to.equal(2);
-        expect(probeCalls).to.equal(1);
+        expect(probeCalls).to.equal(2);
     });
 
     it("does not re-probe on `updated` events; only `added` triggers eager probes", async () => {
