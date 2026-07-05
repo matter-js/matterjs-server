@@ -59,6 +59,7 @@ class BooleanStateConfiguration(Cluster):
             kAudible = 0x2
             kAlarmSuppress = 0x4
             kSensitivityLevel = 0x8
+            kFaultEvents = 0x10
 
         class AlarmModeBitmap(IntFlag):
             kVisual = 0x1
