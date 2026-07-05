@@ -181,6 +181,10 @@ export class CommissionNodeThread extends LitElement {
     }
 
     private async _commissionNode() {
+        if (!this._pairingCodeField.value) {
+            showAlertDialog({ title: "Validation error", text: "Pairing code is required" });
+            return;
+        }
         this._loading = true;
         try {
             const opts = this._selectedId !== "default" ? { threadDatasetId: this._selectedId } : undefined;
