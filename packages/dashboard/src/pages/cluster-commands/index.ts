@@ -21,5 +21,6 @@ import "./clusters/avsum-commands.js";
 import "./clusters/basic-information-commands.js";
 import "./clusters/binding-commands.js";
 import "./clusters/chime-commands.js";
+import "./clusters/icd-management-commands.js";
 import "./clusters/level-control-commands.js";
 import "./clusters/on-off-commands.js";
