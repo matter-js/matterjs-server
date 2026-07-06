@@ -65,11 +65,6 @@ export class IcdManagementClusterCommands extends BaseClusterCommands {
         return icdInfo(this.node.attributes);
     }
 
-    /** Whether `this.node` is still the node a previously captured async flow started for. */
-    private _isSameNode(node: MatterNode): boolean {
-        return String(this.node?.node_id) === String(node.node_id);
-    }
-
     private get _actionTimeoutMs(): number {
         // The device may be asleep: allow a full idle interval + margin for delivery.
         return ((this._info.idleModeDuration ?? 60) + 30) * 1000;
@@ -77,23 +72,24 @@ export class IcdManagementClusterCommands extends BaseClusterCommands {
 
     private async _ensureLoaded() {
         const node = this.node;
+        const endpoint = this.endpoint;
         try {
             const result = await this.client.readAttribute(node.node_id, [COMMISSIONED_FABRICS_PATH]);
-            if (this._isSameNode(node)) Object.assign(this.node.attributes, result);
+            if (this.isSameContext(node, endpoint)) Object.assign(this.node.attributes, result);
         } catch {
             // use cached values
         }
-        await this._refreshServerState(node);
+        await this._refreshServerState(node, endpoint);
     }
 
-    private async _refreshServerState(node: MatterNode) {
+    private async _refreshServerState(node: MatterNode, endpoint: number) {
         let state: IcdStateData | undefined;
         try {
             state = await this.client.getIcdState(node.node_id);
         } catch {
             state = undefined;
         }
-        if (!this._isSameNode(node)) return;
+        if (!this.isSameContext(node, endpoint)) return;
         this._serverState = state;
         this.requestUpdate();
     }
@@ -242,23 +238,24 @@ export class IcdManagementClusterCommands extends BaseClusterCommands {
 
     private async _enable() {
         const node = this.node;
+        const endpoint = this.endpoint;
         const confirmed = await showPromptDialog({
             title: "Enable Battery Saver Mode?",
             text: this._enableConfirmText(),
             confirmText: "Enable",
         });
-        if (!confirmed || !this._isSameNode(node)) return;
-        await this._runBusy(node, "Enabling — waiting for the device to wake up…", async () => {
+        if (!confirmed || !this.isSameContext(node, endpoint)) return;
+        await this._runBusy(node, endpoint, "Enabling — waiting for the device to wake up…", async () => {
             try {
                 await this._register(node, false);
             } catch (error) {
-                if (!(await this._handleMultiAdmin(node, error))) throw error;
+                if (!(await this._handleMultiAdmin(node, endpoint, error))) throw error;
             }
         });
     }
 
     /** Returns true when the error was a handled multi-admin rejection. */
-    private async _handleMultiAdmin(node: MatterNode, error: unknown): Promise<boolean> {
+    private async _handleMultiAdmin(node: MatterNode, endpoint: number, error: unknown): Promise<boolean> {
         if (!(error instanceof ServerCommandError) || error.errorCode !== ICD_MULTI_ADMIN_ERROR_CODE) return false;
         const vendorIds = parseMultiAdminDetails(error.message) ?? new Array<number>();
         let names: string;
@@ -274,7 +271,7 @@ export class IcdManagementClusterCommands extends BaseClusterCommands {
                 names = vendorIds.map(id => `Vendor 0x${id.toString(16).padStart(4, "0")}`).join(", ");
             }
         }
-        if (!this._isSameNode(node)) return true;
+        if (!this.isSameContext(node, endpoint)) return true;
         const retry = await showPromptDialog({
             title: "Other ecosystems may not support Battery Saver Mode",
             text: html`
@@ -285,7 +282,7 @@ export class IcdManagementClusterCommands extends BaseClusterCommands {
             `,
             confirmText: "Enable anyway",
         });
-        if (!retry || !this._isSameNode(node)) return true;
+        if (!retry || !this.isSameContext(node, endpoint)) return true;
         await this._register(node, true);
         return true;
     }
@@ -296,9 +293,10 @@ export class IcdManagementClusterCommands extends BaseClusterCommands {
 
     private async _disable() {
         const node = this.node;
-        await this._runBusy(node, "Switching — waiting for the device to wake up…", async () => {
-            const others = await this._otherClientCount(node);
-            if (!this._isSameNode(node)) return;
+        const endpoint = this.endpoint;
+        await this._runBusy(node, endpoint, "Switching — waiting for the device to wake up…", async () => {
+            const others = await this._otherClientCount(node, endpoint);
+            if (!this.isSameContext(node, endpoint)) return;
             if (others > 0) {
                 await showAlertDialog({
                     title: "Cannot disable Battery Saver Mode",
@@ -315,20 +313,20 @@ export class IcdManagementClusterCommands extends BaseClusterCommands {
                     "It still sleeps briefly between check-ins — it does not become permanently connected.",
                 confirmText: "Switch",
             });
-            if (!confirmed || !this._isSameNode(node)) return;
+            if (!confirmed || !this.isSameContext(node, endpoint)) return;
             await this.client.unregisterIcd(node.node_id, false, this._actionTimeoutMs);
         });
     }
 
     /** Non-fabric-filtered RegisteredClients read; counts clients on other fabrics. */
-    private async _otherClientCount(node: MatterNode): Promise<number> {
+    private async _otherClientCount(node: MatterNode, endpoint: number): Promise<number> {
         const ourFabricIndexRaw = node.attributes[CURRENT_FABRIC_INDEX_PATH];
         const result = await this.client.readAttribute(
             node.node_id,
             [REGISTERED_CLIENTS_PATH, CURRENT_FABRIC_INDEX_PATH],
             this._actionTimeoutMs,
         );
-        if (this._isSameNode(node)) Object.assign(this.node.attributes, result);
+        if (this.isSameContext(node, endpoint)) Object.assign(this.node.attributes, result);
         const clients = result[REGISTERED_CLIENTS_PATH];
         const ourFabricIndex = result[CURRENT_FABRIC_INDEX_PATH] ?? ourFabricIndexRaw;
         return otherFabricClientCount(
@@ -339,6 +337,7 @@ export class IcdManagementClusterCommands extends BaseClusterCommands {
 
     private async _resync() {
         const node = this.node;
+        const endpoint = this.endpoint;
         const confirmed = await showPromptDialog({
             title: "Resync Battery Saver state?",
             text:
@@ -346,27 +345,27 @@ export class IcdManagementClusterCommands extends BaseClusterCommands {
                 "Use when the device appears stuck offline although it should be reachable.",
             confirmText: "Resync",
         });
-        if (!confirmed || !this._isSameNode(node)) return;
-        await this._runBusy(node, "Resyncing…", async () => {
+        if (!confirmed || !this.isSameContext(node, endpoint)) return;
+        await this._runBusy(node, endpoint, "Resyncing…", async () => {
             await this.client.resyncIcd(node.node_id);
         });
     }
 
-    private async _runBusy(node: MatterNode, label: string, action: () => Promise<void>) {
-        if (this._busy || !this._isSameNode(node)) return;
+    private async _runBusy(node: MatterNode, endpoint: number, label: string, action: () => Promise<void>) {
+        if (this._busy || !this.isSameContext(node, endpoint)) return;
         this._busy = true;
         this._busyLabel = label;
         try {
             await action();
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
-            if (this._isSameNode(node)) {
+            if (this.isSameContext(node, endpoint)) {
                 await showAlertDialog({ title: "ICD operation failed", text: message });
             }
         } finally {
-            if (this._isSameNode(node)) {
+            if (this.isSameContext(node, endpoint)) {
                 this._busy = false;
-                await this._refreshServerState(node);
+                await this._refreshServerState(node, endpoint);
             }
         }
     }

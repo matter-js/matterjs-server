@@ -5,6 +5,7 @@
  */
 
 import "@material/web/button/outlined-button";
+import type { MatterNode } from "@matter-server/ws-client";
 import { mdiTrashCan } from "@mdi/js";
 import { css, html, nothing, type CSSResultGroup, type TemplateResult } from "lit";
 import { customElement, state } from "lit/decorators.js";
@@ -50,13 +51,15 @@ class BindingClusterCommands extends BaseClusterCommands {
     /** Read the (fabric-scoped) binding attribute and each target's ACL into the cache on open. */
     private async _ensureLoaded() {
         if (!this.client || !this.node || !this.node.available || this.endpoint === undefined) return;
-        const key = `${nodeIdKey(this.node.node_id)}/${this.endpoint}`;
+        const node = this.node;
+        const endpoint = this.endpoint;
+        const key = `${nodeIdKey(node.node_id)}/${endpoint}`;
         if (this._loadedKey === key) return;
         this._loadedKey = key;
         try {
-            await this._readInto(this.node.node_id, [`${this.endpoint}/30/0`, "0/62/5"]);
+            await this._readInto(node.node_id, [`${endpoint}/30/0`, "0/62/5"]);
             const targets = new Set(
-                readBindings(this.node, this.endpoint)
+                readBindings(node, endpoint)
                     .map(b => (b.node != null ? nodeIdKey(b.node) : undefined))
                     .filter((k): k is string => k !== undefined),
             );
@@ -66,7 +69,7 @@ class BindingClusterCommands extends BaseClusterCommands {
                     return target?.available ? this._readInto(target.node_id, ["0/31/0", "0/62/5"]) : undefined;
                 }),
             );
-            this.requestUpdate();
+            if (this.isSameContext(node, endpoint)) this.requestUpdate();
         } catch (err) {
             this._loadedKey = ""; // allow retry on the next update after a transient failure
             console.error("Failed to load binding/ACL data", err);
@@ -93,34 +96,47 @@ class BindingClusterCommands extends BaseClusterCommands {
         await showNodeBindingDialog(this.node, this.endpoint);
     }
 
-    private async _run(action: () => Promise<void>, failTitle: string) {
+    private async _run(node: MatterNode, endpoint: number, action: () => Promise<void>, failTitle: string) {
         this._busy = true;
         try {
             await action();
         } catch (err) {
-            await showAlertDialog({ title: failTitle, text: err instanceof Error ? err.message : String(err) });
+            if (this.isSameContext(node, endpoint)) {
+                await showAlertDialog({ title: failTitle, text: err instanceof Error ? err.message : String(err) });
+            }
         } finally {
             this._busy = false;
         }
     }
 
     private async _delete(index: number) {
+        const node = this.node;
+        const endpoint = this.endpoint;
         const confirmed = await showPromptDialog({
             title: "Remove binding",
             text: "Remove this binding and clean up the matching access control entry on the target node?",
             confirmText: "Remove",
         });
-        if (!confirmed) return;
-        await this._run(() => deleteBindingAtIndex(this.client, this.node, this.endpoint, index), "Delete failed");
+        if (!confirmed || !this.isSameContext(node, endpoint)) return;
+        await this._run(
+            node,
+            endpoint,
+            () => deleteBindingAtIndex(this.client, node, endpoint, index),
+            "Delete failed",
+        );
     }
 
     private async _fixAcl(b: BindingEntryStruct, mode: "missing" | "overPrivileged") {
         if (b.node == null || b.endpoint == null) return;
+        const node = this.node;
+        const endpoint = this.endpoint;
         await this._run(
+            node,
+            endpoint,
             () =>
                 mode === "missing"
-                    ? ensureBindingAcl(this.client, this.node.node_id, b.node!, b.endpoint!, b.cluster)
-                    : fixOverPrivilegedBindingAcl(this.client, this.node.node_id, b.node!, b.endpoint!, b.cluster),
+                    ? ensureBindingAcl(this.client, node.node_id, b.node!, b.endpoint!, b.cluster)
+                    : fixOverPrivilegedBindingAcl(this.client, node.node_id, b.node!, b.endpoint!, b.cluster),
             "Fix failed",
         );
     }

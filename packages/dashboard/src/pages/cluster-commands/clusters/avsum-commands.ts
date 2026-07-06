@@ -291,9 +291,12 @@ class AvsumClusterCommands extends BaseClusterCommands {
     }
 
     private async _move(delta: { panDelta?: number; tiltDelta?: number; zoomDelta?: number }) {
+        const node = this.node;
+        const endpoint = this.endpoint;
         try {
-            await relativeMove(this.client, this.node.node_id, this.endpoint, delta);
+            await relativeMove(this.client, node.node_id, endpoint, delta);
         } catch (err) {
+            if (!this.isSameContext(node, endpoint)) return;
             if (this._isBusy(err)) {
                 this._showBusy();
                 return;
@@ -303,9 +306,12 @@ class AvsumClusterCommands extends BaseClusterCommands {
     }
 
     private async _goPreset(presetId: number) {
+        const node = this.node;
+        const endpoint = this.endpoint;
         try {
-            await moveToPreset(this.client, this.node.node_id, this.endpoint, presetId);
+            await moveToPreset(this.client, node.node_id, endpoint, presetId);
         } catch (err) {
+            if (!this.isSameContext(node, endpoint)) return;
             const msg = err instanceof Error ? err.message : String(err);
             if (this._isBusy(err)) return this._showBusy();
             if (msg.toLowerCase().includes("not_found")) {
@@ -326,50 +332,65 @@ class AvsumClusterCommands extends BaseClusterCommands {
 
     private async _savePresetUpdate(presetId: number) {
         if (!this.node) return;
-        const preset = readPresets(this.node, this.endpoint).items.find(p => p.presetId === presetId);
+        const node = this.node;
+        const endpoint = this.endpoint;
+        const preset = readPresets(node, endpoint).items.find(p => p.presetId === presetId);
         if (!preset) return;
         try {
-            await savePreset(this.client, this.node.node_id, this.endpoint, preset.name, presetId);
+            await savePreset(this.client, node.node_id, endpoint, preset.name, presetId);
         } catch (err) {
-            showAlertDialog({ title: "Update failed", text: err instanceof Error ? err.message : String(err) });
+            if (this.isSameContext(node, endpoint)) {
+                showAlertDialog({ title: "Update failed", text: err instanceof Error ? err.message : String(err) });
+            }
         }
     }
 
     private async _renamePreset(presetId: number, currentName: string) {
+        const node = this.node;
+        const endpoint = this.endpoint;
         const next = window.prompt("New name (max 32 chars)", currentName);
         if (typeof next !== "string" || !next.trim()) return;
         try {
-            await savePreset(this.client, this.node.node_id, this.endpoint, next.trim().slice(0, 32), presetId);
+            await savePreset(this.client, node.node_id, endpoint, next.trim().slice(0, 32), presetId);
         } catch (err) {
-            showAlertDialog({ title: "Rename failed", text: err instanceof Error ? err.message : String(err) });
+            if (this.isSameContext(node, endpoint)) {
+                showAlertDialog({ title: "Rename failed", text: err instanceof Error ? err.message : String(err) });
+            }
         }
     }
 
     private async _removePreset(presetId: number, name: string) {
+        const node = this.node;
+        const endpoint = this.endpoint;
         const ok = await showPromptDialog({
             title: "Remove preset",
             text: `Remove "${name}"?`,
             confirmText: "Remove",
         });
-        if (!ok) return;
+        if (!ok || !this.isSameContext(node, endpoint)) return;
         try {
-            await removePreset(this.client, this.node.node_id, this.endpoint, presetId);
+            await removePreset(this.client, node.node_id, endpoint, presetId);
         } catch (err) {
-            showAlertDialog({ title: "Remove failed", text: err instanceof Error ? err.message : String(err) });
+            if (this.isSameContext(node, endpoint)) {
+                showAlertDialog({ title: "Remove failed", text: err instanceof Error ? err.message : String(err) });
+            }
         }
     }
 
     private async _saveNewPreset() {
         if (!this.node) return;
+        const node = this.node;
+        const endpoint = this.endpoint;
         const name = this._newPresetName.trim().slice(0, 32);
         if (!name) return;
         try {
-            await savePreset(this.client, this.node.node_id, this.endpoint, name);
-            this._newPresetName = "";
+            await savePreset(this.client, node.node_id, endpoint, name);
+            if (this.isSameContext(node, endpoint)) this._newPresetName = "";
         } catch (err) {
+            if (!this.isSameContext(node, endpoint)) return;
             const msg = err instanceof Error ? err.message : String(err);
             if (msg.toLowerCase().includes("resource_exhausted")) {
-                const max = readPresets(this.node, this.endpoint).max;
+                const max = readPresets(node, endpoint).max;
                 this._toast = `Preset list full (${max})`;
                 this._scheduleToastClear();
                 return;
