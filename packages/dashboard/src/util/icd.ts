@@ -123,7 +123,7 @@ export function parseMultiAdminDetails(message: string): number[] | undefined {
     try {
         const parsed: unknown = JSON.parse(message);
         if (parsed !== null && typeof parsed === "object" && "admin_vendor_ids" in parsed) {
-            const ids = (parsed as Record<string, unknown>).admin_vendor_ids;
+            const ids = parsed.admin_vendor_ids;
             if (Array.isArray(ids) && ids.every(id => typeof id === "number")) return ids;
         }
     } catch {
