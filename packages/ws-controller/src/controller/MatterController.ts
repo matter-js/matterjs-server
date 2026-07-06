@@ -23,11 +23,11 @@ import {
 import { VendorInfo, DclCertificateService, DclVendorInfoService } from "@matter/main/protocol";
 import { VendorId } from "@matter/main/types";
 import { Endpoint } from "@matter/node";
+import { WebRtcTransportRequestorServer } from "@matter/node/behaviors/web-rtc-transport-requestor";
 import { CameraControllerDevice } from "@matter/node/devices/camera-controller";
 import { CommissioningController } from "@project-chip/matter.js";
 import { Readable } from "node:stream";
 import { ConfigStorage } from "../server/ConfigStorage.js";
-import { WebRtcTransportRequestorServer } from "./behaviors/WebRtcTransportRequestorServer.js";
 import { BorderRouterDiscovery } from "./BorderRouterDiscovery.js";
 import { ControllerCommandHandler } from "./ControllerCommandHandler.js";
 import { LegacyDataInjector, LegacyServerData } from "./LegacyDataInjector.js";
