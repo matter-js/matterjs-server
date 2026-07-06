@@ -5,7 +5,7 @@
  */
 
 import { Connection, WebSocketFactory } from "./connection.js";
-import { CommandTimeoutError, ConnectionClosedError, InvalidServerVersion } from "./exceptions.js";
+import { CommandTimeoutError, ConnectionClosedError, InvalidServerVersion, ServerCommandError } from "./exceptions.js";
 import {
     AccessControlEntry,
     APICommands,
@@ -14,6 +14,7 @@ import {
     CommissioningParameters,
     ErrorResultMessage,
     EventMessage,
+    IcdStateData,
     LogLevelResponse,
     SettableLogLevelString,
     MatterFabricData,
@@ -217,6 +218,35 @@ export class MatterClient {
     async interviewNode(nodeId: number | bigint, timeout?: number): Promise<void> {
         // Interview a node.
         await this.sendCommand("interview_node", 0, { node_id: nodeId }, timeout);
+    }
+
+    async registerIcd(
+        nodeId: number | bigint,
+        options?: { allowMultiAdmin?: boolean; ignoredVendors?: number[] },
+        timeout?: number,
+    ): Promise<IcdStateData> {
+        return this.sendCommand(
+            "register_icd",
+            0,
+            {
+                node_id: nodeId,
+                allow_multi_admin: options?.allowMultiAdmin,
+                ignored_vendors: options?.ignoredVendors,
+            },
+            timeout,
+        );
+    }
+
+    async unregisterIcd(nodeId: number | bigint, force?: boolean, timeout?: number): Promise<IcdStateData> {
+        return this.sendCommand("unregister_icd", 0, { node_id: nodeId, force }, timeout);
+    }
+
+    async resyncIcd(nodeId: number | bigint): Promise<null> {
+        return this.sendCommand("resync_icd", 0, { node_id: nodeId });
+    }
+
+    async getIcdState(nodeId: number | bigint, timeout?: number): Promise<IcdStateData> {
+        return this.sendCommand("get_icd_state", 0, { node_id: nodeId }, timeout);
     }
 
     async importTestNode(dump: string, timeout?: number): Promise<void> {
@@ -538,7 +568,7 @@ export class MatterClient {
         }
 
         if ("error_code" in msg) {
-            this._rejectPendingCommand(msg.message_id, new Error(msg.details));
+            this._rejectPendingCommand(msg.message_id, new ServerCommandError(msg.details ?? "", msg.error_code));
             return;
         }
 

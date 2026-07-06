@@ -187,6 +187,26 @@ export interface APICommands {
         requestArgs: { node_id: number | bigint };
         response: null;
     };
+    get_icd_state: {
+        requestArgs: { node_id: number | bigint };
+        response: IcdStateData;
+    };
+    register_icd: {
+        requestArgs: {
+            node_id: number | bigint;
+            allow_multi_admin?: boolean;
+            ignored_vendors?: number[];
+        };
+        response: IcdStateData;
+    };
+    resync_icd: {
+        requestArgs: { node_id: number | bigint };
+        response: null;
+    };
+    unregister_icd: {
+        requestArgs: { node_id: number | bigint; force?: boolean };
+        response: IcdStateData;
+    };
     device_command: {
         requestArgs: {
             node_id: number | bigint;
@@ -545,6 +565,25 @@ export interface MatterFabricData {
     fabric_index?: number;
     fabric_label?: string;
     vendor_name?: string;
+}
+
+/**
+ * Error code used when ICD registration is rejected because other administrator fabrics may not
+ * support LIT. OHF extension (python-matter-server codes stop at 11); the error `details` is a JSON
+ * string `{"message": string, "admin_vendor_ids": number[]}`.
+ */
+export const ICD_MULTI_ADMIN_ERROR_CODE = 100;
+
+/** ICD controller-side state for a node. Note: Only available with OHF Matter Server. */
+export interface IcdStateData {
+    supported: boolean;
+    lit_supported: boolean;
+    registered: boolean;
+    operating_mode: "SIT" | "LIT" | null;
+    awake: boolean | null;
+    available: boolean | null;
+    /** Epoch milliseconds of the next expected check-in, if known. */
+    next_expected_checkin: number | null;
 }
 
 export type NotificationType = "success" | "info" | "warning" | "error";
