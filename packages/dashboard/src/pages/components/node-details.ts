@@ -25,6 +25,7 @@ import "../../components/ha-svg-icon";
 import "../camera-overlay.js";
 import { getDeviceIcon } from "../../util/device-icons.js";
 import { getEndpointDeviceTypes } from "../../util/endpoints.js";
+import { ICD_CLUSTER_ID, isLitIcd, litOfflineHint } from "../../util/icd.js";
 import { bindingContext } from "./context.js";
 
 /** Map updateState values to user-friendly labels */
@@ -98,7 +99,16 @@ export class NodeDetails extends LitElement {
                                   </md-icon-button>
                               `
                             : nothing}
-                        ${this.node.available ? nothing : html` <span class="status">OFFLINE</span> `}
+                        ${this.node.available
+                            ? nothing
+                            : html` <span class="status">OFFLINE</span>${isLitIcd(this.node.attributes)
+                                      ? html`<a
+                                            class="status icd-badge"
+                                            href="#node/${this.node.node_id}/0/${ICD_CLUSTER_ID}"
+                                            title=${litOfflineHint(this.node.attributes)}
+                                            >ICD</a
+                                        >`
+                                      : nothing}`}
                     </div>
                 </md-list-item>
                 <md-list-item>
@@ -362,6 +372,14 @@ export class NodeDetails extends LitElement {
             color: var(--danger-color);
             font-weight: bold;
             font-size: 0.8em;
+        }
+
+        .icd-badge {
+            margin-left: 4px;
+            padding: 0 4px;
+            border: 1px solid var(--danger-color);
+            border-radius: 4px;
+            text-decoration: none;
         }
     `;
 }
