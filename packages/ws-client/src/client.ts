@@ -568,7 +568,11 @@ export class MatterClient {
         }
 
         if ("error_code" in msg) {
-            this._rejectPendingCommand(msg.message_id, new ServerCommandError(msg.details ?? "", msg.error_code));
+            const details = msg.details ?? "";
+            this._rejectPendingCommand(
+                msg.message_id,
+                new ServerCommandError(details !== "" ? details : `Server error ${msg.error_code}`, msg.error_code),
+            );
             return;
         }
 

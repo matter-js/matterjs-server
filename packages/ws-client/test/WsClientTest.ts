@@ -332,15 +332,20 @@ describe("ws-client", () => {
                     };
                 });
                 await client.connect();
-                const state = await client.registerIcd(BigInt(5), { allowMultiAdmin: true });
+                const state = await client.registerIcd(BigInt(5), {
+                    allowMultiAdmin: true,
+                    ignoredVendors: [4631],
+                });
                 expect(received?.node_id).to.equal(5);
                 expect(received?.allow_multi_admin).to.equal(true);
+                expect(received?.ignored_vendors).to.deep.equal([4631]);
                 expect(state.registered).to.equal(true);
             });
 
             it("preserves error_code on command errors", async () => {
+                const details = '{"message":"multi admin","admin_vendor_ids":[4631]}';
                 server.onCommand("register_icd", () => {
-                    throw new MockCommandError('{"message":"multi admin","admin_vendor_ids":[4631]}', 100);
+                    throw new MockCommandError(details, 100);
                 });
                 await client.connect();
                 try {
@@ -349,6 +354,7 @@ describe("ws-client", () => {
                 } catch (error) {
                     expect(error).to.be.instanceOf(ServerCommandError);
                     expect((error as ServerCommandError).errorCode).to.equal(100);
+                    expect((error as ServerCommandError).message).to.equal(details);
                 }
             });
 
