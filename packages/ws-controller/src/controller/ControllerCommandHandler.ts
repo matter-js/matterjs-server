@@ -335,10 +335,11 @@ export class ControllerCommandHandler {
 
         const command = commandName === "ProvideOffer" ? "provideOffer" : "solicitOffer";
 
-        // `payload` arrives using the wire convention from the Python CHIP SDK (e.g. `webRtcSessionID`),
-        // which does not match matter.js's own camelCase property names (e.g. `webRtcSessionId`).
-        // Route it through the same model-based conversion used for regular invokes so field names
-        // and value types (nullables, bytes, epochs, ...) line up with what matter.js expects.
+        // `payload` arrives using the wire convention from this project's own Python client
+        // (python_client/chip/clusters/cluster_defs, e.g. `webRtcSessionID`), which does not
+        // match matter.js's own camelCase property names (e.g. `webRtcSessionId`). Route it
+        // through the same model-based conversion used for regular invokes so field names and
+        // value types (nullables, bytes, epochs, ...) line up with what matter.js expects.
         const providerClusterEntry = ClusterMap[WebRtcTransportProvider.id];
         const commandModel = providerClusterEntry?.commands[command.toLowerCase()];
         const convertedPayload = commandModel
