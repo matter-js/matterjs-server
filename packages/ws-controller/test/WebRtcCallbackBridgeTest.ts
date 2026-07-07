@@ -16,10 +16,10 @@ import {
 } from "@matter/general";
 import { EndpointNumber, FabricIndex, NodeId } from "@matter/main";
 import { ServerNode } from "@matter/node";
+import { WebRtcTransportRequestorServer } from "@matter/node/behaviors/web-rtc-transport-requestor";
 import { CameraControllerDevice } from "@matter/node/devices/camera-controller";
 import { StreamUsage } from "@matter/types";
 import { WebRtcTransportDefinitions } from "@matter/types/clusters/web-rtc-transport-definitions";
-import { WebRtcTransportRequestorServer } from "../src/controller/behaviors/WebRtcTransportRequestorServer.js";
 import { attachWebRtcCallbackBridge } from "../src/controller/WebRtcCallbackBridge.js";
 
 type WebRtcSession = WebRtcTransportDefinitions.WebRtcSession;
