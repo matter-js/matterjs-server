@@ -890,6 +890,32 @@ describe("Converters", () => {
             // null is a valid value for nullable fields - must NOT be omitted
             expect(result).to.have.property("openDuration", null);
         });
+
+        it("should convert webRtcSessionID to webRtcSessionId for WebRtcTransportProvider ProvideOffer", () => {
+            // HA's matter camera integration sends the Python CHIP SDK wire name
+            // (webRtcSessionID, capital ID) for a fresh offer, with a null session id
+            // since it is a mandatory nullable field. Matter.js expects webRtcSessionId
+            // (lowercase d). Without conversion this key is dropped entirely and
+            // Matter.js raises a "missing mandatory field" error.
+            const webRtcProviderCluster = ClusterMap[0x0553]!;
+            const provideOfferCmd = webRtcProviderCluster.commands["provideoffer"]!;
+
+            const payload = {
+                webRtcSessionID: null,
+                sdp: "v=0",
+                streamUsage: 1,
+            };
+
+            const result = convertCommandDataToMatter(
+                payload,
+                provideOfferCmd,
+                webRtcProviderCluster.model,
+            ) as Record<string, unknown>;
+
+            expect(result).to.have.property("webRtcSessionId", null);
+            expect(result).to.not.have.property("webRtcSessionID");
+            expect(result).to.have.property("sdp", "v=0");
+        });
     });
 
     describe("convertMatterToWebSocketNameBased - named command responses (issue #70)", () => {
