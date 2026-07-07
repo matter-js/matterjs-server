@@ -42,8 +42,8 @@
     "dependencies": {
         "@matter-server/ws-client": "*",
         "@matter/dcl-data": ">=2026.7.1",
-        "@matter/main": "0.17.5-alpha.0-20260704-9ea70abfa",
-        "@project-chip/matter.js": "0.17.5-alpha.0-20260704-9ea70abfa",
+        "@matter/main": "0.17.5-alpha.0-20260707-23984f463",
+        "@project-chip/matter.js": "0.17.5-alpha.0-20260707-23984f463",
         "ws": "^8.21.0"
     },
     "devDependencies": {
@@ -51,7 +51,7 @@
         "@types/ws": "^8.18.1"
     },
     "optionalDependencies": {
-        "@matter/nodejs-ble": "0.17.5-alpha.0-20260704-9ea70abfa",
+        "@matter/nodejs-ble": "0.17.5-alpha.0-20260707-23984f463",
         "dbus-next": "npm:@jellybrick/dbus-next@^0.10.3"
     },
     "engines": {
