@@ -908,11 +908,10 @@ describe("Converters", () => {
                 streamUsage: 1,
             };
 
-            const result = convertCommandDataToMatter(
-                payload,
-                provideOfferCmd,
-                webRtcProviderCluster.model,
-            ) as Record<string, unknown>;
+            const result = convertCommandDataToMatter(payload, provideOfferCmd, webRtcProviderCluster.model) as Record<
+                string,
+                unknown
+            >;
 
             expect(result).to.have.property("webRtcSessionId", null);
             expect(result).to.not.have.property("webRtcSessionID");
