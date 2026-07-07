@@ -27,6 +27,7 @@ export {
     type ErrorResultMessage,
     type EventMessage,
     type EventTypes,
+    type IcdStateData,
     type LogLevelResponse,
     type LogLevelString,
     type SettableLogLevelString,
@@ -76,6 +77,8 @@ export enum ServerErrorCode {
     UpdateCheckError = 10,
     /** OTA update failed */
     UpdateError = 11,
+    /** OHF extension (not python-matter-server): value must equal ICD_MULTI_ADMIN_ERROR_CODE in ws-client model.ts. */
+    IcdMultiAdmin = 100,
 }
 
 /**
@@ -138,5 +141,15 @@ export class ServerError extends Error {
 
     static updateError(message: string, cause?: Error): ServerError {
         return new ServerError(ServerErrorCode.UpdateError, message, cause);
+    }
+
+    static icdMultiAdmin(adminVendorIds: number[]): ServerError {
+        return new ServerError(
+            ServerErrorCode.IcdMultiAdmin,
+            JSON.stringify({
+                message: "Peer has administrators from other vendors that may not support LIT",
+                admin_vendor_ids: adminVendorIds,
+            }),
+        );
     }
 }

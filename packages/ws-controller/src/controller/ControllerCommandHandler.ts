@@ -13,6 +13,8 @@ import {
     CommissioningClient,
     FabricId,
     FabricIndex,
+    IcdClient,
+    IcdMultiAdminError,
     isObject,
     Logger,
     MatterAggregateError,
@@ -28,13 +30,14 @@ import {
     Timer,
     DnsRecordType,
 } from "@matter/main";
-import { OperationalCredentialsClient } from "@matter/main/behaviors";
+import { IcdManagementClient, OperationalCredentialsClient } from "@matter/main/behaviors";
 import {
     AccessControl,
     BasicInformation,
     Binding,
     BridgedDeviceBasicInformation,
     GeneralCommissioning,
+    IcdManagement,
     OperationalCredentials,
 } from "@matter/main/clusters";
 import { WebRtcTransportDefinitions } from "@matter/main/clusters/web-rtc-transport-definitions";
@@ -88,6 +91,7 @@ import {
     AccessControlTarget,
     AttributeWriteResult,
     BindingTarget,
+    IcdStateData,
     MatterSoftwareVersion,
     NodePingResult,
     ServerError,
@@ -1278,6 +1282,79 @@ export class ControllerCommandHandler {
 
     removeFabric(nodeId: NodeId, fabricIndex: FabricIndex) {
         return this.#nodes.get(nodeId).node.commandsOf(OperationalCredentialsClient).removeFabric({ fabricIndex });
+    }
+
+    /**
+     * Register this controller as an ICD Check-In client on the peer.
+     * @throws {ServerError} with code IcdMultiAdmin if the peer has other-vendor administrators and
+     *   `options.allowMultiAdmin` is not set.
+     */
+    async registerIcd(
+        nodeId: NodeId,
+        options: { allowMultiAdmin?: boolean; ignoredVendors?: number[] },
+    ): Promise<void> {
+        const node = this.#nodes.get(nodeId);
+        try {
+            await node.node.act(agent =>
+                agent.get(IcdClient).register({
+                    allowMultiAdmin: options.allowMultiAdmin,
+                    ignoredVendors: options.ignoredVendors?.map(vendorId => VendorId(vendorId)),
+                }),
+            );
+        } catch (error) {
+            if (error instanceof IcdMultiAdminError) {
+                throw ServerError.icdMultiAdmin(error.adminVendorIds.map(vendorId => Number(vendorId)));
+            }
+            throw error;
+        }
+    }
+
+    /**
+     * Drop this controller's ICD Check-In registration.
+     * `force` skips the peer round-trip (for an unreachable peer) and only clears local state.
+     */
+    async unregisterIcd(nodeId: NodeId, force: boolean): Promise<void> {
+        const node = this.#nodes.get(nodeId);
+        await node.node.act(agent => (force ? agent.get(IcdClient).forget() : agent.get(IcdClient).unregister()));
+    }
+
+    /**
+     * Drop the local ICD registration and reconnect; a LIT peer re-registers automatically once subscribed.
+     */
+    async resyncIcd(nodeId: NodeId): Promise<void> {
+        const node = this.#nodes.get(nodeId);
+        await node.node.act(agent => agent.get(IcdClient).forget());
+        node.triggerReconnect();
+    }
+
+    async getIcdState(nodeId: NodeId): Promise<IcdStateData> {
+        const node = this.#nodes.get(nodeId);
+        const icdManagementState = node.node.endpoints.for(EndpointNumber(0)).maybeStateOf(IcdManagementClient);
+        if (icdManagementState === undefined) {
+            return {
+                supported: false,
+                lit_supported: false,
+                registered: false,
+                operating_mode: null,
+                awake: null,
+                available: null,
+                next_expected_checkin: null,
+            };
+        }
+
+        return node.node.act(agent => {
+            const icd = agent.get(IcdClient);
+            return {
+                supported: true,
+                lit_supported: icd.peerSupportsLit,
+                registered: icd.isRegistered,
+                operating_mode: icdManagementState.operatingMode === IcdManagement.OperatingMode.Lit ? "LIT" : "SIT",
+                // upstream d.ts types the awake getter as `any`; pin to boolean for the wire
+                awake: icd.awake === true,
+                available: icd.state.available,
+                next_expected_checkin: icd.nextExpectedCheckin !== undefined ? Number(icd.nextExpectedCheckin) : null,
+            };
+        });
     }
 
     /**
