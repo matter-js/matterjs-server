@@ -334,6 +334,22 @@ export function convertWebRtcProviderResponseToWebSocket(
 }
 
 /**
+ * Same "ID" acronym problem as {@link convertWebRtcProviderResponseToWebSocket}, for
+ * CameraAvStreamManagement's VideoStreamAllocateResponse/AudioStreamAllocateResponse: matter.js
+ * returns `videoStreamId`/`audioStreamId`, but HA's camera integration (and this project's own
+ * Python client) reads `videoStreamID`/`audioStreamID`.
+ */
+export function convertCameraStreamAllocateResponseToWebSocket(
+    commandName: "VideoStreamAllocate" | "AudioStreamAllocate",
+    response: { videoStreamId?: number; audioStreamId?: number },
+): Record<string, unknown> {
+    if (commandName === "VideoStreamAllocate") {
+        return { videoStreamID: response.videoStreamId };
+    }
+    return { audioStreamID: response.audioStreamId };
+}
+
+/**
  * Same as convertMatterToWebSocketTagBased but uses camelCase names instead of numeric tag IDs for struct keys.
  * Used for command (invoke) responses to match Python Matter Server behavior.
  */

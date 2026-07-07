@@ -7,6 +7,7 @@
 import {
     ClusterMap,
     GlobalAttributes,
+    convertCameraStreamAllocateResponseToWebSocket,
     convertCommandDataToMatter,
     convertMatterToWebSocketNameBased,
     convertMatterToWebSocketTagBased,
@@ -947,6 +948,25 @@ describe("Converters", () => {
 
             expect(result).to.have.property("webRtcSessionID", 7);
             expect(result).to.have.property("deferredOffer", true);
+        });
+
+        it("should convert VideoStreamAllocateResponse back to videoStreamID", () => {
+            // Same acronym mismatch as ProvideOffer, for CameraAvStreamManagement's
+            // VideoStreamAllocate/AudioStreamAllocate responses (needed by HA's camera
+            // integration to allocate a video/audio stream before calling ProvideOffer).
+            const result = convertCameraStreamAllocateResponseToWebSocket("VideoStreamAllocate", {
+                videoStreamId: 3,
+            });
+
+            expect(result).to.deep.equal({ videoStreamID: 3 });
+        });
+
+        it("should convert AudioStreamAllocateResponse back to audioStreamID", () => {
+            const result = convertCameraStreamAllocateResponseToWebSocket("AudioStreamAllocate", {
+                audioStreamId: 9,
+            });
+
+            expect(result).to.deep.equal({ audioStreamID: 9 });
         });
     });
 

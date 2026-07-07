@@ -46,6 +46,7 @@ import { formatNodeId } from "../util/formatNodeId.js";
 import { MATTER_VERSION } from "../util/matterVersion.js";
 import { ConfigStorage } from "./ConfigStorage.js";
 import {
+    convertCameraStreamAllocateResponseToWebSocket,
     convertMatterToWebSocketNameBased,
     convertMatterToWebSocketTagBased,
     parseBigIntAwareJson,
@@ -1220,6 +1221,18 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 value,
             );
             return {};
+        }
+
+        // CameraAvStreamManagement (0x0551): VideoStreamAllocateResponse/AudioStreamAllocateResponse
+        // carry a videoStreamID/audioStreamID field. Same "ID" acronym mismatch as
+        // WebRtcTransportProvider's ProvideOffer (see convertWebRtcProviderResponseToWebSocket) -
+        // matter.js's own camelCase naming doesn't match the wire convention HA's camera
+        // integration reads the response with, so it's renamed explicitly here too.
+        if (clusterId === 0x0551 && (commandName === "VideoStreamAllocate" || commandName === "AudioStreamAllocate")) {
+            return convertCameraStreamAllocateResponseToWebSocket(
+                commandName,
+                value as { videoStreamId?: number; audioStreamId?: number },
+            );
         }
 
         return convertMatterToWebSocketNameBased(
