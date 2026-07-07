@@ -553,7 +553,7 @@ export class ControllerCommandHandler {
         for (const nodeId of this.#nodes.getIds()) {
             try {
                 this.#nodes.get(nodeId).connect({
-                    subscribeMinIntervalFloorSeconds: 1,
+                    subscribeMinIntervalFloorSeconds: undefined,
                     subscribeMaxIntervalCeilingSeconds: undefined,
                 });
             } catch (error) {
