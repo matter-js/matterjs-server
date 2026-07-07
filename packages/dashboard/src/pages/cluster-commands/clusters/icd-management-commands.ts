@@ -18,6 +18,7 @@ import { showAlertDialog, showPromptDialog } from "../../../components/dialog-bo
 import { handleAsync } from "../../../util/async-handler.js";
 import { formatDuration } from "../../../util/duration.js";
 import {
+    decodeRegisteredClients,
     ICD_CLUSTER_ID,
     icdInfo,
     isRegisteredByUs,
@@ -49,15 +50,22 @@ export class IcdManagementClusterCommands extends BaseClusterCommands {
     private _busyLabel = "";
 
     #loadedForNode?: string;
+    #flowGeneration = 0;
 
     override updated(changedProperties: Map<string, unknown>) {
         super.updated(changedProperties);
-        if (this.client && this.node && this.#loadedForNode !== String(this.node.node_id)) {
+        if (!this.client || !this.node) return;
+        if (this.#loadedForNode !== String(this.node.node_id)) {
             this.#loadedForNode = String(this.node.node_id);
+            this.#flowGeneration++;
             this._serverState = undefined;
             this._busy = false;
             this._busyLabel = "";
             handleAsync(() => this._ensureLoaded())();
+            return;
+        }
+        if (!this._busy && changedProperties.has("node") && changedProperties.get("node") !== this.node) {
+            handleAsync(() => this._refreshServerState(this.node, this.endpoint))();
         }
     }
 
@@ -109,6 +117,11 @@ export class IcdManagementClusterCommands extends BaseClusterCommands {
         return isRegisteredByUs(this._info.registeredClients, this.client.serverInfo?.controller_node_id);
     }
 
+    /** matter.js only treats a peer as LIT-capable with LITS feature AND spec version >= 1.4.0. */
+    private get _litSupported(): boolean {
+        return this._serverState?.lit_supported ?? this._info.features.longIdleTimeSupport;
+    }
+
     override render() {
         if (!this.node || this.cluster !== ICD_CLUSTER_ID) return nothing;
         const info = this._info;
@@ -136,7 +149,7 @@ export class IcdManagementClusterCommands extends BaseClusterCommands {
                               ${wakeInstruction(info.userActiveModeTriggerHint, info.userActiveModeTriggerInstruction)}.
                           </p>`
                         : nothing}
-                    ${info.features.longIdleTimeSupport ? this._renderModeChooser() : nothing}
+                    ${this._litSupported || this._registered ? this._renderModeChooser() : nothing}
                 </div>
             </details>
         `;
@@ -239,6 +252,13 @@ export class IcdManagementClusterCommands extends BaseClusterCommands {
     private async _enable() {
         const node = this.node;
         const endpoint = this.endpoint;
+        if (this._serverState !== undefined && !this._serverState.lit_supported) {
+            await showAlertDialog({
+                title: "Battery Saver Mode not supported",
+                text: "This device advertises Battery Saver support but reports a Matter version below 1.4 — enabling is not safe and has been disabled.",
+            });
+            return;
+        }
         const confirmed = await showPromptDialog({
             title: "Enable Battery Saver Mode?",
             text: this._enableConfirmText(),
@@ -327,12 +347,9 @@ export class IcdManagementClusterCommands extends BaseClusterCommands {
             this._actionTimeoutMs,
         );
         if (this.isSameContext(node, endpoint)) Object.assign(this.node.attributes, result);
-        const clients = result[REGISTERED_CLIENTS_PATH];
+        const clients = decodeRegisteredClients(result[REGISTERED_CLIENTS_PATH]);
         const ourFabricIndex = result[CURRENT_FABRIC_INDEX_PATH] ?? ourFabricIndexRaw;
-        return otherFabricClientCount(
-            Array.isArray(clients) ? clients : new Array<never>(),
-            typeof ourFabricIndex === "number" ? ourFabricIndex : undefined,
-        );
+        return otherFabricClientCount(clients, typeof ourFabricIndex === "number" ? ourFabricIndex : undefined);
     }
 
     private async _resync() {
@@ -353,6 +370,7 @@ export class IcdManagementClusterCommands extends BaseClusterCommands {
 
     private async _runBusy(node: MatterNode, endpoint: number, label: string, action: () => Promise<void>) {
         if (this._busy || !this.isSameContext(node, endpoint)) return;
+        const gen = ++this.#flowGeneration;
         this._busy = true;
         this._busyLabel = label;
         try {
@@ -363,7 +381,7 @@ export class IcdManagementClusterCommands extends BaseClusterCommands {
                 await showAlertDialog({ title: "ICD operation failed", text: message });
             }
         } finally {
-            if (this.isSameContext(node, endpoint)) {
+            if (gen === this.#flowGeneration) {
                 this._busy = false;
                 await this._refreshServerState(node, endpoint);
             }

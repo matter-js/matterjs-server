@@ -5,6 +5,7 @@
  */
 
 import {
+    decodeRegisteredClients,
     icdInfo,
     isLitIcd,
     isRegisteredByUs,
@@ -15,9 +16,11 @@ import {
     wakeInstruction,
 } from "../src/util/icd.js";
 
+// MonitoringRegistrationStruct wire entries are field-tag keyed: "1" CheckInNodeId, "2" MonitoredSubject,
+// "4" ClientType, "254" FabricIndex (Matter 1.6 IcdManagement cluster spec).
 const LIT_ATTRS: Record<string, unknown> = {
     "0/70/0": 3600, // IdleModeDuration
-    "0/70/3": [{ checkInNodeId: 1234, monitoredSubject: 1234, fabricIndex: 2 }],
+    "0/70/3": [{ "1": 1234, "2": 1234, "4": 0, "254": 2 }],
     "0/70/6": 0b1, // UserActiveModeTriggerHint: PowerCycle
     "0/70/7": "Press the button 3 times",
     "0/70/8": 1, // OperatingMode LIT
@@ -64,6 +67,36 @@ describe("icd util", () => {
         });
         it("false without ICD cluster", () => {
             expect(isLitIcd({})).to.equal(false);
+        });
+    });
+
+    describe("decodeRegisteredClients", () => {
+        it("decodes field-tag-keyed wire entries", () => {
+            const clients = decodeRegisteredClients([{ "1": 1234, "2": 1234, "4": 0, "254": 2 }]);
+            expect(clients).to.deep.equal([{ checkInNodeId: 1234, monitoredSubject: 1234, fabricIndex: 2 }]);
+        });
+        it("decodes an index-keyed object cache value", () => {
+            const clients = decodeRegisteredClients({ "0": { "1": 1234, "2": 1234, "254": 2 } });
+            expect(clients).to.have.lengthOf(1);
+        });
+        it("accepts bigint node/subject ids", () => {
+            const clients = decodeRegisteredClients([{ "1": BigInt(1234), "2": BigInt(1234), "254": 2 }]);
+            expect(clients).to.deep.equal([
+                { checkInNodeId: BigInt(1234), monitoredSubject: BigInt(1234), fabricIndex: 2 },
+            ]);
+        });
+        it("skips malformed entries (missing/wrong-typed fields, non-objects)", () => {
+            const clients = decodeRegisteredClients([
+                { "1": 1234, "2": 1234, "254": 2 },
+                { "1": 1234, "254": 2 }, // missing MonitoredSubject
+                { "1": 1234, "2": 1234, "254": "2" }, // FabricIndex not a number
+                "not-an-object",
+                null,
+            ]);
+            expect(clients).to.deep.equal([{ checkInNodeId: 1234, monitoredSubject: 1234, fabricIndex: 2 }]);
+        });
+        it("returns empty for absent value", () => {
+            expect(decodeRegisteredClients(undefined)).to.deep.equal([]);
         });
     });
 

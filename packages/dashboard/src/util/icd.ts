@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { attributeArray } from "./access-control.js";
 import { formatDuration } from "./duration.js";
 
 export const ICD_CLUSTER_ID = 70;
@@ -50,10 +51,35 @@ function numberAttr(attributes: Record<string, unknown>, attributeId: number): n
     return typeof value === "number" ? value : undefined;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null;
+}
+
+function nodeOrSubjectId(value: unknown): number | bigint | undefined {
+    return typeof value === "number" || typeof value === "bigint" ? value : undefined;
+}
+
+function decodeRegisteredClient(entry: unknown): IcdRegisteredClient | undefined {
+    if (!isRecord(entry)) return undefined;
+    const checkInNodeId = nodeOrSubjectId(entry["1"]);
+    const monitoredSubject = nodeOrSubjectId(entry["2"]);
+    const fabricIndex = entry["254"];
+    if (checkInNodeId === undefined || monitoredSubject === undefined || typeof fabricIndex !== "number") {
+        return undefined;
+    }
+    return { checkInNodeId, monitoredSubject, fabricIndex };
+}
+
+/** MonitoringRegistrationStruct wire entries are field-tag keyed: "1" CheckInNodeId, "2" MonitoredSubject, "254" FabricIndex. */
+export function decodeRegisteredClients(value: unknown): IcdRegisteredClient[] {
+    return attributeArray(value)
+        .map(entry => decodeRegisteredClient(entry))
+        .filter((client): client is IcdRegisteredClient => client !== undefined);
+}
+
 export function icdInfo(attributes: Record<string, unknown>): IcdInfo {
     const featureMap = numberAttr(attributes, 65532);
     const operatingModeRaw = numberAttr(attributes, 8);
-    const clientsRaw = attr(attributes, 3);
     const instruction = attr(attributes, 7);
     return {
         supported: featureMap !== undefined,
@@ -62,9 +88,7 @@ export function icdInfo(attributes: Record<string, unknown>): IcdInfo {
         idleModeDuration: numberAttr(attributes, 0),
         userActiveModeTriggerHint: numberAttr(attributes, 6),
         userActiveModeTriggerInstruction: typeof instruction === "string" ? instruction : undefined,
-        registeredClients: Array.isArray(clientsRaw)
-            ? (clientsRaw as IcdRegisteredClient[])
-            : new Array<IcdRegisteredClient>(),
+        registeredClients: decodeRegisteredClients(attr(attributes, 3)),
     };
 }
 
