@@ -20,7 +20,7 @@ import {
     SoftwareUpdateManager,
     Timestamp,
 } from "@matter/main";
-import { VendorInfo, DclCertificateService, DclVendorInfoService } from "@matter/main/protocol";
+import { VendorInfo, DclCertificateService, DclVendorInfoService, OperationalDataset } from "@matter/main/protocol";
 import { VendorId } from "@matter/main/types";
 import { Endpoint } from "@matter/node";
 import { WebRtcTransportRequestorServer } from "@matter/node/behaviors/web-rtc-transport-requestor";
@@ -28,7 +28,6 @@ import { CameraControllerDevice } from "@matter/node/devices/camera-controller";
 import {
     BorderRouterRegistry,
     connectMeshcop,
-    OperationalDataset,
     OtbrRestClient,
     OtbrRestDiagnosticSource,
     ThreadCredentialsRegistry,

@@ -34,10 +34,29 @@ describe("ConfigStorage credentials", () => {
         expect(config.getWifiCredentials("Garage")).to.deep.equal({ ssid: "GarageNet", credentials: "pw1" });
     });
 
-    it("keeps the existing WiFi secret when set with a blank credential on an existing id", async () => {
+    it("keeps the existing WiFi secret when re-saving the same SSID with a blank credential", async () => {
+        await config.setWifiCredentials("Garage", "GarageNet", "pw1");
+        await config.setWifiCredentials("Garage", "GarageNet", "");
+        expect(config.getWifiCredentials("Garage")).to.deep.equal({ ssid: "GarageNet", credentials: "pw1" });
+    });
+
+    it("drops the old WiFi secret when the SSID changes with a blank credential (additional id)", async () => {
         await config.setWifiCredentials("Garage", "GarageNet", "pw1");
         await config.setWifiCredentials("Garage", "GarageNet2", "");
-        expect(config.getWifiCredentials("Garage")).to.deep.equal({ ssid: "GarageNet2", credentials: "pw1" });
+        expect(config.getWifiCredentials("Garage")).to.deep.equal({ ssid: "GarageNet2", credentials: "" });
+    });
+
+    it("keeps the default WiFi secret on a blank credential only when the SSID is unchanged", async () => {
+        await config.setWifiCredentials("default", "Home", "pw0");
+        await config.setWifiCredentials("default", "Home", "");
+        expect(config.getWifiCredentials("default")).to.deep.equal({ ssid: "Home", credentials: "pw0" });
+    });
+
+    it("drops the default WiFi secret when the SSID changes with a blank credential", async () => {
+        await config.setWifiCredentials("default", "Home", "pw0");
+        await config.setWifiCredentials("default", "Neighbor", "");
+        expect(config.getWifiCredentials("default")).to.deep.equal({ ssid: "Neighbor", credentials: "" });
+        expect(config.wifiCredentials).to.equal("");
     });
 
     it("matches ids case-insensitively and rejects duplicates", async () => {

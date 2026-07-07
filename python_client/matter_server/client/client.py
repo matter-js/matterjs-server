@@ -808,6 +808,12 @@ class MatterClient:
                 node_id=node_event.node_id,
             )
             return
+        # An event type unknown to this (older) client is passed through by parse_value as a raw
+        # string; forwarding it would crash on `event.value` in _signal_event. Drop it instead so a
+        # newer server emitting a new event type can never disconnect the client.
+        if not isinstance(msg.event, EventType):
+            self.logger.debug("Ignoring unknown event type: %s", msg.event)
+            return
         # simply forward all other events as-is
         if self.logger.isEnabledFor(logging.DEBUG):
             self.logger.debug("Received event: %s", msg)

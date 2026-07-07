@@ -41,7 +41,7 @@ function makeBr(overrides: Partial<BorderRouterEntry> = {}): BorderRouterEntry {
         extAddressHex: "AAAAAAAAAAAAAAAA",
         extendedPanIdHex: EXT_PAN_HEX_UPPER,
         networkName: "OpenThread",
-        addresses: [],
+        addresses: ["fd00::1"],
         sources: ["meshcop"],
         lastSeen: 0,
         ...overrides,
@@ -64,6 +64,7 @@ function makeCap(): OtbrRestCapability {
         probedAt: 0,
         networkName: "OpenThread",
         extPanId: EXT_PAN_BYTES.slice(),
+        diagnosticsApi: "collection",
     };
 }
 
@@ -284,6 +285,7 @@ describe("ThreadDiagnosticsService", () => {
             borderRouters: brRegistryFrom(brsListing([makeBr()])),
             credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
             makeRestSource: () => syncRestSource([]),
+            probeRest: async () => null,
             makeMeshcopSource: async () => {
                 calls += 1;
                 return meshcopHandle(syncMeshcopSource([SAMPLE_NODE]));
@@ -303,6 +305,7 @@ describe("ThreadDiagnosticsService", () => {
             borderRouters: brRegistryFrom(brsListing([makeBr()])),
             credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
             makeRestSource: () => syncRestSource([]),
+            probeRest: async () => null,
             makeMeshcopSource: async () => meshcopHandle(syncMeshcopSource([SAMPLE_NODE])),
         });
         service.events.batchUpdated.on(b => {
@@ -346,13 +349,13 @@ describe("ThreadDiagnosticsService", () => {
         expect(batch?.source).to.equal("meshcop");
     });
 
-    it("uses REST when enabled and a capability is registered", async () => {
+    it("uses REST for a capability-only network (no credentials)", async () => {
         let restCalls = 0;
         let meshcopCalls = 0;
         const service = new ThreadDiagnosticsService({
             ...FAST_TIMING,
             borderRouters: brRegistryFrom(brsListing([makeBr()])),
-            credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
+            credentials: credsRegistryFrom(credsLookup(new Map())),
             makeRestSource: () => {
                 restCalls += 1;
                 return syncRestSource([SAMPLE_NODE]);
@@ -369,6 +372,66 @@ describe("ThreadDiagnosticsService", () => {
         expect(batch?.nodes).to.have.lengthOf(1);
         expect(restCalls).to.equal(1);
         expect(meshcopCalls).to.equal(0);
+    });
+
+    it("prefers CoAP (hybrid) when a network has both credentials and a REST capability", async () => {
+        let meshcopCalls = 0;
+        const service = new ThreadDiagnosticsService({
+            ...FAST_TIMING,
+            borderRouters: brRegistryFrom(brsListing([makeBr()])),
+            credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
+            makeRestSource: () => syncRestSource([]),
+            makeMeshcopSource: async () => {
+                meshcopCalls += 1;
+                return meshcopHandle(syncMeshcopSource([SAMPLE_NODE]));
+            },
+        });
+        service.registerRestCapability(EXT_PAN_HEX_LOWER, makeCap());
+
+        const batch = await service.getOrFetch(EXT_PAN_HEX_LOWER);
+        expect(batch?.source).to.equal("meshcop");
+        expect(batch?.nodes).to.have.lengthOf(1);
+        expect(meshcopCalls).to.equal(1);
+    });
+
+    it("detailTransport 'rest' forces the REST path even when credentials exist", async () => {
+        let restCalls = 0;
+        const service = new ThreadDiagnosticsService({
+            ...FAST_TIMING,
+            detailTransport: "rest",
+            borderRouters: brRegistryFrom(brsListing([makeBr()])),
+            credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
+            makeRestSource: () => {
+                restCalls += 1;
+                return syncRestSource([SAMPLE_NODE]);
+            },
+            makeMeshcopSource: async () => meshcopHandle(syncMeshcopSource([])),
+        });
+        service.registerRestCapability(EXT_PAN_HEX_LOWER, makeCap());
+
+        const batch = await service.getOrFetch(EXT_PAN_HEX_LOWER);
+        expect(batch?.source).to.equal("otbr-rest");
+        expect(batch?.nodes).to.have.lengthOf(1);
+        expect(restCalls).to.equal(1);
+    });
+
+    it("treats a diagnosticsApi='none' cap as no source when no credentials exist", async () => {
+        let restCalls = 0;
+        const service = new ThreadDiagnosticsService({
+            ...FAST_TIMING,
+            borderRouters: brRegistryFrom(brsListing([makeBr()])),
+            credentials: credsRegistryFrom(credsLookup(new Map())),
+            makeRestSource: () => {
+                restCalls += 1;
+                return syncRestSource([SAMPLE_NODE]);
+            },
+            makeMeshcopSource: async () => meshcopHandle(syncMeshcopSource([])),
+        });
+        service.registerRestCapability(EXT_PAN_HEX_LOWER, { ...makeCap(), diagnosticsApi: "none" });
+
+        const batch = await service.getOrFetch(EXT_PAN_HEX_LOWER);
+        expect(batch?.partialReason).to.equal("no_credentials");
+        expect(restCalls).to.equal(0);
     });
 
     it("concurrent fetches for the same extPanId share a single stream", async () => {
@@ -570,6 +633,7 @@ describe("ThreadDiagnosticsService", () => {
                 ),
             ),
             makeRestSource: () => syncRestSource([]),
+            probeRest: async () => null,
             makeMeshcopSource: async () => meshcopHandle(syncMeshcopSource([SAMPLE_NODE])),
         });
 
@@ -580,32 +644,30 @@ describe("ThreadDiagnosticsService", () => {
         expect(cached).to.have.lengthOf(2);
     });
 
-    it("registerRestCapability and unregisterRestCapability toggle REST routing", async () => {
+    it("registerRestCapability and unregisterRestCapability toggle REST availability", async () => {
         let restCalls = 0;
-        let meshcopCalls = 0;
         const service = new ThreadDiagnosticsService({
             ...FAST_TIMING,
             borderRouters: brRegistryFrom(brsListing([makeBr()])),
-            credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
+            credentials: credsRegistryFrom(credsLookup(new Map())),
             makeRestSource: () => {
                 restCalls += 1;
                 return syncRestSource([]);
             },
-            makeMeshcopSource: async () => {
-                meshcopCalls += 1;
-                return meshcopHandle(syncMeshcopSource([]));
-            },
+            makeMeshcopSource: async () => meshcopHandle(syncMeshcopSource([])),
             probeRest: async () => null,
         });
 
         service.registerRestCapability(EXT_PAN_HEX_LOWER, makeCap());
-        await service.getOrFetch(EXT_PAN_HEX_LOWER);
+        const withCap = await service.getOrFetch(EXT_PAN_HEX_LOWER);
+        expect(withCap?.source).to.equal("otbr-rest");
         expect(restCalls).to.equal(1);
-        expect(meshcopCalls).to.equal(0);
 
+        // No credentials → dropping the cap leaves no source at all.
         service.unregisterRestCapability(EXT_PAN_HEX_LOWER);
-        await service.getOrFetch(EXT_PAN_HEX_LOWER, { force: true });
-        expect(meshcopCalls).to.equal(1);
+        const withoutCap = await service.getOrFetch(EXT_PAN_HEX_LOWER, { force: true });
+        expect(withoutCap?.partialReason).to.equal("no_credentials");
+        expect(restCalls).to.equal(1);
     });
 
     it("probes REST and registers capability when a BR is added", async () => {
@@ -709,6 +771,33 @@ describe("ThreadDiagnosticsService", () => {
         expect(service.listCached()).to.have.lengthOf(2);
     });
 
+    it("refreshAllKnown forwards force to re-fetch a cached network", async () => {
+        let meshcopCalls = 0;
+        const service = new ThreadDiagnosticsService({
+            ...FAST_TIMING,
+            borderRouters: brRegistryFrom(brsListing([makeBr()])),
+            credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
+            makeRestSource: () => syncRestSource([]),
+            makeMeshcopSource: async () => {
+                meshcopCalls += 1;
+                return meshcopHandle(syncMeshcopSource([SAMPLE_NODE]));
+            },
+            probeRest: async () => null,
+        });
+
+        await service.getOrFetch(EXT_PAN_HEX_LOWER);
+        expect(meshcopCalls).to.equal(1);
+
+        // Without force a complete cached batch is reused; with force it re-fetches.
+        service.refreshAllKnown();
+        await new Promise(r => setTimeout(r, 40));
+        expect(meshcopCalls).to.equal(1);
+
+        service.refreshAllKnown({ force: true });
+        await new Promise(r => setTimeout(r, 40));
+        expect(meshcopCalls).to.equal(2);
+    });
+
     it("probe on `added` lets the next fetch hit the REST source without probing again", async () => {
         let probeCalls = 0;
         let restCalls = 0;
@@ -717,7 +806,7 @@ describe("ThreadDiagnosticsService", () => {
         const service = new ThreadDiagnosticsService({
             ...FAST_TIMING,
             borderRouters: brRegistryFrom(stub),
-            credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
+            credentials: credsRegistryFrom(credsLookup(new Map())),
             makeRestSource: () => {
                 restCalls += 1;
                 return syncRestSource([SAMPLE_NODE]);
@@ -793,7 +882,7 @@ describe("ThreadDiagnosticsService", () => {
         const service = new ThreadDiagnosticsService({
             ...FAST_TIMING,
             borderRouters: brRegistryFrom(stub),
-            credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
+            credentials: credsRegistryFrom(credsLookup(new Map())),
             makeRestSource: () => {
                 restCalls += 1;
                 return syncRestSource([SAMPLE_NODE]);
@@ -887,7 +976,7 @@ describe("ThreadDiagnosticsService", () => {
         const service = new ThreadDiagnosticsService({
             ...FAST_TIMING,
             borderRouters: brRegistryFrom(stub),
-            credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
+            credentials: credsRegistryFrom(credsLookup(new Map())),
             makeRestSource: () => syncRestSource([SAMPLE_NODE]),
             makeMeshcopSource: async () => meshcopHandle(syncMeshcopSource([SAMPLE_NODE])),
             probeRest: async () => makeCap(),
@@ -916,7 +1005,7 @@ describe("ThreadDiagnosticsService", () => {
         const service = new ThreadDiagnosticsService({
             ...FAST_TIMING,
             borderRouters: brRegistryFrom(stub),
-            credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
+            credentials: credsRegistryFrom(credsLookup(new Map())),
             makeRestSource: () => syncRestSource([SAMPLE_NODE]),
             makeMeshcopSource: async () => meshcopHandle(syncMeshcopSource([])),
             probeRest: async () => {
@@ -965,6 +1054,7 @@ describe("ThreadDiagnosticsService", () => {
             borderRouters: brRegistryFrom(stub),
             credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
             makeRestSource: () => syncRestSource([]),
+            probeRest: async () => null,
             makeMeshcopSource: async () => {
                 let resolveDone!: () => void;
                 const handle: QueryMulticastHandle = {
@@ -1046,6 +1136,7 @@ describe("ThreadDiagnosticsService", () => {
             borderRouters: brRegistryFrom(stub),
             credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
             makeRestSource: () => syncRestSource([]),
+            probeRest: async () => null,
             makeMeshcopSource: async () => {
                 let resolveDone!: () => void;
                 const handle: QueryMulticastHandle = {

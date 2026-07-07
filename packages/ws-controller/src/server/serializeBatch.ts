@@ -12,7 +12,7 @@ import { Bytes } from "@matter/main";
 import type { DiagnosticResponse } from "@matter/thread-br-client";
 import type { ThreadDiagnosticsBatch } from "../controller/ThreadDiagnosticsService.js";
 
-function hex(bytes: Uint8Array): string {
+function hex(bytes: Bytes): string {
     return Bytes.toHex(bytes).toUpperCase();
 }
 

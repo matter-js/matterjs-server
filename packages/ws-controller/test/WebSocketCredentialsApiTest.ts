@@ -87,6 +87,8 @@ function makeStubController(credentials: ThreadCredentialsRegistry) {
 
 interface TestHarness {
     handle<T = unknown>(command: string, args: unknown): Promise<T>;
+    openClient(): Promise<WebSocket>;
+    emitDiagnosticsBatch(batch: unknown): void;
     config: ConfigStorage;
     close(): Promise<void>;
 }
@@ -143,7 +145,11 @@ async function createHarness(): Promise<TestHarness> {
         await new Promise<void>(resolve => httpServer.close(() => resolve()));
     }
 
-    return { handle, config, close };
+    function emitDiagnosticsBatch(batch: unknown): void {
+        (controller.threadDiagnostics.events.batchUpdated as unknown as Observable<[unknown]>).emit(batch);
+    }
+
+    return { handle, openClient, emitDiagnosticsBatch, config, close };
 }
 
 describe("WebSocket Credentials API", () => {
@@ -186,6 +192,87 @@ describe("WebSocket Credentials API", () => {
     it("get_all_credentials always includes default thread entry even when unset", async () => {
         const res = await h.handle<{ wifi: unknown[]; thread: Array<{ id: string }> }>("get_all_credentials", {});
         expect(res.thread[0].id).to.equal("default");
+    });
+
+    it("withholds thread_diagnostics_updated until the connection requests thread data", async () => {
+        const ws = await h.openClient();
+        const events = new Array<string>();
+        ws.on("message", raw => {
+            const msg = JSON.parse(raw.toString()) as { event?: string };
+            if (msg.event !== undefined) events.push(msg.event);
+        });
+
+        const batch = {
+            extPanIdHex: "1122334455667788",
+            networkName: "Net",
+            collectedAt: 0,
+            source: "meshcop",
+            nodes: [],
+        };
+
+        // A schema-11 client that never asks for Thread data must not receive the schema-12 event.
+        h.emitDiagnosticsBatch(batch);
+        await new Promise(r => setTimeout(r, 50));
+        expect(events).to.not.include("thread_diagnostics_updated");
+
+        // Issuing a Thread request opts this connection in.
+        await new Promise<void>((resolve, reject) => {
+            const id = "req-thread";
+            const onMsg = (raw: WebSocket.RawData) => {
+                const msg = JSON.parse(raw.toString()) as { message_id?: string };
+                if (msg.message_id === id) {
+                    ws.off("message", onMsg);
+                    resolve();
+                }
+            };
+            ws.on("message", onMsg);
+            ws.once("error", reject);
+            ws.send(JSON.stringify({ message_id: id, command: "get_thread_border_routers", args: {} }));
+        });
+
+        h.emitDiagnosticsBatch(batch);
+        await new Promise(r => setTimeout(r, 50));
+        expect(events).to.include("thread_diagnostics_updated");
+
+        ws.close();
+    });
+
+    it("opts a connection in even when its Thread request errors", async () => {
+        const ws = await h.openClient();
+        const events = new Array<string>();
+        ws.on("message", raw => {
+            const msg = JSON.parse(raw.toString()) as { event?: string };
+            if (msg.event !== undefined) events.push(msg.event);
+        });
+
+        // A malformed extPanId errors server-side but still proves the client is schema-12 Thread-aware.
+        await new Promise<void>((resolve, reject) => {
+            const id = "req-bad";
+            const onMsg = (raw: WebSocket.RawData) => {
+                const msg = JSON.parse(raw.toString()) as { message_id?: string };
+                if (msg.message_id === id) {
+                    ws.off("message", onMsg);
+                    resolve();
+                }
+            };
+            ws.on("message", onMsg);
+            ws.once("error", reject);
+            ws.send(
+                JSON.stringify({ message_id: id, command: "get_thread_diagnostics", args: { extPanId: "not-hex" } }),
+            );
+        });
+
+        h.emitDiagnosticsBatch({
+            extPanIdHex: "1122334455667788",
+            networkName: "Net",
+            collectedAt: 0,
+            source: "meshcop",
+            nodes: [],
+        });
+        await new Promise(r => setTimeout(r, 50));
+        expect(events).to.include("thread_diagnostics_updated");
+
+        ws.close();
     });
 
     it("get_all_credentials decodes thread extPanId and networkName", async () => {

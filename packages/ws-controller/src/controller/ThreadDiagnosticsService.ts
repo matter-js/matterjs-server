@@ -11,6 +11,7 @@ import {
     CommissionerRejectedError,
     CommissionerTimeoutError,
     DefaultTlvSet,
+    type DiagnosticDetailTransport,
     type DiagnosticResponse,
     type DiagnosticSource,
     OtbrRestError,
@@ -20,6 +21,7 @@ import {
     type ThreadCredentialsRegistry,
     type ThreadNetworkCredentials,
     rankBrs,
+    selectSource,
 } from "@matter/thread-br-client";
 
 const logger = Logger.get("ThreadDiagnosticsService");
@@ -62,6 +64,12 @@ export interface ThreadDiagnosticsServiceOpts {
     makeMeshcopSource: (creds: ThreadNetworkCredentials, br: BorderRouterEntry) => Promise<MeshcopSourceHandle>;
     /** Sync factory — REST source has no resource lifecycle. */
     makeRestSource: (cap: OtbrRestCapability) => DiagnosticSource;
+    /**
+     * Preferred transport when a network has BOTH a REST capability and Thread credentials.
+     * Defaults to `"coap"` — the REST collection API drives one BR-managed action per node and is
+     * markedly slower than direct CoAP. `"rest"` forces the REST action path (REST-only BRs / debug).
+     */
+    detailTransport?: DiagnosticDetailTransport;
     /** Cache TTL in ms; defaults to {@link ThreadDiagnosticsService.DEFAULT_TTL_MS}. */
     cacheTtlMs?: number;
     /** Multicast collection window in ms; defaults to {@link ThreadDiagnosticsService.DEFAULT_WINDOW_MS}. */
@@ -99,10 +107,11 @@ interface InFlightStream {
 /**
  * Per-Thread-network diagnostic cache + streaming fetch coordinator.
  *
- * Source priority:
- *   1. REST capability registered → REST (fast, single-burst).
- *   2. Credentials registered for the BR's extPanId → MeshCoP (streaming).
- *   3. Neither → partial batch with `no_credentials`.
+ * Transport selection is delegated to the library's `selectSource`:
+ *   - Credentials + a REST capability → a hybrid that prefers CoAP (`detailTransport`, default).
+ *   - Only one available → that transport (a `"none"` REST capability is treated as absent).
+ *   - Neither → partial batch with `no_credentials`.
+ * The emitted batch's `source` reflects the transport that actually served it, not what was configured.
  *
  * MeshCoP queries stream: responses arrive over a `windowMs` window, the
  * service accumulates by extMacAddress, and emits debounced `batchUpdated`
@@ -136,6 +145,7 @@ export class ThreadDiagnosticsService {
     readonly #restProbeTimeoutMs: number;
     readonly #probeRest: (host: string, port: number, timeoutMs: number) => Promise<OtbrRestCapability | null>;
     readonly #enabled: boolean;
+    readonly #detailTransport?: DiagnosticDetailTransport;
 
     constructor(opts: ThreadDiagnosticsServiceOpts) {
         this.#opts = opts;
@@ -147,6 +157,7 @@ export class ThreadDiagnosticsService {
         this.#restProbePort = opts.restProbePort ?? ThreadDiagnosticsService.DEFAULT_REST_PROBE_PORT;
         this.#restProbeTimeoutMs = opts.restProbeTimeoutMs ?? ThreadDiagnosticsService.DEFAULT_REST_PROBE_TIMEOUT_MS;
         this.#probeRest = opts.probeRest ?? ((host, port, timeoutMs) => OtbrRestProbe.probe(host, port, timeoutMs));
+        this.#detailTransport = opts.detailTransport;
 
         if (this.#enabled) {
             opts.borderRouters.events.added.on(br => {
@@ -170,7 +181,7 @@ export class ThreadDiagnosticsService {
      * all known networks (e.g. when the Thread panel opens) without the caller
      * waiting on each; batches arrive via `events.batchUpdated`. No-op when disabled.
      */
-    refreshAllKnown(): void {
+    refreshAllKnown(opts?: { force?: boolean }): void {
         if (!this.#enabled) return;
         const seen = new Set<string>();
         for (const br of this.#opts.borderRouters.list()) {
@@ -179,7 +190,7 @@ export class ThreadDiagnosticsService {
             const key = xp.toLowerCase();
             if (seen.has(key)) continue;
             seen.add(key);
-            this.getOrFetch(key).catch(err => {
+            this.getOrFetch(key, { force: opts?.force }).catch(err => {
                 logger.warn(`background fetch xp=${xp.toUpperCase()} failed: ${err}`);
             });
         }
@@ -290,17 +301,11 @@ export class ThreadDiagnosticsService {
     ): InFlightStream {
         const xp = extPanIdHex.toUpperCase();
         const restCap = this.#restCaps.get(extPanIdHex);
-
-        if (restCap !== undefined) {
-            logger.debug(`source=REST xp=${xp} baseUrl=${restCap.baseUrl}`);
-            return this.#launchStream(extPanIdHex, networkName, "otbr-rest", async () => ({
-                source: this.#opts.makeRestSource(restCap),
-                close: async () => {},
-            }));
-        }
-
         const creds = this.#opts.credentials.getCredentials(extPanIdBytes);
-        if (creds === undefined) {
+
+        // A "none" cap can't serve diagnostics (selectSource ignores it), so it doesn't count as a source.
+        const restUsable = restCap !== undefined && restCap.diagnosticsApi !== "none";
+        if (!restUsable && creds === undefined) {
             logger.info(`no source xp=${xp} -> partial(no_credentials)`);
             const partial = this.#partial(extPanIdHex, networkName, "no_credentials");
             this.#publish(partial);
@@ -312,10 +317,65 @@ export class ThreadDiagnosticsService {
             };
         }
 
-        logger.debug(`source=MeshCoP xp=${xp} pskc-registered=true candidates=${brs.length}`);
-        return this.#launchStream(extPanIdHex, networkName, "meshcop", () =>
-            this.#acquireMeshcopWithFallback(xp, creds, brs),
-        );
+        return this.#launchStream(extPanIdHex, networkName, () => this.#acquireHybrid(xp, brs, restCap, creds));
+    }
+
+    /**
+     * Build the diagnostic source for a network via the library's `selectSource`. When credentials
+     * exist the MeshCoP transport is connected up front (DTLS handshake, BR-fallback) so the sync
+     * `selectSource` factory can hand back the ready source; REST is stateless. If the MeshCoP
+     * connect fails but a REST capability exists, degrade to REST-only by hiding the credentials from
+     * `selectSource` rather than failing the whole fetch.
+     */
+    async #acquireHybrid(
+        xp: string,
+        brs: BorderRouterEntry[],
+        restCap: OtbrRestCapability | undefined,
+        creds: ThreadNetworkCredentials | undefined,
+    ): Promise<MeshcopSourceHandle> {
+        // A "none" cap can't serve diagnostics, so it is not a viable REST fallback for a DTLS failure.
+        const restUsable = restCap !== undefined && restCap.diagnosticsApi !== "none";
+        let meshHandle: MeshcopSourceHandle | undefined;
+        let credentials: Pick<ThreadCredentialsRegistry, "getCredentials"> = this.#opts.credentials;
+        if (creds !== undefined) {
+            try {
+                meshHandle = await this.#acquireMeshcopWithFallback(xp, creds, brs);
+            } catch (err) {
+                if (!restUsable) throw err;
+                logger.warn(`meshcop unavailable, falling back to REST xp=${xp}: ${err}`);
+                credentials = { getCredentials: () => undefined };
+            }
+        }
+
+        // Any throw past this point must not strand the open DTLS session — close it before rethrowing.
+        try {
+            const source = selectSource({
+                br: brs[0],
+                credentials,
+                restCapabilities: this.#restCaps,
+                otbrRestEnabled: true,
+                makeRestSource: cap => this.#opts.makeRestSource(cap),
+                makeMeshcopSource: () => {
+                    if (meshHandle === undefined) {
+                        throw new Error(`meshcop source requested but not connected xp=${xp}`);
+                    }
+                    return meshHandle.source;
+                },
+                detailTransport: this.#detailTransport,
+            });
+
+            if (source === undefined) {
+                throw new Error(`no diagnostic source available xp=${xp}`);
+            }
+
+            logger.debug(
+                `source=${source.kind} xp=${xp}${restCap !== undefined ? ` rest=${restCap.diagnosticsApi}` : ""}${meshHandle !== undefined ? " coap=connected" : ""}`,
+            );
+            return { source, close: () => meshHandle?.close() ?? Promise.resolve() };
+        } catch (err) {
+            await meshHandle?.close().catch(() => {});
+            throw err;
+        }
     }
 
     /**
@@ -347,14 +407,13 @@ export class ThreadDiagnosticsService {
     }
 
     /**
-     * Acquire a source via the supplied factory, then drive a streaming
-     * multicast query against it. Single shared implementation for REST and
-     * MeshCoP — they only differ in how the source handle is obtained.
+     * Acquire a source via the supplied factory, then drive a streaming multicast query against it.
+     * The transport kind (for labeling + error mapping) is read from the acquired source; a failure
+     * before acquire completes is attributed to MeshCoP, since only its connect runs at that point.
      */
     #launchStream(
         extPanIdHex: string,
         networkName: string,
-        sourceKind: "meshcop" | "otbr-rest",
         acquire: () => Promise<MeshcopSourceHandle>,
     ): InFlightStream {
         const xp = extPanIdHex.toUpperCase();
@@ -367,6 +426,7 @@ export class ThreadDiagnosticsService {
         const firstBatchSettled = { resolved: false };
 
         let cancelled = false;
+        let sourceKind: "meshcop" | "otbr-rest" = "meshcop";
         let activeHandle: QueryMulticastHandle | undefined;
         let activeSourceHandle: MeshcopSourceHandle | undefined;
 
@@ -379,6 +439,7 @@ export class ThreadDiagnosticsService {
         const settled = (async (): Promise<void> => {
             try {
                 activeSourceHandle = await acquire();
+                sourceKind = activeSourceHandle.source.kind;
                 if (cancelled) {
                     resolveFirstBatchOnce(this.#partial(extPanIdHex, networkName, "timeout"));
                     return;
@@ -406,6 +467,8 @@ export class ThreadDiagnosticsService {
                         logger.warn(`${sourceKind} close FAIL xp=${xp}: ${closeErr}`);
                     }
                 }
+                // Safe to clear unconditionally: force-refresh awaits this stream's teardown (via
+                // cancel → settled) before registering a replacement, so no other stream owns the key here.
                 this.#streamsInFlight.delete(extPanIdHex);
             }
         })();
@@ -632,7 +695,9 @@ function isLinkLocal(addr: string): boolean {
 function mapRestError(err: unknown): ThreadDiagnosticsPartialReason {
     if (err instanceof OtbrRestError) {
         if (err.code === "rest_unreachable") return "rest_unreachable";
-        if (err.code === "rest_protocol") return "rest_protocol";
+        // rest_protocol/disabled/unsupported/not_allowed/conflict: the BR answered but cannot serve
+        // diagnostics over REST. Collapse to rest_protocol — the wire contract has no finer reason.
+        return "rest_protocol";
     }
     return "timeout";
 }

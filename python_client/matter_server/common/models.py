@@ -194,7 +194,9 @@ class ErrorResultMessage(ResultMessageBase):
 class EventMessage:
     """Message sent when server or client signals a (stateless) event."""
 
-    event: EventType
+    # An event type unknown to this client is passed through by parse_value as a raw string rather
+    # than an EventType, so consumers must narrow before relying on enum members.
+    event: EventType | str
     data: Any
 
 

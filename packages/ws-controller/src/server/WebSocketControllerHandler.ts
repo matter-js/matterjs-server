@@ -17,9 +17,8 @@ import {
     NodeId,
     ObserverGroup,
 } from "@matter/main";
-import { ControllerCommissioningFlowOptions } from "@matter/main/protocol";
+import { ControllerCommissioningFlowOptions, OperationalDataset } from "@matter/main/protocol";
 import { EndpointNumber, QrPairingCodeCodec } from "@matter/main/types";
-import { OperationalDataset } from "@matter/thread-br-client";
 import { NodeStates } from "@project-chip/matter.js/device";
 import { WebSocketServer } from "ws";
 import { ControllerCommandHandler } from "../controller/ControllerCommandHandler.js";
@@ -88,6 +87,10 @@ function generateConnectionId(): string {
 
 const SCHEMA_VERSION = 12;
 const MIN_SUPPORTED_SCHEMA_VERSION = 11;
+
+// Issuing any of these (schema 12) proves the connection is Thread-aware, so it opts the connection
+// in to `thread_diagnostics_updated` — even if the request itself errors. See the schema changelog.
+const THREAD_DIAGNOSTICS_OPT_IN_COMMANDS = new Set(["get_thread_diagnostics", "get_thread_border_routers"]);
 
 const skipMessageContentInLogFor = ["start_listening"];
 
@@ -196,10 +199,6 @@ export class WebSocketControllerHandler implements WebServerHandler {
             return;
         }
 
-        this.#serverObservers.on(this.#controller.threadDiagnostics.events.batchUpdated, batch => {
-            this.#broadcastEvent("thread_diagnostics_updated", serializeBatch(batch));
-        });
-
         this.#serverObservers.on(this.#commandHandler.events.webRtcCallback, data => {
             this.#broadcastEvent("webrtc_callback", data);
         });
@@ -218,6 +217,10 @@ export class WebSocketControllerHandler implements WebServerHandler {
             logger.info(`[${connId}] WebSocket connection established`);
 
             let listening = false;
+            // thread_diagnostics_updated (schema 12) is sent only to connections that have issued a
+            // Thread request, so schema-11 clients (all currently deployed HA installs) never receive an
+            // event type they'd crash on. See the schema changelog.
+            let wantsThreadDiagnostics = false;
             const observers = new ObserverGroup();
 
             const sendNodeFullDetails = (eventName: "node_added" | "node_updated", nodeId: NodeId) => {
@@ -414,6 +417,17 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 ws.send(toBigIntAwareJson({ event: "node_removed", data: nodeId }));
             });
 
+            observers.on(this.#controller.threadDiagnostics.events.batchUpdated, batch => {
+                if (this.#closed || this.#shuttingDown || !wantsThreadDiagnostics) return;
+                // batchUpdated is a shared Observable; a throw here would abort emit and starve other
+                // connections' observers, so isolate the serialize/send per connection.
+                try {
+                    ws.send(toBigIntAwareJson({ event: "thread_diagnostics_updated", data: serializeBatch(batch) }));
+                } catch (err) {
+                    logger.error(`[${connId}] Failed to send thread_diagnostics_updated`, err);
+                }
+            });
+
             let connectionClosed = false;
             const onClose = () => {
                 if (connectionClosed) {
@@ -429,10 +443,13 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 "message",
                 data =>
                     void this.#handleWebSocketRequest(connId, data.toString()).then(
-                        ({ response, enableListeners }) => {
+                        ({ response, enableListeners, wantsThreadDiagnostics: requested }) => {
                             if (this.#closed) return;
                             if (enableListeners) {
                                 listening = true;
+                            }
+                            if (requested) {
+                                wantsThreadDiagnostics = true;
                             }
                             ws.send(toBigIntAwareJson(response));
                         },
@@ -499,7 +516,11 @@ export class WebSocketControllerHandler implements WebServerHandler {
     async #handleWebSocketRequest(
         connId: string,
         data: string,
-    ): Promise<{ response: ErrorResultMessage | SuccessResultMessage; enableListeners?: boolean }> {
+    ): Promise<{
+        response: ErrorResultMessage | SuccessResultMessage;
+        enableListeners?: boolean;
+        wantsThreadDiagnostics?: boolean;
+    }> {
         let messageId: string | undefined;
         let command: string | undefined;
         try {
@@ -641,6 +662,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     result,
                 },
                 enableListeners,
+                wantsThreadDiagnostics: command !== undefined && THREAD_DIAGNOSTICS_OPT_IN_COMMANDS.has(command),
             };
         } catch (err) {
             logger.error(`[${connId}] WebSocket error response (${command})`, messageId, err);
@@ -651,6 +673,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     error_code: errorCode,
                     details: (err as Error).message,
                 },
+                wantsThreadDiagnostics: command !== undefined && THREAD_DIAGNOSTICS_OPT_IN_COMMANDS.has(command),
             };
         }
     }
@@ -1091,7 +1114,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         args: ArgsOf<"get_thread_diagnostics">,
     ): Promise<ResponseOf<"get_thread_diagnostics">> {
         if (args?.extPanId === undefined) {
-            this.#controller.threadDiagnostics.refreshAllKnown();
+            this.#controller.threadDiagnostics.refreshAllKnown({ force: args?.force });
             return this.#controller.threadDiagnostics.listCached().map(serializeBatch);
         }
         if (!/^[0-9a-fA-F]{16}$/.test(args.extPanId)) {
@@ -1169,7 +1192,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
     #unregisterThreadIfUnreferenced(removedDataset: string | undefined): void {
         if (removedDataset === undefined || removedDataset === "") return;
-        let removedExtPanId: Uint8Array | undefined;
+        let removedExtPanId: Bytes | undefined;
         try {
             removedExtPanId = OperationalDataset.decode(removedDataset).extPanId;
         } catch {

@@ -213,14 +213,18 @@ export class ConfigStorage {
     async setWifiCredentials(id: string, ssid: string, credentials?: string): Promise<void> {
         const canonical = this.#validateCredentialId(id);
         if (canonical === DEFAULT_CREDENTIAL_ID) {
-            const secret = this.#keepOrReplaceSecret(credentials, this.#data.wifiCredentials);
+            // Carry the stored password forward only when the SSID is unchanged: a password is
+            // network-specific, so an empty password with a new SSID must not inherit the old secret.
+            const existing = this.#data.wifiSsid === ssid ? this.#data.wifiCredentials : undefined;
+            const secret = this.#keepOrReplaceSecret(credentials, existing);
             await this.set({ wifiSsid: ssid, wifiCredentials: secret });
             return;
         }
         const list = [...this.#additionalWifiCredentials];
         const idx = list.findIndex(e => e.id.toLowerCase() === canonical.toLowerCase());
         this.#assertNoCaseClash(id, list);
-        const secret = this.#keepOrReplaceSecret(credentials, idx >= 0 ? list[idx].credentials : undefined);
+        const existing = idx >= 0 && list[idx].ssid === ssid ? list[idx].credentials : undefined;
+        const secret = this.#keepOrReplaceSecret(credentials, existing);
         const entry: WifiCredentialEntry = { id: id.trim(), ssid, credentials: secret };
         if (idx >= 0) list[idx] = entry;
         else list.push(entry);
