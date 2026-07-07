@@ -519,6 +519,18 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 case "commission_on_network":
                     result = await this.#handleCommissionOnNetwork(args);
                     break;
+                case "get_icd_state":
+                    result = await this.#handleGetIcdState(args);
+                    break;
+                case "register_icd":
+                    result = await this.#handleRegisterIcd(args);
+                    break;
+                case "resync_icd":
+                    result = await this.#handleResyncIcd(args);
+                    break;
+                case "unregister_icd":
+                    result = await this.#handleUnregisterIcd(args);
+                    break;
                 case "get_node":
                     result = await this.#handleGetNode(args);
                     break;
@@ -1021,6 +1033,48 @@ export class WebSocketControllerHandler implements WebServerHandler {
         this.#broadcastEvent("node_updated", this.#collectNodeDetails(nodeId));
 
         return null;
+    }
+
+    #rejectIcdCommandForTestNode(nodeId: NodeId): void {
+        if (TestNodeCommandHandler.isTestNodeId(nodeId)) {
+            throw ServerError.invalidArguments("ICD commands are not supported for test nodes");
+        }
+    }
+
+    async #handleGetIcdState(args: ArgsOf<"get_icd_state">): Promise<ResponseOf<"get_icd_state">> {
+        const { node_id } = args;
+        const nodeId = NodeId(node_id);
+        this.#rejectIcdCommandForTestNode(nodeId);
+        return this.#commandHandler.getIcdState(nodeId);
+    }
+
+    async #handleRegisterIcd(args: ArgsOf<"register_icd">): Promise<ResponseOf<"register_icd">> {
+        const { node_id, allow_multi_admin, ignored_vendors } = args;
+        const nodeId = NodeId(node_id);
+        this.#rejectIcdCommandForTestNode(nodeId);
+        await this.#commandHandler.registerIcd(nodeId, {
+            allowMultiAdmin: allow_multi_admin,
+            ignoredVendors: ignored_vendors,
+        });
+        this.#broadcastEvent("node_updated", this.#collectNodeDetails(nodeId));
+        return this.#commandHandler.getIcdState(nodeId);
+    }
+
+    async #handleResyncIcd(args: ArgsOf<"resync_icd">): Promise<ResponseOf<"resync_icd">> {
+        const { node_id } = args;
+        const nodeId = NodeId(node_id);
+        this.#rejectIcdCommandForTestNode(nodeId);
+        await this.#commandHandler.resyncIcd(nodeId);
+        return null;
+    }
+
+    async #handleUnregisterIcd(args: ArgsOf<"unregister_icd">): Promise<ResponseOf<"unregister_icd">> {
+        const { node_id, force = false } = args;
+        const nodeId = NodeId(node_id);
+        this.#rejectIcdCommandForTestNode(nodeId);
+        await this.#commandHandler.unregisterIcd(nodeId, force);
+        this.#broadcastEvent("node_updated", this.#collectNodeDetails(nodeId));
+        return this.#commandHandler.getIcdState(nodeId);
     }
 
     async #handlePingNode(args: ArgsOf<"ping_node">): Promise<ResponseOf<"ping_node">> {
