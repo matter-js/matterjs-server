@@ -65,6 +65,7 @@ import {
     buildAttributePath,
     convertCommandDataToMatter,
     convertMatterToWebSocketTagBased,
+    convertWebRtcProviderResponseToWebSocket,
     convertWebSocketTagBasedToMatter,
     getDateAsString,
     splitAttributePath,
@@ -318,7 +319,7 @@ export class ControllerCommandHandler {
         endpointId: EndpointNumber;
         commandName: "ProvideOffer" | "SolicitOffer";
         payload: Record<string, unknown>;
-    }): Promise<WebRtcTransportProvider.ProvideOfferResponse | WebRtcTransportProvider.SolicitOfferResponse> {
+    }): Promise<Record<string, unknown>> {
         const { nodeId, endpointId, commandName, payload } = args;
 
         if (commandName !== "ProvideOffer" && commandName !== "SolicitOffer") {
@@ -389,7 +390,7 @@ export class ControllerCommandHandler {
             agent.get(WebRtcTransportRequestorServer).upsertSession(session);
         });
 
-        return response;
+        return convertWebRtcProviderResponseToWebSocket(commandName, response);
     }
 
     async close() {

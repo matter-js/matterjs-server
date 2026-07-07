@@ -306,6 +306,34 @@ export function convertMatterToWebSocketTagBased(
 }
 
 /**
+ * Renames a WebRtcTransportProvider ProvideOffer/SolicitOffer response from matter.js's own
+ * camelCase field names (e.g. `webRtcSessionId`) to the wire convention used by this project's
+ * Python client (e.g. `webRtcSessionID`), which is what HA's camera integration reads
+ * (`response["webRtcSessionID"]`). matter.js's camelize() does not preserve the "ID" acronym
+ * casing the way the Python CHIP-style codegen does, so the generic name-based converter can't
+ * be used here - these known fields are renamed explicitly instead.
+ */
+export function convertWebRtcProviderResponseToWebSocket(
+    commandName: "ProvideOffer" | "SolicitOffer",
+    response: {
+        webRtcSessionId: number;
+        videoStreamId?: number | null;
+        audioStreamId?: number | null;
+        deferredOffer?: boolean;
+    },
+): Record<string, unknown> {
+    const wireResponse: Record<string, unknown> = {
+        webRtcSessionID: response.webRtcSessionId,
+        videoStreamID: response.videoStreamId,
+        audioStreamID: response.audioStreamId,
+    };
+    if (commandName === "SolicitOffer") {
+        wireResponse.deferredOffer = response.deferredOffer;
+    }
+    return wireResponse;
+}
+
+/**
  * Same as convertMatterToWebSocketTagBased but uses camelCase names instead of numeric tag IDs for struct keys.
  * Used for command (invoke) responses to match Python Matter Server behavior.
  */

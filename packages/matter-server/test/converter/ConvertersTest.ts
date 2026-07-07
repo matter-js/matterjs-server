@@ -10,6 +10,7 @@ import {
     convertCommandDataToMatter,
     convertMatterToWebSocketNameBased,
     convertMatterToWebSocketTagBased,
+    convertWebRtcProviderResponseToWebSocket,
     convertWebSocketTagBasedToMatter,
     parseBigIntAwareJson,
     splitAttributePath,
@@ -898,7 +899,7 @@ describe("Converters", () => {
             // a mandatory nullable field. Matter.js expects webRtcSessionId (lowercase d).
             // Without conversion this key is dropped entirely and Matter.js raises a
             // "missing mandatory field" error.
-            const webRtcProviderCluster = ClusterMap[0x0553]!;
+            const webRtcProviderCluster = ClusterMap[1363]!;
             const provideOfferCmd = webRtcProviderCluster.commands["provideoffer"]!;
 
             const payload = {
@@ -916,6 +917,37 @@ describe("Converters", () => {
             expect(result).to.have.property("webRtcSessionId", null);
             expect(result).to.not.have.property("webRtcSessionID");
             expect(result).to.have.property("sdp", "v=0");
+        });
+
+        it("should convert ProvideOffer response back to the webRtcSessionID wire convention", () => {
+            // matter.js returns webRtcSessionId/videoStreamId/audioStreamId (its own camelCase
+            // naming). HA's camera integration reads response["webRtcSessionID"], matching this
+            // project's own Python client convention, so the response must be renamed back.
+            const result = convertWebRtcProviderResponseToWebSocket("ProvideOffer", {
+                webRtcSessionId: 42,
+                videoStreamId: null,
+                audioStreamId: 7,
+            });
+
+            expect(result).to.deep.equal({
+                webRtcSessionID: 42,
+                videoStreamID: null,
+                audioStreamID: 7,
+            });
+            expect(result).to.not.have.property("webRtcSessionId");
+            expect(result).to.not.have.property("deferredOffer");
+        });
+
+        it("should include deferredOffer for SolicitOffer responses", () => {
+            const result = convertWebRtcProviderResponseToWebSocket("SolicitOffer", {
+                webRtcSessionId: 7,
+                videoStreamId: null,
+                audioStreamId: null,
+                deferredOffer: true,
+            });
+
+            expect(result).to.have.property("webRtcSessionID", 7);
+            expect(result).to.have.property("deferredOffer", true);
         });
     });
 
