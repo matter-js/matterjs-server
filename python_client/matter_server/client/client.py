@@ -256,7 +256,7 @@ class MatterClient:
     async def get_icd_state(self, node_id: int) -> IcdStateData:
         """Return the controller-side ICD (Intermittently Connected Device) state for a node.
 
-        Experimental. Requires schema 12.
+        Requires schema 12.
         """
         data = await self.send_command(APICommand.GET_ICD_STATE, require_schema=12, node_id=node_id)
         return dataclass_from_dict(IcdStateData, data)
@@ -269,7 +269,7 @@ class MatterClient:
     ) -> IcdStateData:
         """Register this controller as an ICD monitor for a node.
 
-        Experimental. Requires schema 12.
+        Requires schema 12.
 
         :param allow_multi_admin: Proceed even when other admin fabrics may not support LIT
             (raises IcdMultiAdmin otherwise).
@@ -286,7 +286,7 @@ class MatterClient:
     async def unregister_icd(self, node_id: int, force: bool = False) -> IcdStateData:
         """Unregister this controller as an ICD monitor for a node.
 
-        Experimental. Requires schema 12.
+        Requires schema 12.
 
         :param force: Skip the peer round-trip and only clear local registration state
             (for an unreachable peer).
@@ -299,7 +299,7 @@ class MatterClient:
     async def resync_icd(self, node_id: int) -> None:
         """Drop the local ICD registration for a node and reconnect (the peer re-registers).
 
-        Experimental. Requires schema 12.
+        Requires schema 12.
         """
         await self.send_command(APICommand.RESYNC_ICD, require_schema=12, node_id=node_id)
 

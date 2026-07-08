@@ -994,10 +994,10 @@ These commands are available only in the Matter.js server and not in the Python 
 |---------|-------------|
 | `get_loglevel` | Get current console and file log levels |
 | `set_loglevel` | Temporarily change log levels (resets on restart) |
-| `get_icd_state` | Get ICD Check-In state for a node (experimental) |
-| `register_icd` | Register this controller as an ICD Check-In client (experimental) |
-| `unregister_icd` | Drop this controller's ICD Check-In registration (experimental) |
-| `resync_icd` | Drop the local ICD registration and reconnect (experimental) |
+| `get_icd_state` | Get ICD Check-In state for a node |
+| `register_icd` | Register this controller as an ICD Check-In client |
+| `unregister_icd` | Drop this controller's ICD Check-In registration |
+| `resync_icd` | Drop the local ICD registration and reconnect |
 
 ### Data Differences
 
