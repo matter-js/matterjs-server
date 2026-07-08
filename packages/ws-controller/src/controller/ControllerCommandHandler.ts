@@ -29,6 +29,7 @@ import {
     Time,
     Timer,
     DnsRecordType,
+    NetworkClient,
 } from "@matter/main";
 import { IcdManagementClient, OperationalCredentialsClient } from "@matter/main/behaviors";
 import {
@@ -552,10 +553,14 @@ export class ControllerCommandHandler {
         // Start connecting nodes to the network (fire-and-forget, actual I/O is async).
         for (const nodeId of this.#nodes.getIds()) {
             try {
-                this.#nodes.get(nodeId).connect({
-                    subscribeMinIntervalFloorSeconds: undefined,
-                    subscribeMaxIntervalCeilingSeconds: undefined,
-                });
+                const node = this.#nodes.get(nodeId);
+
+                if (node.node.maybeStateOf(NetworkClient)?.defaultSubscription !== undefined) {
+                    // Clear former set subscription details, let matter.js handle that now
+                    await node.node.set({ network: { defaultSubscription: undefined } });
+                }
+
+                node.connect();
             } catch (error) {
                 logger.warn(`Failed to connect node "${this.formatNode(nodeId)}":`, error);
             }
