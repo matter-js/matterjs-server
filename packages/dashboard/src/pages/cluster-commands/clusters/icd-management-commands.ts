@@ -31,6 +31,7 @@ import { BaseClusterCommands } from "../base-cluster-commands.js";
 import { registerClusterCommands } from "../registry.js";
 
 const COMMISSIONED_FABRICS_PATH = "0/62/3";
+const FABRIC_COUNT_READ_TIMEOUT_MS = 15_000;
 const CURRENT_FABRIC_INDEX_PATH = "0/62/5";
 const REGISTERED_CLIENTS_PATH = `0/${ICD_CLUSTER_ID}/3`;
 
@@ -81,13 +82,22 @@ export class IcdManagementClusterCommands extends BaseClusterCommands {
     private async _ensureLoaded() {
         const node = this.node;
         const endpoint = this.endpoint;
-        try {
-            const result = await this.client.readAttribute(node.node_id, [COMMISSIONED_FABRICS_PATH]);
-            if (this.isSameContext(node, endpoint)) Object.assign(this.node.attributes, result);
-        } catch {
-            // use cached values
+        // Server state is controller-local and must not wait behind a device read that can
+        // hold for a sleeping ICD; the fabric count only refines warning copy.
+        const refresh = this._refreshServerState(node, endpoint);
+        if (node.available) {
+            try {
+                const result = await this.client.readAttribute(
+                    node.node_id,
+                    [COMMISSIONED_FABRICS_PATH],
+                    FABRIC_COUNT_READ_TIMEOUT_MS,
+                );
+                if (this.isSameContext(node, endpoint)) Object.assign(this.node.attributes, result);
+            } catch {
+                // use cached values
+            }
         }
-        await this._refreshServerState(node, endpoint);
+        await refresh;
     }
 
     private async _refreshServerState(node: MatterNode, endpoint: number) {
