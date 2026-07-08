@@ -44,7 +44,7 @@
         "@matter-server/custom-clusters": "*",
         "@matter-server/dashboard": "*",
         "@matter-server/ws-controller": "*",
-        "@matter/main": "0.17.5-alpha.0-20260704-9ea70abfa",
+        "@matter/main": "0.17.5-alpha.0-20260707-54888fc9e",
         "commander": "^15.0.0",
         "express": "^5.2.1"
     },
