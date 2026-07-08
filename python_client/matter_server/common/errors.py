@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 # mapping from error_code to Exception class
 ERROR_MAP: dict[int, type] = {}
 
@@ -87,6 +89,32 @@ class UpdateError(MatterError):
     """Error raised when there was an error during applying updates."""
 
     error_code = 11
+
+
+class IcdMultiAdmin(MatterError):
+    """Error raised when ICD registration is rejected due to other admin fabrics.
+
+    OHF extension (python-matter-server codes stop at 11); `details` is a JSON string
+    `{"message": str, "admin_vendor_ids": list[int]}`.
+    """
+
+    error_code = 100
+
+    def __init__(self, details: str | None = None) -> None:
+        """Parse `details` and expose `admin_vendor_ids`."""
+        self.admin_vendor_ids: list[int] = []
+        message = details
+        if details is not None:
+            try:
+                parsed = json.loads(details)
+            except (json.JSONDecodeError, TypeError):
+                parsed = None
+            if isinstance(parsed, dict) and "message" in parsed:
+                message = parsed["message"]
+                vendor_ids = parsed.get("admin_vendor_ids")
+                if isinstance(vendor_ids, list):
+                    self.admin_vendor_ids = vendor_ids
+        super().__init__(message)
 
 
 def exception_from_error_code(error_code: int) -> type[MatterError]:

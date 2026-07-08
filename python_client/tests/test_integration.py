@@ -309,6 +309,15 @@ class TestServerCommands:
         assert error["error_code"] == 5  # NodeNotExists
         assert "999999" in error["details"]
 
+    async def test_17b_error_node_not_exists_register_icd(self, env):
+        """NodeNotExists error for register_icd on non-existent node."""
+        client: MatterTestClient = env["client"]
+        error = await client.send_command_expect_error(
+            "register_icd", {"node_id": 999999}
+        )
+        assert error["error_code"] == 5  # NodeNotExists
+        assert "999999" in error["details"]
+
 
 # ============================================================================
 # Section 2 -- Device Discovery
@@ -448,6 +457,23 @@ class TestNodeQueries:
         assert isinstance(fabrics, list)
         assert len(fabrics) > 0
         assert any(f.fabric_index == 1 for f in fabrics)
+
+    async def test_27b_get_icd_state_unsupported(self, env):
+        """get_icd_state returns the unsupported shape for a node without IcdManagement."""
+        _require_state(env, "node_id")
+        client: MatterTestClient = env["client"]
+        state = await client.send_command(
+            APICommand.GET_ICD_STATE, node_id=env["node_id"]
+        )
+        assert state == {
+            "supported": False,
+            "lit_supported": False,
+            "registered": False,
+            "operating_mode": None,
+            "awake": None,
+            "available": None,
+            "next_expected_checkin": None,
+        }
 
 
 # ============================================================================

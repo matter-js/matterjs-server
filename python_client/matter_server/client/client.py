@@ -25,6 +25,7 @@ from matter_server.common.models import (
     ErrorResultMessage,
     EventMessage,
     EventType,
+    IcdStateData,
     MatterNodeData,
     MatterNodeEvent,
     MatterSoftwareVersion,
@@ -251,6 +252,56 @@ class MatterClient:
         if force:
             args["force"] = True
         return await self.send_command(APICommand.GET_THREAD_DIAGNOSTICS, require_schema=12, **args)
+
+    async def get_icd_state(self, node_id: int) -> IcdStateData:
+        """Return the controller-side ICD (Intermittently Connected Device) state for a node.
+
+        Experimental. Requires schema 12.
+        """
+        data = await self.send_command(APICommand.GET_ICD_STATE, require_schema=12, node_id=node_id)
+        return dataclass_from_dict(IcdStateData, data)
+
+    async def register_icd(
+        self,
+        node_id: int,
+        allow_multi_admin: bool | None = None,
+        ignored_vendors: list[int] | None = None,
+    ) -> IcdStateData:
+        """Register this controller as an ICD monitor for a node.
+
+        Experimental. Requires schema 12.
+
+        :param allow_multi_admin: Proceed even when other admin fabrics may not support LIT
+            (raises IcdMultiAdmin otherwise).
+        :param ignored_vendors: Vendor ids to skip during the multi-admin check.
+        """
+        args: dict[str, Any] = {}
+        if allow_multi_admin is not None:
+            args["allow_multi_admin"] = allow_multi_admin
+        if ignored_vendors is not None:
+            args["ignored_vendors"] = ignored_vendors
+        data = await self.send_command(APICommand.REGISTER_ICD, require_schema=12, node_id=node_id, **args)
+        return dataclass_from_dict(IcdStateData, data)
+
+    async def unregister_icd(self, node_id: int, force: bool = False) -> IcdStateData:
+        """Unregister this controller as an ICD monitor for a node.
+
+        Experimental. Requires schema 12.
+
+        :param force: Skip the peer round-trip and only clear local registration state
+            (for an unreachable peer).
+        """
+        data = await self.send_command(
+            APICommand.UNREGISTER_ICD, require_schema=12, node_id=node_id, force=force
+        )
+        return dataclass_from_dict(IcdStateData, data)
+
+    async def resync_icd(self, node_id: int) -> None:
+        """Drop the local ICD registration for a node and reconnect (the peer re-registers).
+
+        Experimental. Requires schema 12.
+        """
+        await self.send_command(APICommand.RESYNC_ICD, require_schema=12, node_id=node_id)
 
     async def open_commissioning_window(
         self,

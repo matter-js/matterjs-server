@@ -61,6 +61,10 @@ class APICommand(str, Enum):
     GET_ALL_CREDENTIALS = "get_all_credentials"
     GET_THREAD_BORDER_ROUTERS = "get_thread_border_routers"
     GET_THREAD_DIAGNOSTICS = "get_thread_diagnostics"
+    GET_ICD_STATE = "get_icd_state"
+    REGISTER_ICD = "register_icd"
+    RESYNC_ICD = "resync_icd"
+    UNREGISTER_ICD = "unregister_icd"
 
 
 EventCallBackType = Callable[[EventType, Any], None]
@@ -250,6 +254,19 @@ class CommissioningParameters:
     setup_pin_code: int
     setup_manual_code: str
     setup_qr_code: str
+
+
+@dataclass
+class IcdStateData:
+    """ICD controller-side state for a node. Note: Only available with OHF Matter Server."""
+
+    supported: bool
+    lit_supported: bool
+    registered: bool
+    operating_mode: str | None
+    awake: bool | None
+    available: bool | None
+    next_expected_checkin: int | None
 
 
 class UpdateSource(Enum):
