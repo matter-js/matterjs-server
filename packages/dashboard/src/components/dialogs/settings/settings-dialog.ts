@@ -325,6 +325,23 @@ export class SettingsDialog extends LitElement {
         if (this._wifiEditId === entry.id) {
             return this._renderWifiForm(entry.id, entry.ssid);
         }
+        // The server always returns a `default` entry; treat it as unset unless server_info confirms
+        // credentials are actually stored, so a fresh install shows "Not configured", not "(no SSID)".
+        if (isDefault && !(this.client.serverInfo?.wifi_credentials_set ?? false)) {
+            return html`
+                <div class="cred-row">
+                    <div class="cred-info cred-entry">
+                        <span class="cred-unset">Not configured</span>
+                        <span class="cred-badge">Default</span>
+                    </div>
+                    <div class="cred-row-actions">
+                        <md-text-button @click=${() => this._editWifi("default")} .disabled=${this._credLoading}>
+                            <ha-svg-icon slot="icon" .path=${mdiPlus}></ha-svg-icon>Set
+                        </md-text-button>
+                    </div>
+                </div>
+            `;
+        }
         return html`
             <div class="cred-row">
                 <div class="cred-info cred-entry">
@@ -429,6 +446,21 @@ export class SettingsDialog extends LitElement {
         const isDefault = entry.id === "default";
         if (this._threadEditId === entry.id) {
             return this._renderThreadForm(entry.id);
+        }
+        if (isDefault && !(this.client.serverInfo?.thread_credentials_set ?? false)) {
+            return html`
+                <div class="cred-row">
+                    <div class="cred-info cred-entry">
+                        <span class="cred-unset">Not configured</span>
+                        <span class="cred-badge">Default</span>
+                    </div>
+                    <div class="cred-row-actions">
+                        <md-text-button @click=${() => this._editThread("default")} .disabled=${this._credLoading}>
+                            <ha-svg-icon slot="icon" .path=${mdiPlus}></ha-svg-icon>Set
+                        </md-text-button>
+                    </div>
+                </div>
+            `;
         }
         const label = entry.networkName ?? entry.extPanId ?? "Thread network set";
         return html`

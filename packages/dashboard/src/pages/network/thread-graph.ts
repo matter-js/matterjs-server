@@ -161,16 +161,24 @@ export class ThreadGraph extends BaseNetworkGraph {
         const peerRouterId = (peerNode.rloc16 >> 10) & 0x3f;
         const peerChildId = peerNode.rloc16 & 0x3ff;
 
-        const routeEntry = brNode.route64?.entries.find(e => e.routerId === peerRouterId);
-        if (routeEntry !== undefined) {
-            return {
-                linkQualityIn: routeEntry.linkQualityIn,
-                linkQualityOut: routeEntry.linkQualityOut,
-                routeCost: routeEntry.routeCost,
-            };
+        // A Route64 entry keys on router id, so it only identifies the peer when the peer *is* a
+        // router (child id 0). For an end device it would be the BR's route to the peer's parent
+        // router — a different node — so it must not be reported as the BR's view of this peer.
+        if (peerChildId === 0) {
+            const routeEntry = brNode.route64?.entries.find(e => e.routerId === peerRouterId);
+            if (routeEntry !== undefined) {
+                return {
+                    linkQualityIn: routeEntry.linkQualityIn,
+                    linkQualityOut: routeEntry.linkQualityOut,
+                    routeCost: routeEntry.routeCost,
+                };
+            }
+            return undefined;
         }
 
-        if (peerChildId !== 0) {
+        // Child ids are unique only within a parent router, so a ChildTable entry identifies the
+        // peer only when the peer's parent router is this BR itself.
+        if (brNode.rloc16 !== undefined && ((brNode.rloc16 >> 10) & 0x3f) === peerRouterId) {
             const childEntry = brNode.childTable?.find(c => c.childId === peerChildId);
             if (childEntry !== undefined) {
                 return { isChild: true };
@@ -520,6 +528,12 @@ export class ThreadGraph extends BaseNetworkGraph {
                     isToDiagnostic ||
                     (isToBr && brView === undefined && !this._brHasValidDiagnostic(toId));
 
+                // An edge is inferred if *either* endpoint is inferred — a diagnostic/unknown source
+                // node makes the edge no less inferred than a diagnostic/unknown target.
+                const isFromUnknown =
+                    fromId.startsWith("unknown_") || fromId.startsWith("thread_") || fromId.startsWith("meshrloc_");
+                const isInferredEdge = isToUnknown || isFromUnknown;
+
                 // Apply filters to determine if edge should be hidden
                 let filterHidden = false;
 
@@ -567,7 +581,7 @@ export class ThreadGraph extends BaseNetworkGraph {
                     color: { color: conn.signalColor, highlight: conn.signalColor },
                     width: 2,
                     title: tooltip,
-                    dashes: isToUnknown || hasOfflineEndpoint,
+                    dashes: isInferredEdge || hasOfflineEndpoint,
                     hidden: filterHidden,
                     pairKey: pair.pairKey,
                     reportingNodeId: fromId,

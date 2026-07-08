@@ -146,6 +146,7 @@ export class ThreadDiagnosticsService {
     readonly #probeRest: (host: string, port: number, timeoutMs: number) => Promise<OtbrRestCapability | null>;
     readonly #enabled: boolean;
     readonly #detailTransport?: DiagnosticDetailTransport;
+    #stopped = false;
 
     constructor(opts: ThreadDiagnosticsServiceOpts) {
         this.#opts = opts;
@@ -196,6 +197,19 @@ export class ThreadDiagnosticsService {
         }
     }
 
+    /**
+     * Cancel every in-flight diagnostic stream, aborting its MeshCoP/CoAP session and timers. Called
+     * on controller shutdown so streams don't outlive the environment being torn down. Idempotent.
+     */
+    async stop(): Promise<void> {
+        // Set first so any getOrFetch still awaiting a probe aborts before launching a fresh stream.
+        this.#stopped = true;
+        const inFlight = Array.from(this.#streamsInFlight.values());
+        await Promise.all(
+            inFlight.map(stream => stream.cancel().catch(err => logger.warn(`stream cancel failed: ${err}`))),
+        );
+    }
+
     /** @internal — test seam: seed a REST capability without a live probe. */
     registerRestCapability(extPanIdHex: string, cap: OtbrRestCapability): void {
         this.#restCaps.set(extPanIdHex.toLowerCase(), cap);
@@ -211,7 +225,7 @@ export class ThreadDiagnosticsService {
         const xp = key.toUpperCase();
         const force = opts?.force === true;
 
-        if (!this.#enabled) return undefined;
+        if (!this.#enabled || this.#stopped) return undefined;
 
         logger.debug(`getOrFetch xp=${xp} force=${force}`);
 
@@ -281,6 +295,10 @@ export class ThreadDiagnosticsService {
                 }
             }
         }
+
+        // The probe above awaits; if shutdown began meanwhile, don't launch a fresh stream that
+        // stop()'s snapshot has already passed over (it would outlive teardown).
+        if (this.#stopped) return undefined;
 
         if (force) {
             const existing = this.#streamsInFlight.get(key);
@@ -538,7 +556,9 @@ export class ThreadDiagnosticsService {
                 scheduleDebouncedFlush();
             }
         });
+        let lastError: Error | undefined;
         handle.onError.on((err: Error) => {
+            lastError = err;
             logger.warn(`stream error xp=${xp}: ${err.message}`);
         });
 
@@ -562,6 +582,19 @@ export class ThreadDiagnosticsService {
         }
 
         firstBatchFired = true;
+
+        // The library reports a fatal query failure (e.g. petition rejected) via `onError` and still
+        // resolves `done` (matter.js: thread-br-client `queryMulticast().done` never rejects). If the
+        // query ended errored with nothing collected, publish a partial with the mapped reason so it is
+        // not cached as a complete empty result for the full TTL.
+        if (acc.size === 0 && lastError !== undefined) {
+            const reason = sourceKind === "otbr-rest" ? mapRestError(lastError) : mapMeshcopError(lastError);
+            logger.info(`${sourceKind} FAIL xp=${xp} (stream error, no nodes) -> partial(${reason})`);
+            const partial = this.#publish(this.#partialOf(extPanIdHex, networkName, sourceKind, reason));
+            resolveFirstBatch(partial);
+            return;
+        }
+
         logger.info(`${sourceKind} OK xp=${xp} nodes=${acc.size} t+${Date.now() - streamStart}ms`);
         const finalBatch = this.#publish(snapshot(undefined));
         resolveFirstBatch(finalBatch);

@@ -237,9 +237,13 @@ class MatterClient:
 
         Also streamed via the ``thread_diagnostics_updated`` event. Requires schema 12.
 
-        :param ext_pan_id: 16-char hex extended PAN ID to fetch a single network;
-            omitted returns all known networks (as a list of batches).
-        :param force: Bypass the server-side cache and re-fetch.
+        :param ext_pan_id: 16-char hex extended PAN ID to fetch a single network (awaits a
+            fresh collection and returns the batch, or ``None`` when nothing is cached);
+            omitted returns the *current* cache for all known networks immediately (a list) and
+            triggers a background refresh whose fresh batches arrive via ``thread_diagnostics_updated``.
+        :param force: Bypass the server-side cache and re-fetch. For the all-networks form the refresh
+            is fire-and-forget (the call still returns the current cache at once); pass ``ext_pan_id``
+            when you need to await synchronously fresh data for one network.
         """
         args: dict[str, Any] = {}
         if ext_pan_id is not None:
@@ -595,6 +599,7 @@ class MatterClient:
         """
         response = await self.send_command(
             APICommand.SEND_WEBRTC_PROVIDER_COMMAND,
+            require_schema=12,
             node_id=node_id,
             endpoint_id=endpoint_id,
             command_name=command_name,

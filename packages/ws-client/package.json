@@ -40,10 +40,10 @@
         "build-clean": "nacho-build --clean"
     },
     "dependencies": {
-        "@matter/thread-br-client": "0.17.5-alpha.0-20260707-54888fc9e"
+        "@matter/thread-br-client": "0.17.5-alpha.0-20260708-42e09628a"
     },
     "devDependencies": {
-        "@matter/testing": "0.17.5-alpha.0-20260707-54888fc9e",
+        "@matter/testing": "0.17.5-alpha.0-20260708-42e09628a",
         "@types/node": "^26.0.1",
         "@types/ws": "^8.18.1",
         "ws": "^8.21.0"

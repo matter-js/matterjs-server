@@ -570,6 +570,87 @@ describe("ThreadDiagnosticsService", () => {
         expect(closed).to.equal(true);
     });
 
+    it("publishes a partial when the query emits onError then resolves done with no nodes", async () => {
+        // Models the real thread-br-client layer: a fatal petition rejection surfaces via onError while
+        // `done` still resolves. The service must publish a partial (not cache an empty complete batch).
+        let acquireCalls = 0;
+        const source: DiagnosticSource = {
+            kind: "meshcop",
+            canQuery: () => true,
+            queryUnicast: async () => ({ unknown: [] }),
+            queryMulticast: () => {
+                const onNode = new Observable<[DiagnosticResponse]>();
+                const onError = new Observable<[Error]>();
+                let resolveDone!: () => void;
+                const done = new Promise<void>(r => {
+                    resolveDone = r;
+                });
+                setTimeout(() => {
+                    onError.emit(new CommissionerRejectedError());
+                    resolveDone();
+                }, 2);
+                return { onNode, onError, done, close: async () => {} };
+            },
+            resetCounters: async () => {},
+        };
+        const service = new ThreadDiagnosticsService({
+            ...FAST_TIMING,
+            borderRouters: brRegistryFrom(brsListing([makeBr()])),
+            credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
+            makeRestSource: () => syncRestSource([]),
+            makeMeshcopSource: async () => {
+                acquireCalls += 1;
+                return meshcopHandle(source);
+            },
+            probeRest: async () => null,
+        });
+
+        const batch = await service.getOrFetch(EXT_PAN_HEX_LOWER);
+        expect(batch?.partialReason).to.equal("petition_rejected");
+        expect(batch?.nodes).to.have.lengthOf(0);
+
+        // Let the stream fully tear down (settled) before re-fetching.
+        await new Promise(r => setTimeout(r, 15));
+        // A terminal partial is not a cache hit, so a follow-up fetch re-acquires.
+        await service.getOrFetch(EXT_PAN_HEX_LOWER);
+        expect(acquireCalls).to.equal(2);
+    });
+
+    it("stop() cancels an in-flight stream and tears down its source", async () => {
+        let closed = false;
+        const service = new ThreadDiagnosticsService({
+            ...FAST_TIMING,
+            windowMs: 10_000,
+            firstBatchMs: 5,
+            borderRouters: brRegistryFrom(brsListing([makeBr()])),
+            credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
+            makeRestSource: () => syncRestSource([]),
+            makeMeshcopSource: async () =>
+                meshcopHandle(
+                    {
+                        kind: "meshcop",
+                        canQuery: () => true,
+                        queryUnicast: async () => ({ unknown: [] }),
+                        queryMulticast: () => scriptedHandle({ nodes: [SAMPLE_NODE], keepOpen: true }),
+                        resetCounters: async () => {},
+                    },
+                    () => {
+                        closed = true;
+                    },
+                ),
+            probeRest: async () => null,
+        });
+
+        // Resolves at firstBatchMs while the 10s window keeps the stream in flight.
+        await service.getOrFetch(EXT_PAN_HEX_LOWER);
+        await service.stop();
+        expect(closed).to.equal(true);
+
+        // After stop(), a late fetch must not launch a new (uncancellable) stream.
+        const afterStop = await service.getOrFetch(EXT_PAN_HEX_LOWER);
+        expect(afterStop).to.equal(undefined);
+    });
+
     it("maps a CommissionerTimeoutError to timeout", async () => {
         const service = new ThreadDiagnosticsService({
             ...FAST_TIMING,

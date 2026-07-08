@@ -312,13 +312,14 @@ export interface APICommands {
         response: BorderRouterEntry[];
     };
     /**
-     * Per-Thread-network diagnostics. `extPanId` selects one network (else all known);
-     * `force` bypasses the cache. Also streamed via the `thread_diagnostics_updated` event.
+     * Per-Thread-network diagnostics. `extPanId` selects one network (returns the batch, or `null`
+     * when nothing is cached / diagnostics are disabled); omitted returns an array of all known
+     * networks. `force` bypasses the cache. Also streamed via the `thread_diagnostics_updated` event.
      * @since schema 12
      */
     get_thread_diagnostics: {
         requestArgs: { extPanId?: string; force?: boolean };
-        response: ThreadDiagnosticsBatch | ThreadDiagnosticsBatch[] | undefined;
+        response: ThreadDiagnosticsBatch | ThreadDiagnosticsBatch[] | null;
     };
     open_commissioning_window: {
         requestArgs: {

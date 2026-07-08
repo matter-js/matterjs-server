@@ -42,7 +42,7 @@ export class BorderRouterStore {
         // server, or a transient error) must never abort the border-router refresh.
         try {
             const result = await client.sendCommand("get_thread_diagnostics", 12, {});
-            const batches = Array.isArray(result) ? result : result === undefined ? [] : [result];
+            const batches = Array.isArray(result) ? result : result === undefined || result === null ? [] : [result];
             const nextDiag = new Map<string, ThreadDiagnosticsBatch>();
             for (const batch of batches) {
                 nextDiag.set(batch.extPanIdHex.toUpperCase(), batch);
@@ -67,7 +67,7 @@ export class BorderRouterStore {
                 extPanId: extPanIdHex.toLowerCase(),
                 force: true,
             });
-            if (result === undefined) return;
+            if (result === undefined || result === null) return;
             if (Array.isArray(result)) {
                 for (const batch of result) this.applyBatch(batch);
             } else {

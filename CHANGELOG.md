@@ -15,6 +15,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Feature: New `--disable-thread-diagnostics` flag (env `DISABLE_THREAD_DIAGNOSTICS`) turns off the entire Thread Border Router subsystem (discovery, probing, diagnostics) for plain Matter-controller deployments. Matter-over-Thread commissioning is unaffected.
 - Feature: WiFi and Thread credentials are now named lists (each with an `id`; the reserved `default` entry stays backward-compatible). Commissioning can pick which stored network to use. New/extended WS commands at schema 12 (details in the [WebSocket API schema changelog](docs/websocket-api-schema-changelog.md)); dashboard settings gain add/edit/delete of multiple credentials.
 - Enhancement: Update matter.js to add Matter 1.6 support
+- Change: `webrtc_callback` events are now delivered only to the connection that issued the `send_webrtc_provider_command` for that camera session, instead of being broadcast to every connected client.
 
 ## 1.1.7 (2026-07-01)
 

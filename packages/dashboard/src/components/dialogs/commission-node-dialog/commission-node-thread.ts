@@ -84,6 +84,12 @@ export class CommissionNodeThread extends LitElement {
         if (!this.client || this.client.serverInfo.schema_version < 12) return;
         try {
             this._credentials = await this.client.getAllCredentials();
+            // If the default entry isn't actually set, pre-select the first named entry so the picker
+            // and commissioning don't default to the unset (empty) default network.
+            if (!(this.client.serverInfo.thread_credentials_set ?? false)) {
+                const firstNamed = this._credentials.thread.find(e => e.id !== "default");
+                if (firstNamed !== undefined) this._selectedId = firstNamed.id;
+            }
         } catch {
             // Leave _credentials null → no picker shown
         }
@@ -106,7 +112,13 @@ export class CommissionNodeThread extends LitElement {
     }
 
     protected override render() {
-        if (!this.client.serverInfo.thread_credentials_set) {
+        const defaultSet = this.client.serverInfo.thread_credentials_set ?? false;
+        const threadList = this._credentials?.thread ?? [];
+        // The server always returns a `default` entry; only offer it when it's actually set. A user
+        // who cleared the default but kept named entries must still be able to pick one.
+        const selectable = threadList.filter(e => e.id !== "default" || defaultSet);
+
+        if (selectable.length === 0) {
             return html`<md-outlined-text-field
                     label="Thread dataset"
                     .disabled="${this._loading}"
@@ -119,8 +131,7 @@ export class CommissionNodeThread extends LitElement {
                     >Set Thread Dataset</md-outlined-button
                 >${this._loading ? html` <md-circular-progress indeterminate></md-circular-progress> ` : nothing}`;
         }
-        const threadList = this._credentials?.thread ?? [];
-        const showPicker = threadList.length > 1;
+        const showPicker = selectable.length > 1;
         return html`<div class="cred-chip">
                 <ha-svg-icon .path=${mdiAccessPoint}></ha-svg-icon>
                 <span>Thread network set</span>
@@ -138,7 +149,7 @@ export class CommissionNodeThread extends LitElement {
                               this._selectedId = (e.target as HTMLSelectElement).value;
                           }}
                       >
-                          ${threadList.map(
+                          ${selectable.map(
                               entry => html`
                                   <md-select-option value=${entry.id}>
                                       <div slot="headline">${entry.networkName || entry.id}</div>

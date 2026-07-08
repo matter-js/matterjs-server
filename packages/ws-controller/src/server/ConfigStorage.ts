@@ -213,18 +213,17 @@ export class ConfigStorage {
     async setWifiCredentials(id: string, ssid: string, credentials?: string): Promise<void> {
         const canonical = this.#validateCredentialId(id);
         if (canonical === DEFAULT_CREDENTIAL_ID) {
-            // Carry the stored password forward only when the SSID is unchanged: a password is
-            // network-specific, so an empty password with a new SSID must not inherit the old secret.
-            const existing = this.#data.wifiSsid === ssid ? this.#data.wifiCredentials : undefined;
-            const secret = this.#keepOrReplaceSecret(credentials, existing);
+            // Only an unchanged SSID may reuse the stored (write-only) secret; a new SSID needs its own.
+            const reusable = this.#data.wifiSsid === ssid ? this.#data.wifiCredentials : undefined;
+            const secret = this.#requireOrKeepSecret(credentials, reusable);
             await this.set({ wifiSsid: ssid, wifiCredentials: secret });
             return;
         }
         const list = [...this.#additionalWifiCredentials];
         const idx = list.findIndex(e => e.id.toLowerCase() === canonical.toLowerCase());
         this.#assertNoCaseClash(id, list);
-        const existing = idx >= 0 && list[idx].ssid === ssid ? list[idx].credentials : undefined;
-        const secret = this.#keepOrReplaceSecret(credentials, existing);
+        const reusable = idx >= 0 && list[idx].ssid === ssid ? list[idx].credentials : undefined;
+        const secret = this.#requireOrKeepSecret(credentials, reusable);
         const entry: WifiCredentialEntry = { id: id.trim(), ssid, credentials: secret };
         if (idx >= 0) list[idx] = entry;
         else list.push(entry);
@@ -290,10 +289,11 @@ export class ConfigStorage {
         }
     }
 
-    #keepOrReplaceSecret(provided: string | undefined, existing: string | undefined): string {
+    // A password is required on set; it may be omitted only to keep an existing one (unchanged SSID).
+    #requireOrKeepSecret(provided: string | undefined, reusable: string | undefined): string {
         if (provided !== undefined && provided !== "") return provided;
-        if (existing !== undefined) return existing;
-        return "";
+        if (reusable !== undefined && reusable !== "") return reusable;
+        throw new Error("WiFi password is required (omit it only to keep the existing password for an unchanged SSID)");
     }
 
     #validateCredentialId(id: string): string {

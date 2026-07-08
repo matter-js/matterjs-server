@@ -104,7 +104,6 @@ export class WebSocketControllerHandler implements WebServerHandler {
     #wss?: WebSocketServer;
     #closed = false;
     #shuttingDown = false;
-    #serverObservers = new ObserverGroup();
     /** Upgrade listener removers, one per HTTP server `register()` call (multi-bind). */
     #removeUpgradeListeners: (() => void)[] = [];
     /** Circular buffer for recent node events (max 25) */
@@ -199,10 +198,6 @@ export class WebSocketControllerHandler implements WebServerHandler {
             return;
         }
 
-        this.#serverObservers.on(this.#commandHandler.events.webRtcCallback, data => {
-            this.#broadcastEvent("webrtc_callback", data);
-        });
-
         wss.on("connection", ws => {
             if (this.#closed || this.#shuttingDown) {
                 try {
@@ -221,6 +216,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
             // Thread request, so schema-11 clients (all currently deployed HA installs) never receive an
             // event type they'd crash on. See the schema changelog.
             let wantsThreadDiagnostics = false;
+            // webrtc_callback is likewise sent only to a connection that has issued a WebRTC provider
+            // command, so it reaches the client driving that camera session rather than every client.
+            let wantsWebRtc = false;
             const observers = new ObserverGroup();
 
             const sendNodeFullDetails = (eventName: "node_added" | "node_updated", nodeId: NodeId) => {
@@ -428,6 +426,15 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 }
             });
 
+            observers.on(this.#commandHandler.events.webRtcCallback, data => {
+                if (this.#closed || this.#shuttingDown || !wantsWebRtc) return;
+                try {
+                    ws.send(toBigIntAwareJson({ event: "webrtc_callback", data }));
+                } catch (err) {
+                    logger.error(`[${connId}] Failed to send webrtc_callback`, err);
+                }
+            });
+
             let connectionClosed = false;
             const onClose = () => {
                 if (connectionClosed) {
@@ -443,13 +450,16 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 "message",
                 data =>
                     void this.#handleWebSocketRequest(connId, data.toString()).then(
-                        ({ response, enableListeners, wantsThreadDiagnostics: requested }) => {
+                        ({ response, enableListeners, wantsThreadDiagnostics: requested, wantsWebRtc: reqWebRtc }) => {
                             if (this.#closed) return;
                             if (enableListeners) {
                                 listening = true;
                             }
                             if (requested) {
                                 wantsThreadDiagnostics = true;
+                            }
+                            if (reqWebRtc) {
+                                wantsWebRtc = true;
                             }
                             ws.send(toBigIntAwareJson(response));
                         },
@@ -483,7 +493,6 @@ export class WebSocketControllerHandler implements WebServerHandler {
         }
 
         this.#closed = true;
-        this.#serverObservers.close();
         for (const remove of this.#removeUpgradeListeners) remove();
         this.#removeUpgradeListeners = [];
         // Send server_shutdown event to all connected clients before closing
@@ -520,6 +529,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         response: ErrorResultMessage | SuccessResultMessage;
         enableListeners?: boolean;
         wantsThreadDiagnostics?: boolean;
+        wantsWebRtc?: boolean;
     }> {
         let messageId: string | undefined;
         let command: string | undefined;
@@ -663,6 +673,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 },
                 enableListeners,
                 wantsThreadDiagnostics: command !== undefined && THREAD_DIAGNOSTICS_OPT_IN_COMMANDS.has(command),
+                wantsWebRtc: command === "send_webrtc_provider_command",
             };
         } catch (err) {
             logger.error(`[${connId}] WebSocket error response (${command})`, messageId, err);
@@ -674,6 +685,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     details: (err as Error).message,
                 },
                 wantsThreadDiagnostics: command !== undefined && THREAD_DIAGNOSTICS_OPT_IN_COMMANDS.has(command),
+                wantsWebRtc: command === "send_webrtc_provider_command",
             };
         }
     }
@@ -1123,7 +1135,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
         const batch = await this.#controller.threadDiagnostics.getOrFetch(args.extPanId.toLowerCase(), {
             force: args.force,
         });
-        return batch === undefined ? undefined : serializeBatch(batch);
+        // Explicit null (not undefined) so the "no response" guard doesn't turn "nothing cached /
+        // diagnostics disabled" into a generic sdk_stack_error.
+        return batch === undefined ? null : serializeBatch(batch);
     }
 
     async #handleRemoveWifiCredentials(
@@ -1167,9 +1181,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
     }
 
     #assertValidDatasetHex(dataset: string): void {
-        if (!/^[0-9a-fA-F]*$/.test(dataset) || dataset.length % 2 !== 0) {
+        if (!/^[0-9a-fA-F]+$/.test(dataset) || dataset.length % 2 !== 0) {
             throw ServerError.invalidArguments(
-                "Invalid Thread operational dataset: must be a hex string with even length (each byte is two hex characters)",
+                "Invalid Thread operational dataset: must be a non-empty hex string with even length (each byte is two hex characters)",
             );
         }
         try {

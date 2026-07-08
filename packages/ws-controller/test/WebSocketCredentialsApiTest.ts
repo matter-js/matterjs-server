@@ -55,6 +55,14 @@ function makeStubController(credentials: ThreadCredentialsRegistry) {
 
     const stubDiagnostics = {
         events: { batchUpdated: new Observable() },
+        // Model a disabled / nothing-cached service: single-network fetch yields undefined.
+        async getOrFetch() {
+            return undefined;
+        },
+        listCached() {
+            return [];
+        },
+        refreshAllKnown() {},
     };
 
     const stubBorderRouters = {
@@ -89,6 +97,7 @@ interface TestHarness {
     handle<T = unknown>(command: string, args: unknown): Promise<T>;
     openClient(): Promise<WebSocket>;
     emitDiagnosticsBatch(batch: unknown): void;
+    emitWebRtcCallback(data: unknown): void;
     config: ConfigStorage;
     close(): Promise<void>;
 }
@@ -149,7 +158,11 @@ async function createHarness(): Promise<TestHarness> {
         (controller.threadDiagnostics.events.batchUpdated as unknown as Observable<[unknown]>).emit(batch);
     }
 
-    return { handle, openClient, emitDiagnosticsBatch, config, close };
+    function emitWebRtcCallback(data: unknown): void {
+        (controller.commandHandler.events.webRtcCallback as unknown as Observable<[unknown]>).emit(data);
+    }
+
+    return { handle, openClient, emitDiagnosticsBatch, emitWebRtcCallback, config, close };
 }
 
 describe("WebSocket Credentials API", () => {
@@ -235,6 +248,54 @@ describe("WebSocket Credentials API", () => {
         expect(events).to.include("thread_diagnostics_updated");
 
         ws.close();
+    });
+
+    it("withholds webrtc_callback until the connection issues a WebRTC provider command", async () => {
+        const ws = await h.openClient();
+        const events = new Array<string>();
+        ws.on("message", raw => {
+            const msg = JSON.parse(raw.toString()) as { event?: string };
+            if (msg.event !== undefined) events.push(msg.event);
+        });
+
+        const cb = { webrtc_session_id: 1, event_type: "end", data: null };
+
+        // A connection that never touched WebRTC must not receive another session's callbacks.
+        h.emitWebRtcCallback(cb);
+        await new Promise(r => setTimeout(r, 50));
+        expect(events).to.not.include("webrtc_callback");
+
+        // Issuing the command opts this connection in (even though the stub controller errors on it).
+        await new Promise<void>((resolve, reject) => {
+            const id = "req-webrtc";
+            const onMsg = (raw: WebSocket.RawData) => {
+                const msg = JSON.parse(raw.toString()) as { message_id?: string };
+                if (msg.message_id === id) {
+                    ws.off("message", onMsg);
+                    resolve();
+                }
+            };
+            ws.on("message", onMsg);
+            ws.once("error", reject);
+            ws.send(
+                JSON.stringify({
+                    message_id: id,
+                    command: "send_webrtc_provider_command",
+                    args: { node_id: 1, endpoint_id: 1, command_name: "ProvideOffer", payload: {} },
+                }),
+            );
+        });
+
+        h.emitWebRtcCallback(cb);
+        await new Promise(r => setTimeout(r, 50));
+        expect(events).to.include("webrtc_callback");
+
+        ws.close();
+    });
+
+    it("get_thread_diagnostics(extPanId) returns null (not an error) when nothing is cached", async () => {
+        const res = await h.handle<unknown>("get_thread_diagnostics", { extPanId: "1122334455667788" });
+        expect(res).to.equal(null);
     });
 
     it("opts a connection in even when its Thread request errors", async () => {

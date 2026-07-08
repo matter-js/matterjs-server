@@ -414,6 +414,82 @@ export class NetworkDetails extends LitElement {
         `;
     }
 
+    private _renderDiagnosticMeshNodeInfo(nodeId: string): TemplateResult {
+        let extMac: string | undefined;
+        let extPanId: string | undefined;
+        let rloc16: number | undefined;
+
+        if (nodeId.startsWith("thread_")) {
+            extMac = nodeId.slice("thread_".length).toUpperCase();
+            for (const batch of this.threadDiagnostics.values()) {
+                const found = batch.nodes.find(n => n.extMacAddress?.toUpperCase() === extMac);
+                if (found !== undefined) {
+                    extPanId = batch.extPanIdHex.toUpperCase();
+                    rloc16 = found.rloc16;
+                    break;
+                }
+            }
+        } else {
+            // meshrloc_<EXTPANID>_<rloc16>
+            const rest = nodeId.slice("meshrloc_".length);
+            const sep = rest.lastIndexOf("_");
+            if (sep >= 0) {
+                extPanId = rest.slice(0, sep).toUpperCase();
+                const parsed = Number(rest.slice(sep + 1));
+                rloc16 = Number.isFinite(parsed) ? parsed : undefined;
+                extMac = this.threadDiagnostics
+                    .get(extPanId)
+                    ?.nodes.find(n => n.rloc16 === rloc16)
+                    ?.extMacAddress?.toUpperCase();
+            }
+        }
+
+        const isRouter = rloc16 !== undefined ? (rloc16 & 0x3ff) === 0 : nodeId.startsWith("thread_");
+        const rlocHex = rloc16 !== undefined ? `0x${rloc16.toString(16).padStart(4, "0").toUpperCase()}` : undefined;
+
+        return html`
+            <div class="section">
+                <h4>Diagnostic Mesh Node</h4>
+                <div class="info-row">
+                    <span class="label">Role:</span>
+                    <span class="value">${isRouter ? "Router" : "End Device"}</span>
+                </div>
+                ${extMac !== undefined
+                    ? html`
+                          <div class="info-row">
+                              <span class="label">Extended Address:</span>
+                              <span class="value mono">${extMac}</span>
+                          </div>
+                      `
+                    : nothing}
+                ${rlocHex !== undefined
+                    ? html`
+                          <div class="info-row">
+                              <span class="label">RLOC16:</span>
+                              <span class="value mono">${rlocHex}</span>
+                          </div>
+                      `
+                    : nothing}
+                ${extPanId !== undefined
+                    ? html`
+                          <div class="info-row">
+                              <span class="label">Extended PAN ID:</span>
+                              <span class="value mono">${extPanId}</span>
+                          </div>
+                      `
+                    : nothing}
+            </div>
+
+            <md-divider></md-divider>
+            <div class="section">
+                <p class="hint-text">
+                    This node was inferred from Border Router diagnostics (Route64 / child table) and is not
+                    commissioned to this fabric, so no device details are available.
+                </p>
+            </div>
+        `;
+    }
+
     private _renderUnknownDeviceInfo(deviceId: string): TemplateResult | typeof nothing {
         const device = this.unknownDevices.get(deviceId);
         if (!device || device.kind !== "unknown") {
@@ -1392,6 +1468,24 @@ export class NetworkDetails extends LitElement {
                         </button>
                     </div>
                     <div class="content">${this._renderWiFiAccessPointInfo(this.selectedNodeId as string)}</div>
+                </div>
+            `;
+        }
+
+        // Diagnostic-only mesh node (inferred from BR Route64/child tables, not commissioned).
+        const isDiagnosticMeshNode =
+            typeof this.selectedNodeId === "string" &&
+            (this.selectedNodeId.startsWith("thread_") || this.selectedNodeId.startsWith("meshrloc_"));
+        if (isDiagnosticMeshNode) {
+            return html`
+                <div class="details-panel">
+                    <div class="header">
+                        <h3>Thread Mesh Node</h3>
+                        <button class="close-button" @click=${this._handleClose} aria-label="Close details panel">
+                            <ha-svg-icon .path=${mdiClose}></ha-svg-icon>
+                        </button>
+                    </div>
+                    <div class="content">${this._renderDiagnosticMeshNodeInfo(this.selectedNodeId as string)}</div>
                 </div>
             `;
         }

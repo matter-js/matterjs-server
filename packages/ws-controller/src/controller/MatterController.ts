@@ -530,6 +530,7 @@ export class MatterController {
 
     async stop() {
         if (!this.#threadDiagnosticsDisabled) {
+            await this.#threadDiagnostics.stop();
             await this.#borderRouterRegistry.stop();
         }
         await this.#commandHandler?.close(); // This closes also the controller instance if started

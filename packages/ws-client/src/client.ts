@@ -118,20 +118,24 @@ export class MatterClient {
     async commissionWithCode(
         code: string,
         networkOnly = true,
-        opts?: { wifiCredentialsId?: string; threadDatasetId?: string },
+        // Backward-compatible: the 3rd argument accepts a legacy `timeout` number or the options
+        // object (which may itself carry `timeout`); the 4th `timeout` arg is still honored.
+        optsOrTimeout?: number | { wifiCredentialsId?: string; threadDatasetId?: string; timeout?: number },
         timeout?: number,
     ): Promise<MatterNode> {
-        const usesIds = opts?.wifiCredentialsId !== undefined || opts?.threadDatasetId !== undefined;
+        const opts = typeof optsOrTimeout === "number" ? { timeout: optsOrTimeout } : (optsOrTimeout ?? {});
+        const effectiveTimeout = opts.timeout ?? timeout;
+        const usesIds = opts.wifiCredentialsId !== undefined || opts.threadDatasetId !== undefined;
         const data = await this.sendCommand(
             "commission_with_code",
             usesIds ? 12 : 0,
             {
                 code,
                 network_only: networkOnly,
-                wifi_credentials_id: opts?.wifiCredentialsId,
-                thread_dataset_id: opts?.threadDatasetId,
+                wifi_credentials_id: opts.wifiCredentialsId,
+                thread_dataset_id: opts.threadDatasetId,
             },
-            timeout,
+            effectiveTimeout,
         );
         return new MatterNode(data);
     }
@@ -557,6 +561,10 @@ export class MatterClient {
             nodes[toNodeKey(node.node_id)] = new MatterNode(node);
         }
         this.nodes = nodes;
+
+        // Reset diagnostics on every (re)start so a server restart doesn't leave batches for networks
+        // the server no longer knows; fresh batches arrive via the thread_diagnostics_updated event.
+        this.threadDiagnostics = new Map();
     }
 
     private _handleIncomingMessage(msg: IncomingMessage) {
