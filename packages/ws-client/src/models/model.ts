@@ -464,6 +464,10 @@ export interface APICommands {
         requestArgs: { label: string | null };
         response: null;
     };
+    get_fabric_label: {
+        requestArgs: Record<string, never>;
+        response: { fabric_label: string | null };
+    };
     get_loglevel: {
         requestArgs: Record<string, never>;
         response: LogLevelResponse;

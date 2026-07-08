@@ -461,6 +461,11 @@ export class MatterClient {
         await this.sendCommand("set_default_fabric_label", 0, { label }, timeout);
     }
 
+    async getFabricLabel(timeout?: number): Promise<string | null> {
+        const { fabric_label } = await this.sendCommand("get_fabric_label", 12, {}, timeout);
+        return fabric_label;
+    }
+
     /**
      * Get the current log levels for console and file logging.
      * @param timeout Optional command timeout in milliseconds

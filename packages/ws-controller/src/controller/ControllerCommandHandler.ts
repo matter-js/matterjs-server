@@ -807,12 +807,20 @@ export class ControllerCommandHandler {
         }
     }
 
-    /**
-     * Set the fabric label. Pass null or empty string to reset to "Home".
-     * Note: matter.js requires non-empty labels (1-32 chars), so null/empty resets to default.
-     */
+    /** Set the fabric label. matter.js requires a non-empty label of 1-32 chars; callers must normalize first. */
     async setFabricLabel(label: string) {
         await this.#controller.updateFabricLabel(label);
+    }
+
+    /** Current fabric label as known to matter.js, or undefined if the controller/fabric is not yet started. */
+    getFabricLabel(): string | undefined {
+        // matter.js `fabric` getter throws until the controller has finished starting; degrade to undefined
+        // so callers fall back to the configured label instead of surfacing an error.
+        try {
+            return this.#controller.fabric?.label;
+        } catch {
+            return undefined;
+        }
     }
 
     async handleWriteAttribute(data: WriteAttributeRequest): Promise<AttributeResponseStatus> {

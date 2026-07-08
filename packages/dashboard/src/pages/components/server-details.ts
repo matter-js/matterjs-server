@@ -13,14 +13,18 @@ import "@material/web/list/list";
 import "@material/web/list/list-item";
 import { consume } from "@lit/context";
 import { MatterClient } from "@matter-server/ws-client";
-import { mdiFile, mdiPlus } from "@mdi/js";
+import { mdiFile, mdiPencil, mdiPlus } from "@mdi/js";
 import { LitElement, css, html, nothing } from "lit";
-import { customElement } from "lit/decorators.js";
+import { customElement, state } from "lit/decorators.js";
 import { clientContext, tickContext } from "../../client/client-context.js";
 import { showAlertDialog, showPromptDialog } from "../../components/dialog-box/show-dialog-box.js";
 import { showCommissionNodeDialog } from "../../components/dialogs/commission-node-dialog/show-commission-node-dialog.js";
+import { showFabricLabelDialog } from "../../components/dialogs/fabric-label-dialog/show-fabric-label-dialog.js";
 import "../../components/ha-svg-icon";
 import { handleAsync } from "../../util/async-handler.js";
+
+/** `get_fabric_label` was introduced in WebSocket schema 12. */
+const FABRIC_LABEL_MIN_SCHEMA = 12;
 
 @customElement("server-details")
 export class ServerDetails extends LitElement {
@@ -29,6 +33,25 @@ export class ServerDetails extends LitElement {
 
     @consume({ context: tickContext, subscribe: true })
     protected _tick = 0;
+
+    @state()
+    private _fabricLabel?: string | null;
+
+    protected override firstUpdated() {
+        if (this.#supportsFabricLabel()) {
+            this.#refreshFabricLabel();
+        }
+    }
+
+    #supportsFabricLabel(): boolean {
+        return (this.client?.serverInfo?.schema_version ?? 0) >= FABRIC_LABEL_MIN_SCHEMA;
+    }
+
+    #refreshFabricLabel(): void {
+        this.client!.getFabricLabel()
+            .then(label => (this._fabricLabel = label))
+            .catch(err => showAlertDialog({ title: "Failed to load fabric label", text: err.message }));
+    }
 
     protected override render() {
         if (!this.client) return html``;
@@ -54,6 +77,21 @@ export class ServerDetails extends LitElement {
           <div slot="supporting-text">
             <div class="left">Schema Version: </div>${this.client.serverInfo.schema_version}
           </div>
+          ${
+              this.#supportsFabricLabel()
+                  ? html` <div slot="supporting-text">
+                        <div class="left">Fabric Label:</div>
+                        ${this._fabricLabel === undefined ? "…" : this._fabricLabel || "—"}
+                        <md-icon-button
+                            class="edit-fabric-label"
+                            title="Edit fabric label"
+                            @click=${this._editFabricLabel}
+                        >
+                            <ha-svg-icon .path=${mdiPencil}></ha-svg-icon>
+                        </md-icon-button>
+                    </div>`
+                  : nothing
+          }
           <div slot="supporting-text">
             <div class="left">Node count: </div>${Object.keys(this.client.nodes).length}
           </div>
@@ -78,6 +116,12 @@ export class ServerDetails extends LitElement {
 
     private _commissionNode() {
         showCommissionNodeDialog();
+    }
+
+    private _editFabricLabel() {
+        showFabricLabelDialog(this.client!, this._fabricLabel ?? "", () => this.#refreshFabricLabel()).catch(err =>
+            showAlertDialog({ title: "Failed to open fabric label editor", text: err.message }),
+        );
     }
 
     private async _uploadDiagnosticsDumpFile() {
@@ -131,6 +175,13 @@ export class ServerDetails extends LitElement {
         .left {
             min-width: 120px;
             display: inline-block;
+        }
+
+        .edit-fabric-label {
+            --md-icon-button-icon-size: 18px;
+            width: 28px;
+            height: 28px;
+            vertical-align: middle;
         }
 
         @media (min-width: 600px) {

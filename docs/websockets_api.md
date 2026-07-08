@@ -249,6 +249,8 @@ Removes a named entry, or clears the reserved `default` (zeroing its SSID + secr
 
 **set_default_fabric_label** - Set the default fabric label
 
+Ignored when the server is started with `--default-fabric-label` (env `DEFAULT_FABRIC_LABEL`): the request succeeds but the pinned label is kept. Read the effective value with `get_fabric_label`.
+
 ```json
 {
   "message_id": "1",
@@ -258,6 +260,18 @@ Removes a named entry, or clears the reserved `default` (zeroing its SSID + secr
   }
 }
 ```
+
+**get_fabric_label** - Get the currently configured fabric label (schema 12+)
+
+```json
+{
+  "message_id": "1",
+  "command": "get_fabric_label",
+  "args": {}
+}
+```
+
+Response: `{ "fabric_label": "HomeAssistant" }`
 
 ### Commissioning
 

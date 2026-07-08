@@ -52,6 +52,9 @@ export interface CliOptions {
     // Network configuration
     primaryInterface: string | null;
 
+    // Fabric configuration
+    defaultFabricLabel: string | null;
+
     // Certificate configuration
     enableTestNetDcl: boolean;
     disableDclSeed: boolean;
@@ -148,6 +151,12 @@ export function parseCliArgs(argv?: string[]): CliOptions {
             new Option("--primary-interface <interface>", "Primary network interface for link-local addresses").env(
                 "PRIMARY_INTERFACE",
             ),
+        )
+        .addOption(
+            new Option(
+                "--default-fabric-label <label>",
+                "Pin the fabric label to this value and ignore set_default_fabric_label WebSocket requests",
+            ).env("DEFAULT_FABRIC_LABEL"),
         )
         .addOption(
             new Option(
@@ -276,6 +285,7 @@ export function parseCliArgs(argv?: string[]): CliOptions {
         logLevel: opts.logLevel,
         logFile: opts.logFile ?? null,
         primaryInterface: opts.primaryInterface ?? null,
+        defaultFabricLabel: opts.defaultFabricLabel ?? null,
         enableTestNetDcl: opts.enableTestNetDcl,
         disableDclSeed: opts.disableDclSeed,
         bluetoothAdapter: opts.bluetoothAdapter ?? null,

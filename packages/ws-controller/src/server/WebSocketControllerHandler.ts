@@ -95,6 +95,12 @@ const THREAD_DIAGNOSTICS_OPT_IN_COMMANDS = new Set(["get_thread_diagnostics", "g
 
 const skipMessageContentInLogFor = ["start_listening"];
 
+/** Normalize a requested fabric label: matter.js requires a non-empty label of 1-32 chars. */
+function normalizeFabricLabel(label: string | null): string {
+    const trimmed = label?.trim();
+    return (trimmed && trimmed !== "" ? trimmed : "HomeAssistant").substring(0, 32);
+}
+
 /** WebSocket Server compatible with Schema version 12, minimum supported 11 */
 export class WebSocketControllerHandler implements WebServerHandler {
     #controller: MatterController;
@@ -550,6 +556,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 case "set_default_fabric_label":
                     result = await this.#handleSetDefaultFabricLabel(args);
                     break;
+                case "get_fabric_label":
+                    result = this.#handleGetFabricLabel(args);
+                    break;
                 case "commission_with_code":
                     result = await this.#handleCommissionWithCode(args);
                     break;
@@ -763,12 +772,20 @@ export class WebSocketControllerHandler implements WebServerHandler {
         args: ArgsOf<"set_default_fabric_label">,
     ): Promise<ResponseOf<"set_default_fabric_label">> {
         const { label } = args;
-        // Use "HomeAssistant" as default when null/empty is passed (matter.js requires non-empty labels)
-        let effectiveLabel = label && label.trim() !== "" ? label.trim() : "HomeAssistant";
-        effectiveLabel = effectiveLabel.substring(0, 32);
+        const effectiveLabel = normalizeFabricLabel(label);
+        if (this.#config.fabricLabelLocked) {
+            logger.notice(
+                `Ignoring set_default_fabric_label "${effectiveLabel}" and keeping "${this.#config.fabricLabel}" (pinned via --default-fabric-label)`,
+            );
+            return null;
+        }
         await this.#config.set({ fabricLabel: effectiveLabel });
         await this.#commandHandler.setFabricLabel(effectiveLabel);
         return null;
+    }
+
+    #handleGetFabricLabel(_args: ArgsOf<"get_fabric_label">): ResponseOf<"get_fabric_label"> {
+        return { fabric_label: this.#commandHandler.getFabricLabel() ?? this.#config.fabricLabel ?? null };
     }
 
     /**
