@@ -9,9 +9,9 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## **WORK IN PROGRESS**
 
-- Feature: Adds experimental ICD (Intermittently Connected Device) management — new WebSocket commands `get_icd_state`, `register_icd`, `unregister_icd`, `resync_icd` (incl. Python client support), a "Power & Sleep (ICD)" dashboard panel with a Battery Saver (LIT) / Standard mode chooser, and an "ICD" marker on offline Battery Saver devices. Requires devices with Matter 1.4+ for LIT management.
 - Feature: Enhanced Thread Network diagnostics — collect and visualize per-Thread-network diagnostics also from Border Routers over MeshCoP (CoAP/DTLS) or the OTBR REST API (auto-selected, cached).
 - Feature: Adds WiFi and Thread credential management and allows to store multiple entries. Commissioning can pick which stored network to use.
+- Feature: Adds ICD (Intermittently Connected Device) management including a "Power & Sleep (ICD)" dashboard panel. Requires devices with Matter 1.4+ for LIT management.
 - Enhancement: Introduced WS schema 12 — see [WebSocket API schema changelog](docs/websocket-api-schema-changelog.md).
 - Enhancement: New `--disable-thread-diagnostics` CLI flag (env `DISABLE_THREAD_DIAGNOSTICS`) turns off the entire Thread Border Router subsystem (discovery, probing, diagnostics) for plain Matter-controller deployments. Matter-over-Thread commissioning is unaffected.
 - Enhancement: Update matter.js to the latest 0.17.5 nightly
