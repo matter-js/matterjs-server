@@ -4,64 +4,205 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import type { BorderRouterEntry } from "@matter/thread-br-client";
 import type { MatterNodeData } from "./node.js";
 // Re-export so consumers can import the MatterNodeData type from this module
 export type { MatterNodeData } from "./node.js";
+export type { BorderRouterEntry } from "@matter/thread-br-client";
 
 /** Attribute data stored as path -> value mapping */
 export type AttributesData = { [key: string]: unknown };
 
-/**
- * Single Thread Border Router record discovered via mDNS.
- *
- * The extended address (xa) is the 64-bit Thread MAC of the border agent and serves as
- * the primary key. It is the same value as ThreadNetworkDiagnostics.NeighborTable.extAddress
- * for a BR that is itself a Thread router, which is what allows the dashboard to join
- * BRs onto external-device entries seen in commissioned-node neighbor tables.
+/*
+ * The interfaces below decode the Thread Network Diagnostic TLVs a Border Router / router
+ * reports (per the Thread spec / OpenThread `netdiag`). They are all part of the Thread
+ * Network diagnostics feature and are @since schema 12.
  */
-export interface BorderRouterEntry {
-    /** 16-char uppercase hex of the 64-bit Thread MAC. Primary key. */
-    extAddressHex: string;
-    /** 16-char uppercase hex of the extended PAN ID, when known. */
-    extendedPanIdHex?: string;
-    /** Friendly Thread network name (`_meshcop` TXT "nn"). */
-    networkName?: string;
-    /** Vendor name (`_meshcop` TXT "vn"). */
+
+/** CONNECTIVITY TLV — a node's view of its links to neighbors and the leader. @since schema 12 */
+export interface ThreadConnectivity {
+    /** Suitability as a parent: -1 low, 0 medium, 1 high. */
+    parentPriority: -1 | 0 | 1;
+    /** Count of neighbors with link quality 3 (best) / 2 / 1 (worst). */
+    linkQuality3: number;
+    linkQuality2: number;
+    linkQuality1: number;
+    /** Routing cost from this node to the leader. */
+    leaderCost: number;
+    /** Router-ID assignment sequence number (bumped when the router set changes). */
+    idSequence: number;
+    /** Number of active routers in the Thread network. */
+    activeRouters: number;
+    /** Buffer size a parent reserves for a sleepy child (bytes). */
+    sedBufferSize: number;
+    /** Max IPv6 datagrams a parent queues for a sleepy child. */
+    sedDatagramCount: number;
+}
+
+/** One neighbor-router row within {@link ThreadRoute64}. @since schema 12 */
+export interface ThreadRoute64Entry {
+    /** Router ID of the neighbor. */
+    routerId: number;
+    /** Link quality of packets received from / sent to that router (0–3). */
+    linkQualityIn: number;
+    linkQualityOut: number;
+    /** Routing cost to that router. */
+    routeCost: number;
+}
+
+/** ROUTE64 TLV — the node's routing table to other routers. @since schema 12 */
+export interface ThreadRoute64 {
+    /** Router-ID assignment sequence number. */
+    idSequence: number;
+    entries: ThreadRoute64Entry[];
+}
+
+/** LEADER_DATA TLV — the current leader / partition identity. @since schema 12 */
+export interface ThreadLeaderData {
+    /** Thread partition ID (changes on partition merge/split). */
+    partitionId: number;
+    /** Leader weighting used to arbitrate leadership. */
+    weighting: number;
+    /** Full and stable-only Network Data version counters. */
+    dataVersion: number;
+    stableDataVersion: number;
+    /** Router ID of the leader. */
+    leaderRouterId: number;
+}
+
+/** MAC_COUNTERS TLV — IEEE 802.15.4 MAC packet counters since last reset. @since schema 12 */
+export interface ThreadMacCounters {
+    ifInUnknownProtos: number;
+    ifInErrors: number;
+    ifOutErrors: number;
+    ifInUcastPkts: number;
+    ifInBroadcastPkts: number;
+    ifInDiscards: number;
+    ifOutUcastPkts: number;
+    ifOutBroadcastPkts: number;
+    ifOutDiscards: number;
+}
+
+/** MODE TLV — device capability/role flags. @since schema 12 */
+export interface ThreadMode {
+    /** Radio stays on when idle (a non-sleepy device). */
+    rxOnWhenIdle: boolean;
+    /** Full Thread Device (router-eligible) vs a Minimal Thread Device. */
+    ftd: boolean;
+    /** Requests the full Network Data vs the stable subset. */
+    fullNetworkData: boolean;
+}
+
+/** CHILD_TABLE TLV entry — one child attached to this (router) node. @since schema 12 */
+export interface ThreadChildTableEntry {
+    /** Child timeout as a 2^exponent value and its resolved seconds. */
+    timeoutExponent: number;
+    timeoutSeconds: number;
+    /** Link quality of packets received from the child (0–3). */
+    incomingLinkQuality: number;
+    /** Child ID (low bits of the child's RLOC16). */
+    childId: number;
+    mode: ThreadMode;
+}
+
+/** MLE_COUNTERS TLV — Mesh Link Establishment role/state counters. @since schema 12 */
+export interface ThreadMleCounters {
+    /** Number of times the node entered each role. */
+    disabledRole: number;
+    detachedRole: number;
+    childRole: number;
+    routerRole: number;
+    leaderRole: number;
+    /** Attach / partition-change bookkeeping. */
+    attachAttempts: number;
+    partitionIdChanges: number;
+    betterPartitionAttachAttempts: number;
+    parentChanges: number;
+    /** Cumulative time spent tracked / in each role, in milliseconds (64-bit). */
+    trackedTime: bigint;
+    disabledTime: bigint;
+    detachedTime: bigint;
+    childTime: bigint;
+    routerTime: bigint;
+    leaderTime: bigint;
+}
+
+/**
+ * Diagnostics for a single Thread node, assembled from the diagnostic TLVs it returned.
+ * Every field is optional: a node only reports the TLVs it supports / were requested.
+ * @since schema 12
+ */
+export interface ThreadDiagnosticsNode {
+    /** 16-char uppercase hex of the 64-bit Thread MAC (extended address). */
+    extMacAddress?: string;
+    /** Short 16-bit routing locator (router+child) within the mesh. */
+    rloc16?: number;
+    mode?: ThreadMode;
+    /** Polling/child timeout in seconds. */
+    timeout?: number;
+    connectivity?: ThreadConnectivity;
+    route64?: ThreadRoute64;
+    leaderData?: ThreadLeaderData;
+    /** Hex-encoded raw Network Data blob (prefixes, routes, services). */
+    networkData?: string;
+    /** Per-node IPv6 addresses, each 16-byte address as uppercase hex. */
+    ipv6Addresses?: string[];
+    macCounters?: ThreadMacCounters;
+    childTable?: ThreadChildTableEntry[];
+    /** Supported channel pages (radio band identifiers). */
+    channelPages?: number[];
+    /** Max child timeout this node grants, in seconds. */
+    maxChildTimeout?: number;
+    /** 16-char uppercase hex EUI-64 (factory-assigned identifier). */
+    eui64?: string;
+    /** Thread protocol version the node implements. */
+    version?: number;
+    /** Vendor identity strings (VENDOR_NAME / MODEL / SW_VERSION TLVs). */
     vendorName?: string;
-    /** Model name (`_meshcop` TXT "mn"). */
-    modelName?: string;
-    /** mDNS hostname from the SRV target, e.g. "Kuche.local.". */
-    hostname?: string;
-    /** Sorted IPv4 + IPv6 addresses resolved from the SRV target's A/AAAA records. */
-    addresses: string[];
-    /** Service port from the `_meshcop` SRV record. */
-    meshcopPort?: number;
-    /** Service port from the `_trel` SRV record. */
-    trelPort?: number;
-    /** Thread version, e.g. "1.3.0" (`_meshcop` TXT "tv"). */
-    threadVersion?: string;
-    /** Border agent ID hex (`_meshcop` TXT "dd"); not always present. */
-    borderAgentIdHex?: string;
-    /** Raw 4-byte state bitmap as hex (`_meshcop` TXT "sb"). Flag parsing left to dashboard. */
-    stateBitmapHex?: string;
-    /** Active timestamp as hex (`_meshcop` TXT "at"). */
-    activeTimestampHex?: string;
-    /** Partition ID as hex (`_meshcop` TXT "pt"). */
-    partitionIdHex?: string;
-    /** Vendor-specific data domain name (`_meshcop` TXT "dn"). */
-    domainName?: string;
-    /** Which mDNS source(s) contributed to this entry. */
-    sources: ("meshcop" | "trel")[];
-    /**
-     * Epoch milliseconds of the most recent successful mDNS discovery for this entry.
-     * Frozen when `sources` becomes empty (the entry is "stale"); updated on every
-     * re-discovery. Stale entries are retained server-side for at least 24h after
-     * `lastSeen`; the actual prune is lazy and happens on the next `get`, `list`,
-     * or mDNS discovery event after the window elapses, so an entry may linger
-     * longer than 24h if there is no activity. Consumers can derive stale state
-     * via `sources.length === 0` and stale age via `Date.now() - lastSeen`.
-     */
-    lastSeen: number;
+    vendorModel?: string;
+    vendorSwVersion?: string;
+    /** OpenThread (or other) stack build string. */
+    threadStackVersion?: string;
+    vendorAppUrl?: string;
+    mleCounters?: ThreadMleCounters;
+    /** Battery level (0–100%) and supply voltage (mV) for battery-powered nodes. */
+    batteryLevel?: number;
+    supplyVoltage?: number;
+    /** TLVs this decoder does not model, preserved verbatim; `value` is uppercase hex. */
+    unknown?: Array<{ type: number; value: string }>;
+}
+
+/** Why a {@link ThreadDiagnosticsBatch} is incomplete (absent when the batch is complete). @since schema 12 */
+export type ThreadDiagnosticsPartialReason =
+    | "petition_rejected"
+    | "dtls_failed"
+    | "border_router_unreachable"
+    | "no_credentials"
+    | "no_source"
+    | "rest_unreachable"
+    | "rest_protocol"
+    | "timeout"
+    /** Streaming multicast query is still active; this is a snapshot, more nodes may follow. */
+    | "in_progress"
+    /** Streaming multicast query is active but no responses have arrived yet. */
+    | "meshcop_no_responses_yet";
+
+/**
+ * One Thread network's diagnostics snapshot, keyed by extended PAN ID, delivered by
+ * `get_thread_diagnostics` and streamed via the `thread_diagnostics_updated` event.
+ * @since schema 12
+ */
+export interface ThreadDiagnosticsBatch {
+    /** 16-char uppercase hex extended PAN ID — the network this batch describes. */
+    extPanIdHex: string;
+    networkName: string;
+    /** Epoch ms when the batch was assembled. */
+    collectedAt: number;
+    /** Which transport produced it: MeshCoP (CoAP/DTLS) or the OTBR REST API. */
+    source: "meshcop" | "otbr-rest";
+    nodes: ThreadDiagnosticsNode[];
+    /** Set when the snapshot is partial or the query could not complete; see {@link ThreadDiagnosticsPartialReason}. */
+    partialReason?: ThreadDiagnosticsPartialReason;
 }
 
 export type WebRtcEventType = "offer" | "answer" | "ice_candidates" | "end";
@@ -129,7 +270,7 @@ export interface APICommands {
         response: MatterNodeData;
     };
     commission_with_code: {
-        requestArgs: { code: string; network_only?: boolean };
+        requestArgs: { code: string; network_only?: boolean; wifi_credentials_id?: string; thread_dataset_id?: string };
         response: MatterNodeData;
     };
     commission_on_network: {
@@ -145,24 +286,40 @@ export interface APICommands {
         response: MatterNodeData;
     };
     set_wifi_credentials: {
-        requestArgs: { ssid: string; credentials: string };
+        requestArgs: { ssid: string; credentials: string; id?: string };
         response: Record<string, never>;
     };
     set_thread_dataset: {
-        requestArgs: { dataset: string };
+        requestArgs: { dataset: string; id?: string };
         response: Record<string, never>;
     };
     remove_wifi_credentials: {
-        requestArgs: Record<string, never>;
+        requestArgs: { id?: string };
         response: Record<string, never>;
     };
     remove_thread_dataset: {
-        requestArgs: Record<string, never>;
+        requestArgs: { id?: string };
         response: Record<string, never>;
     };
+    /** List stored WiFi/Thread credential summaries (no secrets). @since schema 12 */
+    get_all_credentials: {
+        requestArgs: Record<string, never>;
+        response: AllCredentialsSummary;
+    };
+    /** mDNS-discovered Thread Border Routers (passive). @since schema 12 */
     get_thread_border_routers: {
         requestArgs: Record<string, never>;
         response: BorderRouterEntry[];
+    };
+    /**
+     * Per-Thread-network diagnostics. `ext_pan_id` selects one network (returns the batch, or `null`
+     * when nothing is cached / diagnostics are disabled); omitted returns an array of all known
+     * networks. `force` bypasses the cache. Also streamed via the `thread_diagnostics_updated` event.
+     * @since schema 12
+     */
+    get_thread_diagnostics: {
+        requestArgs: { ext_pan_id?: string; force?: boolean };
+        response: ThreadDiagnosticsBatch | ThreadDiagnosticsBatch[] | null;
     };
     open_commissioning_window: {
         requestArgs: {
@@ -368,6 +525,11 @@ export interface CommandMessage {
     args?: APICommands[keyof APICommands]["requestArgs"];
 }
 
+export interface AllCredentialsSummary {
+    wifi: Array<{ id: string; ssid: string }>;
+    thread: Array<{ id: string; networkName?: string; extPanId?: string }>;
+}
+
 export interface ServerInfoMessage {
     fabric_id: number | bigint;
     compressed_fabric_id: number | bigint;
@@ -415,6 +577,9 @@ export interface APIEvents {
     server_info_updated: {
         data: ServerInfoMessage;
     };
+    thread_diagnostics_updated: {
+        data: ThreadDiagnosticsBatch;
+    };
     webrtc_callback: {
         data: WebRtcCallbackData;
     };
@@ -459,6 +624,10 @@ interface ServerEventInfoUpdated {
     event: "server_info_updated";
     data: ServerInfoMessage;
 }
+interface ServerEventThreadDiagnosticsUpdated {
+    event: "thread_diagnostics_updated";
+    data: ThreadDiagnosticsBatch;
+}
 interface ServerEventWebRtcCallback {
     event: "webrtc_callback";
     data: WebRtcCallbackData;
@@ -474,6 +643,7 @@ export type EventMessage =
     | ServerEventEndpointAdded
     | ServerEventEndpointRemoved
     | ServerEventInfoUpdated
+    | ServerEventThreadDiagnosticsUpdated
     | ServerEventWebRtcCallback;
 
 export interface ResultMessageBase {

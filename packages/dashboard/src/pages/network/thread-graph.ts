@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type { BorderRouterEntry } from "@matter-server/ws-client";
+import type { BorderRouterEntry, ThreadDiagnosticsBatch, ThreadDiagnosticsNode } from "@matter-server/ws-client";
 import { html } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import {
@@ -21,17 +21,22 @@ import type {
     ThreadExternalDevice,
 } from "./network-types.js";
 import {
+    buildDiagnosticRloc16Map,
     buildExtAddrMap,
+    buildMatterRloc16ByXp,
     buildRloc16Map,
     buildThreadEdgePairs,
     decodeMeshcopStateBitmap,
+    findDiagnosticMeshNodes,
     findUnknownDevices,
+    makeDiagnosticRloc16Resolver,
     getDeviceName,
     getEdgeSignalScore,
     getNeighborTableLength,
     getNetworkType,
     getThreadExtendedAddressHex,
     getThreadRole,
+    mergeDiagnosticEdges,
     stripMdnsHostname,
 } from "./network-utils.js";
 
@@ -55,6 +60,8 @@ interface EdgeBaseState {
 @customElement("thread-graph")
 export class ThreadGraph extends BaseNetworkGraph {
     @property({ attribute: false }) borderRouters: ReadonlyMap<string, BorderRouterEntry> = new Map();
+
+    @property({ attribute: false }) threadDiagnostics: ReadonlyMap<string, ThreadDiagnosticsBatch> = new Map();
 
     @property({ type: Boolean })
     public hideOfflineNodes = false;
@@ -96,6 +103,91 @@ export class ThreadGraph extends BaseNetworkGraph {
         return this._edgePairs;
     }
 
+    /**
+     * Locate a diagnostic node entry across all known batches by uppercase extMacAddress hex.
+     * Returns undefined if no batch reports a node with that MAC.
+     */
+    private _findDiagnosticNode(extAddressHex: string): ThreadDiagnosticsNode | undefined {
+        const target = extAddressHex.toUpperCase();
+        for (const batch of this.threadDiagnostics.values()) {
+            for (const node of batch.nodes) {
+                if (node.extMacAddress?.toUpperCase() === target) return node;
+            }
+        }
+        return undefined;
+    }
+
+    /**
+     * True when the BR identified by graph node id `br_<extAddr>` has a recent
+     * non-partial diagnostic batch. Such BRs are "verified" — we successfully
+     * queried them via REST or MeshCoP — and edges to them should render solid
+     * (not dotted as for purely-inferred unknown devices).
+     */
+    private _brHasValidDiagnostic(graphNodeId: string): boolean {
+        return this._brBatch(graphNodeId) !== undefined;
+    }
+
+    /** Returns the BR's diagnostic batch if one is available and non-partial. */
+    private _brBatch(graphNodeId: string): ThreadDiagnosticsBatch | undefined {
+        if (!graphNodeId.startsWith("br_")) return undefined;
+        const extAddr = graphNodeId.slice(3).toUpperCase();
+        const br = this.borderRouters.get(extAddr);
+        const xp = br?.extendedPanIdHex;
+        if (xp === undefined) return undefined;
+        const batch = this.threadDiagnostics.get(xp.toUpperCase());
+        if (batch === undefined || batch.partialReason !== undefined || batch.nodes.length === 0) return undefined;
+        return batch;
+    }
+
+    /**
+     * BR's view of a peer node via Route64 / ChildTable, if any.
+     * Returns `undefined` when the BR has no diagnostic batch, when the peer
+     * is not present in the batch, or when the peer is in the batch but has
+     * no Route64 / ChildTable entry on the BR itself (i.e. multi-hop).
+     */
+    private _brViewOfPeer(
+        brGraphNodeId: string,
+        peerExtMacHex: string,
+    ): { linkQualityIn?: number; linkQualityOut?: number; routeCost?: number; isChild?: boolean } | undefined {
+        const batch = this._brBatch(brGraphNodeId);
+        if (batch === undefined) return undefined;
+        const brExtAddr = brGraphNodeId.slice(3).toUpperCase();
+        const target = peerExtMacHex.toUpperCase();
+
+        const brNode = batch.nodes.find(n => n.extMacAddress?.toUpperCase() === brExtAddr);
+        const peerNode = batch.nodes.find(n => n.extMacAddress?.toUpperCase() === target);
+        if (peerNode?.rloc16 === undefined || brNode === undefined) return undefined;
+
+        const peerRouterId = (peerNode.rloc16 >> 10) & 0x3f;
+        const peerChildId = peerNode.rloc16 & 0x3ff;
+
+        // A Route64 entry keys on router id, so it only identifies the peer when the peer *is* a
+        // router (child id 0). For an end device it would be the BR's route to the peer's parent
+        // router — a different node — so it must not be reported as the BR's view of this peer.
+        if (peerChildId === 0) {
+            const routeEntry = brNode.route64?.entries.find(e => e.routerId === peerRouterId);
+            if (routeEntry !== undefined) {
+                return {
+                    linkQualityIn: routeEntry.linkQualityIn,
+                    linkQualityOut: routeEntry.linkQualityOut,
+                    routeCost: routeEntry.routeCost,
+                };
+            }
+            return undefined;
+        }
+
+        // Child ids are unique only within a parent router, so a ChildTable entry identifies the
+        // peer only when the peer's parent router is this BR itself.
+        if (brNode.rloc16 !== undefined && ((brNode.rloc16 >> 10) & 0x3f) === peerRouterId) {
+            const childEntry = brNode.childTable?.find(c => c.childId === peerChildId);
+            if (childEntry !== undefined) {
+                return { isChild: true };
+            }
+        }
+
+        return undefined;
+    }
+
     override updated(changedProperties: Map<string, unknown>): void {
         super.updated(changedProperties);
 
@@ -107,7 +199,8 @@ export class ThreadGraph extends BaseNetworkGraph {
             changedProperties.has("hideWeakSignalEdges") ||
             changedProperties.has("hideMediumSignalEdges") ||
             changedProperties.has("hideStrongSignalEdges") ||
-            changedProperties.has("borderRouters")
+            changedProperties.has("borderRouters") ||
+            changedProperties.has("threadDiagnostics")
         ) {
             this._debouncedUpdateGraph();
         }
@@ -207,6 +300,26 @@ export class ThreadGraph extends BaseNetworkGraph {
         // Build ALL edge pairs (0-2 edges per connected pair, no dedup)
         this._edgePairs = buildThreadEdgePairs(this.nodes, extAddrMap, rloc16Map, this._unknownDevices);
 
+        // Diagnostic references (route64/childTable) are rloc16-based and only unique
+        // within a network, so resolve them against a per-extPanId Matter map.
+        const matterRloc16ByXp = buildMatterRloc16ByXp(this.nodes);
+        const diagRloc16Map = buildDiagnosticRloc16Map(
+            this.threadDiagnostics,
+            matterRloc16ByXp,
+            extAddrMap,
+            this.borderRouters,
+            this._unknownDevices,
+        );
+        const diagnosticMeshNodes = findDiagnosticMeshNodes(
+            this.threadDiagnostics,
+            matterRloc16ByXp,
+            extAddrMap,
+            this.borderRouters,
+            this._unknownDevices,
+        );
+        const resolveRloc16 = makeDiagnosticRloc16Resolver(matterRloc16ByXp, diagRloc16Map);
+        mergeDiagnosticEdges(this._edgePairs, this.threadDiagnostics, resolveRloc16);
+
         // Track which nodes should be hidden
         const hiddenNodeIds = new Set<string>();
 
@@ -267,17 +380,23 @@ export class ThreadGraph extends BaseNetworkGraph {
                 hiddenNodeIds.add(device.id);
             }
 
+            const diagNode = this._findDiagnosticNode(device.extAddressHex);
+
             if (device.kind === "br") {
                 const hostname = device.hostname !== undefined ? stripMdnsHostname(device.hostname) : undefined;
                 // Only show network name on a second line when the first line came from a
                 // distinct hostname; otherwise `top` would already be the (possibly truncated)
                 // network name and the second line would just repeat it.
                 const top = (hostname ?? device.networkName ?? "Border Router").slice(0, 24);
-                const suffix =
-                    hostname !== undefined && device.networkName !== undefined && device.networkName !== top
-                        ? `\n${device.networkName}`
-                        : "";
-                const label = `${top}${suffix}`;
+                const childCount = diagNode?.childTable?.length;
+                const suffixParts = new Array<string>();
+                if (hostname !== undefined && device.networkName !== undefined && device.networkName !== top) {
+                    suffixParts.push(device.networkName);
+                }
+                if (childCount !== undefined && childCount > 0) {
+                    suffixParts.push(`${childCount} ${childCount === 1 ? "child" : "children"}`);
+                }
+                const label = suffixParts.length > 0 ? `${top}\n${suffixParts.join(" · ")}` : top;
                 const decodedState = decodeMeshcopStateBitmap(device.stateBitmapHex);
                 const isLeader = decodedState?.threadRoleValue === 3;
                 const isPrimaryBbr = decodedState?.bbr === true && decodedState.bbrFunction === "primary";
@@ -291,11 +410,13 @@ export class ThreadGraph extends BaseNetworkGraph {
                     hidden: shouldHide,
                 });
             } else {
-                const typeLabel = device.isRouter ? "External Router" : "External Device";
+                const baseType = device.isRouter ? "External Router" : "External Device";
+                const typeLabel =
+                    diagNode?.vendorName !== undefined ? `${baseType} (${diagNode.vendorName})` : baseType;
                 const suffix = device.networkName !== undefined ? `\n${device.networkName}` : "";
                 graphNodes.push({
                     id: device.id,
-                    label: `${typeLabel} (${device.extAddressHex.slice(-8)})${suffix}`,
+                    label: `${typeLabel} [${device.extAddressHex.slice(-8)}]${suffix}`,
                     image: createUnknownDeviceIconDataUrl(device.isRouter, isSelected),
                     shape: "image" as const,
                     networkType: "thread" as const,
@@ -303,6 +424,72 @@ export class ThreadGraph extends BaseNetworkGraph {
                     hidden: shouldHide,
                 });
             }
+        }
+
+        // Diagnostic-only mesh nodes show only when reachable — through live
+        // (non-"none") edges — from a commissioned Matter device. A bare "has any
+        // live edge" test fails for a foreign island whose only neighbour is itself
+        // unrendered (e.g. a NEST leader linking to a BR no Matter device is on):
+        // the edge dangles to a non-existent node and the leader floats. Reachability
+        // from a Matter anchor hides such islands while keeping diagnostic routers
+        // that attach to our own networks (directly or via another diagnostic hop).
+        const adjacency = new Map<string, Set<string>>();
+        const addAdjacency = (a: string, b: string): void => {
+            let peers = adjacency.get(a);
+            if (peers === undefined) {
+                peers = new Set<string>();
+                adjacency.set(a, peers);
+            }
+            peers.add(b);
+        };
+        for (const pair of this._edgePairs.values()) {
+            const live =
+                (pair.edgeAB !== undefined && pair.edgeAB.signalLevel !== "none") ||
+                (pair.edgeBA !== undefined && pair.edgeBA.signalLevel !== "none");
+            if (!live) continue;
+            addAdjacency(pair.nodeA, pair.nodeB);
+            addAdjacency(pair.nodeB, pair.nodeA);
+        }
+        const reachableIds = new Set<string>();
+        const frontier = new Array<string>();
+        for (const node of threadNodes) {
+            const id = String(node.node_id);
+            if (!hiddenNodeIds.has(id)) {
+                reachableIds.add(id);
+                frontier.push(id);
+            }
+        }
+        for (let i = 0; i < frontier.length; i++) {
+            const peers = adjacency.get(frontier[i]);
+            if (peers === undefined) continue;
+            for (const peer of peers) {
+                if (!reachableIds.has(peer)) {
+                    reachableIds.add(peer);
+                    frontier.push(peer);
+                }
+            }
+        }
+        for (const meshNode of diagnosticMeshNodes) {
+            const hidden = !reachableIds.has(meshNode.id);
+            if (hidden) hiddenNodeIds.add(meshNode.id);
+            const idTail =
+                meshNode.extAddressHex !== undefined
+                    ? meshNode.extAddressHex.slice(-8)
+                    : `rloc:${meshNode.rloc16.toString(16)}`;
+            const childSuffix =
+                meshNode.childCount > 0
+                    ? ` · ${meshNode.childCount} ${meshNode.childCount === 1 ? "child" : "children"}`
+                    : "";
+            const label = `${meshNode.vendorName ?? "Router"} [${idTail}]${childSuffix}\n${meshNode.networkName}`;
+            graphNodes.push({
+                id: meshNode.id,
+                label,
+                image: createUnknownDeviceIconDataUrl(meshNode.isRouter, meshNode.id === this._selectedNodeId),
+                shape: "image" as const,
+                networkType: "thread" as const,
+                isUnknown: true,
+                hidden,
+            });
         }
 
         // --- Build graph edges from edge pairs ---
@@ -323,10 +510,29 @@ export class ThreadGraph extends BaseNetworkGraph {
 
                 const fromId = String(conn.fromNodeId);
                 const toId = String(conn.toNodeId);
-                const isToUnknown = toId.startsWith("unknown_") || toId.startsWith("br_");
                 const fromNode = this.nodes[fromId];
                 const toNode = this.nodes[toId];
                 const hasOfflineEndpoint = fromNode?.available === false || toNode?.available === false;
+
+                // BR's Route64 / ChildTable confirms this exact peer → bidirectional
+                // evidence; we can render the edge solid and annotate the tooltip
+                // with the BR's view of the link.
+                const isToBr = toId.startsWith("br_");
+                const fromExtMac = fromNode ? getThreadExtendedAddressHex(fromNode) : undefined;
+                const brView = isToBr && fromExtMac !== undefined ? this._brViewOfPeer(toId, fromExtMac) : undefined;
+
+                // Diagnostic-only mesh nodes are inferred (not commissioned) — dash like unknowns.
+                const isToDiagnostic = toId.startsWith("thread_") || toId.startsWith("meshrloc_");
+                const isToUnknown =
+                    toId.startsWith("unknown_") ||
+                    isToDiagnostic ||
+                    (isToBr && brView === undefined && !this._brHasValidDiagnostic(toId));
+
+                // An edge is inferred if *either* endpoint is inferred — a diagnostic/unknown source
+                // node makes the edge no less inferred than a diagnostic/unknown target.
+                const isFromUnknown =
+                    fromId.startsWith("unknown_") || fromId.startsWith("thread_") || fromId.startsWith("meshrloc_");
+                const isInferredEdge = isToUnknown || isFromUnknown;
 
                 // Apply filters to determine if edge should be hidden
                 let filterHidden = false;
@@ -357,14 +563,25 @@ export class ThreadGraph extends BaseNetworkGraph {
 
                 const edgeId = `edge_${fromId}_${toId}`;
 
+                let tooltip = conn.rssi !== null ? `RSSI: ${conn.rssi} dBm, LQI: ${conn.lqi}` : `LQI: ${conn.lqi}`;
+                if (brView !== undefined) {
+                    if (brView.isChild === true) {
+                        tooltip += ` (BR sees as child)`;
+                    } else if (brView.linkQualityIn !== undefined || brView.linkQualityOut !== undefined) {
+                        tooltip += ` (BR view: in=${brView.linkQualityIn ?? "?"} out=${brView.linkQualityOut ?? "?"}${
+                            brView.routeCost !== undefined ? ` cost=${brView.routeCost}` : ""
+                        })`;
+                    }
+                }
+
                 const visEdge: NetworkGraphEdge = {
                     id: edgeId,
                     from: fromId,
                     to: toId,
                     color: { color: conn.signalColor, highlight: conn.signalColor },
                     width: 2,
-                    title: conn.rssi !== null ? `RSSI: ${conn.rssi} dBm, LQI: ${conn.lqi}` : `LQI: ${conn.lqi}`,
-                    dashes: isToUnknown || hasOfflineEndpoint,
+                    title: tooltip,
+                    dashes: isInferredEdge || hasOfflineEndpoint,
                     hidden: filterHidden,
                     pairKey: pair.pairKey,
                     reportingNodeId: fromId,
@@ -655,6 +872,15 @@ export class ThreadGraph extends BaseNetworkGraph {
             this._nodesDataSet.update({
                 id: nodeId,
                 image: createUnknownDeviceIconDataUrl(external?.isRouter ?? false, isHighlighted),
+            });
+        } else if (nodeId.startsWith("thread_") || nodeId.startsWith("meshrloc_")) {
+            // Diagnostic mesh node. Router id scheme: `thread_<MAC>` (always a router) or
+            // `meshrloc_<EXTPANID>_<rloc16>` where a router has the low 10 child bits clear.
+            const rloc16 = Number(nodeId.slice(nodeId.lastIndexOf("_") + 1));
+            const isRouter = nodeId.startsWith("thread_") || (Number.isFinite(rloc16) && (rloc16 & 0x3ff) === 0);
+            this._nodesDataSet.update({
+                id: nodeId,
+                image: createUnknownDeviceIconDataUrl(isRouter, isHighlighted),
             });
         }
     }

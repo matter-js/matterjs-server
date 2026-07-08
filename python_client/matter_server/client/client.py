@@ -127,32 +127,40 @@ class MatterClient:
 
     async def set_default_fabric_label(self, label: str | None) -> None:
         """Set the default fabric label."""
-        await self.send_command(
-            APICommand.SET_DEFAULT_FABRIC_LABEL, require_schema=11, label=label
-        )
+        await self.send_command(APICommand.SET_DEFAULT_FABRIC_LABEL, require_schema=11, label=label)
 
     async def commission_with_code(
-        self, code: str, network_only: bool = False
+        self,
+        code: str,
+        network_only: bool = False,
+        wifi_credentials_id: str | None = None,
+        thread_dataset_id: str | None = None,
     ) -> MatterNodeData:
         """
         Commission a device using a QR Code or Manual Pairing Code.
 
         :param code: The QR Code or Manual Pairing Code for device commissioning.
         :param network_only: If True, restricts device discovery to network only.
+        :param wifi_credentials_id: Optional id of the WiFi credentials entry to use.
+        :param thread_dataset_id: Optional id of the Thread dataset entry to use.
 
         :return: The NodeInfo of the commissioned device.
         """
+        extra: dict[str, str] = {}
+        if wifi_credentials_id is not None:
+            extra["wifi_credentials_id"] = wifi_credentials_id
+        if thread_dataset_id is not None:
+            extra["thread_dataset_id"] = thread_dataset_id
         data = await self.send_command(
             APICommand.COMMISSION_WITH_CODE,
-            require_schema=6 if network_only else None,
+            require_schema=12 if extra else (6 if network_only else None),
             code=code,
             network_only=network_only,
+            **extra,
         )
         return dataclass_from_dict(MatterNodeData, data)
 
-    async def commission_on_network(
-        self, setup_pin_code: int, ip_addr: str | None = None
-    ) -> MatterNodeData:
+    async def commission_on_network(self, setup_pin_code: int, ip_addr: str | None = None) -> MatterNodeData:
         """
         Do the routine for OnNetworkCommissioning.
 
@@ -169,23 +177,80 @@ class MatterClient:
         )
         return dataclass_from_dict(MatterNodeData, data)
 
-    async def set_wifi_credentials(self, ssid: str, credentials: str) -> None:
+    async def set_wifi_credentials(self, ssid: str, credentials: str, entry_id: str = "default") -> None:
         """Set WiFi credentials for commissioning to a (new) device."""
         await self.send_command(
-            APICommand.SET_WIFI_CREDENTIALS, ssid=ssid, credentials=credentials
+            APICommand.SET_WIFI_CREDENTIALS,
+            require_schema=12 if entry_id != "default" else None,
+            ssid=ssid,
+            credentials=credentials,
+            id=entry_id,
         )
 
-    async def set_thread_operational_dataset(self, dataset: str) -> None:
+    async def set_thread_operational_dataset(self, dataset: str, entry_id: str = "default") -> None:
         """Set Thread Operational dataset in the stack."""
-        await self.send_command(APICommand.SET_THREAD_DATASET, dataset=dataset)
+        await self.send_command(
+            APICommand.SET_THREAD_DATASET,
+            require_schema=12 if entry_id != "default" else None,
+            dataset=dataset,
+            id=entry_id,
+        )
 
-    async def remove_wifi_credentials(self) -> None:
-        """Remove any stored WiFi credentials from the server."""
-        await self.send_command(APICommand.REMOVE_WIFI_CREDENTIALS)
+    async def remove_wifi_credentials(self, entry_id: str = "default") -> None:
+        """Remove stored WiFi credentials from the server.
 
-    async def remove_thread_dataset(self) -> None:
-        """Remove the stored Thread Operational dataset from the server."""
-        await self.send_command(APICommand.REMOVE_THREAD_DATASET)
+        :param entry_id: Id of the entry to remove; "default" removes the default entry.
+        """
+        await self.send_command(
+            APICommand.REMOVE_WIFI_CREDENTIALS,
+            require_schema=12 if entry_id != "default" else None,
+            id=entry_id,
+        )
+
+    async def remove_thread_dataset(self, entry_id: str = "default") -> None:
+        """Remove a stored Thread Operational dataset from the server.
+
+        :param entry_id: Id of the entry to remove; "default" removes the default entry.
+        """
+        await self.send_command(
+            APICommand.REMOVE_THREAD_DATASET,
+            require_schema=12 if entry_id != "default" else None,
+            id=entry_id,
+        )
+
+    async def get_all_credentials(self) -> dict[str, Any]:
+        """Return summaries (no secrets) of all stored WiFi and Thread credentials."""
+        result: dict[str, Any] = await self.send_command(APICommand.GET_ALL_CREDENTIALS, require_schema=12)
+        return result
+
+    async def get_thread_border_routers(self) -> list[dict[str, Any]]:
+        """Return mDNS-discovered Thread Border Routers (passive discovery).
+
+        Each entry describes a discovered Border Router (extended address, addresses,
+        network name, extended PAN ID, mDNS TXT metadata, …). Requires schema 12.
+        """
+        result: list[dict[str, Any]] = await self.send_command(APICommand.GET_THREAD_BORDER_ROUTERS, require_schema=12)
+        return result
+
+    async def get_thread_diagnostics(self, ext_pan_id: str | None = None, force: bool = False) -> Any:
+        """Return per-Thread-network diagnostics collected from Border Routers.
+
+        Also streamed via the ``thread_diagnostics_updated`` event. Requires schema 12.
+
+        :param ext_pan_id: 16-char hex extended PAN ID to fetch a single network (awaits a
+            fresh collection and returns the batch, or ``None`` when nothing is cached);
+            omitted returns the *current* cache for all known networks immediately (a list) and
+            triggers a background refresh whose fresh batches arrive via ``thread_diagnostics_updated``.
+        :param force: Bypass the server-side cache and re-fetch. For the all-networks form the refresh
+            is fire-and-forget (the call still returns the current cache at once); pass ``ext_pan_id``
+            when you need to await synchronously fresh data for one network.
+        """
+        args: dict[str, Any] = {}
+        if ext_pan_id is not None:
+            args["ext_pan_id"] = ext_pan_id
+        if force:
+            args["force"] = True
+        return await self.send_command(APICommand.GET_THREAD_DIAGNOSTICS, require_schema=12, **args)
 
     async def open_commissioning_window(
         self,
@@ -233,14 +298,10 @@ class MatterClient:
         if node.available:
             await self.refresh_attribute(
                 node_id,
-                create_attribute_path_from_attribute(
-                    0, Clusters.OperationalCredentials.Attributes.Fabrics
-                ),
+                create_attribute_path_from_attribute(0, Clusters.OperationalCredentials.Attributes.Fabrics),
             )
 
-        fabrics: list[
-            Clusters.OperationalCredentials.Structs.FabricDescriptorStruct
-        ] = node.get_attribute_value(
+        fabrics: list[Clusters.OperationalCredentials.Structs.FabricDescriptorStruct] = node.get_attribute_value(
             0, None, Clusters.OperationalCredentials.Attributes.Fabrics
         )
 
@@ -278,9 +339,7 @@ class MatterClient:
             await self.send_command(APICommand.PING_NODE, node_id=node_id),
         )
 
-    async def get_node_ip_addresses(
-        self, node_id: int, prefer_cache: bool = True, scoped: bool = False
-    ) -> list[str]:
+    async def get_node_ip_addresses(self, node_id: int, prefer_cache: bool = True, scoped: bool = False) -> list[str]:
         """Return the currently known (scoped) IP-address(es)."""
         if TYPE_CHECKING:
             assert self.server_info is not None
@@ -300,9 +359,7 @@ class MatterClient:
         attribute = Clusters.GeneralDiagnostics.Attributes.NetworkInterfaces
         network_interface: Clusters.GeneralDiagnostics.Structs.NetworkInterface
         ip_addresses: list[str] = []
-        for network_interface in node.get_attribute_value(
-            0, cluster=None, attribute=attribute
-        ):
+        for network_interface in node.get_attribute_value(0, cluster=None, attribute=attribute):
             # ignore invalid/non-operational interfaces
             if not network_interface.isOperational:
                 continue
@@ -326,26 +383,15 @@ class MatterClient:
         mac_address = None
         attribute = Clusters.GeneralDiagnostics.Attributes.NetworkInterfaces
         network_interface: Clusters.GeneralDiagnostics.Structs.NetworkInterface
-        for network_interface in (
-            node.get_attribute_value(0, cluster=None, attribute=attribute) or []
-        ):
+        for network_interface in node.get_attribute_value(0, cluster=None, attribute=attribute) or []:
             # ignore invalid/non-operational interfaces
             if not network_interface.isOperational:
                 continue
-            if (
-                network_interface.type
-                == Clusters.GeneralDiagnostics.Enums.InterfaceTypeEnum.kThread
-            ):
+            if network_interface.type == Clusters.GeneralDiagnostics.Enums.InterfaceTypeEnum.kThread:
                 network_type = NetworkType.THREAD
-            elif (
-                network_interface.type
-                == Clusters.GeneralDiagnostics.Enums.InterfaceTypeEnum.kWiFi
-            ):
+            elif network_interface.type == Clusters.GeneralDiagnostics.Enums.InterfaceTypeEnum.kWiFi:
                 network_type = NetworkType.WIFI
-            elif (
-                network_interface.type
-                == Clusters.GeneralDiagnostics.Enums.InterfaceTypeEnum.kEthernet
-            ):
+            elif network_interface.type == Clusters.GeneralDiagnostics.Enums.InterfaceTypeEnum.kEthernet:
                 network_type = NetworkType.ETHERNET
             else:
                 # unknown interface: ignore
@@ -362,14 +408,10 @@ class MatterClient:
         node_type = NodeType.UNKNOWN
         network_name = None
         if network_type == NetworkType.THREAD:
-            thread_cluster: Clusters.ThreadNetworkDiagnostics = node.get_cluster(
-                0, Clusters.ThreadNetworkDiagnostics
-            )
+            thread_cluster: Clusters.ThreadNetworkDiagnostics = node.get_cluster(0, Clusters.ThreadNetworkDiagnostics)
             if thread_cluster:
                 if isinstance(thread_cluster.networkName, bytes):
-                    network_name = thread_cluster.networkName.decode(
-                        "utf-8", errors="replace"
-                    )
+                    network_name = thread_cluster.networkName.decode("utf-8", errors="replace")
                 elif thread_cluster.networkName != NullValue:
                     network_name = thread_cluster.networkName
 
@@ -428,9 +470,7 @@ class MatterClient:
         # get active fabrics for this node
         active_fabrics = await self.get_matter_fabrics(node_id)
         # get active fabric index
-        fabric_index = node.get_attribute_value(
-            0, None, Clusters.OperationalCredentials.Attributes.CurrentFabricIndex
-        )
+        fabric_index = node.get_attribute_value(0, None, Clusters.OperationalCredentials.Attributes.CurrentFabricIndex)
         return NodeDiagnostics(
             node_id=node_id,
             network_type=network_type,
@@ -526,9 +566,7 @@ class MatterClient:
 
         The "softwareVersionString" is a human friendly version string.
         """
-        data = await self.send_command(
-            APICommand.CHECK_NODE_UPDATE, node_id=node_id, require_schema=10
-        )
+        data = await self.send_command(APICommand.CHECK_NODE_UPDATE, node_id=node_id, require_schema=10)
         if data is None:
             return None
 
@@ -561,6 +599,7 @@ class MatterClient:
         """
         response = await self.send_command(
             APICommand.SEND_WEBRTC_PROVIDER_COMMAND,
+            require_schema=12,
             node_id=node_id,
             endpoint_id=endpoint_id,
             command_name=command_name,
@@ -643,19 +682,12 @@ class MatterClient:
         await self.connect()
 
         try:
-            message = CommandMessage(
-                message_id=uuid.uuid4().hex, command=APICommand.START_LISTENING
-            )
+            message = CommandMessage(message_id=uuid.uuid4().hex, command=APICommand.START_LISTENING)
             await self.connection.send_message(message)
-            nodes_msg = cast(
-                SuccessResultMessage, await self.connection.receive_message_or_raise()
-            )
+            nodes_msg = cast(SuccessResultMessage, await self.connection.receive_message_or_raise())
             # a full dump of all nodes will be the result of the start_listening command
             # create MatterNode objects from the basic MatterNodeData objects
-            nodes = [
-                MatterNode(dataclass_from_dict(MatterNodeData, x))
-                for x in nodes_msg.result
-            ]
+            nodes = [MatterNode(dataclass_from_dict(MatterNodeData, x)) for x in nodes_msg.result]
             self._nodes = {node.node_id: node for node in nodes}
             # once we've hit this point we're all set
             self.logger.info("Matter client initialized.")
@@ -741,9 +773,7 @@ class MatterClient:
             node_id = msg.data["node_id"]
             endpoint_id = msg.data["endpoint_id"]
             self.logger.debug("Endpoint removed: %s/%s", node_id, endpoint_id)
-            self._signal_event(
-                EventType.ENDPOINT_REMOVED, data=msg.data, node_id=node_id
-            )
+            self._signal_event(EventType.ENDPOINT_REMOVED, data=msg.data, node_id=node_id)
             # cleanup endpoint only after signalling subscribers
             if node := self._nodes.get(node_id):
                 node.endpoints.pop(endpoint_id, None)
@@ -783,6 +813,12 @@ class MatterClient:
                 node_id=node_event.node_id,
             )
             return
+        # An event type unknown to this (older) client is passed through by parse_value as a raw
+        # string; forwarding it would crash on `event.value` in _signal_event. Drop it instead so a
+        # newer server emitting a new event type can never disconnect the client.
+        if not isinstance(msg.event, EventType):
+            self.logger.debug("Ignoring unknown event type: %s", msg.event)
+            return
         # simply forward all other events as-is
         if self.logger.isEnabledFor(logging.DEBUG):
             self.logger.debug("Received event: %s", msg)
@@ -814,9 +850,7 @@ class MatterClient:
         await self.connect()
         return self
 
-    async def __aexit__(
-        self, exc_type: Exception, exc_value: str, traceback: TracebackType
-    ) -> None:
+    async def __aexit__(self, exc_type: Exception, exc_value: str, traceback: TracebackType) -> None:
         """Disconnect from the websocket."""
         await self.disconnect()
 

@@ -39,9 +39,11 @@
         "build": "nacho-build",
         "build-clean": "nacho-build --clean"
     },
-    "dependencies": {},
+    "dependencies": {
+        "@matter/thread-br-client": "0.17.5-alpha.0-20260708-18923cc56"
+    },
     "devDependencies": {
-        "@matter/testing": "0.17.5-alpha.0-20260704-9ea70abfa",
+        "@matter/testing": "0.17.5-alpha.0-20260708-18923cc56",
         "@types/node": "^26.0.1",
         "@types/ws": "^8.18.1",
         "ws": "^8.21.0"

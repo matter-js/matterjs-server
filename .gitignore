@@ -1,6 +1,7 @@
 node_modules/
 build/
 dist/
+*.tsbuildinfo
 /.*
 docs/plans/
 # AI-tooling scratch directories (memory, transcripts, plans). Keep local-only.

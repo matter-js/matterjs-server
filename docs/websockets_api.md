@@ -10,9 +10,9 @@ On connection, the server immediately sends a `server_info` message with fabric 
 {
   "fabric_id": 1234567890,
   "compressed_fabric_id": 9876543210,
-  "schema_version": 11,
+  "schema_version": 12,
   "min_supported_schema_version": 11,
-  "sdk_version": "matter.js/0.11.0",
+  "sdk_version": "matter-server/1.1.7 (matter.js/0.17.5-alpha)",
   "wifi_credentials_set": true,
   "thread_credentials_set": false,
   "bluetooth_enabled": true
@@ -180,9 +180,23 @@ When the `start_listening` command is issued, the server returns all existing no
 
 ### Credentials
 
+WiFi and Thread credentials are stored as **named lists** (schema 12). Each entry has an `id`; the
+reserved `default` entry is what pre-12 callers use when they omit `id`, so older clients keep
+working unchanged. Storing multiple networks lets commissioning pick which one to use (see
+`commission_with_code`), and — for Thread — lets the server query diagnostics from any Border Router
+whose network you hold credentials for.
+
+Secrets are **write-only**: they are stored but never returned. `get_all_credentials` returns only
+summaries. On `set_*`, a value is required; a WiFi password may be omitted **only** to keep the
+already-stored secret for an **unchanged** SSID (re-saving an entry without resending the password).
+A blank password on a new/changed SSID, or an empty Thread dataset, is rejected. To clear an entry —
+including the reserved `default`, which cannot be deleted from the list — use `remove_wifi_credentials`
+/ `remove_thread_dataset` (this zeroes both the SSID and the secret).
+
 **set_wifi_credentials** - Set WiFi credentials for commissioning
 
 Inform the controller about the WiFi credentials it needs to send when commissioning a new device.
+Pass an optional `id` to address a named entry (omit for the `default` entry).
 
 ```json
 {
@@ -190,7 +204,8 @@ Inform the controller about the WiFi credentials it needs to send when commissio
   "command": "set_wifi_credentials",
   "args": {
     "ssid": "wifi-name-here",
-    "credentials": "wifi-password-here"
+    "credentials": "wifi-password-here",
+    "id": "Guest"
   }
 }
 ```
@@ -198,15 +213,38 @@ Inform the controller about the WiFi credentials it needs to send when commissio
 **set_thread_dataset** - Set Thread credentials for commissioning
 
 Inform the controller about the Thread credentials it needs to use when commissioning a new device.
+The dataset must be a non-empty hex-encoded operational dataset. Pass an optional `id` for a named
+entry. A dataset carrying `pskc` + `networkKey` additionally enables **MeshCoP diagnostics** for that
+Thread network (see Thread Network Diagnostics below).
 
 ```json
 {
   "message_id": "1",
   "command": "set_thread_dataset",
   "args": {
-    "dataset": "hex-encoded-operational-dataset"
+    "dataset": "hex-encoded-operational-dataset",
+    "id": "MyThreadNet"
   }
 }
+```
+
+**get_all_credentials** - List stored credential summaries (schema 12)
+
+Returns `{ wifi: [{ id, ssid }], thread: [{ id, networkName, extPanId }] }` — summaries only, never
+secrets. The `default` entry is always present (treat it as unset unless `server_info`'s
+`wifi_credentials_set` / `thread_credentials_set` is true).
+
+```json
+{ "message_id": "1", "command": "get_all_credentials" }
+```
+
+**remove_wifi_credentials** / **remove_thread_dataset** - Clear a stored entry (schema 12 for a named `id`)
+
+Removes a named entry, or clears the reserved `default` (zeroing its SSID + secret). Omit `id` for the
+`default` entry.
+
+```json
+{ "message_id": "1", "command": "remove_thread_dataset", "args": { "id": "MyThreadNet" } }
 ```
 
 **set_default_fabric_label** - Set the default fabric label
@@ -301,6 +339,57 @@ Response includes pairing codes:
   }
 }
 ```
+
+### Thread Network Diagnostics
+
+Read-only diagnostics for the Thread networks around the controller (schema 12). This is separate
+from Matter-over-Thread commissioning and can be turned off entirely with `--disable-thread-diagnostics`
+(env `DISABLE_THREAD_DIAGNOSTICS`) without affecting commissioning.
+
+**How it works**
+
+- The server passively discovers Thread **Border Routers** via mDNS (`_meshcop._udp`) and lists them
+  with `get_thread_border_routers` — no credentials required.
+- To collect per-node **diagnostics** for a network, the server needs a way in:
+  - **MeshCoP (CoAP/DTLS)** — used when you've stored a Thread dataset carrying `pskc` + `networkKey`
+    for that network (via `set_thread_dataset`). Stored datasets are registered at startup and
+    whenever you set them.
+  - **OTBR REST** — used automatically when a discovered Border Router exposes the OpenThread REST API.
+  - When both are available the server prefers MeshCoP (CoAP) — it is much faster than the REST
+    collection path. A network with neither yields a partial result with reason `no_credentials`.
+- **First query is slow, then cached.** Diagnostics are collected over a streaming window (about
+  20 seconds): a first partial batch resolves after ~5 s and more nodes fill in until the window
+  closes (~20 s). So when a client opens the Thread panel for the first time in a session, expect the
+  mesh to **populate progressively over ~20 s**, arriving via `thread_diagnostics_updated` events.
+  Results are then **cached (~1 h)** and returned instantly on subsequent queries; pass `force: true`
+  to bypass the cache and re-collect.
+
+**get_thread_border_routers** - List discovered Thread Border Routers (passive, no credentials)
+
+```json
+{ "message_id": "1", "command": "get_thread_border_routers" }
+```
+
+**get_thread_diagnostics** - Fetch per-Thread-network diagnostics
+
+- With `ext_pan_id`: awaits a collection and returns the batch, or `null` when nothing is cached /
+  diagnostics are disabled.
+- Without `ext_pan_id`: returns the **current cache** for all known networks (an array, possibly empty)
+  **immediately**, and kicks off a background refresh whose fresh batches arrive via the
+  `thread_diagnostics_updated` event. Use the `ext_pan_id` form when you need synchronously-fresh data
+  for one network.
+- `force: true` bypasses the cache and re-collects.
+
+```json
+{
+  "message_id": "1",
+  "command": "get_thread_diagnostics",
+  "args": { "ext_pan_id": "1122334455667788", "force": false }
+}
+```
+
+Issuing either Thread command opts the connection in to `thread_diagnostics_updated` events (see
+Events); a client that never queries Thread data never receives them.
 
 ### Attribute Operations
 
@@ -704,9 +793,9 @@ Format: `[node_id, "endpoint/cluster/attribute", value]`
   "data": {
     "fabric_id": 1234567890,
     "compressed_fabric_id": 9876543210,
-    "schema_version": 11,
+    "schema_version": 12,
     "min_supported_schema_version": 11,
-    "sdk_version": "matter.js/0.11.0",
+    "sdk_version": "matter-server/1.1.7 (matter.js/0.17.5-alpha)",
     "wifi_credentials_set": true,
     "thread_credentials_set": true,
     "bluetooth_enabled": true
@@ -720,6 +809,28 @@ Format: `[node_id, "endpoint/cluster/attribute", value]`
 {
   "event": "server_shutdown",
   "data": {}
+}
+```
+
+**thread_diagnostics_updated** - A Thread network's diagnostics batch changed (schema 12)
+
+Streamed as diagnostics are collected from Border Routers. On first collection for a network the
+batch arrives incomplete and is refined over the ~20 s window (a `partialReason` marks incomplete /
+failed batches; it is absent once complete). **Delivered only to connections that have issued a
+Thread request** (`get_thread_diagnostics` / `get_thread_border_routers`) during their lifetime, so
+older clients that don't understand the event never receive it.
+
+```json
+{
+  "event": "thread_diagnostics_updated",
+  "data": {
+    "extPanIdHex": "1122334455667788",
+    "networkName": "MyThreadNet",
+    "collectedAt": 1730000000000,
+    "source": "meshcop",
+    "nodes": [],
+    "partialReason": "in_progress"
+  }
 }
 ```
 
@@ -749,7 +860,7 @@ Attribute paths use the format: `endpoint/cluster/attribute`
 
 ## Schema Version
 
-The current schema version is **11**. The server reports `schema_version` and `min_supported_schema_version` in the initial connection message and via `server_info`. Clients should verify that the server's `schema_version` is within their supported range.
+The current schema version is **12** (minimum supported **11**). The server reports `schema_version` and `min_supported_schema_version` in the initial connection message and via `server_info`. Clients should verify that the server's `schema_version` is within their supported range.
 
 ## BigInt Handling
 
