@@ -41,7 +41,7 @@
     },
     "dependencies": {
         "@matter-server/ws-client": "*",
-        "@matter/dcl-data": ">=2026.7.1",
+        "@matter/dcl-data": ">=2026.7.7",
         "@matter/main": "0.17.5-alpha.0-20260704-9ea70abfa",
         "@project-chip/matter.js": "0.17.5-alpha.0-20260704-9ea70abfa",
         "ws": "^8.21.0"
