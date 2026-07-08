@@ -100,10 +100,13 @@ export function icdInfo(attributes: Record<string, unknown>): IcdInfo {
     };
 }
 
-/** Badge predicate: the node is an ICD currently operating in LIT mode. */
+/**
+ * Badge predicate: the node is an ICD currently operating in LIT mode. Requires spec >= 1.4 —
+ * below that the controller does not track check-ins, so offline is not "normal sleeping".
+ */
 export function isLitIcd(attributes: Record<string, unknown>): boolean {
     const info = icdInfo(attributes);
-    return info.supported && info.operatingMode === "LIT";
+    return info.supported && info.operatingMode === "LIT" && litSpecVersionOk(attributes);
 }
 
 export function isRegisteredByUs(

@@ -20,6 +20,7 @@ import {
 // MonitoringRegistrationStruct wire entries are field-tag keyed: "1" CheckInNodeId, "2" MonitoredSubject,
 // "4" ClientType, "254" FabricIndex (Matter 1.6 IcdManagement cluster spec).
 const LIT_ATTRS: Record<string, unknown> = {
+    "0/40/21": 0x01040000, // SpecificationVersion 1.4.0
     "0/70/0": 3600, // IdleModeDuration
     "0/70/3": [{ "1": 1234, "2": 1234, "4": 0, "254": 2 }],
     "0/70/6": 0b1, // UserActiveModeTriggerHint: PowerCycle
@@ -65,6 +66,9 @@ describe("icd util", () => {
         });
         it("false for SIT device", () => {
             expect(isLitIcd({ ...LIT_ATTRS, "0/70/8": 0 })).to.equal(false);
+        });
+        it("false for pre-1.4 device even when operating LIT", () => {
+            expect(isLitIcd({ ...LIT_ATTRS, "0/40/21": 0x01030000 })).to.equal(false);
         });
         it("false without ICD cluster", () => {
             expect(isLitIcd({})).to.equal(false);
