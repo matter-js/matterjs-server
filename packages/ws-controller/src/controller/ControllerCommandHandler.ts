@@ -1302,10 +1302,8 @@ export class ControllerCommandHandler {
                 }),
             );
         } catch (error) {
-            if (error instanceof IcdMultiAdminError) {
-                throw ServerError.icdMultiAdmin(error.adminVendorIds.map(vendorId => Number(vendorId)));
-            }
-            throw error;
+            IcdMultiAdminError.accept(error);
+            throw ServerError.icdMultiAdmin(error.adminVendorIds.map(vendorId => Number(vendorId)));
         }
     }
 
