@@ -427,6 +427,8 @@ export class ControllerCommandHandler {
             cluster: TimeSynchronization.Cluster,
             command: "setUtcTime",
             fields: {
+                // utcTime is a raw TlvEpochUs field: Unix-epoch microseconds. Time.nowUs is a
+                // millisecond Timestamp despite its name, so derive µs from nowMs.
                 utcTime: Time.nowMs * 1000,
                 granularity: TimeSynchronization.Granularity.MillisecondsGranularity,
                 timeSource: TimeSynchronization.TimeSource.Admin,

@@ -15,7 +15,7 @@
  * the host time source is known to be reliable (see --enable-time-sync CLI flag).
  */
 
-import { Duration, Hours, Logger, Minutes } from "@matter/main";
+import { Duration, Hours, Logger, Minutes, Time } from "@matter/main";
 import { PeerAddress, PeerAddressMap } from "@matter/main/protocol";
 import { AttributesData } from "../types/CommandHandler.js";
 import { formatNodeId } from "../util/formatNodeId.js";
@@ -28,6 +28,11 @@ const TIME_SYNC_CLUSTER_ID = 0x0038;
 
 // Periodic resync interval: 24 hours
 const RESYNC_INTERVAL = Hours(24);
+
+// Minimum spacing between trigger-driven (reconnect / timeFailure) syncs for one peer.
+// The periodic path already caps its own cadence; this stops a flapping node or a device
+// repeatedly emitting timeFailure from storming setUtcTime commands.
+const TRIGGER_SYNC_COOLDOWN = Hours(24);
 
 export interface TimeSyncConnector {
     syncTime(peer: PeerAddress): Promise<void>;
@@ -50,6 +55,8 @@ export class TimeSyncManager extends NodeProcessor {
     readonly #connector: TimeSyncConnector;
     // Tracks in-flight immediate syncs per node to prevent parallel syncs
     #inFlightSyncs = new PeerAddressMap<Promise<void>>();
+    // Last trigger-driven sync attempt per node, used to enforce TRIGGER_SYNC_COOLDOWN
+    #lastTriggerSyncMs = new PeerAddressMap<number>();
     // True after the first periodic resync cycle, enabling immediate syncs on reconnect
     #startupComplete = false;
 
@@ -90,6 +97,7 @@ export class TimeSyncManager extends NodeProcessor {
      * Unregister a node from time sync tracking.
      */
     unregisterNode(peer: PeerAddress): void {
+        this.#lastTriggerSyncMs.delete(peer);
         if (this.unregisterPeer(peer)) {
             logger.info(`Unregistered node ${formatNodeId(peer)} from time synchronization`);
         }
@@ -105,6 +113,14 @@ export class TimeSyncManager extends NodeProcessor {
             logger.debug(`Time sync already in progress for node ${formatNodeId(peer)}, skipping`);
             return;
         }
+        const lastSync = this.#lastTriggerSyncMs.get(peer);
+        if (lastSync !== undefined && Time.nowMs - lastSync < TRIGGER_SYNC_COOLDOWN) {
+            logger.debug(
+                `Time sync for node ${formatNodeId(peer)} skipped, within ${Duration.format(TRIGGER_SYNC_COOLDOWN)} cooldown`,
+            );
+            return;
+        }
+        this.#lastTriggerSyncMs.set(peer, Time.nowMs);
         const promise = this.#connector
             .syncTime(peer)
             .then(() => logger.info(`Synced time on node ${formatNodeId(peer)}`))
@@ -124,6 +140,7 @@ export class TimeSyncManager extends NodeProcessor {
         await super.stop();
         await Promise.allSettled(this.#inFlightSyncs.values());
         this.#inFlightSyncs.clear();
+        this.#lastTriggerSyncMs.clear();
         logger.info("Time sync manager stopped");
     }
 

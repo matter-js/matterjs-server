@@ -4,8 +4,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { CancelablePromise, Duration, Millis, Time, Timer } from "@matter/main";
+import { CancelablePromise, Duration, Logger, Millis, Time, Timer } from "@matter/main";
 import { PeerAddress, PeerAddressSet } from "@matter/main/protocol";
+
+const logger = Logger.get("NodeProcessor");
 
 /**
  * Abstract base class for timer-driven periodic processing of registered nodes.
@@ -18,11 +20,22 @@ export abstract class NodeProcessor {
     #peers = new PeerAddressSet();
     #isProcessing = false;
     #currentDelayPromise?: CancelablePromise;
+    #processingPromise?: Promise<void>;
     #closed = false;
 
     constructor(timerName: string, initialDelay: number, targetInterval: number) {
         this.#targetInterval = Millis(targetInterval);
-        this.#timer = Time.getTimer(timerName, Millis(initialDelay), () => void this.#processAll());
+        this.#timer = Time.getTimer(timerName, Millis(initialDelay), () => this.#startProcessing());
+    }
+
+    #startProcessing(): void {
+        // Keep #processingPromise pointing at the live cycle: never overwrite it with the
+        // resolved no-op #processAll() returns while a cycle is already running, or stop()
+        // could await the wrong promise and return before the real cycle finishes.
+        if (this.#isProcessing) return;
+        this.#processingPromise = this.#processAll().catch(error =>
+            logger.error("Node processing cycle failed:", error),
+        );
     }
 
     protected get closed(): boolean {
@@ -60,6 +73,7 @@ export abstract class NodeProcessor {
         this.#closed = true;
         this.#currentDelayPromise?.cancel(new Error("Close"));
         this.#timer.stop();
+        await this.#processingPromise;
     }
 
     /** Returns false if this peer should be skipped during processing (e.g. not connected). */
@@ -84,6 +98,7 @@ export abstract class NodeProcessor {
         try {
             const peers = Array.from(this.#peers);
             for (let i = 0; i < peers.length; i++) {
+                if (this.#closed) break;
                 const peer = peers[i];
                 if (!this.#peers.has(peer) || !this.shouldProcess(peer)) continue;
                 processedCount++;
@@ -100,6 +115,8 @@ export abstract class NodeProcessor {
             this.scheduleIfNeeded();
         }
 
-        this.onCycleComplete(processedCount, Duration.format(this.#timer.interval));
+        if (!this.#closed) {
+            this.onCycleComplete(processedCount, Duration.format(this.#timer.interval));
+        }
     }
 }

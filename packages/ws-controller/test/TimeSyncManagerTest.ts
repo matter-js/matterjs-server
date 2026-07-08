@@ -169,23 +169,83 @@ describe("TimeSyncManager", () => {
             expect(connector.syncCalls.length).to.equal(1);
         });
 
-        it("allows a new sync after the previous one completes", async () => {
+        it("clears the in-flight marker after completion so periodic resync is not blocked", async () => {
             connector.slowSync = true;
             connector.setConnected(PEER_1);
 
-            manager.syncNode(PEER_1);
+            manager.syncNode(PEER_1); // in-flight
             connector.resolveAll();
             await MockTime.yield3();
+            expect(connector.syncCalls.length).to.equal(1);
 
-            manager.syncNode(PEER_1);
-            connector.resolveAll();
+            // With the in-flight marker cleared, the periodic cycle can process PEER_1 again
+            // (the periodic path is not subject to the trigger cooldown).
+            connector.slowSync = false;
+            await MockTime.advance(ONE_DAY_MS);
             await MockTime.yield3();
+            expect(connector.syncCalls.length).to.equal(2);
+        });
+    });
 
+    describe("trigger sync cooldown", () => {
+        beforeEach(() => {
+            manager.registerNode(PEER_1, makeTimeSyncAttrs());
+            manager.completeStartup();
+            connector.setConnected(PEER_1);
+        });
+
+        it("skips a second trigger sync within the 24h cooldown", async () => {
+            manager.syncNode(PEER_1);
+            await MockTime.yield3();
+            expect(connector.syncCalls.length).to.equal(1);
+
+            manager.syncNode(PEER_1); // within cooldown — dropped
+            await MockTime.yield3();
+            expect(connector.syncCalls.length).to.equal(1);
+        });
+
+        it("allows a trigger sync after the 24h cooldown elapses", async () => {
+            manager.syncNode(PEER_1);
+            await MockTime.yield3();
+            expect(connector.syncCalls.length).to.equal(1);
+
+            await MockTime.advance(ONE_DAY_MS); // periodic resync fires (does not touch cooldown)
+            await MockTime.yield3();
+            const afterResync = connector.syncCalls.length;
+
+            manager.syncNode(PEER_1); // 24h since the trigger cooldown was set — allowed
+            await MockTime.yield3();
+            expect(connector.syncCalls.length).to.equal(afterResync + 1);
+        });
+
+        it("does not cool down the periodic resync path", async () => {
+            manager.syncNode(PEER_1); // sets trigger cooldown at T=0
+            await MockTime.yield3();
+            expect(connector.syncCalls.length).to.equal(1);
+
+            await MockTime.advance(ONE_DAY_MS); // periodic still resyncs despite recent trigger sync
+            await MockTime.yield3();
             expect(connector.syncCalls.length).to.equal(2);
         });
     });
 
     describe("unregisterNode", () => {
+        it("clears the trigger cooldown so a re-registered peer syncs again", async () => {
+            manager.registerNode(PEER_1, makeTimeSyncAttrs());
+            manager.completeStartup();
+            connector.setConnected(PEER_1);
+
+            manager.syncNode(PEER_1);
+            await MockTime.yield3();
+            expect(connector.syncCalls.length).to.equal(1);
+
+            manager.unregisterNode(PEER_1); // clears cooldown
+            manager.registerNode(PEER_1, makeTimeSyncAttrs());
+            manager.syncNode(PEER_1); // cooldown was cleared — syncs again
+            await MockTime.yield3();
+            expect(connector.syncCalls.length).to.equal(2);
+        });
+
         it("makes syncNode a no-op for the removed peer", async () => {
             connector.setConnected(PEER_1);
             manager.registerNode(PEER_1, makeTimeSyncAttrs());
@@ -274,6 +334,30 @@ describe("TimeSyncManager", () => {
         it("completes cleanly when nodes are registered but no syncs are in flight", async () => {
             manager.registerNode(PEER_1, makeTimeSyncAttrs());
             await manager.stop();
+        });
+
+        it("interrupts a periodic cycle mid-batch and skips remaining nodes", async () => {
+            connector.slowSync = true;
+            connector.setConnected(PEER_1);
+            connector.setConnected(PEER_2);
+            manager.registerNode(PEER_1, makeTimeSyncAttrs());
+            manager.registerNode(PEER_2, makeTimeSyncAttrs());
+
+            await MockTime.advance(PAST_STARTUP_MS); // periodic cycle starts, first node sync in-flight
+            await MockTime.yield();
+
+            let stopped = false;
+            const stopPromise = manager.stop().then(() => {
+                stopped = true;
+            });
+
+            await MockTime.yield();
+            expect(stopped).to.equal(false); // barrier: waiting on the in-flight processNode
+
+            connector.resolveAll(); // first node's sync completes
+            await stopPromise;
+            expect(stopped).to.equal(true);
+            expect(connector.syncCalls.length).to.equal(1); // second node skipped after close
         });
 
         it("awaits in-flight syncs before completing", async () => {
