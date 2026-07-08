@@ -48,7 +48,7 @@ interface DnssdNameLike {
 }
 
 interface DnssdNamesFiltersLike {
-    add(filter: (record: DnsRecord) => boolean): unknown;
+    add(filter: (record: DnsRecord) => boolean, names: Iterable<string> | "all"): unknown;
     delete(filter: (record: DnsRecord) => boolean): unknown;
 }
 
@@ -143,7 +143,7 @@ export class BorderRouterDiscovery {
             return lower.endsWith(MESHCOP_SUFFIX) || lower.endsWith(TREL_SUFFIX);
         };
         this.#suffixFilter = suffixFilter;
-        names.filters.add(suffixFilter);
+        names.filters.add(suffixFilter, [MESHCOP_TYPE_QNAME, TREL_TYPE_QNAME]);
 
         const meshcopType = names.get(MESHCOP_TYPE_QNAME);
         const trelType = names.get(TREL_TYPE_QNAME);

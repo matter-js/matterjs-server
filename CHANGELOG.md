@@ -7,6 +7,48 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
+## **WORK IN PROGRESS**
+
+- Enhancement: Update matter.js to add Matter 1.6 support
+
+## 1.1.7 (2026-07-01)
+
+- Speed up attribute data conversion for migration and websocket communication
+- Enhancement: Update matter.js to 0.17.4
+
+## 1.1.6 (2026-06-30)
+
+- Ensure that rebuilding of node structures after updates does not block the event loop for big bridges
+- Skip rebuilding node structures when the device just resubscribed
+
+## 1.1.5 (2026-06-30)
+
+- Speed up Bitmap Conversion for WebSocket messaging and data migration
+- Enhancement: Update matter.js to the latest 0.17.4-alpha
+    - Speed up DataReport decoding even more
+
+## 1.1.4 (2026-06-29)
+
+- Enhancement: Update matter.js to the latest 0.17.4-alpha
+    - Speed up subscription DataReport handling
+
+## 1.1.3 (2026-06-28)
+
+- Enhancement: Update matter.js to the latest 0.17.4-alpha
+    - Added more optimizations for data of non-compliant devices (keep non-declared clusters, accept int/uint mismatches in reported data)
+    - Optimize MDNS scanner to drop irrelevant messages before decoding (optimizes CPU usage in MDNS-spammy networks)
+
+## 1.1.2 (2026-06-25)
+
+- Fix: Respect matter.js DCL config also for Certificate and Vendor service initialization
+- Enhancement: Update matter.js to the latest 0.17.4-alpha
+    - Improves data migration for non-compliant device data (e.g. Tasmota 14.x empty attribute lists)
+    - Allows attribute writes with invalid enum or bitmap values and lets the device decide, but logs a warning
+    - Reduces data duplication in RAM in some places
+    - Allows connections even for "at-the-edge-of-spec" devices with >1 hour of idle interval
+    - Optimizes peer probing when mDNS addresses change
+    - Hides GitHub rate limit errors when fetching certificates when some are already in storage
+
 ## 1.1.1 (2026-06-23)
 
 - Adjustment: Adjust the default Docker Healthcheck durations a bit to better allow migrations

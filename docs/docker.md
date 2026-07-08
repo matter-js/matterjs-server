@@ -128,10 +128,54 @@ All CLI options can be configured via environment variables, making it easy to c
 > check cannot resolve it and will mark the container unhealthy — see
 > [Health Check](#health-check) for the workaround.
 
+### Node.js Memory Limit
+
+The container runs Node.js without an explicit heap limit. V8 is deliberately lazy
+about garbage collection: when RAM is plentiful it defers major GC and lets the heap
+grow, because collecting early costs CPU for no benefit. A slow climb that **plateaus**
+is therefore normal and healthy — not a leak. **As long as the host has free RAM, you
+do not need to do anything.**
+
+Only consider a limit when the **host** is actually approaching its memory ceiling. In
+that case V8's default old-space size (~2 GB) can let the process grow until the kernel
+OOM-kills it. Setting the standard `NODE_OPTIONS` variable makes V8 GC earlier and more
+often, holding the footprint lower:
+
+```bash
+docker run -d \
+  --name matterjs-server \
+  --restart=unless-stopped \
+  -v $(pwd)/data:/data \
+  --network=host \
+  -e NODE_OPTIONS="--max-old-space-size=512" \
+  ghcr.io/matter-js/matterjs-server:stable
+```
+
+> [!NOTE]
+> `--max-old-space-size` caps **only** the V8 old-space heap (in MB), not total process
+> memory (RSS). Native allocations — BLE buffers, source maps, external memory — live
+> outside it. Size it to roughly **75–80 % of the container memory limit** to leave
+> headroom for non-heap usage.
+
+> [!IMPORTANT]
+> Measure before you tune, and only tune under real pressure. Actual memory use scales
+> with the number of commissioned nodes, so there is no universal "right" value. Run the
+> server with your real fabric for a while and watch usage — e.g. `docker stats
+> matterjs-server` alongside total host memory. If the line keeps climbing without ever
+> plateauing and the host nears its ceiling, lower the limit **stepwise** (e.g. 1024 →
+> 768 → 512), checking after each step: a lower, stable footprint is good; rising CPU /
+> constant GC churn or restart loops mean it is too tight — back off.
+
+> [!NOTE]
+> A heap limit only reclaims **unreachable** memory. If the climb never plateaus and
+> continues across restarts, that is a genuine leak — a limit will not fix it, it just
+> converts a slow climb into periodic OOM-kill + restart. Capture a heap snapshot at low
+> and high usage and report it instead.
+
 ### Advanced matter.js Configuration
 
 For advanced matter.js library configuration via `MATTER_*` environment variables (e.g.
-`MATTER_DCL_PRODUCTION_URL` for a self-hosted DCL node), see
+`MATTER_DCL_PRODUCTIONURL` for a self-hosted DCL node), see
 [Advanced matter.js Configuration](cli.md#advanced-matterjs-configuration) in the CLI docs.
 
 Example with environment variables:
@@ -273,6 +317,10 @@ docker run -d \
 ```
 
 The `dbus-next` package required by this backend ships as an optional dependency of the server image, so no extra install step is required. Host requirements: BlueZ running on the host (`bluetoothd`) and the adapter powered (`bluetoothctl power on`). Select a specific adapter with `BLUETOOTH_ADAPTER` if more than one is present.
+
+> [!NOTE]
+> The `dbus-next` library authenticates to the system D-Bus using the peer process UID (Unix socket credentials). In a rootless container this can fail because the UID inside the user namespace does not match the UID seen by the host D-Bus daemon.
+> Make sure the container's UID 1000 (the default user in this image) is mapped to the UID of the host user running the container. With Podman this can be done with `--userns=keep-id:uid=1000,gid=1000`. You also need to set the ownership of the `data` directory and the files underneath to the host user running the container.
 
 #### Raw HCI socket backend
 

@@ -70,7 +70,7 @@ const SNAPSHOT_DEFAULTS: SnapshotCapability = {
 };
 
 function parseSnapshotCapabilitiesFromList(list: unknown[]): SnapshotCapability {
-    // SnapshotCapabilitiesStruct field IDs per Matter 1.5.1 §11.2.6.9:
+    // SnapshotCapabilitiesStruct field IDs per the Matter spec:
     // 0=resolution (VideoResolutionStruct {0=width, 1=height}), 1=maxFrameRate, 2=imageCodec.
     // Cached attributes are tag-based (numeric keys); read_attribute responses are name-based.
     // Prefer the highest-resolution entry — Aqara G350 ships [VGA, 1080p] and 1080p is the useful one.

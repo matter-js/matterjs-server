@@ -215,27 +215,58 @@ export class WebSocketControllerHandler implements WebServerHandler {
             let listening = false;
             const observers = new ObserverGroup();
 
+            const sendNodeFullDetails = (eventName: "node_added" | "node_updated", nodeId: NodeId) => {
+                try {
+                    const nodeDetails = this.#collectNodeDetails(nodeId);
+                    logger.debug(
+                        `[${connId}] Sending ${eventName} event for Node ${this.#commandHandler.formatNode(nodeId)}`,
+                    );
+                    ws.send(toBigIntAwareJson({ event: eventName, data: nodeDetails }));
+                } catch (err) {
+                    logger.error(
+                        `[${connId}] Failed to collect node details for Node ${this.#commandHandler.formatNode(nodeId)}`,
+                        err,
+                    );
+                }
+            };
+
+            // node_updated can be triggered several times for one logical change (availability +
+            // structure + a lazy populate completing all fire in the same tick). Coalesce per node so
+            // each burst sends a single full snapshot rather than several large duplicates per client.
+            const pendingNodeUpdated = new Set<NodeId>();
+            let nodeUpdatedFlushScheduled = false;
+            const flushNodeUpdated = () => {
+                nodeUpdatedFlushScheduled = false;
+                const nodeIds = [...pendingNodeUpdated];
+                pendingNodeUpdated.clear();
+                if (this.#closed || this.#shuttingDown || !listening || connectionClosed) return;
+                for (const nodeId of nodeIds) {
+                    // A trailing update can be queued after the node was removed; skip it instead of
+                    // letting #collectNodeDetails throw nodeNotExists and log a spurious error.
+                    if (!this.#commandHandler.hasNode(nodeId)) continue;
+                    sendNodeFullDetails("node_updated", nodeId);
+                }
+            };
+
             const sendNodeDetailsEvent = <E extends EventTypes>(eventName: E, nodeId: NodeId) => {
                 if (this.#closed || this.#shuttingDown || !listening) return;
 
                 switch (eventName) {
                     case "node_added":
-                    case "node_updated": {
-                        try {
-                            const nodeDetails = this.#collectNodeDetails(nodeId);
-                            logger.debug(
-                                `[${connId}] Sending ${eventName} event for Node ${this.#commandHandler.formatNode(nodeId)}`,
-                            );
-                            ws.send(toBigIntAwareJson({ event: eventName, data: nodeDetails }));
-                        } catch (err) {
-                            logger.error(
-                                `[${connId}] Failed to collect node details for Node ${this.#commandHandler.formatNode(nodeId)}`,
-                                err,
-                            );
+                        // node_added carries the full snapshot, so it supersedes any pending coalesced
+                        // update and must not be overtaken by the deferred flush.
+                        pendingNodeUpdated.delete(nodeId);
+                        sendNodeFullDetails("node_added", nodeId);
+                        break;
+                    case "node_updated":
+                        pendingNodeUpdated.add(nodeId);
+                        if (!nodeUpdatedFlushScheduled) {
+                            nodeUpdatedFlushScheduled = true;
+                            setImmediate(flushNodeUpdated);
                         }
                         break;
-                    }
                     case "node_removed":
+                        pendingNodeUpdated.delete(nodeId);
                         logger.debug(
                             `[${connId}] Sending node_removed event for Node ${this.#commandHandler.formatNode(nodeId)}`,
                         );
@@ -384,6 +415,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     return;
                 }
                 connectionClosed = true;
+                pendingNodeUpdated.clear();
                 logger.info(`[${connId}] WebSocket connection closed`);
                 observers.close();
             };
@@ -826,6 +858,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
         // Pass the last interview date for real nodes
         if (handler === this.#commandHandler) {
+            await this.#commandHandler.ensureNodePopulated(nodeId);
             return this.#commandHandler.getNodeDetails(nodeId, this.#lastInterviewDates.get(nodeId));
         }
         return handler.getNodeDetails(nodeId);
@@ -1256,7 +1289,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             const fileDestination = Logger.destinations.file;
             const fileLevelValue =
                 typeof fileDestination.level === "string"
-                    ? this.#stringToLogLevel(fileDestination.level as SettableLogLevelString)
+                    ? this.#stringToLogLevel(fileDestination.level)
                     : fileDestination.level;
             fileLevel = this.#logLevelToString(fileLevelValue);
         } catch {

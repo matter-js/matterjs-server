@@ -174,8 +174,6 @@ class PushAvStreamTransport(Cluster):
                         ClusterObjectFieldDescriptor(Label="chunkDuration", Tag=2, Type=uint),
                         ClusterObjectFieldDescriptor(Label="sessionGroup", Tag=3, Type=typing.Optional[uint]),
                         ClusterObjectFieldDescriptor(Label="trackName", Tag=4, Type=typing.Optional[str]),
-                        ClusterObjectFieldDescriptor(Label="cencKey", Tag=5, Type=typing.Optional[bytes]),
-                        ClusterObjectFieldDescriptor(Label="cencKeyID", Tag=6, Type=typing.Optional[bytes]),
                         ClusterObjectFieldDescriptor(Label="metadataEnabled", Tag=7, Type=typing.Optional[bool]),
                     ])
 
@@ -184,8 +182,6 @@ class PushAvStreamTransport(Cluster):
             chunkDuration: uint = 0
             sessionGroup: typing.Optional[uint] = None
             trackName: typing.Optional[str] = None
-            cencKey: typing.Optional[bytes] = None
-            cencKeyID: typing.Optional[bytes] = None
             metadataEnabled: typing.Optional[bool] = None
 
         @dataclass

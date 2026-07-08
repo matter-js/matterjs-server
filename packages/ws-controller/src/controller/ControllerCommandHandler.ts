@@ -55,10 +55,11 @@ import {
     VendorId,
 } from "@matter/main/types";
 import { Endpoint } from "@matter/node";
+import { WebRtcTransportRequestorServer } from "@matter/node/behaviors/web-rtc-transport-requestor";
 import { CameraControllerDevice } from "@matter/node/devices/camera-controller";
 import { CommissioningController, NodeCommissioningOptions } from "@project-chip/matter.js";
 import type { DecodedAttributeReportValue, DecodedEventReportValue } from "@project-chip/matter.js/cluster";
-import { NodeStates } from "@project-chip/matter.js/device";
+import { NodeStates, PairedNode } from "@project-chip/matter.js/device";
 import { ClusterMap, ClusterMapEntry, GlobalAttributes } from "../model/ModelMapper.js";
 import {
     buildAttributePath,
@@ -94,7 +95,6 @@ import {
 } from "../types/WebSocketMessageTypes.js";
 import { formatNodeId } from "../util/formatNodeId.js";
 import { pingIp } from "../util/network.js";
-import { WebRtcTransportRequestorServer } from "./behaviors/WebRtcTransportRequestorServer.js";
 import { CustomClusterPoller } from "./CustomClusterPoller.js";
 import { Nodes } from "./Nodes.js";
 import { attachWebRtcCallbackBridge } from "./WebRtcCallbackBridge.js";
@@ -151,6 +151,13 @@ export class ControllerCommandHandler {
     #customClusterPoller: CustomClusterPoller;
     /** Per-node timers that fire when Reconnecting state exceeds the timeout */
     #reconnectTimers = new Map<NodeId, Timer>();
+    /**
+     * Nodes whose basic information changed within the current subscription batch. A full node_updated
+     * is deferred until the batch ends (connectionAlive) so consumers see one update per batch.
+     */
+    #basicInfoChangedInBatch = new Set<NodeId>();
+    /** Nodes with a lazy getNodeDetails populate in flight, so concurrent reads emit node_updated once. */
+    #pendingLazyPopulate = new Set<NodeId>();
     /** Track in-flight invoke-commands for deduplication across all WebSocket connections */
     readonly #inFlightInvokes = new Map<string, Promise<unknown>>();
     events = {
@@ -386,9 +393,6 @@ export class ControllerCommandHandler {
         const node = await this.#controller.getNode(nodeId);
         const attributeCache = this.#nodes.attributeCache;
 
-        // Defer the full node_updated until the subscription batch ends (connectionAlive)
-        // so consumers see one update per batch rather than one per attribute.
-        let basicInfoChangedInBatch = false;
         node.events.attributeChanged.on(data => {
             attributeCache.updateAttribute(nodeId, data);
             this.events.attributeChanged.emit(nodeId, data);
@@ -397,74 +401,25 @@ export class ControllerCommandHandler {
                     data.path.clusterId === BridgedDeviceBasicInformation.id) &&
                 data.path.attributeId !== BasicInformation.attributes.nodeLabel.id
             ) {
-                basicInfoChangedInBatch = true;
+                this.#basicInfoChangedInBatch.add(nodeId);
             }
         });
         node.events.connectionAlive.on(() => {
-            if (basicInfoChangedInBatch) {
-                basicInfoChangedInBatch = false;
+            if (this.#basicInfoChangedInBatch.delete(nodeId)) {
                 logger.info(`Node ${this.formatNode(nodeId)} basic information changed, sending full node_updated`);
                 this.events.nodeStructureChanged.emit(nodeId);
             }
         });
         node.events.eventTriggered.on(data => this.events.eventChanged.emit(nodeId, data));
         node.events.stateChanged.on(state => {
-            if (state === NodeStates.Connected) {
-                attributeCache.update(node);
-                const attributes = attributeCache.get(nodeId);
-                if (attributes) {
-                    this.#customClusterPoller.registerNode(this.#peerOf(nodeId), attributes);
-                }
-            }
-
-            // Arm on Connected->Reconnecting only; keep running across later
-            // non-Connected states; cancel on return to Connected.
-            if (state === NodeStates.Connected) {
-                this.#reconnectTimers.get(nodeId)?.stop();
-                this.#reconnectTimers.delete(nodeId);
-            } else if (
-                state === NodeStates.Reconnecting &&
-                !this.#reconnectTimers.has(nodeId) &&
-                this.#nodes.isAvailable(nodeId)
-            ) {
-                const timer = Time.getTimer(`reconnect-timeout-${nodeId}`, RECONNECT_TIMEOUT, () => {
-                    this.#reconnectTimers.delete(nodeId);
-                    if (this.#nodes.forceUnavailable(nodeId)) {
-                        logger.warn(
-                            `Node ${this.formatNode(nodeId)} offline grace period expired, marking unavailable`,
-                        );
-                        this.events.nodeAvailabilityChanged.emit(nodeId, false);
-                    }
-                });
-                timer.utility = true;
-                timer.start();
-                this.#reconnectTimers.set(nodeId, timer);
-            }
-
-            const debouncePending = this.#reconnectTimers.has(nodeId);
-            const result = this.#nodes.processStateChange(nodeId, state, debouncePending);
-
-            this.events.nodeStateChanged.emit(nodeId, state);
-
-            if (result.availabilityChanged) {
-                const availabilityMessage = `Node ${this.formatNode(nodeId)} availability changed to ${result.available} (state: ${NodeStates[state]})`;
-                if (result.available) {
-                    logger.notice(availabilityMessage);
-                } else {
-                    logger.warn(availabilityMessage);
-                }
-                this.events.nodeAvailabilityChanged.emit(nodeId, result.available);
-            }
+            this.#handleNodeStateChange(node, state).catch(error =>
+                logger.warn(`Failed to handle state change for node ${this.formatNode(nodeId)}:`, error),
+            );
         });
         node.events.structureChanged.on(() => {
-            if (node.isConnected) {
-                attributeCache.update(node);
-            }
-            basicInfoChangedInBatch = false;
-            this.events.nodeStructureChanged.emit(nodeId);
-            for (const endpointId of this.#nodes.drainPendingEndpointAdds(nodeId)) {
-                this.events.nodeEndpointAdded.emit(nodeId, endpointId);
-            }
+            this.#handleNodeStructureChange(node).catch(error =>
+                logger.warn(`Failed to handle structure change for node ${this.formatNode(nodeId)}:`, error),
+            );
         });
         node.events.decommissioned.on(() => {
             this.#cleanupNodeAfterRemoval(nodeId);
@@ -478,7 +433,7 @@ export class ControllerCommandHandler {
         this.#nodes.seedState(nodeId, node.connectionState);
 
         if (node.initialized) {
-            attributeCache.add(node);
+            await attributeCache.add(node);
             const attributes = attributeCache.get(nodeId);
             if (attributes) {
                 this.#customClusterPoller.registerNode(this.#peerOf(nodeId), attributes);
@@ -486,6 +441,79 @@ export class ControllerCommandHandler {
         }
 
         return node;
+    }
+
+    async #handleNodeStateChange(node: PairedNode, state: NodeStates): Promise<void> {
+        const nodeId = node.nodeId;
+
+        // Arm on Connected->Reconnecting only; keep running across later
+        // non-Connected states; cancel on return to Connected.
+        let fastReconnect = false;
+        if (state === NodeStates.Connected) {
+            // A still-armed reconnect timer means we returned to Connected within the grace period.
+            // Treat it as a blip and skip the rebuild, relying on attributeChanged/structureChanged to
+            // repair any deltas — a perf tradeoff that assumes resubscription re-reports what changed.
+            const reconnectTimer = this.#reconnectTimers.get(nodeId);
+            fastReconnect = reconnectTimer !== undefined;
+            reconnectTimer?.stop();
+            this.#reconnectTimers.delete(nodeId);
+        } else if (
+            state === NodeStates.Reconnecting &&
+            !this.#reconnectTimers.has(nodeId) &&
+            this.#nodes.isAvailable(nodeId)
+        ) {
+            const timer = Time.getTimer(`reconnect-timeout-${nodeId}`, RECONNECT_TIMEOUT, () => {
+                this.#reconnectTimers.delete(nodeId);
+                if (this.#nodes.forceUnavailable(nodeId)) {
+                    logger.warn(`Node ${this.formatNode(nodeId)} offline grace period expired, marking unavailable`);
+                    this.events.nodeAvailabilityChanged.emit(nodeId, false);
+                }
+            });
+            timer.utility = true;
+            timer.start();
+            this.#reconnectTimers.set(nodeId, timer);
+        }
+
+        const debouncePending = this.#reconnectTimers.has(nodeId);
+        const result = this.#nodes.processStateChange(nodeId, state, debouncePending);
+
+        this.events.nodeStateChanged.emit(nodeId, state);
+
+        if (result.availabilityChanged) {
+            const availabilityMessage = `Node ${this.formatNode(nodeId)} availability changed to ${result.available} (state: ${NodeStates[state]})`;
+            if (result.available) {
+                logger.notice(availabilityMessage);
+            } else {
+                logger.warn(availabilityMessage);
+            }
+            this.events.nodeAvailabilityChanged.emit(nodeId, result.available);
+        }
+
+        // Populate last so the state/availability emits above are not delayed behind a multi-second
+        // rebuild. Skip the rebuild on a fast reconnect (data unchanged, repaired via its own events);
+        // still rebuild if the cache is missing.
+        if (state === NodeStates.Connected) {
+            if (!fastReconnect || !this.#nodes.attributeCache.has(nodeId)) {
+                await this.#nodes.attributeCache.update(node);
+            }
+            const attributes = this.#nodes.attributeCache.get(nodeId);
+            if (attributes) {
+                this.#customClusterPoller.registerNode(this.#peerOf(nodeId), attributes);
+            }
+        }
+    }
+
+    async #handleNodeStructureChange(node: PairedNode): Promise<void> {
+        const nodeId = node.nodeId;
+        this.#basicInfoChangedInBatch.delete(nodeId);
+
+        if (node.isConnected) {
+            await this.#nodes.attributeCache.update(node);
+        }
+        this.events.nodeStructureChanged.emit(nodeId);
+        for (const endpointId of this.#nodes.drainPendingEndpointAdds(nodeId)) {
+            this.events.nodeEndpointAdded.emit(nodeId, endpointId);
+        }
     }
 
     /**
@@ -573,6 +601,17 @@ export class ControllerCommandHandler {
     }
 
     /**
+     * Await the node's attribute cache being populated so a direct read returns a complete snapshot
+     * rather than the empty-then-node_updated sequence the lazy fallback in getNodeDetails produces.
+     */
+    async ensureNodePopulated(nodeId: NodeId): Promise<void> {
+        const node = this.#nodes.get(nodeId);
+        if (node.initialized && !this.#nodes.attributeCache.has(nodeId)) {
+            await this.#nodes.attributeCache.add(node);
+        }
+    }
+
+    /**
      * Get full node details in WebSocket API format.
      * @param nodeId The node ID
      * @param lastInterviewDate Optional last interview date (tracked externally)
@@ -583,9 +622,23 @@ export class ControllerCommandHandler {
 
         let isBridge = false;
 
-        // Ensure the cache is populated if node is initialized but cache doesn't exist yet
-        if (!attributeCache.has(nodeId)) {
-            attributeCache.add(node);
+        // Ensure the cache is populated if node is initialized but cache doesn't exist yet.
+        // Populate runs asynchronously, so this call returns an empty snapshot; emit node_updated once
+        // it completes so the requester receives the populated data. The #pendingLazyPopulate guard
+        // registers the emit only once per populate, so concurrent reads don't fan out duplicate
+        // node_updated broadcasts. has() in the callback avoids a loop for an uninitialized node whose
+        // populate never fills the cache.
+        if (!attributeCache.has(nodeId) && !this.#pendingLazyPopulate.has(nodeId)) {
+            this.#pendingLazyPopulate.add(nodeId);
+            attributeCache
+                .add(node)
+                .then(() => {
+                    if (attributeCache.has(nodeId)) {
+                        this.events.nodeStructureChanged.emit(nodeId);
+                    }
+                })
+                .catch(error => logger.warn(`Failed to populate cache for node ${this.formatNode(nodeId)}:`, error))
+                .finally(() => this.#pendingLazyPopulate.delete(nodeId));
         }
 
         // Get cached attributes (empty object if node not yet initialized)
@@ -1174,6 +1227,8 @@ export class ControllerCommandHandler {
     #cleanupNodeAfterRemoval(nodeId: NodeId) {
         this.#reconnectTimers.get(nodeId)?.stop();
         this.#reconnectTimers.delete(nodeId);
+        this.#basicInfoChangedInBatch.delete(nodeId);
+        this.#pendingLazyPopulate.delete(nodeId);
         this.#nodes.delete(nodeId);
         this.#customClusterPoller.unregisterNode(this.#peerOf(nodeId));
         this.#availableUpdates.delete(nodeId);
@@ -1245,8 +1300,8 @@ export class ControllerCommandHandler {
     async setAclEntry(nodeId: NodeId, entries: AccessControlEntry[]): Promise<AttributeWriteResult[] | null> {
         const fabricIndex = this.#currentFabricIndex(nodeId);
         const aclEntries: AccessControl.AccessControlEntry[] = entries.map(entry => ({
-            privilege: entry.privilege as AccessControl.AccessControlEntryPrivilege,
-            authMode: entry.auth_mode as AccessControl.AccessControlEntryAuthMode,
+            privilege: entry.privilege,
+            authMode: entry.auth_mode,
             subjects: entry.subjects?.map(s => NodeId(BigInt(s))) ?? null,
             targets:
                 entry.targets?.map((t: AccessControlTarget) => ({

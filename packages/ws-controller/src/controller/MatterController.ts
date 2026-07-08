@@ -23,11 +23,11 @@ import {
 import { VendorInfo, DclCertificateService, DclVendorInfoService } from "@matter/main/protocol";
 import { VendorId } from "@matter/main/types";
 import { Endpoint } from "@matter/node";
+import { WebRtcTransportRequestorServer } from "@matter/node/behaviors/web-rtc-transport-requestor";
 import { CameraControllerDevice } from "@matter/node/devices/camera-controller";
 import { CommissioningController } from "@project-chip/matter.js";
 import { Readable } from "node:stream";
 import { ConfigStorage } from "../server/ConfigStorage.js";
-import { WebRtcTransportRequestorServer } from "./behaviors/WebRtcTransportRequestorServer.js";
 import { BorderRouterDiscovery } from "./BorderRouterDiscovery.js";
 import { ControllerCommandHandler } from "./ControllerCommandHandler.js";
 import { LegacyDataInjector, LegacyServerData } from "./LegacyDataInjector.js";
@@ -201,23 +201,40 @@ export class MatterController {
     ) {
         this.#legacyCommissionedDates = legacyCommissionedDates?.size ? legacyCommissionedDates : undefined;
 
+        // Mimic Dcl configuration from DCL Behavior override settings
+        const dclConfig = this.#env.vars.has("dcl.productionurl")
+            ? { url: this.#env.vars.string("dcl.productionurl") }
+            : undefined;
+        const testDclConfig = this.#env.vars.has("dcl.testurl")
+            ? { url: this.#env.vars.string("dcl.testurl") }
+            : undefined;
+        const fetchTestCertificates = this.#env.vars.get("dcl.fetchtestcertificates", true);
+        const fetchGithubCertificates = this.#env.vars.get("dcl.fetchgithubcertificates", true);
+
         // Register DCL services on the root environment; DclBehavior picks them up.
         // When seeding is enabled (default), pre-populate from the bundled offline snapshot so
         // commissioning works without internet access.
         //
-        // Test PAA roots/CD signers are always loaded (fetchTestCertificates). Trust is gated
-        // separately via acceptTestCertificates: a test device is only commissioned when
-        // enableTestNetDcl is set; otherwise the attestation validator reports TrustedAsTestCertificate
-        // and onAttestationFailure rejects with an actionable hint instead of an opaque PaaNotTrusted.
+        // Test PAA roots/CD signers are always loaded (fetchTestCertificates, unless turned off by ENV
+        // variables). Trust is gated separately via acceptTestCertificates: a test device is only
+        // commissioned when enableTestNetDcl is set; otherwise the attestation validator reports
+        // TrustedAsTestCertificate and onAttestationFailure rejects with an actionable hint instead of
+        // an opaque PaaNotTrusted.
         const trustTestCertificates = this.#enableTestNetDcl;
         if (this.#disableDclSeed) {
             new DclCertificateService(this.#env.root, {
-                fetchTestCertificates: true,
+                dclConfig,
+                testDclConfig,
+                fetchTestCertificates,
+                fetchGithubCertificates,
                 acceptTestCertificates: trustTestCertificates,
             });
         } else {
             new DclCertificateService(this.#env.root, {
-                fetchTestCertificates: true,
+                dclConfig,
+                testDclConfig,
+                fetchTestCertificates,
+                fetchGithubCertificates,
                 acceptTestCertificates: trustTestCertificates,
                 seed: {
                     paaRoots: paaRoots({ includeTest: true }),
@@ -225,6 +242,7 @@ export class MatterController {
                 },
             });
             new DclVendorInfoService(this.#env.root, {
+                dclConfig,
                 seed: { vendors: vendors({ includeTest: trustTestCertificates }) },
             });
             this.#services.get(DclVendorInfoService);
