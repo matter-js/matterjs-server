@@ -136,8 +136,10 @@ describe("WebSocketConnection", () => {
             socket.flushOne(new Error("socket write failed"));
 
             // A send error means the socket is dead: drop the queued closures now instead of pinning
-            // them until the (possibly never-arriving) close event, and send nothing more.
+            // them until a close event, terminate to force that close event (so the handler removes
+            // the connection), and send nothing more.
             expect(conn.outboxSize).to.equal(0);
+            expect(socket.terminated).to.equal(true);
             const before = socket.sent.length;
             conn.sendReliable("late");
             expect(socket.sent.length).to.equal(before);

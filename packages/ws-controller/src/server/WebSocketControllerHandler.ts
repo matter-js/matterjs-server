@@ -311,10 +311,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 if (this.#closed || this.#shuttingDown || !listening) return;
                 const { endpointId, clusterId, attributeId } = data.path;
                 const pathStr = `${endpointId}/${clusterId}/${attributeId}`;
-                // Snapshot the raw value now: `data` is owned by the emitter and must not be read
-                // after this tick. Coalesce latest-wins per (node, path) — a superseded value is
-                // worthless — and defer only the (heavier) conversion so a coalesced-away value is
-                // never converted.
+                // `data` is emitter-owned; snapshot the value before deferring. Coalesce latest-wins
+                // per (node, path) and convert lazily so a superseded value is never converted.
                 const rawValue = data.value;
                 connection.sendCoalescable(`attr:${nodeId}/${pathStr}`, () => {
                     const clusterData = ClusterMap[clusterId];

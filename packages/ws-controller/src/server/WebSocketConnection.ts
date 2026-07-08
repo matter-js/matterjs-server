@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Duration, Logger, Millis, Time, Timer } from "@matter/main";
+import { Duration, Logger, Minutes, Time, Timer } from "@matter/main";
 
 const logger = Logger.get("WebSocketConnection");
 
@@ -19,7 +19,6 @@ export interface OutboundSocket {
 
 export type SendMode = "direct" | "queued";
 
-/** `ws` readyState for an open socket. */
 const OPEN = 1;
 
 export interface WebSocketConnectionOptions {
@@ -45,7 +44,7 @@ interface OutboxEntry {
 const DEFAULT_HIGH_WATER = 1_048_576;
 const DEFAULT_CAP_BASE = 1000;
 const DEFAULT_CAP_PER_NODE = 20;
-const DEFAULT_WATCHDOG = Millis(300_000);
+const DEFAULT_WATCHDOG = Minutes(5);
 
 /**
  * Per-connection adaptive send path with backpressure (docs/plans/ws-backpressure.md).
@@ -155,6 +154,10 @@ export class WebSocketConnection {
         this.#drain();
     }
 
+    // Only ordered (event) entries are droppable. Coalescable entries are self-bounding: one per
+    // distinct key, and keys map to the finite Matter data model (attribute paths / node ids / Thread
+    // networks), so their count cannot grow without bound. A connection stuck long enough for even
+    // that finite set to matter is caught by the watchdog.
     #enforceCap(): void {
         const cap = Math.max(this.#capBase, this.#getNodeCount() * this.#capPerNode);
         if (this.#outbox.size <= cap) return;
@@ -204,9 +207,11 @@ export class WebSocketConnection {
         this.#watchdogTimer.stop();
         if (this.#disposed) return;
         if (err !== undefined) {
-            // A send error means the socket is dead. Release the queued closures now rather than
-            // pinning them until the close event; the handler's own close cleanup is idempotent.
+            // A send error means the socket is dead. Dispose to release the queued closures, then
+            // terminate to force the close event the handler needs to drop this connection — a
+            // graceful close may never complete on an already-broken socket.
             this.dispose();
+            this.#ws.terminate();
             return;
         }
         this.#drain();
