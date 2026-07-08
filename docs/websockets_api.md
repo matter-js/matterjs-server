@@ -8,14 +8,14 @@ On connection, the server immediately sends a `server_info` message with fabric 
 
 ```json
 {
-    "fabric_id": 1234567890,
-    "compressed_fabric_id": 9876543210,
-    "schema_version": 11,
-    "min_supported_schema_version": 11,
-    "sdk_version": "matter.js/0.11.0",
-    "wifi_credentials_set": true,
-    "thread_credentials_set": false,
-    "bluetooth_enabled": true
+  "fabric_id": 1234567890,
+  "compressed_fabric_id": 9876543210,
+  "schema_version": 12,
+  "min_supported_schema_version": 11,
+  "sdk_version": "matter-server/1.1.7 (matter.js/0.17.5-alpha)",
+  "wifi_credentials_set": true,
+  "thread_credentials_set": false,
+  "bluetooth_enabled": true
 }
 ```
 
@@ -32,7 +32,6 @@ All commands follow this request format:
 ```
 
 Successful responses:
-
 ```json
 {
   "message_id": "unique-id",
@@ -41,12 +40,11 @@ Successful responses:
 ```
 
 Error responses:
-
 ```json
 {
-    "message_id": "unique-id",
-    "error_code": 0,
-    "details": "Error description"
+  "message_id": "unique-id",
+  "error_code": 0,
+  "details": "Error description"
 }
 ```
 
@@ -58,8 +56,8 @@ Error responses:
 
 ```json
 {
-    "message_id": "1",
-    "command": "server_info"
+  "message_id": "1",
+  "command": "server_info"
 }
 ```
 
@@ -67,55 +65,53 @@ Error responses:
 
 ```json
 {
-    "message_id": "1",
-    "command": "diagnostics"
+  "message_id": "1",
+  "command": "diagnostics"
 }
 ```
 
-**get_loglevel** - Get current log levels _(Matter.js only)_
+**get_loglevel** - Get current log levels *(Matter.js only)*
 
 Returns the current log level for console output and optionally for file logging (if configured). This command is not available in the Python Matter Server.
 
 ```json
 {
-    "message_id": "1",
-    "command": "get_loglevel"
+  "message_id": "1",
+  "command": "get_loglevel"
 }
 ```
 
 Response:
-
 ```json
 {
-    "message_id": "1",
-    "result": {
-        "console_loglevel": "info",
-        "file_loglevel": "debug"
-    }
+  "message_id": "1",
+  "result": {
+    "console_loglevel": "info",
+    "file_loglevel": "debug"
+  }
 }
 ```
 
 Note: `file_loglevel` is `null` if file logging is not configured.
 
-**set_loglevel** - Set log levels temporarily _(Matter.js only)_
+**set_loglevel** - Set log levels temporarily *(Matter.js only)*
 
 Change the log level for console and/or file logging. Changes are temporary and will be reset on the next server restart. This command is not available in the Python Matter Server.
 
 ```json
 {
-    "message_id": "1",
-    "command": "set_loglevel",
-    "args": {
-        "console_loglevel": "debug",
-        "file_loglevel": "info"
-    }
+  "message_id": "1",
+  "command": "set_loglevel",
+  "args": {
+    "console_loglevel": "debug",
+    "file_loglevel": "info"
+  }
 }
 ```
 
 Both arguments are optional - only provide the ones you want to change.
 
 Log levels (from least to most verbose):
-
 - `critical` - Only fatal errors
 - `error` - Errors
 - `warning` - Warnings and errors
@@ -126,14 +122,13 @@ Log levels (from least to most verbose):
 `set_loglevel` also accepts the matter.js aliases `fatal` (= `critical`) and `warn` (= `warning`).
 
 Response returns the current levels after the change:
-
 ```json
 {
-    "message_id": "1",
-    "result": {
-        "console_loglevel": "debug",
-        "file_loglevel": "info"
-    }
+  "message_id": "1",
+  "result": {
+    "console_loglevel": "debug",
+    "file_loglevel": "info"
+  }
 }
 ```
 
@@ -145,8 +140,8 @@ When the `start_listening` command is issued, the server returns all existing no
 
 ```json
 {
-    "message_id": "1",
-    "command": "start_listening"
+  "message_id": "1",
+  "command": "start_listening"
 }
 ```
 
@@ -154,11 +149,11 @@ When the `start_listening` command is issued, the server returns all existing no
 
 ```json
 {
-    "message_id": "1",
-    "command": "get_nodes",
-    "args": {
-        "only_available": false
-    }
+  "message_id": "1",
+  "command": "get_nodes",
+  "args": {
+    "only_available": false
+  }
 }
 ```
 
@@ -166,11 +161,11 @@ When the `start_listening` command is issued, the server returns all existing no
 
 ```json
 {
-    "message_id": "1",
-    "command": "get_node",
-    "args": {
-        "node_id": 1
-    }
+  "message_id": "1",
+  "command": "get_node",
+  "args": {
+    "node_id": 1
+  }
 }
 ```
 
@@ -178,51 +173,89 @@ When the `start_listening` command is issued, the server returns all existing no
 
 ```json
 {
-    "message_id": "1",
-    "command": "discover"
+  "message_id": "1",
+  "command": "discover"
 }
 ```
 
 ### Credentials
 
+WiFi and Thread credentials are stored as **named lists** (schema 12). Each entry has an `id`; the
+reserved `default` entry is what pre-12 callers use when they omit `id`, so older clients keep
+working unchanged. Storing multiple networks lets commissioning pick which one to use (see
+`commission_with_code`), and — for Thread — lets the server query diagnostics from any Border Router
+whose network you hold credentials for.
+
+Secrets are **write-only**: they are stored but never returned. `get_all_credentials` returns only
+summaries. On `set_*`, a value is required; a WiFi password may be omitted **only** to keep the
+already-stored secret for an **unchanged** SSID (re-saving an entry without resending the password).
+A blank password on a new/changed SSID, or an empty Thread dataset, is rejected. To clear an entry —
+including the reserved `default`, which cannot be deleted from the list — use `remove_wifi_credentials`
+/ `remove_thread_dataset` (this zeroes both the SSID and the secret).
+
 **set_wifi_credentials** - Set WiFi credentials for commissioning
 
 Inform the controller about the WiFi credentials it needs to send when commissioning a new device.
+Pass an optional `id` to address a named entry (omit for the `default` entry).
 
 ```json
 {
-    "message_id": "1",
-    "command": "set_wifi_credentials",
-    "args": {
-        "ssid": "wifi-name-here",
-        "credentials": "wifi-password-here"
-    }
+  "message_id": "1",
+  "command": "set_wifi_credentials",
+  "args": {
+    "ssid": "wifi-name-here",
+    "credentials": "wifi-password-here",
+    "id": "Guest"
+  }
 }
 ```
 
 **set_thread_dataset** - Set Thread credentials for commissioning
 
 Inform the controller about the Thread credentials it needs to use when commissioning a new device.
+The dataset must be a non-empty hex-encoded operational dataset. Pass an optional `id` for a named
+entry. A dataset carrying `pskc` + `networkKey` additionally enables **MeshCoP diagnostics** for that
+Thread network (see Thread Network Diagnostics below).
 
 ```json
 {
-    "message_id": "1",
-    "command": "set_thread_dataset",
-    "args": {
-        "dataset": "hex-encoded-operational-dataset"
-    }
+  "message_id": "1",
+  "command": "set_thread_dataset",
+  "args": {
+    "dataset": "hex-encoded-operational-dataset",
+    "id": "MyThreadNet"
+  }
 }
+```
+
+**get_all_credentials** - List stored credential summaries (schema 12)
+
+Returns `{ wifi: [{ id, ssid }], thread: [{ id, networkName, extPanId }] }` — summaries only, never
+secrets. The `default` entry is always present (treat it as unset unless `server_info`'s
+`wifi_credentials_set` / `thread_credentials_set` is true).
+
+```json
+{ "message_id": "1", "command": "get_all_credentials" }
+```
+
+**remove_wifi_credentials** / **remove_thread_dataset** - Clear a stored entry (schema 12 for a named `id`)
+
+Removes a named entry, or clears the reserved `default` (zeroing its SSID + secret). Omit `id` for the
+`default` entry.
+
+```json
+{ "message_id": "1", "command": "remove_thread_dataset", "args": { "id": "MyThreadNet" } }
 ```
 
 **set_default_fabric_label** - Set the default fabric label
 
 ```json
 {
-    "message_id": "1",
-    "command": "set_default_fabric_label",
-    "args": {
-        "label": "Home"
-    }
+  "message_id": "1",
+  "command": "set_default_fabric_label",
+  "args": {
+    "label": "Home"
+  }
 }
 ```
 
@@ -235,27 +268,25 @@ For WiFi or Thread based devices, the credentials need to be set upfront, otherw
 The controller will use Bluetooth for commissioning wireless devices. If Bluetooth is not available, commissioning will only work for devices already on the network (set `network_only: true`).
 
 Using QR code:
-
 ```json
 {
-    "message_id": "1",
-    "command": "commission_with_code",
-    "args": {
-        "code": "MT:Y.ABCDEFG123456789"
-    }
+  "message_id": "1",
+  "command": "commission_with_code",
+  "args": {
+    "code": "MT:Y.ABCDEFG123456789"
+  }
 }
 ```
 
 Using manual pairing code (network only):
-
 ```json
 {
-    "message_id": "1",
-    "command": "commission_with_code",
-    "args": {
-        "code": "35325335079",
-        "network_only": true
-    }
+  "message_id": "1",
+  "command": "commission_with_code",
+  "args": {
+    "code": "35325335079",
+    "network_only": true
+  }
 }
 ```
 
@@ -265,19 +296,18 @@ Commission using setup PIN code with optional filtering by discriminator or vend
 
 ```json
 {
-    "message_id": "1",
-    "command": "commission_on_network",
-    "args": {
-        "setup_pin_code": 20202021,
-        "filter_type": 2,
-        "filter": 3840,
-        "ip_addr": "192.168.1.100"
-    }
+  "message_id": "1",
+  "command": "commission_on_network",
+  "args": {
+    "setup_pin_code": 20202021,
+    "filter_type": 2,
+    "filter": 3840,
+    "ip_addr": "192.168.1.100"
+  }
 }
 ```
 
 Filter types:
-
 - `0` - No filter (discover any)
 - `1` - Short discriminator
 - `2` - Long discriminator
@@ -289,27 +319,77 @@ Open a commissioning window to allow another controller to commission a device a
 
 ```json
 {
-    "message_id": "1",
-    "command": "open_commissioning_window",
-    "args": {
-        "node_id": 1,
-        "timeout": 300
-    }
+  "message_id": "1",
+  "command": "open_commissioning_window",
+  "args": {
+    "node_id": 1,
+    "timeout": 300
+  }
 }
 ```
 
 Response includes pairing codes:
+```json
+{
+  "message_id": "1",
+  "result": {
+    "setup_pin_code": 12345678,
+    "setup_manual_code": "35325335079",
+    "setup_qr_code": "MT:Y.ABCDEFG123456789"
+  }
+}
+```
+
+### Thread Network Diagnostics
+
+Read-only diagnostics for the Thread networks around the controller (schema 12). This is separate
+from Matter-over-Thread commissioning and can be turned off entirely with `--disable-thread-diagnostics`
+(env `DISABLE_THREAD_DIAGNOSTICS`) without affecting commissioning.
+
+**How it works**
+
+- The server passively discovers Thread **Border Routers** via mDNS (`_meshcop._udp`) and lists them
+  with `get_thread_border_routers` — no credentials required.
+- To collect per-node **diagnostics** for a network, the server needs a way in:
+  - **MeshCoP (CoAP/DTLS)** — used when you've stored a Thread dataset carrying `pskc` + `networkKey`
+    for that network (via `set_thread_dataset`). Stored datasets are registered at startup and
+    whenever you set them.
+  - **OTBR REST** — used automatically when a discovered Border Router exposes the OpenThread REST API.
+  - When both are available the server prefers MeshCoP (CoAP) — it is much faster than the REST
+    collection path. A network with neither yields a partial result with reason `no_credentials`.
+- **First query is slow, then cached.** Diagnostics are collected over a streaming window (about
+  20 seconds): a first partial batch resolves after ~5 s and more nodes fill in until the window
+  closes (~20 s). So when a client opens the Thread panel for the first time in a session, expect the
+  mesh to **populate progressively over ~20 s**, arriving via `thread_diagnostics_updated` events.
+  Results are then **cached (~1 h)** and returned instantly on subsequent queries; pass `force: true`
+  to bypass the cache and re-collect.
+
+**get_thread_border_routers** - List discovered Thread Border Routers (passive, no credentials)
+
+```json
+{ "message_id": "1", "command": "get_thread_border_routers" }
+```
+
+**get_thread_diagnostics** - Fetch per-Thread-network diagnostics
+
+- With `ext_pan_id`: awaits a collection and returns the batch, or `null` when nothing is cached /
+  diagnostics are disabled.
+- Without `ext_pan_id`: returns the **current cache** for all known networks (an array, possibly empty)
+  **immediately**, and kicks off a background refresh whose fresh batches arrive via the
+  `thread_diagnostics_updated` event. Use the `ext_pan_id` form when you need synchronously-fresh data
+  for one network.
+- `force: true` bypasses the cache and re-collects.
 
 ```json
 {
-    "message_id": "1",
-    "result": {
-        "setup_pin_code": 12345678,
-        "setup_manual_code": "35325335079",
-        "setup_qr_code": "MT:Y.ABCDEFG123456789"
-    }
+  "message_id": "1",
+  "command": "get_thread_diagnostics",
+  "args": { "ext_pan_id": "1122334455667788", "force": false }
 }
 ```
+
+Issuing either Thread command opts the connection in to `thread_diagnostics_updated` events (see
+Events); a client that never queries Thread data never receives them.
 
 ### Attribute Operations
 
@@ -318,41 +398,38 @@ Response includes pairing codes:
 Read one or more attributes using path format `endpoint/cluster/attribute`. Supports wildcards using `*`.
 
 Single attribute:
-
 ```json
 {
-    "message_id": "1",
-    "command": "read_attribute",
-    "args": {
-        "node_id": 1,
-        "attribute_path": "1/6/0"
-    }
+  "message_id": "1",
+  "command": "read_attribute",
+  "args": {
+    "node_id": 1,
+    "attribute_path": "1/6/0"
+  }
 }
 ```
 
 Multiple attributes:
-
 ```json
 {
-    "message_id": "1",
-    "command": "read_attribute",
-    "args": {
-        "node_id": 1,
-        "attribute_path": ["1/6/0", "1/6/16384", "0/40/1"]
-    }
+  "message_id": "1",
+  "command": "read_attribute",
+  "args": {
+    "node_id": 1,
+    "attribute_path": ["1/6/0", "1/6/16384", "0/40/1"]
+  }
 }
 ```
 
 Wildcard (all attributes from OnOff cluster):
-
 ```json
 {
-    "message_id": "1",
-    "command": "read_attribute",
-    "args": {
-        "node_id": 1,
-        "attribute_path": "1/6/*"
-    }
+  "message_id": "1",
+  "command": "read_attribute",
+  "args": {
+    "node_id": 1,
+    "attribute_path": "1/6/*"
+  }
 }
 ```
 
@@ -360,13 +437,13 @@ Wildcard (all attributes from OnOff cluster):
 
 ```json
 {
-    "message_id": "1",
-    "command": "write_attribute",
-    "args": {
-        "node_id": 1,
-        "attribute_path": "1/6/16385",
-        "value": 10
-    }
+  "message_id": "1",
+  "command": "write_attribute",
+  "args": {
+    "node_id": 1,
+    "attribute_path": "1/6/16385",
+    "value": 10
+  }
 }
 ```
 
@@ -376,39 +453,37 @@ Wildcard (all attributes from OnOff cluster):
 
 ```json
 {
-    "message_id": "1",
-    "command": "device_command",
-    "args": {
-        "node_id": 1,
-        "endpoint_id": 1,
-        "cluster_id": 6,
-        "command_name": "on",
-        "payload": {}
-    }
+  "message_id": "1",
+  "command": "device_command",
+  "args": {
+    "node_id": 1,
+    "endpoint_id": 1,
+    "cluster_id": 6,
+    "command_name": "on",
+    "payload": {}
+  }
 }
 ```
 
 Command with parameters (e.g., move to level):
-
 ```json
 {
-    "message_id": "1",
-    "command": "device_command",
-    "args": {
-        "node_id": 1,
-        "endpoint_id": 1,
-        "cluster_id": 8,
-        "command_name": "moveToLevelWithOnOff",
-        "payload": {
-            "level": 128,
-            "transitionTime": 10
-        }
+  "message_id": "1",
+  "command": "device_command",
+  "args": {
+    "node_id": 1,
+    "endpoint_id": 1,
+    "cluster_id": 8,
+    "command_name": "moveToLevelWithOnOff",
+    "payload": {
+      "level": 128,
+      "transitionTime": 10
     }
+  }
 }
 ```
 
 Optional parameters:
-
 - `response_type`: Client SDK type hint (currently ignored by the server)
 - `timed_request_timeout_ms`: Timeout for timed interactions (required for some commands like door lock)
 
@@ -418,11 +493,11 @@ Optional parameters:
 
 ```json
 {
-    "message_id": "1",
-    "command": "interview_node",
-    "args": {
-        "node_id": 1
-    }
+  "message_id": "1",
+  "command": "interview_node",
+  "args": {
+    "node_id": 1
+  }
 }
 ```
 
@@ -430,12 +505,12 @@ Optional parameters:
 
 ```json
 {
-    "message_id": "1",
-    "command": "ping_node",
-    "args": {
-        "node_id": 1,
-        "attempts": 3
-    }
+  "message_id": "1",
+  "command": "ping_node",
+  "args": {
+    "node_id": 1,
+    "attempts": 3
+  }
 }
 ```
 
@@ -443,13 +518,13 @@ Optional parameters:
 
 ```json
 {
-    "message_id": "1",
-    "command": "get_node_ip_addresses",
-    "args": {
-        "node_id": 1,
-        "prefer_cache": false,
-        "scoped": false
-    }
+  "message_id": "1",
+  "command": "get_node_ip_addresses",
+  "args": {
+    "node_id": 1,
+    "prefer_cache": false,
+    "scoped": false
+  }
 }
 ```
 
@@ -457,11 +532,11 @@ Optional parameters:
 
 ```json
 {
-    "message_id": "1",
-    "command": "remove_node",
-    "args": {
-        "node_id": 1
-    }
+  "message_id": "1",
+  "command": "remove_node",
+  "args": {
+    "node_id": 1
+  }
 }
 ```
 
@@ -471,11 +546,11 @@ Optional parameters:
 
 ```json
 {
-    "message_id": "1",
-    "command": "get_matter_fabrics",
-    "args": {
-        "node_id": 1
-    }
+  "message_id": "1",
+  "command": "get_matter_fabrics",
+  "args": {
+    "node_id": 1
+  }
 }
 ```
 
@@ -483,12 +558,12 @@ Optional parameters:
 
 ```json
 {
-    "message_id": "1",
-    "command": "remove_matter_fabric",
-    "args": {
-        "node_id": 1,
-        "fabric_index": 2
-    }
+  "message_id": "1",
+  "command": "remove_matter_fabric",
+  "args": {
+    "node_id": 1,
+    "fabric_index": 2
+  }
 }
 ```
 
@@ -500,24 +575,23 @@ Replaces the ACL entries for the controller's fabric on the target node. The ser
 
 ```json
 {
-    "message_id": "1",
-    "command": "set_acl_entry",
-    "args": {
-        "node_id": 1,
-        "entry": [
-            {
-                "privilege": 5,
-                "auth_mode": 2,
-                "subjects": [112233],
-                "targets": null
-            }
-        ]
-    }
+  "message_id": "1",
+  "command": "set_acl_entry",
+  "args": {
+    "node_id": 1,
+    "entry": [
+      {
+        "privilege": 5,
+        "auth_mode": 2,
+        "subjects": [112233],
+        "targets": null
+      }
+    ]
+  }
 }
 ```
 
 Entry fields:
-
 - `privilege`: 1=View, 3=Operate, 4=Manage, 5=Administer
 - `auth_mode`: 1=PASE, 2=CASE, 3=Group
 - `subjects`: Array of NodeIds or GroupIds (or null)
@@ -527,19 +601,19 @@ Entry fields:
 
 ```json
 {
-    "message_id": "1",
-    "command": "set_node_binding",
-    "args": {
-        "node_id": 1,
+  "message_id": "1",
+  "command": "set_node_binding",
+  "args": {
+    "node_id": 1,
+    "endpoint": 1,
+    "bindings": [
+      {
+        "node": 2,
         "endpoint": 1,
-        "bindings": [
-            {
-                "node": 2,
-                "endpoint": 1,
-                "cluster": 6
-            }
-        ]
-    }
+        "cluster": 6
+      }
+    ]
+  }
 }
 ```
 
@@ -549,11 +623,11 @@ Entry fields:
 
 ```json
 {
-    "message_id": "1",
-    "command": "check_node_update",
-    "args": {
-        "node_id": 1
-    }
+  "message_id": "1",
+  "command": "check_node_update",
+  "args": {
+    "node_id": 1
+  }
 }
 ```
 
@@ -561,12 +635,12 @@ Entry fields:
 
 ```json
 {
-    "message_id": "1",
-    "command": "update_node",
-    "args": {
-        "node_id": 1,
-        "software_version": 2
-    }
+  "message_id": "1",
+  "command": "update_node",
+  "args": {
+    "node_id": 1,
+    "software_version": 2
+  }
 }
 ```
 
@@ -579,11 +653,11 @@ Read the details about ICD devices and consequences of changing the ICD mode car
 
 ```json
 {
-    "message_id": "1",
-    "command": "get_icd_state",
-    "args": {
-        "node_id": 1
-    }
+  "message_id": "1",
+  "command": "get_icd_state",
+  "args": {
+    "node_id": 1
+  }
 }
 ```
 
@@ -591,13 +665,13 @@ Response (`IcdStateData`):
 
 ```json
 {
-    "supported": true,
-    "lit_supported": true,
-    "registered": true,
-    "operating_mode": "LIT",
-    "awake": false,
-    "available": true,
-    "next_expected_checkin": 1735689600000
+  "supported": true,
+  "lit_supported": true,
+  "registered": true,
+  "operating_mode": "LIT",
+  "awake": false,
+  "available": true,
+  "next_expected_checkin": 1735689600000
 }
 ```
 
@@ -607,13 +681,13 @@ If the node has no ICD Management cluster, `supported` is `false` and all other 
 
 ```json
 {
-    "message_id": "1",
-    "command": "register_icd",
-    "args": {
-        "node_id": 1,
-        "allow_multi_admin": false,
-        "ignored_vendors": [4874]
-    }
+  "message_id": "1",
+  "command": "register_icd",
+  "args": {
+    "node_id": 1,
+    "allow_multi_admin": false,
+    "ignored_vendors": [4874]
+  }
 }
 ```
 
@@ -627,12 +701,12 @@ If other ecosystems are still registered the device might stay in the LIT mode, 
 
 ```json
 {
-    "message_id": "1",
-    "command": "unregister_icd",
-    "args": {
-        "node_id": 1,
-        "force": false
-    }
+  "message_id": "1",
+  "command": "unregister_icd",
+  "args": {
+    "node_id": 1,
+    "force": false
+  }
 }
 ```
 
@@ -644,11 +718,11 @@ This should be the last resort to try to get an ICD device in LIT mode connected
 
 ```json
 {
-    "message_id": "1",
-    "command": "resync_icd",
-    "args": {
-        "node_id": 1
-    }
+  "message_id": "1",
+  "command": "resync_icd",
+  "args": {
+    "node_id": 1
+  }
 }
 ```
 
@@ -660,11 +734,11 @@ A LIT peer re-registers automatically once subscribed.
 
 ```json
 {
-    "message_id": "1",
-    "command": "get_vendor_names",
-    "args": {
-        "filter_vendors": [4874, 65521]
-    }
+  "message_id": "1",
+  "command": "get_vendor_names",
+  "args": {
+    "filter_vendors": [4874, 65521]
+  }
 }
 ```
 
@@ -676,11 +750,11 @@ Import nodes from Home Assistant diagnostic dumps for testing purposes. Test nod
 
 ```json
 {
-    "message_id": "1",
-    "command": "import_test_node",
-    "args": {
-        "dump": "{\"data\":{\"node\":{...}}}"
-    }
+  "message_id": "1",
+  "command": "import_test_node",
+  "args": {
+    "dump": "{\"data\":{\"node\":{...}}}"
+  }
 }
 ```
 
@@ -728,8 +802,8 @@ Events are sent to clients that have called `start_listening`. Events have this 
 
 ```json
 {
-    "event": "node_removed",
-    "data": 1
+  "event": "node_removed",
+  "data": 1
 }
 ```
 
@@ -739,8 +813,8 @@ Events are sent to clients that have called `start_listening`. Events have this 
 
 ```json
 {
-    "event": "attribute_updated",
-    "data": [1, "1/6/0", true]
+  "event": "attribute_updated",
+  "data": [1, "1/6/0", true]
 }
 ```
 
@@ -752,11 +826,11 @@ Format: `[node_id, "endpoint/cluster/attribute", value]`
 
 ```json
 {
-    "event": "endpoint_added",
-    "data": {
-        "node_id": 1,
-        "endpoint_id": 3
-    }
+  "event": "endpoint_added",
+  "data": {
+    "node_id": 1,
+    "endpoint_id": 3
+  }
 }
 ```
 
@@ -764,11 +838,11 @@ Format: `[node_id, "endpoint/cluster/attribute", value]`
 
 ```json
 {
-    "event": "endpoint_removed",
-    "data": {
-        "node_id": 1,
-        "endpoint_id": 3
-    }
+  "event": "endpoint_removed",
+  "data": {
+    "node_id": 1,
+    "endpoint_id": 3
+  }
 }
 ```
 
@@ -778,18 +852,18 @@ Format: `[node_id, "endpoint/cluster/attribute", value]`
 
 ```json
 {
-    "event": "node_event",
-    "data": {
-        "node_id": 1,
-        "endpoint_id": 1,
-        "cluster_id": 59,
-        "event_id": 1,
-        "event_number": 12345,
-        "priority": 1,
-        "timestamp": 1704067200000,
-        "timestamp_type": 1,
-        "data": { "newPosition": 1 }
-    }
+  "event": "node_event",
+  "data": {
+    "node_id": 1,
+    "endpoint_id": 1,
+    "cluster_id": 59,
+    "event_id": 1,
+    "event_number": 12345,
+    "priority": 1,
+    "timestamp": 1704067200000,
+    "timestamp_type": 1,
+    "data": { "newPosition": 1 }
+  }
 }
 ```
 
@@ -799,17 +873,17 @@ Format: `[node_id, "endpoint/cluster/attribute", value]`
 
 ```json
 {
-    "event": "server_info_updated",
-    "data": {
-        "fabric_id": 1234567890,
-        "compressed_fabric_id": 9876543210,
-        "schema_version": 11,
-        "min_supported_schema_version": 11,
-        "sdk_version": "matter.js/0.11.0",
-        "wifi_credentials_set": true,
-        "thread_credentials_set": true,
-        "bluetooth_enabled": true
-    }
+  "event": "server_info_updated",
+  "data": {
+    "fabric_id": 1234567890,
+    "compressed_fabric_id": 9876543210,
+    "schema_version": 12,
+    "min_supported_schema_version": 11,
+    "sdk_version": "matter-server/1.1.7 (matter.js/0.17.5-alpha)",
+    "wifi_credentials_set": true,
+    "thread_credentials_set": true,
+    "bluetooth_enabled": true
+  }
 }
 ```
 
@@ -817,8 +891,30 @@ Format: `[node_id, "endpoint/cluster/attribute", value]`
 
 ```json
 {
-    "event": "server_shutdown",
-    "data": {}
+  "event": "server_shutdown",
+  "data": {}
+}
+```
+
+**thread_diagnostics_updated** - A Thread network's diagnostics batch changed (schema 12)
+
+Streamed as diagnostics are collected from Border Routers. On first collection for a network the
+batch arrives incomplete and is refined over the ~20 s window (a `partialReason` marks incomplete /
+failed batches; it is absent once complete). **Delivered only to connections that have issued a
+Thread request** (`get_thread_diagnostics` / `get_thread_border_routers`) during their lifetime, so
+older clients that don't understand the event never receive it.
+
+```json
+{
+  "event": "thread_diagnostics_updated",
+  "data": {
+    "extPanIdHex": "1122334455667788",
+    "networkName": "MyThreadNet",
+    "collectedAt": 1730000000000,
+    "source": "meshcop",
+    "nodes": [],
+    "partialReason": "in_progress"
+  }
 }
 ```
 
@@ -832,23 +928,23 @@ Attribute paths use the format: `endpoint/cluster/attribute`
 
 ## Common Cluster IDs
 
-| Cluster                    | ID  | Description         |
-| -------------------------- | --- | ------------------- |
-| Identify                   | 3   | Identify device     |
-| Groups                     | 4   | Group membership    |
-| OnOff                      | 6   | On/Off control      |
-| LevelControl               | 8   | Dimming/level       |
-| Descriptor                 | 29  | Endpoint descriptor |
-| BasicInformation           | 40  | Device information  |
-| OtaSoftwareUpdateRequestor | 42  | OTA updates         |
-| ColorControl               | 768 | Color/temperature   |
-| DoorLock                   | 257 | Door locks          |
-| WindowCovering             | 258 | Blinds/shades       |
-| Thermostat                 | 513 | HVAC control        |
+| Cluster | ID | Description |
+|---------|-----|-------------|
+| Identify | 3 | Identify device |
+| Groups | 4 | Group membership |
+| OnOff | 6 | On/Off control |
+| LevelControl | 8 | Dimming/level |
+| Descriptor | 29 | Endpoint descriptor |
+| BasicInformation | 40 | Device information |
+| OtaSoftwareUpdateRequestor | 42 | OTA updates |
+| ColorControl | 768 | Color/temperature |
+| DoorLock | 257 | Door locks |
+| WindowCovering | 258 | Blinds/shades |
+| Thermostat | 513 | HVAC control |
 
 ## Schema Version
 
-The current schema version is **11**. The server reports `schema_version` and `min_supported_schema_version` in the initial connection message and via `server_info`. Clients should verify that the server's `schema_version` is within their supported range.
+The current schema version is **12** (minimum supported **11**). The server reports `schema_version` and `min_supported_schema_version` in the initial connection message and via `server_info`. Clients should verify that the server's `schema_version` is within their supported range.
 
 ## BigInt Handling
 
@@ -864,21 +960,21 @@ Node IDs and some other fields (e.g., `fabric_id`, `compressed_fabric_id`, `even
 
 Error codes match the [Python Matter Server](https://github.com/home-assistant-libs/python-matter-server) for API compatibility.
 
-| Code | Name                 | Description                                                                                                                                                                                                            |
-| ---- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0    | UnknownError         | Generic/unknown error                                                                                                                                                                                                  |
-| 1    | NodeCommissionFailed | Node commissioning failed                                                                                                                                                                                              |
-| 2    | NodeInterviewFailed  | Node interview failed                                                                                                                                                                                                  |
-| 3    | NodeNotReady         | Node is not ready (offline or not yet interviewed)                                                                                                                                                                     |
-| 4    | NodeNotResolving     | Node not resolving (CASE session establishment failed)                                                                                                                                                                 |
-| 5    | NodeNotExists        | Node does not exist                                                                                                                                                                                                    |
-| 6    | VersionMismatch      | SDK version mismatch                                                                                                                                                                                                   |
-| 7    | SDKStackError        | SDK/Stack error                                                                                                                                                                                                        |
-| 8    | InvalidArguments     | Invalid command arguments                                                                                                                                                                                              |
-| 9    | InvalidCommand       | Invalid/unknown command                                                                                                                                                                                                |
-| 10   | UpdateCheckError     | OTA update check failed                                                                                                                                                                                                |
-| 11   | UpdateError          | OTA update failed                                                                                                                                                                                                      |
-| 100  | IcdMultiAdmin        | OHF extension (not in Python Matter Server). ICD registration rejected because other-vendor administrator fabrics may not support LIT. `details` is a JSON string: `{"message": string, "admin_vendor_ids": number[]}` |
+| Code | Name | Description |
+|------|------|-------------|
+| 0 | UnknownError | Generic/unknown error |
+| 1 | NodeCommissionFailed | Node commissioning failed |
+| 2 | NodeInterviewFailed | Node interview failed |
+| 3 | NodeNotReady | Node is not ready (offline or not yet interviewed) |
+| 4 | NodeNotResolving | Node not resolving (CASE session establishment failed) |
+| 5 | NodeNotExists | Node does not exist |
+| 6 | VersionMismatch | SDK version mismatch |
+| 7 | SDKStackError | SDK/Stack error |
+| 8 | InvalidArguments | Invalid command arguments |
+| 9 | InvalidCommand | Invalid/unknown command |
+| 10 | UpdateCheckError | OTA update check failed |
+| 11 | UpdateError | OTA update failed |
+| 100 | IcdMultiAdmin | OHF extension (not in Python Matter Server). ICD registration rejected because other-vendor administrator fabrics may not support LIT. `details` is a JSON string: `{"message": string, "admin_vendor_ids": number[]}` |
 
 ## Python Matter Server Compatibility
 
@@ -886,29 +982,29 @@ This API is designed to be compatible with the [Python Matter Server](https://gi
 
 ### Stub Commands
 
-| Command               | Status | Notes                                                        |
-| --------------------- | ------ | ------------------------------------------------------------ |
-| `subscribe_attribute` | Stub   | Not implemented (Matter.js handles subscriptions internally) |
+| Command | Status | Notes |
+|---------|--------|-------|
+| `subscribe_attribute` | Stub | Not implemented (Matter.js handles subscriptions internally) |
 
 ### Matter.js-Only Commands
 
 These commands are available only in the Matter.js server and not in the Python Matter Server:
 
-| Command          | Description                                                       |
-| ---------------- | ----------------------------------------------------------------- |
-| `get_loglevel`   | Get current console and file log levels                           |
-| `set_loglevel`   | Temporarily change log levels (resets on restart)                 |
-| `get_icd_state`  | Get ICD Check-In state for a node (experimental)                  |
-| `register_icd`   | Register this controller as an ICD Check-In client (experimental) |
-| `unregister_icd` | Drop this controller's ICD Check-In registration (experimental)   |
-| `resync_icd`     | Drop the local ICD registration and reconnect (experimental)      |
+| Command | Description |
+|---------|-------------|
+| `get_loglevel` | Get current console and file log levels |
+| `set_loglevel` | Temporarily change log levels (resets on restart) |
+| `get_icd_state` | Get ICD Check-In state for a node (experimental) |
+| `register_icd` | Register this controller as an ICD Check-In client (experimental) |
+| `unregister_icd` | Drop this controller's ICD Check-In registration (experimental) |
+| `resync_icd` | Drop the local ICD registration and reconnect (experimental) |
 
 ### Data Differences
 
-| Field                                | Python                        | Matter.js                  |
-| ------------------------------------ | ----------------------------- | -------------------------- |
-| `MatterNode.attribute_subscriptions` | Tracks per-node subscriptions | Always empty array         |
-| Test node IDs                        | `>= 900000`                   | `>= 0xFFFF_FFFE_0000_0000` |
+| Field | Python | Matter.js |
+|-------|--------|-----------|
+| `MatterNode.attribute_subscriptions` | Tracks per-node subscriptions | Always empty array |
+| Test node IDs | `>= 900000` | `>= 0xFFFF_FFFE_0000_0000` |
 
 ### Behavioral Differences
 

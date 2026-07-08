@@ -105,6 +105,8 @@ disable_error_code = ["attr-defined", "arg-type", "return-value", "assignment"]
 module = "tests.*"
 disallow_untyped_defs = false
 disallow_untyped_calls = false
+# Tests replace methods with mocks (e.g. `client.send_command = AsyncMock(...)`).
+disable_error_code = ["method-assign"]
 
 [tool.pylint.MAIN]
 extension-pkg-allow-list = [

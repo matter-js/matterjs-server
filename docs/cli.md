@@ -40,6 +40,7 @@ npm run server -- --bluetooth-adapter 0
 | --ota-provider-dir    | string       | null             | No       | Directory for OTA Provider files                                                                                                  |
 | --disable-dashboard   | boolean flag | false            | No       | Disable the web dashboard                                                                                                         |
 | --production-mode     | boolean flag | false            | No       | Force dashboard production mode (for reverse proxy)                                                                               |
+| --disable-thread-diagnostics | boolean flag | false     | No       | Disable the Thread Network diagnostics feature (Border Router mDNS discovery, REST/CoAP probing and diagnostic queries) — env `DISABLE_THREAD_DIAGNOSTICS`. Matter-over-Thread commissioning is unaffected. |
 
 > **Log rotation:** `--log-file` must be a full file path including the filename. The log is rotated
 > every 24 hours, and on each startup: backups are shifted (`.6`→`.7`, …, `.1`→`.2`, current→`.1`),

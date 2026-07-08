@@ -129,7 +129,7 @@ describe("Integration Test", function () {
 
             expect(info).to.have.property("fabric_id");
             expect(info).to.have.property("compressed_fabric_id");
-            expect(info.schema_version).to.equal(11);
+            expect(info.schema_version).to.equal(12);
             expect(info.min_supported_schema_version).to.equal(11);
             expect(info.sdk_version).to.be.a("string").that.includes("matter-server");
             expect(info.sdk_version).to.be.a("string").that.includes("matter.js");
@@ -172,7 +172,7 @@ describe("Integration Test", function () {
             expect(diag).to.have.property("info");
             expect(diag).to.have.property("nodes");
             expect(diag).to.have.property("events");
-            expect(diag.info.schema_version).to.equal(11);
+            expect(diag.info.schema_version).to.equal(12);
             expect(diag.nodes).to.be.an("array");
             expect(diag.events).to.be.an("array");
         });

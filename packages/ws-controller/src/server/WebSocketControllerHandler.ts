@@ -17,12 +17,12 @@ import {
     NodeId,
     ObserverGroup,
 } from "@matter/main";
-import { ControllerCommissioningFlowOptions } from "@matter/main/protocol";
+import { ControllerCommissioningFlowOptions, OperationalDataset } from "@matter/main/protocol";
 import { EndpointNumber, QrPairingCodeCodec } from "@matter/main/types";
 import { NodeStates } from "@project-chip/matter.js/device";
 import { WebSocketServer } from "ws";
 import { ControllerCommandHandler } from "../controller/ControllerCommandHandler.js";
-import { MatterController } from "../controller/MatterController.js";
+import { MatterController, registerThreadCredentialsFromHex } from "../controller/MatterController.js";
 import { TestNodeCommandHandler } from "../controller/TestNodeCommandHandler.js";
 import { VendorIds } from "../data/VendorIDs.js";
 import { ClusterMap, ClusterMapEntry } from "../model/ModelMapper.js";
@@ -52,6 +52,7 @@ import {
     splitAttributePath,
     toBigIntAwareJson,
 } from "./Converters.js";
+import { serializeBatch } from "./serializeBatch.js";
 
 const logger = Logger.get("WebSocketControllerHandler");
 
@@ -84,11 +85,16 @@ function generateConnectionId(): string {
     return id.toString(16);
 }
 
-const SCHEMA_VERSION = 11;
+const SCHEMA_VERSION = 12;
+const MIN_SUPPORTED_SCHEMA_VERSION = 11;
+
+// Issuing any of these (schema 12) proves the connection is Thread-aware, so it opts the connection
+// in to `thread_diagnostics_updated` — even if the request itself errors. See the schema changelog.
+const THREAD_DIAGNOSTICS_OPT_IN_COMMANDS = new Set(["get_thread_diagnostics", "get_thread_border_routers"]);
 
 const skipMessageContentInLogFor = ["start_listening"];
 
-/** WebSocket Server compatible with Schema version 11 */
+/** WebSocket Server compatible with Schema version 12, minimum supported 11 */
 export class WebSocketControllerHandler implements WebServerHandler {
     #controller: MatterController;
     #commandHandler: ControllerCommandHandler;
@@ -98,7 +104,6 @@ export class WebSocketControllerHandler implements WebServerHandler {
     #wss?: WebSocketServer;
     #closed = false;
     #shuttingDown = false;
-    #serverObservers = new ObserverGroup();
     /** Upgrade listener removers, one per HTTP server `register()` call (multi-bind). */
     #removeUpgradeListeners: (() => void)[] = [];
     /** Circular buffer for recent node events (max 25) */
@@ -193,12 +198,6 @@ export class WebSocketControllerHandler implements WebServerHandler {
             return;
         }
 
-        // WebRTC callbacks fan out to every connected client, so subscribe once at the server
-        // level rather than per-connection.
-        this.#serverObservers.on(this.#commandHandler.events.webRtcCallback, data => {
-            this.#broadcastEvent("webrtc_callback", data);
-        });
-
         wss.on("connection", ws => {
             if (this.#closed || this.#shuttingDown) {
                 try {
@@ -213,6 +212,13 @@ export class WebSocketControllerHandler implements WebServerHandler {
             logger.info(`[${connId}] WebSocket connection established`);
 
             let listening = false;
+            // thread_diagnostics_updated (schema 12) is sent only to connections that have issued a
+            // Thread request, so schema-11 clients (all currently deployed HA installs) never receive an
+            // event type they'd crash on. See the schema changelog.
+            let wantsThreadDiagnostics = false;
+            // webrtc_callback is likewise sent only to a connection that has issued a WebRTC provider
+            // command, so it reaches the client driving that camera session rather than every client.
+            let wantsWebRtc = false;
             const observers = new ObserverGroup();
 
             const sendNodeFullDetails = (eventName: "node_added" | "node_updated", nodeId: NodeId) => {
@@ -409,6 +415,26 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 ws.send(toBigIntAwareJson({ event: "node_removed", data: nodeId }));
             });
 
+            observers.on(this.#controller.threadDiagnostics.events.batchUpdated, batch => {
+                if (this.#closed || this.#shuttingDown || !wantsThreadDiagnostics) return;
+                // batchUpdated is a shared Observable; a throw here would abort emit and starve other
+                // connections' observers, so isolate the serialize/send per connection.
+                try {
+                    ws.send(toBigIntAwareJson({ event: "thread_diagnostics_updated", data: serializeBatch(batch) }));
+                } catch (err) {
+                    logger.error(`[${connId}] Failed to send thread_diagnostics_updated`, err);
+                }
+            });
+
+            observers.on(this.#commandHandler.events.webRtcCallback, data => {
+                if (this.#closed || this.#shuttingDown || !wantsWebRtc) return;
+                try {
+                    ws.send(toBigIntAwareJson({ event: "webrtc_callback", data }));
+                } catch (err) {
+                    logger.error(`[${connId}] Failed to send webrtc_callback`, err);
+                }
+            });
+
             let connectionClosed = false;
             const onClose = () => {
                 if (connectionClosed) {
@@ -424,10 +450,16 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 "message",
                 data =>
                     void this.#handleWebSocketRequest(connId, data.toString()).then(
-                        ({ response, enableListeners }) => {
+                        ({ response, enableListeners, wantsThreadDiagnostics: requested, wantsWebRtc: reqWebRtc }) => {
                             if (this.#closed) return;
                             if (enableListeners) {
                                 listening = true;
+                            }
+                            if (requested) {
+                                wantsThreadDiagnostics = true;
+                            }
+                            if (reqWebRtc) {
+                                wantsWebRtc = true;
                             }
                             ws.send(toBigIntAwareJson(response));
                         },
@@ -461,7 +493,6 @@ export class WebSocketControllerHandler implements WebServerHandler {
         }
 
         this.#closed = true;
-        this.#serverObservers.close();
         for (const remove of this.#removeUpgradeListeners) remove();
         this.#removeUpgradeListeners = [];
         // Send server_shutdown event to all connected clients before closing
@@ -494,7 +525,12 @@ export class WebSocketControllerHandler implements WebServerHandler {
     async #handleWebSocketRequest(
         connId: string,
         data: string,
-    ): Promise<{ response: ErrorResultMessage | SuccessResultMessage; enableListeners?: boolean }> {
+    ): Promise<{
+        response: ErrorResultMessage | SuccessResultMessage;
+        enableListeners?: boolean;
+        wantsThreadDiagnostics?: boolean;
+        wantsWebRtc?: boolean;
+    }> {
         let messageId: string | undefined;
         let command: string | undefined;
         try {
@@ -578,13 +614,19 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     result = await this.#handleSetThreadDataset(args);
                     break;
                 case "remove_wifi_credentials":
-                    result = await this.#handleRemoveWifiCredentials();
+                    result = await this.#handleRemoveWifiCredentials(args);
                     break;
                 case "remove_thread_dataset":
-                    result = await this.#handleRemoveThreadDataset();
+                    result = await this.#handleRemoveThreadDataset(args);
+                    break;
+                case "get_all_credentials":
+                    result = await this.#handleGetAllCredentials();
                     break;
                 case "get_thread_border_routers":
                     result = this.#controller.borderRouters.list();
+                    break;
+                case "get_thread_diagnostics":
+                    result = await this.#handleGetThreadDiagnostics(args);
                     break;
                 case "open_commissioning_window":
                     result = await this.#handleOpenCommissioningWindow(args);
@@ -642,6 +684,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     result,
                 },
                 enableListeners,
+                wantsThreadDiagnostics: command !== undefined && THREAD_DIAGNOSTICS_OPT_IN_COMMANDS.has(command),
+                wantsWebRtc: command === "send_webrtc_provider_command",
             };
         } catch (err) {
             logger.error(`[${connId}] WebSocket error response (${command})`, messageId, err);
@@ -652,6 +696,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     error_code: errorCode,
                     details: (err as Error).message,
                 },
+                wantsThreadDiagnostics: command !== undefined && THREAD_DIAGNOSTICS_OPT_IN_COMMANDS.has(command),
+                wantsWebRtc: command === "send_webrtc_provider_command",
             };
         }
     }
@@ -668,7 +714,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             compressed_fabric_id,
             fabric_index,
             schema_version: SCHEMA_VERSION,
-            min_supported_schema_version: SCHEMA_VERSION,
+            min_supported_schema_version: MIN_SUPPORTED_SCHEMA_VERSION,
             sdk_version: `matter-server/${this.#serverVersion} (matter.js/${MATTER_VERSION})`,
             wifi_credentials_set: !!(this.#config.wifiSsid && this.#config.wifiCredentials),
             wifi_ssid: this.#config.wifiSsid && this.#config.wifiCredentials ? this.#config.wifiSsid : undefined,
@@ -759,22 +805,35 @@ export class WebSocketControllerHandler implements WebServerHandler {
     }
 
     async #handleCommissionWithCode(args: ArgsOf<"commission_with_code">): Promise<ResponseOf<"commission_with_code">> {
-        const { code, network_only } = args;
+        const { code, network_only, wifi_credentials_id, thread_dataset_id } = args;
         const isQrCode = code.startsWith("MT:");
+
+        const wifiId = wifi_credentials_id ?? ConfigStorage.DEFAULT_CREDENTIAL_ID;
+        const threadId = thread_dataset_id ?? ConfigStorage.DEFAULT_CREDENTIAL_ID;
+        const wifiEntry = this.#config.getWifiCredentials(wifiId);
+        const threadEntry = this.#config.getThreadCredentials(threadId);
+        if (wifi_credentials_id !== undefined && wifiEntry === undefined) {
+            throw ServerError.invalidArguments(`Unknown wifi_credentials_id: ${wifiId}`);
+        }
+        if (thread_dataset_id !== undefined && threadEntry === undefined) {
+            throw ServerError.invalidArguments(`Unknown thread_dataset_id: ${threadId}`);
+        }
 
         let wifiCredentials: ControllerCommissioningFlowOptions["wifiNetwork"] | undefined = undefined;
         let threadCredentials: ControllerCommissioningFlowOptions["threadNetwork"] | undefined = undefined;
         if (!network_only && this.#commandHandler.bleEnabled) {
-            if (this.#config.wifiSsid && this.#config.wifiCredentials) {
+            // Only apply a stored credential when its values are actually present —
+            // an empty ssid/password or dataset would otherwise be pushed to the device.
+            if (wifiEntry?.ssid && wifiEntry.credentials) {
                 wifiCredentials = {
-                    wifiSsid: this.#config.wifiSsid,
-                    wifiCredentials: this.#config.wifiCredentials,
+                    wifiSsid: wifiEntry.ssid,
+                    wifiCredentials: wifiEntry.credentials,
                 };
             }
-            if (this.#config.threadDataset) {
+            if (threadEntry?.dataset) {
                 threadCredentials = {
-                    networkName: "", // Thread network name is not needed when providing operational dataset
-                    operationalDataset: this.#config.threadDataset,
+                    networkName: "",
+                    operationalDataset: threadEntry.dataset,
                 };
             }
         }
@@ -1089,22 +1148,96 @@ export class WebSocketControllerHandler implements WebServerHandler {
     }
 
     async #handleSetWifiCredentials(args: ArgsOf<"set_wifi_credentials">): Promise<ResponseOf<"set_wifi_credentials">> {
-        const { ssid, credentials } = args;
-        await this.#config.set({ wifiSsid: ssid, wifiCredentials: credentials });
-        // Broadcast server_info_updated event to notify clients of credential change
+        const { ssid, credentials, id } = args;
         try {
-            await this.#broadcastServerInfoUpdated();
-        } catch (error) {
-            logger.warn("Failed to broadcast server info update", error);
+            await this.#config.setWifiCredentials(id ?? ConfigStorage.DEFAULT_CREDENTIAL_ID, ssid, credentials);
+        } catch (e) {
+            throw ServerError.invalidArguments(e instanceof Error ? e.message : String(e));
         }
+        await this.#safeBroadcastServerInfo();
         return {};
     }
 
     async #handleSetThreadDataset(args: ArgsOf<"set_thread_dataset">): Promise<ResponseOf<"set_thread_dataset">> {
-        const { dataset } = args;
-        if (!/^[0-9a-fA-F]*$/.test(dataset) || dataset.length % 2 !== 0) {
+        const { dataset, id } = args;
+        this.#assertValidDatasetHex(dataset);
+        const credId = id ?? ConfigStorage.DEFAULT_CREDENTIAL_ID;
+        const previousDataset = this.#config.getThreadCredentials(credId)?.dataset;
+        try {
+            await this.#config.setThreadCredentials(credId, dataset);
+        } catch (e) {
+            throw ServerError.invalidArguments(e instanceof Error ? e.message : String(e));
+        }
+        if (this.#controller.threadDiagnosticsEnabled) {
+            registerThreadCredentialsFromHex(this.#controller.credentials, dataset, `set_thread_dataset:${credId}`);
+            this.#unregisterThreadIfUnreferenced(previousDataset);
+        }
+        await this.#safeBroadcastServerInfo();
+        return {};
+    }
+
+    async #handleGetThreadDiagnostics(
+        args: ArgsOf<"get_thread_diagnostics">,
+    ): Promise<ResponseOf<"get_thread_diagnostics">> {
+        if (args?.ext_pan_id === undefined) {
+            this.#controller.threadDiagnostics.refreshAllKnown({ force: args?.force });
+            return this.#controller.threadDiagnostics.listCached().map(serializeBatch);
+        }
+        if (!/^[0-9a-fA-F]{16}$/.test(args.ext_pan_id)) {
+            throw ServerError.invalidArguments(`Invalid ext_pan_id "${args.ext_pan_id}": expected 16 hex characters`);
+        }
+        const batch = await this.#controller.threadDiagnostics.getOrFetch(args.ext_pan_id.toLowerCase(), {
+            force: args.force,
+        });
+        // Explicit null (not undefined) so the "no response" guard doesn't turn "nothing cached /
+        // diagnostics disabled" into a generic sdk_stack_error.
+        return batch === undefined ? null : serializeBatch(batch);
+    }
+
+    async #handleRemoveWifiCredentials(
+        args: ArgsOf<"remove_wifi_credentials">,
+    ): Promise<ResponseOf<"remove_wifi_credentials">> {
+        await this.#config.removeWifiCredentials(args?.id ?? ConfigStorage.DEFAULT_CREDENTIAL_ID);
+        await this.#safeBroadcastServerInfo();
+        return {};
+    }
+
+    async #handleRemoveThreadDataset(
+        args: ArgsOf<"remove_thread_dataset">,
+    ): Promise<ResponseOf<"remove_thread_dataset">> {
+        const credId = args?.id ?? ConfigStorage.DEFAULT_CREDENTIAL_ID;
+        const removed = this.#config.getThreadCredentials(credId);
+        await this.#config.removeThreadCredentials(credId);
+        this.#unregisterThreadIfUnreferenced(removed?.dataset);
+        await this.#safeBroadcastServerInfo();
+        return {};
+    }
+
+    async #handleGetAllCredentials(): Promise<ResponseOf<"get_all_credentials">> {
+        const wifi = this.#config.listWifiCredentials().map(e => ({ id: e.id, ssid: e.ssid }));
+        const ensureDefault = <T extends { id: string }>(arr: T[], def: T): T[] =>
+            arr.some(e => e.id === ConfigStorage.DEFAULT_CREDENTIAL_ID) ? arr : [def, ...arr];
+        const wifiOut = ensureDefault(wifi, { id: ConfigStorage.DEFAULT_CREDENTIAL_ID, ssid: "" });
+        const thread = this.#config.listThreadCredentials().map(e => {
+            try {
+                const ds = OperationalDataset.decode(e.dataset);
+                return {
+                    id: e.id,
+                    networkName: ds.networkName,
+                    extPanId: ds.extPanId === undefined ? undefined : Bytes.toHex(ds.extPanId).toUpperCase(),
+                };
+            } catch {
+                return { id: e.id };
+            }
+        });
+        const threadOut = ensureDefault(thread, { id: ConfigStorage.DEFAULT_CREDENTIAL_ID });
+        return { wifi: wifiOut, thread: threadOut };
+    }
+
+    #assertValidDatasetHex(dataset: string): void {
+        if (!/^[0-9a-fA-F]+$/.test(dataset) || dataset.length % 2 !== 0) {
             throw ServerError.invalidArguments(
-                "Invalid Thread operational dataset: must be a hex string with even length (each byte is two hex characters)",
+                "Invalid Thread operational dataset: must be a non-empty hex string with even length (each byte is two hex characters)",
             );
         }
         try {
@@ -1115,34 +1248,35 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 `Invalid Thread operational dataset: failed to parse hex string: ${Diagnostic.errorMessage(error)}`,
             );
         }
-        await this.#config.set({ threadDataset: dataset });
-        // Broadcast server_info_updated event to notify clients of credential change
-        try {
-            await this.#broadcastServerInfoUpdated();
-        } catch (error) {
-            logger.warn("Failed to broadcast server info update", error);
-        }
-        return {};
     }
 
-    async #handleRemoveWifiCredentials(): Promise<ResponseOf<"remove_wifi_credentials">> {
-        await this.#config.removeWifiCredentials();
+    async #safeBroadcastServerInfo(): Promise<void> {
         try {
             await this.#broadcastServerInfoUpdated();
         } catch (error) {
             logger.warn("Failed to broadcast server info update", error);
         }
-        return {};
     }
 
-    async #handleRemoveThreadDataset(): Promise<ResponseOf<"remove_thread_dataset">> {
-        await this.#config.removeThreadDataset();
+    #unregisterThreadIfUnreferenced(removedDataset: string | undefined): void {
+        if (removedDataset === undefined || removedDataset === "") return;
+        let removedExtPanId: Bytes | undefined;
         try {
-            await this.#broadcastServerInfoUpdated();
-        } catch (error) {
-            logger.warn("Failed to broadcast server info update", error);
+            removedExtPanId = OperationalDataset.decode(removedDataset).extPanId;
+        } catch {
+            return;
         }
-        return {};
+        if (removedExtPanId === undefined) return;
+        const target = removedExtPanId;
+        const stillReferenced = this.#config.listThreadCredentials().some(e => {
+            try {
+                const xp = OperationalDataset.decode(e.dataset).extPanId;
+                return xp !== undefined && Bytes.areEqual(xp, target);
+            } catch {
+                return false;
+            }
+        });
+        if (!stillReferenced) this.#controller.credentials.unregister(target);
     }
 
     async #handleOpenCommissioningWindow(
