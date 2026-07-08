@@ -10,6 +10,7 @@ import {
     isLitIcd,
     isRegisteredByUs,
     litOfflineHint,
+    litSpecVersionOk,
     otherFabricClientCount,
     parseIcdFeatures,
     parseMultiAdminDetails,
@@ -128,13 +129,31 @@ describe("icd util", () => {
 
     describe("wakeInstruction", () => {
         it("uses custom instruction when CustomInstruction bit set", () => {
-            expect(wakeInstruction(0b100, "Tap it twice")).to.equal("Tap it twice");
+            expect(wakeInstruction(0b100, "Tap it twice")).to.deep.equal({ kind: "custom", text: "Tap it twice" });
         });
         it("maps power cycle", () => {
-            expect(wakeInstruction(0b1, undefined)).to.equal("power-cycle the device");
+            expect(wakeInstruction(0b1, undefined)).to.deep.equal({ kind: "mapped", text: "power-cycle the device" });
         });
         it("falls back to device manual", () => {
-            expect(wakeInstruction(undefined, undefined)).to.equal("see the device manual");
+            expect(wakeInstruction(undefined, undefined)).to.deep.equal({
+                kind: "manual",
+                text: "see the device manual",
+            });
+        });
+    });
+
+    describe("litSpecVersionOk", () => {
+        it("true at exactly 1.4.0", () => {
+            expect(litSpecVersionOk({ "0/40/21": 0x01040000 })).to.equal(true);
+        });
+        it("false below 1.4.0", () => {
+            expect(litSpecVersionOk({ "0/40/21": 0x01030000 })).to.equal(false);
+        });
+        it("false when attribute missing", () => {
+            expect(litSpecVersionOk({})).to.equal(false);
+        });
+        it("true above 1.4.0", () => {
+            expect(litSpecVersionOk({ "0/40/21": 0x01040100 })).to.equal(true);
         });
     });
 

@@ -9,6 +9,14 @@ import { formatDuration } from "./duration.js";
 
 export const ICD_CLUSTER_ID = 70;
 
+/** BasicInformation SpecificationVersion is encoded 0xMMmmpprr; matter.js only treats LIT as usable at >= 1.4.0. */
+export const MIN_LIT_SPECIFICATION_VERSION = 0x01040000;
+
+export function litSpecVersionOk(attributes: Record<string, unknown>): boolean {
+    const value = attributes["0/40/21"];
+    return typeof value === "number" && value >= MIN_LIT_SPECIFICATION_VERSION;
+}
+
 export interface IcdFeatures {
     checkInProtocolSupport: boolean;
     userActiveModeTrigger: boolean;
@@ -122,16 +130,21 @@ const WAKE_HINTS: [mask: number, text: string][] = [
 ];
 const CUSTOM_INSTRUCTION = 1 << 2;
 
-export function wakeInstruction(hint: number | undefined, instruction: string | undefined): string {
+export interface WakeInstruction {
+    kind: "custom" | "mapped" | "manual";
+    text: string;
+}
+
+export function wakeInstruction(hint: number | undefined, instruction: string | undefined): WakeInstruction {
     if (hint !== undefined && (hint & CUSTOM_INSTRUCTION) !== 0 && instruction !== undefined && instruction !== "") {
-        return instruction;
+        return { kind: "custom", text: instruction };
     }
     if (hint !== undefined) {
         for (const [mask, text] of WAKE_HINTS) {
-            if ((hint & mask) !== 0) return text;
+            if ((hint & mask) !== 0) return { kind: "mapped", text };
         }
     }
-    return "see the device manual";
+    return { kind: "manual", text: "see the device manual" };
 }
 
 /** Tooltip for the OFFLINE "ICD" badge. */
