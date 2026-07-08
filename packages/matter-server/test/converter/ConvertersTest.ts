@@ -890,6 +890,27 @@ describe("Converters", () => {
             // null is a valid value for nullable fields - must NOT be omitted
             expect(result).to.have.property("openDuration", null);
         });
+
+        it("should convert webRtcSessionID to webRtcSessionId for WebRtcTransportProvider ProvideOffer (issue #812)", () => {
+            // Clients following the Python CHIP SDK wire convention (python_client/chip/clusters/
+            // cluster_defs/WebRtcTransportProvider.py) send webRtcSessionID (capital ID) with a
+            // null session id for a fresh offer (mandatory nullable field). matter.js expects
+            // webRtcSessionId (lowercase d) - without conversion the key is dropped entirely and
+            // matter.js raises a "missing mandatory field" error.
+            const webRtcProviderCluster = ClusterMap[1363]!;
+            const provideOfferCmd = webRtcProviderCluster.commands["provideoffer"]!;
+
+            const payload = { webRtcSessionID: null, sdp: "v=0", streamUsage: 1 };
+
+            const result = convertCommandDataToMatter(payload, provideOfferCmd, webRtcProviderCluster.model) as Record<
+                string,
+                unknown
+            >;
+
+            expect(result).to.have.property("webRtcSessionId", null);
+            expect(result).to.not.have.property("webRtcSessionID");
+            expect(result).to.have.property("sdp", "v=0");
+        });
     });
 
     describe("convertMatterToWebSocketNameBased - named command responses (issue #70)", () => {
