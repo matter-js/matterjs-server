@@ -150,14 +150,14 @@ export class IcdManagementClusterCommands extends BaseClusterCommands {
                 <div class="command-content">
                     <p>This device saves power by sleeping between short check-in windows.</p>
                     ${info.operatingMode === "LIT"
-                        ? html`<p class="info-banner ${this.node.available ? "" : "offline-highlight"}">
+                        ? html`<p class="info-banner">
                               This device is currently in <b>Battery Saver Mode</b>: any action you trigger (commands,
                               reads, re-subscriptions) may take up to <b>${this._idleText}</b> while the device sleeps.
                               Updates reported by the device itself (e.g. sensor changes) are not delayed — the device
                               wakes up on its own to report them.
                               ${this.node.available
                                   ? nothing
-                                  : html`<br /><b
+                                  : html`<br /><b class="offline-line"
                                             >The device is currently offline — reconnecting on its own can take up to
                                             ${this._idleText}.</b
                                         >`}
@@ -504,9 +504,8 @@ export class IcdManagementClusterCommands extends BaseClusterCommands {
                 align-self: center;
             }
 
-            .info-banner.offline-highlight {
+            .offline-line {
                 color: var(--danger-color, #d32f2f);
-                background-color: var(--md-sys-color-error-container, #fdecea);
             }
         `,
     ];
