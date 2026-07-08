@@ -9,13 +9,16 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## **WORK IN PROGRESS**
 
-- Feature: Thread Network diagnostics — collect per-Thread-network diagnostics from Border Routers over MeshCoP (CoAP/DTLS) or the OTBR REST API (auto-selected, cached). Rich read-only data: topology, link/MLE counters, battery, EUI64, stack version, Network Data, child IPv6 addresses, and router-neighbor link metrics, plus counter reset and energy-scan / PAN-ID-conflict queries. New `get_thread_diagnostics` command + `thread_diagnostics_updated` event (WS schema 12 — see [WebSocket API schema changelog](docs/websocket-api-schema-changelog.md)).
-- Feature: Dashboard Thread graph renders the real mesh from Border Router / router diagnostics (router links + child counts), merged per Thread network.
-- Feature: Border Router cards surface the mDNS software/record version and border-agent id (`sv`/`rv`/`ai` TXT keys, with `dd` fallback).
-- Feature: New `--disable-thread-diagnostics` flag (env `DISABLE_THREAD_DIAGNOSTICS`) turns off the entire Thread Border Router subsystem (discovery, probing, diagnostics) for plain Matter-controller deployments. Matter-over-Thread commissioning is unaffected.
-- Feature: WiFi and Thread credentials are now named lists (each with an `id`; the reserved `default` entry stays backward-compatible). Commissioning can pick which stored network to use. New/extended WS commands at schema 12 (details in the [WebSocket API schema changelog](docs/websocket-api-schema-changelog.md)); dashboard settings gain add/edit/delete of multiple credentials.
-- Enhancement: Update matter.js to add Matter 1.6 support
-- Change: `webrtc_callback` events are now delivered only to the connection that issued the `send_webrtc_provider_command` for that camera session, instead of being broadcast to every connected client.
+- Feature: Enhanced Thread Network diagnostics — collect and visualize per-Thread-network diagnostics also from Border Routers over MeshCoP (CoAP/DTLS) or the OTBR REST API (auto-selected, cached).
+- Feature: Adds WiFi and Thread credential management and allows to store multiple entries. Commissioning can pick which stored network to use.
+- Enhancement: Introduced WS schema 12 — see [WebSocket API schema changelog](docs/websocket-api-schema-changelog.md).
+- Enhancement: New `--disable-thread-diagnostics` CLI flag (env `DISABLE_THREAD_DIAGNOSTICS`) turns off the entire Thread Border Router subsystem (discovery, probing, diagnostics) for plain Matter-controller deployments. Matter-over-Thread commissioning is unaffected.
+- Enhancement: Update matter.js to the latest 0.17.5 nightly
+  - Adds support for Matter 1.6.0
+  - Fixes an invoke-issue where parallel multi-endpoint invokes were working but errors returned on Websocket
+  - Optimizes subscription reporting intervals
+  - Ensures changed node structures are send via WebSocket directly after Re-Subscribe and not delayed
+- Adjustment: `webrtc_callback` events are now delivered only to the connection that issued the `send_webrtc_provider_command` for that camera session, instead of being broadcast to every connected client.
 
 ## 1.1.7 (2026-07-01)
 
