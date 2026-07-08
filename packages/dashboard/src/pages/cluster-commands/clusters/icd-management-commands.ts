@@ -59,6 +59,7 @@ export class IcdManagementClusterCommands extends BaseClusterCommands {
 
     #loadedForNode?: string;
     #flowGeneration = 0;
+    #refreshInFlight?: { key: string; promise: Promise<void> };
 
     override updated(changedProperties: Map<string, unknown>) {
         super.updated(changedProperties);
@@ -91,7 +92,25 @@ export class IcdManagementClusterCommands extends BaseClusterCommands {
         await this._refreshServerState(this.node, this.endpoint);
     }
 
-    private async _refreshServerState(node: MatterNode, endpoint: number) {
+    private _refreshServerState(node: MatterNode, endpoint: number, options?: { force: boolean }): Promise<void> {
+        // The ws-client creates a fresh MatterNode per attribute_updated report, so an open
+        // panel would otherwise fire one round-trip per report; dedupe concurrent calls for the same node.
+        // `force` refreshes (after a mutation) must not be satisfied by a pre-mutation in-flight read.
+        const key = `${String(node.node_id)}:${endpoint}`;
+        const inFlight = this.#refreshInFlight;
+        if (inFlight?.key === key && !options?.force) return inFlight.promise;
+        const promise = (
+            inFlight?.key === key
+                ? inFlight.promise.then(() => this.#doRefreshServerState(node, endpoint))
+                : this.#doRefreshServerState(node, endpoint)
+        ).finally(() => {
+            if (this.#refreshInFlight?.promise === promise) this.#refreshInFlight = undefined;
+        });
+        this.#refreshInFlight = { key, promise };
+        return promise;
+    }
+
+    async #doRefreshServerState(node: MatterNode, endpoint: number) {
         let state: IcdStateData | undefined;
         try {
             state = await this.client.getIcdState(node.node_id);
@@ -368,7 +387,11 @@ export class IcdManagementClusterCommands extends BaseClusterCommands {
             `,
             confirmText: "Enable anyway",
         });
-        if (!retry || !this.isSameContext(node, endpoint)) return true;
+        if (!retry) {
+            if (this.isSameContext(node, endpoint)) this._resetSelectedMode();
+            return true;
+        }
+        if (!this.isSameContext(node, endpoint)) return true;
         await this._register(node, true);
         return true;
     }
@@ -380,6 +403,18 @@ export class IcdManagementClusterCommands extends BaseClusterCommands {
     private async _disable() {
         const node = this.node;
         const endpoint = this.endpoint;
+        const confirmed = await showPromptDialog({
+            title: "Switch to Standard Mode?",
+            text:
+                "The device will wake much more often and respond faster, at the cost of higher battery use. " +
+                "It still sleeps briefly between check-ins — it does not become permanently connected.",
+            confirmText: "Switch",
+        });
+        if (!confirmed) {
+            if (this.isSameContext(node, endpoint)) this._resetSelectedMode();
+            return;
+        }
+        if (!this.isSameContext(node, endpoint)) return;
         await this._runBusy(node, endpoint, "Switching — waiting for the device to wake up…", async () => {
             const others = await this._otherClientCount(node, endpoint);
             if (!this.isSameContext(node, endpoint)) return;
@@ -390,16 +425,9 @@ export class IcdManagementClusterCommands extends BaseClusterCommands {
                         `Battery Saver Mode cannot be disabled: ${others} other controller(s) are still registered ` +
                         `with this device. Remove the device from those ecosystems (or disable Battery Saver Mode there) first.`,
                 });
+                if (this.isSameContext(node, endpoint)) this._resetSelectedMode();
                 return;
             }
-            const confirmed = await showPromptDialog({
-                title: "Switch to Standard Mode?",
-                text:
-                    "The device will wake much more often and respond faster, at the cost of higher battery use. " +
-                    "It still sleeps briefly between check-ins — it does not become permanently connected.",
-                confirmText: "Switch",
-            });
-            if (!confirmed || !this.isSameContext(node, endpoint)) return;
             await this.client.unregisterIcd(node.node_id, false, this._actionTimeoutMs);
         });
     }
@@ -449,7 +477,7 @@ export class IcdManagementClusterCommands extends BaseClusterCommands {
         } finally {
             if (gen === this.#flowGeneration) {
                 this._busy = false;
-                await this._refreshServerState(node, endpoint);
+                await this._refreshServerState(node, endpoint, { force: true });
             }
         }
     }

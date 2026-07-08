@@ -181,7 +181,19 @@ def test_icd_multi_admin_handles_plain_text() -> None:
 def test_icd_multi_admin_handles_none() -> None:
     exc = IcdMultiAdmin()
     assert exc.admin_vendor_ids == []
-    assert str(exc) == "None"
+    assert str(exc) == "ICD registration rejected: the peer has administrator fabrics from other vendors"
+
+
+def test_icd_multi_admin_handles_json_without_message() -> None:
+    exc = IcdMultiAdmin('{"admin_vendor_ids": [4631]}')
+    assert exc.admin_vendor_ids == [4631]
+    assert str(exc) == "ICD registration rejected: the peer has administrator fabrics from other vendors"
+
+
+def test_icd_multi_admin_handles_null_message() -> None:
+    exc = IcdMultiAdmin('{"message": null, "admin_vendor_ids": [4631]}')
+    assert exc.admin_vendor_ids == [4631]
+    assert str(exc) == "ICD registration rejected: the peer has administrator fabrics from other vendors"
 
 
 def test_icd_multi_admin_handles_non_dict_json() -> None:

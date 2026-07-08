@@ -100,20 +100,27 @@ class IcdMultiAdmin(MatterError):
 
     error_code = 100
 
+    _FALLBACK_MESSAGE = "ICD registration rejected: the peer has administrator fabrics from other vendors"
+
     def __init__(self, details: str | None = None) -> None:
         """Parse `details` and expose `admin_vendor_ids`."""
         self.admin_vendor_ids: list[int] = []
-        message = details
-        if details is not None:
+        message = details if details else self._FALLBACK_MESSAGE
+        if details:
             try:
                 parsed = json.loads(details)
             except (json.JSONDecodeError, TypeError):
                 parsed = None
-            if isinstance(parsed, dict) and "message" in parsed:
-                message = parsed["message"]
+            if isinstance(parsed, dict):
                 vendor_ids = parsed.get("admin_vendor_ids")
                 if isinstance(vendor_ids, list):
                     self.admin_vendor_ids = vendor_ids
+                parsed_message = parsed.get("message")
+                message = (
+                    parsed_message
+                    if isinstance(parsed_message, str) and parsed_message
+                    else self._FALLBACK_MESSAGE
+                )
         super().__init__(message)
 
 
