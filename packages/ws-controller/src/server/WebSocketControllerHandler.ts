@@ -54,6 +54,7 @@ import {
     toBigIntAwareJson,
 } from "./Converters.js";
 import { serializeBatch } from "./serializeBatch.js";
+import { WebSocketConnection } from "./WebSocketConnection.js";
 
 const logger = Logger.get("WebSocketControllerHandler");
 
@@ -111,6 +112,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
     #eventHistory: MatterNodeEvent[] = [];
     /** Track when each node was last interviewed (connected) - keyed by nodeId */
     #lastInterviewDates = new Map<NodeId, Date>();
+    /** Backpressure-managed send path per open connection; also the fan-out target for broadcasts. */
+    #connections = new Set<WebSocketConnection>();
 
     constructor(controller: MatterController, config: ConfigStorage, serverVersion: string) {
         this.#controller = controller;
@@ -221,19 +224,40 @@ export class WebSocketControllerHandler implements WebServerHandler {
             // command, so it reaches the client driving that camera session rather than every client.
             let wantsWebRtc = false;
             const observers = new ObserverGroup();
+            const connection = new WebSocketConnection(ws, {
+                connId,
+                getNodeCount: () => this.#commandHandler.getNodeIds().length,
+            });
+            this.#connections.add(connection);
 
-            const sendNodeFullDetails = (eventName: "node_added" | "node_updated", nodeId: NodeId) => {
+            // Builds a full node snapshot frame lazily, at actual send time, so coalesced-away updates
+            // never pay the (heavy) collect cost and a trailing update for a removed node is skipped.
+            const buildNodeDetailsFrame = (
+                eventName: "node_added" | "node_updated",
+                nodeId: NodeId,
+            ): string | undefined => {
                 try {
                     const nodeDetails = this.#collectNodeDetails(nodeId);
                     logger.debug(
                         `[${connId}] Sending ${eventName} event for Node ${this.#commandHandler.formatNode(nodeId)}`,
                     );
-                    ws.send(toBigIntAwareJson({ event: eventName, data: nodeDetails }));
+                    return toBigIntAwareJson({ event: eventName, data: nodeDetails });
                 } catch (err) {
                     logger.error(
                         `[${connId}] Failed to collect node details for Node ${this.#commandHandler.formatNode(nodeId)}`,
                         err,
                     );
+                    return undefined;
+                }
+            };
+            const sendNodeFullDetails = (eventName: "node_added" | "node_updated", nodeId: NodeId) => {
+                // node_updated coalesces per node (bursts collapse to the latest snapshot under
+                // backpressure); node_added must not be coalesced away, so it is an ordered send.
+                if (eventName === "node_updated") {
+                    connection.sendCoalescable(`node:${nodeId}`, () => buildNodeDetailsFrame(eventName, nodeId));
+                } else {
+                    const frame = buildNodeDetailsFrame(eventName, nodeId);
+                    if (frame !== undefined) connection.sendOrdered(frame);
                 }
             };
 
@@ -277,7 +301,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                         logger.debug(
                             `[${connId}] Sending node_removed event for Node ${this.#commandHandler.formatNode(nodeId)}`,
                         );
-                        ws.send(toBigIntAwareJson({ event: eventName, data: nodeId }));
+                        connection.sendOrdered(toBigIntAwareJson({ event: eventName, data: nodeId }));
                         break;
                 }
             };
@@ -287,18 +311,25 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 if (this.#closed || this.#shuttingDown || !listening) return;
                 const { endpointId, clusterId, attributeId } = data.path;
                 const pathStr = `${endpointId}/${clusterId}/${attributeId}`;
-                const clusterData = ClusterMap[clusterId];
-                const value = convertMatterToWebSocketTagBased(
-                    data.value,
-                    clusterData?.attributes[attributeId],
-                    clusterData?.model,
-                );
-                logger.debug(
-                    `[${connId}] Sending attribute_updated event for Node ${this.#commandHandler.formatNode(nodeId)}`,
-                    pathStr,
-                    value,
-                );
-                ws.send(toBigIntAwareJson({ event: "attribute_updated", data: [nodeId, pathStr, value] }));
+                // Snapshot the raw value now: `data` is owned by the emitter and must not be read
+                // after this tick. Coalesce latest-wins per (node, path) — a superseded value is
+                // worthless — and defer only the (heavier) conversion so a coalesced-away value is
+                // never converted.
+                const rawValue = data.value;
+                connection.sendCoalescable(`attr:${nodeId}/${pathStr}`, () => {
+                    const clusterData = ClusterMap[clusterId];
+                    const value = convertMatterToWebSocketTagBased(
+                        rawValue,
+                        clusterData?.attributes[attributeId],
+                        clusterData?.model,
+                    );
+                    logger.debug(
+                        `[${connId}] Sending attribute_updated event for Node ${this.#commandHandler.formatNode(nodeId)}`,
+                        pathStr,
+                        value,
+                    );
+                    return toBigIntAwareJson({ event: "attribute_updated", data: [nodeId, pathStr, value] });
+                });
             });
 
             observers.on(this.#commandHandler.events.eventChanged, (nodeId, data) => {
@@ -347,7 +378,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                         `[${connId}] Sending node_event for Node ${this.#commandHandler.formatNode(nodeId)}`,
                         nodeEvent,
                     );
-                    ws.send(toBigIntAwareJson({ event: "node_event", data: nodeEvent }));
+                    connection.sendOrdered(toBigIntAwareJson({ event: "node_event", data: nodeEvent }));
                 }
             });
 
@@ -385,7 +416,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 logger.info(
                     `[${connId}] Sending endpoint_added event for Node ${this.#commandHandler.formatNode(nodeId)} endpoint ${endpointId}`,
                 );
-                ws.send(
+                connection.sendOrdered(
                     toBigIntAwareJson({ event: "endpoint_added", data: { node_id: nodeId, endpoint_id: endpointId } }),
                 );
             });
@@ -395,7 +426,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 logger.info(
                     `[${connId}] Sending endpoint_removed event for Node ${this.#commandHandler.formatNode(nodeId)} endpoint ${endpointId}`,
                 );
-                ws.send(
+                connection.sendOrdered(
                     toBigIntAwareJson({
                         event: "endpoint_removed",
                         data: { node_id: nodeId, endpoint_id: endpointId },
@@ -407,21 +438,25 @@ export class WebSocketControllerHandler implements WebServerHandler {
             observers.on(this.#testNodeHandler.nodeAdded, (_nodeId, testNode) => {
                 if (this.#closed || this.#shuttingDown || !listening) return;
                 logger.info(`[${connId}] Sending node_added event for test node ${testNode.node_id}`);
-                ws.send(toBigIntAwareJson({ event: "node_added", data: testNode }));
+                connection.sendOrdered(toBigIntAwareJson({ event: "node_added", data: testNode }));
             });
 
             observers.on(this.#testNodeHandler.nodeRemoved, nodeId => {
                 if (this.#closed || this.#shuttingDown || !listening) return;
                 logger.info(`[${connId}] Sending node_removed event for test node ${formatNodeId(nodeId)}`);
-                ws.send(toBigIntAwareJson({ event: "node_removed", data: nodeId }));
+                connection.sendOrdered(toBigIntAwareJson({ event: "node_removed", data: nodeId }));
             });
 
             observers.on(this.#controller.threadDiagnostics.events.batchUpdated, batch => {
                 if (this.#closed || this.#shuttingDown || !wantsThreadDiagnostics) return;
                 // batchUpdated is a shared Observable; a throw here would abort emit and starve other
-                // connections' observers, so isolate the serialize/send per connection.
+                // connections' observers, so isolate the serialize/send per connection. Coalesce
+                // latest-wins per Thread network — an older diagnostics snapshot is worthless — and
+                // serialize lazily so a superseded batch is never serialized.
                 try {
-                    ws.send(toBigIntAwareJson({ event: "thread_diagnostics_updated", data: serializeBatch(batch) }));
+                    connection.sendCoalescable(`thread:${batch.extPanIdHex}`, () =>
+                        toBigIntAwareJson({ event: "thread_diagnostics_updated", data: serializeBatch(batch) }),
+                    );
                 } catch (err) {
                     logger.error(`[${connId}] Failed to send thread_diagnostics_updated`, err);
                 }
@@ -429,8 +464,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
             observers.on(this.#commandHandler.events.webRtcCallback, data => {
                 if (this.#closed || this.#shuttingDown || !wantsWebRtc) return;
+                // WebRTC signaling is control-plane: never coalesced or dropped, so send reliably.
                 try {
-                    ws.send(toBigIntAwareJson({ event: "webrtc_callback", data }));
+                    connection.sendReliable(toBigIntAwareJson({ event: "webrtc_callback", data }));
                 } catch (err) {
                     logger.error(`[${connId}] Failed to send webrtc_callback`, err);
                 }
@@ -445,6 +481,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 pendingNodeUpdated.clear();
                 logger.info(`[${connId}] WebSocket connection closed`);
                 observers.close();
+                this.#connections.delete(connection);
+                connection.dispose();
             };
 
             ws.on(
@@ -462,7 +500,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                             if (reqWebRtc) {
                                 wantsWebRtc = true;
                             }
-                            ws.send(toBigIntAwareJson(response));
+                            connection.sendReliable(toBigIntAwareJson(response));
                         },
                         err => logger.error(`[${connId}] WebSocket request error`, err),
                     ),
@@ -477,7 +515,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             this.#getServerInfo().then(
                 response => {
                     logger.debug(`[${connId}] Sending server info`);
-                    ws.send(toBigIntAwareJson(response));
+                    connection.sendReliable(toBigIntAwareJson(response));
                 },
                 err => logger.error(`[${connId}] WebSocket handshake error`, err),
             );
@@ -509,6 +547,11 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 }
             }
         });
+
+        // Stop per-connection watchdog timers deterministically; the close handlers also dispose,
+        // but that races the socket close events.
+        for (const connection of this.#connections) connection.dispose();
+        this.#connections.clear();
 
         const wss = this.#wss;
         // Wait for the WebSocket server to close properly
@@ -732,15 +775,21 @@ export class WebSocketControllerHandler implements WebServerHandler {
     #broadcastEvent(event: string, data: unknown) {
         if (!this.#wss || this.#closed || this.#shuttingDown) return;
         const message = toBigIntAwareJson({ event, data });
-        this.#wss.clients.forEach(client => {
-            if (client.readyState === 1 /* WebSocket.OPEN */) {
-                try {
-                    client.send(message);
-                } catch (err) {
-                    logger.warn(`Failed to broadcast ${event} event to client`, err);
-                }
+        // node_updated broadcasts carry a full node snapshot and share the per-node coalescing key
+        // with the per-connection observer path, so under backpressure the two collapse to one frame
+        // instead of queuing duplicates. Everything else is low-volume and reliability-critical, so
+        // it bypasses the queue.
+        const nodeId =
+            event === "node_updated" && data !== null && typeof data === "object" && "node_id" in data
+                ? (data as { node_id: number | bigint }).node_id
+                : undefined;
+        for (const connection of this.#connections) {
+            if (nodeId !== undefined) {
+                connection.sendCoalescable(`node:${nodeId}`, () => message);
+            } else {
+                connection.sendReliable(message);
             }
-        });
+        }
     }
 
     /**
