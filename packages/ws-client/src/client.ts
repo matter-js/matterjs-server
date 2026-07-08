@@ -38,6 +38,24 @@ function toNodeKey(nodeId: number | bigint): string {
 /** Default timeout for WebSocket commands in milliseconds (5 minutes) */
 export const DEFAULT_COMMAND_TIMEOUT = 5 * 60 * 1000;
 
+/** Options for {@link MatterClient.commissionWithCode}. */
+export interface CommissionWithCodeOptions {
+    /** Stored WiFi credential id to use (schema 12; omit for the reserved `default` entry). */
+    wifiCredentialsId?: string;
+    /** Stored Thread dataset id to use (schema 12; omit for the reserved `default` entry). */
+    threadDatasetId?: string;
+    /** Per-call command timeout in ms (overrides {@link MatterClient.commandTimeout}). */
+    timeout?: number;
+}
+
+/** Options for the credential set/remove commands. */
+export interface CredentialCommandOptions {
+    /** Named credential entry id (schema 12); omit for the reserved `default` entry. */
+    id?: string;
+    /** Per-call command timeout in ms (overrides {@link MatterClient.commandTimeout}). */
+    timeout?: number;
+}
+
 export class MatterClient {
     public connection: Connection;
     public nodes: Record<string, MatterNode> = {};
@@ -115,12 +133,13 @@ export class MatterClient {
         };
     }
 
+    commissionWithCode(code: string, networkOnly?: boolean, options?: CommissionWithCodeOptions): Promise<MatterNode>;
+    /** @deprecated Pass the timeout via the options object (`{ timeout }`) instead. */
+    commissionWithCode(code: string, networkOnly: boolean, timeout: number): Promise<MatterNode>;
     async commissionWithCode(
         code: string,
         networkOnly = true,
-        // Backward-compatible with the released `(code, networkOnly, timeout)` form: the 3rd argument
-        // is a legacy `timeout` number or the options object (which may carry `timeout`).
-        optsOrTimeout?: number | { wifiCredentialsId?: string; threadDatasetId?: string; timeout?: number },
+        optsOrTimeout?: number | CommissionWithCodeOptions,
     ): Promise<MatterNode> {
         const opts = typeof optsOrTimeout === "number" ? { timeout: optsOrTimeout } : (optsOrTimeout ?? {});
         const usesIds = opts.wifiCredentialsId !== undefined || opts.threadDatasetId !== undefined;
@@ -138,12 +157,13 @@ export class MatterClient {
         return new MatterNode(data);
     }
 
-    // The 3rd argument is backward-compatible with the released `(…, timeout)` form: a legacy `timeout`
-    // number, or an options object carrying the named-credential `id` (schema 12) and/or `timeout`.
+    setWifiCredentials(ssid: string, credentials: string, options?: CredentialCommandOptions): Promise<void>;
+    /** @deprecated Pass the timeout via the options object (`{ timeout }`) instead. */
+    setWifiCredentials(ssid: string, credentials: string, timeout: number): Promise<void>;
     async setWifiCredentials(
         ssid: string,
         credentials: string,
-        optsOrTimeout?: number | { id?: string; timeout?: number },
+        optsOrTimeout?: number | CredentialCommandOptions,
     ): Promise<void> {
         const opts = typeof optsOrTimeout === "number" ? { timeout: optsOrTimeout } : (optsOrTimeout ?? {});
         await this.sendCommand(
@@ -154,9 +174,12 @@ export class MatterClient {
         );
     }
 
+    setThreadOperationalDataset(dataset: string, options?: CredentialCommandOptions): Promise<void>;
+    /** @deprecated Pass the timeout via the options object (`{ timeout }`) instead. */
+    setThreadOperationalDataset(dataset: string, timeout: number): Promise<void>;
     async setThreadOperationalDataset(
         dataset: string,
-        optsOrTimeout?: number | { id?: string; timeout?: number },
+        optsOrTimeout?: number | CredentialCommandOptions,
     ): Promise<void> {
         const opts = typeof optsOrTimeout === "number" ? { timeout: optsOrTimeout } : (optsOrTimeout ?? {});
         await this.sendCommand(
@@ -167,7 +190,10 @@ export class MatterClient {
         );
     }
 
-    async removeWifiCredentials(optsOrTimeout?: number | { id?: string; timeout?: number }): Promise<void> {
+    removeWifiCredentials(options?: CredentialCommandOptions): Promise<void>;
+    /** @deprecated Pass the timeout via the options object (`{ timeout }`) instead. */
+    removeWifiCredentials(timeout: number): Promise<void>;
+    async removeWifiCredentials(optsOrTimeout?: number | CredentialCommandOptions): Promise<void> {
         const opts = typeof optsOrTimeout === "number" ? { timeout: optsOrTimeout } : (optsOrTimeout ?? {});
         await this.sendCommand(
             "remove_wifi_credentials",
@@ -177,7 +203,10 @@ export class MatterClient {
         );
     }
 
-    async removeThreadDataset(optsOrTimeout?: number | { id?: string; timeout?: number }): Promise<void> {
+    removeThreadDataset(options?: CredentialCommandOptions): Promise<void>;
+    /** @deprecated Pass the timeout via the options object (`{ timeout }`) instead. */
+    removeThreadDataset(timeout: number): Promise<void>;
+    async removeThreadDataset(optsOrTimeout?: number | CredentialCommandOptions): Promise<void> {
         const opts = typeof optsOrTimeout === "number" ? { timeout: optsOrTimeout } : (optsOrTimeout ?? {});
         await this.sendCommand(
             "remove_thread_dataset",
