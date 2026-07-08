@@ -19,6 +19,7 @@ This page shows a detailed overview of the changes between versions without the 
     - Optimizes subscription reporting intervals
     - Ensures changed node structures are send via WebSocket directly after Re-Subscribe and not delayed
 - Adjustment: `webrtc_callback` events are now delivered only to the connection that issued the `send_webrtc_provider_command` for that camera session, instead of being broadcast to every connected client.
+- Fix: Ensures that the Python-Client does not crash anymore on unknown events from newer Server versions
 
 ## 1.1.7 (2026-07-01)
 
