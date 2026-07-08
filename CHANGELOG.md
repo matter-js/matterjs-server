@@ -14,10 +14,10 @@ This page shows a detailed overview of the changes between versions without the 
 - Enhancement: Introduced WS schema 12 — see [WebSocket API schema changelog](docs/websocket-api-schema-changelog.md).
 - Enhancement: New `--disable-thread-diagnostics` CLI flag (env `DISABLE_THREAD_DIAGNOSTICS`) turns off the entire Thread Border Router subsystem (discovery, probing, diagnostics) for plain Matter-controller deployments. Matter-over-Thread commissioning is unaffected.
 - Enhancement: Update matter.js to the latest 0.17.5 nightly
-  - Adds support for Matter 1.6.0
-  - Fixes an invoke-issue where parallel multi-endpoint invokes were working but errors returned on Websocket
-  - Optimizes subscription reporting intervals
-  - Ensures changed node structures are send via WebSocket directly after Re-Subscribe and not delayed
+    - Adds support for Matter 1.6.0
+    - Fixes an invoke-issue where parallel multi-endpoint invokes were working but errors returned on Websocket
+    - Optimizes subscription reporting intervals
+    - Ensures changed node structures are send via WebSocket directly after Re-Subscribe and not delayed
 - Adjustment: `webrtc_callback` events are now delivered only to the connection that issued the `send_webrtc_provider_command` for that camera session, instead of being broadcast to every connected client.
 
 ## 1.1.7 (2026-07-01)
