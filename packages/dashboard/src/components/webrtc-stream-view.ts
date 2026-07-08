@@ -45,16 +45,17 @@ interface ProvideOfferResponse {
     audioStreamId: number | null;
 }
 
-function parseStreamAllocate(value: unknown, idKey: "videoStreamId" | "audioStreamId"): number | null {
+function parseStreamAllocate(value: unknown, idKey: "videoStreamID" | "audioStreamID"): number | null {
     const obj = asObject(value);
     if (!obj) return null;
-    return pickNumber(obj, idKey);
+    // Server emits CHIP wire names (…ID); accept matter.js-style …Id as fallback.
+    return pickNumber(obj, idKey, idKey.slice(0, -2) + "Id");
 }
 
 function parseSnapshotAllocateResponse(value: unknown): number | null {
     const obj = asObject(value);
     if (!obj) return null;
-    return pickNumber(obj, "snapshotStreamId");
+    return pickNumber(obj, "snapshotStreamID", "snapshotStreamId");
 }
 
 interface SnapshotCapability {
@@ -135,12 +136,12 @@ function parseCaptureSnapshotResponse(value: unknown): CaptureSnapshotResult {
 function parseProvideOfferResponse(value: unknown): ProvideOfferResponse | null {
     const obj = asObject(value);
     if (!obj) return null;
-    const sessionId = pickNumber(obj, "webRtcSessionId");
+    const sessionId = pickNumber(obj, "webRtcSessionID", "webRtcSessionId");
     if (sessionId === null) return null;
     return {
         webRtcSessionId: sessionId,
-        videoStreamId: parseStreamAllocate(value, "videoStreamId"),
-        audioStreamId: parseStreamAllocate(value, "audioStreamId"),
+        videoStreamId: parseStreamAllocate(value, "videoStreamID"),
+        audioStreamId: parseStreamAllocate(value, "audioStreamID"),
     };
 }
 
@@ -363,7 +364,7 @@ export class WebRtcStreamView extends LitElement {
                         videoAllocPayload,
                     );
                 }
-                const videoStreamId = parseStreamAllocate(videoAlloc, "videoStreamId");
+                const videoStreamId = parseStreamAllocate(videoAlloc, "videoStreamID");
                 if (videoStreamId === null) {
                     throw new Error("VideoStreamAllocate did not return a videoStreamId");
                 }
@@ -397,7 +398,7 @@ export class WebRtcStreamView extends LitElement {
                             bitDepth: 24,
                         },
                     );
-                    this._audioStreamId = parseStreamAllocate(audioAlloc, "audioStreamId");
+                    this._audioStreamId = parseStreamAllocate(audioAlloc, "audioStreamID");
                     this._audioStreamOwned = this._audioStreamId !== null;
                 } catch (err) {
                     console.info("AudioStreamAllocate failed; continuing video-only", err);

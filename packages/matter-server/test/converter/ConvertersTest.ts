@@ -890,6 +890,99 @@ describe("Converters", () => {
             // null is a valid value for nullable fields - must NOT be omitted
             expect(result).to.have.property("openDuration", null);
         });
+
+        it("should convert webRtcSessionID to webRtcSessionId for WebRtcTransportProvider ProvideOffer (issue #812)", () => {
+            // Clients following the Python CHIP SDK wire convention (python_client/chip/clusters/
+            // cluster_defs/WebRtcTransportProvider.py) send webRtcSessionID (capital ID) with a
+            // null session id for a fresh offer (mandatory nullable field). matter.js expects
+            // webRtcSessionId (lowercase d) - without conversion the key is dropped entirely and
+            // matter.js raises a "missing mandatory field" error.
+            const webRtcProviderCluster = ClusterMap[1363]!;
+            const provideOfferCmd = webRtcProviderCluster.commands["provideoffer"]!;
+
+            const payload = { webRtcSessionID: null, sdp: "v=0", streamUsage: 1 };
+
+            const result = convertCommandDataToMatter(payload, provideOfferCmd, webRtcProviderCluster.model) as Record<
+                string,
+                unknown
+            >;
+
+            expect(result).to.have.property("webRtcSessionId", null);
+            expect(result).to.not.have.property("webRtcSessionID");
+            expect(result).to.have.property("sdp", "v=0");
+        });
+    });
+
+    describe("convertMatterToWebSocketNameBased - CHIP wire names (issue #812)", () => {
+        it("should emit webRtcSessionID/videoStreamID/audioStreamID for ProvideOfferResponse", () => {
+            // matter.js returns its own camelCase names (webRtcSessionId, ...). HA's camera
+            // integration reads the CHIP SDK wire names (response["webRtcSessionID"], ...) as
+            // generated in python_client/chip/clusters/cluster_defs, so responses must be
+            // converted back to the wire convention.
+            const webRtcProviderCluster = ClusterMap[1363]!;
+            const responseModel = webRtcProviderCluster.commands["provideoffer"]!.responseModel;
+
+            const matterValue = { webRtcSessionId: 42, videoStreamId: null, audioStreamId: 7 };
+            const result = convertMatterToWebSocketNameBased(
+                matterValue,
+                responseModel,
+                webRtcProviderCluster.model,
+            ) as Record<string, unknown>;
+
+            expect(result).to.deep.equal({ webRtcSessionID: 42, videoStreamID: null, audioStreamID: 7 });
+            expect(result).to.not.have.property("webRtcSessionId");
+        });
+
+        it("should emit wire names including deferredOffer for SolicitOfferResponse", () => {
+            const webRtcProviderCluster = ClusterMap[1363]!;
+            const responseModel = webRtcProviderCluster.commands["solicitoffer"]!.responseModel;
+
+            const matterValue = { webRtcSessionId: 7, deferredOffer: true, videoStreamId: null, audioStreamId: null };
+            const result = convertMatterToWebSocketNameBased(
+                matterValue,
+                responseModel,
+                webRtcProviderCluster.model,
+            ) as Record<string, unknown>;
+
+            expect(result).to.have.property("webRtcSessionID", 7);
+            expect(result).to.have.property("deferredOffer", true);
+            expect(result).to.have.property("videoStreamID", null);
+            expect(result).to.have.property("audioStreamID", null);
+        });
+
+        it("should emit videoStreamID/audioStreamID for CameraAvStreamManagement allocate responses", () => {
+            // Same acronym mismatch, hit via the generic device_command invoke path. HA's camera
+            // integration allocates a video/audio stream before calling ProvideOffer.
+            const avsmCluster = ClusterMap[0x551]!;
+
+            const videoResult = convertMatterToWebSocketNameBased(
+                { videoStreamId: 3 },
+                avsmCluster.commands["videostreamallocate"]!.responseModel,
+                avsmCluster.model,
+            ) as Record<string, unknown>;
+            expect(videoResult).to.deep.equal({ videoStreamID: 3 });
+
+            const audioResult = convertMatterToWebSocketNameBased(
+                { audioStreamId: 9 },
+                avsmCluster.commands["audiostreamallocate"]!.responseModel,
+                avsmCluster.model,
+            ) as Record<string, unknown>;
+            expect(audioResult).to.deep.equal({ audioStreamID: 9 });
+        });
+
+        it("should apply field name overrides (Groups AddGroupResponse keeps groupID)", () => {
+            // Groups cluster (4): AddGroupResponse has GroupID - wire name is groupID.
+            const groupsCluster = ClusterMap[4]!;
+            const responseModel = groupsCluster.commands["addgroup"]!.responseModel;
+
+            const result = convertMatterToWebSocketNameBased(
+                { status: 0, groupId: 17 },
+                responseModel,
+                groupsCluster.model,
+            ) as Record<string, unknown>;
+
+            expect(result).to.deep.equal({ status: 0, groupID: 17 });
+        });
     });
 
     describe("convertMatterToWebSocketNameBased - named command responses (issue #70)", () => {

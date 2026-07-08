@@ -17,6 +17,7 @@ import {
     NodeId,
     ObserverGroup,
 } from "@matter/main";
+import { WebRtcTransportProvider } from "@matter/main/clusters";
 import { ControllerCommissioningFlowOptions } from "@matter/main/protocol";
 import { EndpointNumber, QrPairingCodeCodec } from "@matter/main/types";
 import { NodeStates } from "@project-chip/matter.js/device";
@@ -989,12 +990,15 @@ export class WebSocketControllerHandler implements WebServerHandler {
         args: ArgsOf<"send_webrtc_provider_command">,
     ): Promise<ResponseOf<"send_webrtc_provider_command">> {
         const { node_id, endpoint_id, command_name, payload } = args;
-        return this.#commandHandler.sendWebRtcProviderCommand({
+        const response = await this.#commandHandler.sendWebRtcProviderCommand({
             nodeId: NodeId(node_id),
             endpointId: EndpointNumber(endpoint_id),
             commandName: command_name,
             payload,
         });
+        // The controller returns matter.js's own property names (e.g. `webRtcSessionId`); convert
+        // to the wire names expected by Python Matter Server clients (e.g. `webRtcSessionID`).
+        return this.#convertCommandDataToWebSocket(WebRtcTransportProvider.id, command_name, response);
     }
 
     async #handleInterviewNode(args: ArgsOf<"interview_node">): Promise<ResponseOf<"interview_node">> {
