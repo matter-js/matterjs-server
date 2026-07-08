@@ -7,7 +7,6 @@
 import { AttributeId, Bytes, camelize, ClusterId, isObject, Logger } from "@matter/main";
 import { ClusterModel, FieldModel, FieldValue, ValueModel } from "@matter/main/model";
 import { EndpointNumber, MATTER_EPOCH_OFFSET_S, MATTER_EPOCH_OFFSET_US } from "@matter/main/types";
-import { toChipFieldName } from "../util/ChipWireNames.js";
 
 const logger = new Logger("ChipToolWebSocketHandler");
 
@@ -181,18 +180,8 @@ const PRIMITIVE_TYPEOF = new Set(["string", "number", "bigint", "boolean", "unde
 /** Cached model-to-kind classification. Avoids repeated metabase property traversal. */
 const modelKindCache = new WeakMap<ValueModel, ConvKind>();
 
-/**
- * Precomputed struct member info: avoids camelize() on every conversion.
- * `name` is matter.js's own property name (used to read matter.js data), `wireName` is the CHIP SDK
- * wire label used by the Python Matter Server protocol for name-based output (e.g. `webRtcSessionId`
- * vs `webRtcSessionID`, see ChipWireNames.ts).
- */
-type StructMemberEntry = {
-    readonly name: string;
-    readonly wireName: string;
-    readonly id: number;
-    readonly model: ValueModel;
-};
+/** Precomputed struct member info: avoids camelize() on every conversion. */
+type StructMemberEntry = { readonly name: string; readonly id: number; readonly model: ValueModel };
 const structMemberCache = new WeakMap<ValueModel, StructMemberEntry[]>();
 
 /**
@@ -233,15 +222,9 @@ function getStructMembers(model: ValueModel): StructMemberEntry[] {
     if (members !== undefined) return members;
 
     members = [];
-    const clusterName = model.owner(ClusterModel)?.name;
     for (const member of model.members) {
         if (member.name !== undefined && member.id !== undefined) {
-            members.push({
-                name: member.propertyName,
-                wireName: toChipFieldName(member.name, clusterName),
-                id: member.id,
-                model: member,
-            });
+            members.push({ name: member.propertyName, id: member.id, model: member });
         }
     }
     structMemberCache.set(model, members);
@@ -384,9 +367,9 @@ function convertMatterToWebSocket(
         case ConvKind.Struct: {
             if (!isObject(value)) return value;
             const result: { [key: string]: any } = {};
-            for (const { name, wireName, id, model: memberModel } of getStructMembers(model)) {
+            for (const { name, id, model: memberModel } of getStructMembers(model)) {
                 if (Object.hasOwn(value, name)) {
-                    result[tagBased ? id : wireName] = convertMatterToWebSocket(
+                    result[tagBased ? id : name] = convertMatterToWebSocket(
                         value[name],
                         memberModel,
                         clusterModel,

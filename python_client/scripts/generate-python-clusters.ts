@@ -25,11 +25,6 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 // Also import the class names to identify which clusters are custom
 import * as CustomClusterClasses from "../../packages/custom-clusters/dist/esm/clusters/index.js";
-// Shared CHIP wire-name conversion (single source of truth, also used by the WS converters)
-import {
-    toChipFieldName as toCamelCase,
-    toChipName,
-} from "../../packages/ws-controller/dist/esm/util/ChipWireNames.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -63,6 +58,74 @@ const objectsDir = join(pythonClientDir, "chip", "clusters", "cluster_defs");
 // ============================================================================
 // Name conversion utilities
 // ============================================================================
+
+/** Well-known acronyms that chip-clusters preserves as uppercase in class names.
+ * ORDER MATTERS: entries are checked left-to-right via replace(). An acronym that
+ * is a suffix of another must come AFTER the longer one, or the short form matches
+ * first and leaves the remainder un-expanded. Critical ordering constraints:
+ *   SNTP before NTP — "Ntp" is a suffix of "Sntp"
+ *   UTC  before TC  — "Tc"  is a suffix of "Utc"
+ *   PIN  before PI  — "Pi"  is a suffix of "Pin"
+ */
+const ACRONYMS = [
+    // Compound acronyms first as a precaution
+    "SNTPNTS", // e.g. kNonMatterSNTPNTS — before SNTP and NTP
+    "NTPNTS", // e.g. kNonMatterNTPNTS  — before NTP
+    "BLEUWB", // e.g. kAliroBLEUWB      — before BLE and UWB
+    "HVAC", // e.g. HVACSystemTypeConfiguration — before AC
+    "ICAC", // e.g. IcacCertificate             — before AC
+    "DAC", // e.g. kDACCertificate              — before AC
+    "MAC", // e.g. MACAddress, kMACCounts       — before AC
+    "EVSE", // e.g. kEVSEStopped                 — before EV
+    "RFID", // e.g. RfidCredential               — before RF
+    "PIR", // e.g. PIROccupiedToUnoccupiedDelay — before PI
+    "IPV", // e.g. kIPV6Failed                  — before IP
+    // Standard acronyms (alphabetical within groups for readability)
+    "ANSI", // e.g. BatANSIDesignation
+    // "ARL" intentionally omitted — old pkg has both CommissioningARL (needs ARL) and Arl attr (must stay Arl)
+    // "ACL" intentionally omitted — chip SDK uses Acl for the AccessControl attribute (not ACL)
+    "BDX", // e.g. kBDXAsynchronous, kBDXSynchronous
+    "BLE", // e.g. kBLEFault
+    "CEC", // e.g. CEC key codes
+    "CO", // e.g. kCOAlarm
+    "CSR", // e.g. CSR elements
+    "DNS", // e.g. SupportsDNSResolve
+    "DST", // e.g. DSTOffset
+    "ESA", // e.g. ESAType, ESAState, ESACanGenerate
+    "EV", // e.g. kEVConnected, kEVStopped
+    "GHG", // e.g. kGHGEmissions
+    "ICD", // e.g. ICDCounter
+    "IEC", // e.g. BatIECDesignation
+    "IP", // e.g. kIPBindFailed, kIPV6Failed
+    "LED", // e.g. LED indicators
+    "MLE", // e.g. kMLECounts
+    "NFC", // e.g. kNFCFault
+    "NOC", // e.g. NOCStruct, kInvalidNOC
+    "SNTP", // e.g. kMatterSNTP — before NTP (NTP is a suffix of SNTP)
+    "NTP", // e.g. NTPClient, NTPServer
+    "OTA", // e.g. AnnounceOTAProvider
+    "PAI", // e.g. kPAICertificate
+    // "PAN" intentionally omitted — causes regressions for PanId attrs in ThreadNetworkDiagnostics
+    "PHY", // e.g. PHYRate
+    "PIN", // e.g. kPINManagement
+    "PI", // e.g. PICoolingDemand, PIHeatingDemand
+    "PV", // e.g. kSolarPV
+    "PAKE", // e.g. PAKEPasscodeVerifier (add before any future PA entry)
+    "IPK", // e.g. IPKValue (Identity Protection Key)
+    "LQI", // e.g. LQIIn, LQIOut (Thread Link Quality Indicator)
+    // BX/BY/GX/GY/RX/RY intentionally omitted from ACRONYMS — too broad (would turn "ByNumber" → "BYNumber").
+    // ColorPoint coordinate attributes are handled via FIELD_NAME_OVERRIDES instead.
+    "URI", // e.g. imageURI
+    "RF", // e.g. kRFSensing
+    "RMS", // e.g. RMSCurrent, RMSVoltage, RMSPower
+    "UTC", // e.g. UTCTime — before TC (TC is a suffix of UTC)
+    "TC", // e.g. kRequiredTCNotAccepted
+    "URL", // e.g. kURLPlayback
+    "UWB", // e.g. AliroBLEUWB protocol versions
+    "VID", // e.g. VendorID
+    "AC", // e.g. ACCapacity, ACType — after HVAC, ICAC, DAC, MAC
+    "ID", // e.g. VendorID, NetworkID
+];
 
 /**
  * Overrides for specific k-values where toChipName() either over-expands or under-expands acronyms.
@@ -159,6 +222,93 @@ const K_VALUE_OVERRIDES: Record<string, string> = {
 
     // --- WindowCovering ModeBitmap: chip SDK uses "LedFeedback" not "LEDFeedback" ---
     LedFeedback: "LedFeedback",
+};
+
+/**
+ * Overrides for specific field names (cluster attributes, struct fields, command fields)
+ * where the old chip-clusters package used a non-standard casing that differs from what
+ * toChipName + toCamelCase would produce.
+ * Key: PascalCase matter.js model name.
+ * Value: expected Python field name.
+ */
+const FIELD_NAME_OVERRIDES: Record<string, string> = {
+    // --- ID suffix: old chip SDK kept lowercase "Id" (not "ID") for these ---
+    Id: "id",
+    // Note: GroupId intentionally NOT overridden — most places use "groupID" (with uppercase ID).
+    // Only GroupKeyManagement structs use "groupId" which is a minor inconsistency.
+    PanId: "panId",
+    ExtendedPanId: "extendedPanId",
+    LeaderRouterId: "leaderRouterId",
+    PartitionId: "partitionId",
+    PartitionIdChangeCount: "partitionIdChangeCount",
+    RouterId: "routerId",
+    ExtendedPanIdPresent: "extendedPanIdPresent",
+    PanIdPresent: "panIdPresent",
+    AdminVendorId: "adminVendorId",
+
+    // --- NOC struct: old chip SDK used fully lowercase (no acronym expansion) ---
+    Icac: "icac",
+    Noc: "noc",
+
+    // --- MLE: old chip SDK kept mle lowercase in mid-word position ---
+    MleFrameCounter: "mleFrameCounter",
+
+    // --- URL vs Url: old chip SDK kept "Url" (not "URL") for these specific fields ---
+    DvbiUrl: "dvbiUrl",
+    PosterArtUrl: "posterArtUrl",
+    ThumbnailUrl: "thumbnailUrl",
+
+    // --- ARL: intentionally not in ACRONYMS (breaks Arl attribute) ---
+    CommissioningArl: "commissioningARL",
+    // Note: chip SDK uppercases URL here (unlike dvbiUrl/posterArtUrl which keep "Url")
+    ArlRequestFlowUrl: "ARLRequestFlowUrl",
+
+    // --- LQI: CHIP SDK keeps lowercase "lqi" in struct fields ---
+    Lqi: "lqi",
+
+    // --- CA: not in ACRONYMS (would conflict with ICAC/DAC/MAC handling) ---
+    RootCaCertificate: "rootCACertificate",
+
+    // --- Watermark: matter.js spells as one word, chip SDK as two ---
+    Watermark: "waterMark",
+
+    // --- NOCSR: not a standalone acronym in ACRONYMS ---
+    NocsrElements: "NOCSRElements",
+
+    // --- DraftElectricalMeasurementCluster: custom cluster uses "ac"/"rms" not "AC"/"RMS" ---
+    // Ac* are safe as global overrides (only this cluster has them).
+    // Rms* must be cluster-qualified because standard clusters use "RMS" (uppercase).
+    AcVoltageMultiplier: "acVoltageMultiplier",
+    AcVoltageDivisor: "acVoltageDivisor",
+    AcCurrentMultiplier: "acCurrentMultiplier",
+    AcCurrentDivisor: "acCurrentDivisor",
+    AcPowerMultiplier: "acPowerMultiplier",
+    AcPowerDivisor: "acPowerDivisor",
+    "DraftElectricalMeasurementCluster.RmsVoltage": "rmsVoltage",
+    "DraftElectricalMeasurementCluster.RmsCurrent": "rmsCurrent",
+
+    // --- DoorLock quirks ---
+    // Note: chip SDK lowercases "for" here (requirePINforRemoteOperation — not a typo)
+    // Key must match the Matter.js model name (RequirePinForRemoteOperation), not the
+    // post-toChipName version (RequirePINForRemoteOperation).
+    RequirePinForRemoteOperation: "requirePINforRemoteOperation",
+    // Note: chip SDK lowercases the "f" in "format" here (ACCapacityformat — chip SDK quirk)
+    AcCapacityFormat: "ACCapacityformat",
+
+    // --- IPv4/IPv6: old chip SDK used "IPv4"/"IPv6" (capital I, lowercase v) ---
+    // Key must match the Matter.js model name (IPv4Addresses), not post-toChipName
+    IPv4Addresses: "IPv4Addresses",
+    IPv6Addresses: "IPv6Addresses",
+    OffPremiseServicesReachableIPv4: "offPremiseServicesReachableIPv4",
+    OffPremiseServicesReachableIPv6: "offPremiseServicesReachableIPv6",
+
+    // --- ColorControl chromaticity coordinates: old chip SDK kept uppercase XY suffix ---
+    ColorPointBx: "colorPointBX",
+    ColorPointBy: "colorPointBY",
+    ColorPointGx: "colorPointGX",
+    ColorPointGy: "colorPointGY",
+    ColorPointRx: "colorPointRX",
+    ColorPointRy: "colorPointRY",
 };
 
 /**
@@ -289,6 +439,26 @@ const EXTRA_BITMAPS: Record<string, Array<{ name: string; members: Array<{ kName
 };
 
 /**
+ * Convert a PascalCase name from Matter.js to chip-clusters-compatible PascalCase.
+ * Matter.js uses standard PascalCase (e.g., "AnnounceOtaProvider"),
+ * chip-clusters preserves known acronyms (e.g., "AnnounceOTAProvider").
+ */
+function toChipName(name: string): string {
+    let result = name;
+    for (const acr of ACRONYMS) {
+        // Match the title-case version of the acronym at a PascalCase word boundary.
+        // The acronym must be followed by an uppercase letter (next word), end-of-string,
+        // or a non-alpha character — NOT a lowercase letter (which means it's mid-word).
+        // Also match when followed by a plural 's' that is itself at a word boundary
+        // (e.g., "Nocs" → "NOCs").
+        const titleCase = acr.charAt(0) + acr.slice(1).toLowerCase();
+        const regex = new RegExp(`${titleCase}(?=[A-Z]|$|[^a-zA-Z]|s(?=[A-Z]|$|[^a-zA-Z]))`, "g");
+        result = result.replace(regex, acr);
+    }
+    return result;
+}
+
+/**
  * Strip a trailing "Enum" suffix from an enum type name.
  * Matter.js appends "Enum" to most enum names; the old chip-clusters package (≤2024.11.4)
  * KEEPS the suffix in generated class names (e.g. LockStateEnum, AlarmCodeEnum).
@@ -307,6 +477,31 @@ function toKName(name: string): string {
         return "k" + K_VALUE_OVERRIDES[pascal];
     }
     return "k" + toChipName(pascal);
+}
+
+/** Convert PascalCase name to camelCase (for attribute/field labels).
+ *  If clusterName is provided, checks for cluster-qualified overrides first. */
+function toCamelCase(name: string, clusterName?: string): string {
+    // Check cluster-qualified override first (e.g., "DraftElectricalMeasurementCluster.RmsVoltage")
+    if (clusterName) {
+        const qualifiedKey = `${clusterName}.${name}`;
+        if (qualifiedKey in FIELD_NAME_OVERRIDES) {
+            return FIELD_NAME_OVERRIDES[qualifiedKey];
+        }
+    }
+    // Check per-name overrides (covers chip SDK inconsistencies)
+    if (name in FIELD_NAME_OVERRIDES) {
+        return FIELD_NAME_OVERRIDES[name];
+    }
+    const chipName = toChipName(name);
+    // If toChipName produced 2+ consecutive uppercase letters at the start,
+    // chip SDK keeps the acronym uppercase in field names too.
+    // e.g. "ESAType" stays "ESAType" (not "eSAType"), "ACCapacity" → "ACCapacity".
+    // Single-uppercase starts (e.g. "SoftwareVersion") still lowercase to "softwareVersion".
+    if (/^[A-Z]{2}/.test(chipName)) {
+        return chipName;
+    }
+    return chipName.charAt(0).toLowerCase() + chipName.slice(1);
 }
 
 /** Convert a PascalCase name to chip-SDK class name, checking CLASS_NAME_OVERRIDES first.
