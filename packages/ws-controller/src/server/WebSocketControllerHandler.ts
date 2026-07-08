@@ -1125,14 +1125,14 @@ export class WebSocketControllerHandler implements WebServerHandler {
     async #handleGetThreadDiagnostics(
         args: ArgsOf<"get_thread_diagnostics">,
     ): Promise<ResponseOf<"get_thread_diagnostics">> {
-        if (args?.extPanId === undefined) {
+        if (args?.ext_pan_id === undefined) {
             this.#controller.threadDiagnostics.refreshAllKnown({ force: args?.force });
             return this.#controller.threadDiagnostics.listCached().map(serializeBatch);
         }
-        if (!/^[0-9a-fA-F]{16}$/.test(args.extPanId)) {
-            throw ServerError.invalidArguments(`Invalid extPanId "${args.extPanId}": expected 16 hex characters`);
+        if (!/^[0-9a-fA-F]{16}$/.test(args.ext_pan_id)) {
+            throw ServerError.invalidArguments(`Invalid ext_pan_id "${args.ext_pan_id}": expected 16 hex characters`);
         }
-        const batch = await this.#controller.threadDiagnostics.getOrFetch(args.extPanId.toLowerCase(), {
+        const batch = await this.#controller.threadDiagnostics.getOrFetch(args.ext_pan_id.toLowerCase(), {
             force: args.force,
         });
         // Explicit null (not undefined) so the "no response" guard doesn't turn "nothing cached /

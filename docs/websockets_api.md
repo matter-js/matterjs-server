@@ -372,11 +372,11 @@ from Matter-over-Thread commissioning and can be turned off entirely with `--dis
 
 **get_thread_diagnostics** - Fetch per-Thread-network diagnostics
 
-- With `extPanId`: awaits a collection and returns the batch, or `null` when nothing is cached /
+- With `ext_pan_id`: awaits a collection and returns the batch, or `null` when nothing is cached /
   diagnostics are disabled.
-- Without `extPanId`: returns the **current cache** for all known networks (an array, possibly empty)
+- Without `ext_pan_id`: returns the **current cache** for all known networks (an array, possibly empty)
   **immediately**, and kicks off a background refresh whose fresh batches arrive via the
-  `thread_diagnostics_updated` event. Use the `extPanId` form when you need synchronously-fresh data
+  `thread_diagnostics_updated` event. Use the `ext_pan_id` form when you need synchronously-fresh data
   for one network.
 - `force: true` bypasses the cache and re-collects.
 
@@ -384,7 +384,7 @@ from Matter-over-Thread commissioning and can be turned off entirely with `--dis
 {
   "message_id": "1",
   "command": "get_thread_diagnostics",
-  "args": { "extPanId": "1122334455667788", "force": false }
+  "args": { "ext_pan_id": "1122334455667788", "force": false }
 }
 ```
 

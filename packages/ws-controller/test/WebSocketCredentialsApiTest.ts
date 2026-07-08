@@ -293,8 +293,8 @@ describe("WebSocket Credentials API", () => {
         ws.close();
     });
 
-    it("get_thread_diagnostics(extPanId) returns null (not an error) when nothing is cached", async () => {
-        const res = await h.handle<unknown>("get_thread_diagnostics", { extPanId: "1122334455667788" });
+    it("get_thread_diagnostics(ext_pan_id) returns null (not an error) when nothing is cached", async () => {
+        const res = await h.handle<unknown>("get_thread_diagnostics", { ext_pan_id: "1122334455667788" });
         expect(res).to.equal(null);
     });
 
@@ -306,7 +306,7 @@ describe("WebSocket Credentials API", () => {
             if (msg.event !== undefined) events.push(msg.event);
         });
 
-        // A malformed extPanId errors server-side but still proves the client is schema-12 Thread-aware.
+        // A malformed ext_pan_id errors server-side but still proves the client is schema-12 Thread-aware.
         await new Promise<void>((resolve, reject) => {
             const id = "req-bad";
             const onMsg = (raw: WebSocket.RawData) => {
@@ -319,7 +319,7 @@ describe("WebSocket Credentials API", () => {
             ws.on("message", onMsg);
             ws.once("error", reject);
             ws.send(
-                JSON.stringify({ message_id: id, command: "get_thread_diagnostics", args: { extPanId: "not-hex" } }),
+                JSON.stringify({ message_id: id, command: "get_thread_diagnostics", args: { ext_pan_id: "not-hex" } }),
             );
         });
 

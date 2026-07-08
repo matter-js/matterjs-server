@@ -64,7 +64,7 @@ export class BorderRouterStore {
     async refreshDiagnosticsFor(client: MatterClient, extPanIdHex: string): Promise<void> {
         try {
             const result = await client.sendCommand("get_thread_diagnostics", 12, {
-                extPanId: extPanIdHex.toLowerCase(),
+                ext_pan_id: extPanIdHex.toLowerCase(),
                 force: true,
             });
             if (result === undefined || result === null) return;

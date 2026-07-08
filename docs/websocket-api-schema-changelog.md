@@ -23,9 +23,9 @@ Minimum supported: 11 (older clients keep working with the pre-12 command shapes
 
 ### Thread Network diagnostics
 
-- **New command `get_thread_diagnostics`.** Args: optional `extPanId` (single network) and `force` (bypass cache).
-  - With `extPanId`: awaits a collection and returns the `ThreadDiagnosticsBatch`, or `null` when nothing is cached / diagnostics are disabled.
-  - Without `extPanId`: returns the **current cache** for all known networks (an array, possibly empty) **immediately**, and kicks off a background refresh (honoring `force`) whose fresh batches arrive via `thread_diagnostics_updated`. It does not wait for the refresh — use the `extPanId` form when you need synchronously-fresh data for one network.
+- **New command `get_thread_diagnostics`.** Args: optional `ext_pan_id` (single network) and `force` (bypass cache).
+  - With `ext_pan_id`: awaits a collection and returns the `ThreadDiagnosticsBatch`, or `null` when nothing is cached / diagnostics are disabled.
+  - Without `ext_pan_id`: returns the **current cache** for all known networks (an array, possibly empty) **immediately**, and kicks off a background refresh (honoring `force`) whose fresh batches arrive via `thread_diagnostics_updated`. It does not wait for the refresh — use the `ext_pan_id` form when you need synchronously-fresh data for one network.
 - **New event `thread_diagnostics_updated`** → a `ThreadDiagnosticsBatch`, emitted as batches stream in from Border Routers. **Delivered only to connections that have issued a Thread request** (`get_thread_diagnostics` or `get_thread_border_routers`) during their lifetime. This gates the schema-12 event away from older (schema-11) clients — which would disconnect on an unknown event type — until they opt in by requesting Thread data. A client that never uses the Thread API never receives it.
 - **`get_thread_border_routers`** entries gained mDNS-sourced fields (software/record version, border-agent id).
 

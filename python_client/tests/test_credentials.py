@@ -184,7 +184,7 @@ async def test_get_thread_diagnostics_all_networks() -> None:
     args, kwargs = c.send_command.call_args
     assert args[0] == APICommand.GET_THREAD_DIAGNOSTICS
     assert kwargs.get("require_schema") == 12
-    assert "extPanId" not in kwargs
+    assert "ext_pan_id" not in kwargs
     assert "force" not in kwargs
 
 
@@ -193,5 +193,5 @@ async def test_get_thread_diagnostics_single_network_forced() -> None:
     c.send_command = AsyncMock(return_value=None)
     await c.get_thread_diagnostics(ext_pan_id="2011201402051977", force=True)
     _, kwargs = c.send_command.call_args
-    assert kwargs["extPanId"] == "2011201402051977"
+    assert kwargs["ext_pan_id"] == "2011201402051977"
     assert kwargs["force"] is True

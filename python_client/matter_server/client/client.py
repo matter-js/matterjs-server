@@ -247,7 +247,7 @@ class MatterClient:
         """
         args: dict[str, Any] = {}
         if ext_pan_id is not None:
-            args["extPanId"] = ext_pan_id
+            args["ext_pan_id"] = ext_pan_id
         if force:
             args["force"] = True
         return await self.send_command(APICommand.GET_THREAD_DIAGNOSTICS, require_schema=12, **args)
