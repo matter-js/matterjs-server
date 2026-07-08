@@ -8,14 +8,14 @@ On connection, the server immediately sends a `server_info` message with fabric 
 
 ```json
 {
-  "fabric_id": 1234567890,
-  "compressed_fabric_id": 9876543210,
-  "schema_version": 11,
-  "min_supported_schema_version": 11,
-  "sdk_version": "matter.js/0.11.0",
-  "wifi_credentials_set": true,
-  "thread_credentials_set": false,
-  "bluetooth_enabled": true
+    "fabric_id": 1234567890,
+    "compressed_fabric_id": 9876543210,
+    "schema_version": 11,
+    "min_supported_schema_version": 11,
+    "sdk_version": "matter.js/0.11.0",
+    "wifi_credentials_set": true,
+    "thread_credentials_set": false,
+    "bluetooth_enabled": true
 }
 ```
 
@@ -32,6 +32,7 @@ All commands follow this request format:
 ```
 
 Successful responses:
+
 ```json
 {
   "message_id": "unique-id",
@@ -40,11 +41,12 @@ Successful responses:
 ```
 
 Error responses:
+
 ```json
 {
-  "message_id": "unique-id",
-  "error_code": 0,
-  "details": "Error description"
+    "message_id": "unique-id",
+    "error_code": 0,
+    "details": "Error description"
 }
 ```
 
@@ -56,8 +58,8 @@ Error responses:
 
 ```json
 {
-  "message_id": "1",
-  "command": "server_info"
+    "message_id": "1",
+    "command": "server_info"
 }
 ```
 
@@ -65,53 +67,55 @@ Error responses:
 
 ```json
 {
-  "message_id": "1",
-  "command": "diagnostics"
+    "message_id": "1",
+    "command": "diagnostics"
 }
 ```
 
-**get_loglevel** - Get current log levels *(Matter.js only)*
+**get_loglevel** - Get current log levels _(Matter.js only)_
 
 Returns the current log level for console output and optionally for file logging (if configured). This command is not available in the Python Matter Server.
 
 ```json
 {
-  "message_id": "1",
-  "command": "get_loglevel"
+    "message_id": "1",
+    "command": "get_loglevel"
 }
 ```
 
 Response:
+
 ```json
 {
-  "message_id": "1",
-  "result": {
-    "console_loglevel": "info",
-    "file_loglevel": "debug"
-  }
+    "message_id": "1",
+    "result": {
+        "console_loglevel": "info",
+        "file_loglevel": "debug"
+    }
 }
 ```
 
 Note: `file_loglevel` is `null` if file logging is not configured.
 
-**set_loglevel** - Set log levels temporarily *(Matter.js only)*
+**set_loglevel** - Set log levels temporarily _(Matter.js only)_
 
 Change the log level for console and/or file logging. Changes are temporary and will be reset on the next server restart. This command is not available in the Python Matter Server.
 
 ```json
 {
-  "message_id": "1",
-  "command": "set_loglevel",
-  "args": {
-    "console_loglevel": "debug",
-    "file_loglevel": "info"
-  }
+    "message_id": "1",
+    "command": "set_loglevel",
+    "args": {
+        "console_loglevel": "debug",
+        "file_loglevel": "info"
+    }
 }
 ```
 
 Both arguments are optional - only provide the ones you want to change.
 
 Log levels (from least to most verbose):
+
 - `critical` - Only fatal errors
 - `error` - Errors
 - `warning` - Warnings and errors
@@ -122,13 +126,14 @@ Log levels (from least to most verbose):
 `set_loglevel` also accepts the matter.js aliases `fatal` (= `critical`) and `warn` (= `warning`).
 
 Response returns the current levels after the change:
+
 ```json
 {
-  "message_id": "1",
-  "result": {
-    "console_loglevel": "debug",
-    "file_loglevel": "info"
-  }
+    "message_id": "1",
+    "result": {
+        "console_loglevel": "debug",
+        "file_loglevel": "info"
+    }
 }
 ```
 
@@ -140,8 +145,8 @@ When the `start_listening` command is issued, the server returns all existing no
 
 ```json
 {
-  "message_id": "1",
-  "command": "start_listening"
+    "message_id": "1",
+    "command": "start_listening"
 }
 ```
 
@@ -149,11 +154,11 @@ When the `start_listening` command is issued, the server returns all existing no
 
 ```json
 {
-  "message_id": "1",
-  "command": "get_nodes",
-  "args": {
-    "only_available": false
-  }
+    "message_id": "1",
+    "command": "get_nodes",
+    "args": {
+        "only_available": false
+    }
 }
 ```
 
@@ -161,11 +166,11 @@ When the `start_listening` command is issued, the server returns all existing no
 
 ```json
 {
-  "message_id": "1",
-  "command": "get_node",
-  "args": {
-    "node_id": 1
-  }
+    "message_id": "1",
+    "command": "get_node",
+    "args": {
+        "node_id": 1
+    }
 }
 ```
 
@@ -173,8 +178,8 @@ When the `start_listening` command is issued, the server returns all existing no
 
 ```json
 {
-  "message_id": "1",
-  "command": "discover"
+    "message_id": "1",
+    "command": "discover"
 }
 ```
 
@@ -186,12 +191,12 @@ Inform the controller about the WiFi credentials it needs to send when commissio
 
 ```json
 {
-  "message_id": "1",
-  "command": "set_wifi_credentials",
-  "args": {
-    "ssid": "wifi-name-here",
-    "credentials": "wifi-password-here"
-  }
+    "message_id": "1",
+    "command": "set_wifi_credentials",
+    "args": {
+        "ssid": "wifi-name-here",
+        "credentials": "wifi-password-here"
+    }
 }
 ```
 
@@ -201,11 +206,11 @@ Inform the controller about the Thread credentials it needs to use when commissi
 
 ```json
 {
-  "message_id": "1",
-  "command": "set_thread_dataset",
-  "args": {
-    "dataset": "hex-encoded-operational-dataset"
-  }
+    "message_id": "1",
+    "command": "set_thread_dataset",
+    "args": {
+        "dataset": "hex-encoded-operational-dataset"
+    }
 }
 ```
 
@@ -213,11 +218,11 @@ Inform the controller about the Thread credentials it needs to use when commissi
 
 ```json
 {
-  "message_id": "1",
-  "command": "set_default_fabric_label",
-  "args": {
-    "label": "Home"
-  }
+    "message_id": "1",
+    "command": "set_default_fabric_label",
+    "args": {
+        "label": "Home"
+    }
 }
 ```
 
@@ -230,25 +235,27 @@ For WiFi or Thread based devices, the credentials need to be set upfront, otherw
 The controller will use Bluetooth for commissioning wireless devices. If Bluetooth is not available, commissioning will only work for devices already on the network (set `network_only: true`).
 
 Using QR code:
+
 ```json
 {
-  "message_id": "1",
-  "command": "commission_with_code",
-  "args": {
-    "code": "MT:Y.ABCDEFG123456789"
-  }
+    "message_id": "1",
+    "command": "commission_with_code",
+    "args": {
+        "code": "MT:Y.ABCDEFG123456789"
+    }
 }
 ```
 
 Using manual pairing code (network only):
+
 ```json
 {
-  "message_id": "1",
-  "command": "commission_with_code",
-  "args": {
-    "code": "35325335079",
-    "network_only": true
-  }
+    "message_id": "1",
+    "command": "commission_with_code",
+    "args": {
+        "code": "35325335079",
+        "network_only": true
+    }
 }
 ```
 
@@ -258,18 +265,19 @@ Commission using setup PIN code with optional filtering by discriminator or vend
 
 ```json
 {
-  "message_id": "1",
-  "command": "commission_on_network",
-  "args": {
-    "setup_pin_code": 20202021,
-    "filter_type": 2,
-    "filter": 3840,
-    "ip_addr": "192.168.1.100"
-  }
+    "message_id": "1",
+    "command": "commission_on_network",
+    "args": {
+        "setup_pin_code": 20202021,
+        "filter_type": 2,
+        "filter": 3840,
+        "ip_addr": "192.168.1.100"
+    }
 }
 ```
 
 Filter types:
+
 - `0` - No filter (discover any)
 - `1` - Short discriminator
 - `2` - Long discriminator
@@ -281,24 +289,25 @@ Open a commissioning window to allow another controller to commission a device a
 
 ```json
 {
-  "message_id": "1",
-  "command": "open_commissioning_window",
-  "args": {
-    "node_id": 1,
-    "timeout": 300
-  }
+    "message_id": "1",
+    "command": "open_commissioning_window",
+    "args": {
+        "node_id": 1,
+        "timeout": 300
+    }
 }
 ```
 
 Response includes pairing codes:
+
 ```json
 {
-  "message_id": "1",
-  "result": {
-    "setup_pin_code": 12345678,
-    "setup_manual_code": "35325335079",
-    "setup_qr_code": "MT:Y.ABCDEFG123456789"
-  }
+    "message_id": "1",
+    "result": {
+        "setup_pin_code": 12345678,
+        "setup_manual_code": "35325335079",
+        "setup_qr_code": "MT:Y.ABCDEFG123456789"
+    }
 }
 ```
 
@@ -309,38 +318,41 @@ Response includes pairing codes:
 Read one or more attributes using path format `endpoint/cluster/attribute`. Supports wildcards using `*`.
 
 Single attribute:
+
 ```json
 {
-  "message_id": "1",
-  "command": "read_attribute",
-  "args": {
-    "node_id": 1,
-    "attribute_path": "1/6/0"
-  }
+    "message_id": "1",
+    "command": "read_attribute",
+    "args": {
+        "node_id": 1,
+        "attribute_path": "1/6/0"
+    }
 }
 ```
 
 Multiple attributes:
+
 ```json
 {
-  "message_id": "1",
-  "command": "read_attribute",
-  "args": {
-    "node_id": 1,
-    "attribute_path": ["1/6/0", "1/6/16384", "0/40/1"]
-  }
+    "message_id": "1",
+    "command": "read_attribute",
+    "args": {
+        "node_id": 1,
+        "attribute_path": ["1/6/0", "1/6/16384", "0/40/1"]
+    }
 }
 ```
 
 Wildcard (all attributes from OnOff cluster):
+
 ```json
 {
-  "message_id": "1",
-  "command": "read_attribute",
-  "args": {
-    "node_id": 1,
-    "attribute_path": "1/6/*"
-  }
+    "message_id": "1",
+    "command": "read_attribute",
+    "args": {
+        "node_id": 1,
+        "attribute_path": "1/6/*"
+    }
 }
 ```
 
@@ -348,13 +360,13 @@ Wildcard (all attributes from OnOff cluster):
 
 ```json
 {
-  "message_id": "1",
-  "command": "write_attribute",
-  "args": {
-    "node_id": 1,
-    "attribute_path": "1/6/16385",
-    "value": 10
-  }
+    "message_id": "1",
+    "command": "write_attribute",
+    "args": {
+        "node_id": 1,
+        "attribute_path": "1/6/16385",
+        "value": 10
+    }
 }
 ```
 
@@ -364,37 +376,39 @@ Wildcard (all attributes from OnOff cluster):
 
 ```json
 {
-  "message_id": "1",
-  "command": "device_command",
-  "args": {
-    "node_id": 1,
-    "endpoint_id": 1,
-    "cluster_id": 6,
-    "command_name": "on",
-    "payload": {}
-  }
+    "message_id": "1",
+    "command": "device_command",
+    "args": {
+        "node_id": 1,
+        "endpoint_id": 1,
+        "cluster_id": 6,
+        "command_name": "on",
+        "payload": {}
+    }
 }
 ```
 
 Command with parameters (e.g., move to level):
+
 ```json
 {
-  "message_id": "1",
-  "command": "device_command",
-  "args": {
-    "node_id": 1,
-    "endpoint_id": 1,
-    "cluster_id": 8,
-    "command_name": "moveToLevelWithOnOff",
-    "payload": {
-      "level": 128,
-      "transitionTime": 10
+    "message_id": "1",
+    "command": "device_command",
+    "args": {
+        "node_id": 1,
+        "endpoint_id": 1,
+        "cluster_id": 8,
+        "command_name": "moveToLevelWithOnOff",
+        "payload": {
+            "level": 128,
+            "transitionTime": 10
+        }
     }
-  }
 }
 ```
 
 Optional parameters:
+
 - `response_type`: Client SDK type hint (currently ignored by the server)
 - `timed_request_timeout_ms`: Timeout for timed interactions (required for some commands like door lock)
 
@@ -404,11 +418,11 @@ Optional parameters:
 
 ```json
 {
-  "message_id": "1",
-  "command": "interview_node",
-  "args": {
-    "node_id": 1
-  }
+    "message_id": "1",
+    "command": "interview_node",
+    "args": {
+        "node_id": 1
+    }
 }
 ```
 
@@ -416,12 +430,12 @@ Optional parameters:
 
 ```json
 {
-  "message_id": "1",
-  "command": "ping_node",
-  "args": {
-    "node_id": 1,
-    "attempts": 3
-  }
+    "message_id": "1",
+    "command": "ping_node",
+    "args": {
+        "node_id": 1,
+        "attempts": 3
+    }
 }
 ```
 
@@ -429,13 +443,13 @@ Optional parameters:
 
 ```json
 {
-  "message_id": "1",
-  "command": "get_node_ip_addresses",
-  "args": {
-    "node_id": 1,
-    "prefer_cache": false,
-    "scoped": false
-  }
+    "message_id": "1",
+    "command": "get_node_ip_addresses",
+    "args": {
+        "node_id": 1,
+        "prefer_cache": false,
+        "scoped": false
+    }
 }
 ```
 
@@ -443,11 +457,11 @@ Optional parameters:
 
 ```json
 {
-  "message_id": "1",
-  "command": "remove_node",
-  "args": {
-    "node_id": 1
-  }
+    "message_id": "1",
+    "command": "remove_node",
+    "args": {
+        "node_id": 1
+    }
 }
 ```
 
@@ -457,11 +471,11 @@ Optional parameters:
 
 ```json
 {
-  "message_id": "1",
-  "command": "get_matter_fabrics",
-  "args": {
-    "node_id": 1
-  }
+    "message_id": "1",
+    "command": "get_matter_fabrics",
+    "args": {
+        "node_id": 1
+    }
 }
 ```
 
@@ -469,12 +483,12 @@ Optional parameters:
 
 ```json
 {
-  "message_id": "1",
-  "command": "remove_matter_fabric",
-  "args": {
-    "node_id": 1,
-    "fabric_index": 2
-  }
+    "message_id": "1",
+    "command": "remove_matter_fabric",
+    "args": {
+        "node_id": 1,
+        "fabric_index": 2
+    }
 }
 ```
 
@@ -486,23 +500,24 @@ Replaces the ACL entries for the controller's fabric on the target node. The ser
 
 ```json
 {
-  "message_id": "1",
-  "command": "set_acl_entry",
-  "args": {
-    "node_id": 1,
-    "entry": [
-      {
-        "privilege": 5,
-        "auth_mode": 2,
-        "subjects": [112233],
-        "targets": null
-      }
-    ]
-  }
+    "message_id": "1",
+    "command": "set_acl_entry",
+    "args": {
+        "node_id": 1,
+        "entry": [
+            {
+                "privilege": 5,
+                "auth_mode": 2,
+                "subjects": [112233],
+                "targets": null
+            }
+        ]
+    }
 }
 ```
 
 Entry fields:
+
 - `privilege`: 1=View, 3=Operate, 4=Manage, 5=Administer
 - `auth_mode`: 1=PASE, 2=CASE, 3=Group
 - `subjects`: Array of NodeIds or GroupIds (or null)
@@ -512,19 +527,19 @@ Entry fields:
 
 ```json
 {
-  "message_id": "1",
-  "command": "set_node_binding",
-  "args": {
-    "node_id": 1,
-    "endpoint": 1,
-    "bindings": [
-      {
-        "node": 2,
+    "message_id": "1",
+    "command": "set_node_binding",
+    "args": {
+        "node_id": 1,
         "endpoint": 1,
-        "cluster": 6
-      }
-    ]
-  }
+        "bindings": [
+            {
+                "node": 2,
+                "endpoint": 1,
+                "cluster": 6
+            }
+        ]
+    }
 }
 ```
 
@@ -534,11 +549,11 @@ Entry fields:
 
 ```json
 {
-  "message_id": "1",
-  "command": "check_node_update",
-  "args": {
-    "node_id": 1
-  }
+    "message_id": "1",
+    "command": "check_node_update",
+    "args": {
+        "node_id": 1
+    }
 }
 ```
 
@@ -546,28 +561,29 @@ Entry fields:
 
 ```json
 {
-  "message_id": "1",
-  "command": "update_node",
-  "args": {
-    "node_id": 1,
-    "software_version": 2
-  }
+    "message_id": "1",
+    "command": "update_node",
+    "args": {
+        "node_id": 1,
+        "software_version": 2
+    }
 }
 ```
 
 ### ICD Management
 
-**Experimental, matter.js-only.** Manage this controller's Intermittently Connected Device (ICD) Check-In registration with a peer node.
+Manage this controller's Intermittently Connected Device (ICD) Check-In registration with a peer node.
+Read the details about ICD devices and consequences of changing the ICD mode carefully before applying any changes.
 
 **get_icd_state** - Get ICD state for a node
 
 ```json
 {
-  "message_id": "1",
-  "command": "get_icd_state",
-  "args": {
-    "node_id": 1
-  }
+    "message_id": "1",
+    "command": "get_icd_state",
+    "args": {
+        "node_id": 1
+    }
 }
 ```
 
@@ -575,13 +591,13 @@ Response (`IcdStateData`):
 
 ```json
 {
-  "supported": true,
-  "lit_supported": true,
-  "registered": true,
-  "operating_mode": "LIT",
-  "awake": false,
-  "available": true,
-  "next_expected_checkin": 1735689600000
+    "supported": true,
+    "lit_supported": true,
+    "registered": true,
+    "operating_mode": "LIT",
+    "awake": false,
+    "available": true,
+    "next_expected_checkin": 1735689600000
 }
 ```
 
@@ -591,13 +607,13 @@ If the node has no ICD Management cluster, `supported` is `false` and all other 
 
 ```json
 {
-  "message_id": "1",
-  "command": "register_icd",
-  "args": {
-    "node_id": 1,
-    "allow_multi_admin": false,
-    "ignored_vendors": [4874]
-  }
+    "message_id": "1",
+    "command": "register_icd",
+    "args": {
+        "node_id": 1,
+        "allow_multi_admin": false,
+        "ignored_vendors": [4874]
+    }
 }
 ```
 
@@ -607,14 +623,16 @@ Fails with error code `100 IcdMultiAdmin` if the peer has other-vendor administr
 
 **unregister_icd** - Drop this controller's ICD Check-In registration
 
+If other ecosystems are still registered the device might stay in the LIT mode, and connecting to the device might take a long time, and the server might automatically re-register after the next connection.
+
 ```json
 {
-  "message_id": "1",
-  "command": "unregister_icd",
-  "args": {
-    "node_id": 1,
-    "force": false
-  }
+    "message_id": "1",
+    "command": "unregister_icd",
+    "args": {
+        "node_id": 1,
+        "force": false
+    }
 }
 ```
 
@@ -622,13 +640,15 @@ Response: `IcdStateData` (see `get_icd_state`). `force` skips the peer round-tri
 
 **resync_icd** - Drop the local ICD registration and reconnect
 
+This should be the last resort to try to get an ICD device in LIT mode connected again. Before doing this try to restart the device. It can take up to the "maximum IdleMode Time" of the device before it reconnects.
+
 ```json
 {
-  "message_id": "1",
-  "command": "resync_icd",
-  "args": {
-    "node_id": 1
-  }
+    "message_id": "1",
+    "command": "resync_icd",
+    "args": {
+        "node_id": 1
+    }
 }
 ```
 
@@ -640,11 +660,11 @@ A LIT peer re-registers automatically once subscribed.
 
 ```json
 {
-  "message_id": "1",
-  "command": "get_vendor_names",
-  "args": {
-    "filter_vendors": [4874, 65521]
-  }
+    "message_id": "1",
+    "command": "get_vendor_names",
+    "args": {
+        "filter_vendors": [4874, 65521]
+    }
 }
 ```
 
@@ -656,11 +676,11 @@ Import nodes from Home Assistant diagnostic dumps for testing purposes. Test nod
 
 ```json
 {
-  "message_id": "1",
-  "command": "import_test_node",
-  "args": {
-    "dump": "{\"data\":{\"node\":{...}}}"
-  }
+    "message_id": "1",
+    "command": "import_test_node",
+    "args": {
+        "dump": "{\"data\":{\"node\":{...}}}"
+    }
 }
 ```
 
@@ -708,8 +728,8 @@ Events are sent to clients that have called `start_listening`. Events have this 
 
 ```json
 {
-  "event": "node_removed",
-  "data": 1
+    "event": "node_removed",
+    "data": 1
 }
 ```
 
@@ -719,8 +739,8 @@ Events are sent to clients that have called `start_listening`. Events have this 
 
 ```json
 {
-  "event": "attribute_updated",
-  "data": [1, "1/6/0", true]
+    "event": "attribute_updated",
+    "data": [1, "1/6/0", true]
 }
 ```
 
@@ -732,11 +752,11 @@ Format: `[node_id, "endpoint/cluster/attribute", value]`
 
 ```json
 {
-  "event": "endpoint_added",
-  "data": {
-    "node_id": 1,
-    "endpoint_id": 3
-  }
+    "event": "endpoint_added",
+    "data": {
+        "node_id": 1,
+        "endpoint_id": 3
+    }
 }
 ```
 
@@ -744,11 +764,11 @@ Format: `[node_id, "endpoint/cluster/attribute", value]`
 
 ```json
 {
-  "event": "endpoint_removed",
-  "data": {
-    "node_id": 1,
-    "endpoint_id": 3
-  }
+    "event": "endpoint_removed",
+    "data": {
+        "node_id": 1,
+        "endpoint_id": 3
+    }
 }
 ```
 
@@ -758,18 +778,18 @@ Format: `[node_id, "endpoint/cluster/attribute", value]`
 
 ```json
 {
-  "event": "node_event",
-  "data": {
-    "node_id": 1,
-    "endpoint_id": 1,
-    "cluster_id": 59,
-    "event_id": 1,
-    "event_number": 12345,
-    "priority": 1,
-    "timestamp": 1704067200000,
-    "timestamp_type": 1,
-    "data": { "newPosition": 1 }
-  }
+    "event": "node_event",
+    "data": {
+        "node_id": 1,
+        "endpoint_id": 1,
+        "cluster_id": 59,
+        "event_id": 1,
+        "event_number": 12345,
+        "priority": 1,
+        "timestamp": 1704067200000,
+        "timestamp_type": 1,
+        "data": { "newPosition": 1 }
+    }
 }
 ```
 
@@ -779,17 +799,17 @@ Format: `[node_id, "endpoint/cluster/attribute", value]`
 
 ```json
 {
-  "event": "server_info_updated",
-  "data": {
-    "fabric_id": 1234567890,
-    "compressed_fabric_id": 9876543210,
-    "schema_version": 11,
-    "min_supported_schema_version": 11,
-    "sdk_version": "matter.js/0.11.0",
-    "wifi_credentials_set": true,
-    "thread_credentials_set": true,
-    "bluetooth_enabled": true
-  }
+    "event": "server_info_updated",
+    "data": {
+        "fabric_id": 1234567890,
+        "compressed_fabric_id": 9876543210,
+        "schema_version": 11,
+        "min_supported_schema_version": 11,
+        "sdk_version": "matter.js/0.11.0",
+        "wifi_credentials_set": true,
+        "thread_credentials_set": true,
+        "bluetooth_enabled": true
+    }
 }
 ```
 
@@ -797,8 +817,8 @@ Format: `[node_id, "endpoint/cluster/attribute", value]`
 
 ```json
 {
-  "event": "server_shutdown",
-  "data": {}
+    "event": "server_shutdown",
+    "data": {}
 }
 ```
 
@@ -812,19 +832,19 @@ Attribute paths use the format: `endpoint/cluster/attribute`
 
 ## Common Cluster IDs
 
-| Cluster | ID | Description |
-|---------|-----|-------------|
-| Identify | 3 | Identify device |
-| Groups | 4 | Group membership |
-| OnOff | 6 | On/Off control |
-| LevelControl | 8 | Dimming/level |
-| Descriptor | 29 | Endpoint descriptor |
-| BasicInformation | 40 | Device information |
-| OtaSoftwareUpdateRequestor | 42 | OTA updates |
-| ColorControl | 768 | Color/temperature |
-| DoorLock | 257 | Door locks |
-| WindowCovering | 258 | Blinds/shades |
-| Thermostat | 513 | HVAC control |
+| Cluster                    | ID  | Description         |
+| -------------------------- | --- | ------------------- |
+| Identify                   | 3   | Identify device     |
+| Groups                     | 4   | Group membership    |
+| OnOff                      | 6   | On/Off control      |
+| LevelControl               | 8   | Dimming/level       |
+| Descriptor                 | 29  | Endpoint descriptor |
+| BasicInformation           | 40  | Device information  |
+| OtaSoftwareUpdateRequestor | 42  | OTA updates         |
+| ColorControl               | 768 | Color/temperature   |
+| DoorLock                   | 257 | Door locks          |
+| WindowCovering             | 258 | Blinds/shades       |
+| Thermostat                 | 513 | HVAC control        |
 
 ## Schema Version
 
@@ -844,21 +864,21 @@ Node IDs and some other fields (e.g., `fabric_id`, `compressed_fabric_id`, `even
 
 Error codes match the [Python Matter Server](https://github.com/home-assistant-libs/python-matter-server) for API compatibility.
 
-| Code | Name | Description |
-|------|------|-------------|
-| 0 | UnknownError | Generic/unknown error |
-| 1 | NodeCommissionFailed | Node commissioning failed |
-| 2 | NodeInterviewFailed | Node interview failed |
-| 3 | NodeNotReady | Node is not ready (offline or not yet interviewed) |
-| 4 | NodeNotResolving | Node not resolving (CASE session establishment failed) |
-| 5 | NodeNotExists | Node does not exist |
-| 6 | VersionMismatch | SDK version mismatch |
-| 7 | SDKStackError | SDK/Stack error |
-| 8 | InvalidArguments | Invalid command arguments |
-| 9 | InvalidCommand | Invalid/unknown command |
-| 10 | UpdateCheckError | OTA update check failed |
-| 11 | UpdateError | OTA update failed |
-| 100 | IcdMultiAdmin | OHF extension (not in Python Matter Server). ICD registration rejected because other-vendor administrator fabrics may not support LIT. `details` is a JSON string: `{"message": string, "admin_vendor_ids": number[]}` |
+| Code | Name                 | Description                                                                                                                                                                                                            |
+| ---- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0    | UnknownError         | Generic/unknown error                                                                                                                                                                                                  |
+| 1    | NodeCommissionFailed | Node commissioning failed                                                                                                                                                                                              |
+| 2    | NodeInterviewFailed  | Node interview failed                                                                                                                                                                                                  |
+| 3    | NodeNotReady         | Node is not ready (offline or not yet interviewed)                                                                                                                                                                     |
+| 4    | NodeNotResolving     | Node not resolving (CASE session establishment failed)                                                                                                                                                                 |
+| 5    | NodeNotExists        | Node does not exist                                                                                                                                                                                                    |
+| 6    | VersionMismatch      | SDK version mismatch                                                                                                                                                                                                   |
+| 7    | SDKStackError        | SDK/Stack error                                                                                                                                                                                                        |
+| 8    | InvalidArguments     | Invalid command arguments                                                                                                                                                                                              |
+| 9    | InvalidCommand       | Invalid/unknown command                                                                                                                                                                                                |
+| 10   | UpdateCheckError     | OTA update check failed                                                                                                                                                                                                |
+| 11   | UpdateError          | OTA update failed                                                                                                                                                                                                      |
+| 100  | IcdMultiAdmin        | OHF extension (not in Python Matter Server). ICD registration rejected because other-vendor administrator fabrics may not support LIT. `details` is a JSON string: `{"message": string, "admin_vendor_ids": number[]}` |
 
 ## Python Matter Server Compatibility
 
@@ -866,29 +886,29 @@ This API is designed to be compatible with the [Python Matter Server](https://gi
 
 ### Stub Commands
 
-| Command | Status | Notes |
-|---------|--------|-------|
-| `subscribe_attribute` | Stub | Not implemented (Matter.js handles subscriptions internally) |
+| Command               | Status | Notes                                                        |
+| --------------------- | ------ | ------------------------------------------------------------ |
+| `subscribe_attribute` | Stub   | Not implemented (Matter.js handles subscriptions internally) |
 
 ### Matter.js-Only Commands
 
 These commands are available only in the Matter.js server and not in the Python Matter Server:
 
-| Command | Description |
-|---------|-------------|
-| `get_loglevel` | Get current console and file log levels |
-| `set_loglevel` | Temporarily change log levels (resets on restart) |
-| `get_icd_state` | Get ICD Check-In state for a node (experimental) |
-| `register_icd` | Register this controller as an ICD Check-In client (experimental) |
-| `unregister_icd` | Drop this controller's ICD Check-In registration (experimental) |
-| `resync_icd` | Drop the local ICD registration and reconnect (experimental) |
+| Command          | Description                                                       |
+| ---------------- | ----------------------------------------------------------------- |
+| `get_loglevel`   | Get current console and file log levels                           |
+| `set_loglevel`   | Temporarily change log levels (resets on restart)                 |
+| `get_icd_state`  | Get ICD Check-In state for a node (experimental)                  |
+| `register_icd`   | Register this controller as an ICD Check-In client (experimental) |
+| `unregister_icd` | Drop this controller's ICD Check-In registration (experimental)   |
+| `resync_icd`     | Drop the local ICD registration and reconnect (experimental)      |
 
 ### Data Differences
 
-| Field | Python | Matter.js |
-|-------|--------|-----------|
-| `MatterNode.attribute_subscriptions` | Tracks per-node subscriptions | Always empty array |
-| Test node IDs | `>= 900000` | `>= 0xFFFF_FFFE_0000_0000` |
+| Field                                | Python                        | Matter.js                  |
+| ------------------------------------ | ----------------------------- | -------------------------- |
+| `MatterNode.attribute_subscriptions` | Tracks per-node subscriptions | Always empty array         |
+| Test node IDs                        | `>= 900000`                   | `>= 0xFFFF_FFFE_0000_0000` |
 
 ### Behavioral Differences
 
