@@ -20,18 +20,25 @@ import {
     SoftwareUpdateManager,
     Timestamp,
 } from "@matter/main";
-import { VendorInfo, DclCertificateService, DclVendorInfoService } from "@matter/main/protocol";
+import { VendorInfo, DclCertificateService, DclVendorInfoService, OperationalDataset } from "@matter/main/protocol";
 import { VendorId } from "@matter/main/types";
 import { Endpoint } from "@matter/node";
+import { WebRtcTransportRequestorServer } from "@matter/node/behaviors/web-rtc-transport-requestor";
 import { CameraControllerDevice } from "@matter/node/devices/camera-controller";
+import {
+    BorderRouterRegistry,
+    connectMeshcop,
+    OtbrRestClient,
+    OtbrRestDiagnosticSource,
+    ThreadCredentialsRegistry,
+} from "@matter/thread-br-client";
 import { CommissioningController } from "@project-chip/matter.js";
 import { Readable } from "node:stream";
 import { ConfigStorage } from "../server/ConfigStorage.js";
-import { WebRtcTransportRequestorServer } from "./behaviors/WebRtcTransportRequestorServer.js";
-import { BorderRouterDiscovery } from "./BorderRouterDiscovery.js";
 import { ControllerCommandHandler } from "./ControllerCommandHandler.js";
 import { LegacyDataInjector, LegacyServerData } from "./LegacyDataInjector.js";
 import { resolveServerId } from "./ServerIdResolver.js";
+import { ThreadDiagnosticsService } from "./ThreadDiagnosticsService.js";
 
 const logger = Logger.get("MatterController");
 
@@ -80,6 +87,12 @@ export interface MatterControllerOptions {
     bleProxyEnabled?: boolean;
     /** Enable time synchronization for nodes with the TimeSynchronization cluster. Only enable when host NTP is reliable. */
     enableTimeSync?: boolean;
+    /**
+     * Disable the Thread Border Router subsystem: no mDNS BR discovery, no REST/CoAP
+     * probing or diagnostics. Matter-over-Thread commissioning (which reads the stored
+     * dataset from config) is unaffected. Defaults to false.
+     */
+    disableThreadDiagnostics?: boolean;
 }
 
 /**
@@ -99,6 +112,66 @@ function parseVersionToNumber(version: string): number {
     return major * 10000 + minor * 100 + patch;
 }
 
+/**
+ * Decode a stored Thread operational dataset hex string and register the resulting
+ * credentials. Logs the public extPanId + network name; never logs `pskc` or
+ * `networkKey`. Empty / undefined input is a no-op. Errors are caught and warned —
+ * the registry is best-effort so a malformed hex blob in storage doesn't block boot
+ * or block a successful storage write in the WS path.
+ *
+ * Returns the parsed {@link OperationalDataset} on success so callers that need
+ * downstream fields (e.g. extPanId for reconciliation) can avoid a second decode.
+ */
+export function registerThreadCredentialsFromHex(
+    credentials: ThreadCredentialsRegistry,
+    hex: string | undefined,
+    source: string,
+): OperationalDataset | undefined {
+    if (hex === undefined || hex === "") return undefined;
+    try {
+        const ds = OperationalDataset.decode(hex);
+        credentials.register(ds);
+        logger.info(`Registered Thread credentials from ${source} (${formatDatasetForLog(ds)})`);
+        return ds;
+    } catch (e) {
+        logger.warn(`Could not register Thread credentials from ${source}: ${e}`);
+        return undefined;
+    }
+}
+
+function formatDatasetForLog(ds: OperationalDataset): string {
+    const fields = new Array<string>();
+    fields.push(`xp=${ds.extPanId === undefined ? "?" : Bytes.toHex(ds.extPanId).toUpperCase()}`);
+    fields.push(`network="${ds.networkName ?? ""}"`);
+    if (ds.channel !== undefined) fields.push(`ch=${ds.channel}`);
+    if (ds.panId !== undefined) fields.push(`panId=0x${ds.panId.toString(16).padStart(4, "0").toUpperCase()}`);
+    if (ds.meshLocalPrefix !== undefined) fields.push(`mlPrefix=${Bytes.toHex(ds.meshLocalPrefix).toUpperCase()}`);
+    if (ds.activeTimestamp !== undefined) fields.push(`activeTs=${Bytes.toHex(ds.activeTimestamp).toUpperCase()}`);
+    if (ds.pendingTimestamp !== undefined) fields.push(`pendingTs=${Bytes.toHex(ds.pendingTimestamp).toUpperCase()}`);
+    fields.push(`pskc=${ds.pskc !== undefined ? "set" : "missing"}`);
+    fields.push(`networkKey=${ds.networkKey !== undefined ? "set" : "missing"}`);
+    if (ds.securityPolicy !== undefined) {
+        fields.push(
+            `secPolicy=rotation${ds.securityPolicy.rotationTime}h/flags=0x${ds.securityPolicy.flags.toString(16).padStart(4, "0").toUpperCase()}`,
+        );
+    }
+    if (ds.unknownTlvs.length > 0) fields.push(`unknownTlvs=${ds.unknownTlvs.length}`);
+    return fields.join(", ");
+}
+
+/**
+ * Split an `OtbrRestCapability.baseUrl` (e.g. `http://[fd00::1]:8081`) into the
+ * host + port the {@link OtbrRestClient} constructor expects. Square-bracketed
+ * IPv6 hosts are stripped — the client wraps them again itself.
+ */
+function parseRestBaseUrl(baseUrl: string): { host: string; port: number } {
+    const url = new URL(baseUrl);
+    let host = url.hostname;
+    if (host.startsWith("[") && host.endsWith("]")) host = host.slice(1, -1);
+    const port = url.port === "" ? 8081 : Number(url.port);
+    return { host, port };
+}
+
 export class MatterController {
     #env: Environment;
     #controllerInstance?: CommissioningController;
@@ -112,7 +185,10 @@ export class MatterController {
     #disableDclSeed = false;
     #bleProxyEnabled = false;
     #enableTimeSync = false;
-    readonly #borderRouterDiscovery: BorderRouterDiscovery;
+    #threadDiagnosticsDisabled = false;
+    readonly #borderRouterRegistry: BorderRouterRegistry;
+    readonly #credentials = new ThreadCredentialsRegistry();
+    readonly #threadDiagnostics: ThreadDiagnosticsService;
     #webRtcRequestor?: Endpoint<typeof CameraControllerDevice>;
     #services: SharedEnvironmentServices;
 
@@ -186,7 +262,7 @@ export class MatterController {
 
     constructor(environment: Environment, config: ConfigStorage, options: MatterControllerOptions, serverId: string) {
         this.#env = environment;
-        this.#borderRouterDiscovery = new BorderRouterDiscovery(this.#env);
+        this.#borderRouterRegistry = new BorderRouterRegistry(this.#env);
         this.#config = config;
         this.#serverId = serverId;
         this.#serverVersion = options.serverVersion ?? "0.0.0";
@@ -195,7 +271,18 @@ export class MatterController {
         this.#disableDclSeed = options.disableDclSeed ?? this.#disableDclSeed;
         this.#bleProxyEnabled = options.bleProxyEnabled ?? this.#bleProxyEnabled;
         this.#enableTimeSync = options.enableTimeSync ?? this.#enableTimeSync;
+        this.#threadDiagnosticsDisabled = options.disableThreadDiagnostics ?? this.#threadDiagnosticsDisabled;
         this.#services = this.#env.asDependent();
+        this.#threadDiagnostics = new ThreadDiagnosticsService({
+            enabled: !this.#threadDiagnosticsDisabled,
+            borderRouters: this.#borderRouterRegistry,
+            credentials: this.#credentials,
+            makeRestSource: cap => {
+                const { host, port } = parseRestBaseUrl(cap.baseUrl);
+                return new OtbrRestDiagnosticSource(new OtbrRestClient({ host, port }), cap);
+            },
+            makeMeshcopSource: (creds, br) => connectMeshcop({ environment: this.#env, creds, br }),
+        });
     }
 
     protected async initialize(
@@ -205,23 +292,40 @@ export class MatterController {
     ) {
         this.#legacyCommissionedDates = legacyCommissionedDates?.size ? legacyCommissionedDates : undefined;
 
+        // Mimic Dcl configuration from DCL Behavior override settings
+        const dclConfig = this.#env.vars.has("dcl.productionurl")
+            ? { url: this.#env.vars.string("dcl.productionurl") }
+            : undefined;
+        const testDclConfig = this.#env.vars.has("dcl.testurl")
+            ? { url: this.#env.vars.string("dcl.testurl") }
+            : undefined;
+        const fetchTestCertificates = this.#env.vars.get("dcl.fetchtestcertificates", true);
+        const fetchGithubCertificates = this.#env.vars.get("dcl.fetchgithubcertificates", true);
+
         // Register DCL services on the root environment; DclBehavior picks them up.
         // When seeding is enabled (default), pre-populate from the bundled offline snapshot so
         // commissioning works without internet access.
         //
-        // Test PAA roots/CD signers are always loaded (fetchTestCertificates). Trust is gated
-        // separately via acceptTestCertificates: a test device is only commissioned when
-        // enableTestNetDcl is set; otherwise the attestation validator reports TrustedAsTestCertificate
-        // and onAttestationFailure rejects with an actionable hint instead of an opaque PaaNotTrusted.
+        // Test PAA roots/CD signers are always loaded (fetchTestCertificates, unless turned off by ENV
+        // variables). Trust is gated separately via acceptTestCertificates: a test device is only
+        // commissioned when enableTestNetDcl is set; otherwise the attestation validator reports
+        // TrustedAsTestCertificate and onAttestationFailure rejects with an actionable hint instead of
+        // an opaque PaaNotTrusted.
         const trustTestCertificates = this.#enableTestNetDcl;
         if (this.#disableDclSeed) {
             new DclCertificateService(this.#env.root, {
-                fetchTestCertificates: true,
+                dclConfig,
+                testDclConfig,
+                fetchTestCertificates,
+                fetchGithubCertificates,
                 acceptTestCertificates: trustTestCertificates,
             });
         } else {
             new DclCertificateService(this.#env.root, {
-                fetchTestCertificates: true,
+                dclConfig,
+                testDclConfig,
+                fetchTestCertificates,
+                fetchGithubCertificates,
                 acceptTestCertificates: trustTestCertificates,
                 seed: {
                     paaRoots: paaRoots({ includeTest: true }),
@@ -229,6 +333,7 @@ export class MatterController {
                 },
             });
             new DclVendorInfoService(this.#env.root, {
+                dclConfig,
                 seed: { vendors: vendors({ includeTest: trustTestCertificates }) },
             });
             this.#services.get(DclVendorInfoService);
@@ -294,8 +399,12 @@ export class MatterController {
                     initPromises.push(this.#enableTestOtaImages());
                 }
 
-                initPromises.push(this.#borderRouterDiscovery.start());
                 initPromises.push(this.#enableWebRtcRequestor());
+
+                if (!this.#threadDiagnosticsDisabled) {
+                    initPromises.push(this.#borderRouterRegistry.start());
+                    this.#registerStoredThreadCredentials();
+                }
 
                 try {
                     await MatterAggregateError.allSettled(initPromises);
@@ -308,8 +417,27 @@ export class MatterController {
         return this.#commandHandler;
     }
 
-    get borderRouters(): BorderRouterDiscovery {
-        return this.#borderRouterDiscovery;
+    get borderRouters(): BorderRouterRegistry {
+        return this.#borderRouterRegistry;
+    }
+
+    get credentials(): ThreadCredentialsRegistry {
+        return this.#credentials;
+    }
+
+    /** False when the Thread BR subsystem is disabled via `disableThreadDiagnostics`. */
+    get threadDiagnosticsEnabled(): boolean {
+        return !this.#threadDiagnosticsDisabled;
+    }
+
+    get threadDiagnostics(): ThreadDiagnosticsService {
+        return this.#threadDiagnostics;
+    }
+
+    #registerStoredThreadCredentials(): void {
+        for (const entry of this.#config.listThreadCredentials()) {
+            registerThreadCredentialsFromHex(this.#credentials, entry.dataset, `stored:${entry.id}`);
+        }
     }
 
     get webRtcRequestor(): Endpoint<typeof CameraControllerDevice> {
@@ -406,7 +534,10 @@ export class MatterController {
     }
 
     async stop() {
-        await this.#borderRouterDiscovery.stop();
+        if (!this.#threadDiagnosticsDisabled) {
+            await this.#threadDiagnostics.stop();
+            await this.#borderRouterRegistry.stop();
+        }
         await this.#commandHandler?.close(); // This closes also the controller instance if started
         await this.#services.close();
     }

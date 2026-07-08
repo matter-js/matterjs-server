@@ -70,6 +70,9 @@ export interface CliOptions {
     // Dashboard configuration
     disableDashboard: boolean;
     productionMode: boolean;
+
+    // Thread Border Router configuration
+    disableThreadDiagnostics: boolean;
 }
 
 function parseIntOption(value: string): number {
@@ -208,6 +211,16 @@ export function parseCliArgs(argv?: string[]): CliOptions {
         )
         .addOption(
             new Option(
+                "--disable-thread-diagnostics [value]",
+                "Disable the Thread Network diagnostics feature (Border Router mDNS discovery, REST/CoAP probing and diagnostic queries). Matter-over-Thread commissioning is unaffected.",
+            )
+                .argParser(parseBooleanEnv)
+                .preset(true)
+                .default(false)
+                .env("DISABLE_THREAD_DIAGNOSTICS"),
+        )
+        .addOption(
+            new Option(
                 "--production-mode [value]",
                 "Force dashboard production mode (auto-connect to server). Use when running behind a reverse proxy.",
             )
@@ -285,6 +298,7 @@ export function parseCliArgs(argv?: string[]): CliOptions {
         enableTimeSync: opts.enableTimeSync,
         disableDashboard: opts.disableDashboard,
         productionMode: opts.productionMode,
+        disableThreadDiagnostics: opts.disableThreadDiagnostics,
     };
 }
 

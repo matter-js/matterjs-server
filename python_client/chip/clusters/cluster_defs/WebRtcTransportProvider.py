@@ -45,22 +45,6 @@ class WebRtcTransportProvider(Cluster):
         class Feature(IntFlag):
             kMetadata = 0x1
 
-    class Structs:
-        @dataclass
-        class SFrameStruct(ClusterObject):
-            @ChipUtility.classproperty
-            def descriptor(cls) -> ClusterObjectDescriptor:
-                return ClusterObjectDescriptor(
-                    Fields=[
-                        ClusterObjectFieldDescriptor(Label="cipherSuite", Tag=0, Type=uint),
-                        ClusterObjectFieldDescriptor(Label="baseKey", Tag=1, Type=bytes),
-                        ClusterObjectFieldDescriptor(Label="kid", Tag=2, Type=bytes),
-                    ])
-
-            cipherSuite: uint = 0
-            baseKey: bytes = b""
-            kid: bytes = b""
-
     class Commands:
         @dataclass
         class SolicitOffer(ClusterCommand):
@@ -80,7 +64,6 @@ class WebRtcTransportProvider(Cluster):
                         ClusterObjectFieldDescriptor(Label="iceServers", Tag=4, Type=typing.Optional[typing.List[WebRtcTransportDefinitions.Structs.ICEServerStruct]]),
                         ClusterObjectFieldDescriptor(Label="iceTransportPolicy", Tag=5, Type=typing.Optional[str]),
                         ClusterObjectFieldDescriptor(Label="metadataEnabled", Tag=6, Type=typing.Optional[bool]),
-                        ClusterObjectFieldDescriptor(Label="SFrameConfig", Tag=7, Type=typing.Optional[WebRtcTransportProvider.Structs.SFrameStruct]),
                         ClusterObjectFieldDescriptor(Label="videoStreams", Tag=8, Type=typing.Optional[typing.List[uint]]),
                         ClusterObjectFieldDescriptor(Label="audioStreams", Tag=9, Type=typing.Optional[typing.List[uint]]),
                     ])
@@ -92,7 +75,6 @@ class WebRtcTransportProvider(Cluster):
             iceServers: typing.Optional[typing.List[WebRtcTransportDefinitions.Structs.ICEServerStruct]] = None
             iceTransportPolicy: typing.Optional[str] = None
             metadataEnabled: typing.Optional[bool] = None
-            SFrameConfig: typing.Optional[WebRtcTransportProvider.Structs.SFrameStruct] = None
             videoStreams: typing.Optional[typing.List[uint]] = None
             audioStreams: typing.Optional[typing.List[uint]] = None
 
@@ -116,7 +98,6 @@ class WebRtcTransportProvider(Cluster):
                         ClusterObjectFieldDescriptor(Label="iceServers", Tag=6, Type=typing.Optional[typing.List[WebRtcTransportDefinitions.Structs.ICEServerStruct]]),
                         ClusterObjectFieldDescriptor(Label="iceTransportPolicy", Tag=7, Type=typing.Optional[str]),
                         ClusterObjectFieldDescriptor(Label="metadataEnabled", Tag=8, Type=typing.Optional[bool]),
-                        ClusterObjectFieldDescriptor(Label="SFrameConfig", Tag=9, Type=typing.Optional[WebRtcTransportProvider.Structs.SFrameStruct]),
                         ClusterObjectFieldDescriptor(Label="videoStreams", Tag=10, Type=typing.Optional[typing.List[uint]]),
                         ClusterObjectFieldDescriptor(Label="audioStreams", Tag=11, Type=typing.Optional[typing.List[uint]]),
                     ])
@@ -130,7 +111,6 @@ class WebRtcTransportProvider(Cluster):
             iceServers: typing.Optional[typing.List[WebRtcTransportDefinitions.Structs.ICEServerStruct]] = None
             iceTransportPolicy: typing.Optional[str] = None
             metadataEnabled: typing.Optional[bool] = None
-            SFrameConfig: typing.Optional[WebRtcTransportProvider.Structs.SFrameStruct] = None
             videoStreams: typing.Optional[typing.List[uint]] = None
             audioStreams: typing.Optional[typing.List[uint]] = None
 

@@ -39,6 +39,10 @@ class BooleanState(Cluster):
     featureMap: uint = 0
     clusterRevision: uint = 0
 
+    class Bitmaps:
+        class Feature(IntFlag):
+            kChangeEvent = 0x1
+
     class Attributes:
         @dataclass
         class StateValue(ClusterAttributeDescriptor):

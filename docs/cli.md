@@ -22,24 +22,25 @@ npm run server -- --bluetooth-adapter 0
 
 ## Complete Argument Specification
 
-| Argument              | Type         | Default          | Required | Description                                                                                      |
-| --------------------- | ------------ | ---------------- | -------- | ------------------------------------------------------------------------------------------------ |
-| --vendorid            | integer      | 0xFFF1 (65521)   | No       | Vendor ID for the Fabric                                                                         |
-| --fabricid            | integer      | (random)         | No       | Fabric ID for the Fabric (random if not specified)                                               |
-| --storage-path        | string       | ~/.matter_server | No       | Storage path to keep persistent data                                                             |
-| --port                | integer      | 5580             | No       | TCP Port for WebSocket server                                                                    |
-| --listen-address      | string[]     | null (bind all)  | No       | IP address(es) to bind WebSocket server. Repeatable.                                             |
-| --log-level           | enum         | "info"           | No       | Global logging level                                                                             |
-| --log-file            | string       | null             | No       | Log file path incl. filename, e.g. `/data/matter-server.log`                                     |
-| --primary-interface   | string       | null             | No       | Primary network interface for link-local addresses                                               |
-| --enable-test-net-dcl | boolean flag | false            | No       | Enable test-net DCL to check for certificates and OTA-updates additionally to the production DCL |
-| --disable-dcl-seed    | boolean flag | false            | No       | Disable bundled offline DCL seed (PAA roots, CD signers, vendors); rely on network DCL only      |
-| --bluetooth-adapter   | integer      | null             | No       | Bluetooth adapter HCI ID (e.g., 0 for hci0). Mutually exclusive with `--ble-proxy`.              |
+| Argument              | Type         | Default          | Required | Description                                                                                                                       |
+| --------------------- | ------------ | ---------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| --vendorid            | integer      | 0xFFF1 (65521)   | No       | Vendor ID for the Fabric                                                                                                          |
+| --fabricid            | integer      | (random)         | No       | Fabric ID for the Fabric (random if not specified)                                                                                |
+| --storage-path        | string       | ~/.matter_server | No       | Storage path to keep persistent data                                                                                              |
+| --port                | integer      | 5580             | No       | TCP Port for WebSocket server                                                                                                     |
+| --listen-address      | string[]     | null (bind all)  | No       | IP address(es) to bind WebSocket server. Repeatable.                                                                              |
+| --log-level           | enum         | "info"           | No       | Global logging level                                                                                                              |
+| --log-file            | string       | null             | No       | Log file path incl. filename, e.g. `/data/matter-server.log`                                                                      |
+| --primary-interface   | string       | null             | No       | Primary network interface for link-local addresses                                                                                |
+| --enable-test-net-dcl | boolean flag | false            | No       | Enable test-net DCL to check for certificates and OTA-updates additionally to the production DCL                                  |
+| --disable-dcl-seed    | boolean flag | false            | No       | Disable bundled offline DCL seed (PAA roots, CD signers, vendors); rely on network DCL only                                       |
+| --bluetooth-adapter   | integer      | null             | No       | Bluetooth adapter HCI ID (e.g., 0 for hci0). Mutually exclusive with `--ble-proxy`.                                               |
 | --ble-proxy           | boolean flag | false            | No       | Expose `/ble` WebSocket endpoint for a remote BLE proxy client. Mutually exclusive with `--bluetooth-adapter` (--ble-proxy wins). |
-| --disable-ota         | boolean flag | false            | No       | Disable OTA update functionality                                                                 |
-| --ota-provider-dir    | string       | null             | No       | Directory for OTA Provider files                                                                 |
-| --disable-dashboard   | boolean flag | false            | No       | Disable the web dashboard                                                                        |
-| --production-mode     | boolean flag | false            | No       | Force dashboard production mode (for reverse proxy)                                              |
+| --disable-ota         | boolean flag | false            | No       | Disable OTA update functionality                                                                                                  |
+| --ota-provider-dir    | string       | null             | No       | Directory for OTA Provider files                                                                                                  |
+| --disable-dashboard   | boolean flag | false            | No       | Disable the web dashboard                                                                                                         |
+| --production-mode     | boolean flag | false            | No       | Force dashboard production mode (for reverse proxy)                                                                               |
+| --disable-thread-diagnostics | boolean flag | false     | No       | Disable the Thread Network diagnostics feature (Border Router mDNS discovery, REST/CoAP probing and diagnostic queries) — env `DISABLE_THREAD_DIAGNOSTICS`. Matter-over-Thread commissioning is unaffected. |
 
 > **Log rotation:** `--log-file` must be a full file path including the filename. The log is rotated
 > every 24 hours, and on each startup: backups are shifted (`.6`→`.7`, …, `.1`→`.2`, current→`.1`),
@@ -80,7 +81,7 @@ so you should ideally use the CLI options instead.
 A useful example is specifying a self-hosted node of the Matter CSA Device Certificate Ledger (DCL) for professional use:
 
 ```bash
-MATTER_DCL_PRODUCTION_URL=https://on-ledger.dcl.my-company.example
+MATTER_DCL_PRODUCTIONURL=https://on-ledger.dcl.my-company.example
 ```
 
 For the full list of supported variables refer to the

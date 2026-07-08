@@ -72,7 +72,7 @@ function getDefaultIconColor(): string {
 }
 
 /**
- * Device type IDs from Matter Device Library Specification 1.5.
+ * Device type IDs from the Matter Device Library Specification.
  * Organized by spec categories. See https://csa-iot.org/ for the full specification.
  */
 const DeviceTypes = {

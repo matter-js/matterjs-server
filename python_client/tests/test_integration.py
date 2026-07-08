@@ -162,7 +162,7 @@ class TestServerCommands:
 
         assert "fabric_id" in info
         assert "compressed_fabric_id" in info
-        assert info["schema_version"] == 11
+        assert info["schema_version"] == 12
         assert info["min_supported_schema_version"] == 11
         assert "matter-server" in info["sdk_version"]
         assert "matter.js" in info["sdk_version"]
@@ -207,7 +207,7 @@ class TestServerCommands:
         client: MatterTestClient = env["client"]
         diag = await client.get_diagnostics()
         assert diag.info is not None
-        assert diag.info.schema_version == 11
+        assert diag.info.schema_version == 12
         assert isinstance(diag.nodes, list)
         assert isinstance(diag.events, list)
 
@@ -305,6 +305,15 @@ class TestServerCommands:
         client: MatterTestClient = env["client"]
         error = await client.send_command_expect_error(
             "remove_node", {"node_id": 999999}
+        )
+        assert error["error_code"] == 5  # NodeNotExists
+        assert "999999" in error["details"]
+
+    async def test_17b_error_node_not_exists_register_icd(self, env):
+        """NodeNotExists error for register_icd on non-existent node."""
+        client: MatterTestClient = env["client"]
+        error = await client.send_command_expect_error(
+            "register_icd", {"node_id": 999999}
         )
         assert error["error_code"] == 5  # NodeNotExists
         assert "999999" in error["details"]
@@ -448,6 +457,23 @@ class TestNodeQueries:
         assert isinstance(fabrics, list)
         assert len(fabrics) > 0
         assert any(f.fabric_index == 1 for f in fabrics)
+
+    async def test_27b_get_icd_state_unsupported(self, env):
+        """get_icd_state returns the unsupported shape for a node without IcdManagement."""
+        _require_state(env, "node_id")
+        client: MatterTestClient = env["client"]
+        state = await client.send_command(
+            APICommand.GET_ICD_STATE, node_id=env["node_id"]
+        )
+        assert state == {
+            "supported": False,
+            "lit_supported": False,
+            "registered": False,
+            "operating_mode": None,
+            "awake": None,
+            "available": None,
+            "next_expected_checkin": None,
+        }
 
 
 # ============================================================================

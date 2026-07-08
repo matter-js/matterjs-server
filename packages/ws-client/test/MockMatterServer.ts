@@ -18,6 +18,24 @@ export interface ReceivedCommand {
     raw: string;
 }
 
+/** Throw from an `onCommand` handler to control the wire `error_code` sent to the client. */
+export class MockCommandError extends Error {
+    constructor(
+        message: string,
+        readonly errorCode: number,
+    ) {
+        super(message);
+        this.name = "MockCommandError";
+    }
+}
+
+function toWireError(error: unknown): { error_code: number; details: string } {
+    return {
+        error_code: error instanceof MockCommandError ? error.errorCode : 1,
+        details: error instanceof Error ? error.message : String(error),
+    };
+}
+
 /**
  * Mock Matter server for testing the ws-client.
  * Simulates the WebSocket protocol used by the real Matter server.
@@ -199,8 +217,7 @@ export class MockMatterServer {
                             socket.send(
                                 toBigIntAwareJson({
                                     message_id: message.message_id,
-                                    error_code: 1,
-                                    details: error instanceof Error ? error.message : String(error),
+                                    ...toWireError(error),
                                 }),
                             );
                         });
@@ -216,8 +233,7 @@ export class MockMatterServer {
                 socket.send(
                     toBigIntAwareJson({
                         message_id: message.message_id,
-                        error_code: 1,
-                        details: error instanceof Error ? error.message : String(error),
+                        ...toWireError(error),
                     }),
                 );
             }

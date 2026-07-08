@@ -174,6 +174,25 @@ export interface UnknownThreadDevice {
 }
 
 /**
+ * Router/leader sourced purely from diagnostics (route64) that matches no
+ * commissioned Matter device, known BR, or neighbor-inferred unknown. Its
+ * childTable leaves are not materialized as nodes — they surface as {@link childCount}.
+ */
+export interface DiagnosticMeshNode {
+    kind: "diagnostic";
+    /** Graph id `thread_<EXTMAC>`, else `meshrloc_<extPanId>_<rloc16>`. */
+    id: string;
+    rloc16: number;
+    /** Uppercase hex Thread MAC if known. */
+    extAddressHex?: string;
+    isRouter: boolean;
+    vendorName?: string;
+    /** Number of childTable entries this router reports (shown as a label badge). */
+    childCount: number;
+    networkName: string;
+}
+
+/**
  * Thread Border Router enriched via mDNS.
  *
  * Same neighbor-table aggregate fields as UnknownThreadDevice (seenBy, isRouter, bestRssi),

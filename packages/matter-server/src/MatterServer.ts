@@ -178,6 +178,7 @@ async function start() {
             serverVersion: MATTER_SERVER_VERSION,
             bleProxyEnabled: cliOptions.bleProxy,
             enableTimeSync: cliOptions.enableTimeSync,
+            disableThreadDiagnostics: cliOptions.disableThreadDiagnostics,
         },
         legacyServerData,
     );

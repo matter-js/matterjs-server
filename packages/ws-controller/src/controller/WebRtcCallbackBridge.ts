@@ -6,7 +6,7 @@
 
 import type { WebRtcCallbackData } from "@matter-server/ws-client";
 import { Logger } from "@matter/main";
-import type { WebRtcTransportRequestorServer } from "./behaviors/WebRtcTransportRequestorServer.js";
+import type { WebRtcTransportRequestorServer } from "@matter/node/behaviors/web-rtc-transport-requestor";
 
 const logger = Logger.get("WebRtcCallbackBridge");
 

@@ -5,5 +5,9 @@ services:
     read_only: true
     network_mode: host
     restart: unless-stopped
+    # Optional Node.js heap hint. No default — size depends on the number of
+    # commissioned nodes. See docs/docker.md "Node.js Memory Limit".
+    # environment:
+    #   NODE_OPTIONS: "--max-old-space-size=512"
     volumes:
       - "${HOME}/.matterjs-server:/data"

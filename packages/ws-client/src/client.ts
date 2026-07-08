@@ -5,15 +5,17 @@
  */
 
 import { Connection, WebSocketFactory } from "./connection.js";
-import { CommandTimeoutError, ConnectionClosedError, InvalidServerVersion } from "./exceptions.js";
+import { CommandTimeoutError, ConnectionClosedError, InvalidServerVersion, ServerCommandError } from "./exceptions.js";
 import {
     AccessControlEntry,
+    AllCredentialsSummary,
     APICommands,
     BindingTarget,
     CommissionableNodeData,
     CommissioningParameters,
     ErrorResultMessage,
     EventMessage,
+    IcdStateData,
     LogLevelResponse,
     SettableLogLevelString,
     MatterFabricData,
@@ -21,6 +23,7 @@ import {
     MatterSoftwareVersion,
     NodePingResult,
     SuccessResultMessage,
+    ThreadDiagnosticsBatch,
     WebRtcCallbackData,
 } from "./models/model.js";
 import { MatterNode } from "./models/node.js";
@@ -36,9 +39,33 @@ function toNodeKey(nodeId: number | bigint): string {
 /** Default timeout for WebSocket commands in milliseconds (5 minutes) */
 export const DEFAULT_COMMAND_TIMEOUT = 5 * 60 * 1000;
 
+/** Options for {@link MatterClient.commissionWithCode}. */
+export interface CommissionWithCodeOptions {
+    /** Stored WiFi credential id to use (schema 12; omit for the reserved `default` entry). */
+    wifiCredentialsId?: string;
+    /** Stored Thread dataset id to use (schema 12; omit for the reserved `default` entry). */
+    threadDatasetId?: string;
+    /** Per-call command timeout in ms (overrides {@link MatterClient.commandTimeout}). */
+    timeout?: number;
+}
+
+/** Options for the credential set/remove commands. */
+export interface CredentialCommandOptions {
+    /** Named credential entry id (schema 12); omit for the reserved `default` entry. */
+    id?: string;
+    /** Per-call command timeout in ms (overrides {@link MatterClient.commandTimeout}). */
+    timeout?: number;
+}
+
 export class MatterClient {
     public connection: Connection;
     public nodes: Record<string, MatterNode> = {};
+    /**
+     * Latest Thread diagnostic batch per network, keyed by 16-char uppercase extPanId hex.
+     * Replaced (not mutated) on every update so consumers passing this map as a Lit
+     * @property() detect the snapshot change via the default `===` identity compare.
+     */
+    public threadDiagnostics: ReadonlyMap<string, ThreadDiagnosticsBatch> = new Map();
     public serverBaseAddress: string;
     /** Whether this client is connected to a production server (optional, for UI purposes) */
     public isProduction: boolean = false;
@@ -107,40 +134,91 @@ export class MatterClient {
         };
     }
 
-    async commissionWithCode(code: string, networkOnly = true, timeout?: number): Promise<MatterNode> {
-        // Commission a device using a QR Code or Manual Pairing Code.
-        // code: The QR Code or Manual Pairing Code for device commissioning.
-        // network_only: If True, restricts device discovery to network only.
-        // timeout: Optional command timeout in milliseconds.
-        // Returns: The NodeInfo of the commissioned device.
+    commissionWithCode(code: string, networkOnly?: boolean, options?: CommissionWithCodeOptions): Promise<MatterNode>;
+    /** @deprecated Pass the timeout via the options object (`{ timeout }`) instead. */
+    commissionWithCode(code: string, networkOnly: boolean, timeout: number): Promise<MatterNode>;
+    async commissionWithCode(
+        code: string,
+        networkOnly = true,
+        optsOrTimeout?: number | CommissionWithCodeOptions,
+    ): Promise<MatterNode> {
+        const opts = typeof optsOrTimeout === "number" ? { timeout: optsOrTimeout } : (optsOrTimeout ?? {});
+        const usesIds = opts.wifiCredentialsId !== undefined || opts.threadDatasetId !== undefined;
         const data = await this.sendCommand(
             "commission_with_code",
-            0,
+            usesIds ? 12 : 0,
             {
-                code: code,
+                code,
                 network_only: networkOnly,
+                wifi_credentials_id: opts.wifiCredentialsId,
+                thread_dataset_id: opts.threadDatasetId,
             },
-            timeout,
+            opts.timeout,
         );
         return new MatterNode(data);
     }
 
-    async setWifiCredentials(ssid: string, credentials: string, timeout?: number): Promise<void> {
-        // Set WiFi credentials for commissioning to a (new) device.
-        await this.sendCommand("set_wifi_credentials", 0, { ssid, credentials }, timeout);
+    setWifiCredentials(ssid: string, credentials: string, options?: CredentialCommandOptions): Promise<void>;
+    /** @deprecated Pass the timeout via the options object (`{ timeout }`) instead. */
+    setWifiCredentials(ssid: string, credentials: string, timeout: number): Promise<void>;
+    async setWifiCredentials(
+        ssid: string,
+        credentials: string,
+        optsOrTimeout?: number | CredentialCommandOptions,
+    ): Promise<void> {
+        const opts = typeof optsOrTimeout === "number" ? { timeout: optsOrTimeout } : (optsOrTimeout ?? {});
+        await this.sendCommand(
+            "set_wifi_credentials",
+            opts.id === undefined || opts.id === "default" ? 0 : 12,
+            { ssid, credentials, id: opts.id },
+            opts.timeout,
+        );
     }
 
-    async setThreadOperationalDataset(dataset: string, timeout?: number): Promise<void> {
-        // Set Thread Operational dataset in the stack.
-        await this.sendCommand("set_thread_dataset", 0, { dataset }, timeout);
+    setThreadOperationalDataset(dataset: string, options?: CredentialCommandOptions): Promise<void>;
+    /** @deprecated Pass the timeout via the options object (`{ timeout }`) instead. */
+    setThreadOperationalDataset(dataset: string, timeout: number): Promise<void>;
+    async setThreadOperationalDataset(
+        dataset: string,
+        optsOrTimeout?: number | CredentialCommandOptions,
+    ): Promise<void> {
+        const opts = typeof optsOrTimeout === "number" ? { timeout: optsOrTimeout } : (optsOrTimeout ?? {});
+        await this.sendCommand(
+            "set_thread_dataset",
+            opts.id === undefined || opts.id === "default" ? 0 : 12,
+            { dataset, id: opts.id },
+            opts.timeout,
+        );
     }
 
-    async removeWifiCredentials(timeout?: number): Promise<void> {
-        await this.sendCommand("remove_wifi_credentials", 0, {}, timeout);
+    removeWifiCredentials(options?: CredentialCommandOptions): Promise<void>;
+    /** @deprecated Pass the timeout via the options object (`{ timeout }`) instead. */
+    removeWifiCredentials(timeout: number): Promise<void>;
+    async removeWifiCredentials(optsOrTimeout?: number | CredentialCommandOptions): Promise<void> {
+        const opts = typeof optsOrTimeout === "number" ? { timeout: optsOrTimeout } : (optsOrTimeout ?? {});
+        await this.sendCommand(
+            "remove_wifi_credentials",
+            opts.id === undefined || opts.id === "default" ? 0 : 12,
+            { id: opts.id },
+            opts.timeout,
+        );
     }
 
-    async removeThreadDataset(timeout?: number): Promise<void> {
-        await this.sendCommand("remove_thread_dataset", 0, {}, timeout);
+    removeThreadDataset(options?: CredentialCommandOptions): Promise<void>;
+    /** @deprecated Pass the timeout via the options object (`{ timeout }`) instead. */
+    removeThreadDataset(timeout: number): Promise<void>;
+    async removeThreadDataset(optsOrTimeout?: number | CredentialCommandOptions): Promise<void> {
+        const opts = typeof optsOrTimeout === "number" ? { timeout: optsOrTimeout } : (optsOrTimeout ?? {});
+        await this.sendCommand(
+            "remove_thread_dataset",
+            opts.id === undefined || opts.id === "default" ? 0 : 12,
+            { id: opts.id },
+            opts.timeout,
+        );
+    }
+
+    async getAllCredentials(timeout?: number): Promise<AllCredentialsSummary> {
+        return this.sendCommand("get_all_credentials", 12, {}, timeout);
     }
 
     async openCommissioningWindow(
@@ -217,6 +295,35 @@ export class MatterClient {
     async interviewNode(nodeId: number | bigint, timeout?: number): Promise<void> {
         // Interview a node.
         await this.sendCommand("interview_node", 0, { node_id: nodeId }, timeout);
+    }
+
+    async registerIcd(
+        nodeId: number | bigint,
+        options?: { allowMultiAdmin?: boolean; ignoredVendors?: number[] },
+        timeout?: number,
+    ): Promise<IcdStateData> {
+        return this.sendCommand(
+            "register_icd",
+            0,
+            {
+                node_id: nodeId,
+                allow_multi_admin: options?.allowMultiAdmin,
+                ignored_vendors: options?.ignoredVendors,
+            },
+            timeout,
+        );
+    }
+
+    async unregisterIcd(nodeId: number | bigint, force?: boolean, timeout?: number): Promise<IcdStateData> {
+        return this.sendCommand("unregister_icd", 0, { node_id: nodeId, force }, timeout);
+    }
+
+    async resyncIcd(nodeId: number | bigint): Promise<null> {
+        return this.sendCommand("resync_icd", 0, { node_id: nodeId });
+    }
+
+    async getIcdState(nodeId: number | bigint, timeout?: number): Promise<IcdStateData> {
+        return this.sendCommand("get_icd_state", 0, { node_id: nodeId }, timeout);
     }
 
     async importTestNode(dump: string, timeout?: number): Promise<void> {
@@ -441,7 +548,7 @@ export class MatterClient {
 
             // Type-erased storage: resolve/reject are stored as unknown handlers
             this.result_futures[messageId] = {
-                resolve: resolve as (value: unknown) => void,
+                resolve,
                 reject,
                 timeoutId,
             };
@@ -529,6 +636,10 @@ export class MatterClient {
             nodes[toNodeKey(node.node_id)] = new MatterNode(node);
         }
         this.nodes = nodes;
+
+        // Reset diagnostics on every (re)start so a server restart doesn't leave batches for networks
+        // the server no longer knows; fresh batches arrive via the thread_diagnostics_updated event.
+        this.threadDiagnostics = new Map();
     }
 
     private _handleIncomingMessage(msg: IncomingMessage) {
@@ -538,7 +649,11 @@ export class MatterClient {
         }
 
         if ("error_code" in msg) {
-            this._rejectPendingCommand(msg.message_id, new Error(msg.details));
+            const details = msg.details ?? "";
+            this._rejectPendingCommand(
+                msg.message_id,
+                new ServerCommandError(details !== "" ? details : `Server error ${msg.error_code}`, msg.error_code),
+            );
             return;
         }
 
@@ -598,6 +713,14 @@ export class MatterClient {
         if (event.event === "server_shutdown") {
             this.fireEvent("server_shutdown");
             this.disconnect();
+            return;
+        }
+
+        if (event.event === "thread_diagnostics_updated") {
+            const next = new Map(this.threadDiagnostics);
+            next.set(event.data.extPanIdHex.toUpperCase(), event.data);
+            this.threadDiagnostics = next;
+            this.fireEvent("thread_diagnostics_updated");
             return;
         }
 

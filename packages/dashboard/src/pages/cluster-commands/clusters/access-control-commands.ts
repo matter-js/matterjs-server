@@ -58,11 +58,14 @@ class AccessControlClusterCommands extends BaseClusterCommands {
     /** The acl attribute is fabric-scoped and may be absent from the cache until read. Load it on open. */
     private async _ensureLoaded() {
         if (!this.client || !this.node || !this.node.available) return;
-        const key = nodeIdKey(this.node.node_id);
+        const node = this.node;
+        const endpoint = this.endpoint;
+        const key = nodeIdKey(node.node_id);
         if (this._loadedKey === key) return;
         this._loadedKey = key;
         try {
-            const res = await this.client.readAttribute(this.node.node_id, ["0/31/0", "0/62/5"]);
+            const res = await this.client.readAttribute(node.node_id, ["0/31/0", "0/62/5"]);
+            if (!this.isSameContext(node, endpoint)) return;
             for (const [k, v] of Object.entries(res)) this.node.attributes[k] = v;
             this.requestUpdate();
         } catch (err) {
@@ -89,6 +92,8 @@ class AccessControlClusterCommands extends BaseClusterCommands {
     }
 
     private async _delete(entry: AccessControlEntryStruct) {
+        const node = this.node;
+        const endpoint = this.endpoint;
         const isAdmin = entry.privilege === Privilege.Administer && entry.authMode === AuthMode.Case;
         const unverified = isAdmin && this._controllerNodeId === undefined;
         const confirmed = await showPromptDialog({
@@ -98,23 +103,32 @@ class AccessControlClusterCommands extends BaseClusterCommands {
                 : "Remove this access control entry? Devices relying on it will lose the granted access.",
             confirmText: "Delete",
         });
-        if (!confirmed) return;
+        if (!confirmed || !this.isSameContext(node, endpoint)) return;
         this._busy = true;
         try {
-            await deleteAclEntry(this.client, this.node.node_id, aclEntryKey(entry));
+            await deleteAclEntry(this.client, node.node_id, aclEntryKey(entry));
         } catch (err) {
-            await showAlertDialog({ title: "Delete failed", text: err instanceof Error ? err.message : String(err) });
+            if (this.isSameContext(node, endpoint)) {
+                await showAlertDialog({
+                    title: "Delete failed",
+                    text: err instanceof Error ? err.message : String(err),
+                });
+            }
         } finally {
             this._busy = false;
         }
     }
 
     private async _fix(keys: Set<string>) {
+        const node = this.node;
+        const endpoint = this.endpoint;
         this._busy = true;
         try {
-            await downgradeToOperate(this.client, this.node.node_id, keys);
+            await downgradeToOperate(this.client, node.node_id, keys);
         } catch (err) {
-            await showAlertDialog({ title: "Fix failed", text: err instanceof Error ? err.message : String(err) });
+            if (this.isSameContext(node, endpoint)) {
+                await showAlertDialog({ title: "Fix failed", text: err instanceof Error ? err.message : String(err) });
+            }
         } finally {
             this._busy = false;
         }

@@ -129,7 +129,7 @@ describe("Integration Test", function () {
 
             expect(info).to.have.property("fabric_id");
             expect(info).to.have.property("compressed_fabric_id");
-            expect(info.schema_version).to.equal(11);
+            expect(info.schema_version).to.equal(12);
             expect(info.min_supported_schema_version).to.equal(11);
             expect(info.sdk_version).to.be.a("string").that.includes("matter-server");
             expect(info.sdk_version).to.be.a("string").that.includes("matter.js");
@@ -172,7 +172,7 @@ describe("Integration Test", function () {
             expect(diag).to.have.property("info");
             expect(diag).to.have.property("nodes");
             expect(diag).to.have.property("events");
-            expect(diag.info.schema_version).to.equal(11);
+            expect(diag.info.schema_version).to.equal(12);
             expect(diag.nodes).to.be.an("array");
             expect(diag.events).to.be.an("array");
         });
@@ -271,6 +271,15 @@ describe("Integration Test", function () {
 
             it("should return NodeNotExists error when removing non-existent node", async function () {
                 const error = await client.sendCommandExpectError("remove_node", {
+                    node_id: 999999,
+                });
+
+                expect(error.error_code).to.equal(ServerErrorCode.NodeNotExists);
+                expect(error.details).to.include("999999");
+            });
+
+            it("should return NodeNotExists error for register_icd on non-existent node", async function () {
+                const error = await client.sendCommandExpectError("register_icd", {
                     node_id: 999999,
                 });
 
@@ -427,6 +436,20 @@ describe("Integration Test", function () {
             // Should have at least our fabric
             const ourFabric = fabrics.find(f => f.fabric_index === 1);
             expect(ourFabric).to.exist;
+        });
+
+        it("should return unsupported ICD state for a node without IcdManagement", async function () {
+            const state = await client.getIcdState(commissionedNodeId);
+
+            expect(state).to.deep.equal({
+                supported: false,
+                lit_supported: false,
+                registered: false,
+                operating_mode: null,
+                awake: null,
+                available: null,
+                next_expected_checkin: null,
+            });
         });
     });
 

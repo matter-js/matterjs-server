@@ -13,6 +13,7 @@ Please refer to https://github.com/matter-js/matterjs-server/blob/main/README.md
 ## Theme Support
 
 The dashboard supports light and dark modes with three options:
+
 - **Light** - Light theme
 - **Dark** - Dark theme
 - **System** - Automatically follows your operating system's theme preference
@@ -20,6 +21,7 @@ The dashboard supports light and dark modes with three options:
 Click the theme icon in the header to cycle through the modes. Your preference is saved in the browser's localStorage.
 
 You can also set the theme via URL query parameter:
+
 - `?theme=light` - Switch to light mode
 - `?theme=dark` - Switch to dark mode
 - `?theme=system` - Switch to system auto-detect
@@ -64,6 +66,7 @@ Other node icons:
 ### Understanding Connection Lines
 
 Connection lines represent the communication links between devices.
+If the lines are missing and most data is also missing when selecting the node, the device likely does not include the "Thread Network Diagnostics" cluster, which is where most of this data comes from.
 
 **Line style:**
 
@@ -108,12 +111,41 @@ A connection with neither tag is bidirectional: both nodes see each other.
 
 #### Data Sources
 
-Thread devices maintain two tables:
+Thread devices itself maintain two tables:
 
 1. **Neighbor Table** (0/53/7): Direct RF neighbors visible to the device. All Thread devices have this.
 2. **Route Table** (0/53/8): Routing paths to other nodes. Only routers maintain this table.
 
 The visualization combines both tables directly from the devices to provide the most complete picture of your network.
+
+Additionally, if REST-APIs or network credentials are available on the Matter Server we also query the Border routers directly to get more detailed information (see below) and combine it with the device tables.
+
+### Thread Diagnostics from Border Routers
+
+Beyond what your own commissioned devices report, the dashboard can build a much fuller Thread mesh by
+asking the Thread **Border Routers** directly — including routers and children that aren't on your
+Matter fabric. Border Routers are discovered automatically on your LAN; querying their diagnostics
+needs a way into each Thread network:
+
+- **Store the network's credentials.** Open **Settings** (cog icon) and add the Thread network's
+  operational dataset. A dataset that includes the network key lets the server query that network's
+  Border Routers directly (over Thread's MeshCoP protocol). You can store **several networks** — one
+  entry per Thread network (e.g. your own, plus a Home Assistant, Apple, or Google network you also
+  have the dataset for) — and the dashboard will show each network's mesh.
+- **Some Border Routers need no credentials.** OpenThread-based Border Routers (e.g. the Home
+  Assistant add-on) expose a local API the dashboard can read directly, so their network populates
+  even without a stored dataset.
+- Networks with neither a stored dataset nor a readable Border Router are listed but show no per-node
+  diagnostics.
+
+**First view is live, then cached.** The first time you open the Thread network view in a session, the
+data is collected live from the Border Routers. This takes a moment: nodes **pop in progressively over
+about 20 seconds** as each responds — so an initially sparse mesh filling itself out is normal, not an
+error. Once collected, results are **cached** and shown instantly on later views. Use the refresh
+button to re-collect the latest data on demand.
+
+This whole subsystem is optional and can be turned off by the server operator (`--disable-thread-diagnostics`);
+Matter-over-Thread commissioning still works either way.
 
 ### Update Connections
 
@@ -156,7 +188,7 @@ Developer mode is browser-only and is not persisted. Reloading without the `?dev
 ### What developer mode adds on a cluster view
 
 - **Per-attribute Read button** — forces an immediate read of a single attribute. On success the icon briefly flashes; on failure the raw server error is shown in a popup.
-- **Per-attribute Write button** — shown only for writable attributes. Opens an editor prefilled with the current value as JSON; pressing *Write* sends the exact value to the server.
-- **Commands panel** (collapsed by default) — lists every command the cluster reports as supported. Each entry opens a payload editor; pressing *Invoke* sends the command and shows the server response as JSON, or the raw error if the invocation fails.
+- **Per-attribute Write button** — shown only for writable attributes. Opens an editor prefilled with the current value as JSON; pressing _Write_ sends the exact value to the server.
+- **Commands panel** (collapsed by default) — lists every command the cluster reports as supported. Each entry opens a payload editor; pressing _Invoke_ sends the command and shows the server response as JSON, or the raw error if the invocation fails.
 
 Unknown attributes (not present in the dashboard's metadata) cannot be written. Unknown commands (in the cluster's accepted list but missing from the metadata) are not listed. All server errors are shown verbatim so the exact response from the device is visible.
