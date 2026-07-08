@@ -118,13 +118,11 @@ export class MatterClient {
     async commissionWithCode(
         code: string,
         networkOnly = true,
-        // Backward-compatible: the 3rd argument accepts a legacy `timeout` number or the options
-        // object (which may itself carry `timeout`); the 4th `timeout` arg is still honored.
+        // Backward-compatible with the released `(code, networkOnly, timeout)` form: the 3rd argument
+        // is a legacy `timeout` number or the options object (which may carry `timeout`).
         optsOrTimeout?: number | { wifiCredentialsId?: string; threadDatasetId?: string; timeout?: number },
-        timeout?: number,
     ): Promise<MatterNode> {
         const opts = typeof optsOrTimeout === "number" ? { timeout: optsOrTimeout } : (optsOrTimeout ?? {});
-        const effectiveTimeout = opts.timeout ?? timeout;
         const usesIds = opts.wifiCredentialsId !== undefined || opts.threadDatasetId !== undefined;
         const data = await this.sendCommand(
             "commission_with_code",
@@ -135,7 +133,7 @@ export class MatterClient {
                 wifi_credentials_id: opts.wifiCredentialsId,
                 thread_dataset_id: opts.threadDatasetId,
             },
-            effectiveTimeout,
+            opts.timeout,
         );
         return new MatterNode(data);
     }
