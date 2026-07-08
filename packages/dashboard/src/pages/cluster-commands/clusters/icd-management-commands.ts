@@ -6,6 +6,7 @@
 
 import "@material/web/button/filled-button";
 import "@material/web/button/outlined-button";
+import "@material/web/progress/circular-progress";
 import "@material/web/radio/radio";
 import {
     ICD_MULTI_ADMIN_ERROR_CODE,
@@ -262,7 +263,10 @@ export class IcdManagementClusterCommands extends BaseClusterCommands {
                 >
                     Resync state
                 </md-outlined-button>
-                ${this._busy ? html`<span class="busy">${this._busyLabel}</span>` : nothing}
+                ${this._busy
+                    ? html`<md-circular-progress indeterminate></md-circular-progress>
+                          <span class="busy">${this._busyLabel}</span>`
+                    : nothing}
             </div>
         `;
     }
@@ -486,6 +490,11 @@ export class IcdManagementClusterCommands extends BaseClusterCommands {
             .busy {
                 color: var(--text-color, rgba(0, 0, 0, 0.6));
                 font-size: 14px;
+                align-self: center;
+            }
+
+            md-circular-progress {
+                --md-circular-progress-size: 24px;
                 align-self: center;
             }
         `,
