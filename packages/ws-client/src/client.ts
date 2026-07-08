@@ -138,35 +138,53 @@ export class MatterClient {
         return new MatterNode(data);
     }
 
-    async setWifiCredentials(ssid: string, credentials: string, id?: string, timeout?: number): Promise<void> {
+    // The 3rd argument is backward-compatible with the released `(…, timeout)` form: a legacy `timeout`
+    // number, or an options object carrying the named-credential `id` (schema 12) and/or `timeout`.
+    async setWifiCredentials(
+        ssid: string,
+        credentials: string,
+        optsOrTimeout?: number | { id?: string; timeout?: number },
+    ): Promise<void> {
+        const opts = typeof optsOrTimeout === "number" ? { timeout: optsOrTimeout } : (optsOrTimeout ?? {});
         await this.sendCommand(
             "set_wifi_credentials",
-            id === undefined || id === "default" ? 0 : 12,
-            { ssid, credentials, id },
-            timeout,
+            opts.id === undefined || opts.id === "default" ? 0 : 12,
+            { ssid, credentials, id: opts.id },
+            opts.timeout,
         );
     }
 
-    async setThreadOperationalDataset(dataset: string, id?: string, timeout?: number): Promise<void> {
+    async setThreadOperationalDataset(
+        dataset: string,
+        optsOrTimeout?: number | { id?: string; timeout?: number },
+    ): Promise<void> {
+        const opts = typeof optsOrTimeout === "number" ? { timeout: optsOrTimeout } : (optsOrTimeout ?? {});
         await this.sendCommand(
             "set_thread_dataset",
-            id === undefined || id === "default" ? 0 : 12,
-            { dataset, id },
-            timeout,
+            opts.id === undefined || opts.id === "default" ? 0 : 12,
+            { dataset, id: opts.id },
+            opts.timeout,
         );
     }
 
-    async removeWifiCredentials(id?: string, timeout?: number): Promise<void> {
+    async removeWifiCredentials(optsOrTimeout?: number | { id?: string; timeout?: number }): Promise<void> {
+        const opts = typeof optsOrTimeout === "number" ? { timeout: optsOrTimeout } : (optsOrTimeout ?? {});
         await this.sendCommand(
             "remove_wifi_credentials",
-            id === undefined || id === "default" ? 0 : 12,
-            { id },
-            timeout,
+            opts.id === undefined || opts.id === "default" ? 0 : 12,
+            { id: opts.id },
+            opts.timeout,
         );
     }
 
-    async removeThreadDataset(id?: string, timeout?: number): Promise<void> {
-        await this.sendCommand("remove_thread_dataset", id === undefined || id === "default" ? 0 : 12, { id }, timeout);
+    async removeThreadDataset(optsOrTimeout?: number | { id?: string; timeout?: number }): Promise<void> {
+        const opts = typeof optsOrTimeout === "number" ? { timeout: optsOrTimeout } : (optsOrTimeout ?? {});
+        await this.sendCommand(
+            "remove_thread_dataset",
+            opts.id === undefined || opts.id === "default" ? 0 : 12,
+            { id: opts.id },
+            opts.timeout,
+        );
     }
 
     async getAllCredentials(timeout?: number): Promise<AllCredentialsSummary> {

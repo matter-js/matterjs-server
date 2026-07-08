@@ -226,7 +226,7 @@ export class SettingsDialog extends LitElement {
         this._credLoading = true;
         this._credError = null;
         try {
-            await this.client.setWifiCredentials(ssid, password, targetId);
+            await this.client.setWifiCredentials(ssid, password, { id: targetId });
             this._cancelWifiForm();
             await this._loadCredentials();
         } catch (err) {
@@ -239,7 +239,7 @@ export class SettingsDialog extends LitElement {
     private async _removeWifi(id?: string) {
         this._credLoading = true;
         try {
-            await this.client.removeWifiCredentials(id);
+            await this.client.removeWifiCredentials({ id });
             this._cancelWifiForm();
             await this._loadCredentials();
         } catch (err) {
@@ -268,7 +268,7 @@ export class SettingsDialog extends LitElement {
         this._credLoading = true;
         this._credError = null;
         try {
-            await this.client.setThreadOperationalDataset(dataset, targetId);
+            await this.client.setThreadOperationalDataset(dataset, { id: targetId });
             this._cancelThreadForm();
             await this._loadCredentials();
         } catch (err) {
@@ -281,7 +281,7 @@ export class SettingsDialog extends LitElement {
     private async _removeThread(id?: string) {
         this._credLoading = true;
         try {
-            await this.client.removeThreadDataset(id);
+            await this.client.removeThreadDataset({ id });
             this._cancelThreadForm();
             await this._loadCredentials();
         } catch (err) {
