@@ -67,6 +67,9 @@ export interface CliOptions {
     disableOta: boolean;
     otaProviderDir: string | null;
 
+    // Time synchronization configuration
+    enableTimeSync: boolean;
+
     // Dashboard configuration
     disableDashboard: boolean;
     productionMode: boolean;
@@ -199,6 +202,16 @@ export function parseCliArgs(argv?: string[]): CliOptions {
         )
         .addOption(new Option("--ota-provider-dir <path>", "Directory for OTA Provider files").env("OTA_PROVIDER_DIR"))
         .addOption(
+            new Option(
+                "--enable-time-sync [value]",
+                "Enable time synchronization for nodes with the TimeSynchronization cluster. Only enable when host NTP is reliable.",
+            )
+                .argParser(parseBooleanEnv)
+                .preset(true)
+                .default(false)
+                .env("ENABLE_TIME_SYNC"),
+        )
+        .addOption(
             new Option("--disable-dashboard [value]", "Disable the web dashboard")
                 .argParser(parseBooleanEnv)
                 .preset(true)
@@ -292,6 +305,7 @@ export function parseCliArgs(argv?: string[]): CliOptions {
         bleProxy: opts.bleProxy,
         disableOta: opts.disableOta,
         otaProviderDir: opts.otaProviderDir ?? null,
+        enableTimeSync: opts.enableTimeSync,
         disableDashboard: opts.disableDashboard,
         productionMode: opts.productionMode,
         disableThreadDiagnostics: opts.disableThreadDiagnostics,
