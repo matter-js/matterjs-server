@@ -852,8 +852,10 @@ export class WebSocketControllerHandler implements WebServerHandler {
         const previousOwner = this.#fabricLabelOwner;
         this.#fabricLabelOwner = connection;
         try {
-            await this.#config.set({ fabricLabel: effectiveLabel });
+            // Apply to matter.js first, persist only on success, so a failed update can't leave the
+            // stored label out of sync with the live fabric label.
             await this.#commandHandler.setFabricLabel(effectiveLabel);
+            await this.#config.set({ fabricLabel: effectiveLabel });
         } catch (error) {
             // A failed claiming attempt must not lock everyone else out; release only if we just claimed.
             if (previousOwner === undefined) {

@@ -8,6 +8,7 @@ import "@material/web/button/text-button";
 import "@material/web/dialog/dialog";
 import "@material/web/textfield/outlined-text-field";
 import type { MdDialog } from "@material/web/dialog/dialog.js";
+import type { MdOutlinedTextField } from "@material/web/textfield/outlined-text-field.js";
 import type { MatterClient } from "@matter-server/ws-client";
 import { html, LitElement } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
@@ -61,8 +62,7 @@ export class FabricLabelDialog extends LitElement {
     }
 
     private _handleInput(e: Event) {
-        const input = e.target as HTMLInputElement;
-        this._fabricLabel = input.value;
+        this._fabricLabel = (e.target as MdOutlinedTextField).value;
     }
 
     private _close() {
