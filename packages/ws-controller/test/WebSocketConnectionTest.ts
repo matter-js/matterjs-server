@@ -120,6 +120,17 @@ describe("WebSocketConnection", () => {
             expect(conn.mode).to.equal("queued");
         });
 
+        it("clamps the initial high-water to the ceiling when a floor above the ceiling is configured", () => {
+            const socket = new FakeSocket();
+            const conn = makeConn(socket, { highWaterBytes: 1000, highWaterCeilingBytes: 500 });
+
+            socket.bufferedAmount = 600; // above the ceiling, below the misconfigured floor
+            conn.sendReliable("y");
+
+            // The ceiling is an absolute cap; a floor mistakenly set above it must not raise the mark.
+            expect(conn.mode).to.equal("queued");
+        });
+
         it("caps the dynamic high-water at the ceiling", () => {
             const socket = new FakeSocket();
             const conn = makeConn(socket, { highWaterBytes: 100, highWaterCeilingBytes: 1000 });

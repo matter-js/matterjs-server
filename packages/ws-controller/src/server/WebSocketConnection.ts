@@ -85,8 +85,10 @@ export class WebSocketConnection {
     constructor(ws: OutboundSocket, options: WebSocketConnectionOptions) {
         this.#ws = ws;
         this.#connId = options.connId;
-        this.#highWater = options.highWaterBytes ?? DEFAULT_HIGH_WATER;
         this.#highWaterCeiling = options.highWaterCeilingBytes ?? DEFAULT_HIGH_WATER_CEILING;
+        // Clamp the floor to the ceiling so a misconfigured floor > ceiling can't start the mark
+        // above its cap (it only ever ratchets up, so it would never come back down).
+        this.#highWater = Math.min(options.highWaterBytes ?? DEFAULT_HIGH_WATER, this.#highWaterCeiling);
         this.#capBase = options.capBase ?? DEFAULT_CAP_BASE;
         this.#capPerNode = options.capPerNode ?? DEFAULT_CAP_PER_NODE;
         this.#getNodeCount = options.getNodeCount ?? (() => 0);
