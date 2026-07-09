@@ -159,6 +159,10 @@ async function createHarness(): Promise<TestHarness> {
     async function sendOn<T>(ws: WebSocket, command: string, args: unknown): Promise<T> {
         const messageId = `test-${Date.now()}-${Math.random()}`;
         return new Promise<T>((resolve, reject) => {
+            const cleanup = () => {
+                ws.off("message", onMessage);
+                ws.off("error", onError);
+            };
             const onMessage = (raw: WebSocket.RawData) => {
                 const msg = JSON.parse(raw.toString()) as {
                     message_id?: string;
@@ -167,15 +171,19 @@ async function createHarness(): Promise<TestHarness> {
                     details?: string;
                 };
                 if (msg.message_id !== messageId) return; // ignore unrelated frames (events, other replies)
-                ws.off("message", onMessage);
+                cleanup();
                 if (msg.error_code !== undefined) {
                     reject(new Error(msg.details ?? `ServerError ${msg.error_code}`));
                 } else {
                     resolve(msg.result as T);
                 }
             };
+            const onError = (err: Error) => {
+                cleanup();
+                reject(err);
+            };
             ws.on("message", onMessage);
-            ws.once("error", reject);
+            ws.on("error", onError);
             ws.send(JSON.stringify({ message_id: messageId, command, args }));
         });
     }

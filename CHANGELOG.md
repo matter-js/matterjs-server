@@ -9,19 +9,22 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## **WORK IN PROGRESS**
 
-- Feature: Enhanced Thread Network diagnostics — collect and visualize per-Thread-network diagnostics also from Border Routers over MeshCoP (CoAP/DTLS) or the OTBR REST API (auto-selected, cached).
-- Feature: Adds WiFi and Thread credential management and allows to store multiple entries. Commissioning can pick which stored network to use.
+- Feature: Enhanced Thread Network diagnostics — collect and visualize per-Thread-network diagnostics also from Border Routers over MeshCoP (CoAP/DTLS) or the OTBR REST API (auto-selected, cached)
+- Feature: Adds WiFi and Thread credential management and allows to store multiple entries. Commissioning can pick which stored network to use
 - Feature: Adds ICD (Intermittently Connected Device) management including a "Power & Sleep (ICD)" dashboard panel. Requires devices with Matter 1.4+ for LIT management.
+- Feature: Allows defining the default fabric-label to use as CLI/ENV-option which then blocks changing via the Websocket API
+- Enhancement: When one Websocket connection defines a fabric label then other connects are blocked from changing that as long as the other connection is still active
+- Feature: Adds a `get_fabric_label` WebSocket command (schema 12) to read the current fabric label; the dashboard server overview now shows the fabric label and allows editing it
 - Enhancement: Introduced WS schema 12 — see [WebSocket API schema changelog](docs/websocket-api-schema-changelog.md).
-- Enhancement: New `--disable-thread-diagnostics` CLI flag (env `DISABLE_THREAD_DIAGNOSTICS`) turns off the entire Thread Border Router subsystem (discovery, probing, diagnostics) for plain Matter-controller deployments. Matter-over-Thread commissioning is unaffected.
+- Enhancement: New `--disable-thread-diagnostics` CLI flag (env `DISABLE_THREAD_DIAGNOSTICS`) turns off the entire Thread Border Router subsystem (discovery, probing, diagnostics) for plain Matter-controller deployments. Matter-over-Thread commissioning is unaffected
+- Enhancement: WebSocket sends now apply per-connection backpressure — a slow or stalled client coalesces attribute/node updates and drops stale events instead of buffering without limit, preventing unbounded memory growth (OOM) under high event volume
 - Enhancement: Update matter.js to the latest 0.17.5 nightly
     - Adds support for Matter 1.6.0
     - Fixes an invoke-issue where parallel multi-endpoint invokes were working but errors returned on Websocket
     - Optimizes subscription reporting intervals
     - Ensures changed node structures are send via WebSocket directly after Re-Subscribe and not delayed
-- Adjustment: `webrtc_callback` events are now delivered only to the connection that issued the `send_webrtc_provider_command` for that camera session, instead of being broadcast to every connected client.
+- Adjustment: `webrtc_callback` events are now delivered only to the connection that issued the `send_webrtc_provider_command` for that camera session, instead of being broadcast to every connected client
 - Fix: Ensures that the Python-Client does not crash anymore on unknown events from newer Server versions
-- Fix: WebSocket sends now apply per-connection backpressure — a slow or stalled client coalesces attribute/node updates and drops stale events instead of buffering without limit, preventing unbounded memory growth (OOM) under high event volume.
 
 ## 1.1.7 (2026-07-01)
 
