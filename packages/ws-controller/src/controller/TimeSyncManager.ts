@@ -17,7 +17,9 @@
  */
 
 import { Duration, Hours, Logger, Minutes, Time } from "@matter/main";
+import { TimeSynchronization } from "@matter/main/clusters";
 import { PeerAddress, PeerAddressMap } from "@matter/main/protocol";
+import { StatusResponseError } from "@matter/main/types";
 import { AttributesData } from "../types/CommandHandler.js";
 import { formatNodeId } from "../util/formatNodeId.js";
 import { NodeProcessor } from "./NodeProcessor.js";
@@ -41,6 +43,15 @@ const TRIGGER_SYNC_COOLDOWN = Hours(24);
 export interface TimeSyncConnector {
     syncTime(peer: PeerAddress): Promise<void>;
     nodeConnected(peer: PeerAddress): boolean;
+}
+
+/** TimeNotAccepted means the node trusts its own time source — expected, not an error. */
+function logSyncFailure(prefix: string, peer: PeerAddress, error: unknown) {
+    if (error instanceof StatusResponseError && error.clusterCode === TimeSynchronization.StatusCode.TimeNotAccepted) {
+        logger.info(`${prefix}Node ${formatNodeId(peer)} declined the time (it trusts its own time source)`);
+        return;
+    }
+    logger.warn(`${prefix}Failed to sync time on node ${formatNodeId(peer)}:`, error);
 }
 
 /**
@@ -142,7 +153,7 @@ export class TimeSyncManager extends NodeProcessor {
         const promise = this.#connector
             .syncTime(peer)
             .then(() => logger.info(`Synced time on node ${formatNodeId(peer)}`))
-            .catch(error => logger.warn(`Failed to sync time on node ${formatNodeId(peer)}:`, error))
+            .catch(error => logSyncFailure("", peer, error))
             .finally(() => {
                 this.#inFlightSyncs.delete(peer);
             });
@@ -172,7 +183,7 @@ export class TimeSyncManager extends NodeProcessor {
         const promise = this.#connector
             .syncTime(peer)
             .then(() => logger.info(`Periodic resync: synced time on node ${formatNodeId(peer)}`))
-            .catch(error => logger.warn(`Periodic resync: failed to sync time on node ${formatNodeId(peer)}:`, error))
+            .catch(error => logSyncFailure("Periodic resync: ", peer, error))
             .finally(() => {
                 this.#inFlightSyncs.delete(peer);
             });
