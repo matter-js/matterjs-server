@@ -5,6 +5,7 @@
  */
 
 import { TimeSynchronization } from "@matter/main/clusters";
+import { MATTER_EPOCH_OFFSET_US, TlvEpochUs } from "@matter/main/types";
 import { pushNodeTime, TimeSyncInvokers, TimeZoneProvider } from "../src/controller/timeSyncCommands.js";
 import { AttributesData } from "../src/types/CommandHandler.js";
 
@@ -42,9 +43,19 @@ describe("pushNodeTime", () => {
         expect(calls.map(c => c.command)).to.deep.equal(["setUtcTime", "setTimeZone", "setDstOffset"]);
         expect((calls[0].fields as TimeSynchronization.SetUtcTimeRequest).utcTime).to.equal(NOW_MS * 1000);
         const tzReq = calls[1].fields as TimeSynchronization.SetTimeZoneRequest;
-        expect(tzReq.timeZone).to.deep.equal([{ offset: 3600, validAt: 0, name: "Europe/Berlin" }]);
+        expect(tzReq.timeZone).to.deep.equal([
+            { offset: 3600, validAt: MATTER_EPOCH_OFFSET_US, name: "Europe/Berlin" },
+        ]);
         const dstReq = calls[2].fields as TimeSynchronization.SetDstOffsetRequest;
         expect(dstReq.dstOffset).to.deep.equal([{ offset: 3600, validStarting: 1_000_000, validUntil: 2_000_000 }]);
+    });
+
+    it("emits a first-entry validAt the matter.js TlvEpochUs codec accepts", async () => {
+        const { calls, invokers } = recorder(true);
+        await pushNodeTime({ invokers, attributes: TZ_ATTRS, nowMs: NOW_MS, tz });
+
+        const tzReq = calls[1].fields as TimeSynchronization.SetTimeZoneRequest;
+        expect(() => TlvEpochUs.encode(tzReq.timeZone[0].validAt)).not.to.throw();
     });
 
     it("omits DstOffset when the node handles DST itself", async () => {

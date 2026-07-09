@@ -6,6 +6,7 @@
 
 import { Logger } from "@matter/main";
 import { TimeSynchronization } from "@matter/main/clusters";
+import { MATTER_EPOCH_OFFSET_US } from "@matter/main/types";
 import { AttributesData } from "../types/CommandHandler.js";
 import {
     DstWindow,
@@ -75,7 +76,9 @@ export async function pushNodeTime(opts: {
         const offset = tz.standardOffsetSeconds(zone, nowMs);
 
         const response = await invokers.setTimeZone({
-            timeZone: [{ offset, validAt: 0, name: zone }],
+            // Spec: the first TimeZone entry's ValidAt is Matter-epoch 0. TlvEpochUs takes
+            // Unix-epoch µs and subtracts the Matter epoch, so the Matter epoch itself encodes to 0.
+            timeZone: [{ offset, validAt: MATTER_EPOCH_OFFSET_US, name: zone }],
         });
 
         if (response?.dstOffsetRequired) {
