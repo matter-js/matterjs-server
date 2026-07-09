@@ -7,7 +7,7 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
-## **WORK IN PROGRESS**
+## 1.2.1 (2026-07-09)
 
 - Fix: Optimize WebSocket backpressure calculation so a single large payload no longer trips congestion mode on a healthy client
 
