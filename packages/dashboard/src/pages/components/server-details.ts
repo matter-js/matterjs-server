@@ -48,11 +48,9 @@ export class ServerDetails extends LitElement {
     }
 
     #refreshFabricLabel(): void {
-        if (!this.client?.connection.connected) {
-            return;
-        }
-        this.client
-            .getFabricLabel()
+        // Only reached while connected (the connected view mounts this component, and re-mounts on
+        // reconnect), so no explicit offline guard/re-hook is needed; a rare failure just logs.
+        this.client!.getFabricLabel()
             .then(label => (this._fabricLabel = label))
             .catch(err => console.error("Failed to load fabric label", err));
     }
