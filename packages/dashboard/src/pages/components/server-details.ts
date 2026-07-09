@@ -48,9 +48,13 @@ export class ServerDetails extends LitElement {
     }
 
     #refreshFabricLabel(): void {
-        this.client!.getFabricLabel()
+        if (!this.client?.connection.connected) {
+            return;
+        }
+        this.client
+            .getFabricLabel()
             .then(label => (this._fabricLabel = label))
-            .catch(err => showAlertDialog({ title: "Failed to load fabric label", text: err.message }));
+            .catch(err => console.error("Failed to load fabric label", err));
     }
 
     protected override render() {

@@ -148,8 +148,8 @@ export class ConfigStorage {
 
     /** Pin the fabric label to a CLI-provided value; overrides any persisted label and blocks later WS changes. */
     async lockFabricLabel(label: string) {
-        this.#fabricLabelLocked = true;
         await this.set({ fabricLabel: label });
+        this.#fabricLabelLocked = true;
     }
     get nextNodeId() {
         return this.#data.nextNodeId;
