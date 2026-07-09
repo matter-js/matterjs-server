@@ -16,6 +16,13 @@ describe("hostTimeZone", () => {
             expect(offsetSecondsAt("Europe/Berlin", JUL_2026)).to.equal(7200); // CEST
             expect(offsetSecondsAt("America/Phoenix", JUL_2026)).to.equal(-25200); // no DST
         });
+
+        it("floors sub-second instants and handles a negative epoch", () => {
+            // Non-second-aligned instant still yields the whole-second offset.
+            expect(offsetSecondsAt("Europe/Berlin", JUL_2026 + 500)).to.equal(7200);
+            // Negative epoch (1969-12-31 23:59:58.5 UTC), Berlin was on standard time (CET).
+            expect(offsetSecondsAt("Europe/Berlin", -1500)).to.equal(3600);
+        });
     });
 
     describe("standardOffsetSeconds", () => {
@@ -50,6 +57,14 @@ describe("hostTimeZone", () => {
         it("respects the max cap", () => {
             expect(dstWindows("Europe/Berlin", JUL_2026, 1).length).to.equal(1);
             expect(dstWindows("Europe/Berlin", JAN_2026, 0)).to.deep.equal([]);
+        });
+
+        it("returns the currently-active window for a southern-hemisphere zone spanning New Year", () => {
+            const windows = dstWindows("Australia/Sydney", JAN_2026, 2);
+            expect(windows.length).to.be.greaterThan(0);
+            expect(windows[0].offsetSeconds).to.equal(3600);
+            expect(windows[0].validStartingMs).to.be.lessThan(JAN_2026);
+            expect(windows[0].validUntilMs).to.be.greaterThan(JAN_2026);
         });
     });
 
