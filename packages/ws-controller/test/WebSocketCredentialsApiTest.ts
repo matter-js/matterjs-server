@@ -51,6 +51,10 @@ function makeStubController(credentials: ThreadCredentialsRegistry) {
             return [];
         },
         async initializeNodes() {},
+        async setFabricLabel() {},
+        getFabricLabel(): string | undefined {
+            return undefined;
+        },
     };
 
     const stubDiagnostics = {
@@ -96,6 +100,7 @@ function makeStubController(credentials: ThreadCredentialsRegistry) {
 interface TestHarness {
     handle<T = unknown>(command: string, args: unknown): Promise<T>;
     openClient(): Promise<WebSocket>;
+    sendOn<T = unknown>(ws: WebSocket, command: string, args: unknown): Promise<T>;
     emitDiagnosticsBatch(batch: unknown): void;
     emitWebRtcCallback(data: unknown): void;
     config: ConfigStorage;
@@ -149,6 +154,32 @@ async function createHarness(): Promise<TestHarness> {
         });
     }
 
+    // Sends a command on a caller-owned connection that stays open (unlike `handle`, which opens/closes
+    // its own connection per call), so tests can exercise per-connection behavior across connections.
+    async function sendOn<T>(ws: WebSocket, command: string, args: unknown): Promise<T> {
+        const messageId = `test-${Date.now()}-${Math.random()}`;
+        return new Promise<T>((resolve, reject) => {
+            const onMessage = (raw: WebSocket.RawData) => {
+                const msg = JSON.parse(raw.toString()) as {
+                    message_id?: string;
+                    result?: T;
+                    error_code?: number;
+                    details?: string;
+                };
+                if (msg.message_id !== messageId) return; // ignore unrelated frames (events, other replies)
+                ws.off("message", onMessage);
+                if (msg.error_code !== undefined) {
+                    reject(new Error(msg.details ?? `ServerError ${msg.error_code}`));
+                } else {
+                    resolve(msg.result as T);
+                }
+            };
+            ws.on("message", onMessage);
+            ws.once("error", reject);
+            ws.send(JSON.stringify({ message_id: messageId, command, args }));
+        });
+    }
+
     async function close(): Promise<void> {
         await handler.unregister();
         await new Promise<void>(resolve => httpServer.close(() => resolve()));
@@ -162,7 +193,7 @@ async function createHarness(): Promise<TestHarness> {
         (controller.commandHandler.events.webRtcCallback as unknown as Observable<[unknown]>).emit(data);
     }
 
-    return { handle, openClient, emitDiagnosticsBatch, emitWebRtcCallback, config, close };
+    return { handle, openClient, sendOn, emitDiagnosticsBatch, emitWebRtcCallback, config, close };
 }
 
 describe("WebSocket Credentials API", () => {
@@ -389,5 +420,72 @@ describe("WebSocket Credentials API", () => {
         expect(h.config.getThreadCredentials("Extra")).to.not.equal(undefined);
         await h.handle("remove_thread_dataset", { id: "Extra" });
         expect(h.config.getThreadCredentials("Extra")).to.equal(undefined);
+    });
+});
+
+describe("WebSocket set_default_fabric_label ownership", () => {
+    let h: TestHarness;
+
+    beforeEach(async () => {
+        h = await createHarness();
+    });
+
+    afterEach(async () => {
+        await h.close();
+    });
+
+    it("first connection to set the fabric label owns it; other connections are ignored", async () => {
+        const owner = await h.openClient();
+        const other = await h.openClient();
+        try {
+            await h.sendOn(owner, "set_default_fabric_label", { label: "Owner" });
+            expect(h.config.fabricLabel).to.equal("Owner");
+
+            await h.sendOn(other, "set_default_fabric_label", { label: "Intruder" });
+            expect(h.config.fabricLabel).to.equal("Owner");
+
+            // The owning connection may keep changing the label.
+            await h.sendOn(owner, "set_default_fabric_label", { label: "Owner2" });
+            expect(h.config.fabricLabel).to.equal("Owner2");
+        } finally {
+            owner.close();
+            other.close();
+        }
+    });
+
+    it("releases ownership when the owning connection closes", async () => {
+        const owner = await h.openClient();
+        await h.sendOn(owner, "set_default_fabric_label", { label: "Owner" });
+        expect(h.config.fabricLabel).to.equal("Owner");
+
+        await new Promise<void>(resolve => {
+            owner.once("close", () => resolve());
+            owner.close();
+        });
+
+        const other = await h.openClient();
+        try {
+            // Server-side close handling can lag the client close event; retry until the claim is released.
+            for (let i = 0; i < 40 && h.config.fabricLabel !== "New"; i++) {
+                await h.sendOn(other, "set_default_fabric_label", { label: "New" });
+                if (h.config.fabricLabel !== "New") {
+                    await new Promise<void>(resolve => setTimeout(resolve, 25));
+                }
+            }
+            expect(h.config.fabricLabel).to.equal("New");
+        } finally {
+            other.close();
+        }
+    });
+
+    it("the CLI pin overrides connection ownership", async () => {
+        await h.config.lockFabricLabel("Pinned");
+        const ws = await h.openClient();
+        try {
+            await h.sendOn(ws, "set_default_fabric_label", { label: "Nope" });
+            expect(h.config.fabricLabel).to.equal("Pinned");
+        } finally {
+            ws.close();
+        }
     });
 });

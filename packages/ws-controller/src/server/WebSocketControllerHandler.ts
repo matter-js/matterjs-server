@@ -120,6 +120,15 @@ export class WebSocketControllerHandler implements WebServerHandler {
     #lastInterviewDates = new Map<NodeId, Date>();
     /** Backpressure-managed send path per open connection; also the fan-out target for broadcasts. */
     #connections = new Set<WebSocketConnection>();
+    /**
+     * Connection that claimed the fabric label this session by issuing the first `set_default_fabric_label`.
+     * While it stays connected, other connections' set requests are ignored, so two clients can't overwrite
+     * each other's label. Released when the owning connection closes. Superseded by the CLI pin.
+     *
+     * Keyed on the connection object (not its short, recycled connId) so a wrapped-around id can't inherit
+     * or release another connection's claim.
+     */
+    #fabricLabelOwner?: WebSocketConnection;
 
     constructor(controller: MatterController, config: ConfigStorage, serverVersion: string) {
         this.#controller = controller;
@@ -486,13 +495,17 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 logger.info(`[${connId}] WebSocket connection closed`);
                 observers.close();
                 this.#connections.delete(connection);
+                if (this.#fabricLabelOwner === connection) {
+                    logger.info(`[${connId}] Releasing fabric label ownership (owning connection closed)`);
+                    this.#fabricLabelOwner = undefined;
+                }
                 connection.dispose();
             };
 
             ws.on(
                 "message",
                 data =>
-                    void this.#handleWebSocketRequest(connId, data.toString()).then(
+                    void this.#handleWebSocketRequest(connId, connection, data.toString()).then(
                         ({ response, enableListeners, wantsThreadDiagnostics: requested, wantsWebRtc: reqWebRtc }) => {
                             if (this.#closed) return;
                             if (enableListeners) {
@@ -572,6 +585,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
     async #handleWebSocketRequest(
         connId: string,
+        connection: WebSocketConnection,
         data: string,
     ): Promise<{
         response: ErrorResultMessage | SuccessResultMessage;
@@ -595,7 +609,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     enableListeners = true;
                     break;
                 case "set_default_fabric_label":
-                    result = await this.#handleSetDefaultFabricLabel(args);
+                    result = await this.#handleSetDefaultFabricLabel(args, connection);
                     break;
                 case "get_fabric_label":
                     result = this.#handleGetFabricLabel(args);
@@ -817,17 +831,36 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
     async #handleSetDefaultFabricLabel(
         args: ArgsOf<"set_default_fabric_label">,
+        connection: WebSocketConnection,
     ): Promise<ResponseOf<"set_default_fabric_label">> {
         const { label } = args;
         const effectiveLabel = normalizeFabricLabel(label);
         if (this.#config.fabricLabelLocked) {
             logger.notice(
-                `Ignoring set_default_fabric_label "${effectiveLabel}" and keeping "${this.#config.fabricLabel}" (pinned via --default-fabric-label)`,
+                `[${connection.connId}] Ignoring set_default_fabric_label "${effectiveLabel}" and keeping "${this.#config.fabricLabel}" (pinned via --default-fabric-label)`,
             );
             return null;
         }
-        await this.#config.set({ fabricLabel: effectiveLabel });
-        await this.#commandHandler.setFabricLabel(effectiveLabel);
+        if (this.#fabricLabelOwner !== undefined && this.#fabricLabelOwner !== connection) {
+            logger.notice(
+                `[${connection.connId}] Ignoring set_default_fabric_label "${effectiveLabel}"; fabric label is owned by connection ${this.#fabricLabelOwner.connId} this session, keeping "${this.#config.fabricLabel}"`,
+            );
+            return null;
+        }
+        // Claim before awaiting so a second connection racing its first set can't slip past the guard while
+        // this one is suspended on the writes below.
+        const previousOwner = this.#fabricLabelOwner;
+        this.#fabricLabelOwner = connection;
+        try {
+            await this.#config.set({ fabricLabel: effectiveLabel });
+            await this.#commandHandler.setFabricLabel(effectiveLabel);
+        } catch (error) {
+            // A failed claiming attempt must not lock everyone else out; release only if we just claimed.
+            if (previousOwner === undefined) {
+                this.#fabricLabelOwner = undefined;
+            }
+            throw error;
+        }
         return null;
     }
 
