@@ -41,13 +41,13 @@ describe("pushNodeTime", () => {
         await pushNodeTime({ invokers, attributes: TZ_ATTRS, nowMs: NOW_MS, tz });
 
         expect(calls.map(c => c.command)).to.deep.equal(["setUtcTime", "setTimeZone", "setDstOffset"]);
-        expect((calls[0].fields as TimeSynchronization.SetUtcTimeRequest).utcTime).to.equal(NOW_MS * 1000);
+        expect((calls[0].fields as TimeSynchronization.SetUtcTimeRequest).utcTime).to.equal(BigInt(NOW_MS) * 1000n);
         const tzReq = calls[1].fields as TimeSynchronization.SetTimeZoneRequest;
         expect(tzReq.timeZone).to.deep.equal([
             { offset: 3600, validAt: MATTER_EPOCH_OFFSET_US, name: "Europe/Berlin" },
         ]);
         const dstReq = calls[2].fields as TimeSynchronization.SetDstOffsetRequest;
-        expect(dstReq.dstOffset).to.deep.equal([{ offset: 3600, validStarting: 1_000_000, validUntil: 2_000_000 }]);
+        expect(dstReq.dstOffset).to.deep.equal([{ offset: 3600, validStarting: 1_000_000n, validUntil: 2_000_000n }]);
     });
 
     it("emits a first-entry validAt the matter.js TlvEpochUs codec accepts", async () => {
