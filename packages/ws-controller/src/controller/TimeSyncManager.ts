@@ -24,7 +24,7 @@ import { NodeProcessor } from "./NodeProcessor.js";
 const logger = Logger.get("TimeSyncManager");
 
 // TimeSynchronization cluster ID (0x0038 = 56 decimal)
-const TIME_SYNC_CLUSTER_ID = 0x0038;
+export const TIME_SYNC_CLUSTER_ID = 0x0038;
 
 // Periodic resync interval: 24 hours
 const RESYNC_INTERVAL = Hours(24);

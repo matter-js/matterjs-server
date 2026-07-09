@@ -105,7 +105,7 @@ import { pingIp } from "../util/network.js";
 import { CustomClusterPoller } from "./CustomClusterPoller.js";
 import { Nodes } from "./Nodes.js";
 import { pushNodeTime, TimeSyncInvokers } from "./timeSyncCommands.js";
-import { TimeSyncManager } from "./TimeSyncManager.js";
+import { TIME_SYNC_CLUSTER_ID, TimeSyncManager } from "./TimeSyncManager.js";
 import { attachWebRtcCallbackBridge } from "./WebRtcCallbackBridge.js";
 
 const logger = Logger.get("ControllerCommandHandler");
@@ -114,7 +114,6 @@ const logger = Logger.get("ControllerCommandHandler");
 const RECONNECT_TIMEOUT = Minutes(3);
 
 // timeFailure event ID within TimeSynchronization cluster (0x0038)
-const TIME_SYNC_CLUSTER_ID = 0x0038;
 const TIME_FAILURE_EVENT_ID = 0x03;
 
 /**
