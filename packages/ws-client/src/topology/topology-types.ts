@@ -9,13 +9,13 @@ import type { BorderRouterEntry, MatterNodeData } from "../models/model.js";
 /**
  * Minimal structural view of a node required to derive network topology.
  *
- * The derivation only ever reads `node_id`, `available` and the flat `attributes`
+ * The derivation only ever reads `node_id` and the flat `attributes`
  * map, so it accepts this narrow shape rather than the full {@link MatterNode}
  * class. Both the client-side `MatterNode` and any server-side node record that
  * exposes these fields satisfy it, which lets the topology pipeline run in the
  * browser (dashboard) and in Node (server) without a shared node class.
  */
-export type TopologySourceNode = Pick<MatterNodeData, "node_id" | "available" | "attributes">;
+export type TopologySourceNode = Pick<MatterNodeData, "node_id" | "attributes">;
 
 /**
  * Network type detected from NetworkCommissioning cluster feature map.
@@ -76,7 +76,7 @@ export interface ThreadNeighbor {
     fullThreadDevice: boolean;
     /** Whether this is a full network data device */
     fullNetworkData: boolean;
-    /** Whether the link is established */
+    /** Whether the neighbor is a child of this node */
     isChild: boolean;
 }
 

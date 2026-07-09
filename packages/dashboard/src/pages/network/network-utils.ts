@@ -5,7 +5,7 @@
  */
 
 import type { MatterNode, SignalLevel, ThreadConnection, ThreadEdgePair } from "@matter-server/ws-client";
-import { getEdgeSignalScore, getThreadExtendedAddressHex } from "@matter-server/ws-client";
+import { getEdgeSignalScore, getSignalLevelFromLqi, getThreadExtendedAddressHex } from "@matter-server/ws-client";
 import { getCssVar } from "../../util/shared-styles.js";
 
 // The network topology data model + derivation moved to @matter-server/ws-client so
@@ -86,7 +86,7 @@ export function signalLevelToColor(level: SignalLevel): string {
  * 0 = grey (no link), 1 = red, 2 = orange, 3 = green.
  */
 export function getSignalColorFromLqi(lqi: number): string {
-    return signalLevelToColor(lqi <= 0 ? "none" : lqi > 2 ? "strong" : lqi > 1 ? "medium" : "weak");
+    return signalLevelToColor(getSignalLevelFromLqi(lqi));
 }
 
 /**
