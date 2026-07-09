@@ -163,12 +163,17 @@ export class TimeSyncManager extends NodeProcessor {
     }
 
     protected override async processNode(peer: PeerAddress): Promise<void> {
-        try {
-            await this.#connector.syncTime(peer);
-            logger.info(`Periodic resync: synced time on node ${formatNodeId(peer)}`);
-        } catch (error) {
-            logger.warn(`Periodic resync: failed to sync time on node ${formatNodeId(peer)}:`, error);
-        }
+        // Register in #inFlightSyncs so a concurrent trigger sync (syncNode) for the same
+        // peer dedupes against the periodic push instead of double-sending.
+        const promise = this.#connector
+            .syncTime(peer)
+            .then(() => logger.info(`Periodic resync: synced time on node ${formatNodeId(peer)}`))
+            .catch(error => logger.warn(`Periodic resync: failed to sync time on node ${formatNodeId(peer)}:`, error))
+            .finally(() => {
+                this.#inFlightSyncs.delete(peer);
+            });
+        this.#inFlightSyncs.set(peer, promise);
+        await promise;
     }
 
     protected override onCycleComplete(processedCount: number, _intervalFormatted: string): void {

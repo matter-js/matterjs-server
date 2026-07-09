@@ -329,6 +329,22 @@ describe("TimeSyncManager", () => {
             expect(connector.syncCalls.length).to.equal(1);
         });
 
+        it("skips a trigger sync while a periodic sync for the same peer is in flight", async () => {
+            connector.slowSync = true;
+            connector.setConnected(PEER_1);
+            manager.registerNode(PEER_1, makeTimeSyncAttrs());
+
+            await MockTime.advance(PAST_STARTUP_MS); // periodic cycle starts
+            await MockTime.yield(); // periodic processNode now in-flight (slow)
+
+            manager.syncNode(PEER_1); // must be deduped by the in-flight periodic sync
+            await MockTime.yield();
+
+            connector.resolveAll();
+            await MockTime.yield3();
+            expect(connector.syncCalls.length).to.equal(1); // only the periodic sync ran
+        });
+
         it("enables immediate syncs on reconnect after the startup cycle completes", async () => {
             manager.registerNode(PEER_1, makeTimeSyncAttrs());
 
@@ -350,6 +366,7 @@ describe("TimeSyncManager", () => {
             await MockTime.advance(PAST_STARTUP_MS); // first cycle
             await MockTime.yield3();
             expect(connector.syncCalls.length).to.equal(1);
+            await MockTime.yield3(); // let the periodic timer fully reschedule before advancing again
 
             await MockTime.advance(ONE_DAY_MS); // 24h resync
             await MockTime.yield3();
