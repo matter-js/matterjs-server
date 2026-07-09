@@ -242,6 +242,14 @@ export class NodeDetails extends LitElement {
         }
     }
 
+    /** "1.5 (1234)" from SoftwareVersionString (0/40/10) + SoftwareVersion (0/40/9); manufacturers mix these up, so show both. */
+    private _formatSoftwareVersion(): string {
+        const versionString = this.node?.attributes["0/40/10"];
+        const versionNumber = this.node?.attributes["0/40/9"];
+        const str = typeof versionString === "string" && versionString !== "" ? versionString : "unknown";
+        return typeof versionNumber === "number" ? `${str} (${versionNumber})` : str;
+    }
+
     private async _searchUpdate() {
         const nodeUpdate = await this.client.checkNodeUpdate(this.node!.node_id);
         if (!nodeUpdate) {
@@ -274,8 +282,9 @@ export class NodeDetails extends LitElement {
                           `
                         : nothing}
                     <p>
+                        Current version: <b>${this._formatSoftwareVersion()}</b><br />
                         Do you want to update this node to version
-                        <b>${nodeUpdate.software_version_string}</b>?
+                        <b>${nodeUpdate.software_version_string} (${nodeUpdate.software_version})</b>?
                     </p>
                     <p>
                         Note that updating firmware is at your own risk and may cause the device to malfunction or needs
