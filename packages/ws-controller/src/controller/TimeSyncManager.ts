@@ -49,6 +49,20 @@ export function hasTimeSyncCluster(attributes: AttributesData): boolean {
 }
 
 /**
+ * Check if a node exposes the TimeSynchronization TimeZone feature, i.e. the TimeZone
+ * attribute (5) on endpoint 0. Presence implies SetTimeZone/SetDstOffset are supported.
+ */
+export function hasTimeZoneFeature(attributes: AttributesData): boolean {
+    return attributes[`0/${TIME_SYNC_CLUSTER_ID}/5`] !== undefined;
+}
+
+/** DSTOffsetListMaxSize (attribute 11) if the node reports it as a number. */
+export function dstOffsetListMaxSize(attributes: AttributesData): number | undefined {
+    const value = attributes[`0/${TIME_SYNC_CLUSTER_ID}/11`];
+    return typeof value === "number" ? value : undefined;
+}
+
+/**
  * Manages time synchronization for nodes with the TimeSynchronization cluster.
  */
 export class TimeSyncManager extends NodeProcessor {

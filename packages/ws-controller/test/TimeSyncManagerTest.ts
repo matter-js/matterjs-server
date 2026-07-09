@@ -6,7 +6,13 @@
 
 import { FabricIndex, NodeId } from "@matter/main";
 import { PeerAddress, PeerAddressSet } from "@matter/main/protocol";
-import { hasTimeSyncCluster, TimeSyncConnector, TimeSyncManager } from "../src/controller/TimeSyncManager.js";
+import {
+    dstOffsetListMaxSize,
+    hasTimeSyncCluster,
+    hasTimeZoneFeature,
+    TimeSyncConnector,
+    TimeSyncManager,
+} from "../src/controller/TimeSyncManager.js";
 import { AttributesData } from "../src/types/CommandHandler.js";
 
 const TIME_SYNC_CLUSTER_ID = 0x0038; // 56 decimal
@@ -69,6 +75,31 @@ describe("hasTimeSyncCluster", () => {
 
     it("only matches endpoint 0 per Matter spec", () => {
         expect(hasTimeSyncCluster({ [`1/${TIME_SYNC_CLUSTER_ID}/1`]: 1 })).to.equal(false);
+    });
+});
+
+describe("hasTimeZoneFeature", () => {
+    it("returns true when the TimeZone attribute (5) is present", () => {
+        expect(hasTimeZoneFeature({ [`0/${TIME_SYNC_CLUSTER_ID}/5`]: [] })).to.equal(true);
+    });
+
+    it("returns false when the TimeZone attribute is absent", () => {
+        expect(hasTimeZoneFeature({ [`0/${TIME_SYNC_CLUSTER_ID}/1`]: 1 })).to.equal(false);
+    });
+
+    it("only matches endpoint 0", () => {
+        expect(hasTimeZoneFeature({ [`1/${TIME_SYNC_CLUSTER_ID}/5`]: [] })).to.equal(false);
+    });
+});
+
+describe("dstOffsetListMaxSize", () => {
+    it("returns the numeric attribute value", () => {
+        expect(dstOffsetListMaxSize({ [`0/${TIME_SYNC_CLUSTER_ID}/11`]: 4 })).to.equal(4);
+    });
+
+    it("returns undefined when absent or non-numeric", () => {
+        expect(dstOffsetListMaxSize({})).to.equal(undefined);
+        expect(dstOffsetListMaxSize({ [`0/${TIME_SYNC_CLUSTER_ID}/11`]: "x" })).to.equal(undefined);
     });
 });
 
