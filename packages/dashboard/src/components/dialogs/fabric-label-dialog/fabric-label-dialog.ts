@@ -77,6 +77,17 @@ export class FabricLabelDialog extends LitElement {
         this._saving = true;
         try {
             await this.client.setDefaultFabricLabel(this._fabricLabel);
+            // The server may silently ignore the change (CLI pin, or another connection owns the label),
+            // so read it back and confirm it took before reporting success.
+            const expected = (this._fabricLabel.trim() || "HomeAssistant").substring(0, MAX_FABRIC_LABEL_LENGTH);
+            const current = await this.client.getFabricLabel();
+            if (current !== expected) {
+                showAlertDialog({
+                    title: "Failed to set fabric label",
+                    text: "Could not set the fabric label — see the server log for details.",
+                });
+                return;
+            }
             this.onSaved?.();
             this._close();
         } catch (error) {
