@@ -23,8 +23,15 @@ const OPEN = 1;
 
 export interface WebSocketConnectionOptions {
     connId: string;
-    /** Direct→queued trip point on `ws.bufferedAmount` (bytes). */
+    /**
+     * Floor for the direct→queued trip point on `ws.bufferedAmount` (bytes). The effective mark rises
+     * dynamically to twice the largest frame ever sent (capped at {@link highWaterCeilingBytes}), so a
+     * single legitimately large payload up to the ceiling (e.g. the initial node dump) does not trip
+     * congestion on its own.
+     */
     highWaterBytes?: number;
+    /** Absolute ceiling for the dynamic high-water mark (bytes), bounding the memory a stall can hold. */
+    highWaterCeilingBytes?: number;
     /** Outbox entry-count cap floor. */
     capBase?: number;
     /** Per-node contribution to the outbox cap: cap = max(capBase, nodeCount * capPerNode). */
@@ -42,6 +49,7 @@ interface OutboxEntry {
 }
 
 const DEFAULT_HIGH_WATER = 1_048_576;
+const DEFAULT_HIGH_WATER_CEILING = 50 * 1_048_576;
 const DEFAULT_CAP_BASE = 1000;
 const DEFAULT_CAP_PER_NODE = 20;
 const DEFAULT_WATCHDOG = Minutes(5);
@@ -60,7 +68,9 @@ const DEFAULT_WATCHDOG = Minutes(5);
 export class WebSocketConnection {
     readonly #ws: OutboundSocket;
     readonly #connId: string;
-    readonly #highWaterBytes: number;
+    readonly #highWaterCeiling: number;
+    /** Effective trip point; ratchets up to 2x the largest frame sent, capped at #highWaterCeiling. */
+    #highWater: number;
     readonly #capBase: number;
     readonly #capPerNode: number;
     readonly #getNodeCount: () => number;
@@ -76,7 +86,10 @@ export class WebSocketConnection {
     constructor(ws: OutboundSocket, options: WebSocketConnectionOptions) {
         this.#ws = ws;
         this.#connId = options.connId;
-        this.#highWaterBytes = options.highWaterBytes ?? DEFAULT_HIGH_WATER;
+        this.#highWaterCeiling = options.highWaterCeilingBytes ?? DEFAULT_HIGH_WATER_CEILING;
+        // Clamp the floor to the ceiling so a misconfigured floor > ceiling can't start the mark
+        // above its cap (it only ever ratchets up, so it would never come back down).
+        this.#highWater = Math.min(options.highWaterBytes ?? DEFAULT_HIGH_WATER, this.#highWaterCeiling);
         this.#capBase = options.capBase ?? DEFAULT_CAP_BASE;
         this.#capPerNode = options.capPerNode ?? DEFAULT_CAP_PER_NODE;
         this.#getNodeCount = options.getNodeCount ?? (() => 0);
@@ -143,13 +156,20 @@ export class WebSocketConnection {
 
     #directSend(frame: string): void {
         if (this.#ws.readyState !== OPEN) return;
+        this.#raiseHighWater(frame);
         this.#ws.send(frame);
-        if (this.#mode === "direct" && this.#ws.bufferedAmount > this.#highWaterBytes) {
+        if (this.#mode === "direct" && this.#ws.bufferedAmount > this.#highWater) {
             this.#mode = "queued";
             logger.warn(
-                `[${this.#connId}] outbound congested (bufferedAmount=${this.#ws.bufferedAmount} > ${this.#highWaterBytes}) — entering backpressure mode`,
+                `[${this.#connId}] outbound congested (bufferedAmount=${this.#ws.bufferedAmount} > ${this.#highWater}) — entering backpressure mode`,
             );
         }
+    }
+
+    /** Grow the trip point to twice the largest frame seen, capped at the ceiling, so a frame up to the ceiling never trips it alone. */
+    #raiseHighWater(frame: string): void {
+        const need = Math.min(this.#highWaterCeiling, 2 * Buffer.byteLength(frame));
+        if (need > this.#highWater) this.#highWater = need;
     }
 
     #enqueue(key: string, entry: OutboxEntry): void {
@@ -198,6 +218,7 @@ export class WebSocketConnection {
                 continue;
             }
             if (frame === undefined) continue;
+            this.#raiseHighWater(frame);
             this.#inFlight = true;
             this.#watchdogTimer.start();
             this.#ws.send(frame, err => this.#onFlushed(err));
