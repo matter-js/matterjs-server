@@ -94,6 +94,42 @@ describe("WebSocketConnection", () => {
             expect(socket.sent).to.deep.equal(["a"]);
             expect(conn.mode).to.equal("queued");
         });
+
+        it("does not trip on a single large frame — high-water scales to 2x the largest frame", () => {
+            const socket = new FakeSocket();
+            const conn = makeConn(socket, { highWaterBytes: 100 });
+
+            const big = "x".repeat(200); // 200 bytes, well over the 100-byte floor
+            socket.bufferedAmount = 200; // the big frame now sits in the socket buffer
+            conn.sendReliable(big);
+
+            // A single legitimate large payload (e.g. the initial start_listening dump) must not be
+            // mistaken for a stalled consumer: the water mark rises to 2x its size.
+            expect(conn.mode).to.equal("direct");
+        });
+
+        it("still trips when backlog grows past 2x the largest frame (stalled consumer)", () => {
+            const socket = new FakeSocket();
+            const conn = makeConn(socket, { highWaterBytes: 100 });
+
+            const big = "x".repeat(200);
+            conn.sendReliable(big); // raises high-water to 400
+            socket.bufferedAmount = 500; // backlog now exceeds 2x the largest frame
+            conn.sendReliable("y");
+
+            expect(conn.mode).to.equal("queued");
+        });
+
+        it("caps the dynamic high-water at the ceiling", () => {
+            const socket = new FakeSocket();
+            const conn = makeConn(socket, { highWaterBytes: 100, highWaterCeilingBytes: 1000 });
+
+            conn.sendReliable("x".repeat(800)); // 2x = 1600, but ceiling clamps to 1000
+            socket.bufferedAmount = 1100; // above the ceiling, below the un-clamped 1600
+            conn.sendReliable("y");
+
+            expect(conn.mode).to.equal("queued");
+        });
     });
 
     describe("queued mode", () => {
