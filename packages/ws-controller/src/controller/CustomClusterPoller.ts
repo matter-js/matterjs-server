@@ -10,7 +10,7 @@
  * a custom cluster without standard Matter subscription support.
  */
 
-import { Logger } from "@matter/main";
+import { asError, Diagnostic, Logger } from "@matter/main";
 import { PeerAddress, PeerAddressMap } from "@matter/main/protocol";
 import { AttributesData } from "../types/CommandHandler.js";
 import { formatNodeId } from "../util/formatNodeId.js";
@@ -190,7 +190,10 @@ export class CustomClusterPoller extends NodeProcessor {
             );
             await readPromise;
         } catch (error) {
-            logger.warn(`Failed to poll custom attributes for node ${formatNodeId(peer)}: `, error);
+            logger.warn(
+                `Failed to poll custom attributes for node ${formatNodeId(peer)}: `,
+                Diagnostic.errorMessage(asError(error)),
+            );
         } finally {
             this.#currentReadPromise = undefined;
         }
