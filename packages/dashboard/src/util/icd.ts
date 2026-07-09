@@ -100,15 +100,6 @@ export function icdInfo(attributes: Record<string, unknown>): IcdInfo {
     };
 }
 
-/**
- * Badge predicate: the node is an ICD currently operating in LIT mode. Requires spec >= 1.4 —
- * below that the controller does not track check-ins, so offline is not "normal sleeping".
- */
-export function isLitIcd(attributes: Record<string, unknown>): boolean {
-    const info = icdInfo(attributes);
-    return info.supported && info.operatingMode === "LIT" && litSpecVersionOk(attributes);
-}
-
 export function isRegisteredByUs(
     clients: IcdRegisteredClient[],
     controllerNodeId: number | bigint | undefined,
@@ -150,12 +141,45 @@ export function wakeInstruction(hint: number | undefined, instruction: string | 
     return { kind: "manual", text: "see the device manual" };
 }
 
-/** Tooltip for the OFFLINE "ICD" badge. */
-export function litOfflineHint(attributes: Record<string, unknown>): string {
+export interface IcdBadge {
+    state: "offline" | "lit" | "sit";
+    hint: string;
+}
+
+/**
+ * Tri-state "ICD" badge for LIT-capable nodes (cluster present, LongIdleTimeSupport feature, spec >= 1.4 —
+ * below that the controller does not track check-ins, so offline is not "normal sleeping").
+ * Returns undefined for nodes that aren't LIT-capable, since neither SIT-only nor unsupported nodes get a badge.
+ */
+export function icdBadge(attributes: Record<string, unknown>, available: boolean): IcdBadge | undefined {
     const info = icdInfo(attributes);
-    const interval =
-        info.idleModeDuration !== undefined ? formatDuration(info.idleModeDuration) : "its check-in interval";
-    return `Battery Saver device: it sleeps between check-ins and may come back on its own (check-in interval up to ${interval}). Click for options.`;
+    if (!info.supported || !info.features.longIdleTimeSupport || !litSpecVersionOk(attributes)) return undefined;
+
+    if (info.operatingMode === "SIT") {
+        return {
+            state: "sit",
+            hint: "Supports Battery Saver Mode (called Matter LIT (Long Idle Time) ICD), currently in Standard mode. Click for options.",
+        };
+    }
+
+    if (info.operatingMode === "LIT") {
+        if (!available) {
+            const offlineInterval =
+                info.idleModeDuration !== undefined ? formatDuration(info.idleModeDuration) : "its check-in interval";
+            return {
+                state: "offline",
+                hint: `Battery Saver device: it sleeps between check-ins and may come back on its own (check-in interval up to ${offlineInterval}). Click for options.`,
+            };
+        }
+        const onlineInterval =
+            info.idleModeDuration !== undefined ? formatDuration(info.idleModeDuration) : "its idle interval";
+        return {
+            state: "lit",
+            hint: `Battery Saver Mode active (Matter LIT (Long Idle Time) ICD): the device sleeps between check-ins and reacts to commands within up to ${onlineInterval}. Click for options.`,
+        };
+    }
+
+    return undefined;
 }
 
 /** Extracts admin vendor ids from a multi-admin error `details` payload; undefined if not that shape. */

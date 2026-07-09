@@ -25,7 +25,7 @@ import "../../components/ha-svg-icon";
 import "../camera-overlay.js";
 import { getDeviceIcon } from "../../util/device-icons.js";
 import { getEndpointDeviceTypes } from "../../util/endpoints.js";
-import { ICD_CLUSTER_ID, isLitIcd, litOfflineHint } from "../../util/icd.js";
+import { ICD_CLUSTER_ID, icdBadge } from "../../util/icd.js";
 import { bindingContext } from "./context.js";
 
 /** Map updateState values to user-friendly labels */
@@ -81,6 +81,7 @@ export class NodeDetails extends LitElement {
 
         const deviceTypeIds = getEndpointDeviceTypes(this.node, this.endpoint).map(d => d.id);
         const isCamera = deviceTypeIds.includes(0x0142) || deviceTypeIds.includes(0x0143);
+        const badge = icdBadge(this.node.attributes, this.node.available);
 
         return html`
             <md-list>
@@ -99,16 +100,15 @@ export class NodeDetails extends LitElement {
                                   </md-icon-button>
                               `
                             : nothing}
-                        ${this.node.available
-                            ? nothing
-                            : html` <span class="status">OFFLINE</span>${isLitIcd(this.node.attributes)
-                                      ? html`<a
-                                            class="status icd-badge"
-                                            href="#node/${this.node.node_id}/0/${ICD_CLUSTER_ID}"
-                                            title=${litOfflineHint(this.node.attributes)}
-                                            >ICD</a
-                                        >`
-                                      : nothing}`}
+                        ${this.node.available ? nothing : html` <span class="status">OFFLINE</span>`}
+                        ${badge
+                            ? html`<a
+                                  class="icd-badge icd-${badge.state}"
+                                  href="#node/${this.node.node_id}/0/${ICD_CLUSTER_ID}"
+                                  title=${badge.hint}
+                                  >ICD</a
+                              >`
+                            : nothing}
                     </div>
                 </md-list-item>
                 <md-list-item>
@@ -377,9 +377,26 @@ export class NodeDetails extends LitElement {
         .icd-badge {
             margin-left: 4px;
             padding: 0 4px;
-            border: 1px solid var(--danger-color);
+            border: 1px solid;
             border-radius: 4px;
+            font-weight: bold;
+            font-size: 0.8em;
             text-decoration: none;
+        }
+
+        .icd-badge.icd-offline {
+            color: var(--danger-color);
+            border-color: var(--danger-color);
+        }
+
+        .icd-badge.icd-lit {
+            color: var(--success-color);
+            border-color: var(--success-color);
+        }
+
+        .icd-badge.icd-sit {
+            color: var(--text-color);
+            border-color: var(--text-color);
         }
     `;
 }

@@ -259,16 +259,18 @@ export class IcdManagementClusterCommands extends BaseClusterCommands {
                                 reconnecting can also take up to <b>${this._idleText}</b>.
                             </li>
                             <li>
-                                <b>Every</b> ecosystem this device is paired with must support Battery Saver Mode
-                                (Matter "ICD LIT"), otherwise the device will appear offline or unresponsive there.
+                                <b>Every</b> ecosystem (e.g. Apple, Google) this device is paired with must support
+                                Battery Saver Mode (called Matter LIT (Long Idle Time) ICD), otherwise the device will
+                                appear offline or unresponsive there.
                             </li>
                         </ul>
                     </div>
                 </label>
             </div>
             <p class="info-banner">
-                Every ecosystem this device is paired with must support Battery Saver Mode (Matter "ICD LIT"). You can
-                switch back to Standard Mode later as long as no other ecosystem is registered for it.
+                Every ecosystem (e.g. Apple, Google) this device is paired with must support Battery Saver Mode (called
+                Matter LIT (Long Idle Time) ICD). You can switch back to Standard Mode later as long as no other
+                ecosystem is registered for it.
                 ${!single && !this._registered
                     ? html` This device is already paired with <b>${this._commissionedFabrics - 1}</b> other
                           ecosystem(s).`
@@ -316,11 +318,12 @@ export class IcdManagementClusterCommands extends BaseClusterCommands {
             <p>
                 <b>Important:</b>
                 ${single
-                    ? html`every ecosystem you pair this device with later must support Battery Saver Mode (Matter ICD
-                      "LIT"). In an ecosystem without support the device will appear offline or unresponsive.`
+                    ? html`every ecosystem (e.g. Apple, Google) you pair this device with later must support Battery
+                      Saver Mode (called Matter LIT (Long Idle Time) ICD). In an ecosystem without support the device
+                      will appear offline or unresponsive.`
                     : html`this device is already paired with <b>${this._commissionedFabrics - 1}</b> other
-                          ecosystem(s). All of them must support Battery Saver Mode (Matter ICD "LIT"), otherwise the
-                          device will appear offline or unresponsive in those ecosystems.`}
+                          ecosystem(s). All of them must support Battery Saver Mode (called Matter LIT (Long Idle Time)
+                          ICD), otherwise the device will appear offline or unresponsive in those ecosystems.`}
             </p>
             <p>
                 You can switch back to Standard Mode later as long as no other ecosystem is registered for Battery Saver
