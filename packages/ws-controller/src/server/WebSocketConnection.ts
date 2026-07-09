@@ -26,7 +26,8 @@ export interface WebSocketConnectionOptions {
     /**
      * Floor for the direct→queued trip point on `ws.bufferedAmount` (bytes). The effective mark rises
      * dynamically to twice the largest frame ever sent (capped at {@link highWaterCeilingBytes}), so a
-     * single legitimately large payload (e.g. the initial node dump) never trips congestion.
+     * single legitimately large payload up to the ceiling (e.g. the initial node dump) does not trip
+     * congestion on its own.
      */
     highWaterBytes?: number;
     /** Absolute ceiling for the dynamic high-water mark (bytes), bounding the memory a stall can hold. */
@@ -165,7 +166,7 @@ export class WebSocketConnection {
         }
     }
 
-    /** Grow the trip point to twice the largest frame seen (capped), so one big frame never trips it. */
+    /** Grow the trip point to twice the largest frame seen, capped at the ceiling, so a frame up to the ceiling never trips it alone. */
     #raiseHighWater(frame: string): void {
         const need = Math.min(this.#highWaterCeiling, 2 * Buffer.byteLength(frame));
         if (need > this.#highWater) this.#highWater = need;
