@@ -13,6 +13,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Feature: Adds WiFi and Thread credential management and allows to store multiple entries. Commissioning can pick which stored network to use
 - Feature: Adds ICD (Intermittently Connected Device) management including a "Power & Sleep (ICD)" dashboard panel. Requires devices with Matter 1.4+ for LIT management.
 - Feature: Allows defining the default fabric label to use as CLI/ENV-option which then blocks changing via the WebSocket API
+- Feature: Adds automatic time synchronization for devices that support it, pushing UTC time (and time zone / DST for capable nodes). Enable it with the `--enable-time-sync` CLI option (env `ENABLE_TIME_SYNC`) when the host has a reliable, synced time source
 - Enhancement: When one WebSocket connection defines a fabric label then other connections are blocked from changing that as long as the defining connection is still active
 - Enhancement: Introduced WS schema 12 which supports the above features — see [WebSocket API schema changelog](docs/websocket-api-schema-changelog.md).
 - Enhancement: New `--disable-thread-diagnostics` CLI flag (env `DISABLE_THREAD_DIAGNOSTICS`) turns off the entire Thread Border Router subsystem (discovery, probing, diagnostics) for plain Matter-controller deployments. Matter-over-Thread commissioning is unaffected
