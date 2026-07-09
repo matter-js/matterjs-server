@@ -87,12 +87,16 @@ function generateConnectionId(): string {
     return id.toString(16);
 }
 
-const SCHEMA_VERSION = 12;
+const SCHEMA_VERSION = 13;
 const MIN_SUPPORTED_SCHEMA_VERSION = 11;
 
 // Issuing any of these (schema 12) proves the connection is Thread-aware, so it opts the connection
 // in to `thread_diagnostics_updated` — even if the request itself errors. See the schema changelog.
 const THREAD_DIAGNOSTICS_OPT_IN_COMMANDS = new Set(["get_thread_diagnostics", "get_thread_border_routers"]);
+
+// Issuing this (schema 13) opts the connection in to `network_topology_updated`, mirroring the
+// thread-diagnostics opt-in: pre-schema-13 clients never subscribed, so they must not receive it.
+const NETWORK_TOPOLOGY_OPT_IN_COMMANDS = new Set(["get_network_topology"]);
 
 const skipMessageContentInLogFor = ["start_listening"];
 
@@ -255,6 +259,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
             // Thread request, so schema-11 clients (all currently deployed HA installs) never receive an
             // event type they'd crash on. See the schema changelog.
             let wantsThreadDiagnostics = false;
+            // network_topology_updated (schema 13) is likewise sent only to connections that have
+            // issued get_network_topology, so pre-schema-13 clients never receive it.
+            let wantsNetworkTopology = false;
             // webrtc_callback is likewise sent only to a connection that has issued a WebRTC provider
             // command, so it reaches the client driving that camera session rather than every client.
             let wantsWebRtc = false;
@@ -511,6 +518,20 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 }
             });
 
+            observers.on(this.#controller.networkTopology.events.topologyUpdated, topology => {
+                if (this.#closed || this.#shuttingDown || !wantsNetworkTopology) return;
+                // topologyUpdated is a shared Observable; isolate serialize/send per connection so a
+                // throw here can't starve other connections. The graph is global (not per-network), so
+                // coalesce latest-wins under a single key — an older snapshot is worthless.
+                try {
+                    connection.sendCoalescable("network_topology", () =>
+                        toBigIntAwareJson({ event: "network_topology_updated", data: topology }),
+                    );
+                } catch (err) {
+                    logger.error(`[${connId}] Failed to send network_topology_updated`, err);
+                }
+            });
+
             observers.on(this.#commandHandler.events.webRtcCallback, data => {
                 if (this.#closed || this.#shuttingDown || !wantsWebRtc) return;
                 // WebRTC signaling is control-plane: never coalesced or dropped, so send reliably.
@@ -541,13 +562,22 @@ export class WebSocketControllerHandler implements WebServerHandler {
             ws.on("message", data => {
                 this.#handleWebSocketRequest(connId, connection, data.toString())
                     .then(
-                        ({ response, enableListeners, wantsThreadDiagnostics: requested, wantsWebRtc: reqWebRtc }) => {
+                        ({
+                            response,
+                            enableListeners,
+                            wantsThreadDiagnostics: requested,
+                            wantsNetworkTopology: reqTopology,
+                            wantsWebRtc: reqWebRtc,
+                        }) => {
                             if (this.#closed) return;
                             if (enableListeners) {
                                 listening = true;
                             }
                             if (requested) {
                                 wantsThreadDiagnostics = true;
+                            }
+                            if (reqTopology) {
+                                wantsNetworkTopology = true;
                             }
                             if (reqWebRtc) {
                                 wantsWebRtc = true;
@@ -625,6 +655,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         response: ErrorResultMessage | SuccessResultMessage;
         enableListeners?: boolean;
         wantsThreadDiagnostics?: boolean;
+        wantsNetworkTopology?: boolean;
         wantsWebRtc?: boolean;
     }> {
         let messageId: string | undefined;
@@ -727,6 +758,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 case "get_thread_diagnostics":
                     result = await this.#handleGetThreadDiagnostics(args);
                     break;
+                case "get_network_topology":
+                    result = await this.#handleGetNetworkTopology(args);
+                    break;
                 case "open_commissioning_window":
                     result = await this.#handleOpenCommissioningWindow(args);
                     break;
@@ -784,6 +818,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 },
                 enableListeners,
                 wantsThreadDiagnostics: command !== undefined && THREAD_DIAGNOSTICS_OPT_IN_COMMANDS.has(command),
+                wantsNetworkTopology: command !== undefined && NETWORK_TOPOLOGY_OPT_IN_COMMANDS.has(command),
                 wantsWebRtc: command === "send_webrtc_provider_command",
             };
         } catch (err) {
@@ -796,6 +831,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     details: (err as Error).message,
                 },
                 wantsThreadDiagnostics: command !== undefined && THREAD_DIAGNOSTICS_OPT_IN_COMMANDS.has(command),
+                wantsNetworkTopology: command !== undefined && NETWORK_TOPOLOGY_OPT_IN_COMMANDS.has(command),
                 wantsWebRtc: command === "send_webrtc_provider_command",
             };
         }
@@ -1348,6 +1384,13 @@ export class WebSocketControllerHandler implements WebServerHandler {
         // Explicit null (not undefined) so the "no response" guard doesn't turn "nothing cached /
         // diagnostics disabled" into a generic sdk_stack_error.
         return batch === undefined ? null : serializeBatch(batch);
+    }
+
+    async #handleGetNetworkTopology(args: ArgsOf<"get_network_topology">): Promise<ResponseOf<"get_network_topology">> {
+        if (args?.refresh === true) {
+            return this.#controller.networkTopology.refresh();
+        }
+        return this.#controller.networkTopology.getTopology();
     }
 
     async #handleRemoveWifiCredentials(

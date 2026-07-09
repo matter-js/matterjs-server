@@ -57,10 +57,11 @@ async function createHarness(pingNode: () => unknown) {
     const config = await ConfigStorage.create(env);
 
     const fakeCommandHandler = createFakeCommandHandler(pingNode);
-    // register() subscribes to the controller-level thread-diagnostics observable; supply just that.
+    // register() subscribes to the controller-level thread-diagnostics + network-topology observables; supply just those.
     const fakeController = {
         commandHandler: fakeCommandHandler,
         threadDiagnostics: { events: { batchUpdated: new Observable() } },
+        networkTopology: { events: { topologyUpdated: new Observable() } },
     } as unknown as MatterController;
 
     const handler = new WebSocketControllerHandler(fakeController, config, "fix5-repro-test");

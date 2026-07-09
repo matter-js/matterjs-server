@@ -69,6 +69,16 @@ function makeStubController(credentials: ThreadCredentialsRegistry) {
         refreshAllKnown() {},
     };
 
+    const stubNetworkTopology = {
+        events: { topologyUpdated: new Observable() },
+        getTopology() {
+            return { collected_at: 0, nodes: [], connections: [] };
+        },
+        async refresh() {
+            return { collected_at: 0, nodes: [], connections: [] };
+        },
+    };
+
     const stubBorderRouters = {
         list() {
             return [];
@@ -89,6 +99,11 @@ function makeStubController(credentials: ThreadCredentialsRegistry) {
                 typeof import("../src/controller/ThreadDiagnosticsService.js").ThreadDiagnosticsService
             >;
         },
+        get networkTopology() {
+            return stubNetworkTopology as unknown as InstanceType<
+                typeof import("../src/controller/NetworkTopologyService.js").NetworkTopologyService
+            >;
+        },
         get borderRouters() {
             return stubBorderRouters as unknown as InstanceType<
                 typeof import("@matter/thread-br-client").BorderRouterRegistry
@@ -103,6 +118,7 @@ interface TestHarness {
     sendOn<T = unknown>(ws: WebSocket, command: string, args: unknown): Promise<T>;
     emitDiagnosticsBatch(batch: unknown): void;
     emitWebRtcCallback(data: unknown): void;
+    emitTopologyUpdated(topology: unknown): void;
     config: ConfigStorage;
     close(): Promise<void>;
 }
@@ -201,7 +217,20 @@ async function createHarness(): Promise<TestHarness> {
         (controller.commandHandler.events.webRtcCallback as unknown as Observable<[unknown]>).emit(data);
     }
 
-    return { handle, openClient, sendOn, emitDiagnosticsBatch, emitWebRtcCallback, config, close };
+    function emitTopologyUpdated(topology: unknown): void {
+        (controller.networkTopology.events.topologyUpdated as unknown as Observable<[unknown]>).emit(topology);
+    }
+
+    return {
+        handle,
+        openClient,
+        sendOn,
+        emitDiagnosticsBatch,
+        emitWebRtcCallback,
+        emitTopologyUpdated,
+        config,
+        close,
+    };
 }
 
 describe("WebSocket Credentials API", () => {
@@ -332,6 +361,49 @@ describe("WebSocket Credentials API", () => {
         ws.close();
     });
 
+    it("get_network_topology returns the built snapshot", async () => {
+        const res = await h.handle<{ nodes: unknown[]; connections: unknown[] }>("get_network_topology", {});
+        expect(res.nodes).to.deep.equal([]);
+        expect(res.connections).to.deep.equal([]);
+    });
+
+    it("withholds network_topology_updated until the connection requests topology", async () => {
+        const ws = await h.openClient();
+        const events = new Array<string>();
+        ws.on("message", raw => {
+            const msg = JSON.parse(raw.toString()) as { event?: string };
+            if (msg.event !== undefined) events.push(msg.event);
+        });
+
+        const topology = { collected_at: 0, nodes: [], connections: [] };
+
+        // A pre-schema-13 client that never asks for topology must not receive the new event.
+        h.emitTopologyUpdated(topology);
+        await new Promise(r => setTimeout(r, 50));
+        expect(events).to.not.include("network_topology_updated");
+
+        // Issuing get_network_topology opts this connection in.
+        await new Promise<void>((resolve, reject) => {
+            const id = "req-topology";
+            const onMsg = (raw: WebSocket.RawData) => {
+                const msg = JSON.parse(raw.toString()) as { message_id?: string };
+                if (msg.message_id === id) {
+                    ws.off("message", onMsg);
+                    resolve();
+                }
+            };
+            ws.on("message", onMsg);
+            ws.once("error", reject);
+            ws.send(JSON.stringify({ message_id: id, command: "get_network_topology", args: {} }));
+        });
+
+        h.emitTopologyUpdated(topology);
+        await new Promise(r => setTimeout(r, 50));
+        expect(events).to.include("network_topology_updated");
+
+        ws.close();
+    });
+
     it("get_thread_diagnostics(ext_pan_id) returns null (not an error) when nothing is cached", async () => {
         const res = await h.handle<unknown>("get_thread_diagnostics", { ext_pan_id: "1122334455667788" });
         expect(res).to.equal(null);
@@ -387,12 +459,12 @@ describe("WebSocket Credentials API", () => {
         expect(def?.extPanId).to.equal(def?.extPanId?.toUpperCase());
     });
 
-    it("server_info reports schema 12 / min 11", async () => {
+    it("server_info reports schema 13 / min 11", async () => {
         const info = await h.handle<{ schema_version: number; min_supported_schema_version: number }>(
             "server_info",
             {},
         );
-        expect(info.schema_version).to.equal(12);
+        expect(info.schema_version).to.equal(13);
         expect(info.min_supported_schema_version).to.equal(11);
     });
 
