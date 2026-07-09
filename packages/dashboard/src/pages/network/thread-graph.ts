@@ -37,6 +37,7 @@ import {
     getThreadExtendedAddressHex,
     getThreadRole,
     mergeDiagnosticEdges,
+    signalLevelToColor,
     stripMdnsHostname,
 } from "./network-utils.js";
 
@@ -574,11 +575,12 @@ export class ThreadGraph extends BaseNetworkGraph {
                     }
                 }
 
+                const edgeColor = signalLevelToColor(conn.signalLevel);
                 const visEdge: NetworkGraphEdge = {
                     id: edgeId,
                     from: fromId,
                     to: toId,
-                    color: { color: conn.signalColor, highlight: conn.signalColor },
+                    color: { color: edgeColor, highlight: edgeColor },
                     width: 2,
                     title: tooltip,
                     dashes: isInferredEdge || hasOfflineEndpoint,
