@@ -32,6 +32,7 @@ npm run server -- --bluetooth-adapter 0
 | --log-level           | enum         | "info"           | No       | Global logging level                                                                                                              |
 | --log-file            | string       | null             | No       | Log file path incl. filename, e.g. `/data/matter-server.log`                                                                      |
 | --primary-interface   | string       | null             | No       | Primary network interface for link-local addresses                                                                                |
+| --default-fabric-label | string      | null             | No       | Pin the fabric label to this value and ignore `set_default_fabric_label` WebSocket requests — env `DEFAULT_FABRIC_LABEL`. Prevents multiple clients from overwriting each other's label. |
 | --enable-test-net-dcl | boolean flag | false            | No       | Enable test-net DCL to check for certificates and OTA-updates additionally to the production DCL                                  |
 | --disable-dcl-seed    | boolean flag | false            | No       | Disable bundled offline DCL seed (PAA roots, CD signers, vendors); rely on network DCL only                                       |
 | --bluetooth-adapter   | integer      | null             | No       | Bluetooth adapter HCI ID (e.g., 0 for hci0). Mutually exclusive with `--ble-proxy`.                                               |

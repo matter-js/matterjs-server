@@ -249,6 +249,10 @@ Removes a named entry, or clears the reserved `default` (zeroing its SSID + secr
 
 **set_default_fabric_label** - Set the default fabric label
 
+Ignored when the server is started with `--default-fabric-label` (env `DEFAULT_FABRIC_LABEL`): the request succeeds but the pinned label is kept. Read the effective value with `get_fabric_label`.
+
+Also ignored per session across connections: the first WebSocket connection to issue `set_default_fabric_label` owns the label for the lifetime of that connection. Other connections' `set_default_fabric_label` requests then succeed but are ignored (and logged) until the owning connection disconnects, at which point the next connection to issue the command claims ownership. This stops two clients (e.g. two Home Assistant instances) from overwriting each other's label.
+
 ```json
 {
   "message_id": "1",
@@ -258,6 +262,18 @@ Removes a named entry, or clears the reserved `default` (zeroing its SSID + secr
   }
 }
 ```
+
+**get_fabric_label** - Get the currently configured fabric label (schema 12+)
+
+```json
+{
+  "message_id": "1",
+  "command": "get_fabric_label",
+  "args": {}
+}
+```
+
+Response: `{ "fabric_label": "HomeAssistant" }`
 
 ### Commissioning
 
