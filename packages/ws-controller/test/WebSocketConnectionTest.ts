@@ -97,10 +97,12 @@ describe("WebSocketConnection", () => {
 
         it("does not trip on a single large frame — high-water scales to 2x the largest frame", () => {
             const socket = new FakeSocket();
-            const conn = makeConn(socket, { highWaterBytes: 100 });
+            const conn = makeConn(socket); // 100-byte floor
 
             const big = "x".repeat(200); // 200 bytes, well over the 100-byte floor
-            socket.bufferedAmount = 200; // the big frame now sits in the socket buffer
+            // FakeSocket.send doesn't track size, so pre-set the bufferedAmount the congestion check
+            // will read after this frame is sent.
+            socket.bufferedAmount = 200;
             conn.sendReliable(big);
 
             // A single legitimate large payload (e.g. the initial start_listening dump) must not be
@@ -110,7 +112,7 @@ describe("WebSocketConnection", () => {
 
         it("still trips when backlog grows past 2x the largest frame (stalled consumer)", () => {
             const socket = new FakeSocket();
-            const conn = makeConn(socket, { highWaterBytes: 100 });
+            const conn = makeConn(socket); // 100-byte floor
 
             const big = "x".repeat(200);
             conn.sendReliable(big); // raises high-water to 400
