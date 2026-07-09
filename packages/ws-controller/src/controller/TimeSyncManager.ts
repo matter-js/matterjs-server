@@ -45,10 +45,10 @@ export interface TimeSyncConnector {
     nodeConnected(peer: PeerAddress): boolean;
 }
 
-/** TimeNotAccepted means the node trusts its own time source — expected, not an error. */
+/** TimeNotAccepted means the node keeps a time source it prefers — expected, not an error. */
 function logSyncFailure(prefix: string, peer: PeerAddress, error: unknown) {
     if (error instanceof StatusResponseError && error.clusterCode === TimeSynchronization.StatusCode.TimeNotAccepted) {
-        logger.info(`${prefix}Node ${formatNodeId(peer)} declined the time (it trusts its own time source)`);
+        logger.info(`${prefix}Node ${formatNodeId(peer)} declined the provided time`);
         return;
     }
     logger.warn(`${prefix}Failed to sync time on node ${formatNodeId(peer)}:`, error);
