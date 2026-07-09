@@ -148,4 +148,37 @@ describe("pushNodeTime", () => {
         const dstReq = calls[2].fields as TimeSynchronization.SetDstOffsetRequest;
         expect(dstReq.dstOffset[0].validUntil).to.equal(null);
     });
+
+    it("sends the canonical no-DST entry instead of an empty list for a no-DST zone", async () => {
+        const { calls, invokers } = recorder(true);
+        const noDstTz: TimeZoneProvider = {
+            ...tz,
+            dstWindows: () => [],
+        };
+        await pushNodeTime({ invokers, attributes: TZ_ATTRS, nowMs: NOW_MS, tz: noDstTz });
+
+        expect(calls.map(c => c.command)).to.deep.equal(["setUtcTime", "setTimeZone", "setDstOffset"]);
+        const dstReq = calls[2].fields as TimeSynchronization.SetDstOffsetRequest;
+        expect(dstReq.dstOffset).to.deep.equal([
+            { offset: 0, validStarting: MATTER_EPOCH_OFFSET_US, validUntil: null },
+        ]);
+    });
+
+    it("emits DST validStarting/validUntil the TlvEpochUs codec round-trips", async () => {
+        const validStartingMs = Date.UTC(2026, 2, 29, 1);
+        const validUntilMs = Date.UTC(2026, 9, 25, 1);
+        const { calls, invokers } = recorder(true);
+        const realisticTz: TimeZoneProvider = {
+            ...tz,
+            dstWindows: () => [{ offsetSeconds: 3600, validStartingMs, validUntilMs }],
+        };
+        await pushNodeTime({ invokers, attributes: TZ_ATTRS, nowMs: NOW_MS, tz: realisticTz });
+
+        const dstReq = calls[2].fields as TimeSynchronization.SetDstOffsetRequest;
+        const { validStarting, validUntil } = dstReq.dstOffset[0];
+        expect(() => TlvEpochUs.encode(validStarting)).not.to.throw();
+        expect(() => TlvEpochUs.encode(validUntil!)).not.to.throw();
+        expect(TlvEpochUs.decode(TlvEpochUs.encode(validStarting))).to.equal(BigInt(validStartingMs * 1000));
+        expect(TlvEpochUs.decode(TlvEpochUs.encode(validUntil!))).to.equal(BigInt(validUntilMs * 1000));
+    });
 });

@@ -83,11 +83,16 @@ export async function pushNodeTime(opts: {
 
         if (response?.dstOffsetRequired) {
             const max = dstOffsetListMaxSize(attributes) ?? DEFAULT_DST_LIST_MAX;
-            const dstOffset = tz.dstWindows(zone, nowMs, max).map(window => ({
+            const dstOffset: TimeSynchronization.DstOffset[] = tz.dstWindows(zone, nowMs, max).map(window => ({
                 offset: window.offsetSeconds,
                 validStarting: unixMsToEpochUs(window.validStartingMs),
                 validUntil: window.validUntilMs === null ? null : unixMsToEpochUs(window.validUntilMs),
             }));
+            if (dstOffset.length === 0) {
+                // Spec: an empty DSTOffset list forces LocalTime to null; a no-DST zone must be
+                // expressed as a single permanent entry with offset 0 instead of an empty list.
+                dstOffset.push({ offset: 0, validStarting: MATTER_EPOCH_OFFSET_US, validUntil: null });
+            }
             await invokers.setDstOffset({ dstOffset });
         }
     } catch (error) {
