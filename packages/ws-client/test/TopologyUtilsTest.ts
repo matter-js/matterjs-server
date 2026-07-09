@@ -25,8 +25,8 @@ import {
     parseRouteTable,
 } from "../src/index.js";
 
-function mkNode(nodeId: number, attributes: Record<string, unknown>, available = true): TopologySourceNode {
-    return { node_id: nodeId, available, attributes };
+function mkNode(nodeId: number, attributes: Record<string, unknown>): TopologySourceNode {
+    return { node_id: nodeId, attributes };
 }
 
 /** base64 of a byte array (server-side Node helper — mirrors what the wire delivers). */
@@ -165,9 +165,9 @@ describe("topology-utils", () => {
         });
 
         it("averages bidirectional LQI, falling back to the live direction", () => {
-            expect(getRouteBidirectionalLqi({ lqiIn: 3, lqiOut: 1 } as never)).to.equal(2);
-            expect(getRouteBidirectionalLqi({ lqiIn: 3, lqiOut: 0 } as never)).to.equal(3);
-            expect(getRouteBidirectionalLqi({ lqiIn: 0, lqiOut: 0 } as never)).to.equal(undefined);
+            expect(getRouteBidirectionalLqi({ lqiIn: 3, lqiOut: 1 })).to.equal(2);
+            expect(getRouteBidirectionalLqi({ lqiIn: 3, lqiOut: 0 })).to.equal(3);
+            expect(getRouteBidirectionalLqi({ lqiIn: 0, lqiOut: 0 })).to.equal(undefined);
         });
     });
 

@@ -165,7 +165,9 @@ export function getThreadExtendedPanId(node: TopologySourceNode): bigint | undef
  * - Field 4: HardwareAddress (base64 encoded EUI-64)
  * - Field 7: Type (4 = Thread)
  *
- * Returns as BigInt. Only upper 48 bits should be used for matching due to JSON precision loss.
+ * Returns the full EUI-64 as BigInt. Decoded from the base64 hardware address,
+ * so it is exact and used whole for matching — the JSON number-precision caveat
+ * that applies to revived integers does not apply here.
  */
 export function getThreadExtendedAddress(node: TopologySourceNode): bigint | undefined {
     // Get NetworkInterfaces from General Diagnostics cluster (0/51/0)
@@ -329,7 +331,7 @@ export function getRoutableDestinationsCount(node: TopologySourceNode): number {
  * Calculate combined bidirectional LQI from route table entry.
  * Returns average of lqiIn and lqiOut if both are non-zero.
  */
-export function getRouteBidirectionalLqi(route: ThreadRoute): number | undefined {
+export function getRouteBidirectionalLqi(route: Pick<ThreadRoute, "lqiIn" | "lqiOut">): number | undefined {
     if (route.lqiIn > 0 && route.lqiOut > 0) {
         return Math.round((route.lqiIn + route.lqiOut) / 2);
     }
@@ -719,6 +721,13 @@ export function buildThreadEdgePairs(
     for (const node of Object.values(nodes)) {
         const fromNodeId = String(node.node_id);
         const neighbors = parseNeighborTable(node);
+        const routes = parseRouteTable(node);
+        const routeByExtAddress = new Map<bigint, ThreadRoute>();
+        for (const route of routes) {
+            if (route.linkEstablished && !routeByExtAddress.has(route.extAddress)) {
+                routeByExtAddress.set(route.extAddress, route);
+            }
+        }
 
         for (const neighbor of neighbors) {
             let toNodeId: string | undefined = extAddrMap.get(neighbor.extAddress);
@@ -743,7 +752,7 @@ export function buildThreadEdgePairs(
             if (isFromA && pair.edgeAB) continue;
             if (!isFromA && pair.edgeBA) continue;
 
-            const routeEntry = findRouteByExtAddress(node, neighbor.extAddress);
+            const routeEntry = routeByExtAddress.get(neighbor.extAddress);
             const bidirectionalLqi = routeEntry ? getRouteBidirectionalLqi(routeEntry) : undefined;
 
             const edge: ThreadConnection = {
@@ -764,7 +773,6 @@ export function buildThreadEdgePairs(
         }
 
         // Supplementary: route table entries not already covered by neighbor table
-        const routes = parseRouteTable(node);
         for (const route of routes) {
             if (!route.linkEstablished || !route.allocated) continue;
 
