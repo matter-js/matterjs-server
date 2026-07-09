@@ -225,8 +225,6 @@ jobs:
               env:
                   PRERELEASE: ${{ contains(steps.version.outputs.result, '-') }}
               run: |
-                  npm install -g npm@latest
-
                   if [[ "$PRERELEASE" == "true" ]]; then
                     npm publish --workspaces --tag dev
                   else
