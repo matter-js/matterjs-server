@@ -6,9 +6,10 @@
 
 /**
  * Handles time synchronization for nodes with the TimeSynchronization cluster.
- * Syncs UTC time on two triggers:
+ * Syncs time on three triggers:
  * 1. Node connects/reconnects after startup (immediate, once startup window has elapsed)
  * 2. Periodic resync every 24 hours
+ * 3. Reactive resync when a node emits a timeFailure event (driven externally via syncNode())
  *
  * A startup window of 30–60 minutes prevents syncing during initial node connection
  * while the host's NTP is still stabilizing. This manager must only be enabled when
