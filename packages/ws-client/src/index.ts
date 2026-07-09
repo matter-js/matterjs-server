@@ -23,3 +23,7 @@ export * from "./json-utils.js";
 // Export models
 export * from "./models/model.js";
 export * from "./models/node.js";
+
+// Export network topology derivation (shared by dashboard + server)
+export * from "./topology/topology-types.js";
+export * from "./topology/topology-utils.js";
