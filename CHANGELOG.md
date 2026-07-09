@@ -7,7 +7,7 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
-## **WORK IN PROGRESS**
+## 1.2.0 (2026-07-09)
 
 - Feature: Enhanced Thread Network diagnostics — collect and visualize per-Thread-network diagnostics also from Border Routers over MeshCoP (CoAP/DTLS) or the OTBR REST API (auto-selected, cached)
 - Feature: Adds WiFi and Thread credential management and allows to store multiple entries. Commissioning can pick which stored network to use
