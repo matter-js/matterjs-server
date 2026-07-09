@@ -58,10 +58,10 @@
         "@types/mocha": "^10.0.10",
         "glob": "^13.0.6",
         "globals": "^17.7.0",
-        "oxfmt": "^0.57.0",
-        "oxlint": "^1.72.0",
+        "oxfmt": "^0.58.0",
+        "oxlint": "^1.73.0",
         "oxlint-tsgolint": "^0.24.0",
-        "tsx": "^4.22.4",
+        "tsx": "^4.23.0",
         "typescript": "~6.0.3"
     },
     "overrides": {

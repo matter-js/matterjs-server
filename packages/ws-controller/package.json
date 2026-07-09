@@ -40,15 +40,15 @@
         "test": "matter-test --force-exit"
     },
     "dependencies": {
-        "@matter/thread-br-client": "0.17.5-alpha.0-20260708-18923cc56",
         "@matter-server/ws-client": "*",
-        "@matter/dcl-data": ">=2026.7.1",
+        "@matter/dcl-data": ">=2026.7.7",
         "@matter/main": "0.17.5-alpha.0-20260708-18923cc56",
+        "@matter/thread-br-client": "0.17.5-alpha.0-20260708-18923cc56",
         "@project-chip/matter.js": "0.17.5-alpha.0-20260708-18923cc56",
         "ws": "^8.21.0"
     },
     "devDependencies": {
-        "@types/node": "^26.0.1",
+        "@types/node": "^26.1.1",
         "@types/ws": "^8.18.1"
     },
     "optionalDependencies": {
