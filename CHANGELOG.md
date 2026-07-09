@@ -20,9 +20,10 @@ This page shows a detailed overview of the changes between versions without the 
 - Enhancement: WebSocket sends now apply per-connection backpressure — a slow or stalled client coalesces attribute/node updates and drops stale events instead of buffering without limit, preventing unbounded memory growth (OOM) under high event volume
 - Enhancement: Update matter.js to the latest 0.17.5 nightly
     - Adds support for Matter 1.6.0
+    - Adds support for ICD (SIT and LIT) devices
     - Fixes an invoke-issue where parallel multi-endpoint invokes were working but errors returned on WebSocket
     - Optimizes subscription reporting intervals
-    - Ensures changed node structures are send via WebSocket directly after Re-Subscribe and not delayed
+    - Ensures changed node structures are sent via WebSocket directly after re-subscribe and not delayed
 - Adjustment: `webrtc_callback` events are now delivered only to the connection that issued the `send_webrtc_provider_command` for that camera session, instead of being broadcast to every connected client
 - Fix: Ensures that the Python-Client does not crash anymore on unknown events from newer Server versions
 

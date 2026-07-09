@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Logger } from "@matter/main";
+import { Logger, Timestamp } from "@matter/main";
 import { TimeSynchronization } from "@matter/main/clusters";
 import { MATTER_EPOCH_OFFSET_US } from "@matter/main/types";
 import { AttributesData } from "../types/CommandHandler.js";
@@ -42,9 +42,8 @@ const defaultTimeZoneProvider: TimeZoneProvider = {
     dstWindows: defaultDstWindows,
 };
 
-// epoch-us fields are raw Unix-epoch microseconds; matter.js TlvEpochUs adds the Matter-epoch offset.
-function unixMsToEpochUs(ms: number): number {
-    return ms * 1000;
+function unixMsToEpochUs(ms: number): bigint {
+    return Timestamp.toMicroseconds(Timestamp(ms));
 }
 
 /**
