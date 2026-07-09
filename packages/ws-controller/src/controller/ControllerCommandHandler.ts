@@ -104,6 +104,7 @@ import { formatNodeId } from "../util/formatNodeId.js";
 import { pingIp } from "../util/network.js";
 import { CustomClusterPoller } from "./CustomClusterPoller.js";
 import { Nodes } from "./Nodes.js";
+import { pushNodeTime, TimeSyncInvokers } from "./timeSyncCommands.js";
 import { TimeSyncManager } from "./TimeSyncManager.js";
 import { attachWebRtcCallbackBridge } from "./WebRtcCallbackBridge.js";
 
@@ -419,21 +420,38 @@ export class ControllerCommandHandler {
     }
 
     /**
-     * Send a setUtcTime command to a node's TimeSynchronization cluster.
+     * Push UTC time (and, for TimeZone-feature nodes, time zone + DST) to a node's
+     * TimeSynchronization cluster.
      */
     async #syncNodeTime(nodeId: NodeId): Promise<void> {
-        await this.#invokeCommand(this.#nodes.get(nodeId).node, {
-            endpoint: EndpointNumber(0),
-            cluster: TimeSynchronization.Cluster,
-            command: "setUtcTime",
-            fields: {
-                // utcTime is a raw TlvEpochUs field: Unix-epoch microseconds. Time.nowUs is a
-                // millisecond Timestamp despite its name, so derive µs from nowMs.
-                utcTime: Time.nowMs * 1000,
-                granularity: TimeSynchronization.Granularity.MillisecondsGranularity,
-                timeSource: TimeSynchronization.TimeSource.Admin,
+        const node = this.#nodes.get(nodeId).node;
+        const attributes = this.#nodes.attributeCache.get(nodeId) ?? {};
+        const invokers: TimeSyncInvokers = {
+            setUtcTime: async fields => {
+                await this.#invokeCommand(node, {
+                    endpoint: EndpointNumber(0),
+                    cluster: TimeSynchronization.Cluster,
+                    command: "setUtcTime",
+                    fields,
+                });
             },
-        });
+            setTimeZone: async fields =>
+                (await this.#invokeCommand(node, {
+                    endpoint: EndpointNumber(0),
+                    cluster: TimeSynchronization.Cluster,
+                    command: "setTimeZone",
+                    fields,
+                })) as TimeSynchronization.SetTimeZoneResponse | undefined,
+            setDstOffset: async fields => {
+                await this.#invokeCommand(node, {
+                    endpoint: EndpointNumber(0),
+                    cluster: TimeSynchronization.Cluster,
+                    command: "setDstOffset",
+                    fields,
+                });
+            },
+        };
+        await pushNodeTime({ invokers, attributes, nowMs: Time.nowMs });
     }
 
     async close() {
