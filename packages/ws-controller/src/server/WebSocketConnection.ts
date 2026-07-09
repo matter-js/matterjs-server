@@ -87,6 +87,10 @@ export class WebSocketConnection {
         );
     }
 
+    get connId(): string {
+        return this.#connId;
+    }
+
     get mode(): SendMode {
         return this.#mode;
     }

@@ -167,6 +167,16 @@ async function start() {
         logger.info(`Setting fabric label from legacy data: "${legacyData.mostCommonFabricLabel}"`);
         await config.set({ fabricLabel: legacyData.mostCommonFabricLabel });
     }
+
+    // A CLI-pinned fabric label overrides any persisted/legacy value and blocks later WS changes,
+    // preventing two Home Assistant instances from playing fabric-label ping-pong.
+    const pinnedFabricLabel = cliOptions.defaultFabricLabel?.trim();
+    if (pinnedFabricLabel) {
+        const label = pinnedFabricLabel.substring(0, 32);
+        logger.info(`Pinning fabric label to "${label}" via --default-fabric-label`);
+        await config.lockFabricLabel(label);
+    }
+
     controller = await MatterController.create(
         env,
         config,
@@ -177,6 +187,7 @@ async function start() {
             serverId: legacyData.serverId,
             serverVersion: MATTER_SERVER_VERSION,
             bleProxyEnabled: cliOptions.bleProxy,
+            enableTimeSync: cliOptions.enableTimeSync,
             disableThreadDiagnostics: cliOptions.disableThreadDiagnostics,
         },
         legacyServerData,

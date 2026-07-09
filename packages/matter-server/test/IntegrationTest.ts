@@ -207,17 +207,15 @@ describe("Integration Test", function () {
             expect(info.thread_credentials_set).to.be.true;
         });
 
-        it("should set default fabric label", async function () {
+        it("should set and get the default fabric label", async function () {
             await client.setDefaultFabricLabel("Test Fabric Label");
-            // Label is stored but not directly queryable via server_info
-            // It will be used on the next commissioning
+            expect(await client.getFabricLabel()).to.equal("Test Fabric Label");
         });
 
-        it("should reset fabric label to 'Home' when null/empty is passed", async function () {
-            // matter.js validates fabric label must be 1-32 chars
-            // So null/empty resets to "Home" instead of clearing
+        it("should reset fabric label to the default when null/empty is passed", async function () {
+            // matter.js validates fabric label must be 1-32 chars, so null/empty resets to the default.
             await client.setDefaultFabricLabel("");
-            // No direct way to verify the result via API, but it should not throw
+            expect(await client.getFabricLabel()).to.equal("HomeAssistant");
         });
 
         // Error code tests

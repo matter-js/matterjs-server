@@ -52,6 +52,9 @@ export interface CliOptions {
     // Network configuration
     primaryInterface: string | null;
 
+    // Fabric configuration
+    defaultFabricLabel: string | null;
+
     // Certificate configuration
     enableTestNetDcl: boolean;
     disableDclSeed: boolean;
@@ -63,6 +66,9 @@ export interface CliOptions {
     // OTA configuration
     disableOta: boolean;
     otaProviderDir: string | null;
+
+    // Time synchronization configuration
+    enableTimeSync: boolean;
 
     // Dashboard configuration
     disableDashboard: boolean;
@@ -151,6 +157,12 @@ export function parseCliArgs(argv?: string[]): CliOptions {
         )
         .addOption(
             new Option(
+                "--default-fabric-label <label>",
+                "Pin the fabric label to this value and ignore set_default_fabric_label WebSocket requests",
+            ).env("DEFAULT_FABRIC_LABEL"),
+        )
+        .addOption(
+            new Option(
                 "--enable-test-net-dcl [value]",
                 "Enable test-net DCL certificates and OTA updates additionally to Production DCL",
             )
@@ -189,6 +201,16 @@ export function parseCliArgs(argv?: string[]): CliOptions {
                 .env("DISABLE_OTA"),
         )
         .addOption(new Option("--ota-provider-dir <path>", "Directory for OTA Provider files").env("OTA_PROVIDER_DIR"))
+        .addOption(
+            new Option(
+                "--enable-time-sync [value]",
+                "Enable time synchronization for nodes with the TimeSynchronization cluster. Only enable when host NTP is reliable.",
+            )
+                .argParser(parseBooleanEnv)
+                .preset(true)
+                .default(false)
+                .env("ENABLE_TIME_SYNC"),
+        )
         .addOption(
             new Option("--disable-dashboard [value]", "Disable the web dashboard")
                 .argParser(parseBooleanEnv)
@@ -276,12 +298,14 @@ export function parseCliArgs(argv?: string[]): CliOptions {
         logLevel: opts.logLevel,
         logFile: opts.logFile ?? null,
         primaryInterface: opts.primaryInterface ?? null,
+        defaultFabricLabel: opts.defaultFabricLabel ?? null,
         enableTestNetDcl: opts.enableTestNetDcl,
         disableDclSeed: opts.disableDclSeed,
         bluetoothAdapter: opts.bluetoothAdapter ?? null,
         bleProxy: opts.bleProxy,
         disableOta: opts.disableOta,
         otaProviderDir: opts.otaProviderDir ?? null,
+        enableTimeSync: opts.enableTimeSync,
         disableDashboard: opts.disableDashboard,
         productionMode: opts.productionMode,
         disableThreadDiagnostics: opts.disableThreadDiagnostics,

@@ -6,10 +6,9 @@
 
 import {
     decodeRegisteredClients,
+    icdBadge,
     icdInfo,
-    isLitIcd,
     isRegisteredByUs,
-    litOfflineHint,
     litSpecVersionOk,
     otherFabricClientCount,
     parseIcdFeatures,
@@ -60,18 +59,40 @@ describe("icd util", () => {
         });
     });
 
-    describe("isLitIcd", () => {
-        it("true for operating LIT device", () => {
-            expect(isLitIcd(LIT_ATTRS)).to.equal(true);
+    describe("icdBadge", () => {
+        it("offline for an operating-LIT device that is unavailable", () => {
+            const badge = icdBadge(LIT_ATTRS, false);
+            expect(badge?.state).to.equal("offline");
+            expect(badge?.hint).to.contain("Battery Saver device");
+            expect(badge?.hint).to.contain("1 h");
         });
-        it("false for SIT device", () => {
-            expect(isLitIcd({ ...LIT_ATTRS, "0/70/8": 0 })).to.equal(false);
+        it("lit for an operating-LIT device that is available", () => {
+            const badge = icdBadge(LIT_ATTRS, true);
+            expect(badge?.state).to.equal("lit");
+            expect(badge?.hint).to.contain("Battery Saver Mode active");
+            expect(badge?.hint).to.contain("1 h");
         });
-        it("false for pre-1.4 device even when operating LIT", () => {
-            expect(isLitIcd({ ...LIT_ATTRS, "0/40/21": 0x01030000 })).to.equal(false);
+        it("lit hint falls back to 'its idle interval' when duration unknown", () => {
+            const attrs = { ...LIT_ATTRS };
+            delete attrs["0/70/0"];
+            const badge = icdBadge(attrs, true);
+            expect(badge?.hint).to.contain("its idle interval");
         });
-        it("false without ICD cluster", () => {
-            expect(isLitIcd({})).to.equal(false);
+        it("sit for an operating-SIT device, regardless of availability", () => {
+            const sitAttrs = { ...LIT_ATTRS, "0/70/8": 0 };
+            expect(icdBadge(sitAttrs, true)?.state).to.equal("sit");
+            expect(icdBadge(sitAttrs, false)?.state).to.equal("sit");
+            expect(icdBadge(sitAttrs, true)?.hint).to.contain("currently in Standard mode");
+        });
+        it("undefined without ICD cluster", () => {
+            expect(icdBadge({}, false)).to.equal(undefined);
+        });
+        it("undefined without LongIdleTimeSupport feature", () => {
+            const attrs = { ...LIT_ATTRS, "0/70/65532": 0b0011 }; // CIP | UAT, no LITS
+            expect(icdBadge(attrs, false)).to.equal(undefined);
+        });
+        it("undefined below spec 1.4", () => {
+            expect(icdBadge({ ...LIT_ATTRS, "0/40/21": 0x01030000 }, false)).to.equal(undefined);
         });
     });
 
@@ -158,12 +179,6 @@ describe("icd util", () => {
         });
         it("true above 1.4.0", () => {
             expect(litSpecVersionOk({ "0/40/21": 0x01040100 })).to.equal(true);
-        });
-    });
-
-    describe("litOfflineHint", () => {
-        it("mentions formatted interval", () => {
-            expect(litOfflineHint(LIT_ATTRS)).to.contain("1 h");
         });
     });
 

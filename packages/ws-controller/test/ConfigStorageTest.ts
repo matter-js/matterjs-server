@@ -64,4 +64,27 @@ describe("ConfigStorage", () => {
             expect(typeof config.nextNodeId).to.equal("bigint");
         });
     });
+
+    describe("fabricLabel", () => {
+        let config: ConfigStorage;
+
+        beforeEach(async () => {
+            config = await createConfig();
+        });
+
+        afterEach(async () => {
+            await config.close();
+        });
+
+        it("defaults to HomeAssistant and is unlocked", () => {
+            expect(config.fabricLabel).to.equal("HomeAssistant");
+            expect(config.fabricLabelLocked).to.be.false;
+        });
+
+        it("locks the label and reports it as locked", async () => {
+            await config.lockFabricLabel("Pinned");
+            expect(config.fabricLabel).to.equal("Pinned");
+            expect(config.fabricLabelLocked).to.be.true;
+        });
+    });
 });

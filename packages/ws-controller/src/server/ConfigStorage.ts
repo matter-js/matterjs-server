@@ -61,6 +61,7 @@ export class ConfigStorage {
     };
     #additionalWifiCredentials: WifiCredentialEntry[] = new Array<WifiCredentialEntry>();
     #additionalThreadCredentials: ThreadCredentialEntry[] = new Array<ThreadCredentialEntry>();
+    #fabricLabelLocked = false;
 
     // Stored as plain string-record arrays so they satisfy SupportedStorageTypes.
     static #toStoredWifi(list: WifiCredentialEntry[]): Array<Record<string, string>> {
@@ -138,6 +139,17 @@ export class ConfigStorage {
 
     get fabricLabel() {
         return this.#data.fabricLabel;
+    }
+
+    /** Whether the fabric label is pinned via `--default-fabric-label` and must ignore `set_default_fabric_label`. */
+    get fabricLabelLocked() {
+        return this.#fabricLabelLocked;
+    }
+
+    /** Pin the fabric label to a CLI-provided value; overrides any persisted label and blocks later WS changes. */
+    async lockFabricLabel(label: string) {
+        await this.set({ fabricLabel: label });
+        this.#fabricLabelLocked = true;
     }
     get nextNodeId() {
         return this.#data.nextNodeId;

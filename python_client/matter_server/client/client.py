@@ -130,6 +130,11 @@ class MatterClient:
         """Set the default fabric label."""
         await self.send_command(APICommand.SET_DEFAULT_FABRIC_LABEL, require_schema=11, label=label)
 
+    async def get_fabric_label(self) -> str | None:
+        """Return the currently configured fabric label."""
+        result = await self.send_command(APICommand.GET_FABRIC_LABEL, require_schema=12)
+        return cast("str | None", result["fabric_label"])
+
     async def commission_with_code(
         self,
         code: str,

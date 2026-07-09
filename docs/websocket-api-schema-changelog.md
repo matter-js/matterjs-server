@@ -33,6 +33,12 @@ See `packages/ws-client/src/models/model.ts` for the exact `ThreadDiagnosticsBat
 `ThreadDiagnosticsNode` / `BorderRouterEntry` wire shapes (each field is documented inline,
 with the schema version that introduced it).
 
+### Fabric label
+
+- **New command `get_fabric_label`** → `{ fabric_label: string | null }` — returns the currently configured fabric label so clients can read it instead of assuming their own value. Counterpart to `set_default_fabric_label`.
+- **`set_default_fabric_label` may be ignored.** When the server is started with `--default-fabric-label` (env `DEFAULT_FABRIC_LABEL`), the label is pinned: `set_default_fabric_label` is accepted but does nothing (the server logs the ignored value and keeps the pinned one). Read the effective value with `get_fabric_label`.
+- **`set_default_fabric_label` is owned per connection.** Independent of the CLI pin, the first connection to issue `set_default_fabric_label` in a server session owns the label while it stays connected; other connections' set requests are accepted but ignored (and logged) until the owner disconnects. Ownership then passes to the next connection that issues the command.
+
 ### WebRTC camera live view
 
 The WebRTC command + event first shipped under schema 11 (PR #644) without being documented or
