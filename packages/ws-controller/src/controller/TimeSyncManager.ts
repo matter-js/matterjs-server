@@ -27,6 +27,9 @@ const logger = Logger.get("TimeSyncManager");
 // TimeSynchronization cluster ID (0x0038 = 56 decimal)
 export const TIME_SYNC_CLUSTER_ID = 0x0038;
 
+// timeFailure event ID within the TimeSynchronization cluster
+export const TIME_FAILURE_EVENT_ID = 0x03;
+
 // Periodic resync interval: 24 hours
 const RESYNC_INTERVAL = Hours(24);
 

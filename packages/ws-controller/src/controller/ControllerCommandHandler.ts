@@ -105,16 +105,13 @@ import { pingIp } from "../util/network.js";
 import { CustomClusterPoller } from "./CustomClusterPoller.js";
 import { Nodes } from "./Nodes.js";
 import { pushNodeTime, TimeSyncInvokers } from "./timeSyncCommands.js";
-import { TIME_SYNC_CLUSTER_ID, TimeSyncManager } from "./TimeSyncManager.js";
+import { TIME_FAILURE_EVENT_ID, TIME_SYNC_CLUSTER_ID, TimeSyncManager } from "./TimeSyncManager.js";
 import { attachWebRtcCallbackBridge } from "./WebRtcCallbackBridge.js";
 
 const logger = Logger.get("ControllerCommandHandler");
 
 /** Grace period after leaving Connected before a node is declared unavailable. */
 const RECONNECT_TIMEOUT = Minutes(3);
-
-// timeFailure event ID within TimeSynchronization cluster (0x0038)
-const TIME_FAILURE_EVENT_ID = 0x03;
 
 /**
  * Determine the Matter specification version from cached attributes.
