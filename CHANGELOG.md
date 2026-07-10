@@ -7,7 +7,7 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
-## **WORK IN PROGRESS**
+## 1.2.2 (2026-07-10)
 
 - Fix: Ensure that WebSocket backpressure keeps the send window full instead of draining one frame at a time, avoiding initial-sync stalls behind a high-latency proxy (e.g. Home Assistant ingress) that could drop the dashboard connection
 - Fix: Optimize TBR address and data handling
