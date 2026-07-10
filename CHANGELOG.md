@@ -9,7 +9,7 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## **WORK IN PROGRESS**
 
-- Fix: WebSocket backpressure now keeps the send window full instead of draining one frame at a time, so a burst is not serialized to one network round-trip per frame — this could stall initial sync behind a high-latency proxy (e.g. Home Assistant ingress) long enough to drop the dashboard connection
+- Fix: Ensure that WebSocket backpressure keeps the send window full instead of draining one frame at a time, avoiding initial-sync stalls behind a high-latency proxy (e.g. Home Assistant ingress) that could drop the dashboard connection
 
 ## 1.2.1 (2026-07-09)
 

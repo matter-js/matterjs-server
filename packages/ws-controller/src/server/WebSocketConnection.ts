@@ -12,6 +12,7 @@ const logger = Logger.get("WebSocketConnection");
 export interface OutboundSocket {
     readonly bufferedAmount: number;
     readonly readyState: number;
+    /** `cb` is invoked when the frame is flushed. Like `ws`, it must fire asynchronously, not inline. */
     send(data: string, cb?: (err?: Error) => void): void;
     close(code?: number, reason?: string): void;
     terminate(): void;
@@ -81,6 +82,8 @@ export class WebSocketConnection {
     readonly #outbox = new Map<string, OutboxEntry>();
     /** Frames sent but not yet flushed. The window is bounded by bytes (`ws.bufferedAmount`), not count. */
     #inFlightCount = 0;
+    /** Guards the drain loop against re-entry, in case a flush callback ever fires inline. */
+    #draining = false;
     #seq = 0;
     #disposed = false;
     #capWarned = false;
@@ -202,31 +205,37 @@ export class WebSocketConnection {
     }
 
     #drain(): void {
-        if (this.#mode !== "queued") return;
+        if (this.#mode !== "queued" || this.#draining) return;
         if (this.#ws.readyState !== OPEN) {
             this.#outbox.clear();
             return;
         }
         // Keep the pipe full: send while there is a queued frame and the in-flight bytes are still
         // below the mark. A single frame is always allowed through when nothing is in flight, so a
-        // frame larger than the mark can't wedge the drain.
-        while (this.#outbox.size > 0 && (this.#inFlightCount === 0 || this.#ws.bufferedAmount < this.#highWater)) {
-            const [key, entry] = this.#outbox.entries().next().value as [string, OutboxEntry];
-            this.#outbox.delete(key);
-            // A throwing builder would escape into the ws flush callback as an uncaught exception.
-            // Treat a throw like an undefined frame: log it and skip on.
-            let frame: string | undefined;
-            try {
-                frame = entry.build();
-            } catch (err) {
-                logger.error(`[${this.#connId}] failed to build queued frame; dropping it`, err);
-                continue;
+        // frame larger than the mark can't wedge the drain. The #draining guard keeps an inline flush
+        // callback from re-entering the loop; the outer iteration picks up the freed window instead.
+        this.#draining = true;
+        try {
+            while (this.#outbox.size > 0 && (this.#inFlightCount === 0 || this.#ws.bufferedAmount < this.#highWater)) {
+                const [key, entry] = this.#outbox.entries().next().value as [string, OutboxEntry];
+                this.#outbox.delete(key);
+                // A throwing builder would escape into the ws flush callback as an uncaught exception.
+                // Treat a throw like an undefined frame: log it and skip on.
+                let frame: string | undefined;
+                try {
+                    frame = entry.build();
+                } catch (err) {
+                    logger.error(`[${this.#connId}] failed to build queued frame; dropping it`, err);
+                    continue;
+                }
+                if (frame === undefined) continue;
+                this.#raiseHighWater(frame);
+                if (this.#inFlightCount === 0) this.#armWatchdog();
+                this.#inFlightCount++;
+                this.#ws.send(frame, err => this.#onFlushed(err));
             }
-            if (frame === undefined) continue;
-            this.#raiseHighWater(frame);
-            if (this.#inFlightCount === 0) this.#armWatchdog();
-            this.#inFlightCount++;
-            this.#ws.send(frame, err => this.#onFlushed(err));
+        } finally {
+            this.#draining = false;
         }
         if (this.#outbox.size === 0 && this.#inFlightCount === 0) this.#exitQueued();
     }
