@@ -528,7 +528,11 @@ export class ControllerCommandHandler {
         const node = await this.#controller.getNode(nodeId);
         const attributeCache = this.#nodes.attributeCache;
 
-        // Per-node ObserverGroup so all subscriptions are cleaned up on decommission
+        // Per-node ObserverGroup so all subscriptions are cleaned up on decommission. A node can be
+        // registered more than once for the same id (e.g. a re-commission after removal without an
+        // intervening decommission event) — close any stale group first so its listeners don't keep
+        // firing alongside the new one and double-emit downstream events.
+        this.#nodeObservers.get(nodeId)?.close();
         const nodeObservers = new ObserverGroup();
         this.#nodeObservers.set(nodeId, nodeObservers);
 
