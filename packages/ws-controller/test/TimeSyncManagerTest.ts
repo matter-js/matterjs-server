@@ -33,6 +33,8 @@ class StubConnector implements TimeSyncConnector {
     readonly syncCalls: PeerAddress[] = [];
     private readonly _connected = new PeerAddressSet();
     slowSync = false;
+    /** When true, the next syncTime() call rejects instead of succeeding (auto-resets after firing). */
+    failNext = false;
     readonly syncResolvers: Array<() => void> = [];
 
     setConnected(peer: PeerAddress): void {
@@ -48,6 +50,10 @@ class StubConnector implements TimeSyncConnector {
             await new Promise<void>(resolve => this.syncResolvers.push(resolve));
         }
         this.syncCalls.push(peer);
+        if (this.failNext) {
+            this.failNext = false;
+            throw new Error("simulated sync failure");
+        }
     }
 
     resolveAll(): void {
@@ -255,6 +261,50 @@ describe("TimeSyncManager", () => {
             expect(connector.syncCalls.length).to.equal(1);
 
             await MockTime.advance(ONE_DAY_MS); // periodic still resyncs despite recent trigger sync
+            await MockTime.yield3();
+            expect(connector.syncCalls.length).to.equal(2);
+        });
+    });
+
+    describe("trigger sync cooldown after a failed attempt", () => {
+        beforeEach(() => {
+            manager.registerNode(PEER_1, makeTimeSyncAttrs());
+            manager.completeStartup();
+            connector.setConnected(PEER_1);
+        });
+
+        it("retries a failed trigger sync after the short backoff, well before the 24h cooldown would allow it", async () => {
+            connector.failNext = true;
+            manager.syncNode(PEER_1);
+            await MockTime.yield3();
+            expect(connector.syncCalls.length).to.equal(1);
+
+            manager.syncNode(PEER_1); // immediately after — still backed off, dropped
+            await MockTime.yield3();
+            expect(connector.syncCalls.length).to.equal(1);
+
+            await MockTime.advance(6 * ONE_MINUTE_MS); // past the 5-min failure backoff
+            await MockTime.yield3();
+
+            manager.syncNode(PEER_1); // backoff elapsed — retries
+            await MockTime.yield3();
+            expect(connector.syncCalls.length).to.equal(2);
+        });
+
+        it("still cools down for the full 24h after a successful sync (not shortened by an earlier failure)", async () => {
+            connector.failNext = true;
+            manager.syncNode(PEER_1); // fails, short backoff set
+            await MockTime.yield3();
+            expect(connector.syncCalls.length).to.equal(1);
+
+            await MockTime.advance(6 * ONE_MINUTE_MS); // backoff elapsed
+            await MockTime.yield3();
+
+            manager.syncNode(PEER_1); // retry succeeds — full 24h cooldown now applies
+            await MockTime.yield3();
+            expect(connector.syncCalls.length).to.equal(2);
+
+            manager.syncNode(PEER_1); // well within the new 24h cooldown — dropped
             await MockTime.yield3();
             expect(connector.syncCalls.length).to.equal(2);
         });

@@ -35,10 +35,16 @@ export const TIME_FAILURE_EVENT_ID = 0x03;
 // Periodic resync interval: 24 hours
 const RESYNC_INTERVAL = Hours(24);
 
-// Minimum spacing between trigger-driven (reconnect / timeFailure) syncs for one peer.
-// The periodic path already caps its own cadence; this stops a flapping node or a device
-// repeatedly emitting timeFailure from storming setUtcTime commands.
+// Minimum spacing between trigger-driven (reconnect / timeFailure) syncs for one peer, applied after
+// a *successful* attempt. The periodic path already caps its own cadence; this stops a flapping node
+// or a device repeatedly emitting timeFailure from storming setUtcTime commands once time is known-good.
 const TRIGGER_SYNC_COOLDOWN = Hours(24);
+
+// Spacing applied instead of TRIGGER_SYNC_COOLDOWN after a *failed* attempt. A transient failure
+// (the node briefly unreachable, a dropped interaction) must not lock a node out of correction for a
+// full day; a short backoff lets the next reconnect or timeFailure retry soon while still preventing
+// an immediate resend storm.
+const TRIGGER_SYNC_FAILURE_BACKOFF = Minutes(5);
 
 export interface TimeSyncConnector {
     syncTime(peer: PeerAddress): Promise<void>;
@@ -84,8 +90,10 @@ export class TimeSyncManager extends NodeProcessor {
     readonly #connector: TimeSyncConnector;
     // Tracks in-flight immediate syncs per node to prevent parallel syncs
     #inFlightSyncs = new PeerAddressMap<Promise<void>>();
-    // Last trigger-driven sync attempt per node, used to enforce TRIGGER_SYNC_COOLDOWN
-    #lastTriggerSyncMs = new PeerAddressMap<number>();
+    // Next time (ms since epoch) a trigger-driven sync may run for one peer. Pushed out by
+    // TRIGGER_SYNC_COOLDOWN on a successful attempt, or by the shorter TRIGGER_SYNC_FAILURE_BACKOFF on
+    // a failed one — see #syncNode.
+    #nextTriggerSyncMs = new PeerAddressMap<number>();
     // True after the first periodic resync cycle, enabling immediate syncs on reconnect
     #startupComplete = false;
 
@@ -126,7 +134,7 @@ export class TimeSyncManager extends NodeProcessor {
      * Unregister a node from time sync tracking.
      */
     unregisterNode(peer: PeerAddress): void {
-        this.#lastTriggerSyncMs.delete(peer);
+        this.#nextTriggerSyncMs.delete(peer);
         if (this.unregisterPeer(peer)) {
             logger.info(`Unregistered node ${formatNodeId(peer)} from time synchronization`);
         }
@@ -142,18 +150,24 @@ export class TimeSyncManager extends NodeProcessor {
             logger.debug(`Time sync already in progress for node ${formatNodeId(peer)}, skipping`);
             return;
         }
-        const lastSync = this.#lastTriggerSyncMs.get(peer);
-        if (lastSync !== undefined && Time.nowMs - lastSync < TRIGGER_SYNC_COOLDOWN) {
-            logger.debug(
-                `Time sync for node ${formatNodeId(peer)} skipped, within ${Duration.format(TRIGGER_SYNC_COOLDOWN)} cooldown`,
-            );
+        const nextAllowed = this.#nextTriggerSyncMs.get(peer);
+        if (nextAllowed !== undefined && Time.nowMs < nextAllowed) {
+            logger.debug(`Time sync for node ${formatNodeId(peer)} skipped, still within trigger-sync backoff`);
             return;
         }
-        this.#lastTriggerSyncMs.set(peer, Time.nowMs);
+        // The cooldown is set from the *outcome* below, not here: a successful sync earns the long
+        // 24h cooldown (time is now known-good), while a failed attempt only earns a short backoff so
+        // a transient failure doesn't lock the node out of correction for a full day.
         const promise = this.#connector
             .syncTime(peer)
-            .then(() => logger.info(`Synced time on node ${formatNodeId(peer)}`))
-            .catch(error => logSyncFailure("", peer, error))
+            .then(() => {
+                this.#nextTriggerSyncMs.set(peer, Time.nowMs + TRIGGER_SYNC_COOLDOWN);
+                logger.info(`Synced time on node ${formatNodeId(peer)}`);
+            })
+            .catch(error => {
+                this.#nextTriggerSyncMs.set(peer, Time.nowMs + TRIGGER_SYNC_FAILURE_BACKOFF);
+                logSyncFailure("", peer, error);
+            })
             .finally(() => {
                 this.#inFlightSyncs.delete(peer);
             });
@@ -169,7 +183,7 @@ export class TimeSyncManager extends NodeProcessor {
         await super.stop();
         await Promise.allSettled(this.#inFlightSyncs.values());
         this.#inFlightSyncs.clear();
-        this.#lastTriggerSyncMs.clear();
+        this.#nextTriggerSyncMs.clear();
         logger.info("Time sync manager stopped");
     }
 
