@@ -6,6 +6,7 @@
 
 import { FabricIndex, LogDestination, Logger, NodeId } from "@matter/main";
 import { PeerAddress } from "@matter/main/protocol";
+import { runConnectedCacheRepair } from "../src/controller/connectedCacheRepair.js";
 import { SubscriptionWatchdog, SubscriptionWatchdogContext } from "../src/controller/SubscriptionWatchdog.js";
 
 const PEER_1 = PeerAddress({ fabricIndex: FabricIndex(1), nodeId: NodeId(1) });
@@ -305,52 +306,92 @@ describe("SubscriptionWatchdog", () => {
     });
 
     /**
-     * Characterizes the exact Connected-handler sequence CCH's #handleNodeStateChange wires
-     * around the watchdog (see Step 3 of the wiring): consume the pending-repair flag, rebuild
-     * the attribute cache, and only then broadcast a full node_updated. Full CCH instantiation
-     * isn't practical in this harness, so this drives the contract directly against a recorded
-     * call log — the sequence an implementer could silently break without a real CCH in the loop.
+     * Contract tests for the shared Connected-handler orchestration. CCH's
+     * #handleNodeStateChange calls runConnectedCacheRepair directly (with its real closures),
+     * so asserting against the exported function pins the production gating and the
+     * rebuild-before-broadcast ordering — reordering the real Connected block fails here.
      */
-    it("Connected after a watchdog trip rebuilds the cache and emits nodeStructureChanged", async () => {
-        const { dog } = await makeWatchdog();
-        dog.registerNode(PEER_1);
-
-        // Trip the watchdog so a repair is pending.
-        await MockTime.advance(JUST_PAST_THRESHOLD_MS);
-        await dog.checkNow();
-
-        const callLog: string[] = [];
-        const fakeCache = {
-            update: async () => {
-                callLog.push("cacheUpdate");
-            },
-        };
-        const events = {
-            nodeStructureChanged: {
-                emit: () => {
-                    callLog.push("structureChanged");
+    describe("runConnectedCacheRepair (Connected-handler cache repair contract)", () => {
+        function makeRecorder() {
+            const callLog: string[] = [];
+            return {
+                callLog,
+                actions: {
+                    updateCache: async () => {
+                        callLog.push("updateCache");
+                    },
+                    emitNodeStructureChanged: () => {
+                        callLog.push("emitNodeStructureChanged");
+                    },
                 },
-            },
-        };
-
-        // Simulate the Connected handler sequence exactly as wired in CCH.
-        async function simulateConnectedHandler() {
-            const repair = dog.consumePendingRepair(PEER_1);
-            if (repair) {
-                await fakeCache.update();
-                events.nodeStructureChanged.emit();
-            }
-            return repair;
+            };
         }
 
-        const repair1 = await simulateConnectedHandler();
-        expect(repair1).to.equal(true);
-        expect(callLog).to.deep.equal(["cacheUpdate", "structureChanged"]); // update strictly before the broadcast
+        it("watchdog repair forces the rebuild and broadcasts after it, each exactly once", async () => {
+            const { callLog, actions } = makeRecorder();
 
-        // A later Connected with no new trip must not repeat the rebuild/broadcast.
-        callLog.length = 0;
-        const repair2 = await simulateConnectedHandler();
-        expect(repair2).to.equal(false);
-        expect(callLog).to.deep.equal([]);
+            // fastReconnect + cached attributes would normally skip the rebuild; the repair overrides.
+            await runConnectedCacheRepair({
+                fastReconnect: true,
+                watchdogRepair: true,
+                hasCachedAttributes: true,
+                ...actions,
+            });
+
+            expect(callLog).to.deep.equal(["updateCache", "emitNodeStructureChanged"]);
+        });
+
+        it("fast reconnect with cached attributes and no repair skips rebuild and broadcast", async () => {
+            const { callLog, actions } = makeRecorder();
+
+            await runConnectedCacheRepair({
+                fastReconnect: true,
+                watchdogRepair: false,
+                hasCachedAttributes: true,
+                ...actions,
+            });
+
+            expect(callLog).to.deep.equal([]);
+        });
+
+        it("missing cache rebuilds without broadcasting", async () => {
+            const { callLog, actions } = makeRecorder();
+
+            await runConnectedCacheRepair({
+                fastReconnect: true,
+                watchdogRepair: false,
+                hasCachedAttributes: false,
+                ...actions,
+            });
+
+            expect(callLog).to.deep.equal(["updateCache"]);
+        });
+
+        it("Connected after a watchdog trip rebuilds the cache and emits nodeStructureChanged once-only through the real repair flag", async () => {
+            const { dog } = await makeWatchdog();
+            dog.registerNode(PEER_1);
+
+            // Trip the watchdog so a repair is pending.
+            await MockTime.advance(JUST_PAST_THRESHOLD_MS);
+            await dog.checkNow();
+
+            const { callLog, actions } = makeRecorder();
+            // The Connected handler as wired in CCH: repair flag comes straight from the watchdog.
+            const runConnectedHandler = () =>
+                runConnectedCacheRepair({
+                    fastReconnect: true,
+                    watchdogRepair: dog.consumePendingRepair(PEER_1),
+                    hasCachedAttributes: true,
+                    ...actions,
+                });
+
+            await runConnectedHandler();
+            expect(callLog).to.deep.equal(["updateCache", "emitNodeStructureChanged"]);
+
+            // A later Connected with no new trip must not repeat the rebuild/broadcast.
+            callLog.length = 0;
+            await runConnectedHandler();
+            expect(callLog).to.deep.equal([]);
+        });
     });
 });

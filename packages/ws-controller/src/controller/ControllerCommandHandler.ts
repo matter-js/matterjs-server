@@ -102,6 +102,7 @@ import {
 } from "../types/WebSocketMessageTypes.js";
 import { formatNodeId } from "../util/formatNodeId.js";
 import { pingIp } from "../util/network.js";
+import { runConnectedCacheRepair } from "./connectedCacheRepair.js";
 import { CustomClusterPoller } from "./CustomClusterPoller.js";
 import { Nodes } from "./Nodes.js";
 import { SubscriptionWatchdog } from "./SubscriptionWatchdog.js";
@@ -669,21 +670,18 @@ export class ControllerCommandHandler {
         }
 
         // Populate last so the state/availability emits above are not delayed behind a multi-second
-        // rebuild. Skip the rebuild on a fast reconnect (data unchanged, repaired via its own events);
-        // still rebuild if the cache is missing or a watchdog trip forced a repair.
+        // rebuild. Gating and rebuild-before-broadcast ordering live in runConnectedCacheRepair
+        // (shared with its regression test).
         if (state === NodeStates.Connected) {
             const peer = this.#peerOf(nodeId);
             this.#subscriptionWatchdog?.registerNode(peer);
-            const watchdogRepair = this.#subscriptionWatchdog?.consumePendingRepair(peer) ?? false;
-            if (!fastReconnect || watchdogRepair || !this.#nodes.attributeCache.has(nodeId)) {
-                await this.#nodes.attributeCache.update(node);
-                // A watchdog recovery means HA clients may hold stale data sent before the rebuild
-                // (availability recovers before the cache update above) — push a full node_updated
-                // built from the repaired cache.
-                if (watchdogRepair) {
-                    this.events.nodeStructureChanged.emit(nodeId);
-                }
-            }
+            await runConnectedCacheRepair({
+                fastReconnect,
+                watchdogRepair: this.#subscriptionWatchdog?.consumePendingRepair(peer) ?? false,
+                hasCachedAttributes: this.#nodes.attributeCache.has(nodeId),
+                updateCache: () => this.#nodes.attributeCache.update(node),
+                emitNodeStructureChanged: () => this.events.nodeStructureChanged.emit(nodeId),
+            });
             const attributes = this.#nodes.attributeCache.get(nodeId);
             if (attributes) {
                 this.#customClusterPoller.registerNode(peer, attributes);
