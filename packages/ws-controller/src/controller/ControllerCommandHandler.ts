@@ -107,6 +107,7 @@ import { Nodes } from "./Nodes.js";
 import { pushNodeTime, TimeSyncInvokers } from "./timeSyncCommands.js";
 import { TIME_FAILURE_EVENT_ID, TIME_SYNC_CLUSTER_ID, TimeSyncManager } from "./TimeSyncManager.js";
 import { attachWebRtcCallbackBridge } from "./WebRtcCallbackBridge.js";
+import { isTrackableWebRtcSession, resolveWebRtcSessionStreams } from "./webRtcSessionStreams.js";
 
 const logger = Logger.get("ControllerCommandHandler");
 
@@ -390,15 +391,60 @@ export class ControllerCommandHandler {
             );
         }
 
-        const streamUsage = payload.streamUsage as WebRtcTransportDefinitions.WebRtcSession["streamUsage"];
-        const metadataEnabled = (payload.metadataEnabled as boolean | undefined) ?? false;
-        const videoStreams = response.videoStreamId != null ? [response.videoStreamId] : new Array<number>();
-        const audioStreams = response.audioStreamId != null ? [response.audioStreamId] : new Array<number>();
+        const streamUsage = convertedPayload.streamUsage;
+        const metadataEnabled = convertedPayload.metadataEnabled === true;
+
+        const videoStreams = resolveWebRtcSessionStreams(
+            convertedPayload.videoStreams,
+            convertedPayload.videoStreamId,
+            response.videoStreamId,
+        );
+        const audioStreams = resolveWebRtcSessionStreams(
+            convertedPayload.audioStreams,
+            convertedPayload.audioStreamId,
+            response.audioStreamId,
+        );
+
+        // An untrackable session (no stream usage, or no stream — e.g. an auto-select/deferred
+        // SolicitOffer whose provider reports no stream id yet) cannot be stored in the requestor's
+        // CurrentSessions, so we could never route the peer's follow-up signaling for it. Rather than
+        // return a session id that will silently never deliver media, tear the just-created device
+        // session down and fail the command. Deferred/auto-select is thus unsupported for now; the
+        // dashboard never hits this (it always requests a concrete stream usage + id).
+        if (!isTrackableWebRtcSession(streamUsage, videoStreams, audioStreams)) {
+            logger.warn(
+                `Tearing down untrackable WebRTC session id=${response.webRtcSessionId} for node ${this.formatNode(
+                    nodeId,
+                )}: request lacks a stream usage or any video/audio stream, so signaling cannot be routed for it`,
+            );
+            try {
+                await this.#invokeCommand(node.node, {
+                    endpoint: endpointId,
+                    cluster: WebRtcTransportProvider,
+                    command: "endSession",
+                    fields: {
+                        webRtcSessionId: response.webRtcSessionId,
+                        reason: WebRtcTransportDefinitions.WebRtcEndReason.OutOfResources,
+                    },
+                });
+            } catch (err) {
+                logger.warn(
+                    `EndSession cleanup for untrackable WebRTC session id=${response.webRtcSessionId} failed: ${
+                        err instanceof Error ? err.message : String(err)
+                    }`,
+                );
+            }
+            throw ServerError.sdkStackError(
+                `${commandName} for node ${this.formatNode(nodeId)} produced a session with no stream usage or ` +
+                    `video/audio stream; deferred/auto-select streaming is not supported`,
+            );
+        }
+
         const session: WebRtcTransportDefinitions.WebRtcSession = {
             id: response.webRtcSessionId,
             peerNodeId: nodeId,
             peerEndpointId: endpointId,
-            streamUsage,
+            streamUsage: streamUsage as WebRtcTransportDefinitions.WebRtcSession["streamUsage"],
             metadataEnabled,
             videoStreams,
             audioStreams,
@@ -413,6 +459,17 @@ export class ControllerCommandHandler {
         });
 
         return response;
+    }
+
+    /**
+     * Drop a WebRTC session from the local requestor's CurrentSessions tracking. Call when the session
+     * is ended locally (e.g. the client invokes EndSession on the provider); peer-initiated ends are
+     * already removed by the requestor's own End handler. No-op if the id is not tracked.
+     */
+    async removeTrackedWebRtcSession(webRtcSessionId: number): Promise<void> {
+        await this.#cameraControllerEndpoint().act(agent => {
+            agent.get(WebRtcTransportRequestorServer).removeSession(webRtcSessionId);
+        });
     }
 
     /**
