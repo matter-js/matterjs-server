@@ -79,6 +79,7 @@ export class SubscriptionWatchdog extends NodeProcessor {
         for (const peer of this.peers()) {
             if (this.shouldProcess(peer)) await this.processNode(peer);
         }
+        this.onCycleComplete();
     }
 
     #thresholdFor(peer: PeerAddress): { thresholdMs: number; intervalKnown: boolean } {
@@ -92,41 +93,47 @@ export class SubscriptionWatchdog extends NodeProcessor {
     }
 
     protected override async processNode(peer: PeerAddress): Promise<void> {
-        const now = Time.nowMs;
-        const lastAlive = this.#lastAliveAt.get(peer);
-        if (lastAlive === undefined) {
-            this.#lastAliveAt.set(peer, now);
-            return;
-        }
-        const silence = now - lastAlive;
-        const { thresholdMs, intervalKnown } = this.#thresholdFor(peer);
-        if (silence <= thresholdMs) return;
-
-        const lastTrip = this.#lastTripAt.get(peer);
-        const backoffMs = Math.max(2 * thresholdMs, MIN_RETRIP_MS);
-        if (lastTrip !== undefined && now - lastTrip < backoffMs) return;
-
-        this.#lastTripAt.set(peer, now);
-        this.#tripTotals.set(peer, (this.#tripTotals.get(peer) ?? 0) + 1);
-        this.#pendingRepair.set(peer, true);
-        logger.warn(
-            `Node ${formatNodeId(peer)} subscription silent for ${Math.round(silence / 1000)}s ` +
-                `(threshold ${Math.round(thresholdMs / 1000)}s${intervalKnown ? "" : ", interval unknown — fallback"}) — forcing resubscribe`,
-        );
-        // NodeProcessor requires processNode to contain its own errors; recovery is best-effort
-        // and a notification failure must never prevent the reconnect itself.
+        // NodeProcessor requires processNode to contain ALL its errors: a throwing context
+        // implementation must neither abort the cycle for other peers nor reject checkNow().
         try {
-            if (this.#context.forceUnavailable(peer)) {
-                this.#context.notifyUnavailable(peer);
+            const now = Time.nowMs;
+            const lastAlive = this.#lastAliveAt.get(peer);
+            if (lastAlive === undefined) {
+                this.#lastAliveAt.set(peer, now);
+                return;
+            }
+            const silence = now - lastAlive;
+            const { thresholdMs, intervalKnown } = this.#thresholdFor(peer);
+            if (silence <= thresholdMs) return;
+
+            const lastTrip = this.#lastTripAt.get(peer);
+            const backoffMs = Math.max(2 * thresholdMs, MIN_RETRIP_MS);
+            if (lastTrip !== undefined && now - lastTrip < backoffMs) return;
+
+            this.#lastTripAt.set(peer, now);
+            this.#tripTotals.set(peer, (this.#tripTotals.get(peer) ?? 0) + 1);
+            this.#pendingRepair.set(peer, true);
+            logger.warn(
+                `Node ${formatNodeId(peer)} subscription silent for ${Math.round(silence / 1000)}s ` +
+                    `(threshold ${Math.round(thresholdMs / 1000)}s${intervalKnown ? "" : ", interval unknown — fallback"}) — forcing resubscribe`,
+            );
+            // Recovery is best-effort and a notification failure must never prevent the
+            // reconnect itself.
+            try {
+                if (this.#context.forceUnavailable(peer)) {
+                    this.#context.notifyUnavailable(peer);
+                }
+            } catch (error) {
+                logger.warn(`Failed to publish unavailability for ${formatNodeId(peer)}:`, error);
+            } finally {
+                try {
+                    this.#context.triggerReconnect(peer);
+                } catch (error) {
+                    logger.warn(`Failed to trigger reconnect for ${formatNodeId(peer)}:`, error);
+                }
             }
         } catch (error) {
-            logger.warn(`Failed to publish unavailability for ${formatNodeId(peer)}:`, error);
-        } finally {
-            try {
-                this.#context.triggerReconnect(peer);
-            } catch (error) {
-                logger.warn(`Failed to trigger reconnect for ${formatNodeId(peer)}:`, error);
-            }
+            logger.warn(`Subscription check failed for node ${formatNodeId(peer)}:`, error);
         }
     }
 
@@ -137,7 +144,12 @@ export class SubscriptionWatchdog extends NodeProcessor {
         for (const peer of this.peers()) {
             const lastAlive = this.#lastAliveAt.get(peer);
             const silence = lastAlive === undefined ? -1 : Math.round((now - lastAlive) / 1000);
-            const interval = this.#context.subscriptionIntervalSeconds(peer);
+            let interval: number | undefined;
+            try {
+                interval = this.#context.subscriptionIntervalSeconds(peer);
+            } catch {
+                // Snapshot logging is best-effort; a faulty context must not break the cycle.
+            }
             logger.info(
                 `Watchdog snapshot ${formatNodeId(peer)}: silence=${silence}s interval=${interval ?? "?"}s trips=${this.#tripTotals.get(peer) ?? 0}`,
             );
