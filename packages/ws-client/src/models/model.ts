@@ -185,7 +185,9 @@ export type ThreadDiagnosticsPartialReason =
     /** Streaming multicast query is still active; this is a snapshot, more nodes may follow. */
     | "in_progress"
     /** Streaming multicast query is active but no responses have arrived yet. */
-    | "meshcop_no_responses_yet";
+    | "meshcop_no_responses_yet"
+    /** REST collection query is active but no responses have arrived yet. */
+    | "rest_no_responses_yet";
 
 /**
  * One Thread network's diagnostics snapshot, keyed by extended PAN ID, delivered by
