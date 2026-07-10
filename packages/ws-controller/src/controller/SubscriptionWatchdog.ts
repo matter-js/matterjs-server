@@ -89,7 +89,15 @@ export class SubscriptionWatchdog extends NodeProcessor {
     }
 
     protected override shouldProcess(peer: PeerAddress): boolean {
-        return this.#context.nodeConnected(peer);
+        // NodeProcessor calls shouldProcess unguarded (outside processNode's try/catch); a
+        // throwing context implementation must not reject checkNow() or abort the cycle for
+        // other peers.
+        try {
+            return this.#context.nodeConnected(peer);
+        } catch (error) {
+            logger.debug(`nodeConnected check failed for ${formatNodeId(peer)}, skipping this cycle:`, error);
+            return false;
+        }
     }
 
     protected override async processNode(peer: PeerAddress): Promise<void> {

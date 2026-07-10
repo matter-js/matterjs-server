@@ -210,6 +210,21 @@ describe("SubscriptionWatchdog", () => {
         expect(calls).to.deep.equal({ forceUnavailable: 0, notifyUnavailable: 0, triggerReconnect: 0 });
     });
 
+    it("a throwing nodeConnected is contained: checkNow resolves, the peer is skipped", async () => {
+        const { dog, calls } = await makeWatchdog({
+            nodeConnected: () => {
+                throw new Error("boom");
+            },
+        });
+        dog.registerNode(PEER_1);
+
+        await MockTime.advance(JUST_PAST_THRESHOLD_MS);
+
+        await dog.checkNow(); // must not reject
+
+        expect(calls).to.deep.equal({ forceUnavailable: 0, notifyUnavailable: 0, triggerReconnect: 0 });
+    });
+
     it("unregisterNode clears all state", async () => {
         const { dog, calls } = await makeWatchdog();
         dog.registerNode(PEER_1);
@@ -287,5 +302,55 @@ describe("SubscriptionWatchdog", () => {
         expect(first.find(line => line.includes("@1:1"))).to.include("interval=61s");
         expect(first.find(line => line.includes("@1:2"))).to.include("interval=?s"); // getter threw -- guarded
         expect(second.length).to.equal(0); // #lastSnapshotAt gates the immediate second cycle
+    });
+
+    /**
+     * Characterizes the exact Connected-handler sequence CCH's #handleNodeStateChange wires
+     * around the watchdog (see Step 3 of the wiring): consume the pending-repair flag, rebuild
+     * the attribute cache, and only then broadcast a full node_updated. Full CCH instantiation
+     * isn't practical in this harness, so this drives the contract directly against a recorded
+     * call log — the sequence an implementer could silently break without a real CCH in the loop.
+     */
+    it("Connected after a watchdog trip rebuilds the cache and emits nodeStructureChanged", async () => {
+        const { dog } = await makeWatchdog();
+        dog.registerNode(PEER_1);
+
+        // Trip the watchdog so a repair is pending.
+        await MockTime.advance(JUST_PAST_THRESHOLD_MS);
+        await dog.checkNow();
+
+        const callLog: string[] = [];
+        const fakeCache = {
+            update: async () => {
+                callLog.push("cacheUpdate");
+            },
+        };
+        const events = {
+            nodeStructureChanged: {
+                emit: () => {
+                    callLog.push("structureChanged");
+                },
+            },
+        };
+
+        // Simulate the Connected handler sequence exactly as wired in CCH.
+        async function simulateConnectedHandler() {
+            const repair = dog.consumePendingRepair(PEER_1);
+            if (repair) {
+                await fakeCache.update();
+                events.nodeStructureChanged.emit();
+            }
+            return repair;
+        }
+
+        const repair1 = await simulateConnectedHandler();
+        expect(repair1).to.equal(true);
+        expect(callLog).to.deep.equal(["cacheUpdate", "structureChanged"]); // update strictly before the broadcast
+
+        // A later Connected with no new trip must not repeat the rebuild/broadcast.
+        callLog.length = 0;
+        const repair2 = await simulateConnectedHandler();
+        expect(repair2).to.equal(false);
+        expect(callLog).to.deep.equal([]);
     });
 });

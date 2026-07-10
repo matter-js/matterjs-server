@@ -87,6 +87,8 @@ export interface MatterControllerOptions {
     bleProxyEnabled?: boolean;
     /** Enable time synchronization for nodes with the TimeSynchronization cluster. Only enable when host NTP is reliable. */
     enableTimeSync?: boolean;
+    /** Detect silently-dead node subscriptions and force a resubscribe. Defaults to true. */
+    subscriptionWatchdog?: boolean;
     /**
      * Disable the Thread Border Router subsystem: no mDNS BR discovery, no REST/CoAP
      * probing or diagnostics. Matter-over-Thread commissioning (which reads the stored
@@ -185,6 +187,7 @@ export class MatterController {
     #disableDclSeed = false;
     #bleProxyEnabled = false;
     #enableTimeSync = false;
+    #subscriptionWatchdog = true;
     #threadDiagnosticsDisabled = false;
     readonly #borderRouterRegistry: BorderRouterRegistry;
     readonly #credentials = new ThreadCredentialsRegistry();
@@ -271,6 +274,7 @@ export class MatterController {
         this.#disableDclSeed = options.disableDclSeed ?? this.#disableDclSeed;
         this.#bleProxyEnabled = options.bleProxyEnabled ?? this.#bleProxyEnabled;
         this.#enableTimeSync = options.enableTimeSync ?? this.#enableTimeSync;
+        this.#subscriptionWatchdog = options.subscriptionWatchdog ?? this.#subscriptionWatchdog;
         this.#threadDiagnosticsDisabled = options.disableThreadDiagnostics ?? this.#threadDiagnosticsDisabled;
         this.#services = this.#env.asDependent();
         this.#threadDiagnostics = new ThreadDiagnosticsService({
@@ -383,6 +387,7 @@ export class MatterController {
                 this.#bleProxyEnabled,
                 !this.#disableOtaProvider,
                 this.#enableTimeSync,
+                this.#subscriptionWatchdog,
             );
 
             this.#commandHandler.events.started.once(async () => {

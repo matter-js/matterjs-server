@@ -70,6 +70,9 @@ export interface CliOptions {
     // Time synchronization configuration
     enableTimeSync: boolean;
 
+    // Subscription liveness watchdog configuration
+    subscriptionWatchdog: boolean;
+
     // Dashboard configuration
     disableDashboard: boolean;
     productionMode: boolean;
@@ -212,6 +215,16 @@ export function parseCliArgs(argv?: string[]): CliOptions {
                 .env("ENABLE_TIME_SYNC"),
         )
         .addOption(
+            new Option(
+                "--subscription-watchdog [value]",
+                "Detect silently-dead node subscriptions and force a resubscribe.",
+            )
+                .argParser(parseBooleanEnv)
+                .preset(true)
+                .default(true)
+                .env("SUBSCRIPTION_WATCHDOG"),
+        )
+        .addOption(
             new Option("--disable-dashboard [value]", "Disable the web dashboard")
                 .argParser(parseBooleanEnv)
                 .preset(true)
@@ -306,6 +319,7 @@ export function parseCliArgs(argv?: string[]): CliOptions {
         disableOta: opts.disableOta,
         otaProviderDir: opts.otaProviderDir ?? null,
         enableTimeSync: opts.enableTimeSync,
+        subscriptionWatchdog: opts.subscriptionWatchdog,
         disableDashboard: opts.disableDashboard,
         productionMode: opts.productionMode,
         disableThreadDiagnostics: opts.disableThreadDiagnostics,

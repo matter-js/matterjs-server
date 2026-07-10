@@ -104,6 +104,7 @@ import { formatNodeId } from "../util/formatNodeId.js";
 import { pingIp } from "../util/network.js";
 import { CustomClusterPoller } from "./CustomClusterPoller.js";
 import { Nodes } from "./Nodes.js";
+import { SubscriptionWatchdog } from "./SubscriptionWatchdog.js";
 import { pushNodeTime, TimeSyncInvokers } from "./timeSyncCommands.js";
 import { TIME_FAILURE_EVENT_ID, TIME_SYNC_CLUSTER_ID, TimeSyncManager } from "./TimeSyncManager.js";
 import { attachWebRtcCallbackBridge } from "./WebRtcCallbackBridge.js";
@@ -161,6 +162,8 @@ export class ControllerCommandHandler {
     #customClusterPoller: CustomClusterPoller;
     /** Manages time synchronization for nodes with the TimeSynchronization cluster */
     #timeSyncManager?: TimeSyncManager;
+    /** Detects silently-dead subscriptions and forces a resubscribe */
+    #subscriptionWatchdog?: SubscriptionWatchdog;
     /** Per-node ObserverGroups for cleanup on decommission */
     #nodeObservers = new Map<NodeId, ObserverGroup>();
     /** Per-node timers that fire when Reconnecting state exceeds the timeout */
@@ -196,6 +199,7 @@ export class ControllerCommandHandler {
         bleProxyEnabled: boolean,
         otaEnabled: boolean,
         timeSyncEnabled = false,
+        subscriptionWatchdogEnabled = true,
     ) {
         this.#controller = controllerInstance;
 
@@ -217,6 +221,22 @@ export class ControllerCommandHandler {
             this.#timeSyncManager = new TimeSyncManager({
                 syncTime: peer => this.#syncNodeTime(peer.nodeId),
                 nodeConnected: peer => !!(this.#nodes.has(peer.nodeId) && this.#nodes.get(peer.nodeId).isConnected),
+            });
+        }
+
+        if (subscriptionWatchdogEnabled) {
+            logger.info("Subscription-liveness watchdog enabled");
+            this.#subscriptionWatchdog = new SubscriptionWatchdog({
+                nodeConnected: peer => !!(this.#nodes.has(peer.nodeId) && this.#nodes.get(peer.nodeId).isConnected),
+                subscriptionIntervalSeconds: peer =>
+                    this.#nodes.has(peer.nodeId)
+                        ? this.#nodes.get(peer.nodeId).currentSubscriptionIntervalSeconds
+                        : undefined,
+                forceUnavailable: peer => this.#nodes.forceUnavailable(peer.nodeId),
+                notifyUnavailable: peer => this.events.nodeAvailabilityChanged.emit(peer.nodeId, false),
+                triggerReconnect: peer => {
+                    if (this.#nodes.has(peer.nodeId)) this.#nodes.get(peer.nodeId).triggerReconnect();
+                },
             });
         }
     }
@@ -514,6 +534,7 @@ export class ControllerCommandHandler {
         this.#reconnectTimers.clear();
         await this.#customClusterPoller.stop();
         await this.#timeSyncManager?.stop();
+        await this.#subscriptionWatchdog?.stop();
         for (const observers of this.#nodeObservers.values()) {
             observers.close();
         }
@@ -544,6 +565,7 @@ export class ControllerCommandHandler {
             }
         });
         nodeObservers.on(node.events.connectionAlive, () => {
+            this.#subscriptionWatchdog?.recordAlive(this.#peerOf(nodeId));
             if (this.#basicInfoChangedInBatch.delete(nodeId)) {
                 logger.info(`Node ${this.formatNode(nodeId)} basic information changed, sending full node_updated`);
                 this.events.nodeStructureChanged.emit(nodeId);
@@ -595,6 +617,7 @@ export class ControllerCommandHandler {
                 this.#timeSyncManager?.registerNode(peer, attributes);
             }
         }
+        if (node.isConnected) this.#subscriptionWatchdog?.registerNode(this.#peerOf(nodeId));
 
         return node;
     }
@@ -647,14 +670,22 @@ export class ControllerCommandHandler {
 
         // Populate last so the state/availability emits above are not delayed behind a multi-second
         // rebuild. Skip the rebuild on a fast reconnect (data unchanged, repaired via its own events);
-        // still rebuild if the cache is missing.
+        // still rebuild if the cache is missing or a watchdog trip forced a repair.
         if (state === NodeStates.Connected) {
-            if (!fastReconnect || !this.#nodes.attributeCache.has(nodeId)) {
+            const peer = this.#peerOf(nodeId);
+            this.#subscriptionWatchdog?.registerNode(peer);
+            const watchdogRepair = this.#subscriptionWatchdog?.consumePendingRepair(peer) ?? false;
+            if (!fastReconnect || watchdogRepair || !this.#nodes.attributeCache.has(nodeId)) {
                 await this.#nodes.attributeCache.update(node);
+                // A watchdog recovery means HA clients may hold stale data sent before the rebuild
+                // (availability recovers before the cache update above) — push a full node_updated
+                // built from the repaired cache.
+                if (watchdogRepair) {
+                    this.events.nodeStructureChanged.emit(nodeId);
+                }
             }
             const attributes = this.#nodes.attributeCache.get(nodeId);
             if (attributes) {
-                const peer = this.#peerOf(nodeId);
                 this.#customClusterPoller.registerNode(peer, attributes);
                 this.#timeSyncManager?.registerNode(peer, attributes);
             }
@@ -1405,6 +1436,7 @@ export class ControllerCommandHandler {
         const peer = this.#peerOf(nodeId);
         this.#customClusterPoller.unregisterNode(peer);
         this.#timeSyncManager?.unregisterNode(peer);
+        this.#subscriptionWatchdog?.unregisterNode(peer);
         this.#availableUpdates.delete(nodeId);
     }
 
