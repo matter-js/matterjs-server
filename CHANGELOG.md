@@ -7,6 +7,10 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
+## **WORK IN PROGRESS**
+
+- Enhancement: Thread diagnostics fetch a Border Router's dataset via REST when no credentials are stored, enabling the faster MeshCoP (CoAP) transport instead of the slower REST collection
+
 ## 1.2.2 (2026-07-10)
 
 - Fix: Ensure that WebSocket backpressure keeps the send window full instead of draining one frame at a time, avoiding initial-sync stalls behind a high-latency proxy (e.g. Home Assistant ingress) that could drop the dashboard connection
