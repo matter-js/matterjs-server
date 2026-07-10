@@ -102,6 +102,21 @@ describe("WebSocketConnection", () => {
 
             expect(conn.mode).to.equal("queued");
         });
+
+        it("skips a coalescable whose builder throws, without crashing the connection", () => {
+            const socket = new FakeSocket();
+            const conn = makeConn(socket);
+
+            expect(() =>
+                conn.sendCoalescable("boom", () => {
+                    throw new Error("build failed");
+                }),
+            ).to.not.throw();
+
+            // The connection must still be usable for the next frame.
+            conn.sendReliable("after");
+            expect(socket.sent).to.deep.equal(["after"]);
+        });
     });
 
     describe("dynamic high-water", () => {

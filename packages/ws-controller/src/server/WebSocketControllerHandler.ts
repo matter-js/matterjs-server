@@ -344,74 +344,96 @@ export class WebSocketControllerHandler implements WebServerHandler {
             // Register all event listeners using ObserverGroup for easy cleanup
             observers.on(this.#commandHandler.events.attributeChanged, (nodeId, data) => {
                 if (this.#closed || this.#shuttingDown || !listening) return;
-                const { endpointId, clusterId, attributeId } = data.path;
-                const pathStr = `${endpointId}/${clusterId}/${attributeId}`;
-                // `data` is emitter-owned; snapshot the value before deferring. Coalesce latest-wins
-                // per (node, path) and convert lazily so a superseded value is never converted.
-                const rawValue = data.value;
-                connection.sendCoalescable(`attr:${nodeId}/${pathStr}`, () => {
-                    const clusterData = ClusterMap[clusterId];
-                    const value = convertMatterToWebSocketTagBased(
-                        rawValue,
-                        clusterData?.attributes[attributeId],
-                        clusterData?.model,
+                // This observer is shared across every connection; an uncaught throw here (e.g. a
+                // converter fed a poisoned attribute value) would abort the emit and starve the
+                // remaining observers — and the remaining connections — of this and all following
+                // events. Isolate per connection: log and move on, mirroring the guarded
+                // thread-diagnostics observer below.
+                try {
+                    const { endpointId, clusterId, attributeId } = data.path;
+                    const pathStr = `${endpointId}/${clusterId}/${attributeId}`;
+                    // `data` is emitter-owned; snapshot the value before deferring. Coalesce latest-wins
+                    // per (node, path) and convert lazily so a superseded value is never converted.
+                    const rawValue = data.value;
+                    connection.sendCoalescable(`attr:${nodeId}/${pathStr}`, () => {
+                        const clusterData = ClusterMap[clusterId];
+                        const value = convertMatterToWebSocketTagBased(
+                            rawValue,
+                            clusterData?.attributes[attributeId],
+                            clusterData?.model,
+                        );
+                        logger.debug(
+                            `[${connId}] Sending attribute_updated event for Node ${this.#commandHandler.formatNode(nodeId)}`,
+                            pathStr,
+                            value,
+                        );
+                        return toBigIntAwareJson({ event: "attribute_updated", data: [nodeId, pathStr, value] });
+                    });
+                } catch (err) {
+                    logger.error(
+                        `[${connId}] Failed to handle attributeChanged event for Node ${this.#commandHandler.formatNode(nodeId)}`,
+                        err,
                     );
-                    logger.debug(
-                        `[${connId}] Sending attribute_updated event for Node ${this.#commandHandler.formatNode(nodeId)}`,
-                        pathStr,
-                        value,
-                    );
-                    return toBigIntAwareJson({ event: "attribute_updated", data: [nodeId, pathStr, value] });
-                });
+                }
             });
 
             observers.on(this.#commandHandler.events.eventChanged, (nodeId, data) => {
                 if (this.#closed || this.#shuttingDown || !listening) return;
-                const { path, events } = data;
-                const { endpointId, clusterId, eventId } = path;
-                const clusterData = ClusterMap[clusterId];
+                // Same isolation rationale as attributeChanged above: this observer is shared across
+                // every connection, so a throw while converting one connection's event data must not
+                // starve the others.
+                try {
+                    const { path, events } = data;
+                    const { endpointId, clusterId, eventId } = path;
+                    const clusterData = ClusterMap[clusterId];
 
-                for (const event of events) {
-                    let timestamp: number | bigint;
-                    let timestampType: number;
+                    for (const event of events) {
+                        let timestamp: number | bigint;
+                        let timestampType: number;
 
-                    if (event.epochTimestamp !== undefined) {
-                        timestamp = event.epochTimestamp;
-                        timestampType = 1; // Epoch
-                    } else if (event.systemTimestamp !== undefined) {
-                        timestamp = event.systemTimestamp;
-                        timestampType = 0; // System
-                    } else {
-                        timestamp = Date.now();
-                        timestampType = 2; // POSIX (fallback)
+                        if (event.epochTimestamp !== undefined) {
+                            timestamp = event.epochTimestamp;
+                            timestampType = 1; // Epoch
+                        } else if (event.systemTimestamp !== undefined) {
+                            timestamp = event.systemTimestamp;
+                            timestampType = 0; // System
+                        } else {
+                            timestamp = Date.now();
+                            timestampType = 2; // POSIX (fallback)
+                        }
+
+                        const eventModel = clusterData?.events[eventId];
+                        const convertedData =
+                            event.data !== undefined
+                                ? convertMatterToWebSocketNameBased(event.data, eventModel, clusterData?.model)
+                                : null;
+
+                        const nodeEvent: MatterNodeEvent = {
+                            node_id: nodeId,
+                            endpoint_id: endpointId,
+                            cluster_id: clusterId,
+                            event_id: eventId,
+                            event_number: event.eventNumber,
+                            priority: event.priority,
+                            timestamp,
+                            timestamp_type: timestampType,
+                            data: convertedData,
+                        };
+
+                        // Store event in the history buffer
+                        this.#addEventToHistory(nodeEvent);
+
+                        logger.debug(
+                            `[${connId}] Sending node_event for Node ${this.#commandHandler.formatNode(nodeId)}`,
+                            nodeEvent,
+                        );
+                        connection.sendOrdered(toBigIntAwareJson({ event: "node_event", data: nodeEvent }));
                     }
-
-                    const eventModel = clusterData?.events[eventId];
-                    const convertedData =
-                        event.data !== undefined
-                            ? convertMatterToWebSocketNameBased(event.data, eventModel, clusterData?.model)
-                            : null;
-
-                    const nodeEvent: MatterNodeEvent = {
-                        node_id: nodeId,
-                        endpoint_id: endpointId,
-                        cluster_id: clusterId,
-                        event_id: eventId,
-                        event_number: event.eventNumber,
-                        priority: event.priority,
-                        timestamp,
-                        timestamp_type: timestampType,
-                        data: convertedData,
-                    };
-
-                    // Store event in the history buffer
-                    this.#addEventToHistory(nodeEvent);
-
-                    logger.debug(
-                        `[${connId}] Sending node_event for Node ${this.#commandHandler.formatNode(nodeId)}`,
-                        nodeEvent,
+                } catch (err) {
+                    logger.error(
+                        `[${connId}] Failed to handle eventChanged event for Node ${this.#commandHandler.formatNode(nodeId)}`,
+                        err,
                     );
-                    connection.sendOrdered(toBigIntAwareJson({ event: "node_event", data: nodeEvent }));
                 }
             });
 

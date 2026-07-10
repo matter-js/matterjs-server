@@ -145,7 +145,17 @@ export class WebSocketConnection {
     sendCoalescable(key: string, build: () => string | undefined): void {
         if (this.#disposed) return;
         if (this.#mode === "direct") {
-            const frame = build();
+            // A throwing builder (e.g. a converter fed a poisoned value) must not escape into the
+            // caller — that caller is typically an event observer shared across connections, and an
+            // uncaught throw there would abort delivery to every other connection. Treat it like an
+            // undefined frame: log it and skip the send, mirroring the queued-path guard below.
+            let frame: string | undefined;
+            try {
+                frame = build();
+            } catch (err) {
+                logger.error(`[${this.#connId}] failed to build coalescable frame; dropping it`, err);
+                return;
+            }
             if (frame !== undefined) this.#directSend(frame);
             return;
         }
