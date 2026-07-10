@@ -299,10 +299,9 @@ describe("WebSocketConnection", () => {
             expect(conn.outboxSize).to.equal(3); // {keep, e3, e4}
 
             for (let i = 0; i < 6 && socket.pendingCount > 0; i++) socket.flushOne();
-            expect(socket.sent).to.include(f(50, "keep"));
-            expect(socket.sent).to.include(f(50, "e3"));
-            expect(socket.sent).to.include(f(50, "e4"));
-            expect(socket.sent).to.not.include(f(50, "e1"));
+            // Exact sequence: the window (w1,w2) sent first, then the survivors keep,e3,e4 in order —
+            // the oldest ordered entries e1,e2 were dropped and nothing extra slipped through.
+            expect(socket.sent).to.deep.equal([f(50, "w1"), f(50, "w2"), f(50, "keep"), f(50, "e3"), f(50, "e4")]);
         });
 
         it("scales the cap with node count (nodeCount * capPerNode)", () => {
