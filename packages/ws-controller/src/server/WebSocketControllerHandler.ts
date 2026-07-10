@@ -102,13 +102,22 @@ function normalizeFabricLabel(label: string | null): string {
     return (trimmed && trimmed !== "" ? trimmed : "HomeAssistant").substring(0, 32);
 }
 
-/** Pull the numeric WebRTCSessionID out of an EndSession payload, tolerant of wire key spellings. */
+/**
+ * Pull the WebRTCSessionID out of an EndSession payload, tolerant of wire key spellings. The payload
+ * comes from {@link parseBigIntAwareJson}, so a large id arrives as a bigint; accept a non-negative
+ * integer of either type and normalize to number (session ids are well within the safe range).
+ */
 function extractWebRtcSessionId(payload: unknown): number | undefined {
     if (typeof payload !== "object" || payload === null) return undefined;
     const record = payload as Record<string, unknown>;
     for (const key of ["webRtcSessionId", "webRtcSessionID", "WebRTCSessionID"]) {
         const value = record[key];
-        if (typeof value === "number") return value;
+        if (typeof value === "number" && Number.isInteger(value) && value >= 0) {
+            return value;
+        }
+        if (typeof value === "bigint" && value >= 0n && value <= BigInt(Number.MAX_SAFE_INTEGER)) {
+            return Number(value);
+        }
     }
     return undefined;
 }

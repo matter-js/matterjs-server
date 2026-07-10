@@ -1,6 +1,6 @@
 /**
  * @license
- * Copyright 2022-2026 Matter.js Authors
+ * Copyright 2025-2026 Open Home Foundation
  * SPDX-License-Identifier: Apache-2.0
  */
 
