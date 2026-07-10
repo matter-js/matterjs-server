@@ -547,22 +547,35 @@ export class WebSocketControllerHandler implements WebServerHandler {
             ws.on(
                 "message",
                 data =>
-                    void this.#handleWebSocketRequest(connId, connection, data.toString()).then(
-                        ({ response, enableListeners, wantsThreadDiagnostics: requested, wantsWebRtc: reqWebRtc }) => {
-                            if (this.#closed) return;
-                            if (enableListeners) {
-                                listening = true;
-                            }
-                            if (requested) {
-                                wantsThreadDiagnostics = true;
-                            }
-                            if (reqWebRtc) {
-                                wantsWebRtc = true;
-                            }
-                            connection.sendReliable(toBigIntAwareJson(response));
-                        },
-                        err => logger.error(`[${connId}] WebSocket request error`, err),
-                    ),
+                    // `.then(onFulfilled).catch(handler)` rather than the two-argument
+                    // `.then(onFulfilled, onRejected)`: the two-argument form only catches a rejection
+                    // of #handleWebSocketRequest itself, not a throw raised by onFulfilled — and
+                    // onFulfilled's serialization (toBigIntAwareJson) can throw on a pathological
+                    // response after the command already resolved successfully. Chaining .catch()
+                    // after .then() covers both, instead of leaking that throw as an unhandled
+                    // rejection.
+                    void this.#handleWebSocketRequest(connId, connection, data.toString())
+                        .then(
+                            ({
+                                response,
+                                enableListeners,
+                                wantsThreadDiagnostics: requested,
+                                wantsWebRtc: reqWebRtc,
+                            }) => {
+                                if (this.#closed) return;
+                                if (enableListeners) {
+                                    listening = true;
+                                }
+                                if (requested) {
+                                    wantsThreadDiagnostics = true;
+                                }
+                                if (reqWebRtc) {
+                                    wantsWebRtc = true;
+                                }
+                                connection.sendReliable(toBigIntAwareJson(response));
+                            },
+                        )
+                        .catch(err => logger.error(`[${connId}] WebSocket request error`, err)),
             );
 
             ws.on("close", onClose);
@@ -571,13 +584,14 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 onClose();
             });
 
-            this.#getServerInfo().then(
-                response => {
+            // Same rationale as above: .catch() after .then() so a throw while serializing the
+            // server-info response is caught instead of leaking as an unhandled rejection.
+            this.#getServerInfo()
+                .then(response => {
                     logger.debug(`[${connId}] Sending server info`);
                     connection.sendReliable(toBigIntAwareJson(response));
-                },
-                err => logger.error(`[${connId}] WebSocket handshake error`, err),
-            );
+                })
+                .catch(err => logger.error(`[${connId}] WebSocket handshake error`, err));
         });
 
         // Initialize all nodes (populates attribute caches) and start connecting them.
