@@ -102,6 +102,26 @@ function normalizeFabricLabel(label: string | null): string {
     return (trimmed && trimmed !== "" ? trimmed : "HomeAssistant").substring(0, 32);
 }
 
+/**
+ * Pull the WebRTCSessionID out of an EndSession payload, tolerant of wire key spellings. The payload
+ * comes from {@link parseBigIntAwareJson}, so a large id arrives as a bigint; accept a non-negative
+ * integer of either type and normalize to number (session ids are well within the safe range).
+ */
+function extractWebRtcSessionId(payload: unknown): number | undefined {
+    if (typeof payload !== "object" || payload === null) return undefined;
+    const record = payload as Record<string, unknown>;
+    for (const key of ["webRtcSessionId", "webRtcSessionID", "WebRTCSessionID"]) {
+        const value = record[key];
+        if (typeof value === "number" && Number.isInteger(value) && value >= 0) {
+            return value;
+        }
+        if (typeof value === "bigint" && value >= 0n && value <= BigInt(Number.MAX_SAFE_INTEGER)) {
+            return Number(value);
+        }
+    }
+    return undefined;
+}
+
 /** WebSocket Server compatible with Schema version 12, minimum supported 11 */
 export class WebSocketControllerHandler implements WebServerHandler {
     #controller: MatterController;
@@ -1135,11 +1155,12 @@ export class WebSocketControllerHandler implements WebServerHandler {
             timed_request_timeout_ms: timedInteractionTimeoutMs,
         } = args;
 
+        const camelizedCommand = camelize(commandName);
         const result = await this.#handlerFor(nodeId).handleInvoke({
             nodeId: NodeId(nodeId),
             endpointId: EndpointNumber(endpointId),
             clusterId: ClusterId(clusterId),
-            commandName: camelize(commandName),
+            commandName: camelizedCommand,
             data: payload,
             timedInteractionTimeoutMs:
                 typeof timedInteractionTimeoutMs === "number" ? Millis(timedInteractionTimeoutMs) : undefined,
@@ -1148,6 +1169,20 @@ export class WebSocketControllerHandler implements WebServerHandler {
         // Test nodes return null
         if (TestNodeCommandHandler.isTestNodeId(nodeId)) {
             return null;
+        }
+
+        // The invoke above succeeded (it throws otherwise). A client-initiated EndSession on the
+        // provider ends the session on the device; drop our local tracking of it too, since the peer
+        // won't send us an End for a session we ended ourselves.
+        if (clusterId === WebRtcTransportProvider.id && camelizedCommand === "endSession") {
+            const sessionId = extractWebRtcSessionId(payload);
+            if (sessionId !== undefined) {
+                await this.#commandHandler.removeTrackedWebRtcSession(sessionId);
+            } else {
+                logger.debug(
+                    "EndSession invoked without a recognizable webRtcSessionId; local session tracking left unchanged",
+                );
+            }
         }
         const cmdResult = this.#convertCommandDataToWebSocket(ClusterId(clusterId), commandName, result);
         if (cmdResult === undefined) {

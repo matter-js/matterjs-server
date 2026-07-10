@@ -291,11 +291,15 @@ export class WebRtcStreamView extends LitElement {
                     console.warn("[webrtc-stream-view] ontrack fired but <video> query is null");
                     return;
                 }
-                const stream = ev.streams[0];
-                if (!stream) return;
-                // Both video and audio ontracks reference the same bundled MediaStream.
-                // Reassigning srcObject to a stream that's already attached can reset
-                // playback in Firefox, so only set when the reference actually changes.
+                // Cameras may put each track in its own MediaStream (distinct msid, e.g. Aqara's
+                // AqaraVideoStream/AqaraAudioStream), so ev.streams[0] differs per track. Assigning it
+                // to srcObject directly lets the audio track's stream clobber the video track's.
+                // Aggregate every received track into one element-owned MediaStream instead.
+                const existing = video.srcObject instanceof MediaStream ? video.srcObject : null;
+                const stream = existing ?? new MediaStream();
+                if (!stream.getTracks().includes(ev.track)) {
+                    stream.addTrack(ev.track);
+                }
                 if (video.srcObject !== stream) {
                     video.srcObject = stream;
                 }
