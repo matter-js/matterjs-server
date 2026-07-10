@@ -73,17 +73,39 @@ export class AttributeDataCache {
      */
     updateAttribute(nodeId: NodeId, data: DecodedAttributeReportValue<any>): void {
         const { endpointId, clusterId, attributeId } = data.path;
+        const path = buildAttributePath(endpointId, clusterId, attributeId);
 
         const clusterData = ClusterMap[clusterId];
-        const convertedValue = convertMatterToWebSocketTagBased(
-            data.value,
-            clusterData?.attributes[attributeId],
-            clusterData?.model,
-        );
+        let convertedValue: unknown;
+        try {
+            convertedValue = convertMatterToWebSocketTagBased(
+                data.value,
+                clusterData?.attributes[attributeId],
+                clusterData?.model,
+            );
+        } catch (error) {
+            // Unlike #collectAttributes below (which runs inside #runPopulate's own catch-all), this
+            // path has no safety net: it is invoked directly from the node's attributeChanged
+            // observer, so a rethrow here would escape into the event dispatch and could abort
+            // delivery of every other pending update for this node. A single malformed value must
+            // never take that down, so always log and skip — regardless of error type, unlike the
+            // MatterError-only tolerance below.
+            if (error instanceof MatterError) {
+                logger.debug(
+                    `Ignoring attribute update ${path} for node ${formatNodeId(nodeId)} because of`,
+                    Diagnostic.errorMessage(error),
+                );
+            } else {
+                logger.warn(
+                    `Ignoring attribute update ${path} for node ${formatNodeId(nodeId)}: converter threw`,
+                    error,
+                );
+            }
+            return;
+        }
         if (convertedValue === undefined) {
             return;
         }
-        const path = buildAttributePath(endpointId, clusterId, attributeId);
         const inFlight = this.#inFlight.get(nodeId);
         const attributes = this.#cache.get(nodeId);
 
