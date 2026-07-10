@@ -59,11 +59,12 @@ const DEFAULT_WATCHDOG = Minutes(5);
  *
  * In **direct** mode every send hits the socket immediately in emit order — zero overhead for the
  * common case. When a send pushes `ws.bufferedAmount` over the high-water mark the connection flips
- * to **queued** mode: frames go into a single ordered outbox drained one-at-a-time, each next send
- * gated on the prior send's flush callback so the socket's own drain rate paces output and
- * `bufferedAmount` stays near one frame. Attribute/node-snapshot sends coalesce latest-wins per key;
- * events are FIFO and, past the cap, dropped oldest-first. A stalled in-flight send trips a watchdog
- * that closes the dead connection. The outbox empties → back to direct mode.
+ * to **queued** mode: frames drain from a single ordered outbox, kept-in-flight up to `highWater`
+ * bytes (a window, not one frame at a time) so the pipe stays full and delivery is not serialized to
+ * one round-trip per frame — which over a high-latency relay would stall a burst. Each flush callback
+ * frees window space and pulls more. Attribute/node-snapshot sends coalesce latest-wins per key;
+ * events are FIFO and, past the cap, dropped oldest-first. An in-flight send stalled beyond the
+ * watchdog closes the dead connection. The outbox empties → back to direct mode.
  */
 export class WebSocketConnection {
     readonly #ws: OutboundSocket;
@@ -78,7 +79,8 @@ export class WebSocketConnection {
 
     #mode: SendMode = "direct";
     readonly #outbox = new Map<string, OutboxEntry>();
-    #inFlight = false;
+    /** Frames sent but not yet flushed. The window is bounded by bytes (`ws.bufferedAmount`), not count. */
+    #inFlightCount = 0;
     #seq = 0;
     #disposed = false;
     #capWarned = false;
@@ -200,16 +202,19 @@ export class WebSocketConnection {
     }
 
     #drain(): void {
-        if (this.#inFlight || this.#mode !== "queued") return;
+        if (this.#mode !== "queued") return;
         if (this.#ws.readyState !== OPEN) {
             this.#outbox.clear();
             return;
         }
-        while (this.#outbox.size > 0) {
+        // Keep the pipe full: send while there is a queued frame and the in-flight bytes are still
+        // below the mark. A single frame is always allowed through when nothing is in flight, so a
+        // frame larger than the mark can't wedge the drain.
+        while (this.#outbox.size > 0 && (this.#inFlightCount === 0 || this.#ws.bufferedAmount < this.#highWater)) {
             const [key, entry] = this.#outbox.entries().next().value as [string, OutboxEntry];
             this.#outbox.delete(key);
-            // #drain runs inside the ws send-completion callback, so a throwing builder would escape
-            // as an uncaught exception. Treat a throw like an undefined frame: log it and skip on.
+            // A throwing builder would escape into the ws flush callback as an uncaught exception.
+            // Treat a throw like an undefined frame: log it and skip on.
             let frame: string | undefined;
             try {
                 frame = entry.build();
@@ -219,17 +224,15 @@ export class WebSocketConnection {
             }
             if (frame === undefined) continue;
             this.#raiseHighWater(frame);
-            this.#inFlight = true;
-            this.#watchdogTimer.start();
+            if (this.#inFlightCount === 0) this.#armWatchdog();
+            this.#inFlightCount++;
             this.#ws.send(frame, err => this.#onFlushed(err));
-            return;
         }
-        this.#exitQueued();
+        if (this.#outbox.size === 0 && this.#inFlightCount === 0) this.#exitQueued();
     }
 
     #onFlushed(err?: Error): void {
-        this.#inFlight = false;
-        this.#watchdogTimer.stop();
+        this.#inFlightCount--;
         if (this.#disposed) return;
         if (err !== undefined) {
             // A send error means the socket is dead. Dispose to release the queued closures, then
@@ -239,6 +242,10 @@ export class WebSocketConnection {
             this.#ws.terminate();
             return;
         }
+        // A flush is progress: restart the watchdog while frames remain in flight, stop it when the
+        // window empties. So it fires only when an in-flight send makes no progress for the interval.
+        if (this.#inFlightCount > 0) this.#armWatchdog();
+        else this.#watchdogTimer.stop();
         this.#drain();
     }
 
@@ -249,8 +256,14 @@ export class WebSocketConnection {
         logger.notice(`[${this.#connId}] outbound drained — leaving backpressure mode`);
     }
 
+    /** (Re)start the watchdog with a fresh interval. Explicit stop+start so a restart resets the deadline regardless of timer implementation. */
+    #armWatchdog(): void {
+        this.#watchdogTimer.stop();
+        this.#watchdogTimer.start();
+    }
+
     #onWatchdog(): void {
-        if (this.#disposed || !this.#inFlight) return;
+        if (this.#disposed || this.#inFlightCount === 0) return;
         logger.warn(`[${this.#connId}] outbound send stalled beyond watchdog — terminating dead connection`);
         // Dispose first so no further sends happen, then terminate (not a graceful close): a
         // half-open socket may never complete a graceful close, but terminate forces the "close"
