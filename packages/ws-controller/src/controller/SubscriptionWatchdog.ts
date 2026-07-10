@@ -1,0 +1,146 @@
+/**
+ * @license
+ * Copyright 2025-2026 Open Home Foundation
+ * SPDX-License-Identifier: Apache-2.0
+ */
+import { Logger, Time } from "@matter/main";
+import { PeerAddress, PeerAddressMap } from "@matter/main/protocol";
+import { formatNodeId } from "../util/formatNodeId.js";
+import { NodeProcessor } from "./NodeProcessor.js";
+
+const logger = Logger.get("SubscriptionWatchdog");
+
+const CHECK_INTERVAL_MS = 30_000;
+const INITIAL_DELAY_MS = 60_000;
+const GRACE_MS = 60_000;
+const FALLBACK_THRESHOLD_MS = 15 * 60_000;
+const MIN_RETRIP_MS = 10 * 60_000;
+const SNAPSHOT_INTERVAL_MS = 60 * 60_000;
+
+export interface SubscriptionWatchdogContext {
+    nodeConnected(peer: PeerAddress): boolean;
+    subscriptionIntervalSeconds(peer: PeerAddress): number | undefined;
+    /** Mark unavailable; MUST return true only when availability actually changed. */
+    forceUnavailable(peer: PeerAddress): boolean;
+    notifyUnavailable(peer: PeerAddress): void;
+    triggerReconnect(peer: PeerAddress): void;
+}
+
+/**
+ * Detects subscriptions that die silently (no data reports, no keepalives, no state change —
+ * the 2026-07-09 wedge) and forces a re-subscribe. Availability tracking alone cannot catch
+ * this: it is purely connection-state driven.
+ */
+export class SubscriptionWatchdog extends NodeProcessor {
+    readonly #context: SubscriptionWatchdogContext;
+    #lastAliveAt = new PeerAddressMap<number>();
+    #lastTripAt = new PeerAddressMap<number>();
+    #tripTotals = new PeerAddressMap<number>();
+    #pendingRepair = new PeerAddressMap<boolean>();
+    #lastSnapshotAt = Time.nowMs;
+
+    constructor(context: SubscriptionWatchdogContext) {
+        super("subscription-watchdog", INITIAL_DELAY_MS, CHECK_INTERVAL_MS);
+        this.#context = context;
+    }
+
+    /** Call on node registration and on every transition to Connected. */
+    registerNode(peer: PeerAddress): void {
+        this.#lastAliveAt.set(peer, Time.nowMs);
+        if (this.registerPeer(peer)) {
+            logger.debug(`Watching subscriptions of node ${formatNodeId(peer)}`);
+        }
+        this.scheduleIfNeeded();
+    }
+
+    unregisterNode(peer: PeerAddress): void {
+        this.#lastAliveAt.delete(peer);
+        this.#lastTripAt.delete(peer);
+        this.#tripTotals.delete(peer);
+        this.#pendingRepair.delete(peer);
+        this.unregisterPeer(peer);
+    }
+
+    /** Call from the node's connectionAlive observer — every data report or keepalive. */
+    recordAlive(peer: PeerAddress): void {
+        this.#lastAliveAt.set(peer, Time.nowMs);
+        this.#lastTripAt.delete(peer); // fresh data clears trip backoff
+    }
+
+    /** True exactly once after a trip, consumed by the Connected handler to force a cache rebuild. */
+    consumePendingRepair(peer: PeerAddress): boolean {
+        const pending = this.#pendingRepair.get(peer) === true;
+        this.#pendingRepair.delete(peer);
+        return pending;
+    }
+
+    /** Test seam: run one full check cycle immediately. */
+    async checkNow(): Promise<void> {
+        for (const peer of this.peers()) {
+            if (this.shouldProcess(peer)) await this.processNode(peer);
+        }
+    }
+
+    #thresholdFor(peer: PeerAddress): { thresholdMs: number; intervalKnown: boolean } {
+        const seconds = this.#context.subscriptionIntervalSeconds(peer);
+        if (seconds === undefined) return { thresholdMs: FALLBACK_THRESHOLD_MS, intervalKnown: false };
+        return { thresholdMs: seconds * 1000 * 1.5 + GRACE_MS, intervalKnown: true };
+    }
+
+    protected override shouldProcess(peer: PeerAddress): boolean {
+        return this.#context.nodeConnected(peer);
+    }
+
+    protected override async processNode(peer: PeerAddress): Promise<void> {
+        const now = Time.nowMs;
+        const lastAlive = this.#lastAliveAt.get(peer);
+        if (lastAlive === undefined) {
+            this.#lastAliveAt.set(peer, now);
+            return;
+        }
+        const silence = now - lastAlive;
+        const { thresholdMs, intervalKnown } = this.#thresholdFor(peer);
+        if (silence <= thresholdMs) return;
+
+        const lastTrip = this.#lastTripAt.get(peer);
+        const backoffMs = Math.max(2 * thresholdMs, MIN_RETRIP_MS);
+        if (lastTrip !== undefined && now - lastTrip < backoffMs) return;
+
+        this.#lastTripAt.set(peer, now);
+        this.#tripTotals.set(peer, (this.#tripTotals.get(peer) ?? 0) + 1);
+        this.#pendingRepair.set(peer, true);
+        logger.warn(
+            `Node ${formatNodeId(peer)} subscription silent for ${Math.round(silence / 1000)}s ` +
+                `(threshold ${Math.round(thresholdMs / 1000)}s${intervalKnown ? "" : ", interval unknown — fallback"}) — forcing resubscribe`,
+        );
+        // NodeProcessor requires processNode to contain its own errors; recovery is best-effort
+        // and a notification failure must never prevent the reconnect itself.
+        try {
+            if (this.#context.forceUnavailable(peer)) {
+                this.#context.notifyUnavailable(peer);
+            }
+        } catch (error) {
+            logger.warn(`Failed to publish unavailability for ${formatNodeId(peer)}:`, error);
+        } finally {
+            try {
+                this.#context.triggerReconnect(peer);
+            } catch (error) {
+                logger.warn(`Failed to trigger reconnect for ${formatNodeId(peer)}:`, error);
+            }
+        }
+    }
+
+    protected override onCycleComplete(): void {
+        const now = Time.nowMs;
+        if (now - this.#lastSnapshotAt < SNAPSHOT_INTERVAL_MS) return;
+        this.#lastSnapshotAt = now;
+        for (const peer of this.peers()) {
+            const lastAlive = this.#lastAliveAt.get(peer);
+            const silence = lastAlive === undefined ? -1 : Math.round((now - lastAlive) / 1000);
+            const interval = this.#context.subscriptionIntervalSeconds(peer);
+            logger.info(
+                `Watchdog snapshot ${formatNodeId(peer)}: silence=${silence}s interval=${interval ?? "?"}s trips=${this.#tripTotals.get(peer) ?? 0}`,
+            );
+        }
+    }
+}

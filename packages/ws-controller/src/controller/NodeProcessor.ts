@@ -62,6 +62,11 @@ export abstract class NodeProcessor {
         return this.#peers.has(peer);
     }
 
+    /** Snapshot of registered peers (for subclass iteration outside a cycle). */
+    protected peers(): PeerAddress[] {
+        return Array.from(this.#peers);
+    }
+
     /** Start the timer if there are registered peers and it is not already running. */
     protected scheduleIfNeeded(): void {
         if (this.#peers.size === 0 || this.#closed) return;
