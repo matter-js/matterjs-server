@@ -36,7 +36,8 @@ export type ThreadDiagnosticsPartialReason =
     | "rest_protocol"
     | "timeout"
     | "in_progress"
-    | "meshcop_no_responses_yet";
+    | "meshcop_no_responses_yet"
+    | "rest_no_responses_yet";
 
 export interface ThreadDiagnosticsBatch {
     /** 16-char lowercase hex of the extPanId. Internal cache key; serializeBatch uppercases for wire. */
@@ -65,6 +66,14 @@ export interface ThreadDiagnosticsServiceOpts {
     makeMeshcopSource: (creds: ThreadNetworkCredentials, br: BorderRouterEntry) => Promise<MeshcopSourceHandle>;
     /** Sync factory — REST source has no resource lifecycle. */
     makeRestSource: (cap: OtbrRestCapability) => DiagnosticSource;
+    /**
+     * Optional bootstrap that fetches the active operational dataset from the BR's REST API and
+     * registers the derived credentials, so a dialable BR with no locally-registered credentials can
+     * still use the faster/complete MeshCoP (CoAP) transport instead of the slow REST collection.
+     * Called at most once per network (re-attempted only on a forced refresh) and only when no
+     * credentials exist yet. Best-effort — a rejection leaves the network on the REST-only path.
+     */
+    bootstrapCredentialsFromRest?: (cap: OtbrRestCapability) => Promise<void>;
     /**
      * Preferred transport when a network has BOTH a REST capability and Thread credentials.
      * Defaults to `"coap"` — the REST collection API drives one BR-managed action per node and is
@@ -139,6 +148,8 @@ export class ThreadDiagnosticsService {
     readonly #keyLocks = new Map<string, Promise<void>>();
     readonly #probesInFlight = new Map<string, Promise<void>>();
     readonly #probeAttempted = new Set<string>();
+    readonly #bootstrapsInFlight = new Map<string, Promise<void>>();
+    readonly #credentialBootstrapAttempted = new Set<string>();
     readonly #cacheTtlMs: number;
     readonly #windowMs: number;
     readonly #firstBatchMs: number;
@@ -302,7 +313,53 @@ export class ThreadDiagnosticsService {
         // stop()'s snapshot has already passed over (it would outlive teardown).
         if (this.#stopped) return undefined;
 
+        // A dialable BR with no local credentials can still bootstrap them from the BR's REST
+        // dataset, promoting this fetch from slow REST-only collection to direct MeshCoP (CoAP).
+        await this.#maybeBootstrapCredentialsFromRest(key, extPanIdBytes, force);
+        if (this.#stopped) return undefined;
+
         return this.#cancelAndStart(key, networkName, ranked, extPanIdBytes, force);
+    }
+
+    /**
+     * When a dialable BR has no locally-registered credentials but a REST capability is present,
+     * fetch the active operational dataset from the BR once and register the derived credentials so
+     * the faster/complete MeshCoP (CoAP) transport can run instead of the slow REST collection.
+     * Gated to one attempt per network (re-attempted only on a forced refresh). Best-effort: any
+     * failure (REST forbids the dataset, no PSKc, unreachable) leaves the network on REST-only.
+     */
+    async #maybeBootstrapCredentialsFromRest(key: string, extPanIdBytes: Uint8Array, force: boolean): Promise<void> {
+        const bootstrap = this.#opts.bootstrapCredentialsFromRest;
+        if (bootstrap === undefined) return;
+        if (this.#opts.credentials.getCredentials(extPanIdBytes) !== undefined) return;
+
+        // Coalesce concurrent callers (including forced refreshes) onto one dataset fetch.
+        const inFlight = this.#bootstrapsInFlight.get(key);
+        if (inFlight !== undefined) {
+            await inFlight;
+            return;
+        }
+        if (!force && this.#credentialBootstrapAttempted.has(key)) return;
+        const cap = this.#restCaps.get(key);
+        if (cap === undefined) return;
+
+        this.#credentialBootstrapAttempted.add(key);
+        const xp = key.toUpperCase();
+        const run = (async () => {
+            try {
+                await bootstrap(cap);
+                const registered = this.#opts.credentials.getCredentials(extPanIdBytes) !== undefined;
+                logger.info(`REST credential bootstrap xp=${xp} registered=${registered}`);
+            } catch (err) {
+                logger.debug(`REST credential bootstrap failed xp=${xp}: ${err}`);
+            }
+        })();
+        this.#bootstrapsInFlight.set(key, run);
+        try {
+            await run;
+        } finally {
+            this.#bootstrapsInFlight.delete(key);
+        }
     }
 
     /**
@@ -659,7 +716,12 @@ export class ThreadDiagnosticsService {
 
         const firstBatchTimer = setTimeout(() => {
             firstBatchFired = true;
-            const reason = acc.size === 0 ? "meshcop_no_responses_yet" : "in_progress";
+            const reason =
+                acc.size === 0
+                    ? sourceKind === "otbr-rest"
+                        ? "rest_no_responses_yet"
+                        : "meshcop_no_responses_yet"
+                    : "in_progress";
             logger.debug(
                 `stream firstBatch xp=${xp} acc=${acc.size} partial=${reason} t+${Date.now() - streamStart}ms`,
             );
@@ -751,6 +813,7 @@ export class ThreadDiagnosticsService {
             logger.info(`REST capability unregistered xp=${xp.toUpperCase()} (last BR for network removed)`);
         }
         this.#probeAttempted.delete(key);
+        this.#credentialBootstrapAttempted.delete(key);
     }
 
     #partial(

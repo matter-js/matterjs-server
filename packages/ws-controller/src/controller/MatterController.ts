@@ -282,6 +282,13 @@ export class MatterController {
                 return new OtbrRestDiagnosticSource(new OtbrRestClient({ host, port }), cap);
             },
             makeMeshcopSource: (creds, br) => connectMeshcop({ environment: this.#env, creds, br }),
+            bootstrapCredentialsFromRest: async cap => {
+                const { host, port } = parseRestBaseUrl(cap.baseUrl);
+                const ds = await new OtbrRestClient({ host, port }).getActiveDataset();
+                if (ds === undefined) return;
+                this.#credentials.register(ds);
+                logger.info(`Registered Thread credentials from rest:${cap.baseUrl} (${formatDatasetForLog(ds)})`);
+            },
         });
     }
 
