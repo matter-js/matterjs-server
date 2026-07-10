@@ -332,7 +332,80 @@ describe("ThreadDiagnosticsService", () => {
 
         const batch = await service.getOrFetch(EXT_PAN_HEX_LOWER);
         expect(batch?.partialReason).to.equal("border_router_unreachable");
+        expect(batch?.source).to.equal("none");
         expect(batch?.nodes).to.deep.equal([]);
+    });
+
+    it("uses REST for an undialable BR (empty addresses) when a cap is registered", async () => {
+        // rankBrs drops address-less BRs (correct for MeshCoP dialing), but REST needs only the
+        // extPanId + a registered baseUrl. The service must consult the REST cap instead of giving
+        // up with border_router_unreachable.
+        let restCalls = 0;
+        let meshcopCalls = 0;
+        const service = new ThreadDiagnosticsService({
+            ...FAST_TIMING,
+            borderRouters: brRegistryFrom(brsListing([makeBr({ addresses: [] })])),
+            credentials: credsRegistryFrom(credsLookup(new Map())),
+            makeRestSource: () => {
+                restCalls += 1;
+                return syncRestSource([SAMPLE_NODE]);
+            },
+            makeMeshcopSource: async () => {
+                meshcopCalls += 1;
+                return meshcopHandle(syncMeshcopSource([]));
+            },
+        });
+        service.registerRestCapability(EXT_PAN_HEX_LOWER, makeCap());
+
+        const batch = await service.getOrFetch(EXT_PAN_HEX_LOWER);
+        expect(batch?.source).to.equal("otbr-rest");
+        expect(batch?.nodes).to.have.lengthOf(1);
+        expect(restCalls).to.equal(1);
+        expect(meshcopCalls).to.equal(0);
+    });
+
+    it("uses REST-only for an undialable BR even when credentials exist (skips MeshCoP)", async () => {
+        // An undialable BR cannot be MeshCoP-dialed even with credentials, so the service must not
+        // attempt a MeshCoP connect that is guaranteed to fail — it goes straight to REST.
+        let meshcopCalls = 0;
+        const service = new ThreadDiagnosticsService({
+            ...FAST_TIMING,
+            borderRouters: brRegistryFrom(brsListing([makeBr({ addresses: [] })])),
+            credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
+            makeRestSource: () => syncRestSource([SAMPLE_NODE]),
+            makeMeshcopSource: async () => {
+                meshcopCalls += 1;
+                return meshcopHandle(syncMeshcopSource([SAMPLE_NODE]));
+            },
+        });
+        service.registerRestCapability(EXT_PAN_HEX_LOWER, makeCap());
+
+        const batch = await service.getOrFetch(EXT_PAN_HEX_LOWER);
+        expect(batch?.source).to.equal("otbr-rest");
+        expect(batch?.nodes).to.have.lengthOf(1);
+        expect(meshcopCalls).to.equal(0);
+    });
+
+    it("yields border_router_unreachable with source 'none' when the only BR is undialable and no REST cap exists", async () => {
+        let probeCalls = 0;
+        const service = new ThreadDiagnosticsService({
+            ...FAST_TIMING,
+            borderRouters: brRegistryFrom(brsListing([makeBr({ addresses: [] })])),
+            credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
+            makeRestSource: () => syncRestSource([]),
+            makeMeshcopSource: async () => meshcopHandle(syncMeshcopSource([])),
+            probeRest: async () => {
+                probeCalls += 1;
+                return makeCap();
+            },
+        });
+
+        const batch = await service.getOrFetch(EXT_PAN_HEX_LOWER);
+        expect(batch?.partialReason).to.equal("border_router_unreachable");
+        expect(batch?.source).to.equal("none");
+        expect(batch?.nodes).to.deep.equal([]);
+        // No dialable address to probe → the network probe never runs.
+        expect(probeCalls).to.equal(0);
     });
 
     it("yields no_credentials when BRs match but neither creds nor REST cap exist", async () => {
@@ -346,7 +419,7 @@ describe("ThreadDiagnosticsService", () => {
 
         const batch = await service.getOrFetch(EXT_PAN_HEX_LOWER);
         expect(batch?.partialReason).to.equal("no_credentials");
-        expect(batch?.source).to.equal("meshcop");
+        expect(batch?.source).to.equal("none");
     });
 
     it("uses REST for a capability-only network (no credentials)", async () => {
@@ -550,6 +623,52 @@ describe("ThreadDiagnosticsService", () => {
         ]);
 
         expect(maxActive).to.equal(2);
+    });
+
+    it("serializes concurrent force refreshes for the same network (never two live streams at once)", async () => {
+        let active = 0;
+        let maxActive = 0;
+        const service = new ThreadDiagnosticsService({
+            windowMs: 10_000,
+            firstBatchMs: 5,
+            debounceMs: 5,
+            borderRouters: brRegistryFrom(brsListing([makeBr()])),
+            credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
+            makeRestSource: () => syncRestSource([]),
+            probeRest: async () => null,
+            makeMeshcopSource: async () => {
+                active += 1;
+                maxActive = Math.max(maxActive, active);
+                return meshcopHandle(
+                    {
+                        kind: "meshcop",
+                        canQuery: () => true,
+                        queryUnicast: async () => ({ unknown: [] }),
+                        queryMulticast: () => scriptedHandle({ nodes: [SAMPLE_NODE], keepOpen: true }),
+                        resetCounters: async () => {},
+                    },
+                    () => {
+                        active -= 1;
+                    },
+                );
+            },
+        });
+
+        // Seed an in-flight stream S0 that lingers on the 10s window.
+        await service.getOrFetch(EXT_PAN_HEX_LOWER);
+        expect(active).to.equal(1);
+
+        // Two simultaneous force refreshes for the same xp must serialize their cancel→start:
+        // if both read the same in-flight stream, cancel it, then each register a replacement, two
+        // live streams overlap and #streamsInFlight is corrupted.
+        await Promise.all([
+            service.getOrFetch(EXT_PAN_HEX_LOWER, { force: true }),
+            service.getOrFetch(EXT_PAN_HEX_LOWER, { force: true }),
+        ]);
+
+        expect(maxActive).to.equal(1);
+
+        await service.stop();
     });
 
     it("maps a CommissionerRejectedError to petition_rejected and still closes the handle", async () => {

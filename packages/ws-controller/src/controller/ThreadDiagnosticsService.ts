@@ -44,7 +44,8 @@ export interface ThreadDiagnosticsBatch {
     networkName: string;
     /** Epoch ms when the batch was assembled. */
     collectedAt: number;
-    source: "meshcop" | "otbr-rest";
+    /** Transport that produced the batch; `"none"` when no transport was attempted (terminal partials). */
+    source: "meshcop" | "otbr-rest" | "none";
     nodes: ReadonlyArray<DiagnosticResponse>;
     partialReason?: ThreadDiagnosticsPartialReason;
 }
@@ -135,6 +136,7 @@ export class ThreadDiagnosticsService {
     readonly #cache = new Map<string, ThreadDiagnosticsBatch>();
     readonly #restCaps = new Map<string, OtbrRestCapability>();
     readonly #streamsInFlight = new Map<string, InFlightStream>();
+    readonly #keyLocks = new Map<string, Promise<void>>();
     readonly #probesInFlight = new Map<string, Promise<void>>();
     readonly #probeAttempted = new Set<string>();
     readonly #cacheTtlMs: number;
@@ -269,7 +271,7 @@ export class ThreadDiagnosticsService {
         if (br === undefined) {
             logger.info(`selectBr returned none xp=${xp} candidates=${matchingBrs.length}`);
             const networkName = matchingBrs[0].networkName ?? this.#cache.get(key)?.networkName ?? "";
-            return this.#publish(this.#partial(key, networkName, "border_router_unreachable"));
+            return this.#fetchRestOnly(key, networkName, matchingBrs, extPanIdBytes, force);
         }
 
         const networkName = br.networkName ?? this.#cache.get(key)?.networkName ?? "";
@@ -300,15 +302,99 @@ export class ThreadDiagnosticsService {
         // stop()'s snapshot has already passed over (it would outlive teardown).
         if (this.#stopped) return undefined;
 
-        if (force) {
-            const existing = this.#streamsInFlight.get(key);
-            if (existing !== undefined) {
-                logger.debug(`force=true canceling in-flight stream xp=${xp}`);
-                await existing.cancel();
+        return this.#cancelAndStart(key, networkName, ranked, extPanIdBytes, force);
+    }
+
+    /**
+     * Diagnostics path for a network whose every BR is undialable (`rankBrs` returned none). MeshCoP
+     * is impossible without a dialable address, but the OTBR REST API needs only the extPanId + a
+     * registered `baseUrl`. Probe for a REST capability (a no-op for an address-less BR, but a cap
+     * cached from an earlier `added`-event probe still counts) and, if one can serve diagnostics,
+     * stream REST-only. Only when no usable cap exists is the network truly `border_router_unreachable`.
+     */
+    async #fetchRestOnly(
+        key: string,
+        networkName: string,
+        matchingBrs: BorderRouterEntry[],
+        extPanIdBytes: Uint8Array,
+        force: boolean,
+    ): Promise<ThreadDiagnosticsBatch | undefined> {
+        const xp = key.toUpperCase();
+
+        if (this.#restCaps.get(key) === undefined) {
+            await this.#probeBrForRest(matchingBrs[0], { force });
+            if (!force) {
+                const joined = this.#streamsInFlight.get(key);
+                if (joined !== undefined) {
+                    logger.debug(`join in-flight stream (rest-only post-probe) xp=${xp}`);
+                    return joined.firstBatch;
+                }
             }
         }
 
-        return this.#startStream(key, networkName, ranked, extPanIdBytes).firstBatch;
+        if (this.#stopped) return undefined;
+
+        const cap = this.#restCaps.get(key);
+        if (cap === undefined || cap.diagnosticsApi === "none") {
+            return this.#publish(this.#partial(key, networkName, "border_router_unreachable"));
+        }
+
+        logger.info(`BRs undialable, using REST-only diagnostics xp=${xp} baseUrl=${cap.baseUrl}`);
+        return this.#cancelAndStart(key, networkName, matchingBrs, extPanIdBytes, force, { restOnly: true });
+    }
+
+    /**
+     * Serialize the cancel-old-then-start-new critical section per network. `#launchStream` registers
+     * the stream synchronously, but a `force` refresh must `await existing.cancel()` first — two
+     * concurrent callers would otherwise each read the same in-flight stream, cancel it, and register a
+     * replacement, leaving two live streams and a `#streamsInFlight` entry that the first stream's
+     * teardown later deletes out from under the second. The per-key lock makes the section atomic;
+     * `firstBatch` is awaited by the caller outside the lock so joiners are not blocked for a window.
+     */
+    async #cancelAndStart(
+        key: string,
+        networkName: string,
+        brs: BorderRouterEntry[],
+        extPanIdBytes: Uint8Array,
+        force: boolean,
+        opts?: { restOnly?: boolean },
+    ): Promise<ThreadDiagnosticsBatch | undefined> {
+        const xp = key.toUpperCase();
+        const stream = await this.#serialize(key, async () => {
+            // A concurrent caller may have registered a stream while we waited on the lock. A
+            // non-force fetch joins it; a force fetch cancels it and starts fresh.
+            const existing = this.#streamsInFlight.get(key);
+            if (existing !== undefined) {
+                if (!force) {
+                    logger.debug(`join in-flight stream (serialized) xp=${xp}`);
+                    return existing;
+                }
+                logger.debug(`force=true canceling in-flight stream xp=${xp}`);
+                await existing.cancel();
+            }
+            if (this.#stopped) return undefined;
+            return this.#startStream(key, networkName, brs, extPanIdBytes, opts);
+        });
+        return stream?.firstBatch;
+    }
+
+    /**
+     * Run `fn` after any previously queued work for `key` has settled, so per-key critical sections
+     * never overlap. The lock entry is dropped once no further work is chained behind it.
+     */
+    async #serialize<T>(key: string, fn: () => Promise<T>): Promise<T> {
+        const prev = this.#keyLocks.get(key) ?? Promise.resolve();
+        const run = prev.then(fn, fn);
+        const tail = run.then(
+            () => {},
+            () => {},
+        );
+        this.#keyLocks.set(key, tail);
+        try {
+            return await run;
+        } finally {
+            if (this.#keyLocks.get(key) === tail) this.#keyLocks.delete(key);
+        }
     }
 
     #startStream(
@@ -316,8 +402,10 @@ export class ThreadDiagnosticsService {
         networkName: string,
         brs: BorderRouterEntry[],
         extPanIdBytes: Uint8Array,
+        opts?: { restOnly?: boolean },
     ): InFlightStream {
         const xp = extPanIdHex.toUpperCase();
+        const restOnly = opts?.restOnly === true;
         const restCap = this.#restCaps.get(extPanIdHex);
         const creds = this.#opts.credentials.getCredentials(extPanIdBytes);
 
@@ -335,7 +423,9 @@ export class ThreadDiagnosticsService {
             };
         }
 
-        return this.#launchStream(extPanIdHex, networkName, () => this.#acquireHybrid(xp, brs, restCap, creds));
+        return this.#launchStream(extPanIdHex, networkName, () =>
+            this.#acquireHybrid(xp, brs, restCap, creds, restOnly),
+        );
     }
 
     /**
@@ -343,19 +433,24 @@ export class ThreadDiagnosticsService {
      * exist the MeshCoP transport is connected up front (DTLS handshake, BR-fallback) so the sync
      * `selectSource` factory can hand back the ready source; REST is stateless. If the MeshCoP
      * connect fails but a REST capability exists, degrade to REST-only by hiding the credentials from
-     * `selectSource` rather than failing the whole fetch.
+     * `selectSource` rather than failing the whole fetch. When `restOnly` is set the credentials are
+     * hidden up front — every BR is undialable, so a MeshCoP connect would only fail before the same
+     * REST degrade; skip it entirely.
      */
     async #acquireHybrid(
         xp: string,
         brs: BorderRouterEntry[],
         restCap: OtbrRestCapability | undefined,
         creds: ThreadNetworkCredentials | undefined,
+        restOnly = false,
     ): Promise<MeshcopSourceHandle> {
         // A "none" cap can't serve diagnostics, so it is not a viable REST fallback for a DTLS failure.
         const restUsable = restCap !== undefined && restCap.diagnosticsApi !== "none";
         let meshHandle: MeshcopSourceHandle | undefined;
         let credentials: Pick<ThreadCredentialsRegistry, "getCredentials"> = this.#opts.credentials;
-        if (creds !== undefined) {
+        if (restOnly) {
+            credentials = { getCredentials: () => undefined };
+        } else if (creds !== undefined) {
             try {
                 meshHandle = await this.#acquireMeshcopWithFallback(xp, creds, brs);
             } catch (err) {
@@ -663,13 +758,13 @@ export class ThreadDiagnosticsService {
         networkName: string,
         partialReason: ThreadDiagnosticsPartialReason,
     ): ThreadDiagnosticsBatch {
-        return this.#partialOf(extPanIdHex, networkName, "meshcop", partialReason);
+        return this.#partialOf(extPanIdHex, networkName, "none", partialReason);
     }
 
     #partialOf(
         extPanIdHex: string,
         networkName: string,
-        source: "meshcop" | "otbr-rest",
+        source: "meshcop" | "otbr-rest" | "none",
         partialReason: ThreadDiagnosticsPartialReason,
     ): ThreadDiagnosticsBatch {
         return {

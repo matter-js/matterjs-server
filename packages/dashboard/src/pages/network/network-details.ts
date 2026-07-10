@@ -923,10 +923,14 @@ export class NetworkDetails extends LitElement {
             <md-divider></md-divider>
             <div class="section">
                 ${heading}${errorBanner}
-                <div class="info-row">
-                    <span class="label">Source:</span>
-                    <span class="value">${batch.source}</span>
-                </div>
+                ${batch.source !== "none"
+                    ? html`
+                          <div class="info-row">
+                              <span class="label">Source:</span>
+                              <span class="value">${batch.source}</span>
+                          </div>
+                      `
+                    : nothing}
                 <div class="info-row">
                     <span class="label">Updated:</span>
                     <span class="value">${collected}</span>

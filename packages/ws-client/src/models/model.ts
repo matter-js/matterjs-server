@@ -198,8 +198,12 @@ export interface ThreadDiagnosticsBatch {
     networkName: string;
     /** Epoch ms when the batch was assembled. */
     collectedAt: number;
-    /** Which transport produced it: MeshCoP (CoAP/DTLS) or the OTBR REST API. */
-    source: "meshcop" | "otbr-rest";
+    /**
+     * Which transport produced it: MeshCoP (CoAP/DTLS) or the OTBR REST API.
+     * `"none"` when no transport was attempted (e.g. a terminal `border_router_unreachable`
+     * or `no_credentials` partial).
+     */
+    source: "meshcop" | "otbr-rest" | "none";
     nodes: ThreadDiagnosticsNode[];
     /** Set when the snapshot is partial or the query could not complete; see {@link ThreadDiagnosticsPartialReason}. */
     partialReason?: ThreadDiagnosticsPartialReason;
