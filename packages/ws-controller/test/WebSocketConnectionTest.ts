@@ -9,10 +9,15 @@ import { OutboundSocket, WebSocketConnection } from "../src/server/WebSocketConn
 
 const OPEN = 1;
 
+/** A frame of exactly `bytes` bytes, optionally tagged (tag padded out) so it stays identifiable. */
+function f(bytes: number, tag = "x"): string {
+    return tag.padEnd(bytes, "x").slice(0, bytes);
+}
+
 /**
- * Controllable stand-in for a `ws` socket. `bufferedAmount` is set directly by the test to simulate
- * congestion; queued-mode sends carry a callback that the test releases via {@link flushOne} to step
- * the drain pump deterministically.
+ * Controllable stand-in for a `ws` socket. It tracks `bufferedAmount` from real byte lengths — sends
+ * add, {@link flushOne} (simulating the peer draining a frame) subtracts and fires that frame's send
+ * callback — so the connection's byte-windowed drain behaves as it would against a real socket.
  */
 class FakeSocket implements OutboundSocket {
     bufferedAmount = 0;
@@ -20,11 +25,13 @@ class FakeSocket implements OutboundSocket {
     terminated = false;
     readonly sent = new Array<string>();
     readonly closes = new Array<{ code?: number; reason?: string }>();
-    #pending = new Array<(err?: Error) => void>();
+    #pending = new Array<{ bytes: number; cb?: (err?: Error) => void }>();
 
     send(data: string, cb?: (err?: Error) => void): void {
         this.sent.push(data);
-        if (cb) this.#pending.push(cb);
+        const bytes = Buffer.byteLength(data);
+        this.bufferedAmount += bytes;
+        this.#pending.push({ bytes, cb });
     }
 
     close(code?: number, reason?: string): void {
@@ -37,11 +44,12 @@ class FakeSocket implements OutboundSocket {
         this.readyState = 3;
     }
 
-    /** Release the oldest held send callback, as if that frame flushed to the OS socket. */
+    /** Release the oldest in-flight frame, as if the peer drained it: shrink the buffer, fire its callback. */
     flushOne(err?: Error): void {
-        const cb = this.#pending.shift();
-        if (cb === undefined) throw new Error("no pending send callback to flush");
-        cb(err);
+        const p = this.#pending.shift();
+        if (p === undefined) throw new Error("no pending send to flush");
+        this.bufferedAmount -= p.bytes;
+        p.cb?.(err);
     }
 
     get pendingCount(): number {
@@ -49,10 +57,12 @@ class FakeSocket implements OutboundSocket {
     }
 }
 
+/** ceiling === floor so the mark is fixed at 100 and a frame over 100 bytes trips queued mode. */
 function makeConn(socket: FakeSocket, overrides: Partial<ConstructorParameters<typeof WebSocketConnection>[1]> = {}) {
     return new WebSocketConnection(socket, {
         connId: "test",
         highWaterBytes: 100,
+        highWaterCeilingBytes: 100,
         capBase: 1000,
         capPerNode: 20,
         watchdog: Millis(300_000),
@@ -61,11 +71,11 @@ function makeConn(socket: FakeSocket, overrides: Partial<ConstructorParameters<t
     });
 }
 
-/** Drive one direct send that trips the high-water mark, leaving the connection in queued mode. */
+/** Trip into queued mode with one over-the-mark frame, then flush it so the window starts empty. */
 function enterQueued(socket: FakeSocket, conn: WebSocketConnection): void {
-    socket.bufferedAmount = 200;
-    conn.sendReliable("<trigger>");
-    socket.bufferedAmount = 0;
+    conn.sendReliable(f(150, "<trigger>"));
+    socket.flushOne();
+    socket.sent.length = 0;
 }
 
 describe("WebSocketConnection", () => {
@@ -88,136 +98,110 @@ describe("WebSocketConnection", () => {
             const socket = new FakeSocket();
             const conn = makeConn(socket);
 
-            socket.bufferedAmount = 101;
-            conn.sendOrdered("a");
-
-            expect(socket.sent).to.deep.equal(["a"]);
-            expect(conn.mode).to.equal("queued");
-        });
-
-        it("does not trip on a single large frame — high-water scales to 2x the largest frame", () => {
-            const socket = new FakeSocket();
-            const conn = makeConn(socket); // 100-byte floor
-
-            const big = "x".repeat(200); // 200 bytes, well over the 100-byte floor
-            // FakeSocket.send doesn't track size, so pre-set the bufferedAmount the congestion check
-            // will read after this frame is sent.
-            socket.bufferedAmount = 200;
-            conn.sendReliable(big);
-
-            // A single legitimate large payload (e.g. the initial start_listening dump) must not be
-            // mistaken for a stalled consumer: the water mark rises to 2x its size.
-            expect(conn.mode).to.equal("direct");
-        });
-
-        it("still trips when backlog grows past 2x the largest frame (stalled consumer)", () => {
-            const socket = new FakeSocket();
-            const conn = makeConn(socket); // 100-byte floor
-
-            const big = "x".repeat(200);
-            conn.sendReliable(big); // raises high-water to 400
-            socket.bufferedAmount = 500; // backlog now exceeds 2x the largest frame
-            conn.sendReliable("y");
-
-            expect(conn.mode).to.equal("queued");
-        });
-
-        it("clamps the initial high-water to the ceiling when a floor above the ceiling is configured", () => {
-            const socket = new FakeSocket();
-            const conn = makeConn(socket, { highWaterBytes: 1000, highWaterCeilingBytes: 500 });
-
-            socket.bufferedAmount = 600; // above the ceiling, below the misconfigured floor
-            conn.sendReliable("y");
-
-            // The ceiling is an absolute cap; a floor mistakenly set above it must not raise the mark.
-            expect(conn.mode).to.equal("queued");
-        });
-
-        it("caps the dynamic high-water at the ceiling", () => {
-            const socket = new FakeSocket();
-            const conn = makeConn(socket, { highWaterBytes: 100, highWaterCeilingBytes: 1000 });
-
-            conn.sendReliable("x".repeat(800)); // 2x = 1600, but ceiling clamps to 1000
-            socket.bufferedAmount = 1100; // above the ceiling, below the un-clamped 1600
-            conn.sendReliable("y");
+            conn.sendOrdered(f(150)); // one frame over the 100-byte mark
 
             expect(conn.mode).to.equal("queued");
         });
     });
 
-    describe("queued mode", () => {
-        it("enqueues instead of sending, draining one frame per flushed callback", () => {
+    describe("dynamic high-water", () => {
+        it("does not trip on a single large frame — the mark scales to 2x the largest frame", () => {
             const socket = new FakeSocket();
-            const conn = makeConn(socket);
-            enterQueued(socket, conn);
+            const conn = makeConn(socket, { highWaterBytes: 100, highWaterCeilingBytes: 10_000 });
 
-            conn.sendOrdered("x");
-            conn.sendOrdered("y");
+            conn.sendReliable(f(200)); // mark rises to 400; bufferedAmount 200 < 400
 
-            expect(socket.sent).to.deep.equal(["<trigger>", "x"]);
-            expect(conn.outboxSize).to.equal(1);
-
-            socket.flushOne();
-            expect(socket.sent).to.deep.equal(["<trigger>", "x", "y"]);
+            expect(conn.mode).to.equal("direct");
         });
 
-        it("returns to direct mode once the outbox drains empty", () => {
+        it("still trips when backlog grows past 2x the largest frame (stalled consumer)", () => {
+            const socket = new FakeSocket();
+            const conn = makeConn(socket, { highWaterBytes: 100, highWaterCeilingBytes: 10_000 });
+
+            conn.sendReliable(f(200)); // mark → 400, direct
+            conn.sendReliable(f(200)); // bufferedAmount 400, still not > 400
+            conn.sendReliable(f(200)); // bufferedAmount 600 > 400 → trips
+
+            expect(conn.mode).to.equal("queued");
+        });
+
+        it("caps the dynamic mark at the ceiling", () => {
+            const socket = new FakeSocket();
+            const conn = makeConn(socket, { highWaterBytes: 100, highWaterCeilingBytes: 1000 });
+
+            conn.sendReliable(f(800)); // 2x = 1600, clamped to 1000; bufferedAmount 800 < 1000, direct
+            conn.sendReliable(f(300)); // bufferedAmount 1100 > 1000 → trips (proves clamp to 1000, not 1600)
+
+            expect(conn.mode).to.equal("queued");
+        });
+
+        it("clamps the initial mark to the ceiling when a floor above the ceiling is configured", () => {
+            const socket = new FakeSocket();
+            const conn = makeConn(socket, { highWaterBytes: 1000, highWaterCeilingBytes: 500 });
+
+            conn.sendReliable(f(600)); // above the 500 ceiling → trips; a floor of 1000 must not apply
+
+            expect(conn.mode).to.equal("queued");
+        });
+    });
+
+    describe("queued mode (byte-windowed drain)", () => {
+        it("keeps up to high-water bytes in flight and queues the rest", () => {
             const socket = new FakeSocket();
             const conn = makeConn(socket);
             enterQueued(socket, conn);
 
-            conn.sendOrdered("x");
+            conn.sendOrdered(f(50, "e1"));
+            conn.sendOrdered(f(50, "e2"));
+            conn.sendOrdered(f(50, "e3"));
+            conn.sendOrdered(f(50, "e4"));
+
+            // Window is 100 bytes: e1+e2 (100) are in flight, e3+e4 wait in the outbox.
+            expect(socket.sent.length).to.equal(2);
+            expect(conn.outboxSize).to.equal(2);
+
+            socket.flushOne(); // frees 50 bytes → e3 goes
+            expect(socket.sent.length).to.equal(3);
+            socket.flushOne(); // → e4 goes
+            expect(socket.sent.length).to.equal(4);
+        });
+
+        it("returns to direct mode once the outbox drains and the window empties", () => {
+            const socket = new FakeSocket();
+            const conn = makeConn(socket);
+            enterQueued(socket, conn);
+
+            conn.sendOrdered(f(50, "e1"));
             expect(conn.mode).to.equal("queued");
 
             socket.flushOne();
             expect(conn.mode).to.equal("direct");
         });
 
-        it("disposes on a send error, releasing queued frames and refusing further sends", () => {
+        it("coalesces same-key sends beyond the window to one frame, built once, keeping first position", () => {
             const socket = new FakeSocket();
             const conn = makeConn(socket);
             enterQueued(socket, conn);
 
-            conn.sendOrdered("x"); // in flight
-            conn.sendOrdered("y"); // queued behind it
-            expect(conn.outboxSize).to.equal(1);
+            conn.sendOrdered(f(50, "w1")); // fill the window
+            conn.sendOrdered(f(50, "w2"));
 
-            socket.flushOne(new Error("socket write failed"));
-
-            // A send error means the socket is dead: drop the queued closures now instead of pinning
-            // them until a close event, terminate to force that close event (so the handler removes
-            // the connection), and send nothing more.
-            expect(conn.outboxSize).to.equal(0);
-            expect(socket.terminated).to.equal(true);
-            const before = socket.sent.length;
-            conn.sendReliable("late");
-            expect(socket.sent.length).to.equal(before);
-        });
-
-        it("coalesces same-key sends to one frame, built once, keeping first position", () => {
-            const socket = new FakeSocket();
-            const conn = makeConn(socket);
-            enterQueued(socket, conn);
-
-            conn.sendOrdered("blocker"); // occupies the single in-flight slot
             let builds = 0;
-            conn.sendCoalescable("k", () => {
+            const build = () => {
                 builds++;
-                return "v-latest";
-            });
-            conn.sendCoalescable("k", () => {
-                builds++;
-                return "v-latest";
-            });
-            conn.sendOrdered("after");
+                return f(50, "kv");
+            };
+            conn.sendCoalescable("k", build);
+            conn.sendCoalescable("k", build); // coalesces onto the first
+            conn.sendOrdered(f(50, "after"));
 
             expect(conn.outboxSize).to.equal(2); // {k, after}
-            socket.flushOne(); // blocker flushed -> drains k
+            socket.flushOne(); // w1 flushed → drains k
             expect(builds).to.equal(1);
-            expect(socket.sent).to.deep.equal(["<trigger>", "blocker", "v-latest"]);
+            expect(socket.sent[socket.sent.length - 1]).to.equal(f(50, "kv"));
 
-            socket.flushOne(); // k flushed -> drains after
-            expect(socket.sent[socket.sent.length - 1]).to.equal("after");
+            socket.flushOne(); // w2 flushed → drains after
+            expect(socket.sent[socket.sent.length - 1]).to.equal(f(50, "after"));
         });
 
         it("skips a coalescable whose builder returns undefined", () => {
@@ -225,29 +209,29 @@ describe("WebSocketConnection", () => {
             const conn = makeConn(socket);
             enterQueued(socket, conn);
 
-            conn.sendOrdered("blocker");
+            conn.sendOrdered(f(50, "w1"));
+            conn.sendOrdered(f(50, "w2")); // window full
             conn.sendCoalescable("gone", () => undefined);
-            conn.sendOrdered("after");
+            conn.sendOrdered(f(50, "after"));
 
-            socket.flushOne(); // blocker -> skip gone -> send after
-            expect(socket.sent).to.deep.equal(["<trigger>", "blocker", "after"]);
+            socket.flushOne(); // w1 → skip gone → send after
+            expect(socket.sent[socket.sent.length - 1]).to.equal(f(50, "after"));
         });
 
-        it("skips a coalescable whose builder throws, without escaping the drain pump", () => {
+        it("skips a coalescable whose builder throws, without escaping the drain", () => {
             const socket = new FakeSocket();
             const conn = makeConn(socket);
             enterQueued(socket, conn);
 
-            conn.sendOrdered("blocker");
+            conn.sendOrdered(f(50, "w1"));
+            conn.sendOrdered(f(50, "w2"));
             conn.sendCoalescable("boom", () => {
                 throw new Error("build failed");
             });
-            conn.sendOrdered("after");
+            conn.sendOrdered(f(50, "after"));
 
-            // The throwing entry drains via the flushed callback; it must not propagate out of the
-            // ws send-completion callback (which would become an uncaught exception in production).
             expect(() => socket.flushOne()).to.not.throw();
-            expect(socket.sent).to.deep.equal(["<trigger>", "blocker", "after"]);
+            expect(socket.sent[socket.sent.length - 1]).to.equal(f(50, "after"));
         });
 
         it("sendReliable bypasses the queue and sends immediately even while congested", () => {
@@ -255,11 +239,33 @@ describe("WebSocketConnection", () => {
             const conn = makeConn(socket);
             enterQueued(socket, conn);
 
-            conn.sendOrdered("blocker");
-            conn.sendReliable("urgent");
+            conn.sendOrdered(f(50, "w1"));
+            conn.sendOrdered(f(50, "w2")); // window full
+            conn.sendOrdered(f(50, "queued")); // waits in outbox
+            expect(conn.outboxSize).to.equal(1);
 
-            expect(socket.sent).to.deep.equal(["<trigger>", "blocker", "urgent"]);
+            conn.sendReliable("urgent");
+            expect(socket.sent[socket.sent.length - 1]).to.equal("urgent");
+            expect(conn.outboxSize).to.equal(1); // queued frame untouched
+        });
+
+        it("disposes on a send error, releasing queued frames and refusing further sends", () => {
+            const socket = new FakeSocket();
+            const conn = makeConn(socket);
+            enterQueued(socket, conn);
+
+            conn.sendOrdered(f(50, "w1"));
+            conn.sendOrdered(f(50, "w2"));
+            conn.sendOrdered(f(50, "q1")); // queued behind the window
+            expect(conn.outboxSize).to.equal(1);
+
+            socket.flushOne(new Error("socket write failed"));
+
             expect(conn.outboxSize).to.equal(0);
+            expect(socket.terminated).to.equal(true);
+            const before = socket.sent.length;
+            conn.sendReliable("late");
+            expect(socket.sent.length).to.equal(before);
         });
     });
 
@@ -282,20 +288,20 @@ describe("WebSocketConnection", () => {
             const conn = makeConn(socket, { capBase: 3, capPerNode: 0 });
             enterQueued(socket, conn);
 
-            conn.sendOrdered("blocker"); // in flight, not in outbox
-            conn.sendCoalescable("keep", () => "keep");
-            conn.sendOrdered("e1");
-            conn.sendOrdered("e2");
-            conn.sendOrdered("e3");
-            conn.sendOrdered("e4"); // {keep,e1,e2,e3,e4} exceeds cap 3 -> oldest ordered e1,e2 dropped
+            conn.sendOrdered(f(50, "w1")); // fill window (2 frames of 50 = 100)
+            conn.sendOrdered(f(50, "w2"));
+            conn.sendCoalescable("keep", () => f(50, "keep"));
+            conn.sendOrdered(f(50, "e1"));
+            conn.sendOrdered(f(50, "e2"));
+            conn.sendOrdered(f(50, "e3"));
+            conn.sendOrdered(f(50, "e4")); // {keep,e1,e2,e3,e4} over cap 3 → drop oldest ordered e1,e2
 
             expect(conn.outboxSize).to.equal(3); // {keep, e3, e4}
 
-            for (let i = 0; i < 4 && socket.pendingCount > 0; i++) {
-                socket.flushOne();
-            }
-            // after blocker flush, survivors drain in order: keep, e3, e4 (e1/e2 dropped, keep never dropped).
-            expect(socket.sent.slice(2)).to.deep.equal(["keep", "e3", "e4"]);
+            for (let i = 0; i < 6 && socket.pendingCount > 0; i++) socket.flushOne();
+            // Exact sequence: the window (w1,w2) sent first, then the survivors keep,e3,e4 in order —
+            // the oldest ordered entries e1,e2 were dropped and nothing extra slipped through.
+            expect(socket.sent).to.deep.equal([f(50, "w1"), f(50, "w2"), f(50, "keep"), f(50, "e3"), f(50, "e4")]);
         });
 
         it("scales the cap with node count (nodeCount * capPerNode)", () => {
@@ -303,8 +309,9 @@ describe("WebSocketConnection", () => {
             const conn = makeConn(socket, { capBase: 3, capPerNode: 20, getNodeCount: () => 10 });
             enterQueued(socket, conn);
 
-            conn.sendOrdered("blocker");
-            for (let i = 0; i < 250; i++) conn.sendOrdered(`e${i}`);
+            conn.sendOrdered(f(50, "w1"));
+            conn.sendOrdered(f(50, "w2")); // window full; the rest queue
+            for (let i = 0; i < 250; i++) conn.sendOrdered(f(50, `e${i}`));
 
             expect(conn.outboxSize).to.equal(200); // capped at max(3, 10*20)
         });
@@ -316,28 +323,44 @@ describe("WebSocketConnection", () => {
             const conn = makeConn(socket, { watchdog: Millis(300_000) });
             enterQueued(socket, conn);
 
-            conn.sendOrdered("stuck"); // in flight, callback never released
+            conn.sendOrdered(f(50, "stuck")); // in flight, callback never released
 
             expect(socket.terminated).to.equal(false);
             await MockTime.advance(Millis(300_000));
 
-            // terminate() (not a graceful close) forces the ws "close" event so the handler removes
-            // the dead connection even when a half-open socket would never emit close on its own.
             expect(socket.terminated).to.equal(true);
-            // Disposed: no further frames are queued or sent after the watchdog gives up.
             const before = socket.sent.length;
             conn.sendReliable("late");
             expect(socket.sent.length).to.equal(before);
         });
 
-        it("does not terminate when the in-flight send flushes in time", async () => {
+        it("does not terminate while in-flight sends keep flushing in time", async () => {
             const socket = new FakeSocket();
             const conn = makeConn(socket, { watchdog: Millis(300_000) });
             enterQueued(socket, conn);
 
-            conn.sendOrdered("ok");
+            conn.sendOrdered(f(50, "ok"));
             socket.flushOne();
             await MockTime.advance(Millis(300_000));
+
+            expect(socket.terminated).to.equal(false);
+        });
+
+        it("does not terminate a busy window that keeps flushing across intervals (watchdog restarts on progress)", async () => {
+            const socket = new FakeSocket();
+            const conn = makeConn(socket, { watchdog: Millis(300_000) });
+            enterQueued(socket, conn);
+
+            // Window holds 2; keep 4 more queued so every flush pulls a replacement and the window
+            // never empties (frames stay in flight throughout).
+            for (let i = 1; i <= 6; i++) conn.sendOrdered(f(50, `e${i}`));
+
+            // Advance well past the watchdog interval in total, but flush a frame each step (< interval
+            // apart), so progress keeps resetting the deadline. It must never terminate.
+            for (let step = 0; step < 4; step++) {
+                await MockTime.advance(Millis(200_000));
+                socket.flushOne();
+            }
 
             expect(socket.terminated).to.equal(false);
         });
