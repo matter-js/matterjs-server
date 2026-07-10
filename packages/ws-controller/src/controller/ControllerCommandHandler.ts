@@ -200,7 +200,7 @@ export class ControllerCommandHandler {
         bleProxyEnabled: boolean,
         otaEnabled: boolean,
         timeSyncEnabled = false,
-        subscriptionWatchdogEnabled = true,
+        subscriptionWatchdogEnabled = false,
     ) {
         this.#controller = controllerInstance;
 

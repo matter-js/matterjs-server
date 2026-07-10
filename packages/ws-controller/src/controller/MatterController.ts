@@ -187,7 +187,7 @@ export class MatterController {
     #disableDclSeed = false;
     #bleProxyEnabled = false;
     #enableTimeSync = false;
-    #subscriptionWatchdog = true;
+    #subscriptionWatchdog = false;
     #threadDiagnosticsDisabled = false;
     readonly #borderRouterRegistry: BorderRouterRegistry;
     readonly #credentials = new ThreadCredentialsRegistry();

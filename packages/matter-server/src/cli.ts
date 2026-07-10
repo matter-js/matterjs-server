@@ -221,7 +221,7 @@ export function parseCliArgs(argv?: string[]): CliOptions {
             )
                 .argParser(parseBooleanEnv)
                 .preset(true)
-                .default(true)
+                .default(false)
                 .env("SUBSCRIPTION_WATCHDOG"),
         )
         .addOption(
