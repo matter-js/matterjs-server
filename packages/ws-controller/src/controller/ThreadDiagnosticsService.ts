@@ -269,7 +269,7 @@ export class ThreadDiagnosticsService {
         const ranked = rankBrs(matchingBrs);
         const br = ranked[0];
         if (br === undefined) {
-            logger.info(`selectBr returned none xp=${xp} candidates=${matchingBrs.length}`);
+            logger.info(`rankBrs returned none (no dialable BR addresses) xp=${xp} candidates=${matchingBrs.length}`);
             const networkName = matchingBrs[0].networkName ?? this.#cache.get(key)?.networkName ?? "";
             return this.#fetchRestOnly(key, networkName, matchingBrs, extPanIdBytes, force);
         }
