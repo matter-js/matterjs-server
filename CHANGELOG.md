@@ -7,6 +7,10 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
+## **WORK IN PROGRESS**
+
+- Enhancement: Update Docker base images to Debian trixie with the current Node 24 version
+
 ## 1.2.3 (2026-07-11)
 
 - Enhancement: Thread diagnostics fetch a Border Router's dataset via REST when no credentials are stored, enabling the faster MeshCoP (CoAP) transport instead of the slower REST collection
