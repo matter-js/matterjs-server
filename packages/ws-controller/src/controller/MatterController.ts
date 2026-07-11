@@ -15,9 +15,11 @@ import {
     GlobalFabricId,
     Logger,
     MatterAggregateError,
+    Millis,
     NodeId,
     SharedEnvironmentServices,
     SoftwareUpdateManager,
+    Time,
     Timestamp,
 } from "@matter/main";
 import { VendorInfo, DclCertificateService, DclVendorInfoService, OperationalDataset } from "@matter/main/protocol";
@@ -42,7 +44,6 @@ import { ThreadDiagnosticsService } from "./ThreadDiagnosticsService.js";
 
 const logger = Logger.get("MatterController");
 
-/** Max time stop() waits for in-flight background init before proceeding with teardown. */
 const BACKGROUND_INIT_STOP_TIMEOUT_MS = 2000;
 
 let bleSupportLoaded: Promise<void> | undefined;
@@ -398,8 +399,7 @@ export class MatterController {
                     fetchTestCertificates: true,
                     acceptTestCertificates: this.#enableTestNetDcl,
                 });
-                // Re-check after the await: if stop() ran during it, don't start background work
-                // (vendor fetch / BR discovery) that would outlive teardown.
+                // Re-check after the await — stop() may have run during it; don't start work that outlives teardown.
                 if (this.#stopped) return;
 
                 const initPromises = new Array<Promise<unknown>>();
@@ -408,9 +408,8 @@ export class MatterController {
                     initPromises.push(this.injectCommissionedDates());
                 }
 
-                // Warm vendor info off the critical path. Node init doesn't need it, and the WS API
-                // paths that do (getAllVendors) await its construction lazily, so data is never
-                // missing — warming here only spares the first client request the DCL fetch latency.
+                // Fire-and-forget: consumers (getAllVendors) await its construction lazily, so this
+                // only pre-warms to spare the first request the DCL fetch latency — node init needn't wait.
                 this.#trackBackgroundInit(this.vendorInfoService(), "Vendor info preload failed");
                 // initPromises.push(this.certificateService()); // postponed to commissioning needs
 
@@ -421,8 +420,7 @@ export class MatterController {
                 initPromises.push(this.#enableWebRtcRequestor());
 
                 if (!this.#threadDiagnosticsDisabled) {
-                    // Border-router discovery is a diagnostics feature — never gate node init /
-                    // WS availability on it. Run it off the critical path.
+                    // Diagnostics-only discovery — never gate node init / WS availability on it.
                     this.#trackBackgroundInit(
                         this.#borderRouterRegistry.start(),
                         "Border router registry start failed",
@@ -557,11 +555,7 @@ export class MatterController {
         }
     }
 
-    /**
-     * Track a background init task so it stays off the node-init critical path but is still
-     * awaited on stop(). The stored promise is catch-wrapped so a rejection is logged rather
-     * than left unhandled while it is in flight.
-     */
+    /** Store a background task catch-wrapped, so an in-flight rejection is logged, not unhandled, and it stays awaitable by stop(). */
     #trackBackgroundInit(promise: Promise<unknown>, failureMessage: string): void {
         this.#backgroundInit.push(promise.catch(err => logger.warn(`${failureMessage}:`, err)));
     }
@@ -572,15 +566,11 @@ export class MatterController {
      */
     async #settleBackgroundInit(): Promise<void> {
         if (this.#backgroundInit.length === 0) return;
-        let timer: ReturnType<typeof setTimeout> | undefined;
-        const timeout = new Promise<void>(resolve => {
-            timer = setTimeout(resolve, BACKGROUND_INIT_STOP_TIMEOUT_MS);
-            timer.unref?.();
-        });
+        const timeout = Time.sleep("MatterController background-init settle", Millis(BACKGROUND_INIT_STOP_TIMEOUT_MS));
         try {
             await Promise.race([Promise.allSettled(this.#backgroundInit), timeout]);
         } finally {
-            if (timer !== undefined) clearTimeout(timer);
+            timeout.cancel();
         }
     }
 
