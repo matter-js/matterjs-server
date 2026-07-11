@@ -16,6 +16,12 @@ const GRACE_MS = 60_000;
 const FALLBACK_THRESHOLD_MS = 15 * 60_000;
 const MIN_RETRIP_MS = 10 * 60_000;
 const SNAPSHOT_INTERVAL_MS = 60 * 60_000;
+// SustainedSubscription.maxInterval is seconds for an established subscription but
+// falls back to Hours.one — a millisecond quantity — while re-subscribing (upstream
+// units inconsistency). Matter's maxInterval is uint16 seconds (≤ 65535s), so any
+// value above a day is bogus and would silently disable the watchdog for that node;
+// treat it as "interval unknown" instead.
+const MAX_PLAUSIBLE_INTERVAL_S = 24 * 60 * 60;
 
 export interface SubscriptionWatchdogContext {
     nodeConnected(peer: PeerAddress): boolean;
@@ -61,7 +67,13 @@ export class SubscriptionWatchdog extends NodeProcessor {
         this.unregisterPeer(peer);
     }
 
-    /** Call from the node's connectionAlive observer — every data report or keepalive. */
+    /**
+     * Call from the node's connectionAlive observer — every data report or keepalive.
+     * NOTE: as of matter.js 0.17.x, empty keepalives do NOT reach connectionAlive
+     * (see matter-js/matter.js#4057); until that is fixed this signal is
+     * data-reports-only and healthy quiet devices false-trip at threshold —
+     * a key reason this watchdog defaults to off.
+     */
     recordAlive(peer: PeerAddress): void {
         this.#lastAliveAt.set(peer, Time.nowMs);
         this.#lastTripAt.delete(peer); // fresh data clears trip backoff
@@ -84,7 +96,9 @@ export class SubscriptionWatchdog extends NodeProcessor {
 
     #thresholdFor(peer: PeerAddress): { thresholdMs: number; intervalKnown: boolean } {
         const seconds = this.#context.subscriptionIntervalSeconds(peer);
-        if (seconds === undefined) return { thresholdMs: FALLBACK_THRESHOLD_MS, intervalKnown: false };
+        if (seconds === undefined || seconds > MAX_PLAUSIBLE_INTERVAL_S) {
+            return { thresholdMs: FALLBACK_THRESHOLD_MS, intervalKnown: false };
+        }
         return { thresholdMs: seconds * 1000 * 1.5 + GRACE_MS, intervalKnown: true };
     }
 

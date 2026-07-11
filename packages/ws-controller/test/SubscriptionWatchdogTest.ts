@@ -201,6 +201,20 @@ describe("SubscriptionWatchdog", () => {
         expect(calls.forceUnavailable).to.equal(1);
     });
 
+    it("treats an implausible interval as unknown and falls back to the 15-minute threshold", async () => {
+        // SustainedSubscription.maxInterval reports seconds when established but falls
+        // back to Hours.one — a millisecond quantity (3_600_000) — while re-subscribing.
+        // Taken at face value that pushes the threshold out ~62 days and silently
+        // disables the watchdog for the node.
+        const { dog, calls } = await makeWatchdog({ subscriptionIntervalSeconds: () => 3_600_000 });
+        dog.registerNode(PEER_1);
+
+        await MockTime.advance(FALLBACK_THRESHOLD_MS + 1_000);
+        await dog.checkNow();
+
+        expect(calls.forceUnavailable).to.equal(1); // tripped via fallback, not a 62-day threshold
+    });
+
     it("skips nodes that are not Connected", async () => {
         const { dog, calls } = await makeWatchdog({ nodeConnected: () => false });
         dog.registerNode(PEER_1);
