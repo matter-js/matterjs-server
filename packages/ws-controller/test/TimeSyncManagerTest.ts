@@ -5,7 +5,9 @@
  */
 
 import { FabricIndex, NodeId } from "@matter/main";
+import { TimeSynchronization } from "@matter/main/clusters";
 import { PeerAddress, PeerAddressSet } from "@matter/main/protocol";
+import { Status, StatusResponseError } from "@matter/main/types";
 import {
     dstOffsetListMaxSize,
     hasTimeSyncCluster,
@@ -35,6 +37,8 @@ class StubConnector implements TimeSyncConnector {
     slowSync = false;
     /** When true, the next syncTime() call rejects instead of succeeding (auto-resets after firing). */
     failNext = false;
+    /** When set, the next syncTime() call rejects with this specific error (auto-resets after firing). */
+    failNextWith: Error | undefined = undefined;
     readonly syncResolvers: Array<() => void> = [];
 
     setConnected(peer: PeerAddress): void {
@@ -53,6 +57,11 @@ class StubConnector implements TimeSyncConnector {
         if (this.failNext) {
             this.failNext = false;
             throw new Error("simulated sync failure");
+        }
+        if (this.failNextWith !== undefined) {
+            const error = this.failNextWith;
+            this.failNextWith = undefined;
+            throw error;
         }
     }
 
@@ -289,6 +298,33 @@ describe("TimeSyncManager", () => {
             manager.syncNode(PEER_1); // backoff elapsed — retries
             await MockTime.yield3();
             expect(connector.syncCalls.length).to.equal(2);
+        });
+
+        it("applies the full 24h cooldown to a TimeNotAccepted refusal, not the short backoff", async () => {
+            // TimeNotAccepted is a deliberate, persistent refusal — the node prefers its
+            // existing time source. Retrying every 5 minutes would storm a non-retryable
+            // response; it must earn the same long cooldown as a success.
+            connector.failNextWith = new StatusResponseError(
+                "Time not accepted",
+                Status.Failure,
+                TimeSynchronization.StatusCode.TimeNotAccepted,
+            );
+            manager.syncNode(PEER_1);
+            await MockTime.yield3();
+            expect(connector.syncCalls.length).to.equal(1);
+
+            await MockTime.advance(6 * ONE_MINUTE_MS); // past the 5-min failure backoff
+            manager.syncNode(PEER_1); // must be dropped — the long cooldown applies
+            await MockTime.yield3();
+            expect(connector.syncCalls.length).to.equal(1);
+
+            await MockTime.advance(ONE_DAY_MS); // periodic resync may fire in here (no trigger cooldown)
+            await MockTime.yield3();
+            const afterResync = connector.syncCalls.length;
+
+            manager.syncNode(PEER_1); // cooldown elapsed — allowed again
+            await MockTime.yield3();
+            expect(connector.syncCalls.length).to.equal(afterResync + 1);
         });
 
         it("still cools down for the full 24h after a successful sync (not shortened by an earlier failure)", async () => {

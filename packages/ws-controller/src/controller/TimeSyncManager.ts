@@ -52,8 +52,12 @@ export interface TimeSyncConnector {
 }
 
 /** TimeNotAccepted means the node keeps a time source it prefers — expected, not an error. */
+function isTimeNotAccepted(error: unknown): boolean {
+    return error instanceof StatusResponseError && error.clusterCode === TimeSynchronization.StatusCode.TimeNotAccepted;
+}
+
 function logSyncFailure(prefix: string, peer: PeerAddress, error: unknown) {
-    if (error instanceof StatusResponseError && error.clusterCode === TimeSynchronization.StatusCode.TimeNotAccepted) {
+    if (isTimeNotAccepted(error)) {
         logger.info(`${prefix}Node ${formatNodeId(peer)} declined the provided time`);
         return;
     }
@@ -165,7 +169,11 @@ export class TimeSyncManager extends NodeProcessor {
                 logger.info(`Synced time on node ${formatNodeId(peer)}`);
             })
             .catch(error => {
-                this.#nextTriggerSyncMs.set(peer, Time.nowMs + TRIGGER_SYNC_FAILURE_BACKOFF);
+                // A TimeNotAccepted refusal is deliberate and persistent — the node keeps
+                // its preferred time source. Give it the full cooldown; only transient
+                // failures earn the short retry backoff.
+                const spacing = isTimeNotAccepted(error) ? TRIGGER_SYNC_COOLDOWN : TRIGGER_SYNC_FAILURE_BACKOFF;
+                this.#nextTriggerSyncMs.set(peer, Time.nowMs + spacing);
                 logSyncFailure("", peer, error);
             })
             .finally(() => {
