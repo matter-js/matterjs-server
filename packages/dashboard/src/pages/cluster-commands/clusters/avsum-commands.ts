@@ -25,6 +25,7 @@ import { showAlertDialog, showPromptDialog } from "../../../components/dialog-bo
 import { handleAsync, handleAsyncEvent } from "../../../util/async-handler.js";
 import {
     AVSUM_CLUSTER_ID,
+    clampMptzDelta,
     moveToPreset,
     readDptzStreams,
     readFeatures,
@@ -293,8 +294,9 @@ class AvsumClusterCommands extends BaseClusterCommands {
     private async _move(delta: { panDelta?: number; tiltDelta?: number; zoomDelta?: number }) {
         const node = this.node;
         const endpoint = this.endpoint;
+        const clamped = clampMptzDelta(delta, readPosition(node, endpoint), readRanges(node, endpoint));
         try {
-            await relativeMove(this.client, node.node_id, endpoint, delta);
+            await relativeMove(this.client, node.node_id, endpoint, clamped);
         } catch (err) {
             if (!this.isSameContext(node, endpoint)) return;
             if (this._isBusy(err)) {

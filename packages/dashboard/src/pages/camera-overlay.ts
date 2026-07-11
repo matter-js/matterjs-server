@@ -42,6 +42,11 @@ const HA_DEFAULT_RESOLUTIONS: Resolution[] = [
     { width: 640, height: 480 },
 ];
 
+function snapshotExtension(dataUri: string): string {
+    const mime = /^data:image\/([a-z0-9.+-]+)/i.exec(dataUri)?.[1]?.toLowerCase();
+    return mime === "png" ? "png" : "jpg";
+}
+
 @customElement("camera-overlay")
 export class CameraOverlay extends LitElement {
     @consume({ context: clientContext, subscribe: true })
@@ -257,7 +262,9 @@ export class CameraOverlay extends LitElement {
         if (!this._snapshotDataUri) return;
         const a = document.createElement("a");
         a.href = this._snapshotDataUri;
-        a.download = `snapshot-node${this.nodeId}-ep${this.endpointId}-${Date.now()}.jpg`;
+        a.download = `snapshot-node${this.nodeId}-ep${this.endpointId}-${Date.now()}.${snapshotExtension(
+            this._snapshotDataUri,
+        )}`;
         a.click();
     }
 
