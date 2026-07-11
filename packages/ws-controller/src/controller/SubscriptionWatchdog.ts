@@ -18,10 +18,10 @@ const MIN_RETRIP_MS = 10 * 60_000;
 const SNAPSHOT_INTERVAL_MS = 60 * 60_000;
 // SustainedSubscription.maxInterval is seconds for an established subscription but
 // falls back to Hours.one — a millisecond quantity — while re-subscribing (upstream
-// units inconsistency). Matter's maxInterval is uint16 seconds (≤ 65535s), so any
-// value above a day is bogus and would silently disable the watchdog for that node;
-// treat it as "interval unknown" instead.
-const MAX_PLAUSIBLE_INTERVAL_S = 24 * 60 * 60;
+// units inconsistency). Matter's maxInterval is uint16 seconds, so anything above
+// 65535 is bogus and would silently disable the watchdog for that node; treat it
+// as "interval unknown" instead.
+const MAX_PLAUSIBLE_INTERVAL_S = 0xffff;
 
 export interface SubscriptionWatchdogContext {
     nodeConnected(peer: PeerAddress): boolean;

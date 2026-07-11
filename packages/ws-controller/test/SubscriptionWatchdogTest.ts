@@ -215,6 +215,28 @@ describe("SubscriptionWatchdog", () => {
         expect(calls.forceUnavailable).to.equal(1); // tripped via fallback, not a 62-day threshold
     });
 
+    it("clamps just above the uint16 spec maximum: 65536s falls back to the 15-minute threshold", async () => {
+        // Matter's maxInterval field is uint16 seconds, so 65535 is the largest value a
+        // real subscription can negotiate; anything above it can only come from a bug.
+        const { dog, calls } = await makeWatchdog({ subscriptionIntervalSeconds: () => 65_536 });
+        dog.registerNode(PEER_1);
+
+        await MockTime.advance(FALLBACK_THRESHOLD_MS + 1_000);
+        await dog.checkNow();
+
+        expect(calls.forceUnavailable).to.equal(1);
+    });
+
+    it("honors the uint16 spec maximum itself: 65535s uses the real ~27h threshold", async () => {
+        const { dog, calls } = await makeWatchdog({ subscriptionIntervalSeconds: () => 65_535 });
+        dog.registerNode(PEER_1);
+
+        await MockTime.advance(FALLBACK_THRESHOLD_MS + 1_000);
+        await dog.checkNow();
+
+        expect(calls.forceUnavailable).to.equal(0); // real threshold ≈ 27h — no trip yet
+    });
+
     it("skips nodes that are not Connected", async () => {
         const { dog, calls } = await makeWatchdog({ nodeConnected: () => false });
         dog.registerNode(PEER_1);
