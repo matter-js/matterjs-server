@@ -10,21 +10,21 @@ import { parseSnapshotCapabilitiesFromList } from "../src/components/webrtc-stre
 // 1=maxFrameRate, 2=imageCodec, 3=requiresEncodedPixels.
 const res = (w: number, h: number) => ({ "0": w, "1": h });
 
-// Aqara G350: encoder-free 640×480 + encoder-required 1080p.
-const G350 = [
+// A camera exposing an encoder-free 640×480 capability plus an encoder-required 1080p one.
+const MIXED_CAPS = [
     { "0": res(640, 480), "1": 30, "2": 0, "3": false },
     { "0": res(1920, 1080), "1": 30, "2": 0, "3": true },
 ];
 
 describe("parseSnapshotCapabilitiesFromList", () => {
     it("prefers the encoder-free capability when a stream is live (preferEncoderFree=true)", () => {
-        const cap = parseSnapshotCapabilitiesFromList(G350, true);
+        const cap = parseSnapshotCapabilitiesFromList(MIXED_CAPS, true);
         expect(cap.requiresEncodedPixels).to.equal(false);
         expect(cap.resolution).to.deep.equal({ width: 640, height: 480 });
     });
 
     it("uses the highest-resolution capability when idle (preferEncoderFree=false)", () => {
-        const cap = parseSnapshotCapabilitiesFromList(G350, false);
+        const cap = parseSnapshotCapabilitiesFromList(MIXED_CAPS, false);
         expect(cap.requiresEncodedPixels).to.equal(true);
         expect(cap.resolution).to.deep.equal({ width: 1920, height: 1080 });
     });

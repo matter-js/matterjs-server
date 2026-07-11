@@ -118,11 +118,10 @@ export function parseSnapshotCapabilitiesFromList(list: unknown[], preferEncoder
         };
     });
     // When preferEncoderFree (a video stream is live), restrict to encoder-free capabilities
-    // (RequiresEncodedPixels=false): with MaxConcurrentEncoders=1 (Aqara G350) the video stream
-    // holds the sole encoder, so only an encoder-free snapshot can be captured concurrently —
-    // on the G350 that is the 640×480 entry, while 1080p requires the encoder. When idle, use the
-    // full set so an idle capture can use the higher-resolution (encoder) capability. Within the
-    // chosen set, take the highest resolution.
+    // (RequiresEncodedPixels=false): a camera with MaxConcurrentEncoders=1 holds its sole encoder
+    // for the video stream, so only an encoder-free capability can be captured concurrently (often
+    // a lower resolution). When idle, use the full set so a capture can use the higher-resolution
+    // (encoder) capability. Within the chosen set, take the highest resolution.
     const encoderFree = parsed.filter(cap => !cap.requiresEncodedPixels);
     const pool = preferEncoderFree && encoderFree.length > 0 ? encoderFree : parsed;
     return pool.reduce((best, cur) =>
@@ -325,10 +324,10 @@ export class WebRtcStreamView extends LitElement {
                     console.warn("[webrtc-stream-view] ontrack fired but <video> query is null");
                     return;
                 }
-                // Cameras may put each track in its own MediaStream (distinct msid, e.g. Aqara's
-                // AqaraVideoStream/AqaraAudioStream), so ev.streams[0] differs per track. Assigning it
-                // to srcObject directly lets the audio track's stream clobber the video track's.
-                // Aggregate every received track into one element-owned MediaStream instead.
+                // Cameras may put each track in its own MediaStream (distinct msid), so
+                // ev.streams[0] differs per track. Assigning it to srcObject directly lets the audio
+                // track's stream clobber the video track's. Aggregate every received track into one
+                // element-owned MediaStream instead.
                 const existing = video.srcObject instanceof MediaStream ? video.srcObject : null;
                 const stream = existing ?? new MediaStream();
                 if (!stream.getTracks().includes(ev.track)) {
@@ -401,8 +400,8 @@ export class WebRtcStreamView extends LitElement {
                     const isResourceExhausted =
                         message.includes("Resource exhausted") || message.includes("(code 137)");
                     if (!isResourceExhausted) throw err;
-                    // Cameras with shared encoder pools (Aqara G350) refuse VideoStreamAllocate
-                    // while a snapshot stream is held — free ours and retry once.
+                    // Cameras with a shared encoder pool refuse VideoStreamAllocate while a snapshot
+                    // stream is held — free ours and retry once.
                     if (this._snapshotStreamId !== null) {
                         console.info(
                             "[webrtc-stream-view] VideoStreamAllocate ResourceExhausted; freeing snapshot stream and retrying",
@@ -827,9 +826,9 @@ export class WebRtcStreamView extends LitElement {
 
         const node = this.client.nodes[String(this.nodeId)];
 
-        // SnapshotCapabilities (attr id 10) — preferred source. Aqara G350 advertises SNP via
-        // FeatureMap bit 2 but ships an empty capabilities list, so fall back to sensible
-        // defaults (matching the resolution range our VideoStream uses) when the list is empty.
+        // SnapshotCapabilities (attr id 10) — preferred source. Some cameras advertise the SNP
+        // feature but ship an empty capabilities list, so fall back to sensible defaults when it
+        // is empty.
         // Once a video stream is allocated the sole encoder (MaxConcurrentEncoders=1) is held —
         // through the whole connecting/streaming phase, not just once "streaming" — so a concurrent
         // snapshot must use an encoder-free capability (typically a lower resolution).

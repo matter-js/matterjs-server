@@ -11,7 +11,7 @@ import {
 } from "../src/util/camera-stream-budget.js";
 
 const RES_1080P = { width: 1920, height: 1080 };
-// Aqara G350 advertises MaxEncodedPixelRate = 1080p @ 120 fps.
+// A camera advertising MaxEncodedPixelRate = 1080p @ 120 fps.
 const BUDGET_1080P_120 = 1920 * 1080 * 120;
 const SNAPSHOT_1080P_30 = 1920 * 1080 * 30;
 
