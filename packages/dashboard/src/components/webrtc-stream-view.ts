@@ -17,6 +17,12 @@ import { LitElement, css, html } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
 import { clientContext } from "../client/client-context.js";
 import { asObject, pickNumber } from "../util/attribute-shapes.js";
+import {
+    pixelRate,
+    planVideoMaxFrameRate,
+    VIDEO_MIN_FRAME_RATE,
+    videoStreamFitsSnapshotBudget,
+} from "../util/camera-stream-budget.js";
 import "./ha-svg-icon.js";
 
 // Spec values from @matter/types globals/StreamUsage.ts and
@@ -29,12 +35,16 @@ const END_REASON_USER_HANGUP = 2;
 export const CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID = 0x551;
 const WEBRTC_TRANSPORT_PROVIDER_CLUSTER_ID = 0x553;
 
-// AVSM FeatureMap bits (spec §11.2.4): WMARK=6 enables watermark overlay,
-// OSD=7 enables on-screen display. When advertised, VideoStreamAllocate and
-// SnapshotStreamAllocate REQUIRE watermarkEnabled / osdEnabled fields.
+// AVSM FeatureMap bits (spec §11.2.4): SNP=2 enables snapshot streams, WMARK=6
+// enables watermark overlay, OSD=7 enables on-screen display. When advertised,
+// VideoStreamAllocate and SnapshotStreamAllocate REQUIRE watermarkEnabled / osdEnabled fields.
+export const AVSM_FEAT_SNP = 1 << 2;
 export const AVSM_FEAT_WMARK = 1 << 6;
 export const AVSM_FEAT_OSD = 1 << 7;
 export const AVSM_FEATURE_MAP_ATTR_ID = 0xfffc;
+// MaxEncodedPixelRate (attr 0x0001): shared encoder budget in px/s that video and
+// snapshot streams draw from.
+const AVSM_MAX_ENCODED_PIXEL_RATE_ATTR_ID = 0x1;
 
 const DEFAULT_MAX_RESOLUTION = { width: 1920, height: 1080 };
 const DEFAULT_MIN_RESOLUTION = { width: 640, height: 480 };
@@ -61,19 +71,22 @@ interface SnapshotCapability {
     resolution: { width: number; height: number };
     maxFrameRate: number;
     imageCodec: number;
+    /** RequiresEncodedPixels — whether this capability draws from MaxEncodedPixelRate. */
+    requiresEncodedPixels: boolean;
 }
 
 const SNAPSHOT_DEFAULTS: SnapshotCapability = {
     resolution: { width: 1920, height: 1080 },
     maxFrameRate: 30,
     imageCodec: 0,
+    requiresEncodedPixels: true,
 };
 
-function parseSnapshotCapabilitiesFromList(list: unknown[]): SnapshotCapability {
+export function parseSnapshotCapabilitiesFromList(list: unknown[], preferEncoderFree: boolean): SnapshotCapability {
     // SnapshotCapabilitiesStruct field IDs per the Matter spec:
-    // 0=resolution (VideoResolutionStruct {0=width, 1=height}), 1=maxFrameRate, 2=imageCodec.
-    // Cached attributes are tag-based (numeric keys); read_attribute responses are name-based.
-    // Prefer the highest-resolution entry — Aqara G350 ships [VGA, 1080p] and 1080p is the useful one.
+    // 0=resolution (VideoResolutionStruct {0=width, 1=height}), 1=maxFrameRate, 2=imageCodec,
+    // 3=requiresEncodedPixels. Cached attributes are tag-based (numeric keys); read_attribute
+    // responses are name-based.
     const candidates = list.map(asObject).filter((c): c is Record<string, unknown> => c !== undefined);
     if (candidates.length === 0) return SNAPSHOT_DEFAULTS;
     const parsed = candidates.map(cap => {
@@ -82,6 +95,7 @@ function parseSnapshotCapabilitiesFromList(list: unknown[]): SnapshotCapability 
         const height = res ? pickNumber(res, "height", "1") : null;
         const maxFrameRate = pickNumber(cap, "maxFrameRate", "1");
         const imageCodec = pickNumber(cap, "imageCodec", "2");
+        const requiresEncodedPixels = cap["requiresEncodedPixels"] ?? cap["3"];
         return {
             resolution: {
                 width: width ?? SNAPSHOT_DEFAULTS.resolution.width,
@@ -89,9 +103,18 @@ function parseSnapshotCapabilitiesFromList(list: unknown[]): SnapshotCapability 
             },
             maxFrameRate: maxFrameRate ?? SNAPSHOT_DEFAULTS.maxFrameRate,
             imageCodec: imageCodec ?? SNAPSHOT_DEFAULTS.imageCodec,
+            requiresEncodedPixels: requiresEncodedPixels !== false,
         };
     });
-    return parsed.reduce((best, cur) =>
+    // When preferEncoderFree (a video stream is live), restrict to encoder-free capabilities
+    // (RequiresEncodedPixels=false): with MaxConcurrentEncoders=1 (Aqara G350) the video stream
+    // holds the sole encoder, so only an encoder-free snapshot can be captured concurrently —
+    // on the G350 that is the 640×480 entry, while 1080p requires the encoder. When idle, use the
+    // full set so an idle capture can use the higher-resolution (encoder) capability. Within the
+    // chosen set, take the highest resolution.
+    const encoderFree = parsed.filter(cap => !cap.requiresEncodedPixels);
+    const pool = preferEncoderFree && encoderFree.length > 0 ? encoderFree : parsed;
+    return pool.reduce((best, cur) =>
         cur.resolution.width * cur.resolution.height > best.resolution.width * best.resolution.height ? cur : best,
     );
 }
@@ -308,11 +331,21 @@ export class WebRtcStreamView extends LitElement {
             const minResolution = this.resolution ?? DEFAULT_MIN_RESOLUTION;
             const maxResolution = this.resolution ?? DEFAULT_MAX_RESOLUTION;
             const avsmFeatures = this._readAvsmFeatures();
+            const maxEncodedPixelRate = this._readMaxEncodedPixelRate();
+            const snapshotReservation = this._snapshotBudgetReservation();
+            // Reserving the whole MaxEncodedPixelRate (e.g. 1080p@120) starves a concurrent
+            // SnapshotStreamAllocate (ResourceExhausted); size the video rate to leave the
+            // snapshot stream room within the shared encoder budget.
+            const videoMaxFrameRate = planVideoMaxFrameRate({
+                maxEncodedPixelRate,
+                videoResolution: maxResolution,
+                snapshotReservation,
+            });
             const videoAllocPayload: Record<string, unknown> = {
                 streamUsage: STREAM_USAGE_LIVE_VIEW,
                 videoCodec: 0,
-                minFrameRate: 30,
-                maxFrameRate: 120,
+                minFrameRate: Math.min(VIDEO_MIN_FRAME_RATE, videoMaxFrameRate),
+                maxFrameRate: videoMaxFrameRate,
                 minResolution,
                 maxResolution,
                 minBitRate: 10000,
@@ -324,16 +357,21 @@ export class WebRtcStreamView extends LitElement {
 
             // Spec §11.2.1.2.1 — server SHALL reuse an existing stream that covers our
             // request. Search AllocatedVideoStreams (attr 0x000F) first to avoid even
-            // sending VideoStreamAllocate when a usable stream is already in place.
-            const reusedVideoId = this._findMatchingVideoStream({
+            // sending VideoStreamAllocate when a usable stream is already in place. Skip
+            // candidates that over-reserve the encoder budget so reuse can't reintroduce
+            // the snapshot ResourceExhausted a fresh allocation avoids.
+            const videoWant = {
                 streamUsage: STREAM_USAGE_LIVE_VIEW,
                 videoCodec: 0,
                 minRes: minResolution,
                 maxRes: maxResolution,
                 watermarkEnabled: avsmFeatures.wmark ? this.watermarkEnabled : undefined,
                 osdEnabled: avsmFeatures.osd ? this.osdEnabled : undefined,
-            });
+                budget: { maxEncodedPixelRate, snapshotReservation },
+            };
+            const reusedVideoId = this._findMatchingVideoStream(videoWant);
             let videoAlloc: unknown = null;
+            let usedFallbackReuse = false;
             if (reusedVideoId !== null) {
                 console.info("[webrtc-stream-view] reusing existing video stream", reusedVideoId);
                 this._videoStreamId = reusedVideoId;
@@ -348,31 +386,48 @@ export class WebRtcStreamView extends LitElement {
                         videoAllocPayload,
                     );
                 } catch (err) {
-                    // Cameras with shared encoder pools (Aqara G350) refuse VideoStreamAllocate
-                    // while a snapshot stream is held. Detect ResourceExhausted (Matter Status 137),
-                    // free the snapshot stream, retry once.
                     const message = err instanceof Error ? err.message : String(err);
                     const isResourceExhausted =
                         message.includes("Resource exhausted") || message.includes("(code 137)");
-                    if (!isResourceExhausted || this._snapshotStreamId === null) throw err;
-                    console.info(
-                        "[webrtc-stream-view] VideoStreamAllocate ResourceExhausted; freeing snapshot stream and retrying",
-                    );
-                    await this.deallocateSnapshot();
-                    videoAlloc = await this.client.deviceCommand(
-                        this.nodeId,
-                        this.endpointId,
-                        CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID,
-                        "VideoStreamAllocate",
-                        videoAllocPayload,
-                    );
+                    if (!isResourceExhausted) throw err;
+                    // Cameras with shared encoder pools (Aqara G350) refuse VideoStreamAllocate
+                    // while a snapshot stream is held — free ours and retry once.
+                    if (this._snapshotStreamId !== null) {
+                        console.info(
+                            "[webrtc-stream-view] VideoStreamAllocate ResourceExhausted; freeing snapshot stream and retrying",
+                        );
+                        await this.deallocateSnapshot();
+                        videoAlloc = await this.client.deviceCommand(
+                            this.nodeId,
+                            this.endpointId,
+                            CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID,
+                            "VideoStreamAllocate",
+                            videoAllocPayload,
+                        );
+                    } else {
+                        // The budget is held by a stream we didn't allocate (e.g. another
+                        // controller's 120 fps stream). Fall back to reusing it so live view
+                        // still works; a concurrent snapshot may then be refused.
+                        const fallbackId = this._findMatchingVideoStream({ ...videoWant, budget: undefined });
+                        if (fallbackId === null) throw err;
+                        console.warn(
+                            "[webrtc-stream-view] VideoStreamAllocate ResourceExhausted; reusing over-budget stream",
+                            fallbackId,
+                            "(concurrent snapshot may be unavailable)",
+                        );
+                        this._videoStreamId = fallbackId;
+                        this._videoStreamOwned = false;
+                        usedFallbackReuse = true;
+                    }
                 }
-                const videoStreamId = parseStreamAllocate(videoAlloc, "videoStreamId");
-                if (videoStreamId === null) {
-                    throw new Error("VideoStreamAllocate did not return a videoStreamId");
+                if (!usedFallbackReuse) {
+                    const videoStreamId = parseStreamAllocate(videoAlloc, "videoStreamId");
+                    if (videoStreamId === null) {
+                        throw new Error("VideoStreamAllocate did not return a videoStreamId");
+                    }
+                    this._videoStreamId = videoStreamId;
+                    this._videoStreamOwned = true;
                 }
-                this._videoStreamId = videoStreamId;
-                this._videoStreamOwned = true;
             }
 
             // Audio is best-effort: not all cameras expose it. Reuse if a matching
@@ -564,7 +619,7 @@ export class WebRtcStreamView extends LitElement {
         };
     }
 
-    private _readAvsmFeatures(): { wmark: boolean; osd: boolean } {
+    private _readAvsmFeatures(): { snp: boolean; wmark: boolean; osd: boolean } {
         const node = this.client?.nodes[String(this.nodeId)];
         const raw =
             node?.attributes[
@@ -572,9 +627,37 @@ export class WebRtcStreamView extends LitElement {
             ];
         const bits = typeof raw === "number" ? raw : 0;
         return {
+            snp: (bits & AVSM_FEAT_SNP) !== 0,
             wmark: (bits & AVSM_FEAT_WMARK) !== 0,
             osd: (bits & AVSM_FEAT_OSD) !== 0,
         };
+    }
+
+    private _readMaxEncodedPixelRate(): number | null {
+        const node = this.client?.nodes[String(this.nodeId)];
+        const raw =
+            node?.attributes[
+                `${this.endpointId}/${CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID}/${AVSM_MAX_ENCODED_PIXEL_RATE_ATTR_ID}`
+            ];
+        return typeof raw === "number" && raw > 0 ? raw : null;
+    }
+
+    /**
+     * px/s a concurrent snapshot stream would reserve from MaxEncodedPixelRate, so the
+     * video stream can be sized to leave room. Zero when the camera has no snapshot feature
+     * or the chosen capability does not draw from the encoder budget.
+     */
+    private _snapshotBudgetReservation(): number {
+        if (!this._readAvsmFeatures().snp) return 0;
+        const node = this.client?.nodes[String(this.nodeId)];
+        const capsRaw = node?.attributes[`${this.endpointId}/${CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID}/10`];
+        const cap =
+            Array.isArray(capsRaw) && capsRaw.length > 0
+                ? parseSnapshotCapabilitiesFromList(capsRaw, true)
+                : SNAPSHOT_DEFAULTS;
+        if (!cap.requiresEncodedPixels) return 0;
+        const resolution = this.snapshotResolution ?? cap.resolution;
+        return pixelRate(resolution, cap.maxFrameRate);
     }
 
     async deallocateSnapshot(): Promise<void> {
@@ -611,6 +694,7 @@ export class WebRtcStreamView extends LitElement {
         maxRes: { width: number; height: number };
         watermarkEnabled?: boolean;
         osdEnabled?: boolean;
+        budget?: { maxEncodedPixelRate: number | null; snapshotReservation: number };
     }): number | null {
         const node = this.client?.nodes[String(this.nodeId)];
         const list = node?.attributes[`${this.endpointId}/${CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID}/15`];
@@ -630,6 +714,19 @@ export class WebRtcStreamView extends LitElement {
             const eMaxH = pickNumber(maxRes, "height", "1") ?? 0;
             if (eMinW > want.minRes.width || eMaxW < want.maxRes.width) continue;
             if (eMinH > want.minRes.height || eMaxH < want.maxRes.height) continue;
+            if (want.budget) {
+                // Unknown frame rate under a real budget can't be shown to fit → treat as infinite
+                // (skip). When the budget is unknown, videoStreamFitsSnapshotBudget short-circuits to
+                // true regardless, so an unparseable frame rate doesn't wrongly block reuse.
+                const eMaxFrameRate = pickNumber(obj, "maxFrameRate", "4") ?? Number.POSITIVE_INFINITY;
+                const fits = videoStreamFitsSnapshotBudget({
+                    maxEncodedPixelRate: want.budget.maxEncodedPixelRate,
+                    candidateResolution: { width: eMaxW, height: eMaxH },
+                    candidateFrameRate: eMaxFrameRate,
+                    snapshotReservation: want.budget.snapshotReservation,
+                });
+                if (!fits) continue;
+            }
             if (want.watermarkEnabled !== undefined) {
                 const v = obj["watermarkEnabled"] ?? obj["10"];
                 if (v !== want.watermarkEnabled) continue;
@@ -720,12 +817,21 @@ export class WebRtcStreamView extends LitElement {
         // SnapshotCapabilities (attr id 10) — preferred source. Aqara G350 advertises SNP via
         // FeatureMap bit 2 but ships an empty capabilities list, so fall back to sensible
         // defaults (matching the resolution range our VideoStream uses) when the list is empty.
+        // Once a video stream is allocated the sole encoder (MaxConcurrentEncoders=1) is held —
+        // through the whole connecting/streaming phase, not just once "streaming" — so a concurrent
+        // snapshot must use an encoder-free capability (typically a lower resolution).
+        const encoderBusy = this._videoStreamId !== null;
         const capsRaw = node?.attributes[`${this.endpointId}/${CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID}/10`];
         const cap: SnapshotCapability =
             Array.isArray(capsRaw) && capsRaw.length > 0
-                ? parseSnapshotCapabilitiesFromList(capsRaw)
+                ? parseSnapshotCapabilitiesFromList(capsRaw, encoderBusy)
                 : SNAPSHOT_DEFAULTS;
-        const targetResolution = this.snapshotResolution ?? cap.resolution;
+        // Never request more than the chosen capability provides: a larger resolution would map
+        // to an encoder-requiring capability the busy encoder can't satisfy (ResourceExhausted).
+        let targetResolution = this.snapshotResolution ?? cap.resolution;
+        if (targetResolution.width > cap.resolution.width || targetResolution.height > cap.resolution.height) {
+            targetResolution = cap.resolution;
+        }
 
         const avsmFeatures = this._readAvsmFeatures();
 
