@@ -13,6 +13,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import { clientContext } from "../client/client-context.js";
 import { handleAsync, handleAsyncEvent } from "../util/async-handler.js";
 import {
+    clampMptzDelta,
     dptzRelativeMove,
     hasAvsumOnEndpoint,
     moveToPreset,
@@ -20,6 +21,7 @@ import {
     readMovementState,
     readPosition,
     readPresets,
+    readRanges,
     relativeMove,
 } from "../util/avsum.js";
 import "./ha-svg-icon.js";
@@ -223,7 +225,11 @@ export class AvsumPtzStrip extends LitElement {
                 if (axis === "pan") delta.panDelta = step;
                 else if (axis === "tilt") delta.tiltDelta = step;
                 else delta.zoomDelta = step;
-                await relativeMove(this.client, this.nodeId, this.endpointId, delta);
+                const node = this._node;
+                const clamped = node
+                    ? clampMptzDelta(delta, readPosition(node, this.endpointId), readRanges(node, this.endpointId))
+                    : delta;
+                await relativeMove(this.client, this.nodeId, this.endpointId, clamped);
             } else {
                 if (this.activeVideoStreamId === null) return;
                 // step magnitude (10 or 1) scales the sensor-relative pixel delta so Shift gives 1% nudges.

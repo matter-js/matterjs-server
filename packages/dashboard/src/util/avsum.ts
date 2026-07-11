@@ -154,6 +154,33 @@ export function readDptzStreams(node: MatterNode, endpoint: number): DptzStreamE
     return out;
 }
 
+/**
+ * Clamp a mechanical PTZ relative move so the resulting absolute position stays within the
+ * device-advertised ranges (zoom minimum is fixed at 1×). Axes whose current position or bound is
+ * unknown pass through unclamped, since we can't compute a safe target.
+ */
+export function clampMptzDelta(
+    delta: { panDelta?: number; tiltDelta?: number; zoomDelta?: number },
+    position: MptzPosition,
+    ranges: MptzRanges,
+): { panDelta?: number; tiltDelta?: number; zoomDelta?: number } {
+    const clampAxis = (d: number, current: number | null, min: number | null, max: number | null): number => {
+        if (current === null || min === null || max === null || min > max) return d;
+        const adjusted = Math.min(max, Math.max(min, current + d)) - current;
+        // A current position already outside [min,max] would otherwise make `adjusted` reverse the
+        // requested direction or exceed its magnitude; keep it between 0 and d (same sign, no larger).
+        return d >= 0 ? Math.max(0, Math.min(d, adjusted)) : Math.min(0, Math.max(d, adjusted));
+    };
+    const out: { panDelta?: number; tiltDelta?: number; zoomDelta?: number } = {};
+    if (delta.panDelta !== undefined)
+        out.panDelta = clampAxis(delta.panDelta, position.pan, ranges.panMin, ranges.panMax);
+    if (delta.tiltDelta !== undefined) {
+        out.tiltDelta = clampAxis(delta.tiltDelta, position.tilt, ranges.tiltMin, ranges.tiltMax);
+    }
+    if (delta.zoomDelta !== undefined) out.zoomDelta = clampAxis(delta.zoomDelta, position.zoom, 1, ranges.zoomMax);
+    return out;
+}
+
 export async function relativeMove(
     client: MatterClient,
     nodeId: number | bigint,

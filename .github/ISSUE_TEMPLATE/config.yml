@@ -6,3 +6,6 @@ contact_links:
   - name: I'm looking for documentation how to setup Matter in Home Assistant
     url: https://www.home-assistant.io/integrations/matter/
     about: We have extensive documentation for Matter on our website.
+  - name: I have a usage question or want to discuss something
+    url: https://www.home-assistant.io/join-chat/
+    about: For usage questions and general discussion, join the Home Assistant Discord and use the Matter channel instead of opening an issue.
