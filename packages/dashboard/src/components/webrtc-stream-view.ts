@@ -82,6 +82,14 @@ const SNAPSHOT_DEFAULTS: SnapshotCapability = {
     requiresEncodedPixels: true,
 };
 
+/** A snapshot capability provides a single max resolution; never request more than it offers. */
+function clampToCapability(
+    requested: { width: number; height: number },
+    cap: { width: number; height: number },
+): { width: number; height: number } {
+    return requested.width > cap.width || requested.height > cap.height ? cap : requested;
+}
+
 export function parseSnapshotCapabilitiesFromList(list: unknown[], preferEncoderFree: boolean): SnapshotCapability {
     // SnapshotCapabilitiesStruct field IDs per the Matter spec:
     // 0=resolution (VideoResolutionStruct {0=width, 1=height}), 1=maxFrameRate, 2=imageCodec,
@@ -656,7 +664,9 @@ export class WebRtcStreamView extends LitElement {
                 ? parseSnapshotCapabilitiesFromList(capsRaw, true)
                 : SNAPSHOT_DEFAULTS;
         if (!cap.requiresEncodedPixels) return 0;
-        const resolution = this.snapshotResolution ?? cap.resolution;
+        // Match the clamp _ensureSnapshotStream applies so the reservation reflects what will
+        // actually be requested, not an over-large snapshotResolution the capability can't provide.
+        const resolution = clampToCapability(this.snapshotResolution ?? cap.resolution, cap.resolution);
         return pixelRate(resolution, cap.maxFrameRate);
     }
 
@@ -828,10 +838,7 @@ export class WebRtcStreamView extends LitElement {
                 : SNAPSHOT_DEFAULTS;
         // Never request more than the chosen capability provides: a larger resolution would map
         // to an encoder-requiring capability the busy encoder can't satisfy (ResourceExhausted).
-        let targetResolution = this.snapshotResolution ?? cap.resolution;
-        if (targetResolution.width > cap.resolution.width || targetResolution.height > cap.resolution.height) {
-            targetResolution = cap.resolution;
-        }
+        const targetResolution = clampToCapability(this.snapshotResolution ?? cap.resolution, cap.resolution);
 
         const avsmFeatures = this._readAvsmFeatures();
 
