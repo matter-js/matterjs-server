@@ -166,7 +166,10 @@ export function clampMptzDelta(
 ): { panDelta?: number; tiltDelta?: number; zoomDelta?: number } {
     const clampAxis = (d: number, current: number | null, min: number | null, max: number | null): number => {
         if (current === null || min === null || max === null || min > max) return d;
-        return Math.min(max, Math.max(min, current + d)) - current;
+        const adjusted = Math.min(max, Math.max(min, current + d)) - current;
+        // A current position already outside [min,max] would otherwise make `adjusted` reverse the
+        // requested direction or exceed its magnitude; keep the move within [0, d].
+        return d >= 0 ? Math.max(0, Math.min(d, adjusted)) : Math.min(0, Math.max(d, adjusted));
     };
     const out: { panDelta?: number; tiltDelta?: number; zoomDelta?: number } = {};
     if (delta.panDelta !== undefined)
