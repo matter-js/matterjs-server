@@ -199,7 +199,6 @@ export class NodeDetails extends LitElement {
                 title: "Reinterview node",
                 text: "Success!",
             });
-            location.hash = "#";
         } catch (err: any) {
             showAlertDialog({
                 title: "Failed to reinterview node",
