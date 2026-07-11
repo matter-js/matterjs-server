@@ -46,6 +46,14 @@ describe("parseSnapshotCapabilitiesFromList", () => {
         expect(cap.resolution).to.deep.equal({ width: 1920, height: 1080 });
     });
 
+    it("skips non-object entries without crashing", () => {
+        const cap = parseSnapshotCapabilitiesFromList(
+            [null, 42, { "0": res(1920, 1080), "1": 30, "2": 0, "3": true }],
+            true,
+        );
+        expect(cap.resolution).to.deep.equal({ width: 1920, height: 1080 });
+    });
+
     it("parses name-based (read_attribute) shapes and treats a missing flag as encoder-requiring", () => {
         const cap = parseSnapshotCapabilitiesFromList(
             [{ resolution: { width: 1280, height: 720 }, maxFrameRate: 15, imageCodec: 0 }],

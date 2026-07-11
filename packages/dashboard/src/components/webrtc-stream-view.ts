@@ -82,12 +82,15 @@ const SNAPSHOT_DEFAULTS: SnapshotCapability = {
     requiresEncodedPixels: true,
 };
 
-/** A snapshot capability provides a single max resolution; never request more than it offers. */
+/** Clamp a requested resolution down to a capability's max, per dimension (never increases either). */
 function clampToCapability(
     requested: { width: number; height: number },
     cap: { width: number; height: number },
 ): { width: number; height: number } {
-    return requested.width > cap.width || requested.height > cap.height ? cap : requested;
+    return {
+        width: Math.min(requested.width, cap.width),
+        height: Math.min(requested.height, cap.height),
+    };
 }
 
 export function parseSnapshotCapabilitiesFromList(list: unknown[], preferEncoderFree: boolean): SnapshotCapability {
@@ -95,7 +98,7 @@ export function parseSnapshotCapabilitiesFromList(list: unknown[], preferEncoder
     // 0=resolution (VideoResolutionStruct {0=width, 1=height}), 1=maxFrameRate, 2=imageCodec,
     // 3=requiresEncodedPixels. Cached attributes are tag-based (numeric keys); read_attribute
     // responses are name-based.
-    const candidates = list.map(asObject).filter((c): c is Record<string, unknown> => c !== undefined);
+    const candidates = list.map(asObject).filter((c): c is Record<string, unknown> => c !== null);
     if (candidates.length === 0) return SNAPSHOT_DEFAULTS;
     const parsed = candidates.map(cap => {
         const res = asObject(cap["resolution"] ?? cap["0"]);
