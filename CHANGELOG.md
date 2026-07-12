@@ -10,6 +10,9 @@ This page shows a detailed overview of the changes between versions without the 
 ## **WORK IN PROGRESS**
 
 - Enhancement: Update Docker base images to Debian trixie with the current Node 24 version
+- Fix: Some more camera fixes in the dashboard
+- Fix: Update matter.js to the latest 0.17.5 nightly
+    - Tolerate non-compliant peers omitting mandatory Descriptor lists
 
 ## 1.2.3 (2026-07-11)
 
