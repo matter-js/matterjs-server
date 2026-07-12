@@ -7,7 +7,7 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
-## **WORK IN PROGRESS**
+## 1.2.4 (2026-07-12)
 
 - Enhancement: Update Docker base images to Debian trixie with the current Node 24 version
 - Fix: Some more camera fixes in the dashboard
