@@ -53,7 +53,7 @@
         "python-ble-proxy:run": "cd python_ble_proxy && { [ -x .venv/bin/matter-ble-proxy ] || (python3 -m venv .venv && .venv/bin/pip install -e .); } && .venv/bin/matter-ble-proxy"
     },
     "devDependencies": {
-        "@matter/testing": "0.17.5-alpha.0-20260710-82b39217b",
+        "@matter/testing": "0.17.5-alpha.0-20260711-a60245c75",
         "@nacho-iot/js-tools": "^0.1.7",
         "@types/mocha": "^10.0.10",
         "glob": "^13.0.6",
@@ -69,5 +69,18 @@
             "diff": "^9.0.0",
             "serialize-javascript": "^7.0.5"
         }
+    },
+    "allowScripts": {
+        "cpu-features@0.0.10": true,
+        "esbuild@0.28.1": true,
+        "protobufjs@7.6.5": true,
+        "ssh2@1.17.0": true,
+        "usb@2.18.0": true,
+        "@serialport/bindings-cpp@12.0.1": true,
+        "@stoprocent/bleno@0.12.5": true,
+        "@stoprocent/bluetooth-hci-socket@2.2.6": true,
+        "@stoprocent/noble@2.5.5": true,
+        "fsevents@2.3.2": true,
+        "fsevents@2.3.3": true
     }
 }
