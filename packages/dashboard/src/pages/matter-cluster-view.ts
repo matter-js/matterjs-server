@@ -377,6 +377,7 @@ class MatterClusterView extends LitElement {
         // Reset per-attribute refresh state when navigating to a different cluster/endpoint.
         if (changedProperties.has("cluster") || changedProperties.has("endpoint")) {
             this._refreshState = {};
+            this._scrollCommandPanelIntoView();
         }
 
         // After render, find and configure the cluster commands component
@@ -389,6 +390,14 @@ class MatterClusterView extends LitElement {
                 commandsElement.cluster = this.cluster;
             }
         }
+    }
+
+    // Route change resets scroll to top; for clusters with a command panel land on the panel instead.
+    private _scrollCommandPanelIntoView() {
+        requestAnimationFrame(() => {
+            const container = this.shadowRoot?.getElementById("cluster-commands-container");
+            container?.scrollIntoView({ block: "start", behavior: "auto" });
+        });
     }
 
     private _goBack() {

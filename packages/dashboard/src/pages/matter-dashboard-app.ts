@@ -64,6 +64,9 @@ class MatterDashboardApp extends LitElement {
             const hash = location.hash.substring(1);
             const pathParts = hash.split("/");
 
+            // Single scroll container: without this a route change keeps the previous view's offset.
+            window.scrollTo(0, 0);
+
             // Reset initial selected node
             this._initialSelectedNodeId = null;
 
