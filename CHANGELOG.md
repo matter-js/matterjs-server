@@ -11,6 +11,7 @@ This page shows a detailed overview of the changes between versions without the 
 
 - Enhancement: Update Docker base images to Debian trixie with the current Node 24 version
 - Fix: Some more camera fixes in the dashboard
+- Fix: Dashboard resets scroll position on navigation and focuses cluster command panels (ICD, ACL, Binding)
 - Fix: Update matter.js to the latest 0.17.5 nightly
     - Tolerate non-compliant peers omitting mandatory Descriptor lists
 
