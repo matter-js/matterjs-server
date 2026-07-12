@@ -144,6 +144,38 @@ When the full `npm test` reports only these matter-server integration failures a
 
 Plan/design documents in `docs/plans/` are working files only. **Never commit them to git.** They may exist locally for reference but must not be included in any commit.
 
+### Code Comments
+
+WHY not WHAT. Only add a WHAT comment if the logic is genuinely non-obvious. Keep comments minimal. Audit every `//` and `/** */` before commit; **default to deleting, not shortening** — a wordy comment that survives review shorter is still a failure.
+
+**Decisive test (primary lens):** *"Would I need this comment to understand the code later if I had to fix something right here?"* If no → delete. This catches the true-but-useless comment the checklist below lets slip.
+
+Before adding any comment, ask in order:
+
+1. Does the commit message / `git blame` already carry this context? → no comment.
+2. Would a reader seeing only the final code (not the diff) benefit? → if no, no comment.
+3. Does the code already speak for itself via identifiers + jsdoc? → if yes, no comment.
+4. Am I narrating the change I just made rather than stating an invariant of the code? → put it in the commit message, not the code.
+5. Can I say the WHY in ≤1 line? → if no, it's almost certainly over-explanation.
+
+**Acceptable (rare) — keep to 1 line:**
+
+- An invariant a future refactor could innocently break (forward-looking).
+- A non-obvious spec / RFC / library constraint the code depends on.
+- A tradeoff record ("we accept X because Y is worse").
+- Cross-file / library coupling the type system can't express.
+
+Example from this codebase: `// Shared Observable: an uncaught throw here aborts the emit and starves other connections` on a `try/catch` around an observer body — matter.js's `Observable.emit` catches each observer error but its default `handleError` *rethrows*, so a per-connection throw aborts the shared emit and starves other connections; without the comment a future fixer assumes the guard is redundant and removes it.
+
+**Always-bad (delete on sight):**
+
+- WHAT-restatement of an identifier or `if` condition (`// Store event in the buffer` above `this.#addEventToHistory(...)`).
+- Changelog / historical narration ("Moved from A to B because…", "this used to do Y").
+- "Now do X" above code that does X; multi-line explanations of what the diff does.
+- Pointing at structure the reader can see ("Cleanup lives on an outer `.finally`", "Using a Map keyed by X").
+- Mechanism trivia about standard APIs (".finally runs in a microtask", "Promise.all rejects on first failure").
+- Rejected-alternative justification (`// .then().catch(), not .then(a,b)…`) — once the code IS that form, what it *isn't* is irrelevant; state the invariant, not the counterfactual.
+
 ## Dashboard Development
 
 ### Technology Stack
