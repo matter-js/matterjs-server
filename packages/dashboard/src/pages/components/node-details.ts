@@ -16,7 +16,6 @@ import { MatterClient, MatterNode, UpdateSource } from "@matter-server/ws-client
 import { mdiChatProcessing, mdiPencil, mdiShareVariant, mdiTrashCan, mdiUpdate, mdiVideo } from "@mdi/js";
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
-import { unsafeSVG } from "lit/directives/unsafe-svg.js";
 import { clientContext, tickContext } from "../../client/client-context.js";
 import { DeviceType } from "../../client/models/descriptions.js";
 import { showAlertDialog, showPromptDialog } from "../../components/dialog-box/show-dialog-box.js";
@@ -27,7 +26,7 @@ import "../camera-overlay.js";
 import { getDeviceIcon } from "../../util/device-icons.js";
 import { getEndpointDeviceTypes } from "../../util/endpoints.js";
 import { ICD_CLUSTER_ID, icdBadge } from "../../util/icd.js";
-import { formatManualPairingCode, renderPairingQrCodeSvg } from "../../util/pairing-code.js";
+import { formatManualPairingCode, renderPairingQrCodeDataUri } from "../../util/pairing-code.js";
 import { bindingContext } from "./context.js";
 
 /** Map updateState values to user-friendly labels */
@@ -323,12 +322,12 @@ export class NodeDetails extends LitElement {
         try {
             const shareCode = await this.client.openCommissioningWindow(this.node!.node_id);
             const manualCode = formatManualPairingCode(shareCode.setup_manual_code);
-            const qrSvg = unsafeSVG(renderPairingQrCodeSvg(shareCode.setup_qr_code));
+            const qrDataUri = renderPairingQrCodeDataUri(shareCode.setup_qr_code);
             showAlertDialog({
                 title: "Share device",
                 text: html`
                     <div style="display:flex;flex-direction:column;align-items:center;gap:16px;">
-                        <div style="background:#fff;padding:12px;border-radius:8px;line-height:0;">${qrSvg}</div>
+                        <img src=${qrDataUri} alt="Commissioning QR code" style="width:200px;height:200px;" />
                         <div style="text-align:center;">
                             <div style="font-size:0.8rem;color:var(--md-sys-color-on-surface-variant);">Setup code</div>
                             <div style="font-size:1.4rem;font-family:monospace;letter-spacing:0.05em;">

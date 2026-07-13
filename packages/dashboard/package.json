@@ -28,7 +28,8 @@
         "generate": "tsx scripts/generate-descriptions.ts",
         "build": "npm run generate && nacho-build && npm run bundle",
         "build-clean": "npm run generate && nacho-build --clean && npm run bundle",
-        "bundle": "rollup -c"
+        "bundle": "rollup -c",
+        "test": "matter-test --force-exit"
     },
     "dependencies": {
         "@lit/context": "^1.1.6",

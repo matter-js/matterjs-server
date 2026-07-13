@@ -8,8 +8,8 @@ import qrcode from "qrcode-generator";
 
 /**
  * Format a Matter manual pairing code for display. The 11-digit short code is
- * grouped as `XXXX-XXX-XXXX` per the Matter spec; other lengths are returned
- * with digits only.
+ * grouped as `XXXX-XXX-XXXX` per the Matter spec; codes of any other length are
+ * returned stripped to their digits, or unchanged when they contain no digits.
  */
 export function formatManualPairingCode(code: string): string {
     const digits = code.replace(/\D/g, "");
@@ -20,13 +20,13 @@ export function formatManualPairingCode(code: string): string {
 }
 
 /**
- * Render a Matter QR pairing payload (the `MT:...` string) as an SVG QR code.
- * Modules are drawn black on a transparent background, so callers must place it
- * on a light surface to stay scannable in dark mode.
+ * Render a Matter QR pairing payload (the `MT:...` string) as an SVG data URI.
+ * The generated SVG carries an opaque white background, so the code stays
+ * scannable regardless of the surrounding theme.
  */
-export function renderPairingQrCodeSvg(qrPayload: string, cellSize = 5, margin = 4): string {
+export function renderPairingQrCodeDataUri(qrPayload: string, cellSize = 5, margin = 4): string {
     const qr = qrcode(0, "M");
     qr.addData(qrPayload);
     qr.make();
-    return qr.createSvgTag(cellSize, margin);
+    return `data:image/svg+xml,${encodeURIComponent(qr.createSvgTag(cellSize, margin))}`;
 }
