@@ -7,7 +7,7 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
-## **WORK IN PROGRESS**
+## 1.2.5 (2026-07-13)
 
 - Enhancement: Update matter.js to 0.17.5
 - Enhancement: Add a QR code when using the dashboard to share a device
