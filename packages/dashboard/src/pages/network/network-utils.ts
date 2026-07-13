@@ -150,6 +150,51 @@ export function getThreadRoleName(role: number | undefined): string {
     }
 }
 
+/** Tooltip-friendly long form of {@link getThreadRoleName}. */
+export function getThreadRoleDescription(role: number | undefined): string {
+    switch (role) {
+        case 2:
+            return "Sleepy End Device: keeps its radio off while idle to save battery and reaches the mesh only through a parent router. The links shown for it can include stale router-table entries for Thread addresses it no longer uses.";
+        case 3:
+            return "End Device: a leaf node that reaches the mesh through a parent router and does not route for other nodes. The links shown for it can include stale router-table entries for old or unused Thread addresses.";
+        case 4:
+            return "REED (Router-Eligible End Device): currently acts as an end device but can be promoted to a full Router when the mesh needs more routing capacity.";
+        case 5:
+            return "Router: forwards traffic for other nodes in the Thread mesh.";
+        case 6:
+            return "Leader: the elected node that manages router assignments for the Thread network.";
+        case 0:
+        case 1:
+            return "Thread routing role is unassigned or unspecified.";
+        default:
+            return "Thread routing role could not be determined.";
+    }
+}
+
+/**
+ * Cases a Thread node shown as unknown/external may actually be. These devices are
+ * inferred from a commissioned node's neighbor table; the code cannot tell the cases
+ * apart, so the copy enumerates the possibilities rather than asserting one.
+ */
+export const EXTERNAL_THREAD_DEVICE_CASES = [
+    "a device commissioned to another Matter fabric on the same Thread network",
+    "a native (non-Matter) Thread accessory",
+    "a Border Router whose Thread radio MAC differs from its MeshCoP border-agent ID (common with Apple and Aqara)",
+    "a stale neighbor entry for a device that has left",
+] as const;
+
+/** Single-sentence form of {@link EXTERNAL_THREAD_DEVICE_CASES} for plain-text tooltips. */
+export const EXTERNAL_THREAD_DEVICE_EXPLANATION = `Seen in a commissioned node's Thread neighbor table but not part of this fabric. It may be ${EXTERNAL_THREAD_DEVICE_CASES.slice(0, -1).join(", ")}, or ${EXTERNAL_THREAD_DEVICE_CASES[EXTERNAL_THREAD_DEVICE_CASES.length - 1]}.`;
+
+/**
+ * `isRouter` for an external neighbor is derived from rx-on-when-idle, so it means
+ * router-capable (mains-powered), not a confirmed routing role.
+ */
+export const EXTERNAL_ROUTER_CAPABLE_NOTE = `"Router" here means the neighbor advertised rx-on-when-idle (mains-powered / router-capable), not a confirmed routing role.`;
+
+export const DIAGNOSTIC_MESH_NODE_EXPLANATION =
+    "Inferred from Border Router diagnostics (Route64 / child table) and not commissioned to this fabric, so no device details are available.";
+
 /**
  * Gets WiFi security type name.
  */

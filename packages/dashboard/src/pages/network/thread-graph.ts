@@ -27,6 +27,9 @@ import {
     buildRloc16Map,
     buildThreadEdgePairs,
     decodeMeshcopStateBitmap,
+    DIAGNOSTIC_MESH_NODE_EXPLANATION,
+    EXTERNAL_ROUTER_CAPABLE_NOTE,
+    EXTERNAL_THREAD_DEVICE_EXPLANATION,
     findDiagnosticMeshNodes,
     findUnknownDevices,
     makeDiagnosticRloc16Resolver,
@@ -36,6 +39,7 @@ import {
     getNetworkType,
     getThreadExtendedAddressHex,
     getThreadRole,
+    getThreadRoleDescription,
     mergeDiagnosticEdges,
     signalLevelToColor,
     stripMdnsHostname,
@@ -340,6 +344,7 @@ export class ThreadGraph extends BaseNetworkGraph {
             return {
                 id: nodeId,
                 label: getDeviceName(node),
+                title: getThreadRoleDescription(threadRole),
                 image: createNodeIconDataUrl(node, threadRole, false, isOffline),
                 shape: "image" as const,
                 networkType: "thread" as const,
@@ -401,9 +406,16 @@ export class ThreadGraph extends BaseNetworkGraph {
                 const decodedState = decodeMeshcopStateBitmap(device.stateBitmapHex);
                 const isLeader = decodedState?.threadRoleValue === 3;
                 const isPrimaryBbr = decodedState?.bbr === true && decodedState.bbrFunction === "primary";
+                const brRole = new Array<string>();
+                if (isLeader) brRole.push("currently the Thread Leader");
+                if (isPrimaryBbr) brRole.push("Primary Backbone Border Router (BBR)");
+                const brTitle =
+                    "Thread Border Router bridging the Thread mesh to the IP network" +
+                    (brRole.length > 0 ? ` — ${brRole.join("; ")}.` : ".");
                 graphNodes.push({
                     id: device.id,
                     label,
+                    title: brTitle,
                     image: createBorderRouterIconDataUrl(isSelected, isLeader, isPrimaryBbr),
                     shape: "image" as const,
                     networkType: "thread" as const,
@@ -415,9 +427,13 @@ export class ThreadGraph extends BaseNetworkGraph {
                 const typeLabel =
                     diagNode?.vendorName !== undefined ? `${baseType} (${diagNode.vendorName})` : baseType;
                 const suffix = device.networkName !== undefined ? `\n${device.networkName}` : "";
+                const title = device.isRouter
+                    ? `${EXTERNAL_THREAD_DEVICE_EXPLANATION} ${EXTERNAL_ROUTER_CAPABLE_NOTE}`
+                    : EXTERNAL_THREAD_DEVICE_EXPLANATION;
                 graphNodes.push({
                     id: device.id,
                     label: `${typeLabel} [${device.extAddressHex.slice(-8)}]${suffix}`,
+                    title,
                     image: createUnknownDeviceIconDataUrl(device.isRouter, isSelected),
                     shape: "image" as const,
                     networkType: "thread" as const,
@@ -485,6 +501,7 @@ export class ThreadGraph extends BaseNetworkGraph {
             graphNodes.push({
                 id: meshNode.id,
                 label,
+                title: DIAGNOSTIC_MESH_NODE_EXPLANATION,
                 image: createUnknownDeviceIconDataUrl(meshNode.isRouter, meshNode.id === this._selectedNodeId),
                 shape: "image" as const,
                 networkType: "thread" as const,

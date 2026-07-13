@@ -37,12 +37,16 @@ import {
     formatThreadVersion,
     getDeviceName,
     getNetworkType,
+    DIAGNOSTIC_MESH_NODE_EXPLANATION,
+    EXTERNAL_ROUTER_CAPABLE_NOTE,
+    EXTERNAL_THREAD_DEVICE_CASES,
     getNodeConnectionsFromPairs,
     getRoutableDestinationsCount,
     getSignalColorFromRssi,
     getThreadChannel,
     getThreadExtendedAddressHex,
     getThreadRole,
+    getThreadRoleDescription,
     getThreadRoleName,
     getThreadVersion,
     getWiFiDiagnostics,
@@ -237,6 +241,7 @@ export class NetworkDetails extends LitElement {
                     <span class="label">Role:</span>
                     <span class="value">${getThreadRoleName(threadRole)}</span>
                 </div>
+                <p class="hint-text inline-note">${getThreadRoleDescription(threadRole)}</p>
                 ${threadVersion !== undefined
                     ? html`
                           <div class="info-row">
@@ -482,10 +487,7 @@ export class NetworkDetails extends LitElement {
 
             <md-divider></md-divider>
             <div class="section">
-                <p class="hint-text">
-                    This node was inferred from Border Router diagnostics (Route64 / child table) and is not
-                    commissioned to this fabric, so no device details are available.
-                </p>
+                <p class="hint-text">${DIAGNOSTIC_MESH_NODE_EXPLANATION}</p>
             </div>
         `;
     }
@@ -504,6 +506,9 @@ export class NetworkDetails extends LitElement {
                     <span class="label">Type:</span>
                     <span class="value">${unknown.isRouter ? "Router (external)" : "End Device (external)"}</span>
                 </div>
+                ${unknown.isRouter
+                    ? html`<p class="hint-text inline-note">${EXTERNAL_ROUTER_CAPABLE_NOTE}</p>`
+                    : nothing}
                 <div class="info-row">
                     <span class="label">Extended Address:</span>
                     <span class="value mono">${unknown.extAddressHex}</span>
@@ -539,10 +544,12 @@ export class NetworkDetails extends LitElement {
             <md-divider></md-divider>
             <div class="section">
                 <p class="hint-text">
-                    This device appears in Thread neighbor tables but is not commissioned to this fabric. It may be a
-                    Thread Border Router whose Thread radio MAC differs from its MeshCoP border-agent ID (common with
-                    Apple and Aqara), or a device from another Matter ecosystem.
+                    This device appears in a commissioned node's Thread neighbor table but is not part of this fabric.
+                    It may be:
                 </p>
+                <ul class="hint-text">
+                    ${EXTERNAL_THREAD_DEVICE_CASES.map(c => html`<li>${c}</li>`)}
+                </ul>
             </div>
         `;
     }
@@ -1826,6 +1833,14 @@ export class NetworkDetails extends LitElement {
                 color: var(--md-sys-color-on-surface-variant, #666);
                 line-height: 1.4;
                 margin: 0;
+            }
+
+            .hint-text.inline-note {
+                margin-top: 6px;
+                margin-bottom: 4px;
+                padding-left: 10px;
+                border-left: 2px solid var(--md-sys-color-outline-variant, #ccc);
+                font-size: 0.72rem;
             }
 
             .connected-nodes-list {

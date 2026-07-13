@@ -35,6 +35,8 @@ export interface NetworkGraphNode {
     shape: "image";
     networkType: NetworkType;
     threadRole?: ThreadRoutingRole;
+    /** Hover tooltip (vis.js): role or unknown/external explanation. */
+    title?: string;
     /** Whether the node is offline */
     offline?: boolean;
     /** Whether this is an unknown/external device */
