@@ -26,6 +26,7 @@ import "../camera-overlay.js";
 import { getDeviceIcon } from "../../util/device-icons.js";
 import { getEndpointDeviceTypes } from "../../util/endpoints.js";
 import { ICD_CLUSTER_ID, icdBadge } from "../../util/icd.js";
+import { formatManualPairingCode, renderPairingQrCodeDataUri } from "../../util/pairing-code.js";
 import { bindingContext } from "./context.js";
 
 /** Map updateState values to user-friendly labels */
@@ -320,9 +321,21 @@ export class NodeDetails extends LitElement {
         }
         try {
             const shareCode = await this.client.openCommissioningWindow(this.node!.node_id);
+            const manualCode = formatManualPairingCode(shareCode.setup_manual_code);
+            const qrDataUri = renderPairingQrCodeDataUri(shareCode.setup_qr_code);
             showAlertDialog({
                 title: "Share device",
-                text: `Setup code: ${shareCode.setup_manual_code}`,
+                text: html`
+                    <div style="display:flex;flex-direction:column;align-items:center;gap:16px;">
+                        <img src=${qrDataUri} alt="Commissioning QR code" style="width:200px;height:200px;" />
+                        <div style="text-align:center;">
+                            <div style="font-size:0.8rem;color:var(--md-sys-color-on-surface-variant);">Setup code</div>
+                            <div style="font-size:1.4rem;font-family:monospace;letter-spacing:0.05em;">
+                                ${manualCode}
+                            </div>
+                        </div>
+                    </div>
+                `,
             });
         } catch (err: any) {
             showAlertDialog({
