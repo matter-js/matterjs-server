@@ -190,8 +190,7 @@ export const EXTERNAL_THREAD_DEVICE_EXPLANATION = `Seen in a commissioned node's
  * `isRouter` for an external neighbor is derived from rx-on-when-idle, so it means
  * router-capable (mains-powered), not a confirmed routing role.
  */
-export const EXTERNAL_ROUTER_CAPABLE_NOTE =
-    "“Router” here means the neighbor advertised rx-on-when-idle (mains-powered / router-capable), not a confirmed routing role.";
+export const EXTERNAL_ROUTER_CAPABLE_NOTE = `"Router" here means the neighbor advertised rx-on-when-idle (mains-powered / router-capable), not a confirmed routing role.`;
 
 export const DIAGNOSTIC_MESH_NODE_EXPLANATION =
     "Inferred from Border Router diagnostics (Route64 / child table) and not commissioned to this fabric, so no device details are available.";
