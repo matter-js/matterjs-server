@@ -502,6 +502,8 @@ export class WebRtcStreamView extends LitElement {
                     streamUsage: STREAM_USAGE_LIVE_VIEW,
                     videoStreamId: this._videoStreamId,
                     audioStreamId: this._audioStreamId,
+                    videoStreams: this._videoStreamId !== null ? [this._videoStreamId] : undefined,
+                    audioStreams: this._audioStreamId !== null ? [this._audioStreamId] : undefined,
                 },
             );
             console.log("[webrtc-stream-view] ProvideOffer response", offerResponse);
