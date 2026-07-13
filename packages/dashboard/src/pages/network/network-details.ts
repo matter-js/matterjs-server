@@ -1839,7 +1839,7 @@ export class NetworkDetails extends LitElement {
                 margin-top: 6px;
                 margin-bottom: 4px;
                 padding-left: 10px;
-                border-left: 2px solid var(--md-sys-color-outline-variant, #444);
+                border-left: 2px solid var(--md-sys-color-outline-variant, #ccc);
                 font-size: 0.72rem;
             }
 

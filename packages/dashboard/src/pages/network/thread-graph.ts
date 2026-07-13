@@ -406,9 +406,16 @@ export class ThreadGraph extends BaseNetworkGraph {
                 const decodedState = decodeMeshcopStateBitmap(device.stateBitmapHex);
                 const isLeader = decodedState?.threadRoleValue === 3;
                 const isPrimaryBbr = decodedState?.bbr === true && decodedState.bbrFunction === "primary";
+                const brRole = new Array<string>();
+                if (isLeader) brRole.push("currently the Thread Leader");
+                if (isPrimaryBbr) brRole.push("Primary Backbone Border Router (BBR)");
+                const brTitle =
+                    "Thread Border Router bridging the Thread mesh to the IP network" +
+                    (brRole.length > 0 ? ` — ${brRole.join("; ")}.` : ".");
                 graphNodes.push({
                     id: device.id,
                     label,
+                    title: brTitle,
                     image: createBorderRouterIconDataUrl(isSelected, isLeader, isPrimaryBbr),
                     shape: "image" as const,
                     networkType: "thread" as const,
