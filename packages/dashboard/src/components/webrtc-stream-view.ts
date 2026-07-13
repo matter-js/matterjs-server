@@ -23,6 +23,7 @@ import {
     VIDEO_MIN_FRAME_RATE,
     videoStreamFitsSnapshotBudget,
 } from "../util/camera-stream-budget.js";
+import { buildProvideOfferRequest } from "../util/webrtc-provider-payload.js";
 import "./ha-svg-icon.js";
 
 // Spec values from @matter/types globals/StreamUsage.ts and
@@ -496,15 +497,7 @@ export class WebRtcStreamView extends LitElement {
                 this.nodeId,
                 this.endpointId,
                 "ProvideOffer",
-                {
-                    webRtcSessionId: null,
-                    sdp,
-                    streamUsage: STREAM_USAGE_LIVE_VIEW,
-                    videoStreamId: this._videoStreamId,
-                    audioStreamId: this._audioStreamId,
-                    videoStreams: this._videoStreamId !== null ? [this._videoStreamId] : undefined,
-                    audioStreams: this._audioStreamId !== null ? [this._audioStreamId] : undefined,
-                },
+                buildProvideOfferRequest(sdp, STREAM_USAGE_LIVE_VIEW, this._videoStreamId, this._audioStreamId),
             );
             console.log("[webrtc-stream-view] ProvideOffer response", offerResponse);
             const parsed = parseProvideOfferResponse(offerResponse);

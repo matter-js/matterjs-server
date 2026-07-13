@@ -7,6 +7,10 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
+## **WORK IN PROGRESS**
+
+- Fix: Dashboard `ProvideOffer` requests now include `videoStreams`/`audioStreams` alongside deprecated singular stream IDs for WebRTC provider compatibility across cluster revisions
+
 ## 1.2.5 (2026-07-13)
 
 - Enhancement: Update matter.js to 0.17.5
