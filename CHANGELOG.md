@@ -7,6 +7,11 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
+## **WORK IN PROGRESS**
+
+- Enhancement: Update matter.js to 0.17.5
+- Enhancement: Adds a QR code when using the dashboard to share a device
+
 ## 1.2.4 (2026-07-12)
 
 - Enhancement: Update Docker base images to Debian trixie with the current Node 24 version
@@ -23,7 +28,7 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## 1.2.2 (2026-07-10)
 
-- Fix: Ensure that WebSocket backpressure keeps the send window full instead of draining one frame at a time, avoiding initial-sync stalls behind a high-latency proxy (e.g. Home Assistant ingress) that could drop the dashboard connection
+- Fix: Ensure that WebSocket backpressure keeps the send-window full instead of draining one frame at a time, avoiding initial-sync stalls behind a high-latency proxy (e.g. Home Assistant ingress) that could drop the dashboard connection
 - Fix: Optimize TBR address and data handling
 - Fix: Update WebRTC and Camera-related logic and respect separate Audio/Video streams in Dashboard
 - Fix: Update matter.js to the latest 0.17.5 nightly
