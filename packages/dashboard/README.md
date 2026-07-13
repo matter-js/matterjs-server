@@ -41,13 +41,26 @@ Node colors indicate device status:
 - **Red**: Offline device (not responding)
 - **Orange**: Unknown/external device (not commissioned to this fabric, detected in neighbor tables)
 
+### Why a device shows as unknown/external
+
+Orange nodes are inferred from a commissioned node's Thread neighbor table but are not part of this fabric. The server cannot tell these cases apart, so an orange node may be any of:
+
+- A device commissioned to **another Matter fabric** on the same Thread network (Apple Home, Google, SmartThings, …).
+- A **native (non-Matter) Thread accessory** (HomeKit-over-Thread, Eve, Nanoleaf, …).
+- A **Border Router** whose Thread radio MAC differs from its MeshCoP border-agent ID, so it can't be matched to a known BR (common with Apple and Aqara).
+- A **stale neighbor entry** for a device that has left. Obvious stale ghosts (all observers offline, or a single-source entry from an otherwise-reachable node) are filtered out automatically.
+
+An **external router** is such a device advertising rx-on-when-idle (mains-powered, so router-capable); an **external device** is one that is not. "Router-capable" is not a confirmed routing role.
+
+A separate **Diagnostic Mesh Node** is inferred from a Border Router's own Route64 / child-table diagnostics rather than a neighbor table; it is likewise not commissioned to this fabric.
+
 ### Understanding Node Role Badges
 
-Thread nodes commissioned to this fabric carry a small corner badge over the device icon showing their Thread routing role:
+Thread nodes commissioned to this fabric carry a small corner badge over the device icon showing their Thread routing role. For the underlying Thread role definitions, see the [OpenThread node roles and types primer](https://openthread.io/guides/thread-primer/node-roles-and-types).
 
 - **Crown (amber)**: Leader — the elected coordinator of the Thread network
 - **Swap arrows (blue)**: Router — forwards traffic for other nodes
-- **Small dot (grey-blue)**: End Device or REED (Router-Eligible End Device)
+- **Small dot (grey-blue)**: End Device, or REED (Router-Eligible End Device) — a node that currently acts as an end device but can be promoted to a full Router when the mesh needs more routing capacity
 - **Zzz / sleep (grey-blue)**: Sleepy End Device — radio off when idle to save battery
 - **No badge**: Role unassigned/unspecified, or an external device whose role can't be queried
 

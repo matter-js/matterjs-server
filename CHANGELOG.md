@@ -11,6 +11,7 @@ This page shows a detailed overview of the changes between versions without the 
 
 - Enhancement: Update matter.js to 0.17.5
 - Enhancement: Adds a QR code when using the dashboard to share a device
+- Enhancement: Clarify Thread node role and unknown/external device descriptions in the network visualization (e.g. what a REED is, why a device shows as unknown/external) and link the OpenThread role primer
 
 ## 1.2.4 (2026-07-12)
 
