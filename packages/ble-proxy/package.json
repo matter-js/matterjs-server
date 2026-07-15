@@ -31,7 +31,7 @@
     "dependencies": {
         "@matter-server/ws-controller": "*",
         "@matter/main": "0.17.5",
-        "ws": "^8.21.0"
+        "ws": "^8.21.1"
     },
     "devDependencies": {
         "@types/node": "^26.1.1",

@@ -45,7 +45,7 @@
         "@matter/main": "0.17.5",
         "@matter/thread-br-client": "0.17.5",
         "@project-chip/matter.js": "0.17.5",
-        "ws": "^8.21.0"
+        "ws": "^8.21.1"
     },
     "devDependencies": {
         "@types/node": "^26.1.1",
