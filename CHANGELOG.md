@@ -11,6 +11,9 @@ This page shows a detailed overview of the changes between versions without the 
 
 - Fix: Dashboard now shows the camera Live View/Snapshot button for the Floodlight Camera and Snapshot Camera device types, not just Camera and Video Doorbell
 - Fix: Dashboard `ProvideOffer` requests now include `videoStreams`/`audioStreams` alongside deprecated singular stream IDs for WebRTC provider compatibility across cluster revisions
+- Enhancement: Update matter.js to latest 0.17.6 alpha
+    - Optimizes OTA software updates
+    - Prevents blocking on stop when a BLE discovery is still in progress
 
 ## 1.2.5 (2026-07-13)
 

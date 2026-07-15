@@ -40,13 +40,13 @@
         "build-clean": "nacho-build --clean"
     },
     "dependencies": {
-        "@matter/thread-br-client": "0.17.5"
+        "@matter/thread-br-client": "0.17.6-alpha.0-20260715-3585d95fe"
     },
     "devDependencies": {
-        "@matter/testing": "0.17.5",
+        "@matter/testing": "0.17.6-alpha.0-20260715-3585d95fe",
         "@types/node": "^26.1.1",
         "@types/ws": "^8.18.1",
-        "ws": "^8.21.0"
+        "ws": "^8.21.1"
     },
     "engines": {
         "node": ">=22.13.0"
