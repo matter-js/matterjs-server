@@ -410,7 +410,9 @@ export class IcdManagementClusterCommands extends BaseClusterCommands {
             title: "Switch to Standard Mode?",
             text:
                 "The device will wake much more often and respond faster, at the cost of higher battery use. " +
-                "It still sleeps briefly between check-ins — it does not become permanently connected.",
+                "It still sleeps briefly between check-ins — it does not become permanently connected. " +
+                "Switching back is only possible while no other ecosystem is registered for Battery Saver Mode " +
+                "with this device — this is verified after you confirm.",
             confirmText: "Switch",
         });
         if (!confirmed) {
