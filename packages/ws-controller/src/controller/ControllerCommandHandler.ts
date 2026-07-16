@@ -45,6 +45,7 @@ import {
 } from "@matter/main/clusters";
 import { WebRtcTransportDefinitions } from "@matter/main/clusters/web-rtc-transport-definitions";
 import { WebRtcTransportProvider } from "@matter/main/clusters/web-rtc-transport-provider";
+import { ClusterRevision } from "@matter/main/model";
 import { DeviceAttestationCheck, Invoke, PeerAddress, Read, Specifier, PeerSet } from "@matter/main/protocol";
 import {
     AttributeId,
@@ -107,7 +108,11 @@ import { Nodes } from "./Nodes.js";
 import { pushNodeTime, TimeSyncInvokers } from "./timeSyncCommands.js";
 import { TIME_FAILURE_EVENT_ID, TIME_SYNC_CLUSTER_ID, TimeSyncManager } from "./TimeSyncManager.js";
 import { attachWebRtcCallbackBridge } from "./WebRtcCallbackBridge.js";
-import { isTrackableWebRtcSession, resolveWebRtcSessionStreams } from "./webRtcSessionStreams.js";
+import {
+    isTrackableWebRtcSession,
+    resolveWebRtcSessionStreams,
+    selectWebRtcStreamFields,
+} from "./webRtcSessionStreams.js";
 
 const logger = Logger.get("ControllerCommandHandler");
 
@@ -378,6 +383,12 @@ export class ControllerCommandHandler {
             originatingEndpointId,
         };
 
+        const clusterRevision =
+            this.#nodes.attributeCache.get(nodeId)?.[
+                `${endpointId}/${WebRtcTransportProvider.id}/${ClusterRevision.id}`
+            ];
+        selectWebRtcStreamFields(fields, clusterRevision);
+
         const response = (await this.#invokeCommand(node.node, {
             endpoint: endpointId,
             cluster: WebRtcTransportProvider,
@@ -395,13 +406,13 @@ export class ControllerCommandHandler {
         const metadataEnabled = convertedPayload.metadataEnabled === true;
 
         const videoStreams = resolveWebRtcSessionStreams(
-            convertedPayload.videoStreams,
-            convertedPayload.videoStreamId,
+            fields.videoStreams,
+            fields.videoStreamId,
             response.videoStreamId,
         );
         const audioStreams = resolveWebRtcSessionStreams(
-            convertedPayload.audioStreams,
-            convertedPayload.audioStreamId,
+            fields.audioStreams,
+            fields.audioStreamId,
             response.audioStreamId,
         );
 
