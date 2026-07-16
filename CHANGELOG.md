@@ -7,6 +7,12 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
+## **WORK IN PROGRESS**
+
+- Fix: WebRTC camera live view — `ProvideOffer` now sends only the stream fields matching the provider's cluster revision, not both, fixing live view rejected by revision-2 providers (regression in 1.2.6, #880)
+- Fix: Debounce the full `node_updated` refresh into a single delayed event per node after basic-information changes
+- Fix: Suppress the repeated "ignoring set_default_fabric_label" log notice when the requested label is unchanged
+
 ## 1.2.6 (2026-07-15)
 
 - Fix: Dashboard now shows the camera Live View/Snapshot button for the Floodlight Camera and Snapshot Camera device types, not just Camera and Video Doorbell
