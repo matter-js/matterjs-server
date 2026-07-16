@@ -45,7 +45,6 @@ import {
 } from "@matter/main/clusters";
 import { WebRtcTransportDefinitions } from "@matter/main/clusters/web-rtc-transport-definitions";
 import { WebRtcTransportProvider } from "@matter/main/clusters/web-rtc-transport-provider";
-import { ClusterRevision } from "@matter/main/model";
 import { DeviceAttestationCheck, Invoke, PeerAddress, Read, Specifier, PeerSet } from "@matter/main/protocol";
 import {
     AttributeId,
@@ -385,11 +384,11 @@ export class ControllerCommandHandler {
             originatingEndpointId,
         };
 
-        const clusterRevision =
-            this.#nodes.attributeCache.get(nodeId)?.[
-                `${endpointId}/${WebRtcTransportProvider.id}/${ClusterRevision.id}`
-            ];
-        selectWebRtcStreamFields(fields, clusterRevision);
+        // TODO: force the deprecated singular stream id fields for now — some providers advertising
+        // cluster revision 2 reject the revision-2 VideoStreams/AudioStreams list fields. Restore
+        // revision-based selection (read the provider's ClusterRevision from the attribute cache at
+        // `${endpointId}/${WebRtcTransportProvider.id}/${ClusterRevision.id}` and pass it) once resolved.
+        selectWebRtcStreamFields(fields, 1);
 
         const response = (await this.#invokeCommand(node.node, {
             endpoint: endpointId,
