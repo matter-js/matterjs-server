@@ -277,7 +277,10 @@ export class WebRtcStreamView extends LitElement {
     }
 
     async start(): Promise<void> {
-        if (!this.liveViewSupported) throw new Error("Live view is not supported on this device");
+        if (!this.liveViewSupported) {
+            this._fireStateChange("error", "Live view is not supported on this device");
+            return;
+        }
         if (!this.client) throw new Error("Matter client not available");
         if (this._state === "connecting" || this._state === "streaming") return;
 
