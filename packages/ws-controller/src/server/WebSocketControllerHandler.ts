@@ -870,15 +870,19 @@ export class WebSocketControllerHandler implements WebServerHandler {
         const { label } = args;
         const effectiveLabel = normalizeFabricLabel(label);
         if (this.#config.fabricLabelLocked) {
-            logger.notice(
-                `[${connection.connId}] Ignoring set_default_fabric_label "${effectiveLabel}" and keeping "${this.#config.fabricLabel}" (pinned via --default-fabric-label)`,
-            );
+            if (this.#config.fabricLabel !== effectiveLabel) {
+                logger.notice(
+                    `[${connection.connId}] Ignoring set_default_fabric_label "${effectiveLabel}" and keeping "${this.#config.fabricLabel}" (pinned via --default-fabric-label)`,
+                );
+            }
             return null;
         }
         if (this.#fabricLabelOwner !== undefined && this.#fabricLabelOwner !== connection) {
-            logger.notice(
-                `[${connection.connId}] Ignoring set_default_fabric_label "${effectiveLabel}"; fabric label is owned by connection ${this.#fabricLabelOwner.connId} this session, keeping "${this.#config.fabricLabel}"`,
-            );
+            if (this.#config.fabricLabel !== effectiveLabel) {
+                logger.notice(
+                    `[${connection.connId}] Ignoring set_default_fabric_label "${effectiveLabel}"; fabric label is owned by connection ${this.#fabricLabelOwner.connId} this session, keeping "${this.#config.fabricLabel}"`,
+                );
+            }
             return null;
         }
         // Claim before awaiting so a second connection racing its first set can't slip past the guard while

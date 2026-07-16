@@ -4,7 +4,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { isTrackableWebRtcSession, resolveWebRtcSessionStreams } from "../src/controller/webRtcSessionStreams.js";
+import {
+    isTrackableWebRtcSession,
+    resolveWebRtcSessionStreams,
+    selectWebRtcStreamFields,
+} from "../src/controller/webRtcSessionStreams.js";
 
 describe("resolveWebRtcSessionStreams", () => {
     it("uses the requested rev-2 list verbatim", () => {
@@ -77,6 +81,62 @@ describe("resolveWebRtcSessionStreams", () => {
 
     it("accepts stream id 0", () => {
         expect(resolveWebRtcSessionStreams(undefined, 0, undefined)).to.deep.equal([0]);
+    });
+});
+
+describe("selectWebRtcStreamFields", () => {
+    it("sends the lists verbatim for a rev-2 provider", () => {
+        const fields: Record<string, unknown> = { sdp: "v=0", videoStreams: [7], audioStreams: [9] };
+        selectWebRtcStreamFields(fields, 2);
+        expect(fields).to.deep.equal({ sdp: "v=0", videoStreams: [7], audioStreams: [9] });
+    });
+
+    it("keeps multiple streams for a rev-2 provider", () => {
+        const fields: Record<string, unknown> = { videoStreams: [3, 5] };
+        selectWebRtcStreamFields(fields, 2);
+        expect(fields).to.deep.equal({ videoStreams: [3, 5] });
+    });
+
+    it("synthesises the lists from a legacy caller's singular ids for a rev-2 provider", () => {
+        const fields: Record<string, unknown> = { videoStreamId: 5, audioStreamId: null };
+        selectWebRtcStreamFields(fields, 3);
+        expect(fields).to.deep.equal({ videoStreams: [5] });
+    });
+
+    it("down-converts the lists to singular ids for a rev-1 provider", () => {
+        const fields: Record<string, unknown> = { videoStreams: [7], audioStreams: [9] };
+        selectWebRtcStreamFields(fields, 1);
+        expect(fields).to.deep.equal({ videoStreamId: 7, audioStreamId: 9 });
+    });
+
+    it("truncates a multi-stream list to its first entry for a rev-1 provider", () => {
+        const fields: Record<string, unknown> = { videoStreams: [3, 5] };
+        selectWebRtcStreamFields(fields, 1);
+        expect(fields).to.deep.equal({ videoStreamId: 3 });
+    });
+
+    it("down-converts the lists when the provider revision is unknown", () => {
+        const fields: Record<string, unknown> = { videoStreams: [7] };
+        selectWebRtcStreamFields(fields, undefined);
+        expect(fields).to.deep.equal({ videoStreamId: 7 });
+    });
+
+    it("leaves a rev-1 auto-select request untouched", () => {
+        const fields: Record<string, unknown> = { videoStreamId: null };
+        selectWebRtcStreamFields(fields, 1);
+        expect(fields).to.deep.equal({ videoStreamId: null });
+    });
+
+    it("preserves a legacy null auto-select request on a rev-2 provider when no list is sent", () => {
+        const fields: Record<string, unknown> = { videoStreamId: null, audioStreamId: null };
+        selectWebRtcStreamFields(fields, 2);
+        expect(fields).to.deep.equal({ videoStreamId: null, audioStreamId: null });
+    });
+
+    it("drops a null auto-select on the other media kind once any list is sent to a rev-2 provider", () => {
+        const fields: Record<string, unknown> = { videoStreams: [5], audioStreamId: null };
+        selectWebRtcStreamFields(fields, 2);
+        expect(fields).to.deep.equal({ videoStreams: [5] });
     });
 });
 

@@ -9,12 +9,12 @@ export interface ProvideOfferRequest {
     webRtcSessionId: number | null;
     sdp: string;
     streamUsage: number;
-    videoStreamId: number | null;
-    audioStreamId: number | null;
     videoStreams?: number[];
     audioStreams?: number[];
 }
 
+// Send the canonical revision-2 VideoStreams/AudioStreams lists; the server down-converts them to the
+// deprecated singular ids for a revision-1 provider per its advertised ClusterRevision.
 export function buildProvideOfferRequest(
     sdp: string,
     streamUsage: number,
@@ -25,8 +25,6 @@ export function buildProvideOfferRequest(
         webRtcSessionId: null,
         sdp,
         streamUsage,
-        videoStreamId,
-        audioStreamId,
         ...(videoStreamId !== null ? { videoStreams: [videoStreamId] } : {}),
         ...(audioStreamId !== null ? { audioStreams: [audioStreamId] } : {}),
     };

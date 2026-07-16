@@ -7,11 +7,18 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
+## **WORK IN PROGRESS**
+
+- Fix: WebRTC camera live view — Use `ProvideOffer` format that all cluster versions support, skip rev2 for now
+- Fix: Debounce the full `node_updated` refresh into a single delayed event per node after basic-information changes
+- Enhancement: Update matter.js to the latest 0.17.7 alpha
+    - Optimizes Cluster data initialization when the node structure changes
+
 ## 1.2.6 (2026-07-15)
 
 - Fix: Dashboard now shows the camera Live View/Snapshot button for the Floodlight Camera and Snapshot Camera device types, not just Camera and Video Doorbell
 - Fix: Dashboard `ProvideOffer` requests now include `videoStreams`/`audioStreams` alongside deprecated singular stream IDs for WebRTC provider compatibility across cluster revisions
-- Enhancement: Update matter.js to latest 0.17.6 alpha
+- Enhancement: Update matter.js to the latest 0.17.6 alpha
     - Optimizes OTA software updates
     - Prevents blocking on stop when a BLE discovery is still in progress
 

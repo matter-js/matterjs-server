@@ -107,7 +107,11 @@ import { Nodes } from "./Nodes.js";
 import { pushNodeTime, TimeSyncInvokers } from "./timeSyncCommands.js";
 import { TIME_FAILURE_EVENT_ID, TIME_SYNC_CLUSTER_ID, TimeSyncManager } from "./TimeSyncManager.js";
 import { attachWebRtcCallbackBridge } from "./WebRtcCallbackBridge.js";
-import { isTrackableWebRtcSession, resolveWebRtcSessionStreams } from "./webRtcSessionStreams.js";
+import {
+    isTrackableWebRtcSession,
+    resolveWebRtcSessionStreams,
+    selectWebRtcStreamFields,
+} from "./webRtcSessionStreams.js";
 
 const logger = Logger.get("ControllerCommandHandler");
 
@@ -165,6 +169,8 @@ export class ControllerCommandHandler {
     #nodeObservers = new Map<NodeId, ObserverGroup>();
     /** Per-node timers that fire when Reconnecting state exceeds the timeout */
     #reconnectTimers = new Map<NodeId, Timer>();
+    /** Per-node timers that coalesce basic-info changes into a single delayed node_updated refresh. */
+    #nodeUpdateTimers = new Map<NodeId, Timer>();
     /**
      * Nodes whose basic information changed within the current subscription batch. A full node_updated
      * is deferred until the batch ends (connectionAlive) so consumers see one update per batch.
@@ -378,6 +384,12 @@ export class ControllerCommandHandler {
             originatingEndpointId,
         };
 
+        // TODO: force the deprecated singular stream id fields for now — some providers advertising
+        // cluster revision 2 reject the revision-2 VideoStreams/AudioStreams list fields. Restore
+        // revision-based selection (read the provider's ClusterRevision from the attribute cache at
+        // `${endpointId}/${WebRtcTransportProvider.id}/${ClusterRevision.id}` and pass it) once resolved.
+        selectWebRtcStreamFields(fields, 1);
+
         const response = (await this.#invokeCommand(node.node, {
             endpoint: endpointId,
             cluster: WebRtcTransportProvider,
@@ -395,13 +407,13 @@ export class ControllerCommandHandler {
         const metadataEnabled = convertedPayload.metadataEnabled === true;
 
         const videoStreams = resolveWebRtcSessionStreams(
-            convertedPayload.videoStreams,
-            convertedPayload.videoStreamId,
+            fields.videoStreams,
+            fields.videoStreamId,
             response.videoStreamId,
         );
         const audioStreams = resolveWebRtcSessionStreams(
-            convertedPayload.audioStreams,
-            convertedPayload.audioStreamId,
+            fields.audioStreams,
+            fields.audioStreamId,
             response.audioStreamId,
         );
 
@@ -512,6 +524,10 @@ export class ControllerCommandHandler {
             timer.stop();
         }
         this.#reconnectTimers.clear();
+        for (const timer of this.#nodeUpdateTimers.values()) {
+            timer.stop();
+        }
+        this.#nodeUpdateTimers.clear();
         await this.#customClusterPoller.stop();
         await this.#timeSyncManager?.stop();
         for (const observers of this.#nodeObservers.values()) {
@@ -544,9 +560,17 @@ export class ControllerCommandHandler {
             }
         });
         nodeObservers.on(node.events.connectionAlive, () => {
-            if (this.#basicInfoChangedInBatch.delete(nodeId)) {
-                logger.info(`Node ${this.formatNode(nodeId)} basic information changed, sending full node_updated`);
-                this.events.nodeStructureChanged.emit(nodeId);
+            if (this.#basicInfoChangedInBatch.delete(nodeId) && !this.#nodeUpdateTimers.has(nodeId)) {
+                logger.info(
+                    `Node ${this.formatNode(nodeId)} basic information changed, sending full node_updated in 6s`,
+                );
+                // TODO remove timer based refresh when migrating to the ClientNode API for events
+                const timer = Time.getTimer(`node-update-${nodeId}`, Seconds(6), () =>
+                    this.#handleNodeStructureChange(node).catch(error =>
+                        logger.warn(`Failed to handle structure change for node ${this.formatNode(nodeId)}:`, error),
+                    ),
+                ).start();
+                this.#nodeUpdateTimers.set(nodeId, timer);
             }
         });
         nodeObservers.on(node.events.eventTriggered, data => {
@@ -665,10 +689,14 @@ export class ControllerCommandHandler {
         const nodeId = node.nodeId;
         this.#basicInfoChangedInBatch.delete(nodeId);
 
+        this.#nodeUpdateTimers.get(nodeId)?.stop();
+        this.#nodeUpdateTimers.delete(nodeId);
+
         if (node.isConnected) {
             await this.#nodes.attributeCache.update(node);
         }
         this.events.nodeStructureChanged.emit(nodeId);
+
         for (const endpointId of this.#nodes.drainPendingEndpointAdds(nodeId)) {
             this.events.nodeEndpointAdded.emit(nodeId, endpointId);
         }
@@ -1397,6 +1425,8 @@ export class ControllerCommandHandler {
     #cleanupNodeAfterRemoval(nodeId: NodeId) {
         this.#reconnectTimers.get(nodeId)?.stop();
         this.#reconnectTimers.delete(nodeId);
+        this.#nodeUpdateTimers.get(nodeId)?.stop();
+        this.#nodeUpdateTimers.delete(nodeId);
         this.#nodeObservers.get(nodeId)?.close();
         this.#nodeObservers.delete(nodeId);
         this.#basicInfoChangedInBatch.delete(nodeId);
