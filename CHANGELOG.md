@@ -7,7 +7,7 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
-## **WORK IN PROGRESS**
+## 1.2.7 (2026-07-16)
 
 - Fix: WebRTC camera live view — Use `ProvideOffer` format that all cluster versions support, skip rev2 for now
 - Fix: Debounce the full `node_updated` refresh into a single delayed event per node after basic-information changes
