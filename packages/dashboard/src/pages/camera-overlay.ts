@@ -28,6 +28,8 @@ import "../components/webrtc-stream-view.js";
 import type { WebRtcStreamView } from "../components/webrtc-stream-view.js";
 import { asObject, pickNumber } from "../util/attribute-shapes.js";
 import { hasAvsumOnEndpoint } from "../util/avsum.js";
+import { LIVE_VIEW_DEVICE_TYPE_IDS } from "../util/device-icons.js";
+import { getEndpointDeviceTypes } from "../util/endpoints.js";
 
 type StreamState = "idle" | "connecting" | "streaming" | "error";
 
@@ -72,6 +74,13 @@ export class CameraOverlay extends LitElement {
     @state() private _osdEnabled = false;
     @state() private _snapshotResolutions: Resolution[] = [];
     @state() private _selectedSnapshotResolution: Resolution | null = null;
+
+    private get _liveViewSupported(): boolean {
+        const node = this.client?.nodes[String(this.nodeId)];
+        if (!node) return false;
+        const deviceTypeIds = getEndpointDeviceTypes(node, this.endpointId).map(d => d.id);
+        return LIVE_VIEW_DEVICE_TYPE_IDS.some(id => deviceTypeIds.includes(id));
+    }
 
     private get _snapshotSupported(): boolean {
         const node = this.client?.nodes[String(this.nodeId)];
@@ -276,7 +285,9 @@ export class CameraOverlay extends LitElement {
     }
 
     override render() {
-        const canStart = this._state === "idle" || this._state === "error";
+        const liveViewSupported = this._liveViewSupported;
+        const idleOrError = this._state === "idle" || this._state === "error";
+        const canStart = liveViewSupported && idleOrError;
 
         return html`
             <div class="backdrop" @click=${this._closing ? undefined : this._close}></div>
@@ -301,6 +312,7 @@ export class CameraOverlay extends LitElement {
                               ${ref(this._streamViewRef)}
                               .nodeId=${this.nodeId}
                               .endpointId=${this.endpointId}
+                              .liveViewSupported=${liveViewSupported}
                               .resolution=${this._selectedResolution}
                               .watermarkEnabled=${this._watermarkEnabled}
                               .osdEnabled=${this._osdEnabled}
@@ -359,7 +371,7 @@ export class CameraOverlay extends LitElement {
                               </md-outlined-select>
                           `
                         : nothing}
-                    ${canStart && this._snapshotSupported && this._snapshotResolutions.length > 0
+                    ${idleOrError && this._snapshotSupported && this._snapshotResolutions.length > 0
                         ? html`
                               <md-outlined-select
                                   label="Snapshot"
