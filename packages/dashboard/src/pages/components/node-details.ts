@@ -13,7 +13,7 @@ import "@material/web/list/list";
 import "@material/web/list/list-item";
 import { consume } from "@lit/context";
 import { MatterClient, MatterNode, UpdateSource } from "@matter-server/ws-client";
-import { mdiChatProcessing, mdiPencil, mdiShareVariant, mdiTrashCan, mdiUpdate, mdiVideo } from "@mdi/js";
+import { mdiCamera, mdiChatProcessing, mdiPencil, mdiShareVariant, mdiTrashCan, mdiUpdate, mdiVideo } from "@mdi/js";
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { clientContext, tickContext } from "../../client/client-context.js";
@@ -89,6 +89,14 @@ export class NodeDetails extends LitElement {
 
         const deviceTypeIds = getEndpointDeviceTypes(this.node, this.endpoint).map(d => d.id);
         const isCamera = CAMERA_DEVICE_TYPE_IDS.some(id => deviceTypeIds.includes(id));
+        // SNAPSHOT_CAMERA (0x0145) only supports still-image capture, not live streaming.
+        // When a node exposes *only* this device type (no Camera/Video Doorbell/Floodlight
+        // Camera), show a "Snapshot" button instead of "Live View".
+        const isSnapshotOnly =
+            deviceTypeIds.includes(DeviceTypes.SNAPSHOT_CAMERA) &&
+            !deviceTypeIds.includes(DeviceTypes.CAMERA) &&
+            !deviceTypeIds.includes(DeviceTypes.VIDEO_DOORBELL) &&
+            !deviceTypeIds.includes(DeviceTypes.FLOODLIGHT_CAMERA);
         const badge = icdBadge(this.node.attributes, this.node.available);
 
         return html`
@@ -165,15 +173,25 @@ export class NodeDetails extends LitElement {
                                     >Update<ha-svg-icon slot="icon" .path=${mdiUpdate}></ha-svg-icon
                                 ></md-outlined-button>`}
                         ${isCamera
-                            ? html`
-                                  <md-outlined-button
-                                      @click=${() => this._openCameraOverlay()}
-                                      ?disabled=${!this.node.available}
-                                  >
-                                      Live View
-                                      <ha-svg-icon slot="icon" .path=${mdiVideo}></ha-svg-icon>
-                                  </md-outlined-button>
-                              `
+                            ? isSnapshotOnly
+                                ? html`
+                                      <md-outlined-button
+                                          @click=${() => this._openCameraOverlay()}
+                                          ?disabled=${!this.node.available}
+                                      >
+                                          Snapshot
+                                          <ha-svg-icon slot="icon" .path=${mdiCamera}></ha-svg-icon>
+                                      </md-outlined-button>
+                                  `
+                                : html`
+                                      <md-outlined-button
+                                          @click=${() => this._openCameraOverlay()}
+                                          ?disabled=${!this.node.available}
+                                      >
+                                          Live View
+                                          <ha-svg-icon slot="icon" .path=${mdiVideo}></ha-svg-icon>
+                                      </md-outlined-button>
+                                  `
                             : nothing}
                         <md-outlined-button @click=${handleAsync(() => this._openCommissioningWindow())}
                             >Share<ha-svg-icon slot="icon" .path=${mdiShareVariant}></ha-svg-icon
