@@ -170,7 +170,7 @@ export class ControllerCommandHandler {
     #nodeObservers = new Map<NodeId, ObserverGroup>();
     /** Per-node timers that fire when Reconnecting state exceeds the timeout */
     #reconnectTimers = new Map<NodeId, Timer>();
-    /** Per-node timers that fire a node_updated event when no  structure update happened */
+    /** Per-node timers that coalesce basic-info changes into a single delayed node_updated refresh. */
     #nodeUpdateTimers = new Map<NodeId, Timer>();
     /**
      * Nodes whose basic information changed within the current subscription batch. A full node_updated
