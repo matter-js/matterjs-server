@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { parseSnapshotCapabilitiesFromList } from "../src/components/webrtc-stream-view.js";
+import { WebRtcStreamView, parseSnapshotCapabilitiesFromList } from "../src/components/webrtc-stream-view.js";
 
 // Tag-based (cached-attribute) SnapshotCapabilitiesStruct: 0=resolution {0:w,1:h},
 // 1=maxFrameRate, 2=imageCodec, 3=requiresEncodedPixels.
@@ -62,5 +62,19 @@ describe("parseSnapshotCapabilitiesFromList", () => {
         expect(cap.requiresEncodedPixels).to.equal(true);
         expect(cap.resolution).to.deep.equal({ width: 1280, height: 720 });
         expect(cap.maxFrameRate).to.equal(15);
+    });
+});
+
+describe("WebRtcStreamView#start", () => {
+    it("reports an error state instead of throwing when live view is unsupported", async () => {
+        const view = new WebRtcStreamView();
+        view.liveViewSupported = false;
+        const states: { state: string; errorMessage: string | null }[] = [];
+        view.addEventListener("streamstate", ev => states.push((ev as CustomEvent).detail));
+
+        await view.start();
+
+        expect(view.state).to.equal("error");
+        expect(states).to.deep.equal([{ state: "error", errorMessage: "Live view is not supported on this device" }]);
     });
 });
