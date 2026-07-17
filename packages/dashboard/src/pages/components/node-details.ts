@@ -13,7 +13,7 @@ import "@material/web/list/list";
 import "@material/web/list/list-item";
 import { consume } from "@lit/context";
 import { MatterClient, MatterNode, UpdateSource } from "@matter-server/ws-client";
-import { mdiChatProcessing, mdiPencil, mdiShareVariant, mdiTrashCan, mdiUpdate, mdiVideo } from "@mdi/js";
+import { mdiCamera, mdiChatProcessing, mdiPencil, mdiShareVariant, mdiTrashCan, mdiUpdate, mdiVideo } from "@mdi/js";
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { clientContext, tickContext } from "../../client/client-context.js";
@@ -23,18 +23,13 @@ import { showNodeLabelDialog } from "../../components/dialogs/node-label-dialog/
 import { handleAsync } from "../../util/async-handler.js";
 import "../../components/ha-svg-icon";
 import "../camera-overlay.js";
-import { DeviceTypes, getDeviceIcon } from "../../util/device-icons.js";
+import { DeviceTypes, LIVE_VIEW_DEVICE_TYPE_IDS, getDeviceIcon } from "../../util/device-icons.js";
 import { getEndpointDeviceTypes } from "../../util/endpoints.js";
 import { ICD_CLUSTER_ID, icdBadge } from "../../util/icd.js";
 import { formatManualPairingCode, renderPairingQrCodeDataUri } from "../../util/pairing-code.js";
 import { bindingContext } from "./context.js";
 
-const CAMERA_DEVICE_TYPE_IDS: number[] = [
-    DeviceTypes.CAMERA,
-    DeviceTypes.VIDEO_DOORBELL,
-    DeviceTypes.FLOODLIGHT_CAMERA,
-    DeviceTypes.SNAPSHOT_CAMERA,
-];
+const CAMERA_DEVICE_TYPE_IDS: number[] = [...LIVE_VIEW_DEVICE_TYPE_IDS, DeviceTypes.SNAPSHOT_CAMERA];
 
 /** Map updateState values to user-friendly labels */
 const UPDATE_STATE_LABELS: Record<number, string> = {
@@ -89,6 +84,7 @@ export class NodeDetails extends LitElement {
 
         const deviceTypeIds = getEndpointDeviceTypes(this.node, this.endpoint).map(d => d.id);
         const isCamera = CAMERA_DEVICE_TYPE_IDS.some(id => deviceTypeIds.includes(id));
+        const isLiveViewCamera = LIVE_VIEW_DEVICE_TYPE_IDS.some(id => deviceTypeIds.includes(id));
         const badge = icdBadge(this.node.attributes, this.node.available);
 
         return html`
@@ -170,8 +166,11 @@ export class NodeDetails extends LitElement {
                                       @click=${() => this._openCameraOverlay()}
                                       ?disabled=${!this.node.available}
                                   >
-                                      Live View
-                                      <ha-svg-icon slot="icon" .path=${mdiVideo}></ha-svg-icon>
+                                      ${isLiveViewCamera ? "Live View" : "Snapshot"}
+                                      <ha-svg-icon
+                                          slot="icon"
+                                          .path=${isLiveViewCamera ? mdiVideo : mdiCamera}
+                                      ></ha-svg-icon>
                                   </md-outlined-button>
                               `
                             : nothing}
