@@ -146,11 +146,12 @@ export class UpdateConnectionsDialog extends LitElement {
                 const paths = this._getAttributePathsForNode(nodeIdStr);
                 if (paths.length === 0) return;
 
-                // Use the actual node_id from the node object (number | bigint)
-                await this.client.readAttribute(node.node_id, paths);
+                // fabric_filtered must match the node subscription's filter (true), else matter.js
+                // discards the read and no attribute_updated fires, leaving the store stale.
+                await this.client.readAttribute(node.node_id, paths, undefined, true);
             });
 
-            // Wait for all to complete (results come via events, we just need completion)
+            // Return values are discarded; refreshed data arrives via attribute_updated events.
             await Promise.all(updatePromises);
 
             // Close dialog on success

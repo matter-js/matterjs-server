@@ -7,6 +7,10 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
+## **WORK IN PROGRESS**
+
+- Fix: Ensures that updating Thread data from nodes in Thread visualization also updates the chart
+
 ## 1.2.7 (2026-07-16)
 
 - Fix: WebRTC camera live view — Use `ProvideOffer` format that all cluster versions support, skip rev2 for now
