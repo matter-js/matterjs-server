@@ -9,8 +9,8 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## **WORK IN PROGRESS**
 
-- Fix: Dashboard no longer offers live-view streaming controls for the Snapshot Camera device type, which doesn't support WebRTC — only Snapshot capture is offered
 - Fix: Ensures that updating Thread data from nodes in Thread visualization also updates the chart
+- Fix: Dashboard no longer offers live-view streaming controls for the Snapshot Camera device type, which doesn't support WebRTC — only Snapshot capture is offered
 
 ## 1.2.7 (2026-07-16)
 
