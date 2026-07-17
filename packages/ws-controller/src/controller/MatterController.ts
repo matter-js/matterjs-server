@@ -379,6 +379,13 @@ export class MatterController {
         });
     }
 
+    get groups() {
+        if (this.#controllerInstance === undefined) {
+            throw new Error("Controller not initialized");
+        }
+        return this.#controllerInstance.groups;
+    }
+
     get commandHandler() {
         if (this.#controllerInstance === undefined) {
             throw new Error("Controller not initialized");

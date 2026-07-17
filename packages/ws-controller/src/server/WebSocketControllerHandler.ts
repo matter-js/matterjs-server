@@ -19,7 +19,7 @@ import {
 } from "@matter/main";
 import { WebRtcTransportProvider } from "@matter/main/clusters";
 import { ControllerCommissioningFlowOptions, OperationalDataset } from "@matter/main/protocol";
-import { EndpointNumber, QrPairingCodeCodec } from "@matter/main/types";
+import { EndpointNumber, GroupId, QrPairingCodeCodec } from "@matter/main/types";
 import { NodeStates } from "@project-chip/matter.js/device";
 import { WebSocketServer } from "ws";
 import { ControllerCommandHandler } from "../controller/ControllerCommandHandler.js";
@@ -174,8 +174,15 @@ export class WebSocketControllerHandler implements WebServerHandler {
     /**
      * Get the appropriate command handler for a node ID.
      * Returns TestNodeCommandHandler for test nodes, ControllerCommandHandler for real nodes.
+     *
+     * Group Node IDs (0xFFFF_FFFF_FFFF_xxxx) numerically fall above TEST_NODE_START
+     * (0xFFFF_FFFE_0000_0000), so they must be excluded from the test-node branch
+     * explicitly — groupcast ops always go to the real controller.
      */
     #handlerFor(nodeId: number | bigint): TestNodeCommandHandler | ControllerCommandHandler {
+        if (GroupId.isGroupNodeId(NodeId(nodeId))) {
+            return this.#commandHandler;
+        }
         return TestNodeCommandHandler.isTestNodeId(nodeId) ? this.#testNodeHandler : this.#commandHandler;
     }
 
@@ -766,6 +773,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 case "set_loglevel":
                     result = this.#handleSetLogLevel(args);
                     break;
+                case "get_groups":
+                    result = this.#handleGetGroups();
+                    break;
                 default:
                     throw ServerError.invalidCommand(command);
             }
@@ -1108,9 +1118,14 @@ export class WebSocketControllerHandler implements WebServerHandler {
         const { node_id: nodeId, attribute_path, value } = args;
         const { endpointId, clusterId, attributeId } = splitAttributePath(attribute_path);
 
-        // Write operations don't support wildcards
-        if (endpointId === undefined || clusterId === undefined || attributeId === undefined) {
-            throw ServerError.invalidArguments("write_attribute does not support wildcards in attribute path");
+        const isGroup = GroupId.isGroupNodeId(NodeId(nodeId));
+
+        // Write operations don't support wildcards (group writes legitimately omit endpoint).
+        if (clusterId === undefined || attributeId === undefined) {
+            throw ServerError.invalidArguments("write_attribute does not support wildcards for cluster or attribute");
+        }
+        if (!isGroup && endpointId === undefined) {
+            throw ServerError.invalidArguments("write_attribute requires an endpoint for non-group node IDs");
         }
 
         const { status } = await this.#handlerFor(nodeId).handleWriteAttribute({
@@ -1122,7 +1137,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         });
         return [
             {
-                Path: { EndpointId: endpointId, ClusterId: clusterId, AttributeId: attributeId },
+                Path: { EndpointId: endpointId ?? 0xffff, ClusterId: clusterId, AttributeId: attributeId },
                 Status: status ?? 0,
             },
         ];
@@ -1174,9 +1189,15 @@ export class WebSocketControllerHandler implements WebServerHandler {
         } = args;
 
         const camelizedCommand = camelize(commandName);
+
+        const isGroup = GroupId.isGroupNodeId(NodeId(nodeId));
+        if (!isGroup && endpointId === undefined) {
+            throw ServerError.invalidArguments("device_command requires endpoint_id for non-group node IDs");
+        }
+
         const result = await this.#handlerFor(nodeId).handleInvoke({
             nodeId: NodeId(nodeId),
-            endpointId: EndpointNumber(endpointId),
+            endpointId: endpointId !== undefined ? EndpointNumber(endpointId) : undefined,
             clusterId: ClusterId(clusterId),
             commandName: camelizedCommand,
             data: payload,
@@ -1668,5 +1689,13 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
         // Return current levels
         return this.#handleGetLogLevel();
+    }
+
+    #handleGetGroups(): ResponseOf<"get_groups"> {
+        return this.#commandHandler.handleGetGroups().map(group => ({
+            group_id: group.groupId,
+            group_key_set_id: group.groupKeySetId,
+            group_key_multicast_policy: group.groupKeyMulticastPolicy,
+        }));
     }
 }

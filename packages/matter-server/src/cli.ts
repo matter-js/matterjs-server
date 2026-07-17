@@ -76,6 +76,9 @@ export interface CliOptions {
 
     // Thread Border Router configuration
     disableThreadDiagnostics: boolean;
+
+    // Certification / test helpers
+    groupsConfig: string | null;
 }
 
 function parseIntOption(value: string): number {
@@ -212,6 +215,12 @@ export function parseCliArgs(argv?: string[]): CliOptions {
                 .env("ENABLE_TIME_SYNC"),
         )
         .addOption(
+            new Option(
+                "--groups-config <path>",
+                "Path to a JSON file with controller-side group key sets and group-to-keyset mappings, applied at startup. Intended for certification / test setups.",
+            ).env("GROUPS_CONFIG"),
+        )
+        .addOption(
             new Option("--disable-dashboard [value]", "Disable the web dashboard")
                 .argParser(parseBooleanEnv)
                 .preset(true)
@@ -309,6 +318,7 @@ export function parseCliArgs(argv?: string[]): CliOptions {
         disableDashboard: opts.disableDashboard,
         productionMode: opts.productionMode,
         disableThreadDiagnostics: opts.disableThreadDiagnostics,
+        groupsConfig: opts.groupsConfig ?? null,
     };
 }
 

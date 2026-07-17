@@ -21,7 +21,8 @@ export class CommandInvokeDialog extends LitElement {
     public client!: MatterClient;
 
     @property({ type: Number }) public nodeId!: number | bigint;
-    @property({ type: Number }) public endpointId!: number;
+    /** Endpoint ID. Omit for group-cast invokes. */
+    @property({ type: Number }) public endpointId?: number;
     @property({ type: Number }) public clusterId!: number;
     @property({ type: Number }) public commandId!: number;
     @property({ type: String }) public commandName!: string;
@@ -96,11 +97,12 @@ export class CommandInvokeDialog extends LitElement {
                 <div slot="headline">Invoke ${this.commandName}</div>
                 <div slot="content">
                     <p class="path" id="invoke-path">
-                        Cluster <code>${this.clusterId}</code> (${formatHex(this.clusterId)}) · Endpoint
-                        <code>${this.endpointId}</code> · Command <code>${this.commandId}</code> (${formatHex(
-                            this.commandId,
-                        )})
-                        · <code>${this.commandName}</code>
+                        Cluster <code>${this.clusterId}</code> (${formatHex(this.clusterId)}) ·
+                        ${this.endpointId === undefined
+                            ? html`Group-cast (no endpoint)`
+                            : html`Endpoint <code>${this.endpointId}</code>`}
+                        · Command <code>${this.commandId}</code> (${formatHex(this.commandId)}) ·
+                        <code>${this.commandName}</code>
                     </p>
                     <label class="textarea-label" for="payload">Payload (JSON)</label>
                     <textarea

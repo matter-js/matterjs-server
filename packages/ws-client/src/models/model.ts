@@ -373,7 +373,8 @@ export interface APICommands {
     device_command: {
         requestArgs: {
             node_id: number | bigint;
-            endpoint_id: number;
+            /** Endpoint ID. Omit when invoking on a group node ID (groupcast). */
+            endpoint_id?: number;
             cluster_id: number;
             command_name: string;
             payload: unknown;
@@ -482,6 +483,23 @@ export interface APICommands {
         requestArgs: { console_loglevel?: SettableLogLevelString; file_loglevel?: SettableLogLevelString };
         response: LogLevelResponse;
     };
+    get_groups: {
+        requestArgs: Record<string, never>;
+        response: GroupInfo[];
+    };
+}
+
+/** Information about a group configured on the controller. */
+export interface GroupInfo {
+    /** Group ID (1..0xFEFF for application groups; 0xFFFE/0xFFFF universal). */
+    group_id: number;
+    /** Group key set ID this group is bound to. */
+    group_key_set_id: number;
+    /**
+     * GroupKeyMulticastPolicy (0 = PerGroupId, 1 = AllNodes).
+     * Resolved from the bound key set; null if the key set is not (yet) configured.
+     */
+    group_key_multicast_policy: number | null;
 }
 
 /** Utility type to extract request args for a command */

@@ -5,6 +5,7 @@
  */
 
 import { Logger, NodeId, Observable } from "@matter/main";
+import { GroupId } from "@matter/main/types";
 import { parseBigIntAwareJson, splitAttributePath } from "../server/Converters.js";
 import {
     AttributeResponseStatus,
@@ -33,10 +34,12 @@ export class TestNodeCommandHandler implements NodeCommandHandler {
 
     /**
      * Check if a node ID is in the test node range (>= TEST_NODE_START).
+     *
+     * Group node IDs also sort above TEST_NODE_START but are not test nodes, so they are excluded.
      */
     static isTestNodeId(nodeId: number | bigint): boolean {
         const bigId = typeof nodeId === "bigint" ? nodeId : BigInt(nodeId);
-        return bigId >= TEST_NODE_START;
+        return bigId >= TEST_NODE_START && !GroupId.isGroupNodeId(NodeId(bigId));
     }
 
     /**
@@ -189,11 +192,11 @@ export class TestNodeCommandHandler implements NodeCommandHandler {
         const { nodeId, endpointId, clusterId, attributeId, value } = data;
 
         logger.debug(
-            `write_attribute for test node ${nodeId} on ${endpointId}/${clusterId}/${attributeId} - value: ${JSON.stringify(value)}`,
+            `write_attribute for test node ${nodeId} on ${endpointId ?? "*"}/${clusterId}/${attributeId} - value: ${JSON.stringify(value)}`,
         );
 
         return {
-            endpointId,
+            endpointId: endpointId ?? 0xffff,
             clusterId,
             attributeId,
             status: 0, // Success

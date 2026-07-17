@@ -27,7 +27,7 @@ interface HeaderAction {
     action: void;
 }
 
-export type ActiveView = "nodes" | "thread" | "wifi";
+export type ActiveView = "nodes" | "groups" | "thread" | "wifi";
 
 @customElement("dashboard-header")
 export class DashboardHeader extends LitElement {
@@ -112,12 +112,13 @@ export class DashboardHeader extends LitElement {
             return nothing;
         }
 
-        // Only show tabs if at least one network type has devices
+        // Only show tabs if at least one network type has devices, or dev mode is active
+        // (dev mode adds the Groups tab and we always want the bar visible then).
         const showThreadTab = this.hasThreadDevices === true;
         const showWifiTab = this.hasWifiDevices === true;
+        const showGroupsTab = this._devMode;
 
-        // Don't show nav tabs if no network devices exist
-        if (!showThreadTab && !showWifiTab) {
+        if (!showThreadTab && !showWifiTab && !showGroupsTab) {
             return nothing;
         }
 
@@ -129,6 +130,14 @@ export class DashboardHeader extends LitElement {
                     aria-current=${this.activeView === "nodes" ? "page" : nothing}
                     >Nodes</a
                 >
+                ${showGroupsTab
+                    ? html`<a
+                          href="#groups"
+                          class="nav-tab ${this.activeView === "groups" ? "active" : ""}"
+                          aria-current=${this.activeView === "groups" ? "page" : nothing}
+                          >Groups</a
+                      >`
+                    : nothing}
                 ${showThreadTab
                     ? html`<a
                           href="#thread"

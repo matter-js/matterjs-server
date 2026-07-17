@@ -27,6 +27,7 @@ import { Ble } from "@matter/main/protocol";
 import { getCliOptions, getOriginalArgv, type LogLevel as CliLogLevel } from "./cli.js";
 import { LegacyDataWriter, loadLegacyData, type LegacyData } from "./converter/index.js";
 import { createFileLogger } from "./file-logger.js";
+import { loadGroupsConfig } from "./groupsConfig.js";
 import { initializeOta } from "./ota.js";
 import { HealthHandler } from "./server/HealthHandler.js";
 import { StaticFileHandler } from "./server/StaticFileHandler.js";
@@ -195,6 +196,17 @@ async function start() {
 
     if (!cliOptions.disableOta) {
         controller.commandHandler.events.started.once(async () => await initializeOta(controller, cliOptions));
+    }
+
+    if (cliOptions.groupsConfig) {
+        const groupsConfigPath = cliOptions.groupsConfig;
+        controller.commandHandler?.events.started.once(async () => {
+            try {
+                await loadGroupsConfig(groupsConfigPath, controller);
+            } catch (err) {
+                logger.error(`Failed to apply groups config: ${err instanceof Error ? err.message : err}`);
+            }
+        });
     }
 
     // Subscribe to node events for legacy data file updates

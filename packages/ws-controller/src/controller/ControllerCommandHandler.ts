@@ -39,6 +39,7 @@ import {
     Binding,
     BridgedDeviceBasicInformation,
     GeneralCommissioning,
+    GroupKeyManagement,
     IcdManagement,
     OperationalCredentials,
     TimeSynchronization,
@@ -50,6 +51,7 @@ import {
     AttributeId,
     ClusterId,
     ClusterType,
+    CommandId,
     DeviceTypeId,
     EndpointNumber,
     GroupId,
@@ -83,6 +85,7 @@ import {
     CommissioningResponse,
     DiscoveryRequest,
     DiscoveryResponse,
+    GroupDescription,
     InvokeRequest,
     MatterNodeData,
     OpenCommissioningWindowRequest,
@@ -1000,6 +1003,14 @@ export class ControllerCommandHandler {
 
         value = convertWebSocketTagBasedToMatter(value, attributeModel, clusterEntry.model);
 
+        if (GroupId.isGroupNodeId(nodeId)) {
+            return this.#handleGroupWriteAttribute(nodeId, clusterId, attributeId, value, clusterEntry, attributeModel);
+        }
+
+        if (endpointId === undefined) {
+            throw ServerError.invalidArguments("write_attribute requires endpoint_id for non-group node IDs");
+        }
+
         const attributeName = attributeModel.propertyName;
         logger.info(`Writing attribute ${clusterId}.${attributeName} (${clusterId}.${attributeId}) with value`, value);
         const { status, clusterStatus } = await this.#writeAttribute(
@@ -1010,6 +1021,53 @@ export class ControllerCommandHandler {
             value,
         );
         return { attributeId, clusterId, endpointId, status, clusterStatus };
+    }
+
+    /**
+     * Group-cast attribute write: routes through a group InteractionClient (suppressed response,
+     * no endpoint). The reported endpointId in the response is 0xFFFF (wildcard sentinel) since
+     * group writes apply per group binding, not per endpoint of a single node.
+     */
+    async #handleGroupWriteAttribute(
+        nodeId: NodeId,
+        clusterId: ClusterId,
+        attributeId: AttributeId,
+        value: unknown,
+        clusterEntry: ClusterMapEntry | undefined,
+        attributeModel: ClusterMapEntry["attributes"][string] | undefined,
+    ): Promise<AttributeResponseStatus> {
+        if (clusterEntry === undefined || attributeModel === undefined) {
+            throw ServerError.invalidArguments(
+                `Group write: cluster ${clusterId} or attribute ${attributeId} not found in metadata`,
+            );
+        }
+        const attribute = {
+            id: AttributeId(attributeId),
+            name: attributeModel.propertyName,
+            schema: attributeModel,
+        };
+        logger.info(
+            `Group writing attribute ${attributeId} on ${this.formatNode(nodeId)} cluster ${clusterId} value=`,
+            value,
+        );
+        const responseEndpoint = 0xffff;
+        try {
+            const interactionClient = await this.#controller.createInteractionClient(nodeId);
+            await interactionClient.setAttribute({
+                attributeData: { clusterId, attribute, value },
+                suppressResponse: true,
+            });
+            return { attributeId, clusterId, endpointId: responseEndpoint, status: 0 };
+        } catch (error) {
+            StatusResponseError.accept(error);
+            return {
+                attributeId,
+                clusterId,
+                endpointId: responseEndpoint,
+                status: error.code,
+                clusterStatus: error.clusterCode,
+            };
+        }
     }
 
     async #invokeCommand<const C extends Specifier.ClusterLike>(
@@ -1054,22 +1112,29 @@ export class ControllerCommandHandler {
         }
         const clusterName = clusterEntry.model.propertyName;
         const commandName = camelize(data.commandName);
+        const commandModel = clusterEntry.commands[commandName.toLowerCase()];
+
+        if (isObject(commandData)) {
+            if (Object.keys(commandData).length === 0) {
+                commandData = undefined;
+            } else if (commandModel) {
+                commandData = convertCommandDataToMatter(commandData, commandModel, clusterEntry.model);
+            }
+        }
+
+        if (GroupId.isGroupNodeId(nodeId)) {
+            return this.#handleGroupInvoke(nodeId, clusterId, clusterName, commandName, commandModel, commandData);
+        }
+
+        if (endpointId === undefined) {
+            throw ServerError.invalidArguments("device_command requires endpoint_id for non-group node IDs");
+        }
+
         const commands = (
             this.#nodes.get(nodeId).node.endpoints.for(endpointId).commands as Record<string, Record<string, unknown>>
         )[clusterName];
         if (!commands[commandName]) {
             throw ServerError.invalidArguments(`Command "${commandName}" does not exist on cluster "${clusterName}"`);
-        }
-
-        if (isObject(commandData)) {
-            if (Object.keys(commandData).length === 0) {
-                commandData = undefined;
-            } else {
-                const model = clusterEntry.commands[commandName.toLowerCase()];
-                if (model) {
-                    commandData = convertCommandDataToMatter(commandData, model, clusterEntry.model);
-                }
-            }
         }
 
         // Build dedup key from validated/converted fields
@@ -1110,6 +1175,63 @@ export class ControllerCommandHandler {
         return invokePromise.finally(() => {
             this.#inFlightInvokes.delete(dedupKey);
         });
+    }
+
+    /**
+     * Group-cast invoke: routes through a group InteractionClient. Always suppresses the
+     * response (group invokes have no per-receiver response), and timed requests are
+     * not supported by Matter on group sessions.
+     */
+    async #handleGroupInvoke(
+        nodeId: NodeId,
+        clusterId: ClusterId,
+        clusterName: string,
+        commandName: string,
+        commandModel: ClusterMapEntry["commands"][string] | undefined,
+        commandData: unknown,
+    ): Promise<undefined> {
+        if (commandModel === undefined) {
+            throw ServerError.invalidArguments(
+                `Group invoke: command "${commandName}" not found on cluster "${clusterName}"`,
+            );
+        }
+        const command = {
+            id: CommandId(commandModel.id),
+            name: commandModel.propertyName,
+            schema: commandModel,
+        };
+        logger.info(`Group invoking ${clusterName}.${commandName} on ${this.formatNode(nodeId)}`, commandData);
+        const interactionClient = await this.#controller.createInteractionClient(nodeId);
+        await interactionClient.invokeWithSuppressedResponse({
+            clusterId,
+            command,
+            request: commandData,
+        });
+        return undefined;
+    }
+
+    /**
+     * List groups configured on the controller fabric. Joins each group binding
+     * (groupId → keySetId) with the bound key set's GroupKeyMulticastPolicy.
+     */
+    handleGetGroups(): GroupDescription[] {
+        const groups = this.#controller.groups;
+        const keySets = groups.keySets;
+        const validPolicies = new Set<number>([
+            GroupKeyManagement.GroupKeyMulticastPolicy.PerGroupId,
+            GroupKeyManagement.GroupKeyMulticastPolicy.AllNodes,
+        ]);
+        const result: GroupDescription[] = [];
+        for (const [groupId, keySetId] of groups.groupKeyIdMap.entries()) {
+            const policy = keySets.forId(keySetId)?.groupKeyMulticastPolicy;
+            result.push({
+                groupId: Number(groupId),
+                groupKeySetId: keySetId,
+                groupKeyMulticastPolicy: policy !== undefined && validPolicies.has(policy) ? policy : null,
+            });
+        }
+        result.sort((a, b) => a.groupId - b.groupId);
+        return result;
     }
 
     #determineCommissionOptions(data: CommissioningRequest): NodeCommissioningOptions {

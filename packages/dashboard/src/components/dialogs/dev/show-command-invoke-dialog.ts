@@ -9,7 +9,8 @@ import { MatterClient } from "@matter-server/ws-client";
 export interface ShowCommandInvokeDialogOptions {
     client: MatterClient;
     nodeId: number | bigint;
-    endpointId: number;
+    /** Endpoint ID. Omit for group-cast invokes. */
+    endpointId?: number;
     clusterId: number;
     commandId: number;
     commandName: string;

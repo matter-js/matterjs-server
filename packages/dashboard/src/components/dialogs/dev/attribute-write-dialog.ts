@@ -21,7 +21,8 @@ export class AttributeWriteDialog extends LitElement {
     public client!: MatterClient;
 
     @property({ type: Number }) public nodeId!: number | bigint;
-    @property({ type: Number }) public endpointId!: number;
+    /** Endpoint ID. Omit for group-cast writes (path will use a wildcard endpoint). */
+    @property({ type: Number }) public endpointId?: number;
     @property({ type: Number }) public clusterId!: number;
     @property({ type: Number }) public attributeId!: number;
     @property({ type: String }) public label!: string;
@@ -41,7 +42,8 @@ export class AttributeWriteDialog extends LitElement {
     }
 
     private get _attributePath(): string {
-        return `${this.endpointId}/${this.clusterId}/${this.attributeId}`;
+        const endpoint = this.endpointId === undefined ? "*" : this.endpointId;
+        return `${endpoint}/${this.clusterId}/${this.attributeId}`;
     }
 
     private _close() {
@@ -77,7 +79,9 @@ export class AttributeWriteDialog extends LitElement {
                 <div slot="content">
                     <p class="path" id="write-path">
                         Path <code>${this._attributePath}</code>
-                        (${formatHex(this.endpointId)}/${formatHex(this.clusterId)}/${formatHex(this.attributeId)})
+                        (${this.endpointId === undefined ? "*" : formatHex(this.endpointId)}/${formatHex(
+                            this.clusterId,
+                        )}/${formatHex(this.attributeId)})
                     </p>
                     <label class="textarea-label" for="write-payload">Value (JSON)</label>
                     <textarea

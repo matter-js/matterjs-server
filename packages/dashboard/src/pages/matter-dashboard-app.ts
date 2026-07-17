@@ -11,14 +11,18 @@ import { LitElement, PropertyValueMap, css, html } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { clientContext, tickContext } from "../client/client-context.js";
 import "../components/ha-svg-icon";
-import type { Route } from "../util/routing.js";
+import { DevModeService } from "../util/dev-mode-service.js";
 import "./components/header";
-import type { ActiveView } from "./components/header.js";
+import type { Route } from "../util/routing.js";
 import "./matter-cluster-view";
 import "./matter-endpoint-view";
+import "./matter-group-cluster-view";
+import "./matter-group-view";
+import "./matter-groups-view";
 import "./matter-network-view";
 import "./matter-node-view";
 import "./matter-server-view";
+import type { ActiveView } from "./components/header.js";
 import { categorizeDevices } from "./network/network-utils.js";
 
 declare global {
@@ -96,6 +100,13 @@ class MatterDashboardApp extends LitElement {
                 if (pathParts.length > 1 && pathParts[1]) {
                     this._initialSelectedNodeId = pathParts[1];
                 }
+            } else if (pathParts[0] === "groups") {
+                // Dev-mode-only route. Bounce to #nodes if dev mode is off.
+                if (!DevModeService.active) {
+                    location.hash = "#nodes";
+                    return;
+                }
+                this._activeView = "groups";
             } else if (hash === "nodes" || hash === "" || pathParts[0] === "node") {
                 this._activeView = "nodes";
             }
@@ -227,6 +238,35 @@ class MatterDashboardApp extends LitElement {
         }
         // Get device counts for conditional navigation
         const { hasThreadDevices, hasWifiDevices } = this._getDeviceCounts();
+
+        // Groups views (#groups, #groups/{groupId}, #groups/{groupId}/{clusterId}) — dev mode only
+        if (this._route.prefix === "groups" || this._route.path[0] === "groups") {
+            if (this._route.prefix === "groups" && this._route.path.length === 2) {
+                return html`
+                    <matter-group-cluster-view
+                        .client=${this.client}
+                        .groupId=${parseInt(this._route.path[0], 10)}
+                        .cluster=${parseInt(this._route.path[1], 10)}
+                    ></matter-group-cluster-view>
+                `;
+            }
+            if (this._route.prefix === "groups" && this._route.path.length === 1) {
+                return html`
+                    <matter-group-view
+                        .client=${this.client}
+                        .groupId=${parseInt(this._route.path[0], 10)}
+                    ></matter-group-view>
+                `;
+            }
+            return html`
+                <matter-groups-view
+                    .client=${this.client}
+                    .activeView=${this._activeView}
+                    .hasThreadDevices=${hasThreadDevices}
+                    .hasWifiDevices=${hasWifiDevices}
+                ></matter-groups-view>
+            `;
+        }
 
         // Check for Thread view (#thread or #thread/123)
         if (this._route.prefix === "thread" || this._route.path[0] === "thread") {

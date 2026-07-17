@@ -16,6 +16,7 @@ import {
     ErrorResultMessage,
     EventMessage,
     IcdStateData,
+    GroupInfo,
     LogLevelResponse,
     SettableLogLevelString,
     MatterFabricData,
@@ -408,7 +409,7 @@ export class MatterClient {
 
     async deviceCommand(
         nodeId: number | bigint,
-        endpointId: number,
+        endpointId: number | undefined,
         clusterId: number,
         commandName: string,
         payload: Record<string, unknown> = {},
@@ -442,6 +443,16 @@ export class MatterClient {
             { node_id: nodeId, endpoint_id: endpointId, command_name: commandName, payload },
             timeout,
         );
+    }
+
+    /**
+     * Get the list of groups configured on the controller.
+     *
+     * Each entry includes the group ID, the bound key set ID, and the resolved
+     * GroupKeyMulticastPolicy from the key set (null if the key set is not configured).
+     */
+    async getGroups(timeout?: number): Promise<GroupInfo[]> {
+        return await this.sendCommand("get_groups", 0, {}, timeout);
     }
 
     async getNodes(onlyAvailable = false, timeout?: number): Promise<MatterNode[]> {

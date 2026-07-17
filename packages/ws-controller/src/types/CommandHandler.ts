@@ -18,7 +18,8 @@ export type AttributeResponseStatus = {
 
 export type WriteAttributeRequest = {
     nodeId: NodeId;
-    endpointId: EndpointNumber;
+    /** Endpoint ID, or undefined for a group (groupcast) write. */
+    endpointId?: EndpointNumber;
     clusterId: ClusterId;
     attributeId: AttributeId;
     value: unknown;
@@ -26,7 +27,8 @@ export type WriteAttributeRequest = {
 
 export type InvokeRequest = {
     nodeId: NodeId;
-    endpointId: EndpointNumber;
+    /** Endpoint ID, or undefined for a group (groupcast) invoke. */
+    endpointId?: EndpointNumber;
     clusterId: ClusterId;
     commandName: string;
     data: unknown;
@@ -88,6 +90,19 @@ export type OpenCommissioningWindowRequest = {
 export type OpenCommissioningWindowResponse = {
     manualCode: string;
     qrCode: string;
+};
+
+/**
+ * Information about a single group configured on the controller fabric, returned by `get_groups`.
+ *
+ * @property groupId - 16-bit application group identifier
+ * @property groupKeySetId - the bound key set ID
+ * @property groupKeyMulticastPolicy - resolved from the bound key set; null if the key set is not configured
+ */
+export type GroupDescription = {
+    groupId: number;
+    groupKeySetId: number;
+    groupKeyMulticastPolicy: number | null;
 };
 
 import type { AttributesData, MatterNodeData } from "@matter-server/ws-client";

@@ -9,7 +9,8 @@ import { MatterClient } from "@matter-server/ws-client";
 export interface ShowAttributeWriteDialogOptions {
     client: MatterClient;
     nodeId: number | bigint;
-    endpointId: number;
+    /** Endpoint ID. Omit for group-cast writes (the dialog will use a wildcard endpoint). */
+    endpointId?: number;
     clusterId: number;
     attributeId: number;
     label: string;
