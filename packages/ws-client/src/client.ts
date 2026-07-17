@@ -335,9 +335,14 @@ export class MatterClient {
         nodeId: number | bigint,
         attributePath: string | string[],
         timeout?: number,
+        fabricFiltered = false,
     ): Promise<Record<string, unknown>> {
-        // Read one or more attribute(s) on a node by specifying an attributepath.
-        return await this.sendCommand("read_attribute", 0, { node_id: nodeId, attribute_path: attributePath }, timeout);
+        return await this.sendCommand(
+            "read_attribute",
+            0,
+            { node_id: nodeId, attribute_path: attributePath, fabric_filtered: fabricFiltered },
+            timeout,
+        );
     }
 
     async writeAttribute(

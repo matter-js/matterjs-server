@@ -114,6 +114,8 @@ All CLI options can be configured via environment variables, making it easy to c
 | `PRODUCTION_MODE`     | Force dashboard production mode (reverse proxy)                             | `false`          | `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`                                                                     |
 | `VENDOR_ID`           | Vendor ID for the Fabric                                                    | `0xfff1`         | Any valid vendor ID                                                                                                 |
 | `FABRIC_ID`           | Fabric ID for the Fabric                                                    | `1`              | Any valid fabric ID                                                                                                 |
+| `ENABLE_TIME_SYNC`    | Automatic time sync for supported devices                                   | `false`          | `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`                                                                     |
+| `TZ`                  | Container/Node.js timezone (affects host time zone detection for time sync; not a matter-server option) | (none)           | Any valid IANA timezone, e.g. `Europe/Berlin`                                                                            |
 
 > [!NOTE]
 > `LOG_FILE` must be a full file path including the filename, not a directory. The log is rotated
