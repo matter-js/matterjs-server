@@ -337,7 +337,6 @@ export class MatterClient {
         timeout?: number,
         fabricFiltered = false,
     ): Promise<Record<string, unknown>> {
-        // Read one or more attribute(s) on a node by specifying an attributepath.
         return await this.sendCommand(
             "read_attribute",
             0,
