@@ -8,7 +8,6 @@ import "@material/web/button/filled-button";
 import "@material/web/button/outlined-button";
 import "@material/web/select/outlined-select";
 import "@material/web/select/select-option";
-import "@material/web/switch/switch";
 import { mdiAlertCircle, mdiCogRefresh, mdiStop } from "@mdi/js";
 import { css, html, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
@@ -41,7 +40,9 @@ const MAIN_STATE_ERROR = 3;
 @customElement("closure-control-cluster-commands")
 class ClosureControlClusterCommands extends BaseClusterCommands {
     @state() private _moveToPosition = "";
-    @state() private _moveToLatch = false;
+    // "" = unchanged, "true" = latch, "false" = unlatch — kept as a select (not a plain switch) so an
+    // untouched control never implies an explicit latch/unlatch command in the MoveTo payload.
+    @state() private _moveToLatch = "";
     @state() private _moveToSpeed = "";
     private _unsubscribeNodes?: () => void;
 
@@ -68,7 +69,6 @@ class ClosureControlClusterCommands extends BaseClusterCommands {
         const current = readOverallCurrentState(this.node, this.endpoint);
         const target = readOverallTargetState(this.node, this.endpoint);
         const latchControlModes = readLatchControlModes(this.node, this.endpoint);
-        const canRemoteLatch = latchControlModes.remoteLatching || latchControlModes.remoteUnlatching;
 
         return html`
             <details class="command-panel" open>
@@ -158,19 +158,31 @@ class ClosureControlClusterCommands extends BaseClusterCommands {
                                       </md-outlined-select>
                                   `
                                 : nothing}
-                            ${features.motionLatching && canRemoteLatch
+                            ${features.motionLatching &&
+                            (latchControlModes.remoteLatching || latchControlModes.remoteUnlatching)
                                 ? html`
-                                      <label class="latch">
-                                          <md-switch
-                                              ?selected=${this._moveToLatch}
-                                              @change=${(e: Event) => {
-                                                  this._moveToLatch = (
-                                                      e.target as HTMLElement & { selected: boolean }
-                                                  ).selected;
-                                              }}
-                                          ></md-switch>
-                                          <span>Latch</span>
-                                      </label>
+                                      <md-outlined-select
+                                          label="Latch"
+                                          .value=${this._moveToLatch}
+                                          @change=${handleAsyncEvent((e: Event) => {
+                                              this._moveToLatch = (e.target as HTMLSelectElement).value;
+                                              return Promise.resolve();
+                                          })}
+                                      >
+                                          <md-select-option value="">
+                                              <div slot="headline">(unchanged)</div>
+                                          </md-select-option>
+                                          ${latchControlModes.remoteLatching
+                                              ? html`<md-select-option value="true">
+                                                    <div slot="headline">Latch</div>
+                                                </md-select-option>`
+                                              : nothing}
+                                          ${latchControlModes.remoteUnlatching
+                                              ? html`<md-select-option value="false">
+                                                    <div slot="headline">Unlatch</div>
+                                                </md-select-option>`
+                                              : nothing}
+                                      </md-outlined-select>
                                   `
                                 : nothing}
                             ${features.speed
@@ -259,7 +271,7 @@ class ClosureControlClusterCommands extends BaseClusterCommands {
     private async _handleMoveTo() {
         await moveTo(this.client, this.node.node_id, this.endpoint, {
             position: this._moveToPosition !== "" ? Number(this._moveToPosition) : undefined,
-            latch: this._moveToLatch,
+            latch: this._moveToLatch !== "" ? this._moveToLatch === "true" : undefined,
             speed: this._moveToSpeed !== "" ? Number(this._moveToSpeed) : undefined,
         });
     }
@@ -348,11 +360,6 @@ class ClosureControlClusterCommands extends BaseClusterCommands {
                 align-items: center;
                 gap: 12px;
                 flex-wrap: wrap;
-            }
-            .latch {
-                display: inline-flex;
-                align-items: center;
-                gap: 8px;
             }
         `,
     ];
