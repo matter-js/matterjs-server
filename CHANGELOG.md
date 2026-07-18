@@ -9,6 +9,7 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## **WORK IN PROGRESS**
 
+- Feature: Dashboard adds a command panel for the ClosureControl cluster (Stop, Calibrate, MoveTo with position/latch/speed), following the same pattern as the Chime cluster panel
 - Fix: Ensures that updating Thread data from nodes in Thread visualization also updates the chart
 - Fix: Dashboard no longer offers live-view streaming controls for the Snapshot Camera device type, which doesn't support WebRTC — only Snapshot capture is offered
 
