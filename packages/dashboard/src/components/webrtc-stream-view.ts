@@ -825,7 +825,6 @@ export class WebRtcStreamView extends LitElement {
     }
 
     private async _ensureSnapshotStream(): Promise<number> {
-        if (this._snapshotStreamId !== null) return this._snapshotStreamId;
         if (!this.client) throw new Error("Matter client not available");
 
         const node = this.client.nodes[String(this.nodeId)];
@@ -845,6 +844,20 @@ export class WebRtcStreamView extends LitElement {
         // Never request more than the chosen capability provides: a larger resolution would map
         // to an encoder-requiring capability the busy encoder can't satisfy (ResourceExhausted).
         const targetResolution = clampToCapability(this.snapshotResolution ?? cap.resolution, cap.resolution);
+
+        // A cached stream only still covers the current call if its resolution matches: the
+        // caller may have changed `snapshotResolution`, or the encoder may have freed up, since
+        // it was ensured. Otherwise release it before searching for (or allocating) one that
+        // actually covers the new target.
+        if (this._snapshotStreamId !== null) {
+            if (
+                this._snapshotResolution?.width === targetResolution.width &&
+                this._snapshotResolution?.height === targetResolution.height
+            ) {
+                return this._snapshotStreamId;
+            }
+            await this.deallocateSnapshot();
+        }
 
         const avsmFeatures = this._readAvsmFeatures();
 
