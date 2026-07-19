@@ -208,7 +208,12 @@ class ClosureControlClusterCommands extends BaseClusterCommands {
                                       </md-outlined-select>
                                   `
                                 : nothing}
-                            <md-filled-button @click=${handleAsync(() => this._handleMoveTo())}>
+                            <md-filled-button
+                                ?disabled=${this._moveToPosition === "" &&
+                                this._moveToLatch === "" &&
+                                this._moveToSpeed === ""}
+                                @click=${handleAsync(() => this._handleMoveTo())}
+                            >
                                 Move
                             </md-filled-button>
                         </div>
