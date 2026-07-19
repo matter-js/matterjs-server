@@ -9,6 +9,7 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## **WORK IN PROGRESS**
 
+- Feature: Dashboard node view shows the endpoint list as a parent/child tree (indented under their parent endpoint), derived from the Descriptor cluster's PartsList attribute, instead of a flat numeric list
 - Fix: Ensures that updating Thread data from nodes in Thread visualization also updates the chart
 - Fix: Dashboard no longer offers live-view streaming controls for the Snapshot Camera device type, which doesn't support WebRTC — only Snapshot capture is offered
 

@@ -15,3 +15,44 @@ export function getEndpointDeviceTypes(node: MatterNode, endpoint: number): Devi
         return device_types[id] ?? { id: id ?? -1, label: `Unknown Device Type (${id})`, clusters: [] };
     });
 }
+
+export interface EndpointTreeNode {
+    endpointId: number;
+    depth: number;
+}
+
+/**
+ * Orders endpoints into parent-first tree order using each endpoint's Descriptor PartsList
+ * (attribute 29/3). PartsList on an ancestor also lists indirect descendants, so for each
+ * endpoint we keep only the closest parent (the one whose own PartsList doesn't contain
+ * another candidate parent that also lists the endpoint).
+ */
+export function getEndpointTree(node: MatterNode, endpointIds: number[]): EndpointTreeNode[] {
+    const idSet = new Set(endpointIds);
+    const partsList = new Map<number, number[]>(
+        endpointIds.map(id => {
+            const raw = node.attributes[`${id}/29/3`] as number[] | undefined;
+            return [id, (raw ?? []).filter(childId => idSet.has(childId))];
+        }),
+    );
+
+    const children = new Map<number, number[]>();
+    const hasParent = new Set<number>();
+    for (const id of endpointIds) {
+        const descendants = partsList.get(id)!;
+        const directChildren = descendants
+            .filter(child => !descendants.some(other => other !== child && partsList.get(other)!.includes(child)))
+            .sort((a, b) => a - b);
+        children.set(id, directChildren);
+        for (const child of directChildren) hasParent.add(child);
+    }
+
+    const roots = endpointIds.filter(id => !hasParent.has(id)).sort((a, b) => a - b);
+    const ordered: EndpointTreeNode[] = [];
+    const visit = (id: number, depth: number) => {
+        ordered.push({ endpointId: id, depth });
+        for (const child of children.get(id)!) visit(child, depth + 1);
+    };
+    for (const root of roots) visit(root, 0);
+    return ordered;
+}
