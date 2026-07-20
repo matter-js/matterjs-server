@@ -7,7 +7,7 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
-## **WORK IN PROGRESS**
+## 1.2.8 (2026-07-20)
 
 - Fix: WebRTC camera live view — `ProvideOffer` again selects the stream fields by the provider's cluster revision
 - Fix: Ensures that updating Thread data from nodes in Thread visualization also updates the chart
