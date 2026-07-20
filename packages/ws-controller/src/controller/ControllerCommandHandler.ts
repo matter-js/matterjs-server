@@ -45,6 +45,7 @@ import {
 } from "@matter/main/clusters";
 import { WebRtcTransportDefinitions } from "@matter/main/clusters/web-rtc-transport-definitions";
 import { WebRtcTransportProvider } from "@matter/main/clusters/web-rtc-transport-provider";
+import { ClusterRevision } from "@matter/main/model";
 import { DeviceAttestationCheck, Invoke, PeerAddress, Read, Specifier, PeerSet } from "@matter/main/protocol";
 import {
     AttributeId,
@@ -384,11 +385,11 @@ export class ControllerCommandHandler {
             originatingEndpointId,
         };
 
-        // TODO: force the deprecated singular stream id fields for now — some providers advertising
-        // cluster revision 2 reject the revision-2 VideoStreams/AudioStreams list fields. Restore
-        // revision-based selection (read the provider's ClusterRevision from the attribute cache at
-        // `${endpointId}/${WebRtcTransportProvider.id}/${ClusterRevision.id}` and pass it) once resolved.
-        selectWebRtcStreamFields(fields, 1);
+        const clusterRevision =
+            this.#nodes.attributeCache.get(nodeId)?.[
+                `${endpointId}/${WebRtcTransportProvider.id}/${ClusterRevision.id}`
+            ];
+        selectWebRtcStreamFields(fields, clusterRevision);
 
         const response = (await this.#invokeCommand(node.node, {
             endpoint: endpointId,
@@ -1174,8 +1175,7 @@ export class ControllerCommandHandler {
                     for (const f of findings) {
                         if (f.type === DeviceAttestationCheck.TrustedAsTestCertificate) {
                             testCertReason =
-                                'Device uses a test/development certificate. Enable the "Test Net DCL" option ' +
-                                "(--enable-test-net-dcl) to commission test or development devices";
+                                'This device uses a test/development certificate. To commission it, enable the "Test DCL" option in the settings — only do this if you trust the vendor.';
                         } else if (f.level === "error") {
                             hardError = true;
                         }
