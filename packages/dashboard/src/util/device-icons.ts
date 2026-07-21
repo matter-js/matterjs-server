@@ -189,12 +189,15 @@ export const DeviceTypes = {
     INTERCOM: 0x0140,
 };
 
-/** Device types whose mandatory clusters include WebRTCTransportProvider (0x553), i.e. support live streaming. */
-export const LIVE_VIEW_DEVICE_TYPE_IDS: readonly number[] = Object.freeze([
-    DeviceTypes.CAMERA,
-    DeviceTypes.VIDEO_DOORBELL,
-    DeviceTypes.FLOODLIGHT_CAMERA,
-]);
+/**
+ * Device types whose mandatory clusters include WebRTCTransportProvider (0x553), i.e. support live streaming.
+ *
+ * Floodlight Camera (0x0144) is intentionally excluded: per Matter specs 1.6.0 chapter 16.2 it is a composed
+ * device type whose root endpoint only carries Basic Information and, optionally, Power Source — the
+ * WebRTCTransportProvider/CameraAvStreamManagement clusters live on its mandatory Camera (0x0142) child
+ * endpoint instead, which is already covered by DeviceTypes.CAMERA above.
+ */
+export const LIVE_VIEW_DEVICE_TYPE_IDS: readonly number[] = Object.freeze([DeviceTypes.CAMERA, DeviceTypes.VIDEO_DOORBELL]);
 
 /**
  * Maps device type IDs to MDI icon paths.
