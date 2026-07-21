@@ -197,7 +197,10 @@ export const DeviceTypes = {
  * WebRTCTransportProvider/CameraAvStreamManagement clusters live on its mandatory Camera (0x0142) child
  * endpoint instead, which is already covered by DeviceTypes.CAMERA above.
  */
-export const LIVE_VIEW_DEVICE_TYPE_IDS: readonly number[] = Object.freeze([DeviceTypes.CAMERA, DeviceTypes.VIDEO_DOORBELL]);
+export const LIVE_VIEW_DEVICE_TYPE_IDS: readonly number[] = Object.freeze([
+    DeviceTypes.CAMERA,
+    DeviceTypes.VIDEO_DOORBELL,
+]);
 
 /**
  * Maps device type IDs to MDI icon paths.
