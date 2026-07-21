@@ -305,7 +305,7 @@ For security reasons, by default the matter.js server is run as an unprivileged 
 
 #### D-Bus / BlueZ backend (recommended)
 
-Set `NOBLE_BINDINGS=dbus` to make noble talk to the host's BlueZ daemon over D-Bus instead of opening a raw HCI socket. This keeps the container unprivileged: the only host resource it needs is the system D-Bus socket, mounted read-only.
+Set `NOBLE_BINDINGS=dbus` (in addition to selecting the adapter) to make noble talk to the host's BlueZ daemon over D-Bus instead of opening a raw HCI socket. This keeps the container unprivileged: the only host resource it needs is the system D-Bus socket, mounted read-only.
 
 ```bash
 docker run -d \
@@ -315,6 +315,7 @@ docker run -d \
   -v /run/dbus:/run/dbus:ro \
   --network=host \
   -e NOBLE_BINDINGS=dbus \
+  -e BLUETOOTH_ADAPTER=0 \
   ghcr.io/matter-js/matterjs-server:stable
 ```
 
