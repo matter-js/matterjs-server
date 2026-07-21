@@ -32,7 +32,7 @@ export function getEndpointTree(node: MatterNode, endpointIds: number[]): Endpoi
     const partsList = new Map<number, number[]>(
         endpointIds.map(id => {
             const raw = node.attributes[`${id}/29/3`] as number[] | undefined;
-            return [id, (raw ?? []).filter(childId => idSet.has(childId))];
+            return [id, (raw ?? []).filter(childId => idSet.has(childId) && childId !== id)];
         }),
     );
 
@@ -49,10 +49,17 @@ export function getEndpointTree(node: MatterNode, endpointIds: number[]): Endpoi
 
     const roots = endpointIds.filter(id => !hasParent.has(id)).sort((a, b) => a - b);
     const ordered: EndpointTreeNode[] = [];
+    const visited = new Set<number>();
     const visit = (id: number, depth: number) => {
+        if (visited.has(id)) return;
+        visited.add(id);
         ordered.push({ endpointId: id, depth });
         for (const child of children.get(id)!) visit(child, depth + 1);
     };
     for (const root of roots) visit(root, 0);
+    // PartsList cycles can leave every endpoint marked as someone's child (no roots) or
+    // strand nodes unreached; fall back to emitting anything still unvisited as a root
+    // so malformed device data never makes endpoints disappear from the list.
+    for (const id of [...endpointIds].sort((a, b) => a - b)) visit(id, 0);
     return ordered;
 }

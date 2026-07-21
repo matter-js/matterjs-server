@@ -71,5 +71,24 @@ describe("endpoints util", () => {
                 { endpointId: 1, depth: 1 },
             ]);
         });
+
+        it("ignores a self-referencing PartsList entry instead of recursing forever", () => {
+            const n = node({ "0/29/3": [0, 1] });
+            expect(getEndpointTree(n, [0, 1])).to.deep.equal([
+                { endpointId: 0, depth: 0 },
+                { endpointId: 1, depth: 1 },
+            ]);
+        });
+
+        it("falls back to listing every endpoint when a PartsList cycle leaves no roots", () => {
+            // 1 and 2 list each other as children, so both end up in hasParent and roots is empty.
+            // The fallback pass still walks the (cyclic) children edges, breaking the cycle at
+            // whichever endpoint it starts from, but every endpoint appears exactly once.
+            const n = node({ "1/29/3": [2], "2/29/3": [1] });
+            expect(getEndpointTree(n, [1, 2])).to.deep.equal([
+                { endpointId: 1, depth: 0 },
+                { endpointId: 2, depth: 1 },
+            ]);
+        });
     });
 });
