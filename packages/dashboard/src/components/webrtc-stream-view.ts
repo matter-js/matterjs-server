@@ -201,6 +201,9 @@ export class WebRtcStreamView extends LitElement {
 
     private _snapshotStreamId: number | null = null;
     private _snapshotResolution: { width: number; height: number } | null = null;
+    private _snapshotImageCodec: number | null = null;
+    private _snapshotWatermarkEnabled: boolean | undefined = undefined;
+    private _snapshotOsdEnabled: boolean | undefined = undefined;
     /** True when we allocated this stream ourselves and must Deallocate it on stop. False when reusing an existing allocation. */
     private _videoStreamOwned = false;
     private _audioStreamOwned = false;
@@ -682,6 +685,9 @@ export class WebRtcStreamView extends LitElement {
         const wasOwned = this._snapshotStreamOwned;
         this._snapshotStreamId = null;
         this._snapshotResolution = null;
+        this._snapshotImageCodec = null;
+        this._snapshotWatermarkEnabled = undefined;
+        this._snapshotOsdEnabled = undefined;
         this._snapshotStreamOwned = false;
         if (!wasOwned) return; // Reused an existing allocation — leave it for its owner.
         try {
@@ -845,34 +851,43 @@ export class WebRtcStreamView extends LitElement {
         // to an encoder-requiring capability the busy encoder can't satisfy (ResourceExhausted).
         const targetResolution = clampToCapability(this.snapshotResolution ?? cap.resolution, cap.resolution);
 
-        // A cached stream only still covers the current call if its resolution matches: the
-        // caller may have changed `snapshotResolution`, or the encoder may have freed up, since
-        // it was ensured. Otherwise release it before searching for (or allocating) one that
-        // actually covers the new target.
+        const avsmFeatures = this._readAvsmFeatures();
+        const wantWatermark = avsmFeatures.wmark ? this.watermarkEnabled : undefined;
+        const wantOsd = avsmFeatures.osd ? this.osdEnabled : undefined;
+
+        // A cached stream only still covers the current call if its resolution, codec, and
+        // watermark/OSD flags all still match: the caller may have changed `snapshotResolution`
+        // or toggled watermark/OSD, or the encoder may have freed up, since it was ensured.
+        // Otherwise release it before searching for (or allocating) one that actually covers
+        // the new target.
         if (this._snapshotStreamId !== null) {
             if (
                 this._snapshotResolution?.width === targetResolution.width &&
-                this._snapshotResolution?.height === targetResolution.height
+                this._snapshotResolution?.height === targetResolution.height &&
+                this._snapshotImageCodec === cap.imageCodec &&
+                this._snapshotWatermarkEnabled === wantWatermark &&
+                this._snapshotOsdEnabled === wantOsd
             ) {
                 return this._snapshotStreamId;
             }
             await this.deallocateSnapshot();
         }
 
-        const avsmFeatures = this._readAvsmFeatures();
-
         // AllocatedSnapshotStreams (attr 0x0011) — reuse existing stream when its capability
         // range covers our target resolution (spec §11.2.1.2.1 / §11.2.8.8.8).
         const reused = this._findMatchingSnapshotStream({
             imageCodec: cap.imageCodec,
             resolution: targetResolution,
-            watermarkEnabled: avsmFeatures.wmark ? this.watermarkEnabled : undefined,
-            osdEnabled: avsmFeatures.osd ? this.osdEnabled : undefined,
+            watermarkEnabled: wantWatermark,
+            osdEnabled: wantOsd,
         });
         if (reused !== null) {
             console.info("[webrtc-stream-view] reusing existing snapshot stream", reused.id);
             this._snapshotStreamId = reused.id;
             this._snapshotResolution = reused.resolution;
+            this._snapshotImageCodec = cap.imageCodec;
+            this._snapshotWatermarkEnabled = wantWatermark;
+            this._snapshotOsdEnabled = wantOsd;
             this._snapshotStreamOwned = false;
             return reused.id;
         }
@@ -899,6 +914,9 @@ export class WebRtcStreamView extends LitElement {
         }
         this._snapshotStreamId = snapshotStreamId;
         this._snapshotResolution = targetResolution;
+        this._snapshotImageCodec = cap.imageCodec;
+        this._snapshotWatermarkEnabled = wantWatermark;
+        this._snapshotOsdEnabled = wantOsd;
         this._snapshotStreamOwned = true;
         return this._snapshotStreamId;
     }

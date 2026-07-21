@@ -6,6 +6,10 @@
 
 import type { MatterClient } from "@matter-server/ws-client";
 import {
+    AVSM_FEATURE_MAP_ATTR_ID,
+    AVSM_FEAT_OSD,
+    AVSM_FEAT_SNP,
+    AVSM_FEAT_WMARK,
     CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID,
     WebRtcStreamView,
     parseSnapshotCapabilitiesFromList,
@@ -89,7 +93,7 @@ describe("WebRtcStreamView#takeSnapshot", () => {
     const ENDPOINT_ID = 5;
 
     /** Records every deviceCommand call and fakes just enough of MatterClient for _ensureSnapshotStream. */
-    function createFakeClient(): {
+    function createFakeClient(featureBits = 0): {
         client: MatterClient;
         calls: { command: string; payload: Record<string, unknown> }[];
     } {
@@ -105,6 +109,8 @@ describe("WebRtcStreamView#takeSnapshot", () => {
                         ],
                         // AllocatedSnapshotStreams: empty, so nothing is ever reused across allocations.
                         [`${ENDPOINT_ID}/${CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID}/17`]: [],
+                        [`${ENDPOINT_ID}/${CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID}/${AVSM_FEATURE_MAP_ATTR_ID}`]:
+                            featureBits,
                     },
                 },
             },
@@ -173,5 +179,30 @@ describe("WebRtcStreamView#takeSnapshot", () => {
             minResolution: { width: 640, height: 480 },
             maxResolution: { width: 640, height: 480 },
         });
+    });
+
+    it("deallocates and reallocates when watermark/OSD toggles between captures", async () => {
+        const { client, calls } = createFakeClient(AVSM_FEAT_SNP | AVSM_FEAT_WMARK | AVSM_FEAT_OSD);
+        const view = new WebRtcStreamView();
+        view.client = client;
+        view.nodeId = NODE_ID;
+        view.endpointId = ENDPOINT_ID;
+        view.snapshotResolution = { width: 1920, height: 1080 };
+        view.watermarkEnabled = false;
+        view.osdEnabled = false;
+
+        await view.takeSnapshot();
+
+        view.watermarkEnabled = true;
+        await view.takeSnapshot();
+
+        expect(calls.map(c => c.command)).to.deep.equal([
+            "SnapshotStreamAllocate",
+            "CaptureSnapshot",
+            "SnapshotStreamDeallocate",
+            "SnapshotStreamAllocate",
+            "CaptureSnapshot",
+        ]);
+        expect(calls[3]?.payload).to.deep.include({ watermarkEnabled: true, osdEnabled: false });
     });
 });
