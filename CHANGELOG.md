@@ -9,11 +9,16 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## **WORK IN PROGRESS**
 
-- Fix: Ensures that updating Thread data from nodes in Thread visualization also updates the chart
-- Fix: Dashboard no longer offers live-view streaming controls for the Snapshot Camera device type, which doesn't support WebRTC — only Snapshot capture is offered
 - Fix: Dashboard now re-negotiates the snapshot stream when the selected resolution changes; it previously kept reusing the first stream/resolution ever captured for the lifetime of the camera overlay
 
+## 1.2.8 (2026-07-20)
 
+- Fix: WebRTC camera live view — `ProvideOffer` again selects the stream fields by the provider's cluster revision
+- Fix: Ensures that updating Thread data from nodes in Thread visualization also updates the chart
+- Fix: (lboue) Dashboard no longer offers live-view streaming controls for the Snapshot Camera device type, which doesn't support WebRTC — only Snapshot capture is offered
+- Fix: Update matter.js to the latest 0.17.7 alpha
+    - Optimizes Fallback address handling on connections
+    - Ensures correct failsafe timer handling for long sleepy devices
 
 ## 1.2.7 (2026-07-16)
 
