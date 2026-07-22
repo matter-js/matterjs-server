@@ -199,6 +199,63 @@ describe("WebRtcStreamView#takeSnapshot", () => {
         ]);
     });
 
+    it("does not deallocate a snapshot stream while a capture is in flight (stop waits)", async () => {
+        const calls: { command: string; payload: Record<string, unknown> }[] = [];
+        let releaseCapture: () => void = () => {};
+        const capturePending = new Promise<void>(resolve => {
+            releaseCapture = resolve;
+        });
+        const client = {
+            nodes: {
+                [String(NODE_ID)]: {
+                    attributes: {
+                        [`${ENDPOINT_ID}/${CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID}/10`]: [
+                            { "0": res(1920, 1080), "1": 30, "2": 0, "3": false },
+                        ],
+                        [`${ENDPOINT_ID}/${CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID}/17`]: [],
+                        [`${ENDPOINT_ID}/${CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID}/${AVSM_FEATURE_MAP_ATTR_ID}`]: 0,
+                    },
+                },
+            },
+            deviceCommand: async (
+                _n: number | bigint,
+                _e: number,
+                _c: number,
+                commandName: string,
+                payload: Record<string, unknown> = {},
+            ) => {
+                calls.push({ command: commandName, payload });
+                if (commandName === "SnapshotStreamAllocate") return { snapshotStreamId: 1 };
+                if (commandName === "CaptureSnapshot") {
+                    await capturePending;
+                    return { data: "AA==", imageCodec: 0, resolution: payload["requestedResolution"] };
+                }
+                return {};
+            },
+        } as unknown as MatterClient;
+
+        const view = new WebRtcStreamView();
+        view.client = client;
+        view.nodeId = NODE_ID;
+        view.endpointId = ENDPOINT_ID;
+        view.snapshotResolution = { width: 1920, height: 1080 };
+
+        const snap = view.takeSnapshot();
+        const settle = () => new Promise(resolve => setTimeout(resolve, 0));
+        await settle(); // let allocate + the awaited CaptureSnapshot start
+
+        const stopped = view.stop();
+        await settle(); // give the (serialized) stop a chance to run if it were not gated
+
+        expect(calls.map(c => c.command)).to.not.include("SnapshotStreamDeallocate");
+
+        releaseCapture();
+        await Promise.all([snap, stopped]);
+
+        const commands = calls.map(c => c.command);
+        expect(commands.indexOf("SnapshotStreamDeallocate")).to.be.greaterThan(commands.indexOf("CaptureSnapshot"));
+    });
+
     it("captures at the user target resolution, not the stream max, when reusing an existing stream", async () => {
         const calls: { command: string; payload: Record<string, unknown> }[] = [];
         const client = {

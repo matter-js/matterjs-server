@@ -205,8 +205,6 @@ export class WebRtcStreamView extends LitElement {
     private _snapshotMaxFrameRate: number | null = null;
     private _snapshotWatermarkEnabled: boolean | undefined = undefined;
     private _snapshotOsdEnabled: boolean | undefined = undefined;
-    // Serializes takeSnapshot() calls: re-negotiation in one call must not deallocate the stream a
-    // concurrent capture is mid-flight on, and two first-time captures must not each allocate (leak).
     private _snapshotChain: Promise<unknown> = Promise.resolve();
     /** True when we allocated this stream ourselves and must Deallocate it on stop. False when reusing an existing allocation. */
     private _videoStreamOwned = false;
@@ -423,7 +421,7 @@ export class WebRtcStreamView extends LitElement {
                         console.info(
                             "[webrtc-stream-view] VideoStreamAllocate ResourceExhausted; freeing snapshot stream and retrying",
                         );
-                        await this.deallocateSnapshot();
+                        await this._runSerialized(() => this.deallocateSnapshot());
                         videoAlloc = await this.client.deviceCommand(
                             this.nodeId,
                             this.endpointId,
@@ -591,7 +589,7 @@ export class WebRtcStreamView extends LitElement {
         this._videoStreamOwned = false;
         this._audioStreamOwned = false;
 
-        await this.deallocateSnapshot();
+        await this._runSerialized(() => this.deallocateSnapshot());
 
         const video = this._video;
         if (video && video.srcObject) {
@@ -621,16 +619,23 @@ export class WebRtcStreamView extends LitElement {
         this._stopping = false;
     }
 
-    async takeSnapshot(): Promise<{ dataUri: string; resolution: { width: number; height: number } }> {
-        const run = this._snapshotChain.then(
-            () => this._takeSnapshot(),
-            () => this._takeSnapshot(),
-        );
+    /**
+     * Runs a snapshot-stream lifecycle op (capture, or a deallocate triggered by the video path /
+     * teardown) after any in-flight one settles. Keeps re-negotiation and cross-path deallocation
+     * from tearing down a stream a concurrent capture is using, and first-time captures from each
+     * allocating (leak).
+     */
+    private _runSerialized<T>(op: () => Promise<T>): Promise<T> {
+        const run = this._snapshotChain.then(op, op);
         this._snapshotChain = run.then(
             () => undefined,
             () => undefined,
         );
         return run;
+    }
+
+    async takeSnapshot(): Promise<{ dataUri: string; resolution: { width: number; height: number } }> {
+        return this._runSerialized(() => this._takeSnapshot());
     }
 
     private async _takeSnapshot(): Promise<{ dataUri: string; resolution: { width: number; height: number } }> {
