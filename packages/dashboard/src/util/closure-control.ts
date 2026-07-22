@@ -105,7 +105,7 @@ export function readMainState(node: MatterNode, endpoint: number): number | null
 
 export function readCurrentErrorList(node: MatterNode, endpoint: number): number[] {
     const raw = readAttr(node, endpoint, ATTR_CURRENT_ERROR_LIST);
-    return Array.isArray(raw) ? raw.filter((v): v is number => typeof v === "number") : [];
+    return Array.isArray(raw) ? raw.filter((v): v is number => typeof v === "number" && Number.isFinite(v)) : [];
 }
 
 export function readCountdownTime(node: MatterNode, endpoint: number): number | null {

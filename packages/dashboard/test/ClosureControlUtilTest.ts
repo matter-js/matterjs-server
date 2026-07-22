@@ -81,6 +81,9 @@ describe("closure-control util", () => {
         it("filters non-numeric entries", () => {
             expect(readCurrentErrorList(node({ "6/260/2": [0, 2, "bad", null] }), 6)).to.deep.equal([0, 2]);
         });
+        it("filters non-finite numbers", () => {
+            expect(readCurrentErrorList(node({ "6/260/2": [0, NaN, Infinity, 3] }), 6)).to.deep.equal([0, 3]);
+        });
         it("returns empty for absent/non-array value", () => {
             expect(readCurrentErrorList(node({}), 6)).to.deep.equal([]);
         });
