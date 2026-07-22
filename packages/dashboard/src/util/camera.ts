@@ -9,6 +9,7 @@ import {
     AVSM_FEAT_SNP,
     AVSM_FEATURE_MAP_ATTR_ID,
     CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID,
+    readAvsmFeatures,
 } from "../components/webrtc-stream-view.js";
 
 export const WEBRTC_TRANSPORT_PROVIDER_CLUSTER_ID = 0x553;
@@ -52,4 +53,13 @@ export function supportsSnapshot(node: MatterNode, endpoint: number): boolean {
 
 export function supportsCameraOverlay(node: MatterNode, endpoint: number): boolean {
     return supportsLiveView(node, endpoint) || supportsSnapshot(node, endpoint);
+}
+
+/**
+ * True when live view is available but the device doesn't advertise the Video (VDO) feature —
+ * e.g. Audio Doorbell, Intercom. The session streams audio only, so the UI should say "Listen"
+ * rather than "Live View".
+ */
+export function supportsAudioOnlyLiveView(node: MatterNode, endpoint: number): boolean {
+    return supportsLiveView(node, endpoint) && !readAvsmFeatures(node, endpoint).vdo;
 }
