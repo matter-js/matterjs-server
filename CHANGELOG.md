@@ -9,7 +9,7 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## **WORK IN PROGRESS**
 
-- Fix: Dashboard now re-negotiates the snapshot stream when the selected resolution changes; it previously kept reusing the first stream/resolution ever captured for the lifetime of the camera overlay
+- Fix: Dashboard now re-negotiates the snapshot stream when the selected resolution changes
 
 ## 1.2.8 (2026-07-20)
 
