@@ -309,7 +309,7 @@ jobs:
 
             - name: Publish Python client to PyPI
               if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.pypi_needed == 'true'
-              uses: pypa/gh-action-pypi-publish@v1.14.0
+              uses: pypa/gh-action-pypi-publish@v1.14.1
               with:
                   packages-dir: python_client/dist/
 
@@ -319,7 +319,7 @@ jobs:
 
             - name: Publish Python BLE proxy to PyPI
               if: steps.publish_tasks.outputs.pr_merged == 'true' && steps.publish_tasks.outputs.pypi_ble_proxy_needed == 'true'
-              uses: pypa/gh-action-pypi-publish@v1.14.0
+              uses: pypa/gh-action-pypi-publish@v1.14.1
               with:
                   packages-dir: python_ble_proxy/dist/
 
