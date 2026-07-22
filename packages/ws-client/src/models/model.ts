@@ -217,7 +217,8 @@ export interface ThreadDiagnosticsBatch {
  * - `border_router`: an mDNS-discovered Thread Border Router (not commissioned here).
  * - `thread_unknown`: a Thread device seen in a commissioned node's neighbor table but not
  *   commissioned on this fabric (e.g. a neighbour on another fabric).
- * - `wifi_ap`: a synthetic access-point node grouping Wi-Fi stations by BSSID (id `ap_<BSSID>`).
+ * - `wifi_ap`: a synthetic access-point node grouping Wi-Fi stations by BSSID (id `ap_<BSSID>`,
+ *   colons stripped — e.g. BSSID `11:22:33:44:55:66` → `ap_112233445566`).
  */
 export type TopologyNodeKind = "matter" | "border_router" | "thread_unknown" | "wifi_ap";
 
@@ -253,7 +254,7 @@ export interface TopologyDirectionInfo {
  */
 export interface NetworkTopologyNode {
     /** Stable graph id. Commissioned nodes use the decimal node id; externals use `br_<XA>` /
-     * `unknown_<EXTADDR>`; Wi-Fi APs use `ap_<BSSID>`. */
+     * `unknown_<EXTADDR>`; Wi-Fi APs use `ap_<BSSID>` with the colons stripped (e.g. `ap_112233445566`). */
     id: string;
     kind: TopologyNodeKind;
     network_type: "thread" | "wifi" | "ethernet" | "unknown";
