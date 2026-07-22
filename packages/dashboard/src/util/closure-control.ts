@@ -37,12 +37,23 @@ export const CLOSURE_ERROR_LABELS: Record<number, string> = {
     4: "Internal interference",
 };
 
+/** MoveTo / OverallTargetState.position (TargetPositionEnum, spec §5.4.6.2). */
 export const TARGET_POSITION_LABELS: Record<number, string> = {
     0: "Fully closed",
     1: "Fully open",
     2: "Pedestrian",
     3: "Ventilation",
     4: "Signature",
+};
+
+/** OverallCurrentState.position (CurrentPositionEnum, spec §5.4.6.1) — diverges from TargetPosition at 2+. */
+export const CURRENT_POSITION_LABELS: Record<number, string> = {
+    0: "Fully closed",
+    1: "Fully open",
+    2: "Partially open",
+    3: "Pedestrian",
+    4: "Ventilation",
+    5: "Signature",
 };
 
 export const SPEED_LABELS: Record<number, string> = {

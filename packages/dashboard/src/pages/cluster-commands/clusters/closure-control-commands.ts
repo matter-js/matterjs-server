@@ -12,11 +12,13 @@ import { mdiAlertCircle, mdiCogRefresh, mdiStop } from "@mdi/js";
 import { css, html, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import "../../../components/ha-svg-icon.js";
-import { handleAsync, handleAsyncEvent } from "../../../util/async-handler.js";
+import { handleAsync } from "../../../util/async-handler.js";
 import {
     CLOSURE_CONTROL_CLUSTER_ID,
     CLOSURE_ERROR_LABELS,
+    CURRENT_POSITION_LABELS,
     type ClosureCurrentState,
+    type ClosureFeatures,
     type ClosureState,
     MAIN_STATE_LABELS,
     SPEED_LABELS,
@@ -71,6 +73,7 @@ class ClosureControlClusterCommands extends BaseClusterCommands {
     override disconnectedCallback() {
         super.disconnectedCallback();
         this._unsubscribeNodes?.();
+        this._unsubscribeNodes = undefined;
     }
 
     override render() {
@@ -147,10 +150,9 @@ class ClosureControlClusterCommands extends BaseClusterCommands {
                                       <md-outlined-select
                                           label="Position"
                                           .value=${this._moveToPosition}
-                                          @change=${handleAsyncEvent((e: Event) => {
+                                          @change=${(e: Event) => {
                                               this._moveToPosition = (e.target as HTMLSelectElement).value;
-                                              return Promise.resolve();
-                                          })}
+                                          }}
                                       >
                                           <md-select-option value="">
                                               <div slot="headline">(unchanged)</div>
@@ -177,10 +179,9 @@ class ClosureControlClusterCommands extends BaseClusterCommands {
                                       <md-outlined-select
                                           label="Latch"
                                           .value=${this._moveToLatch}
-                                          @change=${handleAsyncEvent((e: Event) => {
+                                          @change=${(e: Event) => {
                                               this._moveToLatch = (e.target as HTMLSelectElement).value;
-                                              return Promise.resolve();
-                                          })}
+                                          }}
                                       >
                                           <md-select-option value="">
                                               <div slot="headline">(unchanged)</div>
@@ -203,10 +204,9 @@ class ClosureControlClusterCommands extends BaseClusterCommands {
                                       <md-outlined-select
                                           label="Speed"
                                           .value=${this._moveToSpeed}
-                                          @change=${handleAsyncEvent((e: Event) => {
+                                          @change=${(e: Event) => {
                                               this._moveToSpeed = (e.target as HTMLSelectElement).value;
-                                              return Promise.resolve();
-                                          })}
+                                          }}
                                       >
                                           <md-select-option value="">
                                               <div slot="headline">(unchanged)</div>
@@ -236,8 +236,9 @@ class ClosureControlClusterCommands extends BaseClusterCommands {
         `;
     }
 
-    private _renderState(state: ClosureState | ClosureCurrentState | null, features: ReturnType<typeof readFeatures>) {
+    private _renderState(state: ClosureState | ClosureCurrentState | null, features: ClosureFeatures) {
         if (!state) return html`<div class="muted empty">Unknown</div>`;
+        const positionLabels = "secureState" in state ? CURRENT_POSITION_LABELS : TARGET_POSITION_LABELS;
         return html`
             <div class="state-fields">
                 ${features.positioning
@@ -245,7 +246,7 @@ class ClosureControlClusterCommands extends BaseClusterCommands {
                           <span class="muted">Position:</span>
                           <span>
                               ${state.position !== null
-                                  ? (TARGET_POSITION_LABELS[state.position] ?? `#${state.position}`)
+                                  ? (positionLabels[state.position] ?? `#${state.position}`)
                                   : "Unknown"}
                           </span>
                       </div>`

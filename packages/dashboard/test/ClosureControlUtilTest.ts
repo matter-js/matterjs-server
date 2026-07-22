@@ -6,6 +6,8 @@
 
 import { MatterNode, type MatterClient, type MatterNodeData } from "@matter-server/ws-client";
 import {
+    CURRENT_POSITION_LABELS,
+    TARGET_POSITION_LABELS,
     calibrate,
     moveTo,
     parseClosureFeatures,
@@ -52,6 +54,17 @@ describe("closure-control util", () => {
             const features = parseClosureFeatures(0b1);
             expect(features.positioning).to.equal(true);
             expect(features.calibration).to.equal(false);
+        });
+    });
+
+    describe("position label maps", () => {
+        it("current and target diverge from value 2 (CurrentPositionEnum vs TargetPositionEnum)", () => {
+            expect(CURRENT_POSITION_LABELS[2]).to.equal("Partially open");
+            expect(TARGET_POSITION_LABELS[2]).to.equal("Pedestrian");
+            expect(CURRENT_POSITION_LABELS[3]).to.equal("Pedestrian");
+            expect(TARGET_POSITION_LABELS[3]).to.equal("Ventilation");
+            expect(CURRENT_POSITION_LABELS[5]).to.equal("Signature");
+            expect(TARGET_POSITION_LABELS[5]).to.equal(undefined);
         });
     });
 
