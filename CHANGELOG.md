@@ -7,7 +7,7 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
-## **WORK IN PROGRESS**
+## 1.3.0 (2026-07-22)
 
 - Feature: (lboue) Dashboard adds a command panel for the ClosureControl cluster (Stop, Calibrate, MoveTo with position/latch/speed)
 - Enhancement: (lboue) Dashboard node view shows the endpoint list as an indented parent/child tree
