@@ -10,6 +10,7 @@ This page shows a detailed overview of the changes between versions without the 
 ## **WORK IN PROGRESS**
 
 - Feature: (lboue) Dashboard adds a command panel for the ClosureControl cluster (Stop, Calibrate, MoveTo with position/latch/speed)
+- Enhancement: (lboue) Dashboard node view shows the endpoint list as an indented parent/child tree
 - Fix: (lboue) Detect camera Live View/Snapshot capabilities from the endpoint's clusters instead of hard-coding them by device type, so composed devices (e.g. Floodlight Camera) show the button only on the endpoint that actually supports streaming
 - Fix: (lboue) Dashboard now re-negotiates the snapshot stream when the selected resolution, codec, frame rate, or watermark/OSD settings change, captures at the selected resolution even when reusing an existing stream, and serializes concurrent capture requests
 
