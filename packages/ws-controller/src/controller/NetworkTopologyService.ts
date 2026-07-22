@@ -433,13 +433,24 @@ function rssiToStrength(rssi: number | null): TopologyStrength {
 }
 
 /**
- * Stable hash of the graph, excluding `collected_at`, so a rebuild that produced an
- * identical graph does not emit. Node ids (bigint) are stringified for JSON.
+ * Stable hash of the graph, excluding `collected_at`, so a rebuild that produced an identical
+ * graph does not re-emit. Nodes/connections are sorted by identity first: their build order isn't
+ * guaranteed stable (listNodes iteration, neighbor-table arrival order), and the graph is a set —
+ * a reordering is not a change. Node ids (bigint) are stringified for JSON.
  */
 function hashTopology(topology: NetworkTopology): string {
-    return JSON.stringify({ nodes: topology.nodes, connections: topology.connections }, (_key, value) =>
-        typeof value === "bigint" ? `${value}n` : value,
+    const nodes = [...topology.nodes].sort((a, b) => compareStrings(a.id, b.id));
+    const connections = [...topology.connections].sort(
+        (a, b) =>
+            compareStrings(a.source, b.source) ||
+            compareStrings(a.target, b.target) ||
+            compareStrings(a.network, b.network),
     );
+    return JSON.stringify({ nodes, connections }, (_key, value) => (typeof value === "bigint" ? `${value}n` : value));
+}
+
+function compareStrings(a: string, b: string): number {
+    return a < b ? -1 : a > b ? 1 : 0;
 }
 
 /**

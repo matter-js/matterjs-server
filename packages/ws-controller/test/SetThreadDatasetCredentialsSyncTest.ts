@@ -79,10 +79,6 @@ function makeStubController(credentials: ThreadCredentialsRegistry) {
         events: { batchUpdated: new Observable() },
     };
 
-    const stubNetworkTopology = {
-        events: { topologyUpdated: new Observable() },
-    };
-
     const stubBorderRouters = {
         list() {
             return [];
@@ -104,11 +100,6 @@ function makeStubController(credentials: ThreadCredentialsRegistry) {
         get threadDiagnostics() {
             return stubDiagnostics as unknown as InstanceType<
                 typeof import("../src/controller/ThreadDiagnosticsService.js").ThreadDiagnosticsService
-            >;
-        },
-        get networkTopology() {
-            return stubNetworkTopology as unknown as InstanceType<
-                typeof import("../src/controller/NetworkTopologyService.js").NetworkTopologyService
             >;
         },
         get borderRouters() {

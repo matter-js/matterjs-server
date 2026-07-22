@@ -114,11 +114,11 @@ async function createHarness() {
     const config = await ConfigStorage.create(env);
 
     const fakeCommandHandler = createFakeCommandHandler();
-    // register() subscribes to the controller-level thread-diagnostics + network-topology observables; supply just those.
+    // register() eagerly subscribes only to thread-diagnostics; the network-topology observer is
+    // registered lazily on first get_network_topology, which this test never issues.
     const fakeController = {
         commandHandler: fakeCommandHandler,
         threadDiagnostics: { events: { batchUpdated: new Observable() } },
-        networkTopology: { events: { topologyUpdated: new Observable() } },
     } as unknown as MatterController;
 
     const handler = new WebSocketControllerHandler(fakeController, config, "backpressure-repro-test");

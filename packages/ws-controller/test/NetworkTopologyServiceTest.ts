@@ -376,6 +376,23 @@ describe("NetworkTopologyService", () => {
             expect(emitted).to.have.lengthOf(1);
         });
 
+        it("does not re-emit when only node/connection ordering changes", async () => {
+            const node1 = mkThread(1, { role: 5, rloc16: 1024, neighbors: [neighbor(0, 1025, 3, -40)] });
+            const node2 = mkThread(2, { role: 5, rloc16: 1025, neighbors: [neighbor(0, 1024, 2, -60)] });
+            let order: Node[] = [node1, node2];
+            const { emitted, controller } = makeHarness({ nodes: () => order });
+
+            controller.nodeAdded.emit(1);
+            await delay(20);
+            expect(emitted).to.have.lengthOf(1);
+
+            // Same graph, reversed iteration order → the set is unchanged → no re-emit.
+            order = [node2, node1];
+            controller.nodeAdded.emit(2);
+            await delay(20);
+            expect(emitted).to.have.lengthOf(1);
+        });
+
         it("re-emits when node lifecycle events change the graph", async () => {
             let nodeList: Node[] = [mkThread(1, { role: 5, rloc16: 1024 })];
             const { emitted, controller } = makeHarness({ nodes: () => nodeList });
