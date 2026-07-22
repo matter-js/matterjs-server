@@ -51,7 +51,7 @@ jobs:
         steps:
             - uses: actions/checkout@v7
               if: needs.check-and-lint.outputs.package-changes == 'true' || github.event.pull_request.user.login == 'dependabot[bot]'
-            - uses: actions/setup-python@v6
+            - uses: actions/setup-python@v7
               if: needs.check-and-lint.outputs.package-changes == 'true' || github.event.pull_request.user.login == 'dependabot[bot]'
               # needed as long as we test Node.js 16 and npm <10.2.2 is used for Node.js 18/20
               with:
