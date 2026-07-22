@@ -7,6 +7,7 @@
 import { MatterNode, type MatterNodeData } from "@matter-server/ws-client";
 import {
     AVSM_FEATURE_MAP_ATTR_ID,
+    AVSM_FEAT_ADO,
     AVSM_FEAT_SNP,
     AVSM_FEAT_VDO,
     CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID,
@@ -32,7 +33,7 @@ const featureMapAttr = `${ENDPOINT}/${CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID}/${
 
 // An Audio Doorbell (device type 0x0141) enables only Audio on its CameraAvStreamManagement
 // FeatureMap — no Video, no Snapshot (Matter §16.5). Intercom (0x0140) is the same shape.
-const AUDIO_ONLY_FEATURE_MAP = 0; // ADO is bit 0, unset here on purpose: only vdo/snp/etc. matter for this gate
+const AUDIO_ONLY_FEATURE_MAP = AVSM_FEAT_ADO;
 
 describe("readAvsmFeatures", () => {
     it("does not advertise video for an audio-only device (e.g. Audio Doorbell)", () => {

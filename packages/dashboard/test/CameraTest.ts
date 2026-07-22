@@ -7,6 +7,7 @@
 import { MatterNode, type MatterNodeData } from "@matter-server/ws-client";
 import {
     AVSM_FEATURE_MAP_ATTR_ID,
+    AVSM_FEAT_ADO,
     AVSM_FEAT_VDO,
     CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID,
 } from "../src/components/webrtc-stream-view.js";
@@ -48,13 +49,13 @@ function liveViewNode(featureMap: number): MatterNode {
 
 describe("supportsAudioOnlyLiveView", () => {
     it("is true for an Audio Doorbell / Intercom-shaped endpoint (live view, no VDO)", () => {
-        const n = liveViewNode(0);
+        const n = liveViewNode(AVSM_FEAT_ADO);
         expect(supportsLiveView(n, ENDPOINT)).to.equal(true);
         expect(supportsAudioOnlyLiveView(n, ENDPOINT)).to.equal(true);
     });
 
     it("is false for a device that advertises Video", () => {
-        const n = liveViewNode(AVSM_FEAT_VDO);
+        const n = liveViewNode(AVSM_FEAT_ADO | AVSM_FEAT_VDO);
         expect(supportsAudioOnlyLiveView(n, ENDPOINT)).to.equal(false);
     });
 

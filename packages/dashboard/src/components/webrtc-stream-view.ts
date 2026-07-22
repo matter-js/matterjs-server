@@ -37,11 +37,12 @@ const END_REASON_USER_HANGUP = 2;
 export const CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID = 0x551;
 const WEBRTC_TRANSPORT_PROVIDER_CLUSTER_ID = 0x553;
 
-// AVSM FeatureMap bits (spec §11.2.4): VDO=1 gates VideoStreamAllocate — audio-only
-// devices such as Audio Doorbell advertise ADO without VDO — SNP=2 enables snapshot
-// streams, WMARK=6 enables watermark overlay, OSD=7 enables on-screen display. When
-// advertised, VideoStreamAllocate and SnapshotStreamAllocate REQUIRE watermarkEnabled /
-// osdEnabled fields.
+// AVSM FeatureMap bits (spec §11.2.4): ADO=0 audio, VDO=1 gates VideoStreamAllocate —
+// audio-only devices such as Audio Doorbell advertise ADO without VDO — SNP=2 enables
+// snapshot streams, WMARK=6 enables watermark overlay, OSD=7 enables on-screen display.
+// When advertised, VideoStreamAllocate and SnapshotStreamAllocate REQUIRE
+// watermarkEnabled / osdEnabled fields.
+export const AVSM_FEAT_ADO = 1 << 0;
 export const AVSM_FEAT_VDO = 1 << 1;
 export const AVSM_FEAT_SNP = 1 << 2;
 export const AVSM_FEAT_WMARK = 1 << 6;
