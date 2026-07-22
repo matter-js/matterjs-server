@@ -36,9 +36,12 @@ const END_REASON_USER_HANGUP = 2;
 export const CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID = 0x551;
 const WEBRTC_TRANSPORT_PROVIDER_CLUSTER_ID = 0x553;
 
-// AVSM FeatureMap bits (spec §11.2.4): SNP=2 enables snapshot streams, WMARK=6
-// enables watermark overlay, OSD=7 enables on-screen display. When advertised,
-// VideoStreamAllocate and SnapshotStreamAllocate REQUIRE watermarkEnabled / osdEnabled fields.
+// AVSM FeatureMap bits (spec §11.2.4): VDO=1 gates VideoStreamAllocate — audio-only
+// devices such as Audio Doorbell advertise ADO without VDO — SNP=2 enables snapshot
+// streams, WMARK=6 enables watermark overlay, OSD=7 enables on-screen display. When
+// advertised, VideoStreamAllocate and SnapshotStreamAllocate REQUIRE watermarkEnabled /
+// osdEnabled fields.
+export const AVSM_FEAT_VDO = 1 << 1;
 export const AVSM_FEAT_SNP = 1 << 2;
 export const AVSM_FEAT_WMARK = 1 << 6;
 export const AVSM_FEAT_OSD = 1 << 7;
@@ -299,8 +302,11 @@ export class WebRtcStreamView extends LitElement {
         try {
             const pc = new RTCPeerConnection({ iceServers: [] });
             this._pc = pc;
+            const avsmFeatures = this._readAvsmFeatures();
 
-            pc.addTransceiver("video", { direction: "recvonly" });
+            // Audio-only devices (e.g. Audio Doorbell) don't advertise VDO — adding a video
+            // transceiver anyway is harmless for WebRTC, but VideoStreamAllocate below is not.
+            if (avsmFeatures.vdo) pc.addTransceiver("video", { direction: "recvonly" });
             pc.addTransceiver("audio", { direction: "recvonly" });
 
             pc.onicecandidate = ev => {
@@ -355,73 +361,61 @@ export class WebRtcStreamView extends LitElement {
 
             const minResolution = this.resolution ?? DEFAULT_MIN_RESOLUTION;
             const maxResolution = this.resolution ?? DEFAULT_MAX_RESOLUTION;
-            const avsmFeatures = this._readAvsmFeatures();
             const maxEncodedPixelRate = this._readMaxEncodedPixelRate();
             const snapshotReservation = this._snapshotBudgetReservation();
-            // Reserving the whole MaxEncodedPixelRate (e.g. 1080p@120) starves a concurrent
-            // SnapshotStreamAllocate (ResourceExhausted); size the video rate to leave the
-            // snapshot stream room within the shared encoder budget.
-            const videoMaxFrameRate = planVideoMaxFrameRate({
-                maxEncodedPixelRate,
-                videoResolution: maxResolution,
-                snapshotReservation,
-            });
-            const videoAllocPayload: Record<string, unknown> = {
-                streamUsage: STREAM_USAGE_LIVE_VIEW,
-                videoCodec: 0,
-                minFrameRate: Math.min(VIDEO_MIN_FRAME_RATE, videoMaxFrameRate),
-                maxFrameRate: videoMaxFrameRate,
-                minResolution,
-                maxResolution,
-                minBitRate: 10000,
-                maxBitRate: 10000,
-                keyFrameInterval: 4000,
-            };
-            if (avsmFeatures.wmark) videoAllocPayload.watermarkEnabled = this.watermarkEnabled;
-            if (avsmFeatures.osd) videoAllocPayload.osdEnabled = this.osdEnabled;
 
-            // Spec §11.2.1.2.1 — server SHALL reuse an existing stream that covers our
-            // request. Search AllocatedVideoStreams (attr 0x000F) first to avoid even
-            // sending VideoStreamAllocate when a usable stream is already in place. Skip
-            // candidates that over-reserve the encoder budget so reuse can't reintroduce
-            // the snapshot ResourceExhausted a fresh allocation avoids.
-            const videoWant = {
-                streamUsage: STREAM_USAGE_LIVE_VIEW,
-                videoCodec: 0,
-                minRes: minResolution,
-                maxRes: maxResolution,
-                watermarkEnabled: avsmFeatures.wmark ? this.watermarkEnabled : undefined,
-                osdEnabled: avsmFeatures.osd ? this.osdEnabled : undefined,
-                budget: { maxEncodedPixelRate, snapshotReservation },
-            };
-            const reusedVideoId = this._findMatchingVideoStream(videoWant);
-            let videoAlloc: unknown = null;
-            let usedFallbackReuse = false;
-            if (reusedVideoId !== null) {
-                console.info("[webrtc-stream-view] reusing existing video stream", reusedVideoId);
-                this._videoStreamId = reusedVideoId;
+            if (!avsmFeatures.vdo) {
+                // Audio-only devices (e.g. Audio Doorbell) don't advertise VDO: VideoStreamAllocate
+                // isn't in their AcceptedCommandList and would fail with UnsupportedCommand
+                // (code 129). Skip video entirely and stream audio-only.
+                this._videoStreamId = null;
                 this._videoStreamOwned = false;
             } else {
-                try {
-                    videoAlloc = await this.client.deviceCommand(
-                        this.nodeId,
-                        this.endpointId,
-                        CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID,
-                        "VideoStreamAllocate",
-                        videoAllocPayload,
-                    );
-                } catch (err) {
-                    const message = err instanceof Error ? err.message : String(err);
-                    const isResourceExhausted =
-                        message.includes("Resource exhausted") || message.includes("(code 137)");
-                    if (!isResourceExhausted) throw err;
-                    // Cameras with a shared encoder pool refuse VideoStreamAllocate while a snapshot
-                    // stream is held — free ours and retry once.
-                    if (this._snapshotStreamId !== null) {
-                        console.info(
-                            "[webrtc-stream-view] VideoStreamAllocate ResourceExhausted; freeing snapshot stream and retrying",
-                        );
-                        await this._runSerialized(() => this.deallocateSnapshot());
+                // Reserving the whole MaxEncodedPixelRate (e.g. 1080p@120) starves a concurrent
+                // SnapshotStreamAllocate (ResourceExhausted); size the video rate to leave the
+                // snapshot stream room within the shared encoder budget.
+                const videoMaxFrameRate = planVideoMaxFrameRate({
+                    maxEncodedPixelRate,
+                    videoResolution: maxResolution,
+                    snapshotReservation,
+                });
+                const videoAllocPayload: Record<string, unknown> = {
+                    streamUsage: STREAM_USAGE_LIVE_VIEW,
+                    videoCodec: 0,
+                    minFrameRate: Math.min(VIDEO_MIN_FRAME_RATE, videoMaxFrameRate),
+                    maxFrameRate: videoMaxFrameRate,
+                    minResolution,
+                    maxResolution,
+                    minBitRate: 10000,
+                    maxBitRate: 10000,
+                    keyFrameInterval: 4000,
+                };
+                if (avsmFeatures.wmark) videoAllocPayload.watermarkEnabled = this.watermarkEnabled;
+                if (avsmFeatures.osd) videoAllocPayload.osdEnabled = this.osdEnabled;
+
+                // Spec §11.2.1.2.1 — server SHALL reuse an existing stream that covers our
+                // request. Search AllocatedVideoStreams (attr 0x000F) first to avoid even
+                // sending VideoStreamAllocate when a usable stream is already in place. Skip
+                // candidates that over-reserve the encoder budget so reuse can't reintroduce
+                // the snapshot ResourceExhausted a fresh allocation avoids.
+                const videoWant = {
+                    streamUsage: STREAM_USAGE_LIVE_VIEW,
+                    videoCodec: 0,
+                    minRes: minResolution,
+                    maxRes: maxResolution,
+                    watermarkEnabled: avsmFeatures.wmark ? this.watermarkEnabled : undefined,
+                    osdEnabled: avsmFeatures.osd ? this.osdEnabled : undefined,
+                    budget: { maxEncodedPixelRate, snapshotReservation },
+                };
+                const reusedVideoId = this._findMatchingVideoStream(videoWant);
+                let videoAlloc: unknown = null;
+                let usedFallbackReuse = false;
+                if (reusedVideoId !== null) {
+                    console.info("[webrtc-stream-view] reusing existing video stream", reusedVideoId);
+                    this._videoStreamId = reusedVideoId;
+                    this._videoStreamOwned = false;
+                } else {
+                    try {
                         videoAlloc = await this.client.deviceCommand(
                             this.nodeId,
                             this.endpointId,
@@ -429,29 +423,49 @@ export class WebRtcStreamView extends LitElement {
                             "VideoStreamAllocate",
                             videoAllocPayload,
                         );
-                    } else {
-                        // The budget is held by a stream we didn't allocate (e.g. another
-                        // controller's 120 fps stream). Fall back to reusing it so live view
-                        // still works; a concurrent snapshot may then be refused.
-                        const fallbackId = this._findMatchingVideoStream({ ...videoWant, budget: undefined });
-                        if (fallbackId === null) throw err;
-                        console.warn(
-                            "[webrtc-stream-view] VideoStreamAllocate ResourceExhausted; reusing over-budget stream",
-                            fallbackId,
-                            "(concurrent snapshot may be unavailable)",
-                        );
-                        this._videoStreamId = fallbackId;
-                        this._videoStreamOwned = false;
-                        usedFallbackReuse = true;
+                    } catch (err) {
+                        const message = err instanceof Error ? err.message : String(err);
+                        const isResourceExhausted =
+                            message.includes("Resource exhausted") || message.includes("(code 137)");
+                        if (!isResourceExhausted) throw err;
+                        // Cameras with a shared encoder pool refuse VideoStreamAllocate while a snapshot
+                        // stream is held — free ours and retry once.
+                        if (this._snapshotStreamId !== null) {
+                            console.info(
+                                "[webrtc-stream-view] VideoStreamAllocate ResourceExhausted; freeing snapshot stream and retrying",
+                            );
+                            await this._runSerialized(() => this.deallocateSnapshot());
+                            videoAlloc = await this.client.deviceCommand(
+                                this.nodeId,
+                                this.endpointId,
+                                CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID,
+                                "VideoStreamAllocate",
+                                videoAllocPayload,
+                            );
+                        } else {
+                            // The budget is held by a stream we didn't allocate (e.g. another
+                            // controller's 120 fps stream). Fall back to reusing it so live view
+                            // still works; a concurrent snapshot may then be refused.
+                            const fallbackId = this._findMatchingVideoStream({ ...videoWant, budget: undefined });
+                            if (fallbackId === null) throw err;
+                            console.warn(
+                                "[webrtc-stream-view] VideoStreamAllocate ResourceExhausted; reusing over-budget stream",
+                                fallbackId,
+                                "(concurrent snapshot may be unavailable)",
+                            );
+                            this._videoStreamId = fallbackId;
+                            this._videoStreamOwned = false;
+                            usedFallbackReuse = true;
+                        }
                     }
-                }
-                if (!usedFallbackReuse) {
-                    const videoStreamId = parseStreamAllocate(videoAlloc, "videoStreamId");
-                    if (videoStreamId === null) {
-                        throw new Error("VideoStreamAllocate did not return a videoStreamId");
+                    if (!usedFallbackReuse) {
+                        const videoStreamId = parseStreamAllocate(videoAlloc, "videoStreamId");
+                        if (videoStreamId === null) {
+                            throw new Error("VideoStreamAllocate did not return a videoStreamId");
+                        }
+                        this._videoStreamId = videoStreamId;
+                        this._videoStreamOwned = true;
                     }
-                    this._videoStreamId = videoStreamId;
-                    this._videoStreamOwned = true;
                 }
             }
 
@@ -657,7 +671,7 @@ export class WebRtcStreamView extends LitElement {
         };
     }
 
-    private _readAvsmFeatures(): { snp: boolean; wmark: boolean; osd: boolean } {
+    private _readAvsmFeatures(): { vdo: boolean; snp: boolean; wmark: boolean; osd: boolean } {
         const node = this.client?.nodes[String(this.nodeId)];
         const raw =
             node?.attributes[
@@ -665,6 +679,7 @@ export class WebRtcStreamView extends LitElement {
             ];
         const bits = typeof raw === "number" ? raw : 0;
         return {
+            vdo: (bits & AVSM_FEAT_VDO) !== 0,
             snp: (bits & AVSM_FEAT_SNP) !== 0,
             wmark: (bits & AVSM_FEAT_WMARK) !== 0,
             osd: (bits & AVSM_FEAT_OSD) !== 0,
