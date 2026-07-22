@@ -41,10 +41,14 @@ const logger = Logger.get("NetworkTopologyService");
  */
 const TOPOLOGY_CLUSTERS = new Set<number>([49, 51, 53, 54]);
 
-/** Thread neighbor + route tables + interface list — the inputs to Thread edge derivation. */
-const THREAD_REFRESH_PATHS = ["0/53/7", "0/53/8", "0/51/0"];
+/**
+ * Thread neighbor + route tables, interface list, own RLOC16 — the inputs to Thread edge
+ * derivation. RLOC16 (0/53/64) is included because edge/unknown matching falls back to it
+ * when extended-address matching fails, and it changes when a device re-attaches to the mesh.
+ */
+export const THREAD_REFRESH_PATHS = ["0/53/7", "0/53/8", "0/51/0", "0/53/64"];
 /** WiFi BSSID + channel + RSSI — the inputs to the WiFi star. */
-const WIFI_REFRESH_PATHS = ["0/54/0", "0/54/3", "0/54/4"];
+export const WIFI_REFRESH_PATHS = ["0/54/0", "0/54/3", "0/54/4"];
 
 /** An Observable this service only needs to subscribe to; payloads are inspected structurally. */
 type AnyObservable = Observable<any[]>;

@@ -7,7 +7,11 @@
 import type { NetworkTopology, TopologySourceNode } from "@matter-server/ws-client";
 import { Observable } from "@matter/main";
 import type { BorderRouterEntry, BorderRouterRegistry } from "@matter/thread-br-client";
-import { NetworkTopologyService } from "../src/controller/NetworkTopologyService.js";
+import {
+    NetworkTopologyService,
+    THREAD_REFRESH_PATHS,
+    WIFI_REFRESH_PATHS,
+} from "../src/controller/NetworkTopologyService.js";
 
 /** A commissioned node as the controller surfaces it to the topology service. */
 type Node = TopologySourceNode & { available?: boolean; is_bridge?: boolean };
@@ -28,9 +32,6 @@ const BR_NODE_ID = `br_${BR_EXT_HEX}`;
 const BSSID_BYTES = [0x11, 0x22, 0x33, 0x44, 0x55, 0x66];
 const BSSID_STR = "11:22:33:44:55:66";
 const AP_NODE_ID = "ap_112233445566";
-
-const THREAD_REFRESH_PATHS = ["0/53/7", "0/53/8", "0/51/0"];
-const WIFI_REFRESH_PATHS = ["0/54/0", "0/54/3", "0/54/4"];
 
 /** One entry of a Thread NeighborTable (0/53/7), numeric-keyed per the Matter spec. */
 function neighbor(
