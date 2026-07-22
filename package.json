@@ -58,7 +58,7 @@
         "@types/mocha": "^10.0.10",
         "glob": "^13.0.6",
         "globals": "^17.7.0",
-        "oxfmt": "^0.59.0",
+        "oxfmt": "^0.60.0",
         "oxlint": "^1.74.0",
         "oxlint-tsgolint": "^0.24.0",
         "tsx": "^4.23.1",
