@@ -174,7 +174,7 @@ export class NetworkTopologyService {
             tasks.push(() =>
                 this.#opts
                     .readAttributes(nodeId, paths)
-                    .catch(err => logger.debug(`refresh read failed node=${nodeId}: ${err}`)),
+                    .catch(err => logger.debug(`refresh read failed node=${nodeId}`, err)),
             );
         }
 
@@ -215,7 +215,7 @@ export class NetworkTopologyService {
         try {
             this.#emitIfChanged(this.#build());
         } catch (err) {
-            logger.warn(`topology rebuild failed: ${err}`);
+            logger.warn("topology rebuild failed", err);
         }
     }
 
