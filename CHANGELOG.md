@@ -9,7 +9,7 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## **WORK IN PROGRESS**
 
-- Feature: Dashboard node view shows the endpoint list as a parent/child tree (indented under their parent endpoint), derived from the Descriptor cluster's PartsList attribute, instead of a flat numeric list
+- Enhancement: Dashboard node view shows the endpoint list as an indented parent/child tree
 
 ## 1.2.8 (2026-07-20)
 
