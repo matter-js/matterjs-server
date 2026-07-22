@@ -23,13 +23,12 @@ import { showNodeLabelDialog } from "../../components/dialogs/node-label-dialog/
 import { handleAsync } from "../../util/async-handler.js";
 import "../../components/ha-svg-icon";
 import "../camera-overlay.js";
-import { DeviceTypes, LIVE_VIEW_DEVICE_TYPE_IDS, getDeviceIcon } from "../../util/device-icons.js";
+import { supportsCameraOverlay, supportsLiveView } from "../../util/camera.js";
+import { getDeviceIcon } from "../../util/device-icons.js";
 import { getEndpointDeviceTypes } from "../../util/endpoints.js";
 import { ICD_CLUSTER_ID, icdBadge } from "../../util/icd.js";
 import { formatManualPairingCode, renderPairingQrCodeDataUri } from "../../util/pairing-code.js";
 import { bindingContext } from "./context.js";
-
-const CAMERA_DEVICE_TYPE_IDS: number[] = [...LIVE_VIEW_DEVICE_TYPE_IDS, DeviceTypes.SNAPSHOT_CAMERA];
 
 /** Map updateState values to user-friendly labels */
 const UPDATE_STATE_LABELS: Record<number, string> = {
@@ -82,9 +81,8 @@ export class NodeDetails extends LitElement {
     protected override render() {
         if (!this.node) return html``;
 
-        const deviceTypeIds = getEndpointDeviceTypes(this.node, this.endpoint).map(d => d.id);
-        const isCamera = CAMERA_DEVICE_TYPE_IDS.some(id => deviceTypeIds.includes(id));
-        const isLiveViewCamera = LIVE_VIEW_DEVICE_TYPE_IDS.some(id => deviceTypeIds.includes(id));
+        const isCamera = supportsCameraOverlay(this.node, this.endpoint);
+        const isLiveViewCamera = supportsLiveView(this.node, this.endpoint);
         const badge = icdBadge(this.node.attributes, this.node.available);
 
         return html`
