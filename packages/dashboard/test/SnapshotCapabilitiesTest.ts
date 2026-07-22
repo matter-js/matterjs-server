@@ -181,6 +181,74 @@ describe("WebRtcStreamView#takeSnapshot", () => {
         });
     });
 
+    it("serializes concurrent captures so two first-time calls allocate a single stream", async () => {
+        const { client, calls } = createFakeClient();
+        const view = new WebRtcStreamView();
+        view.client = client;
+        view.nodeId = NODE_ID;
+        view.endpointId = ENDPOINT_ID;
+        view.snapshotResolution = { width: 1920, height: 1080 };
+
+        await Promise.all([view.takeSnapshot(), view.takeSnapshot()]);
+
+        expect(calls.filter(c => c.command === "SnapshotStreamAllocate")).to.have.length(1);
+        expect(calls.map(c => c.command)).to.deep.equal([
+            "SnapshotStreamAllocate",
+            "CaptureSnapshot",
+            "CaptureSnapshot",
+        ]);
+    });
+
+    it("captures at the user target resolution, not the stream max, when reusing an existing stream", async () => {
+        const calls: { command: string; payload: Record<string, unknown> }[] = [];
+        const client = {
+            nodes: {
+                [String(NODE_ID)]: {
+                    attributes: {
+                        [`${ENDPOINT_ID}/${CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID}/10`]: [
+                            { "0": res(640, 480), "1": 30, "2": 0, "3": false },
+                            { "0": res(1920, 1080), "1": 30, "2": 0, "3": false },
+                        ],
+                        // AllocatedSnapshotStreams: a pre-existing stream whose range (640×480–1920×1080)
+                        // covers, but is larger than, the user-selected 1280×720 target.
+                        [`${ENDPOINT_ID}/${CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID}/17`]: [
+                            { "0": 7, "1": 0, "3": res(640, 480), "4": res(1920, 1080) },
+                        ],
+                        [`${ENDPOINT_ID}/${CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID}/${AVSM_FEATURE_MAP_ATTR_ID}`]: 0,
+                    },
+                },
+            },
+            deviceCommand: async (
+                _n: number | bigint,
+                _e: number,
+                _c: number,
+                commandName: string,
+                payload: Record<string, unknown> = {},
+            ) => {
+                calls.push({ command: commandName, payload });
+                if (commandName === "CaptureSnapshot") {
+                    return { data: "AA==", imageCodec: 0, resolution: payload["requestedResolution"] };
+                }
+                return {};
+            },
+        } as unknown as MatterClient;
+
+        const view = new WebRtcStreamView();
+        view.client = client;
+        view.nodeId = NODE_ID;
+        view.endpointId = ENDPOINT_ID;
+        view.snapshotResolution = { width: 1280, height: 720 };
+
+        const snap = await view.takeSnapshot();
+
+        expect(calls.map(c => c.command)).to.deep.equal(["CaptureSnapshot"]);
+        expect(calls[0]?.payload).to.deep.include({
+            snapshotStreamId: 7,
+            requestedResolution: { width: 1280, height: 720 },
+        });
+        expect(snap.resolution).to.deep.equal({ width: 1280, height: 720 });
+    });
+
     it("deallocates and reallocates when watermark/OSD toggles between captures", async () => {
         const { client, calls } = createFakeClient(AVSM_FEAT_SNP | AVSM_FEAT_WMARK | AVSM_FEAT_OSD);
         const view = new WebRtcStreamView();
