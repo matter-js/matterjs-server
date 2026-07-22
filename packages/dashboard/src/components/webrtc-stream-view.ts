@@ -7,6 +7,7 @@
 import { consume } from "@lit/context";
 import type {
     MatterClient,
+    MatterNode,
     WebRtcAnswerData,
     WebRtcCallbackData,
     WebRtcIceCandidatesData,
@@ -49,6 +50,28 @@ export const AVSM_FEATURE_MAP_ATTR_ID = 0xfffc;
 // MaxEncodedPixelRate (attr 0x0001): shared encoder budget in px/s that video and
 // snapshot streams draw from.
 const AVSM_MAX_ENCODED_PIXEL_RATE_ATTR_ID = 0x1;
+
+export interface AvsmFeatures {
+    vdo: boolean;
+    snp: boolean;
+    wmark: boolean;
+    osd: boolean;
+}
+
+/**
+ * Reads the AVSM FeatureMap (spec §11.2.4) for a node/endpoint's CameraAvStreamManagement
+ * cluster. Audio-only devices (Intercom, Audio Doorbell) advertise Audio without Video (vdo).
+ */
+export function readAvsmFeatures(node: MatterNode | undefined, endpoint: number): AvsmFeatures {
+    const raw = node?.attributes[`${endpoint}/${CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID}/${AVSM_FEATURE_MAP_ATTR_ID}`];
+    const bits = typeof raw === "number" ? raw : 0;
+    return {
+        vdo: (bits & AVSM_FEAT_VDO) !== 0,
+        snp: (bits & AVSM_FEAT_SNP) !== 0,
+        wmark: (bits & AVSM_FEAT_WMARK) !== 0,
+        osd: (bits & AVSM_FEAT_OSD) !== 0,
+    };
+}
 
 const DEFAULT_MAX_RESOLUTION = { width: 1920, height: 1080 };
 const DEFAULT_MIN_RESOLUTION = { width: 640, height: 480 };
@@ -671,19 +694,8 @@ export class WebRtcStreamView extends LitElement {
         };
     }
 
-    private _readAvsmFeatures(): { vdo: boolean; snp: boolean; wmark: boolean; osd: boolean } {
-        const node = this.client?.nodes[String(this.nodeId)];
-        const raw =
-            node?.attributes[
-                `${this.endpointId}/${CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID}/${AVSM_FEATURE_MAP_ATTR_ID}`
-            ];
-        const bits = typeof raw === "number" ? raw : 0;
-        return {
-            vdo: (bits & AVSM_FEAT_VDO) !== 0,
-            snp: (bits & AVSM_FEAT_SNP) !== 0,
-            wmark: (bits & AVSM_FEAT_WMARK) !== 0,
-            osd: (bits & AVSM_FEAT_OSD) !== 0,
-        };
+    private _readAvsmFeatures(): AvsmFeatures {
+        return readAvsmFeatures(this.client?.nodes[String(this.nodeId)], this.endpointId);
     }
 
     private _readMaxEncodedPixelRate(): number | null {
