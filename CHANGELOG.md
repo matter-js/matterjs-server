@@ -7,6 +7,10 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
+## **WORK IN PROGRESS**
+
+- Fix: Detect camera Live View/Snapshot capabilities from the endpoint's clusters instead of hard-coding them by device type, so composed devices (e.g. Floodlight Camera) show the button only on the endpoint that actually supports streaming
+
 ## 1.2.8 (2026-07-20)
 
 - Fix: WebRTC camera live view — `ProvideOffer` again selects the stream fields by the provider's cluster revision
