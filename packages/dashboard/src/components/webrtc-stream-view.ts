@@ -201,6 +201,11 @@ export class WebRtcStreamView extends LitElement {
 
     private _snapshotStreamId: number | null = null;
     private _snapshotResolution: { width: number; height: number } | null = null;
+    private _snapshotImageCodec: number | null = null;
+    private _snapshotMaxFrameRate: number | null = null;
+    private _snapshotWatermarkEnabled: boolean | undefined = undefined;
+    private _snapshotOsdEnabled: boolean | undefined = undefined;
+    private _snapshotChain: Promise<unknown> = Promise.resolve();
     /** True when we allocated this stream ourselves and must Deallocate it on stop. False when reusing an existing allocation. */
     private _videoStreamOwned = false;
     private _audioStreamOwned = false;
@@ -416,7 +421,7 @@ export class WebRtcStreamView extends LitElement {
                         console.info(
                             "[webrtc-stream-view] VideoStreamAllocate ResourceExhausted; freeing snapshot stream and retrying",
                         );
-                        await this.deallocateSnapshot();
+                        await this._runSerialized(() => this.deallocateSnapshot());
                         videoAlloc = await this.client.deviceCommand(
                             this.nodeId,
                             this.endpointId,
@@ -584,7 +589,7 @@ export class WebRtcStreamView extends LitElement {
         this._videoStreamOwned = false;
         this._audioStreamOwned = false;
 
-        await this.deallocateSnapshot();
+        await this._runSerialized(() => this.deallocateSnapshot());
 
         const video = this._video;
         if (video && video.srcObject) {
@@ -614,7 +619,26 @@ export class WebRtcStreamView extends LitElement {
         this._stopping = false;
     }
 
+    /**
+     * Runs a snapshot-stream lifecycle op (capture, or a deallocate triggered by the video path /
+     * teardown) after any in-flight one settles. Keeps re-negotiation and cross-path deallocation
+     * from tearing down a stream a concurrent capture is using, and first-time captures from each
+     * allocating (leak).
+     */
+    private _runSerialized<T>(op: () => Promise<T>): Promise<T> {
+        const run = this._snapshotChain.then(op, op);
+        this._snapshotChain = run.then(
+            () => undefined,
+            () => undefined,
+        );
+        return run;
+    }
+
     async takeSnapshot(): Promise<{ dataUri: string; resolution: { width: number; height: number } }> {
+        return this._runSerialized(() => this._takeSnapshot());
+    }
+
+    private async _takeSnapshot(): Promise<{ dataUri: string; resolution: { width: number; height: number } }> {
         if (!this.client) throw new Error("Matter client not available");
         const streamId = await this._ensureSnapshotStream();
         const requestedResolution = this._snapshotResolution ?? SNAPSHOT_DEFAULTS.resolution;
@@ -682,6 +706,10 @@ export class WebRtcStreamView extends LitElement {
         const wasOwned = this._snapshotStreamOwned;
         this._snapshotStreamId = null;
         this._snapshotResolution = null;
+        this._snapshotImageCodec = null;
+        this._snapshotMaxFrameRate = null;
+        this._snapshotWatermarkEnabled = undefined;
+        this._snapshotOsdEnabled = undefined;
         this._snapshotStreamOwned = false;
         if (!wasOwned) return; // Reused an existing allocation — leave it for its owner.
         try {
@@ -791,7 +819,7 @@ export class WebRtcStreamView extends LitElement {
         resolution: { width: number; height: number };
         watermarkEnabled?: boolean;
         osdEnabled?: boolean;
-    }): { id: number; resolution: { width: number; height: number } } | null {
+    }): number | null {
         const node = this.client?.nodes[String(this.nodeId)];
         const list = node?.attributes[`${this.endpointId}/${CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID}/17`];
         if (!Array.isArray(list)) return null;
@@ -818,14 +846,12 @@ export class WebRtcStreamView extends LitElement {
                 if (v !== want.osdEnabled) continue;
             }
             const id = pickNumber(obj, "snapshotStreamId", "0");
-            const resolution = { width: eMaxW, height: eMaxH };
-            if (id !== null) return { id, resolution };
+            if (id !== null) return id;
         }
         return null;
     }
 
     private async _ensureSnapshotStream(): Promise<number> {
-        if (this._snapshotStreamId !== null) return this._snapshotStreamId;
         if (!this.client) throw new Error("Matter client not available");
 
         const node = this.client.nodes[String(this.nodeId)];
@@ -847,21 +873,46 @@ export class WebRtcStreamView extends LitElement {
         const targetResolution = clampToCapability(this.snapshotResolution ?? cap.resolution, cap.resolution);
 
         const avsmFeatures = this._readAvsmFeatures();
+        const wantWatermark = avsmFeatures.wmark ? this.watermarkEnabled : undefined;
+        const wantOsd = avsmFeatures.osd ? this.osdEnabled : undefined;
+
+        // A cached stream only still covers the current call if its resolution, codec, frame rate,
+        // and watermark/OSD flags all still match: the caller may have changed `snapshotResolution`
+        // or toggled watermark/OSD, or the encoder may have freed up (which reselects the capability,
+        // changing maxFrameRate), since it was ensured. Otherwise release it before searching for
+        // (or allocating) one that actually covers the new target.
+        if (this._snapshotStreamId !== null) {
+            if (
+                this._snapshotResolution?.width === targetResolution.width &&
+                this._snapshotResolution?.height === targetResolution.height &&
+                this._snapshotImageCodec === cap.imageCodec &&
+                this._snapshotMaxFrameRate === cap.maxFrameRate &&
+                this._snapshotWatermarkEnabled === wantWatermark &&
+                this._snapshotOsdEnabled === wantOsd
+            ) {
+                return this._snapshotStreamId;
+            }
+            await this.deallocateSnapshot();
+        }
 
         // AllocatedSnapshotStreams (attr 0x0011) — reuse existing stream when its capability
         // range covers our target resolution (spec §11.2.1.2.1 / §11.2.8.8.8).
         const reused = this._findMatchingSnapshotStream({
             imageCodec: cap.imageCodec,
             resolution: targetResolution,
-            watermarkEnabled: avsmFeatures.wmark ? this.watermarkEnabled : undefined,
-            osdEnabled: avsmFeatures.osd ? this.osdEnabled : undefined,
+            watermarkEnabled: wantWatermark,
+            osdEnabled: wantOsd,
         });
         if (reused !== null) {
-            console.info("[webrtc-stream-view] reusing existing snapshot stream", reused.id);
-            this._snapshotStreamId = reused.id;
-            this._snapshotResolution = reused.resolution;
+            console.info("[webrtc-stream-view] reusing existing snapshot stream", reused);
+            this._snapshotStreamId = reused;
+            this._snapshotResolution = targetResolution;
+            this._snapshotImageCodec = cap.imageCodec;
+            this._snapshotMaxFrameRate = cap.maxFrameRate;
+            this._snapshotWatermarkEnabled = wantWatermark;
+            this._snapshotOsdEnabled = wantOsd;
             this._snapshotStreamOwned = false;
-            return reused.id;
+            return reused;
         }
 
         const snapshotAllocPayload: Record<string, unknown> = {
@@ -886,6 +937,10 @@ export class WebRtcStreamView extends LitElement {
         }
         this._snapshotStreamId = snapshotStreamId;
         this._snapshotResolution = targetResolution;
+        this._snapshotImageCodec = cap.imageCodec;
+        this._snapshotMaxFrameRate = cap.maxFrameRate;
+        this._snapshotWatermarkEnabled = wantWatermark;
+        this._snapshotOsdEnabled = wantOsd;
         this._snapshotStreamOwned = true;
         return this._snapshotStreamId;
     }

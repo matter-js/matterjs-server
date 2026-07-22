@@ -189,13 +189,6 @@ export const DeviceTypes = {
     INTERCOM: 0x0140,
 };
 
-/** Device types whose mandatory clusters include WebRTCTransportProvider (0x553), i.e. support live streaming. */
-export const LIVE_VIEW_DEVICE_TYPE_IDS: readonly number[] = Object.freeze([
-    DeviceTypes.CAMERA,
-    DeviceTypes.VIDEO_DOORBELL,
-    DeviceTypes.FLOODLIGHT_CAMERA,
-]);
-
 /**
  * Maps device type IDs to MDI icon paths.
  */
