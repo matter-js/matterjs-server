@@ -31,17 +31,19 @@ export function getEndpointTree(node: MatterNode, endpointIds: number[]): Endpoi
     const idSet = new Set(endpointIds);
     const partsList = new Map<number, number[]>(
         endpointIds.map(id => {
-            const raw = node.attributes[`${id}/29/3`] as number[] | undefined;
-            return [id, (raw ?? []).filter(childId => idSet.has(childId) && childId !== id)];
+            const raw = node.attributes[`${id}/29/3`];
+            const list = Array.isArray(raw) ? (raw as number[]) : [];
+            return [id, list.filter(childId => idSet.has(childId) && childId !== id)];
         }),
     );
+    const partsSet = new Map<number, Set<number>>([...partsList].map(([id, list]) => [id, new Set(list)]));
 
     const children = new Map<number, number[]>();
     const hasParent = new Set<number>();
     for (const id of endpointIds) {
         const descendants = partsList.get(id)!;
         const directChildren = descendants
-            .filter(child => !descendants.some(other => other !== child && partsList.get(other)!.includes(child)))
+            .filter(child => !descendants.some(other => other !== child && partsSet.get(other)!.has(child)))
             .sort((a, b) => a - b);
         children.set(id, directChildren);
         for (const child of directChildren) hasParent.add(child);

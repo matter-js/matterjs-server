@@ -80,6 +80,49 @@ describe("endpoints util", () => {
             ]);
         });
 
+        it("nests a Tree-pattern chain where each parent lists only its direct child", () => {
+            // Tree pattern (not Full-Family): every PartsList holds only the immediate child.
+            const n = node({
+                "0/29/3": [1],
+                "1/29/3": [2],
+                "2/29/3": [3],
+                "3/29/3": [],
+            });
+            expect(getEndpointTree(n, [0, 1, 2, 3])).to.deep.equal([
+                { endpointId: 0, depth: 0 },
+                { endpointId: 1, depth: 1 },
+                { endpointId: 2, depth: 2 },
+                { endpointId: 3, depth: 3 },
+            ]);
+        });
+
+        it("surfaces endpoints as roots when their only listed parent is outside the given set", () => {
+            // Endpoint 2 (excluded) is the aggregator listing 4 and 5; with 2 out of the set,
+            // nothing inside the set claims 4/5, so both are roots.
+            const n = node({ "2/29/3": [4, 5] });
+            expect(getEndpointTree(n, [4, 5])).to.deep.equal([
+                { endpointId: 4, depth: 0 },
+                { endpointId: 5, depth: 0 },
+            ]);
+        });
+
+        it("keeps every endpoint once for a (spec-violating) diamond, closest parent winning", () => {
+            // 0 -> {1, 2}; both 1 and 2 list 3. 3 is demoted under its closest parent (1),
+            // reached first in sibling order; the second path (via 2) is skipped as already visited.
+            const n = node({
+                "0/29/3": [1, 2, 3],
+                "1/29/3": [3],
+                "2/29/3": [3],
+                "3/29/3": [],
+            });
+            expect(getEndpointTree(n, [0, 1, 2, 3])).to.deep.equal([
+                { endpointId: 0, depth: 0 },
+                { endpointId: 1, depth: 1 },
+                { endpointId: 3, depth: 2 },
+                { endpointId: 2, depth: 1 },
+            ]);
+        });
+
         it("falls back to listing every endpoint when a PartsList cycle leaves no roots", () => {
             // 1 and 2 list each other as children, so both end up in hasParent and roots is empty.
             // The fallback pass still walks the (cyclic) children edges, breaking the cycle at
