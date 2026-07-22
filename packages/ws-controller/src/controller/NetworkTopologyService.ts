@@ -136,6 +136,7 @@ export class NetworkTopologyService {
         this.#observers.on(opts.controllerEvents.nodeAdded, () => this.#scheduleRebuild());
         this.#observers.on(opts.controllerEvents.nodeDecommissioned, () => this.#scheduleRebuild());
         this.#observers.on(opts.borderRouters.events.added, () => this.#scheduleRebuild());
+        this.#observers.on(opts.borderRouters.events.updated, () => this.#scheduleRebuild());
         this.#observers.on(opts.borderRouters.events.removed, () => this.#scheduleRebuild());
 
         this.#periodicTimer = setInterval(() => this.#rebuildAndEmit(), periodicMs);
@@ -151,7 +152,9 @@ export class NetworkTopologyService {
     /**
      * Re-read the Thread neighbor/route tables (and WiFi diagnostics) from every online node,
      * then rebuild. Reads are concurrency-capped and best-effort (a failing/slow node is
-     * skipped) under an overall deadline, mirroring the dashboard's "update connections" action.
+     * skipped), mirroring the dashboard's "update connections" action. Once the overall
+     * deadline expires no further reads start; reads already in flight run to completion
+     * (their results land in the cache and surface via the next rebuild).
      */
     async refresh(): Promise<NetworkTopology> {
         if (this.#stopped) return this.#build();
@@ -225,13 +228,17 @@ export class NetworkTopologyService {
 
     async #runWithDeadline(tasks: Array<() => Promise<void>>): Promise<void> {
         if (tasks.length === 0) return;
+        let expired = false;
         let timer: NodeJS.Timeout | undefined;
         const deadline = new Promise<void>(resolve => {
-            timer = setTimeout(resolve, this.#refreshTimeoutMs);
+            timer = setTimeout(() => {
+                expired = true;
+                resolve();
+            }, this.#refreshTimeoutMs);
             timer.unref?.();
         });
         try {
-            await Promise.race([runWithConcurrency(tasks, this.#refreshConcurrency), deadline]);
+            await Promise.race([runWithConcurrency(tasks, this.#refreshConcurrency, () => expired), deadline]);
         } finally {
             if (timer !== undefined) clearTimeout(timer);
         }
@@ -435,11 +442,19 @@ function hashTopology(topology: NetworkTopology): string {
     );
 }
 
-/** Run thunks with a bounded number in flight. Each thunk owns its own error handling. */
-async function runWithConcurrency(tasks: Array<() => Promise<void>>, concurrency: number): Promise<void> {
+/**
+ * Run thunks with a bounded number in flight. Each thunk owns its own error handling.
+ * `cancelled` stops workers from STARTING further tasks; in-flight tasks still run to
+ * completion (attribute reads offer no cancellation).
+ */
+async function runWithConcurrency(
+    tasks: Array<() => Promise<void>>,
+    concurrency: number,
+    cancelled: () => boolean = () => false,
+): Promise<void> {
     let next = 0;
     const worker = async (): Promise<void> => {
-        while (next < tasks.length) {
+        while (next < tasks.length && !cancelled()) {
             const task = tasks[next++];
             await task();
         }

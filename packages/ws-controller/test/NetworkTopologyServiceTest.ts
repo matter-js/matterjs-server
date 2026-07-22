@@ -423,6 +423,24 @@ describe("NetworkTopologyService", () => {
             expect(latest.nodes.some(n => n.kind === "thread_unknown")).to.equal(false);
         });
 
+        it("rebuilds when a Border Router entry is updated (e.g. its network name resolves)", async () => {
+            let brList: BorderRouterEntry[] = [makeBr({ networkName: undefined })];
+            const node1 = mkThread(1, {
+                role: 5,
+                rloc16: 1024,
+                neighbors: [neighbor(b64(BR_EXT_BYTES), 61440, 2, -70, true)],
+            });
+            const { emitted, brEvents } = makeHarness({ nodes: () => [node1], brs: () => brList });
+
+            brList = [makeBr({ networkName: "ResolvedNet" })];
+            brEvents.updated.emit(brList[0]);
+            await delay(20);
+
+            expect(emitted.length).to.be.greaterThanOrEqual(1);
+            const latest = emitted[emitted.length - 1];
+            expect(latest.nodes.find(n => n.id === BR_NODE_ID)?.network_name).to.equal("ResolvedNet");
+        });
+
         it("emits once from the periodic rebuild and stays quiet while the graph is stable", async () => {
             const { emitted } = makeHarness({
                 nodes: () => [mkThread(1, { role: 5, rloc16: 1024 })],
@@ -473,6 +491,32 @@ describe("NetworkTopologyService", () => {
             await service.refresh();
 
             expect(maxActive).to.equal(2);
+        });
+
+        it("stops starting reads once the refresh deadline expires", async () => {
+            const nodes = Array.from({ length: 3 }, (_unused, i) => mkThread(i + 1, { role: 5, rloc16: 1024 + i }));
+            const started: number[] = [];
+            let releaseFirst!: () => void;
+            const firstBlocked = new Promise<void>(resolve => {
+                releaseFirst = resolve;
+            });
+            const { service } = makeHarness({
+                nodes: () => nodes,
+                refreshConcurrency: 1,
+                refreshTimeoutMs: 20,
+                readAttributes: async nodeId => {
+                    started.push(Number(nodeId));
+                    await firstBlocked;
+                },
+            });
+
+            await service.refresh(); // the deadline beats the blocked first read
+            expect(started).to.deep.equal([1]);
+
+            // Releasing the in-flight read must not let the worker pick up the queued ones.
+            releaseFirst();
+            await delay(20);
+            expect(started).to.deep.equal([1]);
         });
 
         it("emits after a refresh that changes the graph", async () => {

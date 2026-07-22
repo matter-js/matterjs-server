@@ -518,19 +518,26 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 }
             });
 
-            observers.on(this.#controller.networkTopology.events.topologyUpdated, topology => {
-                if (this.#closed || this.#shuttingDown || !wantsNetworkTopology) return;
-                // topologyUpdated is a shared Observable; isolate serialize/send per connection so a
-                // throw here can't starve other connections. The graph is global (not per-network), so
-                // coalesce latest-wins under a single key — an older snapshot is worthless.
-                try {
-                    connection.sendCoalescable("network_topology", () =>
-                        toBigIntAwareJson({ event: "network_topology_updated", data: topology }),
-                    );
-                } catch (err) {
-                    logger.error(`[${connId}] Failed to send network_topology_updated`, err);
-                }
-            });
+            // Registered lazily on first opt-in: touching the networkTopology getter here would
+            // instantiate the service (timers, event subscriptions) for every connection, even
+            // ones that never request topology.
+            const ensureTopologyObserver = () => {
+                if (wantsNetworkTopology) return;
+                wantsNetworkTopology = true;
+                observers.on(this.#controller.networkTopology.events.topologyUpdated, topology => {
+                    if (this.#closed || this.#shuttingDown) return;
+                    // topologyUpdated is a shared Observable; isolate serialize/send per connection so a
+                    // throw here can't starve other connections. The graph is global (not per-network), so
+                    // coalesce latest-wins under a single key — an older snapshot is worthless.
+                    try {
+                        connection.sendCoalescable("network_topology", () =>
+                            toBigIntAwareJson({ event: "network_topology_updated", data: topology }),
+                        );
+                    } catch (err) {
+                        logger.error(`[${connId}] Failed to send network_topology_updated`, err);
+                    }
+                });
+            };
 
             observers.on(this.#commandHandler.events.webRtcCallback, data => {
                 if (this.#closed || this.#shuttingDown || !wantsWebRtc) return;
@@ -577,7 +584,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                                 wantsThreadDiagnostics = true;
                             }
                             if (reqTopology) {
-                                wantsNetworkTopology = true;
+                                ensureTopologyObserver();
                             }
                             if (reqWebRtc) {
                                 wantsWebRtc = true;
