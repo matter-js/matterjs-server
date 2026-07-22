@@ -45,6 +45,19 @@ class ClosureControlClusterCommands extends BaseClusterCommands {
     @state() private _moveToLatch = "";
     @state() private _moveToSpeed = "";
     private _unsubscribeNodes?: () => void;
+    private _moveToContext?: string;
+
+    override willUpdate(changedProperties: Map<string, unknown>) {
+        super.willUpdate(changedProperties);
+        if (!this.node) return;
+        const context = `${String(this.node.node_id)}/${this.endpoint}/${this.cluster}`;
+        if (this._moveToContext !== undefined && this._moveToContext !== context) {
+            this._moveToPosition = "";
+            this._moveToLatch = "";
+            this._moveToSpeed = "";
+        }
+        this._moveToContext = context;
+    }
 
     override updated(changedProperties: Map<string, unknown>) {
         super.updated(changedProperties);
