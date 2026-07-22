@@ -572,5 +572,31 @@ describe("NetworkTopologyService", () => {
             expect(topology.nodes).to.have.lengthOf(1);
             expect(emitted).to.have.lengthOf(1);
         });
+
+        it("does not emit when stop() lands mid-refresh", async () => {
+            let releaseRead!: () => void;
+            const readBlocked = new Promise<void>(resolve => {
+                releaseRead = resolve;
+            });
+            let nodeList: Node[] = [mkThread(1, { role: 5, rloc16: 1024 })];
+            const { service, emitted } = makeHarness({
+                nodes: () => nodeList,
+                refreshTimeoutMs: 10_000, // long enough that only releaseRead settles the read
+                readAttributes: async () => {
+                    // A read whose result would change the graph (so a build would otherwise emit).
+                    nodeList = [mkThread(1, { role: 5, rloc16: 1024 }), mkThread(2, { role: 5, rloc16: 1025 })];
+                    await readBlocked;
+                },
+            });
+
+            const refreshDone = service.refresh();
+            await delay(10); // enter the blocked read
+            service.stop(); // stop lands while the refresh awaits
+            releaseRead();
+            const topology = await refreshDone;
+
+            expect(topology.nodes).to.have.lengthOf(2); // caller still gets the fresh snapshot
+            expect(emitted).to.have.lengthOf(0); // but a stopped service does not broadcast it
+        });
     });
 });

@@ -180,8 +180,9 @@ export class NetworkTopologyService {
 
         await this.#runWithDeadline(tasks);
 
+        // stop() may have landed while awaiting the reads; a stopped service must not emit.
         const topology = this.#build();
-        this.#emitIfChanged(topology);
+        if (!this.#stopped) this.#emitIfChanged(topology);
         return topology;
     }
 
