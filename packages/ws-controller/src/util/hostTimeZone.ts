@@ -59,10 +59,17 @@ export function offsetSecondsAt(zone: string, atMs: number): number {
 }
 
 export function standardOffsetSeconds(zone: string, atMs: number): number {
-    const year = new Date(atMs).getUTCFullYear();
-    // The non-DST period always carries the smaller UTC offset (holds for both hemispheres;
-    // no-DST zones return the same value for both samples).
-    return Math.min(offsetSecondsAt(zone, Date.UTC(year, 0, 1)), offsetSecondsAt(zone, Date.UTC(year, 6, 1)));
+    // Standard (non-DST) offset = the smallest UTC offset over the year starting at atMs.
+    // Sampling forward from atMs (not the fixed calendar year) keeps the window inside the
+    // current regime, so a past permanent standard-offset change — e.g. a zone abolishing DST
+    // mid-year — can't drag in a stale pre-change base. Reverse-DST zones (winter offset below
+    // the tzdata "standard") still resolve: the lowest offset is what SetTimeZone must carry,
+    // with dstWindows emitting the positive deltas on top.
+    let min = offsetSecondsAt(zone, atMs);
+    for (let day = 30; day <= 365; day += 30) {
+        min = Math.min(min, offsetSecondsAt(zone, atMs + day * DAY_MS));
+    }
+    return min;
 }
 
 function findTransitionInstant(zone: string, beforeMs: number, afterMs: number): number {
