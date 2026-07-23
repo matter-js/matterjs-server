@@ -9,7 +9,7 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## **WORK IN PROGRESS**
 
-- Fix: (lboue) Dashboard now considers the audio/video features a Camera/Audio device advertises when interacting with it — audio-only devices (e.g. Audio Doorbell) show a "Listen" action, stream audio without a failing `VideoStreamAllocate` (`UnsupportedCommand (129)`), and start unmuted; devices advertising Video keep the full video live view
+- Fix: (lboue) Dashboard now considers the audio/video features a Camera/Audio device advertises
 
 ## 1.3.0 (2026-07-22)
 
