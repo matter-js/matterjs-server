@@ -288,7 +288,7 @@ class TopologyDirectionInfo:
 class NetworkTopologyNode:
     """A node in the network topology graph.
 
-    `kind`/`role`/`strength` values are open string sets so a newer server can
+    `kind`/`role` values are open string sets so a newer server can
     introduce values without breaking older clients.
     Note: Only available with OHF Matter Server (schema 13+).
     """
