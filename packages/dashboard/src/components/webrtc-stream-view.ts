@@ -53,6 +53,10 @@ export const AVSM_FEATURE_MAP_ATTR_ID = 0xfffc;
 const AVSM_MAX_ENCODED_PIXEL_RATE_ATTR_ID = 0x1;
 
 export interface AvsmFeatures {
+    // false until the FeatureMap attribute is cached; callers must not read a missing FeatureMap
+    // as "no video" (that would skip VideoStreamAllocate on a real camera whose attribute is late).
+    known: boolean;
+    ado: boolean;
     vdo: boolean;
     snp: boolean;
     wmark: boolean;
@@ -65,13 +69,25 @@ export interface AvsmFeatures {
  */
 export function readAvsmFeatures(node: MatterNode | undefined, endpoint: number): AvsmFeatures {
     const raw = node?.attributes[`${endpoint}/${CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID}/${AVSM_FEATURE_MAP_ATTR_ID}`];
-    const bits = typeof raw === "number" ? raw : 0;
+    const known = typeof raw === "number";
+    const bits = known ? raw : 0;
     return {
+        known,
+        ado: (bits & AVSM_FEAT_ADO) !== 0,
         vdo: (bits & AVSM_FEAT_VDO) !== 0,
         snp: (bits & AVSM_FEAT_SNP) !== 0,
         wmark: (bits & AVSM_FEAT_WMARK) !== 0,
         osd: (bits & AVSM_FEAT_OSD) !== 0,
     };
+}
+
+/**
+ * Audio-only live view: the FeatureMap is known and does not advertise Video. When the FeatureMap
+ * hasn't arrived we assume video-capable, so a late attribute can't strand a real camera in an
+ * audio-only session (and VideoStreamAllocate is still attempted).
+ */
+export function isAudioOnlyAvsm(features: AvsmFeatures): boolean {
+    return features.known && !features.vdo;
 }
 
 const DEFAULT_MAX_RESOLUTION = { width: 1920, height: 1080 };
@@ -327,10 +343,9 @@ export class WebRtcStreamView extends LitElement {
             const pc = new RTCPeerConnection({ iceServers: [] });
             this._pc = pc;
             const avsmFeatures = this._readAvsmFeatures();
+            const audioOnly = isAudioOnlyAvsm(avsmFeatures);
 
-            // Audio-only devices (e.g. Audio Doorbell) don't advertise VDO — adding a video
-            // transceiver anyway is harmless for WebRTC, but VideoStreamAllocate below is not.
-            if (avsmFeatures.vdo) pc.addTransceiver("video", { direction: "recvonly" });
+            if (!audioOnly) pc.addTransceiver("video", { direction: "recvonly" });
             pc.addTransceiver("audio", { direction: "recvonly" });
 
             pc.onicecandidate = ev => {
@@ -388,7 +403,7 @@ export class WebRtcStreamView extends LitElement {
             const maxEncodedPixelRate = this._readMaxEncodedPixelRate();
             const snapshotReservation = this._snapshotBudgetReservation();
 
-            if (!avsmFeatures.vdo) {
+            if (audioOnly) {
                 // Audio-only devices (e.g. Audio Doorbell) don't advertise VDO: VideoStreamAllocate
                 // isn't in their AcceptedCommandList and would fail with UnsupportedCommand
                 // (code 129). Skip video entirely and stream audio-only.
@@ -522,9 +537,15 @@ export class WebRtcStreamView extends LitElement {
                     this._audioStreamId = parseStreamAllocate(audioAlloc, "audioStreamId");
                     this._audioStreamOwned = this._audioStreamId !== null;
                 } catch (err) {
-                    console.info("AudioStreamAllocate failed; continuing video-only", err);
+                    console.info("AudioStreamAllocate failed; continuing without audio", err);
                     this._audioStreamId = null;
                 }
+            }
+
+            if (this._videoStreamId === null && this._audioStreamId === null) {
+                // Without either stream ProvideOffer requests no media; fail loudly instead of
+                // negotiating an empty session (audio-only device whose AudioStreamAllocate failed).
+                throw new Error("No media stream allocated: device advertises neither video nor audio");
             }
 
             const offer = await pc.createOffer();

@@ -11,6 +11,7 @@ import {
     AVSM_FEAT_SNP,
     AVSM_FEAT_VDO,
     CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID,
+    isAudioOnlyAvsm,
     readAvsmFeatures,
 } from "../src/components/webrtc-stream-view.js";
 
@@ -36,25 +37,31 @@ const featureMapAttr = `${ENDPOINT}/${CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID}/${
 const AUDIO_ONLY_FEATURE_MAP = AVSM_FEAT_ADO;
 
 describe("readAvsmFeatures", () => {
-    it("does not advertise video for an audio-only device (e.g. Audio Doorbell)", () => {
+    it("reports a known, video-less FeatureMap for an audio-only device (e.g. Audio Doorbell)", () => {
         const n = node({ [featureMapAttr]: AUDIO_ONLY_FEATURE_MAP });
         const features = readAvsmFeatures(n, ENDPOINT);
+        expect(features.known).to.equal(true);
+        expect(features.ado).to.equal(true);
         expect(features.vdo).to.equal(false);
         expect(features.snp).to.equal(false);
+        expect(isAudioOnlyAvsm(features)).to.equal(true);
     });
 
-    it("does not advertise video when the FeatureMap attribute hasn't arrived yet", () => {
-        // Guards the fix's default: an audio-only device must never fall through to
-        // VideoStreamAllocate just because the attribute cache is still empty.
+    it("is not audio-only when the FeatureMap attribute hasn't arrived yet", () => {
+        // A missing FeatureMap must read as unknown, not as "no video": otherwise a real camera
+        // whose attribute is still in flight would skip VideoStreamAllocate and stream audio-only.
         const features = readAvsmFeatures(node({}), ENDPOINT);
-        expect(features.vdo).to.equal(false);
+        expect(features.known).to.equal(false);
+        expect(isAudioOnlyAvsm(features)).to.equal(false);
     });
 
     it("advertises video for a device that supports it (sanity check against a real camera)", () => {
         const n = node({ [featureMapAttr]: AVSM_FEAT_VDO | AVSM_FEAT_SNP });
         const features = readAvsmFeatures(n, ENDPOINT);
+        expect(features.known).to.equal(true);
         expect(features.vdo).to.equal(true);
         expect(features.snp).to.equal(true);
+        expect(isAudioOnlyAvsm(features)).to.equal(false);
     });
 
     it("reads the FeatureMap for the given endpoint only, not other endpoints on the same node", () => {

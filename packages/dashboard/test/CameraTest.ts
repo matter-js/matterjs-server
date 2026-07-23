@@ -63,4 +63,15 @@ describe("supportsAudioOnlyLiveView", () => {
         const n = node({});
         expect(supportsAudioOnlyLiveView(n, ENDPOINT)).to.equal(false);
     });
+
+    it("is false for a live-view endpoint whose FeatureMap hasn't arrived (don't mislabel a real camera)", () => {
+        const n = node({
+            [`${ENDPOINT}/${DESCRIPTOR_CLUSTER_ID}/${SERVER_LIST_ATTR_ID}`]: [
+                WEBRTC_TRANSPORT_PROVIDER_CLUSTER_ID,
+                CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID,
+            ],
+        });
+        expect(supportsLiveView(n, ENDPOINT)).to.equal(true);
+        expect(supportsAudioOnlyLiveView(n, ENDPOINT)).to.equal(false);
+    });
 });
