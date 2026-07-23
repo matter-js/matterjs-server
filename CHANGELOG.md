@@ -7,6 +7,10 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
+## **WORK IN PROGRESS**
+
+- Feature: (lboue) Dashboard cluster view shows an "Active Features" panel listing the cluster's supported features by name, decoded from the FeatureMap attribute
+
 ## 1.3.0 (2026-07-22)
 
 - Feature: (lboue) Dashboard adds a command panel for the ClosureControl cluster (Stop, Calibrate, MoveTo with position/latch/speed)
