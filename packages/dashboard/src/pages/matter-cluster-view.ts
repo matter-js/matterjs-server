@@ -24,6 +24,7 @@ import { showCommandInvokeDialog } from "../components/dialogs/dev/show-command-
 import "../components/ha-svg-icon";
 import "../pages/components/node-details";
 // Cluster command components (auto-register on import)
+import { computeActiveClusterFeatures } from "../util/cluster-features.js";
 import { DevModeService } from "../util/dev-mode-service.js";
 import { formatHex, formatNodeAddress, getEffectiveFabricIndex } from "../util/format_hex.js";
 import { notFoundStyles } from "../util/shared-styles.js";
@@ -42,6 +43,9 @@ const GLOBAL_ATTRIBUTE_MAX = 0xffff;
 
 // AcceptedCommandList global attribute (lists server-supported command IDs per cluster instance)
 const ACCEPTED_COMMAND_LIST_ATTR = 0xfff9;
+
+// FeatureMap global attribute (bitmap of cluster feature flags supported by this instance)
+const FEATURE_MAP_ATTR = 0xfffc;
 
 // How long to flash the refresh icon in success state.
 const REFRESH_SUCCESS_MS = 600;
@@ -147,6 +151,9 @@ class MatterClusterView extends LitElement {
 
             <!-- Developer-mode commands panel -->
             ${this._devMode ? this._renderDevCommandsPanel() : nothing}
+
+            <!-- Active features panel -->
+            ${this._renderFeaturesPanel()}
 
             <!-- Cluster attributes listing -->
             <div class="container">
@@ -339,6 +346,42 @@ class MatterClusterView extends LitElement {
             commandId,
             commandName,
         });
+    }
+
+    private _renderFeaturesPanel(): TemplateResult | typeof nothing {
+        if (this.cluster === undefined || !this.node) return nothing;
+
+        const clusterMeta = clusters[this.cluster];
+        const knownFeatures = Object.values(clusterMeta?.features ?? {});
+        if (knownFeatures.length === 0) return nothing;
+
+        const featureMapValue = this.node.attributes[`${this.endpoint}/${this.cluster}/${FEATURE_MAP_ATTR}`];
+        if (featureMapValue === undefined) return nothing;
+
+        const activeFeatures = computeActiveClusterFeatures(featureMapValue, knownFeatures);
+
+        return html`
+            <div class="container">
+                <div class="features-panel">
+                    <div class="features-panel-header">Active Features</div>
+                    <div class="features-panel-body">
+                        ${activeFeatures.length === 0
+                            ? html`<p class="empty">No optional features supported</p>`
+                            : html`
+                                  <ul class="feature-chip-list">
+                                      ${activeFeatures.map(
+                                          feature => html`
+                                              <li class="feature-chip" title="Bit ${feature.bit} (${feature.code})">
+                                                  ${feature.label}
+                                              </li>
+                                          `,
+                                      )}
+                                  </ul>
+                              `}
+                    </div>
+                </div>
+            </div>
+        `;
     }
 
     private async _showAttributeValue(value: any) {
@@ -625,6 +668,36 @@ class MatterClusterView extends LitElement {
                 background: var(--md-sys-color-surface-container-high);
                 padding: 0 4px;
                 border-radius: 3px;
+            }
+
+            .features-panel {
+                background-color: var(--md-sys-color-surface-container);
+                border: 1px solid var(--md-sys-color-outline-variant);
+                border-radius: 12px;
+                padding: 14px 16px;
+            }
+
+            .features-panel-header {
+                font-weight: 500;
+                color: var(--md-sys-color-on-surface);
+                margin-bottom: 10px;
+            }
+
+            .feature-chip-list {
+                list-style: none;
+                margin: 0;
+                padding: 0;
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+
+            .feature-chip {
+                font-size: 0.85rem;
+                color: var(--md-sys-color-on-secondary-container);
+                background: var(--md-sys-color-secondary-container);
+                padding: 4px 10px;
+                border-radius: 8px;
             }
         `,
     ];
