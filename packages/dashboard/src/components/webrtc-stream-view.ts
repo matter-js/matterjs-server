@@ -7,6 +7,7 @@
 import { consume } from "@lit/context";
 import type {
     MatterClient,
+    MatterNode,
     WebRtcAnswerData,
     WebRtcCallbackData,
     WebRtcIceCandidatesData,
@@ -36,9 +37,13 @@ const END_REASON_USER_HANGUP = 2;
 export const CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID = 0x551;
 const WEBRTC_TRANSPORT_PROVIDER_CLUSTER_ID = 0x553;
 
-// AVSM FeatureMap bits (spec §11.2.4): SNP=2 enables snapshot streams, WMARK=6
-// enables watermark overlay, OSD=7 enables on-screen display. When advertised,
-// VideoStreamAllocate and SnapshotStreamAllocate REQUIRE watermarkEnabled / osdEnabled fields.
+// AVSM FeatureMap bits (spec §11.2.4): ADO=0 audio, VDO=1 gates VideoStreamAllocate —
+// audio-only devices such as Audio Doorbell advertise ADO without VDO — SNP=2 enables
+// snapshot streams, WMARK=6 enables watermark overlay, OSD=7 enables on-screen display.
+// When advertised, VideoStreamAllocate and SnapshotStreamAllocate REQUIRE
+// watermarkEnabled / osdEnabled fields.
+export const AVSM_FEAT_ADO = 1 << 0;
+export const AVSM_FEAT_VDO = 1 << 1;
 export const AVSM_FEAT_SNP = 1 << 2;
 export const AVSM_FEAT_WMARK = 1 << 6;
 export const AVSM_FEAT_OSD = 1 << 7;
@@ -46,6 +51,44 @@ export const AVSM_FEATURE_MAP_ATTR_ID = 0xfffc;
 // MaxEncodedPixelRate (attr 0x0001): shared encoder budget in px/s that video and
 // snapshot streams draw from.
 const AVSM_MAX_ENCODED_PIXEL_RATE_ATTR_ID = 0x1;
+
+export interface AvsmFeatures {
+    // false until the FeatureMap attribute is cached; callers must not read a missing FeatureMap
+    // as "no video" (that would skip VideoStreamAllocate on a real camera whose attribute is late).
+    known: boolean;
+    ado: boolean;
+    vdo: boolean;
+    snp: boolean;
+    wmark: boolean;
+    osd: boolean;
+}
+
+/**
+ * Reads the AVSM FeatureMap (spec §11.2.4) for a node/endpoint's CameraAvStreamManagement
+ * cluster. Audio-only devices (Intercom, Audio Doorbell) advertise Audio without Video (vdo).
+ */
+export function readAvsmFeatures(node: MatterNode | undefined, endpoint: number): AvsmFeatures {
+    const raw = node?.attributes[`${endpoint}/${CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID}/${AVSM_FEATURE_MAP_ATTR_ID}`];
+    const known = typeof raw === "number";
+    const bits = known ? raw : 0;
+    return {
+        known,
+        ado: (bits & AVSM_FEAT_ADO) !== 0,
+        vdo: (bits & AVSM_FEAT_VDO) !== 0,
+        snp: (bits & AVSM_FEAT_SNP) !== 0,
+        wmark: (bits & AVSM_FEAT_WMARK) !== 0,
+        osd: (bits & AVSM_FEAT_OSD) !== 0,
+    };
+}
+
+/**
+ * Audio-only live view: the FeatureMap is known and does not advertise Video. When the FeatureMap
+ * hasn't arrived we assume video-capable, so a late attribute can't strand a real camera in an
+ * audio-only session (and VideoStreamAllocate is still attempted).
+ */
+export function isAudioOnlyAvsm(features: AvsmFeatures): boolean {
+    return features.known && !features.vdo;
+}
 
 const DEFAULT_MAX_RESOLUTION = { width: 1920, height: 1080 };
 const DEFAULT_MIN_RESOLUTION = { width: 640, height: 480 };
@@ -188,6 +231,7 @@ export class WebRtcStreamView extends LitElement {
 
     @property({ attribute: false }) nodeId!: number | bigint;
     @property({ type: Number }) endpointId!: number;
+    @property({ type: Boolean }) liveViewSupported = true;
     @property({ type: Object }) resolution: { width: number; height: number } | null = null;
 
     @property({ type: Boolean }) watermarkEnabled = false;
@@ -200,6 +244,11 @@ export class WebRtcStreamView extends LitElement {
 
     private _snapshotStreamId: number | null = null;
     private _snapshotResolution: { width: number; height: number } | null = null;
+    private _snapshotImageCodec: number | null = null;
+    private _snapshotMaxFrameRate: number | null = null;
+    private _snapshotWatermarkEnabled: boolean | undefined = undefined;
+    private _snapshotOsdEnabled: boolean | undefined = undefined;
+    private _snapshotChain: Promise<unknown> = Promise.resolve();
     /** True when we allocated this stream ourselves and must Deallocate it on stop. False when reusing an existing allocation. */
     private _videoStreamOwned = false;
     private _audioStreamOwned = false;
@@ -253,7 +302,11 @@ export class WebRtcStreamView extends LitElement {
             ${this._state === "idle"
                 ? html`<div class="placeholder">
                       <ha-svg-icon class="placeholder-icon" .path=${mdiVideoOutline}></ha-svg-icon>
-                      <div class="placeholder-text">Click <b>Start</b> to begin streaming</div>
+                      <div class="placeholder-text">
+                          ${this.liveViewSupported
+                              ? html`Click <b>Start</b> to begin streaming`
+                              : "Live view not supported — use Snapshot"}
+                      </div>
                   </div>`
                 : null}
             ${this._state === "connecting"
@@ -272,6 +325,10 @@ export class WebRtcStreamView extends LitElement {
     }
 
     async start(): Promise<void> {
+        if (!this.liveViewSupported) {
+            this._fireStateChange("error", "Live view is not supported on this device");
+            return;
+        }
         if (!this.client) throw new Error("Matter client not available");
         if (this._state === "connecting" || this._state === "streaming") return;
 
@@ -285,8 +342,10 @@ export class WebRtcStreamView extends LitElement {
         try {
             const pc = new RTCPeerConnection({ iceServers: [] });
             this._pc = pc;
+            const avsmFeatures = this._readAvsmFeatures();
+            const audioOnly = isAudioOnlyAvsm(avsmFeatures);
 
-            pc.addTransceiver("video", { direction: "recvonly" });
+            if (!audioOnly) pc.addTransceiver("video", { direction: "recvonly" });
             pc.addTransceiver("audio", { direction: "recvonly" });
 
             pc.onicecandidate = ev => {
@@ -341,73 +400,61 @@ export class WebRtcStreamView extends LitElement {
 
             const minResolution = this.resolution ?? DEFAULT_MIN_RESOLUTION;
             const maxResolution = this.resolution ?? DEFAULT_MAX_RESOLUTION;
-            const avsmFeatures = this._readAvsmFeatures();
             const maxEncodedPixelRate = this._readMaxEncodedPixelRate();
             const snapshotReservation = this._snapshotBudgetReservation();
-            // Reserving the whole MaxEncodedPixelRate (e.g. 1080p@120) starves a concurrent
-            // SnapshotStreamAllocate (ResourceExhausted); size the video rate to leave the
-            // snapshot stream room within the shared encoder budget.
-            const videoMaxFrameRate = planVideoMaxFrameRate({
-                maxEncodedPixelRate,
-                videoResolution: maxResolution,
-                snapshotReservation,
-            });
-            const videoAllocPayload: Record<string, unknown> = {
-                streamUsage: STREAM_USAGE_LIVE_VIEW,
-                videoCodec: 0,
-                minFrameRate: Math.min(VIDEO_MIN_FRAME_RATE, videoMaxFrameRate),
-                maxFrameRate: videoMaxFrameRate,
-                minResolution,
-                maxResolution,
-                minBitRate: 10000,
-                maxBitRate: 10000,
-                keyFrameInterval: 4000,
-            };
-            if (avsmFeatures.wmark) videoAllocPayload.watermarkEnabled = this.watermarkEnabled;
-            if (avsmFeatures.osd) videoAllocPayload.osdEnabled = this.osdEnabled;
 
-            // Spec §11.2.1.2.1 — server SHALL reuse an existing stream that covers our
-            // request. Search AllocatedVideoStreams (attr 0x000F) first to avoid even
-            // sending VideoStreamAllocate when a usable stream is already in place. Skip
-            // candidates that over-reserve the encoder budget so reuse can't reintroduce
-            // the snapshot ResourceExhausted a fresh allocation avoids.
-            const videoWant = {
-                streamUsage: STREAM_USAGE_LIVE_VIEW,
-                videoCodec: 0,
-                minRes: minResolution,
-                maxRes: maxResolution,
-                watermarkEnabled: avsmFeatures.wmark ? this.watermarkEnabled : undefined,
-                osdEnabled: avsmFeatures.osd ? this.osdEnabled : undefined,
-                budget: { maxEncodedPixelRate, snapshotReservation },
-            };
-            const reusedVideoId = this._findMatchingVideoStream(videoWant);
-            let videoAlloc: unknown = null;
-            let usedFallbackReuse = false;
-            if (reusedVideoId !== null) {
-                console.info("[webrtc-stream-view] reusing existing video stream", reusedVideoId);
-                this._videoStreamId = reusedVideoId;
+            if (audioOnly) {
+                // Audio-only devices (e.g. Audio Doorbell) don't advertise VDO: VideoStreamAllocate
+                // isn't in their AcceptedCommandList and would fail with UnsupportedCommand
+                // (code 129). Skip video entirely and stream audio-only.
+                this._videoStreamId = null;
                 this._videoStreamOwned = false;
             } else {
-                try {
-                    videoAlloc = await this.client.deviceCommand(
-                        this.nodeId,
-                        this.endpointId,
-                        CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID,
-                        "VideoStreamAllocate",
-                        videoAllocPayload,
-                    );
-                } catch (err) {
-                    const message = err instanceof Error ? err.message : String(err);
-                    const isResourceExhausted =
-                        message.includes("Resource exhausted") || message.includes("(code 137)");
-                    if (!isResourceExhausted) throw err;
-                    // Cameras with a shared encoder pool refuse VideoStreamAllocate while a snapshot
-                    // stream is held — free ours and retry once.
-                    if (this._snapshotStreamId !== null) {
-                        console.info(
-                            "[webrtc-stream-view] VideoStreamAllocate ResourceExhausted; freeing snapshot stream and retrying",
-                        );
-                        await this.deallocateSnapshot();
+                // Reserving the whole MaxEncodedPixelRate (e.g. 1080p@120) starves a concurrent
+                // SnapshotStreamAllocate (ResourceExhausted); size the video rate to leave the
+                // snapshot stream room within the shared encoder budget.
+                const videoMaxFrameRate = planVideoMaxFrameRate({
+                    maxEncodedPixelRate,
+                    videoResolution: maxResolution,
+                    snapshotReservation,
+                });
+                const videoAllocPayload: Record<string, unknown> = {
+                    streamUsage: STREAM_USAGE_LIVE_VIEW,
+                    videoCodec: 0,
+                    minFrameRate: Math.min(VIDEO_MIN_FRAME_RATE, videoMaxFrameRate),
+                    maxFrameRate: videoMaxFrameRate,
+                    minResolution,
+                    maxResolution,
+                    minBitRate: 10000,
+                    maxBitRate: 10000,
+                    keyFrameInterval: 4000,
+                };
+                if (avsmFeatures.wmark) videoAllocPayload.watermarkEnabled = this.watermarkEnabled;
+                if (avsmFeatures.osd) videoAllocPayload.osdEnabled = this.osdEnabled;
+
+                // Spec §11.2.1.2.1 — server SHALL reuse an existing stream that covers our
+                // request. Search AllocatedVideoStreams (attr 0x000F) first to avoid even
+                // sending VideoStreamAllocate when a usable stream is already in place. Skip
+                // candidates that over-reserve the encoder budget so reuse can't reintroduce
+                // the snapshot ResourceExhausted a fresh allocation avoids.
+                const videoWant = {
+                    streamUsage: STREAM_USAGE_LIVE_VIEW,
+                    videoCodec: 0,
+                    minRes: minResolution,
+                    maxRes: maxResolution,
+                    watermarkEnabled: avsmFeatures.wmark ? this.watermarkEnabled : undefined,
+                    osdEnabled: avsmFeatures.osd ? this.osdEnabled : undefined,
+                    budget: { maxEncodedPixelRate, snapshotReservation },
+                };
+                const reusedVideoId = this._findMatchingVideoStream(videoWant);
+                let videoAlloc: unknown = null;
+                let usedFallbackReuse = false;
+                if (reusedVideoId !== null) {
+                    console.info("[webrtc-stream-view] reusing existing video stream", reusedVideoId);
+                    this._videoStreamId = reusedVideoId;
+                    this._videoStreamOwned = false;
+                } else {
+                    try {
                         videoAlloc = await this.client.deviceCommand(
                             this.nodeId,
                             this.endpointId,
@@ -415,29 +462,49 @@ export class WebRtcStreamView extends LitElement {
                             "VideoStreamAllocate",
                             videoAllocPayload,
                         );
-                    } else {
-                        // The budget is held by a stream we didn't allocate (e.g. another
-                        // controller's 120 fps stream). Fall back to reusing it so live view
-                        // still works; a concurrent snapshot may then be refused.
-                        const fallbackId = this._findMatchingVideoStream({ ...videoWant, budget: undefined });
-                        if (fallbackId === null) throw err;
-                        console.warn(
-                            "[webrtc-stream-view] VideoStreamAllocate ResourceExhausted; reusing over-budget stream",
-                            fallbackId,
-                            "(concurrent snapshot may be unavailable)",
-                        );
-                        this._videoStreamId = fallbackId;
-                        this._videoStreamOwned = false;
-                        usedFallbackReuse = true;
+                    } catch (err) {
+                        const message = err instanceof Error ? err.message : String(err);
+                        const isResourceExhausted =
+                            message.includes("Resource exhausted") || message.includes("(code 137)");
+                        if (!isResourceExhausted) throw err;
+                        // Cameras with a shared encoder pool refuse VideoStreamAllocate while a snapshot
+                        // stream is held — free ours and retry once.
+                        if (this._snapshotStreamId !== null) {
+                            console.info(
+                                "[webrtc-stream-view] VideoStreamAllocate ResourceExhausted; freeing snapshot stream and retrying",
+                            );
+                            await this._runSerialized(() => this.deallocateSnapshot());
+                            videoAlloc = await this.client.deviceCommand(
+                                this.nodeId,
+                                this.endpointId,
+                                CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID,
+                                "VideoStreamAllocate",
+                                videoAllocPayload,
+                            );
+                        } else {
+                            // The budget is held by a stream we didn't allocate (e.g. another
+                            // controller's 120 fps stream). Fall back to reusing it so live view
+                            // still works; a concurrent snapshot may then be refused.
+                            const fallbackId = this._findMatchingVideoStream({ ...videoWant, budget: undefined });
+                            if (fallbackId === null) throw err;
+                            console.warn(
+                                "[webrtc-stream-view] VideoStreamAllocate ResourceExhausted; reusing over-budget stream",
+                                fallbackId,
+                                "(concurrent snapshot may be unavailable)",
+                            );
+                            this._videoStreamId = fallbackId;
+                            this._videoStreamOwned = false;
+                            usedFallbackReuse = true;
+                        }
                     }
-                }
-                if (!usedFallbackReuse) {
-                    const videoStreamId = parseStreamAllocate(videoAlloc, "videoStreamId");
-                    if (videoStreamId === null) {
-                        throw new Error("VideoStreamAllocate did not return a videoStreamId");
+                    if (!usedFallbackReuse) {
+                        const videoStreamId = parseStreamAllocate(videoAlloc, "videoStreamId");
+                        if (videoStreamId === null) {
+                            throw new Error("VideoStreamAllocate did not return a videoStreamId");
+                        }
+                        this._videoStreamId = videoStreamId;
+                        this._videoStreamOwned = true;
                     }
-                    this._videoStreamId = videoStreamId;
-                    this._videoStreamOwned = true;
                 }
             }
 
@@ -470,9 +537,15 @@ export class WebRtcStreamView extends LitElement {
                     this._audioStreamId = parseStreamAllocate(audioAlloc, "audioStreamId");
                     this._audioStreamOwned = this._audioStreamId !== null;
                 } catch (err) {
-                    console.info("AudioStreamAllocate failed; continuing video-only", err);
+                    console.info("AudioStreamAllocate failed; continuing without audio", err);
                     this._audioStreamId = null;
                 }
+            }
+
+            if (this._videoStreamId === null && this._audioStreamId === null) {
+                // Without either stream ProvideOffer requests no media; fail loudly instead of
+                // negotiating an empty session (audio-only device whose AudioStreamAllocate failed).
+                throw new Error("No media stream allocated: device advertises neither video nor audio");
             }
 
             const offer = await pc.createOffer();
@@ -575,7 +648,7 @@ export class WebRtcStreamView extends LitElement {
         this._videoStreamOwned = false;
         this._audioStreamOwned = false;
 
-        await this.deallocateSnapshot();
+        await this._runSerialized(() => this.deallocateSnapshot());
 
         const video = this._video;
         if (video && video.srcObject) {
@@ -605,7 +678,26 @@ export class WebRtcStreamView extends LitElement {
         this._stopping = false;
     }
 
+    /**
+     * Runs a snapshot-stream lifecycle op (capture, or a deallocate triggered by the video path /
+     * teardown) after any in-flight one settles. Keeps re-negotiation and cross-path deallocation
+     * from tearing down a stream a concurrent capture is using, and first-time captures from each
+     * allocating (leak).
+     */
+    private _runSerialized<T>(op: () => Promise<T>): Promise<T> {
+        const run = this._snapshotChain.then(op, op);
+        this._snapshotChain = run.then(
+            () => undefined,
+            () => undefined,
+        );
+        return run;
+    }
+
     async takeSnapshot(): Promise<{ dataUri: string; resolution: { width: number; height: number } }> {
+        return this._runSerialized(() => this._takeSnapshot());
+    }
+
+    private async _takeSnapshot(): Promise<{ dataUri: string; resolution: { width: number; height: number } }> {
         if (!this.client) throw new Error("Matter client not available");
         const streamId = await this._ensureSnapshotStream();
         const requestedResolution = this._snapshotResolution ?? SNAPSHOT_DEFAULTS.resolution;
@@ -624,18 +716,8 @@ export class WebRtcStreamView extends LitElement {
         };
     }
 
-    private _readAvsmFeatures(): { snp: boolean; wmark: boolean; osd: boolean } {
-        const node = this.client?.nodes[String(this.nodeId)];
-        const raw =
-            node?.attributes[
-                `${this.endpointId}/${CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID}/${AVSM_FEATURE_MAP_ATTR_ID}`
-            ];
-        const bits = typeof raw === "number" ? raw : 0;
-        return {
-            snp: (bits & AVSM_FEAT_SNP) !== 0,
-            wmark: (bits & AVSM_FEAT_WMARK) !== 0,
-            osd: (bits & AVSM_FEAT_OSD) !== 0,
-        };
+    private _readAvsmFeatures(): AvsmFeatures {
+        return readAvsmFeatures(this.client?.nodes[String(this.nodeId)], this.endpointId);
     }
 
     private _readMaxEncodedPixelRate(): number | null {
@@ -673,6 +755,10 @@ export class WebRtcStreamView extends LitElement {
         const wasOwned = this._snapshotStreamOwned;
         this._snapshotStreamId = null;
         this._snapshotResolution = null;
+        this._snapshotImageCodec = null;
+        this._snapshotMaxFrameRate = null;
+        this._snapshotWatermarkEnabled = undefined;
+        this._snapshotOsdEnabled = undefined;
         this._snapshotStreamOwned = false;
         if (!wasOwned) return; // Reused an existing allocation — leave it for its owner.
         try {
@@ -782,7 +868,7 @@ export class WebRtcStreamView extends LitElement {
         resolution: { width: number; height: number };
         watermarkEnabled?: boolean;
         osdEnabled?: boolean;
-    }): { id: number; resolution: { width: number; height: number } } | null {
+    }): number | null {
         const node = this.client?.nodes[String(this.nodeId)];
         const list = node?.attributes[`${this.endpointId}/${CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID}/17`];
         if (!Array.isArray(list)) return null;
@@ -809,14 +895,12 @@ export class WebRtcStreamView extends LitElement {
                 if (v !== want.osdEnabled) continue;
             }
             const id = pickNumber(obj, "snapshotStreamId", "0");
-            const resolution = { width: eMaxW, height: eMaxH };
-            if (id !== null) return { id, resolution };
+            if (id !== null) return id;
         }
         return null;
     }
 
     private async _ensureSnapshotStream(): Promise<number> {
-        if (this._snapshotStreamId !== null) return this._snapshotStreamId;
         if (!this.client) throw new Error("Matter client not available");
 
         const node = this.client.nodes[String(this.nodeId)];
@@ -838,21 +922,46 @@ export class WebRtcStreamView extends LitElement {
         const targetResolution = clampToCapability(this.snapshotResolution ?? cap.resolution, cap.resolution);
 
         const avsmFeatures = this._readAvsmFeatures();
+        const wantWatermark = avsmFeatures.wmark ? this.watermarkEnabled : undefined;
+        const wantOsd = avsmFeatures.osd ? this.osdEnabled : undefined;
+
+        // A cached stream only still covers the current call if its resolution, codec, frame rate,
+        // and watermark/OSD flags all still match: the caller may have changed `snapshotResolution`
+        // or toggled watermark/OSD, or the encoder may have freed up (which reselects the capability,
+        // changing maxFrameRate), since it was ensured. Otherwise release it before searching for
+        // (or allocating) one that actually covers the new target.
+        if (this._snapshotStreamId !== null) {
+            if (
+                this._snapshotResolution?.width === targetResolution.width &&
+                this._snapshotResolution?.height === targetResolution.height &&
+                this._snapshotImageCodec === cap.imageCodec &&
+                this._snapshotMaxFrameRate === cap.maxFrameRate &&
+                this._snapshotWatermarkEnabled === wantWatermark &&
+                this._snapshotOsdEnabled === wantOsd
+            ) {
+                return this._snapshotStreamId;
+            }
+            await this.deallocateSnapshot();
+        }
 
         // AllocatedSnapshotStreams (attr 0x0011) — reuse existing stream when its capability
         // range covers our target resolution (spec §11.2.1.2.1 / §11.2.8.8.8).
         const reused = this._findMatchingSnapshotStream({
             imageCodec: cap.imageCodec,
             resolution: targetResolution,
-            watermarkEnabled: avsmFeatures.wmark ? this.watermarkEnabled : undefined,
-            osdEnabled: avsmFeatures.osd ? this.osdEnabled : undefined,
+            watermarkEnabled: wantWatermark,
+            osdEnabled: wantOsd,
         });
         if (reused !== null) {
-            console.info("[webrtc-stream-view] reusing existing snapshot stream", reused.id);
-            this._snapshotStreamId = reused.id;
-            this._snapshotResolution = reused.resolution;
+            console.info("[webrtc-stream-view] reusing existing snapshot stream", reused);
+            this._snapshotStreamId = reused;
+            this._snapshotResolution = targetResolution;
+            this._snapshotImageCodec = cap.imageCodec;
+            this._snapshotMaxFrameRate = cap.maxFrameRate;
+            this._snapshotWatermarkEnabled = wantWatermark;
+            this._snapshotOsdEnabled = wantOsd;
             this._snapshotStreamOwned = false;
-            return reused.id;
+            return reused;
         }
 
         const snapshotAllocPayload: Record<string, unknown> = {
@@ -877,6 +986,10 @@ export class WebRtcStreamView extends LitElement {
         }
         this._snapshotStreamId = snapshotStreamId;
         this._snapshotResolution = targetResolution;
+        this._snapshotImageCodec = cap.imageCodec;
+        this._snapshotMaxFrameRate = cap.maxFrameRate;
+        this._snapshotWatermarkEnabled = wantWatermark;
+        this._snapshotOsdEnabled = wantOsd;
         this._snapshotStreamOwned = true;
         return this._snapshotStreamId;
     }

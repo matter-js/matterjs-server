@@ -31,6 +31,18 @@ describe("hostTimeZone", () => {
             expect(standardOffsetSeconds("Australia/Sydney", JAN_2026)).to.equal(36000); // AEST base
             expect(standardOffsetSeconds("America/Phoenix", JUL_2026)).to.equal(-25200);
         });
+
+        it("returns the base offset when atMs is mid-DST", () => {
+            expect(standardOffsetSeconds("Europe/Berlin", Date.UTC(2026, 3, 15))).to.equal(3600);
+            expect(standardOffsetSeconds("America/New_York", Date.UTC(2026, 4, 1))).to.equal(-18000);
+        });
+
+        it("uses the current regime after a permanent standard-offset change", () => {
+            // Europe/Istanbul abolished DST on 2016-09-07, moving permanently to +03:00.
+            // Sampling Jan+Jul of 2016 straddles the switch and would wrongly return the
+            // pre-switch +02:00 base; the offset after the switch is a permanent +03:00.
+            expect(standardOffsetSeconds("Europe/Istanbul", Date.UTC(2016, 10, 1))).to.equal(10800);
+        });
     });
 
     describe("dstWindows", () => {

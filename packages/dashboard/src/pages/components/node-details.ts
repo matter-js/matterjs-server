@@ -13,7 +13,16 @@ import "@material/web/list/list";
 import "@material/web/list/list-item";
 import { consume } from "@lit/context";
 import { MatterClient, MatterNode, UpdateSource } from "@matter-server/ws-client";
-import { mdiChatProcessing, mdiPencil, mdiShareVariant, mdiTrashCan, mdiUpdate, mdiVideo } from "@mdi/js";
+import {
+    mdiCamera,
+    mdiChatProcessing,
+    mdiMicrophone,
+    mdiPencil,
+    mdiShareVariant,
+    mdiTrashCan,
+    mdiUpdate,
+    mdiVideo,
+} from "@mdi/js";
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { clientContext, tickContext } from "../../client/client-context.js";
@@ -23,18 +32,12 @@ import { showNodeLabelDialog } from "../../components/dialogs/node-label-dialog/
 import { handleAsync } from "../../util/async-handler.js";
 import "../../components/ha-svg-icon";
 import "../camera-overlay.js";
-import { DeviceTypes, getDeviceIcon } from "../../util/device-icons.js";
+import { supportsAudioOnlyLiveView, supportsCameraOverlay, supportsLiveView } from "../../util/camera.js";
+import { getDeviceIcon } from "../../util/device-icons.js";
 import { getEndpointDeviceTypes } from "../../util/endpoints.js";
 import { ICD_CLUSTER_ID, icdBadge } from "../../util/icd.js";
 import { formatManualPairingCode, renderPairingQrCodeDataUri } from "../../util/pairing-code.js";
 import { bindingContext } from "./context.js";
-
-const CAMERA_DEVICE_TYPE_IDS: number[] = [
-    DeviceTypes.CAMERA,
-    DeviceTypes.VIDEO_DOORBELL,
-    DeviceTypes.FLOODLIGHT_CAMERA,
-    DeviceTypes.SNAPSHOT_CAMERA,
-];
 
 /** Map updateState values to user-friendly labels */
 const UPDATE_STATE_LABELS: Record<number, string> = {
@@ -87,8 +90,11 @@ export class NodeDetails extends LitElement {
     protected override render() {
         if (!this.node) return html``;
 
-        const deviceTypeIds = getEndpointDeviceTypes(this.node, this.endpoint).map(d => d.id);
-        const isCamera = CAMERA_DEVICE_TYPE_IDS.some(id => deviceTypeIds.includes(id));
+        const isCamera = supportsCameraOverlay(this.node, this.endpoint);
+        const isLiveViewCamera = supportsLiveView(this.node, this.endpoint);
+        // Audio-only live view (e.g. Audio Doorbell, Intercom) gets its own label/icon rather
+        // than "Live View", since no video is actually streamed.
+        const isAudioOnly = supportsAudioOnlyLiveView(this.node, this.endpoint);
         const badge = icdBadge(this.node.attributes, this.node.available);
 
         return html`
@@ -170,8 +176,11 @@ export class NodeDetails extends LitElement {
                                       @click=${() => this._openCameraOverlay()}
                                       ?disabled=${!this.node.available}
                                   >
-                                      Live View
-                                      <ha-svg-icon slot="icon" .path=${mdiVideo}></ha-svg-icon>
+                                      ${isAudioOnly ? "Listen" : isLiveViewCamera ? "Live View" : "Snapshot"}
+                                      <ha-svg-icon
+                                          slot="icon"
+                                          .path=${isAudioOnly ? mdiMicrophone : isLiveViewCamera ? mdiVideo : mdiCamera}
+                                      ></ha-svg-icon>
                                   </md-outlined-button>
                               `
                             : nothing}

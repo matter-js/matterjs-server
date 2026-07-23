@@ -23,11 +23,18 @@ export interface ClusterCommandDescription {
     label: string;
 }
 
+export interface ClusterFeatureDescription {
+    bit: number;
+    code: string;
+    label: string;
+}
+
 export interface ClusterDescription {
     id: number;
     label: string;
     attributes: { [attribute_id: string]: ClusterAttributeDescription };
     commands: { [command_id: string]: ClusterCommandDescription };
+    features: { [bit: string]: ClusterFeatureDescription };
 }
 
 export const device_types: Record<number, DeviceType> = {
@@ -472,7 +479,8 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "TriggerEffect",
                 "label": "Trigger Effect"
             }
-        }
+        },
+        "features": {}
     },
     "4": {
         "id": 4,
@@ -564,6 +572,13 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 4,
                 "name": "AddGroupIfIdentifying",
                 "label": "Add Group If Identifying"
+            }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "GN",
+                "label": "Group Names"
             }
         }
     },
@@ -685,6 +700,23 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 6,
                 "name": "OnWithTimedOff",
                 "label": "On With Timed Off"
+            }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "LT",
+                "label": "Lighting"
+            },
+            "1": {
+                "bit": 1,
+                "code": "DF",
+                "label": "Dead Front Behavior"
+            },
+            "2": {
+                "bit": 2,
+                "code": "OFFONLY",
+                "label": "Off Only"
             }
         }
     },
@@ -888,6 +920,23 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "MoveToClosestFrequency",
                 "label": "Move To Closest Frequency"
             }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "OO",
+                "label": "On Off"
+            },
+            "1": {
+                "bit": 1,
+                "code": "LT",
+                "label": "Lighting"
+            },
+            "2": {
+                "bit": 2,
+                "code": "FQ",
+                "label": "Frequency"
+            }
         }
     },
     "29": {
@@ -979,7 +1028,14 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "TAGLIST",
+                "label": "Tag List"
+            }
+        }
     },
     "30": {
         "id": 30,
@@ -1035,7 +1091,8 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {}
     },
     "31": {
         "id": 31,
@@ -1146,6 +1203,23 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 31,
                 "name": "ReviewFabricRestrictions",
                 "label": "Review Fabric Restrictions"
+            }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "EXTS",
+                "label": "Extension"
+            },
+            "1": {
+                "bit": 1,
+                "code": "MNGD",
+                "label": "Managed Device"
+            },
+            "2": {
+                "bit": 2,
+                "code": "AUX",
+                "label": "Auxiliary"
             }
         }
     },
@@ -1290,7 +1364,8 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "DisableActionWithDuration",
                 "label": "Disable Action With Duration"
             }
-        }
+        },
+        "features": {}
     },
     "40": {
         "id": 40,
@@ -1507,7 +1582,8 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {}
     },
     "41": {
         "id": 41,
@@ -1575,7 +1651,8 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "NotifyUpdateApplied",
                 "label": "Notify Update Applied"
             }
-        }
+        },
+        "features": {}
     },
     "42": {
         "id": 42,
@@ -1659,7 +1736,8 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "AnnounceOtaProvider",
                 "label": "Announce Ota Provider"
             }
-        }
+        },
+        "features": {}
     },
     "43": {
         "id": 43,
@@ -1722,7 +1800,8 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {}
     },
     "44": {
         "id": 44,
@@ -1792,7 +1871,14 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "CALFMT",
+                "label": "Calendar Format"
+            }
+        }
     },
     "45": {
         "id": 45,
@@ -1855,7 +1941,14 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "TEMP",
+                "label": "Temperature Unit"
+            }
+        }
     },
     "46": {
         "id": 46,
@@ -1911,7 +2004,8 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {}
     },
     "47": {
         "id": 47,
@@ -2184,7 +2278,29 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "WIRED",
+                "label": "Wired"
+            },
+            "1": {
+                "bit": 1,
+                "code": "BAT",
+                "label": "Battery"
+            },
+            "2": {
+                "bit": 2,
+                "code": "RECHG",
+                "label": "Rechargeable"
+            },
+            "3": {
+                "bit": 3,
+                "code": "REPLC",
+                "label": "Replaceable"
+            }
+        }
     },
     "48": {
         "id": 48,
@@ -2349,6 +2465,18 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "SetTcAcknowledgements",
                 "label": "Set Tc Acknowledgements"
             }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "TC",
+                "label": "Terms And Conditions"
+            },
+            "1": {
+                "bit": 1,
+                "code": "NR",
+                "label": "Network Recovery"
+            }
         }
     },
     "49": {
@@ -2512,6 +2640,23 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "ReorderNetwork",
                 "label": "Reorder Network"
             }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "WI",
+                "label": "Wi Fi Network Interface"
+            },
+            "1": {
+                "bit": 1,
+                "code": "TH",
+                "label": "Thread Network Interface"
+            },
+            "2": {
+                "bit": 2,
+                "code": "ET",
+                "label": "Ethernet Network Interface"
+            }
         }
     },
     "50": {
@@ -2568,7 +2713,8 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "RetrieveLogsRequest",
                 "label": "Retrieve Logs Request"
             }
-        }
+        },
+        "features": {}
     },
     "51": {
         "id": 51,
@@ -2713,6 +2859,13 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "PayloadTestRequest",
                 "label": "Payload Test Request"
             }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "DMTEST",
+                "label": "Data Model Test"
+            }
         }
     },
     "52": {
@@ -2796,6 +2949,13 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 52,
                 "name": "ResetWatermarks",
                 "label": "Reset Watermarks"
+            }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "WTRMRK",
+                "label": "Watermarks"
             }
         }
     },
@@ -3308,6 +3468,28 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "ResetCounts",
                 "label": "Reset Counts"
             }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "PKTCNT",
+                "label": "Packet Counts"
+            },
+            "1": {
+                "bit": 1,
+                "code": "ERRCNT",
+                "label": "Error Counts"
+            },
+            "2": {
+                "bit": 2,
+                "code": "MLECNT",
+                "label": "Mle Counts"
+            },
+            "3": {
+                "bit": 3,
+                "code": "MACCNT",
+                "label": "Mac Counts"
+            }
         }
     },
     "54": {
@@ -3455,6 +3637,18 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "ResetCounts",
                 "label": "Reset Counts"
             }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "PKTCNT",
+                "label": "Packet Counts"
+            },
+            "1": {
+                "bit": 1,
+                "code": "ERRCNT",
+                "label": "Error Counts"
+            }
         }
     },
     "55": {
@@ -3573,6 +3767,18 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 55,
                 "name": "ResetCounts",
                 "label": "Reset Counts"
+            }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "PKTCNT",
+                "label": "Packet Counts"
+            },
+            "1": {
+                "bit": 1,
+                "code": "ERRCNT",
+                "label": "Error Counts"
             }
         }
     },
@@ -3744,6 +3950,28 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 56,
                 "name": "SetDefaultNtp",
                 "label": "Set Default Ntp"
+            }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "TZ",
+                "label": "Time Zone"
+            },
+            "1": {
+                "bit": 1,
+                "code": "NTPC",
+                "label": "Ntp Client"
+            },
+            "2": {
+                "bit": 2,
+                "code": "NTPS",
+                "label": "Ntp Server"
+            },
+            "3": {
+                "bit": 3,
+                "code": "TSC",
+                "label": "Time Sync Client"
             }
         }
     },
@@ -3969,6 +4197,13 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "KeepActive",
                 "label": "Keep Active"
             }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "BIS",
+                "label": "Bridged Icd Support"
+            }
         }
     },
     "59": {
@@ -4039,7 +4274,39 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "LS",
+                "label": "Latching Switch"
+            },
+            "1": {
+                "bit": 1,
+                "code": "MS",
+                "label": "Momentary Switch"
+            },
+            "2": {
+                "bit": 2,
+                "code": "MSR",
+                "label": "Momentary Switch Release"
+            },
+            "3": {
+                "bit": 3,
+                "code": "MSL",
+                "label": "Momentary Switch Long Press"
+            },
+            "4": {
+                "bit": 4,
+                "code": "MSM",
+                "label": "Momentary Switch Multi Press"
+            },
+            "5": {
+                "bit": 5,
+                "code": "AS",
+                "label": "Action Switch"
+            }
+        }
     },
     "60": {
         "id": 60,
@@ -4127,6 +4394,13 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 60,
                 "name": "RevokeCommissioning",
                 "label": "Revoke Commissioning"
+            }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "BC",
+                "label": "Basic"
             }
         }
     },
@@ -4280,7 +4554,8 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "SignVidVerificationRequest",
                 "label": "Sign Vid Verification Request"
             }
-        }
+        },
+        "features": {}
     },
     "63": {
         "id": 63,
@@ -4389,6 +4664,18 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "KeySetReadAllIndices",
                 "label": "Key Set Read All Indices"
             }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "CS",
+                "label": "Cache And Sync"
+            },
+            "1": {
+                "bit": 1,
+                "code": "GCAST",
+                "label": "Groupcast"
+            }
         }
     },
     "64": {
@@ -4445,7 +4732,8 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {}
     },
     "65": {
         "id": 65,
@@ -4501,7 +4789,8 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {}
     },
     "69": {
         "id": 69,
@@ -4557,7 +4846,14 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "CHGEVENT",
+                "label": "Change Event"
+            }
+        }
     },
     "70": {
         "id": 70,
@@ -4695,6 +4991,28 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "StayActiveRequest",
                 "label": "Stay Active Request"
             }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "CIP",
+                "label": "Check In Protocol Support"
+            },
+            "1": {
+                "bit": 1,
+                "code": "UAT",
+                "label": "User Active Mode Trigger"
+            },
+            "2": {
+                "bit": 2,
+                "code": "LITS",
+                "label": "Long Idle Time Support"
+            },
+            "3": {
+                "bit": 3,
+                "code": "DSLS",
+                "label": "Dynamic Sit Lit Support"
+            }
         }
     },
     "72": {
@@ -4811,7 +5129,8 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "Resume",
                 "label": "Resume"
             }
-        }
+        },
+        "features": {}
     },
     "73": {
         "id": 73,
@@ -4895,6 +5214,13 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "ChangeToMode",
                 "label": "Change To Mode"
             }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "DEPONOFF",
+                "label": "On Off"
+            }
         }
     },
     "74": {
@@ -4958,7 +5284,8 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {}
     },
     "80": {
         "id": 80,
@@ -5056,6 +5383,13 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "ChangeToMode",
                 "label": "Change To Mode"
             }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "DEPONOFF",
+                "label": "On Off"
+            }
         }
     },
     "81": {
@@ -5139,6 +5473,13 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 81,
                 "name": "ChangeToMode",
                 "label": "Change To Mode"
+            }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "DEPONOFF",
+                "label": "On Off"
             }
         }
     },
@@ -5224,6 +5565,13 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "ChangeToMode",
                 "label": "Change To Mode"
             }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "DEPONOFF",
+                "label": "On Off"
+            }
         }
     },
     "83": {
@@ -5301,7 +5649,19 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "SPIN",
+                "label": "Spin"
+            },
+            "1": {
+                "bit": 1,
+                "code": "RINSE",
+                "label": "Rinse"
+            }
+        }
     },
     "84": {
         "id": 84,
@@ -5384,6 +5744,18 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 84,
                 "name": "ChangeToMode",
                 "label": "Change To Mode"
+            }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "DEPONOFF",
+                "label": "On Off"
+            },
+            "1": {
+                "bit": 1,
+                "code": "DIRECTMODECH",
+                "label": "Direct Mode Change"
             }
         }
     },
@@ -5468,6 +5840,18 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 85,
                 "name": "ChangeToMode",
                 "label": "Change To Mode"
+            }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "DEPONOFF",
+                "label": "On Off"
+            },
+            "1": {
+                "bit": 1,
+                "code": "DIRECTMODECH",
+                "label": "Direct Mode Change"
             }
         }
     },
@@ -5567,6 +5951,23 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "SetTemperature",
                 "label": "Set Temperature"
             }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "TN",
+                "label": "Temperature Number"
+            },
+            "1": {
+                "bit": 1,
+                "code": "TL",
+                "label": "Temperature Level"
+            },
+            "2": {
+                "bit": 2,
+                "code": "STEP",
+                "label": "Temperature Step"
+            }
         }
     },
     "87": {
@@ -5657,6 +6058,13 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "ModifyEnabledAlarms",
                 "label": "Modify Enabled Alarms"
             }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "RESET",
+                "label": "Reset"
+            }
         }
     },
     "89": {
@@ -5741,6 +6149,13 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "ChangeToMode",
                 "label": "Change To Mode"
             }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "DEPONOFF",
+                "label": "On Off"
+            }
         }
     },
     "91": {
@@ -5797,7 +6212,29 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "FAIR",
+                "label": "Fair"
+            },
+            "1": {
+                "bit": 1,
+                "code": "MOD",
+                "label": "Moderate"
+            },
+            "2": {
+                "bit": 2,
+                "code": "VPOOR",
+                "label": "Very Poor"
+            },
+            "3": {
+                "bit": 3,
+                "code": "XPOOR",
+                "label": "Extremely Poor"
+            }
+        }
     },
     "92": {
         "id": 92,
@@ -5951,6 +6388,18 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "SelfTestRequest",
                 "label": "Self Test Request"
             }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "SMOKE",
+                "label": "Smoke Alarm"
+            },
+            "1": {
+                "bit": 1,
+                "code": "CO",
+                "label": "Co Alarm"
+            }
         }
     },
     "93": {
@@ -6041,6 +6490,13 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "ModifyEnabledAlarms",
                 "label": "Modify Enabled Alarms"
             }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "RESET",
+                "label": "Reset"
+            }
         }
     },
     "94": {
@@ -6124,6 +6580,13 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 94,
                 "name": "ChangeToMode",
                 "label": "Change To Mode"
+            }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "DEPONOFF",
+                "label": "On Off"
             }
         }
     },
@@ -6250,6 +6713,23 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "AddMoreTime",
                 "label": "Add More Time"
             }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "PWRNUM",
+                "label": "Power As Number"
+            },
+            "1": {
+                "bit": 1,
+                "code": "WATTS",
+                "label": "Power In Watts"
+            },
+            "2": {
+                "bit": 2,
+                "code": "PWRLMTS",
+                "label": "Power Number Limits"
+            }
         }
     },
     "96": {
@@ -6366,7 +6846,8 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "Resume",
                 "label": "Resume"
             }
-        }
+        },
+        "features": {}
     },
     "97": {
         "id": 97,
@@ -6488,7 +6969,8 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "GoHome",
                 "label": "Go Home"
             }
-        }
+        },
+        "features": {}
     },
     "98": {
         "id": 98,
@@ -6606,6 +7088,13 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 98,
                 "name": "CopyScene",
                 "label": "Copy Scene"
+            }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "SN",
+                "label": "Scene Names"
             }
         }
     },
@@ -6745,6 +7234,58 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "SetTemperatureAlarmThresholds",
                 "label": "Set Temperature Alarm Thresholds"
             }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "RESET",
+                "label": "Reset"
+            },
+            "1": {
+                "bit": 1,
+                "code": "UNDER",
+                "label": "Under Temperature"
+            },
+            "2": {
+                "bit": 2,
+                "code": "MAJOR",
+                "label": "Major Threshold"
+            },
+            "3": {
+                "bit": 3,
+                "code": "MINOR",
+                "label": "Minor Threshold"
+            },
+            "4": {
+                "bit": 4,
+                "code": "OCRIADJ",
+                "label": "Over Critical Adjustable"
+            },
+            "5": {
+                "bit": 5,
+                "code": "OMAJADJ",
+                "label": "Over Major Adjustable"
+            },
+            "6": {
+                "bit": 6,
+                "code": "OMINADJ",
+                "label": "Over Minor Adjustable"
+            },
+            "7": {
+                "bit": 7,
+                "code": "UMINADJ",
+                "label": "Under Minor Adjustable"
+            },
+            "8": {
+                "bit": 8,
+                "code": "UMAJADJ",
+                "label": "Under Major Adjustable"
+            },
+            "9": {
+                "bit": 9,
+                "code": "UCRIADJ",
+                "label": "Under Critical Adjustable"
+            }
         }
     },
     "101": {
@@ -6860,6 +7401,23 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "GroupcastTesting",
                 "label": "Groupcast Testing"
             }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "LN",
+                "label": "Listener"
+            },
+            "1": {
+                "bit": 1,
+                "code": "SD",
+                "label": "Sender"
+            },
+            "2": {
+                "bit": 2,
+                "code": "PGA",
+                "label": "Per Group"
+            }
         }
     },
     "113": {
@@ -6957,6 +7515,23 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 113,
                 "name": "ResetCondition",
                 "label": "Reset Condition"
+            }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "CON",
+                "label": "Condition"
+            },
+            "1": {
+                "bit": 1,
+                "code": "WRN",
+                "label": "Warning"
+            },
+            "2": {
+                "bit": 2,
+                "code": "REP",
+                "label": "Replacement Product List"
             }
         }
     },
@@ -7056,6 +7631,23 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "ResetCondition",
                 "label": "Reset Condition"
             }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "CON",
+                "label": "Condition"
+            },
+            "1": {
+                "bit": 1,
+                "code": "WRN",
+                "label": "Warning"
+            },
+            "2": {
+                "bit": 2,
+                "code": "REP",
+                "label": "Replacement Product List"
+            }
         }
     },
     "121": {
@@ -7153,6 +7745,23 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 121,
                 "name": "ResetCondition",
                 "label": "Reset Condition"
+            }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "CON",
+                "label": "Condition"
+            },
+            "1": {
+                "bit": 1,
+                "code": "WRN",
+                "label": "Warning"
+            },
+            "2": {
+                "bit": 2,
+                "code": "REP",
+                "label": "Replacement Product List"
             }
         }
     },
@@ -7271,6 +7880,33 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 128,
                 "name": "EnableDisableAlarm",
                 "label": "Enable Disable Alarm"
+            }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "VIS",
+                "label": "Visual"
+            },
+            "1": {
+                "bit": 1,
+                "code": "AUD",
+                "label": "Audible"
+            },
+            "2": {
+                "bit": 2,
+                "code": "SPRS",
+                "label": "Alarm Suppress"
+            },
+            "3": {
+                "bit": 3,
+                "code": "SENSLVL",
+                "label": "Sensitivity Level"
+            },
+            "4": {
+                "bit": 4,
+                "code": "FAULTEV",
+                "label": "Fault Events"
             }
         }
     },
@@ -7410,6 +8046,18 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 129,
                 "name": "Close",
                 "label": "Close"
+            }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "TS",
+                "label": "Time Sync"
+            },
+            "1": {
+                "bit": 1,
+                "code": "LVL",
+                "label": "Level"
             }
         }
     },
@@ -7593,7 +8241,34 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "DIRC",
+                "label": "Direct Current"
+            },
+            "1": {
+                "bit": 1,
+                "code": "ALTC",
+                "label": "Alternating Current"
+            },
+            "2": {
+                "bit": 2,
+                "code": "POLY",
+                "label": "Polyphase Power"
+            },
+            "3": {
+                "bit": 3,
+                "code": "HARM",
+                "label": "Harmonics"
+            },
+            "4": {
+                "bit": 4,
+                "code": "PWRQ",
+                "label": "Power Quality"
+            }
+        }
     },
     "145": {
         "id": 145,
@@ -7684,7 +8359,39 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "IMPE",
+                "label": "Imported Energy"
+            },
+            "1": {
+                "bit": 1,
+                "code": "EXPE",
+                "label": "Exported Energy"
+            },
+            "2": {
+                "bit": 2,
+                "code": "CUME",
+                "label": "Cumulative Energy"
+            },
+            "3": {
+                "bit": 3,
+                "code": "PERE",
+                "label": "Periodic Energy"
+            },
+            "4": {
+                "bit": 4,
+                "code": "APPE",
+                "label": "Apparent Energy"
+            },
+            "5": {
+                "bit": 5,
+                "code": "REAE",
+                "label": "Reactive Energy"
+            }
+        }
     },
     "148": {
         "id": 148,
@@ -7788,6 +8495,18 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "CancelBoost",
                 "label": "Cancel Boost"
             }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "EM",
+                "label": "Energy Management"
+            },
+            "1": {
+                "bit": 1,
+                "code": "TP",
+                "label": "Tank Percent"
+            }
         }
     },
     "149": {
@@ -7878,6 +8597,13 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "GetDetailedForecastRequest",
                 "label": "Get Detailed Forecast Request"
             }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "FORE",
+                "label": "Forecasting"
+            }
         }
     },
     "151": {
@@ -7953,6 +8679,28 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 151,
                 "name": "CancelMessagesRequest",
                 "label": "Cancel Messages Request"
+            }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "CONF",
+                "label": "Received Confirmation"
+            },
+            "1": {
+                "bit": 1,
+                "code": "RESP",
+                "label": "Confirmation Response"
+            },
+            "2": {
+                "bit": 2,
+                "code": "RPLY",
+                "label": "Confirmation Reply"
+            },
+            "3": {
+                "bit": 3,
+                "code": "PROT",
+                "label": "Protected Messages"
             }
         }
     },
@@ -8107,6 +8855,43 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 152,
                 "name": "CancelRequest",
                 "label": "Cancel Request"
+            }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "PA",
+                "label": "Power Adjustment"
+            },
+            "1": {
+                "bit": 1,
+                "code": "PFR",
+                "label": "Power Forecast Reporting"
+            },
+            "2": {
+                "bit": 2,
+                "code": "SFR",
+                "label": "State Forecast Reporting"
+            },
+            "3": {
+                "bit": 3,
+                "code": "STA",
+                "label": "Start Time Adjustment"
+            },
+            "4": {
+                "bit": 4,
+                "code": "PAU",
+                "label": "Pausable"
+            },
+            "5": {
+                "bit": 5,
+                "code": "FA",
+                "label": "Forecast Adjustment"
+            },
+            "6": {
+                "bit": 6,
+                "code": "CON",
+                "label": "Constraint Based Adjustment"
             }
         }
     },
@@ -8361,6 +9146,33 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "ClearTargets",
                 "label": "Clear Targets"
             }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "PREF",
+                "label": "Charging Preferences"
+            },
+            "1": {
+                "bit": 1,
+                "code": "SOC",
+                "label": "So Creporting"
+            },
+            "2": {
+                "bit": 2,
+                "code": "PNC",
+                "label": "Plug And Charge"
+            },
+            "3": {
+                "bit": 3,
+                "code": "RFID",
+                "label": "Rfid"
+            },
+            "4": {
+                "bit": 4,
+                "code": "V2X",
+                "label": "V2 X"
+            }
         }
     },
     "155": {
@@ -8445,7 +9257,19 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "BALA",
+                "label": "Energy Balance"
+            },
+            "1": {
+                "bit": 1,
+                "code": "LPMS",
+                "label": "Low Power Mode Sensitivity"
+            }
+        }
     },
     "156": {
         "id": 156,
@@ -8508,7 +9332,29 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "NODE",
+                "label": "Node Topology"
+            },
+            "1": {
+                "bit": 1,
+                "code": "TREE",
+                "label": "Tree Topology"
+            },
+            "2": {
+                "bit": 2,
+                "code": "SET",
+                "label": "Set Topology"
+            },
+            "3": {
+                "bit": 3,
+                "code": "DYPF",
+                "label": "Dynamic Power Flow"
+            }
+        }
     },
     "157": {
         "id": 157,
@@ -8591,6 +9437,13 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 157,
                 "name": "ChangeToMode",
                 "label": "Change To Mode"
+            }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "DEPONOFF",
+                "label": "On Off"
             }
         }
     },
@@ -8676,6 +9529,13 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "ChangeToMode",
                 "label": "Change To Mode"
             }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "DEPONOFF",
+                "label": "On Off"
+            }
         }
     },
     "159": {
@@ -8760,6 +9620,13 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "ChangeToMode",
                 "label": "Change To Mode"
             }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "DEPONOFF",
+                "label": "On Off"
+            }
         }
     },
     "160": {
@@ -8830,7 +9697,14 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "FORE",
+                "label": "Forecasting"
+            }
+        }
     },
     "257": {
         "id": 257,
@@ -9334,6 +10208,73 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "ClearAliroReaderConfig",
                 "label": "Clear Aliro Reader Config"
             }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "PIN",
+                "label": "Pin Credential"
+            },
+            "1": {
+                "bit": 1,
+                "code": "RID",
+                "label": "Rfid Credential"
+            },
+            "2": {
+                "bit": 2,
+                "code": "FGP",
+                "label": "Finger Credentials"
+            },
+            "3": {
+                "bit": 3,
+                "code": "WDSCH",
+                "label": "Week Day Access Schedules"
+            },
+            "4": {
+                "bit": 4,
+                "code": "DPS",
+                "label": "Door Position Sensor"
+            },
+            "5": {
+                "bit": 5,
+                "code": "FACE",
+                "label": "Face Credentials"
+            },
+            "6": {
+                "bit": 6,
+                "code": "COTA",
+                "label": "Credential Over The Air Access"
+            },
+            "7": {
+                "bit": 7,
+                "code": "USR",
+                "label": "User"
+            },
+            "8": {
+                "bit": 8,
+                "code": "YDSCH",
+                "label": "Year Day Access Schedules"
+            },
+            "9": {
+                "bit": 9,
+                "code": "HDSCH",
+                "label": "Holiday Schedules"
+            },
+            "10": {
+                "bit": 10,
+                "code": "UBOLT",
+                "label": "Unbolting"
+            },
+            "11": {
+                "bit": 11,
+                "code": "ALIRO",
+                "label": "Aliro Provisioning"
+            },
+            "12": {
+                "bit": 12,
+                "code": "ALBU",
+                "label": "Aliro Bleuwb"
+            }
         }
     },
     "258": {
@@ -9512,6 +10453,28 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "GoToTiltPercentage",
                 "label": "Go To Tilt Percentage"
             }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "LF",
+                "label": "Lift"
+            },
+            "1": {
+                "bit": 1,
+                "code": "TL",
+                "label": "Tilt"
+            },
+            "2": {
+                "bit": 2,
+                "code": "PA_LF",
+                "label": "Position Aware Lift"
+            },
+            "3": {
+                "bit": 3,
+                "code": "PA_TL",
+                "label": "Position Aware Tilt"
+            }
         }
     },
     "260": {
@@ -9621,6 +10584,53 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 260,
                 "name": "Calibrate",
                 "label": "Calibrate"
+            }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "PS",
+                "label": "Positioning"
+            },
+            "1": {
+                "bit": 1,
+                "code": "LT",
+                "label": "Motion Latching"
+            },
+            "2": {
+                "bit": 2,
+                "code": "IS",
+                "label": "Instantaneous"
+            },
+            "3": {
+                "bit": 3,
+                "code": "SP",
+                "label": "Speed"
+            },
+            "4": {
+                "bit": 4,
+                "code": "VT",
+                "label": "Ventilation"
+            },
+            "5": {
+                "bit": 5,
+                "code": "PD",
+                "label": "Pedestrian"
+            },
+            "6": {
+                "bit": 6,
+                "code": "CL",
+                "label": "Calibration"
+            },
+            "7": {
+                "bit": 7,
+                "code": "PT",
+                "label": "Protection"
+            },
+            "8": {
+                "bit": 8,
+                "code": "MO",
+                "label": "Manually Operable"
             }
         }
     },
@@ -9768,6 +10778,48 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "Step",
                 "label": "Step"
             }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "PS",
+                "label": "Positioning"
+            },
+            "1": {
+                "bit": 1,
+                "code": "LT",
+                "label": "Motion Latching"
+            },
+            "2": {
+                "bit": 2,
+                "code": "UT",
+                "label": "Unit"
+            },
+            "3": {
+                "bit": 3,
+                "code": "LM",
+                "label": "Limitation"
+            },
+            "4": {
+                "bit": 4,
+                "code": "SP",
+                "label": "Speed"
+            },
+            "5": {
+                "bit": 5,
+                "code": "TR",
+                "label": "Translation"
+            },
+            "6": {
+                "bit": 6,
+                "code": "RO",
+                "label": "Rotation"
+            },
+            "7": {
+                "bit": 7,
+                "code": "MD",
+                "label": "Modulation"
+            }
         }
     },
     "336": {
@@ -9871,6 +10923,23 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 336,
                 "name": "SkipArea",
                 "label": "Skip Area"
+            }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "SELRUN",
+                "label": "Select While Running"
+            },
+            "1": {
+                "bit": 1,
+                "code": "PROG",
+                "label": "Progress Reporting"
+            },
+            "2": {
+                "bit": 2,
+                "code": "MAPS",
+                "label": "Maps"
             }
         }
     },
@@ -10089,7 +11158,44 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "PRSCONST",
+                "label": "Constant Pressure"
+            },
+            "1": {
+                "bit": 1,
+                "code": "PRSCOMP",
+                "label": "Compensated Pressure"
+            },
+            "2": {
+                "bit": 2,
+                "code": "FLW",
+                "label": "Constant Flow"
+            },
+            "3": {
+                "bit": 3,
+                "code": "SPD",
+                "label": "Constant Speed"
+            },
+            "4": {
+                "bit": 4,
+                "code": "TEMP",
+                "label": "Constant Temperature"
+            },
+            "5": {
+                "bit": 5,
+                "code": "AUTO",
+                "label": "Automatic"
+            },
+            "6": {
+                "bit": 6,
+                "code": "LOCAL",
+                "label": "Local Operation"
+            }
+        }
     },
     "513": {
         "id": 513,
@@ -10602,6 +11708,58 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "AtomicRequest",
                 "label": "Atomic Request"
             }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "HEAT",
+                "label": "Heating"
+            },
+            "1": {
+                "bit": 1,
+                "code": "COOL",
+                "label": "Cooling"
+            },
+            "2": {
+                "bit": 2,
+                "code": "OCC",
+                "label": "Occupancy"
+            },
+            "3": {
+                "bit": 3,
+                "code": "SB",
+                "label": "Setback"
+            },
+            "4": {
+                "bit": 4,
+                "code": "AUTO",
+                "label": "Auto Mode"
+            },
+            "5": {
+                "bit": 5,
+                "code": "LTNE",
+                "label": "Local Temperature Not Exposed"
+            },
+            "6": {
+                "bit": 6,
+                "code": "MSCH",
+                "label": "Matter Schedule Configuration"
+            },
+            "7": {
+                "bit": 7,
+                "code": "PRES",
+                "label": "Presets"
+            },
+            "8": {
+                "bit": 8,
+                "code": "TEVT",
+                "label": "Events"
+            },
+            "9": {
+                "bit": 9,
+                "code": "TSUGGEST",
+                "label": "Thermostat Suggestions"
+            }
         }
     },
     "514": {
@@ -10742,6 +11900,38 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "Step",
                 "label": "Step"
             }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "SPD",
+                "label": "Multi Speed"
+            },
+            "1": {
+                "bit": 1,
+                "code": "AUT",
+                "label": "Auto"
+            },
+            "2": {
+                "bit": 2,
+                "code": "RCK",
+                "label": "Rocking"
+            },
+            "3": {
+                "bit": 3,
+                "code": "WND",
+                "label": "Wind"
+            },
+            "4": {
+                "bit": 4,
+                "code": "STEP",
+                "label": "Step"
+            },
+            "5": {
+                "bit": 5,
+                "code": "DIR",
+                "label": "Airflow Direction"
+            }
         }
     },
     "516": {
@@ -10812,7 +12002,8 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {}
     },
     "768": {
         "id": 768,
@@ -11340,6 +12531,33 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "StepColorTemperature",
                 "label": "Step Color Temperature"
             }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "HS",
+                "label": "Hue Saturation"
+            },
+            "1": {
+                "bit": 1,
+                "code": "EHUE",
+                "label": "Enhanced Hue"
+            },
+            "2": {
+                "bit": 2,
+                "code": "CL",
+                "label": "Color Loop"
+            },
+            "3": {
+                "bit": 3,
+                "code": "XY",
+                "label": "Xy"
+            },
+            "4": {
+                "bit": 4,
+                "code": "CT",
+                "label": "Color Temperature"
+            }
         }
     },
     "1024": {
@@ -11424,7 +12642,8 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {}
     },
     "1026": {
         "id": 1026,
@@ -11501,7 +12720,8 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {}
     },
     "1027": {
         "id": 1027,
@@ -11613,7 +12833,14 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "EXT",
+                "label": "Extended"
+            }
+        }
     },
     "1028": {
         "id": 1028,
@@ -11690,7 +12917,8 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {}
     },
     "1029": {
         "id": 1029,
@@ -11767,7 +12995,8 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {}
     },
     "1030": {
         "id": 1030,
@@ -11914,7 +13143,54 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "OTHER",
+                "label": "Other"
+            },
+            "1": {
+                "bit": 1,
+                "code": "PIR",
+                "label": "Passive Infrared"
+            },
+            "2": {
+                "bit": 2,
+                "code": "US",
+                "label": "Ultrasonic"
+            },
+            "3": {
+                "bit": 3,
+                "code": "PHY",
+                "label": "Physical Contact"
+            },
+            "4": {
+                "bit": 4,
+                "code": "AIR",
+                "label": "Active Infrared"
+            },
+            "5": {
+                "bit": 5,
+                "code": "RAD",
+                "label": "Radar"
+            },
+            "6": {
+                "bit": 6,
+                "code": "RFS",
+                "label": "Rf Sensing"
+            },
+            "7": {
+                "bit": 7,
+                "code": "VIS",
+                "label": "Vision"
+            },
+            "8": {
+                "bit": 8,
+                "code": "OCCEVENT",
+                "label": "Occupancy Event"
+            }
+        }
     },
     "1036": {
         "id": 1036,
@@ -12040,7 +13316,39 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "MEA",
+                "label": "Numeric Measurement"
+            },
+            "1": {
+                "bit": 1,
+                "code": "LEV",
+                "label": "Level Indication"
+            },
+            "2": {
+                "bit": 2,
+                "code": "MED",
+                "label": "Medium Level"
+            },
+            "3": {
+                "bit": 3,
+                "code": "CRI",
+                "label": "Critical Level"
+            },
+            "4": {
+                "bit": 4,
+                "code": "PEA",
+                "label": "Peak Measurement"
+            },
+            "5": {
+                "bit": 5,
+                "code": "AVG",
+                "label": "Average Measurement"
+            }
+        }
     },
     "1037": {
         "id": 1037,
@@ -12166,7 +13474,39 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "MEA",
+                "label": "Numeric Measurement"
+            },
+            "1": {
+                "bit": 1,
+                "code": "LEV",
+                "label": "Level Indication"
+            },
+            "2": {
+                "bit": 2,
+                "code": "MED",
+                "label": "Medium Level"
+            },
+            "3": {
+                "bit": 3,
+                "code": "CRI",
+                "label": "Critical Level"
+            },
+            "4": {
+                "bit": 4,
+                "code": "PEA",
+                "label": "Peak Measurement"
+            },
+            "5": {
+                "bit": 5,
+                "code": "AVG",
+                "label": "Average Measurement"
+            }
+        }
     },
     "1043": {
         "id": 1043,
@@ -12292,7 +13632,39 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "MEA",
+                "label": "Numeric Measurement"
+            },
+            "1": {
+                "bit": 1,
+                "code": "LEV",
+                "label": "Level Indication"
+            },
+            "2": {
+                "bit": 2,
+                "code": "MED",
+                "label": "Medium Level"
+            },
+            "3": {
+                "bit": 3,
+                "code": "CRI",
+                "label": "Critical Level"
+            },
+            "4": {
+                "bit": 4,
+                "code": "PEA",
+                "label": "Peak Measurement"
+            },
+            "5": {
+                "bit": 5,
+                "code": "AVG",
+                "label": "Average Measurement"
+            }
+        }
     },
     "1045": {
         "id": 1045,
@@ -12418,7 +13790,39 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "MEA",
+                "label": "Numeric Measurement"
+            },
+            "1": {
+                "bit": 1,
+                "code": "LEV",
+                "label": "Level Indication"
+            },
+            "2": {
+                "bit": 2,
+                "code": "MED",
+                "label": "Medium Level"
+            },
+            "3": {
+                "bit": 3,
+                "code": "CRI",
+                "label": "Critical Level"
+            },
+            "4": {
+                "bit": 4,
+                "code": "PEA",
+                "label": "Peak Measurement"
+            },
+            "5": {
+                "bit": 5,
+                "code": "AVG",
+                "label": "Average Measurement"
+            }
+        }
     },
     "1066": {
         "id": 1066,
@@ -12544,7 +13948,39 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "MEA",
+                "label": "Numeric Measurement"
+            },
+            "1": {
+                "bit": 1,
+                "code": "LEV",
+                "label": "Level Indication"
+            },
+            "2": {
+                "bit": 2,
+                "code": "MED",
+                "label": "Medium Level"
+            },
+            "3": {
+                "bit": 3,
+                "code": "CRI",
+                "label": "Critical Level"
+            },
+            "4": {
+                "bit": 4,
+                "code": "PEA",
+                "label": "Peak Measurement"
+            },
+            "5": {
+                "bit": 5,
+                "code": "AVG",
+                "label": "Average Measurement"
+            }
+        }
     },
     "1067": {
         "id": 1067,
@@ -12670,7 +14106,39 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "MEA",
+                "label": "Numeric Measurement"
+            },
+            "1": {
+                "bit": 1,
+                "code": "LEV",
+                "label": "Level Indication"
+            },
+            "2": {
+                "bit": 2,
+                "code": "MED",
+                "label": "Medium Level"
+            },
+            "3": {
+                "bit": 3,
+                "code": "CRI",
+                "label": "Critical Level"
+            },
+            "4": {
+                "bit": 4,
+                "code": "PEA",
+                "label": "Peak Measurement"
+            },
+            "5": {
+                "bit": 5,
+                "code": "AVG",
+                "label": "Average Measurement"
+            }
+        }
     },
     "1068": {
         "id": 1068,
@@ -12796,7 +14264,39 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "MEA",
+                "label": "Numeric Measurement"
+            },
+            "1": {
+                "bit": 1,
+                "code": "LEV",
+                "label": "Level Indication"
+            },
+            "2": {
+                "bit": 2,
+                "code": "MED",
+                "label": "Medium Level"
+            },
+            "3": {
+                "bit": 3,
+                "code": "CRI",
+                "label": "Critical Level"
+            },
+            "4": {
+                "bit": 4,
+                "code": "PEA",
+                "label": "Peak Measurement"
+            },
+            "5": {
+                "bit": 5,
+                "code": "AVG",
+                "label": "Average Measurement"
+            }
+        }
     },
     "1069": {
         "id": 1069,
@@ -12922,7 +14422,39 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "MEA",
+                "label": "Numeric Measurement"
+            },
+            "1": {
+                "bit": 1,
+                "code": "LEV",
+                "label": "Level Indication"
+            },
+            "2": {
+                "bit": 2,
+                "code": "MED",
+                "label": "Medium Level"
+            },
+            "3": {
+                "bit": 3,
+                "code": "CRI",
+                "label": "Critical Level"
+            },
+            "4": {
+                "bit": 4,
+                "code": "PEA",
+                "label": "Peak Measurement"
+            },
+            "5": {
+                "bit": 5,
+                "code": "AVG",
+                "label": "Average Measurement"
+            }
+        }
     },
     "1070": {
         "id": 1070,
@@ -13048,7 +14580,39 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "MEA",
+                "label": "Numeric Measurement"
+            },
+            "1": {
+                "bit": 1,
+                "code": "LEV",
+                "label": "Level Indication"
+            },
+            "2": {
+                "bit": 2,
+                "code": "MED",
+                "label": "Medium Level"
+            },
+            "3": {
+                "bit": 3,
+                "code": "CRI",
+                "label": "Critical Level"
+            },
+            "4": {
+                "bit": 4,
+                "code": "PEA",
+                "label": "Peak Measurement"
+            },
+            "5": {
+                "bit": 5,
+                "code": "AVG",
+                "label": "Average Measurement"
+            }
+        }
     },
     "1071": {
         "id": 1071,
@@ -13174,7 +14738,39 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "MEA",
+                "label": "Numeric Measurement"
+            },
+            "1": {
+                "bit": 1,
+                "code": "LEV",
+                "label": "Level Indication"
+            },
+            "2": {
+                "bit": 2,
+                "code": "MED",
+                "label": "Medium Level"
+            },
+            "3": {
+                "bit": 3,
+                "code": "CRI",
+                "label": "Critical Level"
+            },
+            "4": {
+                "bit": 4,
+                "code": "PEA",
+                "label": "Peak Measurement"
+            },
+            "5": {
+                "bit": 5,
+                "code": "AVG",
+                "label": "Average Measurement"
+            }
+        }
     },
     "1072": {
         "id": 1072,
@@ -13237,7 +14833,8 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {}
     },
     "1073": {
         "id": 1073,
@@ -13370,7 +14967,34 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "HA",
+                "label": "Human Activity"
+            },
+            "1": {
+                "bit": 1,
+                "code": "OC",
+                "label": "Object Counting"
+            },
+            "2": {
+                "bit": 2,
+                "code": "OI",
+                "label": "Object Identification"
+            },
+            "3": {
+                "bit": 3,
+                "code": "AUD",
+                "label": "Sound Identification"
+            },
+            "4": {
+                "bit": 4,
+                "code": "PRED",
+                "label": "Predicted Activity"
+            }
+        }
     },
     "1105": {
         "id": 1105,
@@ -13440,7 +15064,8 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "NetworkPassphraseRequest",
                 "label": "Network Passphrase Request"
             }
-        }
+        },
+        "features": {}
     },
     "1106": {
         "id": 1106,
@@ -13556,6 +15181,13 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "SetPendingDatasetRequest",
                 "label": "Set Pending Dataset Request"
             }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "PC",
+                "label": "Pan Change"
+            }
         }
     },
     "1107": {
@@ -13645,7 +15277,8 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "GetOperationalDataset",
                 "label": "Get Operational Dataset"
             }
-        }
+        },
+        "features": {}
     },
     "1283": {
         "id": 1283,
@@ -13708,7 +15341,8 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {}
     },
     "1284": {
         "id": 1284,
@@ -13815,6 +15449,28 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "CancelRecordProgram",
                 "label": "Cancel Record Program"
             }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "CL",
+                "label": "Channel List"
+            },
+            "1": {
+                "bit": 1,
+                "code": "LI",
+                "label": "Lineup Info"
+            },
+            "2": {
+                "bit": 2,
+                "code": "EG",
+                "label": "Electronic Guide"
+            },
+            "3": {
+                "bit": 3,
+                "code": "RP",
+                "label": "Record Program"
+            }
         }
     },
     "1285": {
@@ -13885,7 +15541,8 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "NavigateTarget",
                 "label": "Navigate Target"
             }
-        }
+        },
+        "features": {}
     },
     "1286": {
         "id": 1286,
@@ -14096,6 +15753,33 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "DeactivateTextTrack",
                 "label": "Deactivate Text Track"
             }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "AS",
+                "label": "Advanced Seek"
+            },
+            "1": {
+                "bit": 1,
+                "code": "VS",
+                "label": "Variable Speed"
+            },
+            "2": {
+                "bit": 2,
+                "code": "TT",
+                "label": "Text Tracks"
+            },
+            "3": {
+                "bit": 3,
+                "code": "AT",
+                "label": "Audio Tracks"
+            },
+            "4": {
+                "bit": 4,
+                "code": "AA",
+                "label": "Audio Advance"
+            }
         }
     },
     "1287": {
@@ -14184,6 +15868,13 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "RenameInput",
                 "label": "Rename Input"
             }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "NU",
+                "label": "Name Updates"
+            }
         }
     },
     "1288": {
@@ -14240,7 +15931,8 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "Sleep",
                 "label": "Sleep"
             }
-        }
+        },
+        "features": {}
     },
     "1289": {
         "id": 1289,
@@ -14295,6 +15987,23 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 1289,
                 "name": "SendKey",
                 "label": "Send Key"
+            }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "NV",
+                "label": "Navigation Key Codes"
+            },
+            "1": {
+                "bit": 1,
+                "code": "LK",
+                "label": "Location Keys"
+            },
+            "2": {
+                "bit": 2,
+                "code": "NK",
+                "label": "Number Keys"
             }
         }
     },
@@ -14372,6 +16081,33 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "LaunchUrl",
                 "label": "Launch Url"
             }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "CS",
+                "label": "Content Search"
+            },
+            "1": {
+                "bit": 1,
+                "code": "UP",
+                "label": "Url Playback"
+            },
+            "2": {
+                "bit": 2,
+                "code": "AS",
+                "label": "Advanced Seek"
+            },
+            "3": {
+                "bit": 3,
+                "code": "TT",
+                "label": "Text Tracks"
+            },
+            "4": {
+                "bit": 4,
+                "code": "AT",
+                "label": "Audio Tracks"
+            }
         }
     },
     "1291": {
@@ -14447,6 +16183,13 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 1291,
                 "name": "RenameOutput",
                 "label": "Rename Output"
+            }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "NU",
+                "label": "Name Updates"
             }
         }
     },
@@ -14529,6 +16272,13 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 1292,
                 "name": "HideApp",
                 "label": "Hide App"
+            }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "AP",
+                "label": "Application Platform"
             }
         }
     },
@@ -14635,7 +16385,8 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {}
     },
     "1294": {
         "id": 1294,
@@ -14703,7 +16454,8 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "Logout",
                 "label": "Logout"
             }
-        }
+        },
+        "features": {}
     },
     "1295": {
         "id": 1295,
@@ -14926,6 +16678,48 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "RemoveBlockContentTimeWindow",
                 "label": "Remove Block Content Time Window"
             }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "ST",
+                "label": "Screen Time"
+            },
+            "1": {
+                "bit": 1,
+                "code": "PM",
+                "label": "Pin Management"
+            },
+            "2": {
+                "bit": 2,
+                "code": "BU",
+                "label": "Block Unrated"
+            },
+            "3": {
+                "bit": 3,
+                "code": "OCR",
+                "label": "On Demand Content Rating"
+            },
+            "4": {
+                "bit": 4,
+                "code": "SCR",
+                "label": "Scheduled Content Rating"
+            },
+            "5": {
+                "bit": 5,
+                "code": "BC",
+                "label": "Block Channels"
+            },
+            "6": {
+                "bit": 6,
+                "code": "BA",
+                "label": "Block Applications"
+            },
+            "7": {
+                "bit": 7,
+                "code": "BTW",
+                "label": "Block Content Time Window"
+            }
         }
     },
     "1296": {
@@ -14982,7 +16776,8 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "ContentAppMessage",
                 "label": "Content App Message"
             }
-        }
+        },
+        "features": {}
     },
     "1360": {
         "id": 1360,
@@ -15110,6 +16905,28 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 1360,
                 "name": "RemoveTrigger",
                 "label": "Remove Trigger"
+            }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "TWODCART",
+                "label": "Two Dimensional Cartesian Zone"
+            },
+            "1": {
+                "bit": 1,
+                "code": "PERZONESENS",
+                "label": "Per Zone Sensitivity"
+            },
+            "2": {
+                "bit": 2,
+                "code": "USERDEFINED",
+                "label": "User Defined"
+            },
+            "3": {
+                "bit": 3,
+                "code": "FOCUSZONES",
+                "label": "Focus Zones"
             }
         }
     },
@@ -15515,6 +17332,63 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "CaptureSnapshot",
                 "label": "Capture Snapshot"
             }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "ADO",
+                "label": "Audio"
+            },
+            "1": {
+                "bit": 1,
+                "code": "VDO",
+                "label": "Video"
+            },
+            "2": {
+                "bit": 2,
+                "code": "SNP",
+                "label": "Snapshot"
+            },
+            "3": {
+                "bit": 3,
+                "code": "PRIV",
+                "label": "Privacy"
+            },
+            "4": {
+                "bit": 4,
+                "code": "SPKR",
+                "label": "Speaker"
+            },
+            "5": {
+                "bit": 5,
+                "code": "ICTL",
+                "label": "Image Control"
+            },
+            "6": {
+                "bit": 6,
+                "code": "WMARK",
+                "label": "Watermark"
+            },
+            "7": {
+                "bit": 7,
+                "code": "OSD",
+                "label": "On Screen Display"
+            },
+            "8": {
+                "bit": 8,
+                "code": "STOR",
+                "label": "Local Storage"
+            },
+            "9": {
+                "bit": 9,
+                "code": "HDR",
+                "label": "High Dynamic Range"
+            },
+            "10": {
+                "bit": 10,
+                "code": "NV",
+                "label": "Night Vision"
+            }
         }
     },
     "1362": {
@@ -15677,6 +17551,33 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "DptzRelativeMove",
                 "label": "Dptz Relative Move"
             }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "DPTZ",
+                "label": "Digital Ptz"
+            },
+            "1": {
+                "bit": 1,
+                "code": "MPAN",
+                "label": "Mechanical Pan"
+            },
+            "2": {
+                "bit": 2,
+                "code": "MTILT",
+                "label": "Mechanical Tilt"
+            },
+            "3": {
+                "bit": 3,
+                "code": "MZOOM",
+                "label": "Mechanical Zoom"
+            },
+            "4": {
+                "bit": 4,
+                "code": "MPRESETS",
+                "label": "Mechanical Presets"
+            }
         }
     },
     "1363": {
@@ -15764,6 +17665,13 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "EndSession",
                 "label": "End Session"
             }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "METADATA",
+                "label": "Metadata"
+            }
         }
     },
     "1364": {
@@ -15845,7 +17753,8 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "End",
                 "label": "End"
             }
-        }
+        },
+        "features": {}
     },
     "1365": {
         "id": 1365,
@@ -15945,6 +17854,18 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "FindTransport",
                 "label": "Find Transport"
             }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "PERZONESENS",
+                "label": "Per Zone Sensitivity"
+            },
+            "1": {
+                "bit": 1,
+                "code": "METADATA",
+                "label": "Metadata"
+            }
         }
     },
     "1366": {
@@ -16022,7 +17943,8 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "PlayChimeSound",
                 "label": "Play Chime Sound"
             }
-        }
+        },
+        "features": {}
     },
     "1792": {
         "id": 1792,
@@ -16217,6 +18139,38 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "GetDayEntry",
                 "label": "Get Day Entry"
             }
+        },
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "PRICE",
+                "label": "Pricing"
+            },
+            "1": {
+                "bit": 1,
+                "code": "FCRED",
+                "label": "Friendly Credit"
+            },
+            "2": {
+                "bit": 2,
+                "code": "AUXLD",
+                "label": "Auxiliary Load"
+            },
+            "3": {
+                "bit": 3,
+                "code": "PEAKP",
+                "label": "Peak Period"
+            },
+            "4": {
+                "bit": 4,
+                "code": "PWRTHLD",
+                "label": "Power Threshold"
+            },
+            "5": {
+                "bit": 5,
+                "code": "RNDM",
+                "label": "Randomization"
+            }
         }
     },
     "1872": {
@@ -16280,7 +18234,8 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {}
     },
     "1873": {
         "id": 1873,
@@ -16349,7 +18304,8 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "CommissionNode",
                 "label": "Commission Node"
             }
-        }
+        },
+        "features": {}
     },
     "1874": {
         "id": 1874,
@@ -16617,7 +18573,8 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "RemoveAclFromNode",
                 "label": "Remove Acl From Node"
             }
-        }
+        },
+        "features": {}
     },
     "1875": {
         "id": 1875,
@@ -16710,7 +18667,8 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "AnnounceJointFabricAdministrator",
                 "label": "Announce Joint Fabric Administrator"
             }
-        }
+        },
+        "features": {}
     },
     "2049": {
         "id": 2049,
@@ -16842,7 +18800,8 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "RemoveClientCertificate",
                 "label": "Remove Client Certificate"
             }
-        }
+        },
+        "features": {}
     },
     "2050": {
         "id": 2050,
@@ -16924,7 +18883,8 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "RemoveEndpoint",
                 "label": "Remove Endpoint"
             }
-        }
+        },
+        "features": {}
     },
     "2820": {
         "id": 2820,
@@ -17036,7 +18996,8 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {}
     },
     "2822": {
         "id": 2822,
@@ -17120,7 +19081,14 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {
+            "0": {
+                "bit": 0,
+                "code": "PWRTHLD",
+                "label": "Power Threshold"
+            }
+        }
     },
     "2823": {
         "id": 2823,
@@ -17197,7 +19165,8 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {}
     },
     "302775297": {
         "id": 302775297,
@@ -17302,7 +19271,8 @@ export const clusters: Record<number, ClusterDescription> = {
                 "name": "mutingSensor",
                 "label": "Muting Sensor"
             }
-        }
+        },
+        "features": {}
     },
     "305134641": {
         "id": 305134641,
@@ -17372,7 +19342,8 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": true
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {}
     },
     "308149265": {
         "id": 308149265,
@@ -17449,7 +19420,8 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {}
     },
     "319486977": {
         "id": 319486977,
@@ -17645,7 +19617,8 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {}
     },
     "319683586": {
         "id": 319683586,
@@ -17722,7 +19695,8 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {}
     },
     "322239491": {
         "id": 322239491,
@@ -17820,6 +19794,7 @@ export const clusters: Record<number, ClusterDescription> = {
                 "writable": false
             }
         },
-        "commands": {}
+        "commands": {},
+        "features": {}
     }
 };
