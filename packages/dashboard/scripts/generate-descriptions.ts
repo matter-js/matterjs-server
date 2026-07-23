@@ -49,11 +49,18 @@ interface ClusterCommandDescription {
     label: string;
 }
 
+interface ClusterFeatureDescription {
+    bit: number;
+    code: string;
+    label: string;
+}
+
 interface ClusterDescription {
     id: number;
     label: string;
     attributes: { [attribute_id: string]: ClusterAttributeDescription };
     commands: { [command_id: string]: ClusterCommandDescription };
+    features: { [bit: string]: ClusterFeatureDescription };
 }
 
 /**
@@ -140,11 +147,22 @@ function generateDescriptions(): string {
             }
         }
 
+        const features: { [id: string]: ClusterFeatureDescription } = {};
+        for (const feature of cluster.features) {
+            if (feature.effectiveId === undefined) continue;
+            features[feature.effectiveId] = {
+                bit: feature.effectiveId,
+                code: feature.name,
+                label: toLabel(feature.title ?? feature.name, true),
+            };
+        }
+
         clusters[cluster.id] = {
             id: cluster.id,
             label: toLabel(cluster.name),
             attributes,
             commands,
+            features,
         };
     }
 
@@ -175,11 +193,18 @@ export interface ClusterCommandDescription {
     label: string;
 }
 
+export interface ClusterFeatureDescription {
+    bit: number;
+    code: string;
+    label: string;
+}
+
 export interface ClusterDescription {
     id: number;
     label: string;
     attributes: { [attribute_id: string]: ClusterAttributeDescription };
     commands: { [command_id: string]: ClusterCommandDescription };
+    features: { [bit: string]: ClusterFeatureDescription };
 }
 
 export const device_types: Record<number, DeviceType> = ${JSON.stringify(deviceTypes, null, 4)};
