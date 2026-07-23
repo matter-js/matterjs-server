@@ -30,6 +30,7 @@ from matter_server.common.models import (
     MatterNodeEvent,
     MatterSoftwareVersion,
     MessageType,
+    NetworkTopology,
     NodePingResult,
     ResultMessageBase,
     ServerDiagnostics,
@@ -307,6 +308,22 @@ class MatterClient:
         Requires schema 12.
         """
         await self.send_command(APICommand.RESYNC_ICD, require_schema=12, node_id=node_id)
+
+    async def get_network_topology(self, refresh: bool = False) -> NetworkTopology:
+        """Return the derived network topology graph (Thread mesh + Wi-Fi).
+
+        Issuing this command also subscribes the connection to
+        EventType.NETWORK_TOPOLOGY_UPDATED pushes. With refresh=True the server
+        re-reads the Thread/Wi-Fi diagnostics from every online node before
+        building the snapshot (slower - seconds); otherwise it builds from the
+        current attribute cache.
+
+        Requires schema 13 (OHF Matter Server).
+        """
+        data = await self.send_command(
+            APICommand.GET_NETWORK_TOPOLOGY, require_schema=13, refresh=refresh
+        )
+        return dataclass_from_dict(NetworkTopology, data)
 
     async def open_commissioning_window(
         self,
@@ -868,6 +885,10 @@ class MatterClient:
                 data=node_event,
                 node_id=node_event.node_id,
             )
+            return
+        if msg.event == EventType.NETWORK_TOPOLOGY_UPDATED:
+            topology = dataclass_from_dict(NetworkTopology, msg.data)
+            self._signal_event(EventType.NETWORK_TOPOLOGY_UPDATED, data=topology)
             return
         # An event type unknown to this (older) client is passed through by parse_value as a raw
         # string; forwarding it would crash on `event.value` in _signal_event. Drop it instead so a

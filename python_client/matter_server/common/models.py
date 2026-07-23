@@ -25,6 +25,7 @@ class EventType(Enum):
     ENDPOINT_REMOVED = "endpoint_removed"
     WEBRTC_CALLBACK = "webrtc_callback"
     THREAD_DIAGNOSTICS_UPDATED = "thread_diagnostics_updated"  # schema 12+
+    NETWORK_TOPOLOGY_UPDATED = "network_topology_updated"  # schema 13+
 
 
 class APICommand(str, Enum):
@@ -66,6 +67,7 @@ class APICommand(str, Enum):
     REGISTER_ICD = "register_icd"
     RESYNC_ICD = "resync_icd"
     UNREGISTER_ICD = "unregister_icd"
+    GET_NETWORK_TOPOLOGY = "get_network_topology"
 
 
 EventCallBackType = Callable[[EventType, Any], None]
@@ -268,6 +270,78 @@ class IcdStateData:
     awake: bool | None
     available: bool | None
     next_expected_checkin: int | None
+
+
+@dataclass
+class TopologyDirectionInfo:
+    """One direction's observed link quality on a topology connection.
+
+    Note: Only available with OHF Matter Server (schema 13+).
+    """
+
+    strength: str
+    lqi: int | None = None
+    rssi: int | None = None
+
+
+@dataclass
+class NetworkTopologyNode:
+    """A node in the network topology graph.
+
+    `kind`/`role`/`strength` values are open string sets so a newer server can
+    introduce values without breaking older clients.
+    Note: Only available with OHF Matter Server (schema 13+).
+    """
+
+    # pylint: disable=too-many-instance-attributes
+
+    id: str
+    kind: str  # matter | border_router | thread_unknown | wifi_ap
+    network_type: str  # thread | wifi | ethernet | unknown
+    node_id: int | None = None
+    role: str | None = None
+    available: bool | None = None
+    is_bridge: bool | None = None
+    ext_address: str | None = None
+    rloc16: int | None = None
+    ext_pan_id: str | None = None
+    network_name: str | None = None
+    vendor_name: str | None = None
+    model_name: str | None = None
+    last_seen: int | None = None
+
+
+@dataclass
+class NetworkTopologyConnection:
+    """An edge between two topology nodes.
+
+    Thread links may be asymmetric: `source_to_target`/`target_to_source` carry
+    each observed direction; the top-level `strength` is the strongest of them.
+    Note: Only available with OHF Matter Server (schema 13+).
+    """
+
+    source: str
+    target: str
+    network: str  # thread | wifi
+    strength: str  # strong | medium | weak | none
+    source_to_target: TopologyDirectionInfo | None = None
+    target_to_source: TopologyDirectionInfo | None = None
+    via_route_table: bool | None = None
+    path_cost: int | None = None
+
+
+@dataclass
+class NetworkTopology:
+    """Snapshot of the Matter network topology (Thread mesh + Wi-Fi).
+
+    Returned by the 'get_network_topology' command and pushed via the
+    'network_topology_updated' event.
+    Note: Only available with OHF Matter Server (schema 13+).
+    """
+
+    collected_at: int
+    nodes: list[NetworkTopologyNode]
+    connections: list[NetworkTopologyConnection]
 
 
 class UpdateSource(Enum):
