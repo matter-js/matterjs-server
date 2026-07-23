@@ -146,14 +146,14 @@ class MatterClusterView extends LitElement {
                 <node-details .node=${this.node}></node-details>
             </div>
 
+            <!-- Active features panel -->
+            ${this._renderFeaturesPanel()}
+
             <!-- Cluster commands section (if available for this cluster) -->
             ${this._renderClusterCommands()}
 
             <!-- Developer-mode commands panel -->
             ${this._devMode ? this._renderDevCommandsPanel() : nothing}
-
-            <!-- Active features panel -->
-            ${this._renderFeaturesPanel()}
 
             <!-- Cluster attributes listing -->
             <div class="container">
