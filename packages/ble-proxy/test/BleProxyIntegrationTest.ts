@@ -278,6 +278,39 @@ describe("BLE Proxy Integration", function () {
             expect((disconnectCmd.args as { connection_handle: number }).connection_handle).to.equal(7);
         });
 
+        it("rejects openChannel (not crash) when the handshake times out while the write is still pending", async function () {
+            // Exercises the real 15s BTP_CONN_RSP_TIMEOUT, so allow more than the suite's 10s.
+            this.timeout(25_000);
+
+            const proxyBle = new ProxyBle(handler);
+            const mockDevice = new MockBleDevice({ discriminator: 8888, vendorId: 0xfff1, productId: 0x8000 });
+
+            await discoverDevice(proxyBle, mockDevice);
+
+            testClient.onCommand(BleProxyCommand.Connect, async () => ({ connection_handle: 9, mtu: 247 }));
+            testClient.onCommand(BleProxyCommand.DiscoverServices, async () => ({ services: mockDevice.services }));
+            testClient.onCommand(BleProxyCommand.DiscoverCharacteristics, async () => ({
+                characteristics: mockDevice.characteristics,
+            }));
+            // Write ack never returns and no handshake frame is sent, so the handshake timer fires while
+            // WriteAndSubscribe is still pending: openChannel must reject, not leave an unhandled rejection.
+            testClient.onCommand(BleProxyCommand.WriteAndSubscribe, () => new Promise<void>(() => {}));
+            testClient.onCommand(BleProxyCommand.Disconnect, async () => ({}));
+
+            const central = proxyBle.centralInterface as ProxyBleCentralInterface;
+            central.onData(() => {});
+
+            const outcome = await central.openChannel({ type: "ble", peripheralAddress: mockDevice.address }).then(
+                () => ({ ok: true as const }),
+                (err: Error) => ({ ok: false as const, err }),
+            );
+
+            expect(outcome.ok, "openChannel should reject, not resolve or crash").to.be.false;
+            if (!outcome.ok) {
+                expect(outcome.err.message).to.include("BTP handshake response not received");
+            }
+        });
+
         it("tears down the channel when the owning proxy client disconnects", async () => {
             const proxyBle = new ProxyBle(handler);
             const mockDevice = new MockBleDevice({ discriminator: 7000, vendorId: 0xfff1, productId: 0x8000 });
