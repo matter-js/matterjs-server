@@ -9,6 +9,8 @@ import {
     AVSM_FEAT_SNP,
     AVSM_FEATURE_MAP_ATTR_ID,
     CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID,
+    isAudioOnlyAvsm,
+    readAvsmFeatures,
 } from "../components/webrtc-stream-view.js";
 
 export const WEBRTC_TRANSPORT_PROVIDER_CLUSTER_ID = 0x553;
@@ -52,4 +54,14 @@ export function supportsSnapshot(node: MatterNode, endpoint: number): boolean {
 
 export function supportsCameraOverlay(node: MatterNode, endpoint: number): boolean {
     return supportsLiveView(node, endpoint) || supportsSnapshot(node, endpoint);
+}
+
+/**
+ * True when live view is available and the FeatureMap is known not to advertise Video (VDO) —
+ * e.g. Audio Doorbell, Intercom. The session streams audio only, so the UI should say "Listen"
+ * rather than "Live View". A device whose FeatureMap hasn't been read yet is not treated as
+ * audio-only, so a real camera isn't mislabelled while its attribute is still in flight.
+ */
+export function supportsAudioOnlyLiveView(node: MatterNode, endpoint: number): boolean {
+    return supportsLiveView(node, endpoint) && isAudioOnlyAvsm(readAvsmFeatures(node, endpoint));
 }

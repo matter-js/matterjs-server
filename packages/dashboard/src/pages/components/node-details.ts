@@ -13,7 +13,16 @@ import "@material/web/list/list";
 import "@material/web/list/list-item";
 import { consume } from "@lit/context";
 import { MatterClient, MatterNode, UpdateSource } from "@matter-server/ws-client";
-import { mdiCamera, mdiChatProcessing, mdiPencil, mdiShareVariant, mdiTrashCan, mdiUpdate, mdiVideo } from "@mdi/js";
+import {
+    mdiCamera,
+    mdiChatProcessing,
+    mdiMicrophone,
+    mdiPencil,
+    mdiShareVariant,
+    mdiTrashCan,
+    mdiUpdate,
+    mdiVideo,
+} from "@mdi/js";
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { clientContext, tickContext } from "../../client/client-context.js";
@@ -23,7 +32,7 @@ import { showNodeLabelDialog } from "../../components/dialogs/node-label-dialog/
 import { handleAsync } from "../../util/async-handler.js";
 import "../../components/ha-svg-icon";
 import "../camera-overlay.js";
-import { supportsCameraOverlay, supportsLiveView } from "../../util/camera.js";
+import { supportsAudioOnlyLiveView, supportsCameraOverlay, supportsLiveView } from "../../util/camera.js";
 import { getDeviceIcon } from "../../util/device-icons.js";
 import { getEndpointDeviceTypes } from "../../util/endpoints.js";
 import { ICD_CLUSTER_ID, icdBadge } from "../../util/icd.js";
@@ -83,6 +92,9 @@ export class NodeDetails extends LitElement {
 
         const isCamera = supportsCameraOverlay(this.node, this.endpoint);
         const isLiveViewCamera = supportsLiveView(this.node, this.endpoint);
+        // Audio-only live view (e.g. Audio Doorbell, Intercom) gets its own label/icon rather
+        // than "Live View", since no video is actually streamed.
+        const isAudioOnly = supportsAudioOnlyLiveView(this.node, this.endpoint);
         const badge = icdBadge(this.node.attributes, this.node.available);
 
         return html`
@@ -164,10 +176,10 @@ export class NodeDetails extends LitElement {
                                       @click=${() => this._openCameraOverlay()}
                                       ?disabled=${!this.node.available}
                                   >
-                                      ${isLiveViewCamera ? "Live View" : "Snapshot"}
+                                      ${isAudioOnly ? "Listen" : isLiveViewCamera ? "Live View" : "Snapshot"}
                                       <ha-svg-icon
                                           slot="icon"
-                                          .path=${isLiveViewCamera ? mdiVideo : mdiCamera}
+                                          .path=${isAudioOnly ? mdiMicrophone : isLiveViewCamera ? mdiVideo : mdiCamera}
                                       ></ha-svg-icon>
                                   </md-outlined-button>
                               `

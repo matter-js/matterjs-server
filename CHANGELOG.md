@@ -10,6 +10,7 @@ This page shows a detailed overview of the changes between versions without the 
 ## **WORK IN PROGRESS**
 
 - Feature: (lboue) Dashboard cluster view shows an "Active Features" panel listing the cluster's supported features by name, decoded from the FeatureMap attribute
+- Fix: (lboue) Dashboard now considers the audio/video features a Camera/Audio device advertises
 
 ## 1.3.0 (2026-07-22)
 
