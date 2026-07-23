@@ -28,7 +28,7 @@ import "../components/webrtc-stream-view.js";
 import type { WebRtcStreamView } from "../components/webrtc-stream-view.js";
 import { asObject, pickNumber } from "../util/attribute-shapes.js";
 import { hasAvsumOnEndpoint } from "../util/avsum.js";
-import { supportsLiveView, supportsSnapshot } from "../util/camera.js";
+import { supportsAudioOnlyLiveView, supportsLiveView, supportsSnapshot } from "../util/camera.js";
 
 type StreamState = "idle" | "connecting" | "streaming" | "error";
 
@@ -163,9 +163,8 @@ export class CameraOverlay extends LitElement {
     }
 
     private _getSensorSize(): { width: number; height: number } | null {
-        const node = this.client?.nodes[String(this.nodeId)];
-        if (!node) return null;
-        const raw = node.attributes[`${this.endpointId}/1361/7`];
+        // AVSM VideoSensorParams (attr 0x2): SensorWidth/SensorHeight.
+        const raw = this._readCachedAvsmAttribute(0x2);
         const obj = asObject(raw);
         if (!obj) return null;
         const w = pickNumber(obj, "sensorWidth", "0");
@@ -215,6 +214,18 @@ export class CameraOverlay extends LitElement {
         // stream is being torn down) or a not-yet-allocated null (during connecting).
         this._activeVideoStreamId =
             ev.detail.state === "streaming" ? (this._streamViewRef.value?.videoStreamId ?? null) : null;
+
+        // Audio-only "Listen" sessions have no video; starting muted would defeat the feature, so
+        // unmute on stream start. Started from the user's Start click, so autoplay policy allows it.
+        if (ev.detail.state === "streaming" && this._isAudioOnly()) {
+            this._streamViewRef.value?.setMuted(false);
+            this._muted = false;
+        }
+    }
+
+    private _isAudioOnly(): boolean {
+        const node = this.client?.nodes[String(this.nodeId)];
+        return node ? supportsAudioOnlyLiveView(node, this.endpointId) : false;
     }
 
     private _start(): void {
