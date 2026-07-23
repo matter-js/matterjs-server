@@ -278,6 +278,46 @@ describe("BLE Proxy Integration", function () {
             expect((disconnectCmd.args as { connection_handle: number }).connection_handle).to.equal(7);
         });
 
+        it("rejects openChannel (not crash) when the handshake times out while the write is still pending", async () => {
+            const proxyBle = new ProxyBle(handler);
+            const mockDevice = new MockBleDevice({ discriminator: 8888, vendorId: 0xfff1, productId: 0x8000 });
+
+            await discoverDevice(proxyBle, mockDevice);
+
+            testClient.onCommand(BleProxyCommand.Connect, async () => ({ connection_handle: 9, mtu: 247 }));
+            testClient.onCommand(BleProxyCommand.DiscoverServices, async () => ({ services: mockDevice.services }));
+            testClient.onCommand(BleProxyCommand.DiscoverCharacteristics, async () => ({
+                characteristics: mockDevice.characteristics,
+            }));
+            // Write ack never returns and no handshake frame is sent, so the handshake timer fires while
+            // WriteAndSubscribe is still pending: openChannel must reject, not leave an unhandled rejection.
+            testClient.onCommand(BleProxyCommand.WriteAndSubscribe, () => new Promise<void>(() => {}));
+            testClient.onCommand(BleProxyCommand.Disconnect, async () => ({}));
+
+            const central = proxyBle.centralInterface as ProxyBleCentralInterface;
+            central.onData(() => {});
+
+            // MockTime is disabled by default in this package; enable it only around the timed-out phase so
+            // the handshake timer fires without a real 15s wait — the proxy WS round-trips run on real IO.
+            MockTime.enable();
+            try {
+                const settled = central.openChannel({ type: "ble", peripheralAddress: mockDevice.address }).then(
+                    () => ({ ok: true as const }),
+                    (err: Error) => ({ ok: false as const, err }),
+                );
+                await testClient.waitForCommand("write_and_subscribe", 5000);
+                await MockTime.advance(Seconds(16));
+
+                const outcome = await settled;
+                expect(outcome.ok, "openChannel should reject, not resolve or crash").to.be.false;
+                if (!outcome.ok) {
+                    expect(outcome.err.message).to.include("BTP handshake response not received");
+                }
+            } finally {
+                MockTime.disable();
+            }
+        });
+
         it("tears down the channel when the owning proxy client disconnects", async () => {
             const proxyBle = new ProxyBle(handler);
             const mockDevice = new MockBleDevice({ discriminator: 7000, vendorId: 0xfff1, productId: 0x8000 });
