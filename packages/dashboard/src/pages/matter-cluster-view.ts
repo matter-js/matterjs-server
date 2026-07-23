@@ -366,7 +366,7 @@ class MatterClusterView extends LitElement {
                     <div class="features-panel-header">Active Features</div>
                     <div class="features-panel-body">
                         ${activeFeatures.length === 0
-                            ? html`<p class="empty">No optional features supported</p>`
+                            ? html`<p class="empty">No active features</p>`
                             : html`
                                   <ul class="feature-chip-list">
                                       ${activeFeatures.map(
