@@ -58,7 +58,18 @@ type AnyObservable = Observable<any[]>;
  * the pure derivation ({@link TopologySourceNode}, which reads only `node_id`/`attributes`);
  * both ride along from the controller's node details ({@link MatterNodeData}).
  */
-type TopologyNode = TopologySourceNode & { available?: boolean; is_bridge?: boolean };
+export type TopologyNode = TopologySourceNode & { available?: boolean; is_bridge?: boolean };
+
+/**
+ * An additional provider of graph nodes (e.g. imported test nodes), registered via
+ * {@link NetworkTopologyService.addNodeSource}. Its nodes are derivation inputs only:
+ * {@link NetworkTopologyService.refresh} never issues attribute reads to them.
+ */
+export interface TopologyNodeSource {
+    listNodes: () => TopologyNode[];
+    nodeAdded?: AnyObservable;
+    nodeRemoved?: AnyObservable;
+}
 
 export interface NetworkTopologyServiceOptions {
     /** Snapshot of the currently commissioned nodes (node id, availability, bridge flag, attribute cache). */
@@ -114,6 +125,7 @@ export class NetworkTopologyService {
     };
 
     readonly #opts: NetworkTopologyServiceOptions;
+    readonly #auxSources: TopologyNodeSource[] = [];
     readonly #observers = new ObserverGroup();
     readonly #debounceMs: number;
     readonly #refreshTimeoutMs: number;
@@ -154,11 +166,24 @@ export class NetworkTopologyService {
     }
 
     /**
-     * Re-read the Thread neighbor/route tables (and WiFi diagnostics) from every online node,
-     * then rebuild. Reads are concurrency-capped and best-effort (a failing/slow node is
-     * skipped), mirroring the dashboard's "update connections" action. Once the overall
-     * deadline expires no further reads start; reads already in flight run to completion
-     * (their results land in the cache and surface via the next rebuild).
+     * Merge an additional node source into the graph (e.g. the WS handler's imported test
+     * nodes, so the derived topology matches what `get_nodes` serves). Idempotent per source.
+     */
+    addNodeSource(source: TopologyNodeSource): void {
+        if (this.#stopped || this.#auxSources.includes(source)) return;
+        this.#auxSources.push(source);
+        if (source.nodeAdded !== undefined) this.#observers.on(source.nodeAdded, () => this.#scheduleRebuild());
+        if (source.nodeRemoved !== undefined) this.#observers.on(source.nodeRemoved, () => this.#scheduleRebuild());
+        this.#scheduleRebuild();
+    }
+
+    /**
+     * Re-read the Thread neighbor/route tables (and WiFi diagnostics) from every online
+     * controller node (aux-source nodes are never read), then rebuild. Reads are
+     * concurrency-capped and best-effort (a failing/slow node is skipped), mirroring the
+     * dashboard's "update connections" action. Once the overall deadline expires no further
+     * reads start; reads already in flight run to completion (their results land in the
+     * cache and surface via the next rebuild).
      */
     async refresh(): Promise<NetworkTopology> {
         if (this.#stopped) return this.#build();
@@ -251,7 +276,7 @@ export class NetworkTopologyService {
 
     #build(): NetworkTopology {
         const collectedAt = Date.now();
-        const allNodes = this.#opts.listNodes();
+        const allNodes = [...this.#opts.listNodes(), ...this.#auxSources.flatMap(source => source.listNodes())];
 
         const brList = this.#opts.borderRouters.list();
         const brByExt = new Map<string, BorderRouterEntry>();

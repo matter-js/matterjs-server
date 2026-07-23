@@ -24,6 +24,7 @@ import { NodeStates } from "@project-chip/matter.js/device";
 import { WebSocketServer } from "ws";
 import { ControllerCommandHandler } from "../controller/ControllerCommandHandler.js";
 import { MatterController, registerThreadCredentialsFromHex } from "../controller/MatterController.js";
+import type { TopologyNodeSource } from "../controller/NetworkTopologyService.js";
 import { TestNodeCommandHandler } from "../controller/TestNodeCommandHandler.js";
 import { VendorIds } from "../data/VendorIDs.js";
 import { ClusterMap, ClusterMapEntry } from "../model/ModelMapper.js";
@@ -131,6 +132,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
     #controller: MatterController;
     #commandHandler: ControllerCommandHandler;
     #testNodeHandler: TestNodeCommandHandler;
+    /** Stable identity: NetworkTopologyService.addNodeSource dedupes registrations by source object. */
+    #testNodeSource: TopologyNodeSource;
     #config: ConfigStorage;
     #serverVersion: string;
     #wss?: WebSocketServer;
@@ -158,6 +161,11 @@ export class WebSocketControllerHandler implements WebServerHandler {
         this.#controller = controller;
         this.#commandHandler = controller.commandHandler;
         this.#testNodeHandler = new TestNodeCommandHandler();
+        this.#testNodeSource = {
+            listNodes: () => this.#testNodeHandler.getNodes(),
+            nodeAdded: this.#testNodeHandler.nodeAdded,
+            nodeRemoved: this.#testNodeHandler.nodeRemoved,
+        };
         this.#config = config;
         this.#serverVersion = serverVersion;
     }
@@ -1394,6 +1402,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
     }
 
     async #handleGetNetworkTopology(args: ArgsOf<"get_network_topology">): Promise<ResponseOf<"get_network_topology">> {
+        // Imported test nodes are served by get_nodes, so the derived graph must include them
+        // too. Attached here (not at construction) to keep the service lazily instantiated.
+        this.#controller.networkTopology.addNodeSource(this.#testNodeSource);
         if (args?.refresh === true) {
             return this.#controller.networkTopology.refresh();
         }

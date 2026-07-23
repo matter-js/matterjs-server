@@ -470,6 +470,58 @@ describe("NetworkTopologyService", () => {
         });
     });
 
+    describe("addNodeSource", () => {
+        it("merges aux-source nodes into the graph, with edges resolving across sources", async () => {
+            const primary = mkThread(1, {
+                role: 5,
+                rloc16: 1024,
+                neighbors: [neighbor(0, 1025, 3, -40)], // → aux node 2, matched by rloc16
+            });
+            const aux = mkThread(2, { role: 3, rloc16: 1025 });
+            const { service, emitted } = makeHarness({ nodes: () => [primary] });
+
+            const nodeAdded = new Observable<any[]>();
+            service.addNodeSource({ listNodes: () => [aux], nodeAdded });
+            await delay(20); // registration schedules a rebuild
+
+            expect(emitted).to.have.lengthOf(1);
+            const topology = emitted[0];
+            expect(topology.nodes.map(n => n.id).sort()).to.deep.equal(["1", "2"]);
+            const link = topology.connections.find(c => c.source === "1" && c.target === "2");
+            expect(link?.strength).to.equal("strong");
+        });
+
+        it("rebuilds when the aux source reports a node added", async () => {
+            let auxNodes = [mkThread(2, { role: 5, rloc16: 1025 })];
+            const nodeAdded = new Observable<any[]>();
+            const { service, emitted } = makeHarness({ nodes: () => [] });
+            service.addNodeSource({ listNodes: () => auxNodes, nodeAdded });
+            await delay(20);
+            expect(emitted).to.have.lengthOf(1);
+
+            auxNodes = [...auxNodes, mkThread(3, { role: 5, rloc16: 1026 })];
+            nodeAdded.emit(3);
+            await delay(20);
+
+            expect(emitted).to.have.lengthOf(2);
+            expect(emitted[1].nodes).to.have.lengthOf(2);
+        });
+
+        it("never issues refresh() reads to aux-source nodes and is idempotent per source", async () => {
+            const { service, readCalls } = makeHarness({
+                nodes: () => [mkThread(1, { role: 5, rloc16: 1024 })],
+            });
+            const source = { listNodes: () => [mkThread(2, { role: 5, rloc16: 1025 })] };
+            service.addNodeSource(source);
+            service.addNodeSource(source); // duplicate registration must be a no-op
+
+            const topology = await service.refresh();
+
+            expect(topology.nodes).to.have.lengthOf(2); // not 3: the duplicate source isn't merged twice
+            expect(readCalls.map(c => c.nodeId)).to.deep.equal([1]);
+        });
+    });
+
     describe("refresh", () => {
         it("fans out reads to online Thread/Wi-Fi nodes and skips offline/other nodes", async () => {
             const nodes = [

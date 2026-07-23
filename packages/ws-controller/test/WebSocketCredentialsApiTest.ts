@@ -71,6 +71,7 @@ function makeStubController(credentials: ThreadCredentialsRegistry) {
 
     const stubNetworkTopology = {
         events: { topologyUpdated: new Observable() },
+        addNodeSource() {},
         getTopology() {
             return { collected_at: 0, nodes: [], connections: [] };
         },
