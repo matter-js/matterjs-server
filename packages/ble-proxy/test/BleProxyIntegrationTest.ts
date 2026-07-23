@@ -278,10 +278,7 @@ describe("BLE Proxy Integration", function () {
             expect((disconnectCmd.args as { connection_handle: number }).connection_handle).to.equal(7);
         });
 
-        it("rejects openChannel (not crash) when the handshake times out while the write is still pending", async function () {
-            // Exercises the real 15s BTP_CONN_RSP_TIMEOUT, so allow more than the suite's 10s.
-            this.timeout(25_000);
-
+        it("rejects openChannel (not crash) when the handshake times out while the write is still pending", async () => {
             const proxyBle = new ProxyBle(handler);
             const mockDevice = new MockBleDevice({ discriminator: 8888, vendorId: 0xfff1, productId: 0x8000 });
 
@@ -300,14 +297,24 @@ describe("BLE Proxy Integration", function () {
             const central = proxyBle.centralInterface as ProxyBleCentralInterface;
             central.onData(() => {});
 
-            const outcome = await central.openChannel({ type: "ble", peripheralAddress: mockDevice.address }).then(
-                () => ({ ok: true as const }),
-                (err: Error) => ({ ok: false as const, err }),
-            );
+            // MockTime is disabled by default in this package; enable it only around the timed-out phase so
+            // the handshake timer fires without a real 15s wait — the proxy WS round-trips run on real IO.
+            MockTime.enable();
+            try {
+                const settled = central.openChannel({ type: "ble", peripheralAddress: mockDevice.address }).then(
+                    () => ({ ok: true as const }),
+                    (err: Error) => ({ ok: false as const, err }),
+                );
+                await testClient.waitForCommand("write_and_subscribe", 5000);
+                await MockTime.advance(Seconds(16));
 
-            expect(outcome.ok, "openChannel should reject, not resolve or crash").to.be.false;
-            if (!outcome.ok) {
-                expect(outcome.err.message).to.include("BTP handshake response not received");
+                const outcome = await settled;
+                expect(outcome.ok, "openChannel should reject, not resolve or crash").to.be.false;
+                if (!outcome.ok) {
+                    expect(outcome.err.message).to.include("BTP handshake response not received");
+                }
+            } finally {
+                MockTime.disable();
             }
         });
 
