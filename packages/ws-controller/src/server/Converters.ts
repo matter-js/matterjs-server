@@ -4,10 +4,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { matterNameToWireField } from "@matter-server/ws-client";
 import { AttributeId, Bytes, camelize, ClusterId, isObject, Logger } from "@matter/main";
 import { ClusterModel, FieldModel, FieldValue, ValueModel } from "@matter/main/model";
 import { EndpointNumber, MATTER_EPOCH_OFFSET_S, MATTER_EPOCH_OFFSET_US } from "@matter/main/types";
-import { matterNameToWireField } from "@matter-server/ws-client";
 
 const logger = new Logger("ChipToolWebSocketHandler");
 

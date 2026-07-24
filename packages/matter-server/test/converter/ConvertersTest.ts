@@ -1212,5 +1212,22 @@ describe("Converters", () => {
             // "status" is acronym-free: exactly one key, no alias
             expect(Object.keys(result).filter(k => k.toLowerCase() === "status")).to.have.length(1);
         });
+
+        it("dual-emits an acronym field nested inside a struct", () => {
+            // GroupKeyManagement cluster (63), KeySetRead response = KeySetReadResponse { 0: GroupKeySet }
+            // GroupKeySetStruct nests GroupKeySetId, so the dual-emit must reach the nested level too.
+            const gkmCluster = ClusterMap[63]!;
+            const keySetReadCmd = gkmCluster.commands["keysetread"]!;
+            const responseModel = keySetReadCmd.responseModel;
+
+            const result = convertMatterToWebSocketNameBased(
+                { groupKeySet: { groupKeySetId: 5 } },
+                responseModel,
+                gkmCluster.model,
+            ) as Record<string, Record<string, unknown>>;
+
+            expect(result.groupKeySet.groupKeySetID).to.equal(5);
+            expect(result.groupKeySet.groupKeySetId).to.equal(5);
+        });
     });
 });
