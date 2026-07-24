@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { matterNameToWireField, toChipName } from "@matter-server/ws-client";
+import { matterNameToWireField, toChipName } from "../src/wire-naming.js";
 
 describe("wire-naming", () => {
     describe("matterNameToWireField", () => {
