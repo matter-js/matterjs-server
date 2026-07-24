@@ -39,6 +39,7 @@ import { Readable } from "node:stream";
 import { ConfigStorage } from "../server/ConfigStorage.js";
 import { ControllerCommandHandler } from "./ControllerCommandHandler.js";
 import { LegacyDataInjector, LegacyServerData } from "./LegacyDataInjector.js";
+import { NetworkTopologyService } from "./NetworkTopologyService.js";
 import { resolveServerId } from "./ServerIdResolver.js";
 import { ThreadDiagnosticsService } from "./ThreadDiagnosticsService.js";
 
@@ -196,6 +197,7 @@ export class MatterController {
     #stopped = false;
     readonly #credentials = new ThreadCredentialsRegistry();
     readonly #threadDiagnostics: ThreadDiagnosticsService;
+    #networkTopology?: NetworkTopologyService;
     #webRtcRequestor?: Endpoint<typeof CameraControllerDevice>;
     #services: SharedEnvironmentServices;
 
@@ -456,6 +458,30 @@ export class MatterController {
         return this.#threadDiagnostics;
     }
 
+    /**
+     * Lazily-constructed network topology service. Created on first access (i.e. the first
+     * client that queries/subscribes topology), wired to the command handler's node cache +
+     * events and the Border Router registry. Reused across connections.
+     */
+    get networkTopology(): NetworkTopologyService {
+        if (this.#networkTopology === undefined) {
+            const handler = this.commandHandler;
+            this.#networkTopology = new NetworkTopologyService({
+                listNodes: () => handler.getNodeIds().map(nodeId => handler.getNodeDetails(nodeId)),
+                readAttributes: (nodeId, paths) =>
+                    handler.handleReadAttributes(NodeId(nodeId), paths).then(() => undefined),
+                borderRouters: this.#borderRouterRegistry,
+                controllerEvents: {
+                    attributeChanged: handler.events.attributeChanged,
+                    nodeAvailabilityChanged: handler.events.nodeAvailabilityChanged,
+                    nodeAdded: handler.events.nodeAdded,
+                    nodeDecommissioned: handler.events.nodeDecommissioned,
+                },
+            });
+        }
+        return this.#networkTopology;
+    }
+
     #registerStoredThreadCredentials(): void {
         for (const entry of this.#config.listThreadCredentials()) {
             registerThreadCredentialsFromHex(this.#credentials, entry.dataset, `stored:${entry.id}`);
@@ -577,6 +603,7 @@ export class MatterController {
     async stop() {
         this.#stopped = true;
         await this.#settleBackgroundInit();
+        this.#networkTopology?.stop();
         if (!this.#threadDiagnosticsDisabled) {
             await this.#threadDiagnostics.stop();
             await this.#borderRouterRegistry.stop();

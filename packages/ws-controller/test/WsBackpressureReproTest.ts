@@ -114,7 +114,8 @@ async function createHarness() {
     const config = await ConfigStorage.create(env);
 
     const fakeCommandHandler = createFakeCommandHandler();
-    // register() subscribes to the controller-level thread-diagnostics observable; supply just that.
+    // register() eagerly subscribes only to thread-diagnostics; the network-topology observer is
+    // registered lazily on first get_network_topology, which this test never issues.
     const fakeController = {
         commandHandler: fakeCommandHandler,
         threadDiagnostics: { events: { batchUpdated: new Observable() } },

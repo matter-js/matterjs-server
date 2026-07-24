@@ -211,6 +211,106 @@ export interface ThreadDiagnosticsBatch {
     partialReason?: ThreadDiagnosticsPartialReason;
 }
 
+/**
+ * Kind of node in a {@link NetworkTopology} graph. @since schema 13
+ * - `matter`: a commissioned Matter node on this fabric (carries `node_id`).
+ * - `border_router`: an mDNS-discovered Thread Border Router (not commissioned here).
+ * - `thread_unknown`: a Thread device seen in a commissioned node's neighbor table but not
+ *   commissioned on this fabric (e.g. a neighbour on another fabric).
+ * - `wifi_ap`: a synthetic access-point node grouping Wi-Fi stations by BSSID (id `ap_<BSSID>`,
+ *   colons stripped — e.g. BSSID `11:22:33:44:55:66` → `ap_112233445566`).
+ */
+export type TopologyNodeKind = "matter" | "border_router" | "thread_unknown" | "wifi_ap";
+
+/**
+ * Role of a topology node. Thread roles mirror ThreadNetworkDiagnostics RoutingRole;
+ * `station`/`ap` describe Wi-Fi. `unassigned`/absent when unknown. @since schema 13
+ */
+export type TopologyRole =
+    | "leader"
+    | "router"
+    | "reed"
+    | "end_device"
+    | "sleepy_end_device"
+    | "unassigned"
+    | "station"
+    | "ap";
+
+/** Link-quality bucket. Thread: LQI 0-3 → none/weak/medium/strong. Wi-Fi: RSSI thresholds. @since schema 13 */
+export type TopologyStrength = "strong" | "medium" | "weak" | "none";
+
+/** One direction's observed link quality. @since schema 13 */
+export interface TopologyDirectionInfo {
+    strength: TopologyStrength;
+    /** Thread Link Quality Indicator (0-3 on OpenThread). */
+    lqi?: number;
+    /** RSSI in dBm (Wi-Fi, or Thread neighbor RSSI when available). */
+    rssi?: number;
+}
+
+/**
+ * A node in the network topology graph. Every field beyond `id`/`kind`/`network_type` is
+ * optional so the shape degrades gracefully across kinds and schema growth. @since schema 13
+ */
+export interface NetworkTopologyNode {
+    /** Stable graph id. Commissioned nodes use the decimal node id; externals use `br_<XA>` /
+     * `unknown_<EXTADDR>`; Wi-Fi APs use `ap_<BSSID>` with the colons stripped (e.g. `ap_112233445566`). */
+    id: string;
+    kind: TopologyNodeKind;
+    network_type: "thread" | "wifi" | "ethernet" | "unknown";
+    /** Present for `matter` nodes only. */
+    node_id?: number | bigint;
+    role?: TopologyRole;
+    /** Present for `matter` nodes: reachability of the commissioned node. */
+    available?: boolean;
+    is_bridge?: boolean;
+    /** 16-char uppercase hex Thread extended (MAC) address, when known. */
+    ext_address?: string;
+    /** Thread short address within the mesh. */
+    rloc16?: number;
+    /** 16-char uppercase hex Thread extended PAN id (network key). */
+    ext_pan_id?: string;
+    /** Thread network name, or Wi-Fi BSSID for `wifi_ap` nodes. */
+    network_name?: string;
+    vendor_name?: string;
+    model_name?: string;
+    /** Epoch ms the node was last observed (border routers). */
+    last_seen?: number;
+}
+
+/**
+ * An edge between two topology nodes. Thread neighbor links are directional and may be
+ * asymmetric: `source_to_target` / `target_to_source` carry each observed direction, while
+ * top-level `strength` is a summary (the strongest observed direction) for simple renderers.
+ * @since schema 13
+ */
+export interface NetworkTopologyConnection {
+    source: string;
+    target: string;
+    network: "thread" | "wifi";
+    /** Summary strength = strongest observed direction. Use the per-direction fields for exact rendering. */
+    strength: TopologyStrength;
+    /** source → target observation, when that direction reported the link. */
+    source_to_target?: TopologyDirectionInfo;
+    /** target → source observation, when that direction reported the link. */
+    target_to_source?: TopologyDirectionInfo;
+    /** True when the edge was supplemented from the Thread route table rather than the neighbor table. */
+    via_route_table?: boolean;
+    /** Thread path cost (1 = direct), when known. */
+    path_cost?: number;
+}
+
+/**
+ * Snapshot of the Matter network topology (Thread mesh + Wi-Fi), returned by
+ * `get_network_topology` and streamed via `network_topology_updated`. @since schema 13
+ */
+export interface NetworkTopology {
+    /** Epoch ms the snapshot was assembled. */
+    collected_at: number;
+    nodes: NetworkTopologyNode[];
+    connections: NetworkTopologyConnection[];
+}
+
 export type WebRtcEventType = "offer" | "answer" | "ice_candidates" | "end";
 
 export interface WebRtcIceCandidate {
@@ -326,6 +426,16 @@ export interface APICommands {
     get_thread_diagnostics: {
         requestArgs: { ext_pan_id?: string; force?: boolean };
         response: ThreadDiagnosticsBatch | ThreadDiagnosticsBatch[] | null;
+    };
+    /**
+     * Full Matter network topology (Thread mesh + Wi-Fi). `refresh` re-reads the Thread
+     * neighbor/route tables (and Wi-Fi diagnostics) from online nodes before building the
+     * snapshot; omitted/false builds from the current attribute cache. Issuing this command
+     * also opts the connection in to the `network_topology_updated` event. @since schema 13
+     */
+    get_network_topology: {
+        requestArgs: { refresh?: boolean };
+        response: NetworkTopology;
     };
     open_commissioning_window: {
         requestArgs: {
@@ -610,6 +720,9 @@ export interface APIEvents {
     thread_diagnostics_updated: {
         data: ThreadDiagnosticsBatch;
     };
+    network_topology_updated: {
+        data: NetworkTopology;
+    };
     webrtc_callback: {
         data: WebRtcCallbackData;
     };
@@ -658,6 +771,10 @@ interface ServerEventThreadDiagnosticsUpdated {
     event: "thread_diagnostics_updated";
     data: ThreadDiagnosticsBatch;
 }
+interface ServerEventNetworkTopologyUpdated {
+    event: "network_topology_updated";
+    data: NetworkTopology;
+}
 interface ServerEventWebRtcCallback {
     event: "webrtc_callback";
     data: WebRtcCallbackData;
@@ -674,6 +791,7 @@ export type EventMessage =
     | ServerEventEndpointRemoved
     | ServerEventInfoUpdated
     | ServerEventThreadDiagnosticsUpdated
+    | ServerEventNetworkTopologyUpdated
     | ServerEventWebRtcCallback;
 
 export interface ResultMessageBase {
