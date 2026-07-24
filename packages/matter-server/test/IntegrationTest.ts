@@ -562,6 +562,18 @@ describe("Integration Test", function () {
             await client.deviceCommand(commissionedNodeId, 1, 6, "off", {});
             await waitForOnOffUpdate(client, commissionedNodeId, false);
         });
+
+        it("should dual-emit acronym-cased command response fields (issue #927)", async function () {
+            // Groups.AddGroup (cluster 4) response carries GroupID: over the wire the payload
+            // must expose the python-matter-server casing (groupID) alongside the legacy key.
+            const result = (await client.deviceCommand(commissionedNodeId, 1, 4, "addGroup", {
+                groupId: 1,
+                groupName: "int-test",
+            })) as Record<string, unknown>;
+
+            expect(result.groupID).to.equal(1);
+            expect(result.groupId).to.equal(1);
+        });
     });
 
     // =========================================================================

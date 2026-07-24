@@ -10,6 +10,7 @@ This page shows a detailed overview of the changes between versions without the 
 ## **WORK IN PROGRESS**
 
 - Fix: Fixes the DST determination
+- Fix: Command responses and events now expose acronym field names in the Python Matter Server casing (e.g. `videoStreamID`, `groupID`, `PAKEPasscodeVerifier`), matching the generated Python client and Home Assistant; the previous lowercased-acronym keys are still emitted alongside for compatibility
 
 ## 1.3.1 (2026-07-23)
 
