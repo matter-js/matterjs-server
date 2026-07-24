@@ -78,7 +78,13 @@ export const ACRONYMS = [
 ] as const;
 
 /** Key: matter.js PascalCase model name (pre-toChipName transform), optionally cluster-qualified
- * as "ClusterName.Name". Value: expected wire/Python field name. */
+ * as "ClusterName.Name". Value: expected wire/Python field name.
+ *
+ * Cluster-qualified keys ("Cluster.Field") resolve against the cluster the value is
+ * observed under. For a struct shared across clusters the WebSocket converter keys on the
+ * top-level cluster while the Python generator keys on the defining cluster — so a qualified
+ * override on a shared/global struct field would make the two diverge. Only add qualified
+ * overrides for fields owned by a single cluster. */
 export const FIELD_NAME_OVERRIDES: Record<string, string> = {
     // --- ID suffix: old chip SDK kept lowercase "Id" (not "ID") for these ---
     Id: "id",
@@ -147,14 +153,19 @@ export const FIELD_NAME_OVERRIDES: Record<string, string> = {
     ColorPointRy: "colorPointRY",
 };
 
+const chipNameCache = new Map<string, string>();
+
 /** Convert a PascalCase matter.js name to chip-clusters PascalCase (acronym-preserving). */
 export function toChipName(name: string): string {
+    const cached = chipNameCache.get(name);
+    if (cached !== undefined) return cached;
     let result = name;
     for (const acr of ACRONYMS) {
         const titleCase = acr.charAt(0) + acr.slice(1).toLowerCase();
         const regex = new RegExp(`${titleCase}(?=[A-Z]|$|[^a-zA-Z]|s(?=[A-Z]|$|[^a-zA-Z]))`, "g");
         result = result.replace(regex, acr);
     }
+    chipNameCache.set(name, result);
     return result;
 }
 
