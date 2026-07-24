@@ -38,12 +38,17 @@ from .protocol import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Coroutine
+    from collections.abc import Awaitable, Callable, Coroutine
 
     from bleak import BleakClient
     from bleak.backends.characteristic import BleakGATTCharacteristic
     from bleak.backends.device import BLEDevice
     from bleak.backends.service import BleakGATTServiceCollection
+
+    ConnectStrategy = Callable[
+        ["BLEDevice | str", Callable[[BleakClient], None], int],
+        Awaitable[BleakClient],
+    ]
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -86,6 +91,26 @@ class BleScanSource(ABC):
     async def stop(self) -> None:
         """Stop scanning. Idempotent. After stop, no more callbacks fire."""
 
+
+
+async def default_connect_strategy(
+    target: BLEDevice | str,
+    disconnected_callback: Callable[[BleakClient], None],
+    timeout_ms: int,
+) -> BleakClient:
+    """Connect with plain `BleakClient` under a single timeout.
+
+    Embedded hosts (Home Assistant) can pass their own strategy via
+    `MatterBleProxy(connect_strategy=...)` to plug in `bleak-retry-connector`
+    or other connection-establishment helpers without making them a hard
+    dependency of the library.
+    """
+    from bleak import BleakClient
+
+    client = BleakClient(target, disconnected_callback=disconnected_callback)
+    async with asyncio.timeout(timeout_ms / 1000):
+        await client.connect()
+    return client
 
 
 class BleDeviceResolver(ABC):
@@ -143,6 +168,7 @@ class MatterBleProxy:
         *,
         session: aiohttp.ClientSession | None = None,
         task_factory: Callable[[Coroutine[Any, Any, Any]], asyncio.Task[Any]] | None = None,
+        connect_strategy: ConnectStrategy | None = None,
     ) -> None:
         """Initialize the proxy.
 
@@ -156,6 +182,13 @@ class MatterBleProxy:
                 work (e.g. event forwarding). Defaults to
                 `asyncio.get_event_loop().create_task`. Pass
                 `hass.async_create_task` from Home Assistant.
+            connect_strategy: Optional coroutine called to establish each
+                BLE connection. Receives `(target, disconnected_callback,
+                timeout_ms)` and must return a connected `BleakClient`.
+                Defaults to `default_connect_strategy`. Home Assistant
+                supplies an implementation backed by
+                `bleak_retry_connector.establish_connection` for adapter
+                path scoring and retry.
 
         """
         self._ws_url = ws_url
@@ -171,6 +204,7 @@ class MatterBleProxy:
         self._closed_event = asyncio.Event()
         self._loop: asyncio.AbstractEventLoop | None = None
         self._task_factory = task_factory
+        self._connect_strategy: ConnectStrategy = connect_strategy or default_connect_strategy
 
     async def connect(self) -> None:
         """Connect to the matter-server `/ble` endpoint and perform handshake."""
@@ -409,7 +443,6 @@ class MatterBleProxy:
         await self._send_success(cmd_id)
 
     async def _handle_connect(self, cmd_id: int, args: dict[str, Any]) -> None:
-        from bleak import BleakClient
 
         address: str = args["address"]
         timeout_ms: int = args.get("timeout", DEFAULT_CONNECT_TIMEOUT_MS)
@@ -435,10 +468,8 @@ class MatterBleProxy:
                 self._send_event("disconnected", {"connection_handle": handle}),
             )
 
-        client = BleakClient(target, disconnected_callback=_on_disconnect)
         try:
-            async with asyncio.timeout(timeout_ms / 1000):
-                await client.connect()
+            client = await self._connect_strategy(target, _on_disconnect, timeout_ms)
         except TimeoutError:
             await self._send_error(cmd_id, "connection_failed", f"Timeout connecting to {address}")
             return
