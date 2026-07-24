@@ -969,6 +969,91 @@ describe("Converters", () => {
             expect(result).to.be.null;
         });
 
+        it("should also expose the CHIP SDK/python-matter-server ID casing for VideoStreamAllocateResponse (issue #927)", () => {
+            // CameraAvStreamManagement (1361), VideoStreamAllocateResponse has a single field whose
+            // matter.js property name is "videoStreamId" (lowercase d) but whose CHIP SDK / python-
+            // matter-server wire name is "videoStreamID" (capital ID). Rather than guess/rename,
+            // both keys are exposed for backward compatibility until the WS protocol is
+            // redocumented and officially switches to matter.js's own camelCase.
+            const cameraCluster = ClusterMap[1361]!;
+            const videoStreamAllocateCmd = cameraCluster.commands["videostreamallocate"]!;
+
+            const matterValue = { videoStreamId: 7 };
+            const result = convertMatterToWebSocketNameBased(
+                matterValue,
+                videoStreamAllocateCmd.responseModel,
+                cameraCluster.model,
+            ) as Record<string, unknown>;
+
+            expect(result).to.deep.equal({ videoStreamId: 7, videoStreamID: 7 });
+        });
+
+        it("should also expose the CHIP SDK/python-matter-server ID casing for AudioStreamAllocateResponse (issue #927)", () => {
+            const cameraCluster = ClusterMap[1361]!;
+            const audioStreamAllocateCmd = cameraCluster.commands["audiostreamallocate"]!;
+
+            const matterValue = { audioStreamId: 3 };
+            const result = convertMatterToWebSocketNameBased(
+                matterValue,
+                audioStreamAllocateCmd.responseModel,
+                cameraCluster.model,
+            ) as Record<string, unknown>;
+
+            expect(result).to.deep.equal({ audioStreamId: 3, audioStreamID: 3 });
+        });
+
+        it("should also expose the CHIP SDK/python-matter-server ID casing for ProvideOfferResponse (issue #927)", () => {
+            // WebRtcTransportProvider (1363), ProvideOfferResponse.
+            const webRtcProviderCluster = ClusterMap[1363]!;
+            const provideOfferCmd = webRtcProviderCluster.commands["provideoffer"]!;
+
+            const matterValue = { webRtcSessionId: 5, videoStreamId: 7, audioStreamId: 3 };
+            const result = convertMatterToWebSocketNameBased(
+                matterValue,
+                provideOfferCmd.responseModel,
+                webRtcProviderCluster.model,
+            ) as Record<string, unknown>;
+
+            expect(result).to.deep.equal({
+                webRtcSessionId: 5,
+                webRtcSessionID: 5,
+                videoStreamId: 7,
+                videoStreamID: 7,
+                audioStreamId: 3,
+                audioStreamID: 3,
+            });
+        });
+
+        it("should not add a duplicate key for field names that don't end in a lowercase Id suffix (issue #927)", () => {
+            // OperationalCredentials (62), NOCResponse: statusCode/fabricIndex don't end in "Id",
+            // so they must be left exactly as matter.js names them, with no duplicate key added.
+            const opCredCluster = ClusterMap[62]!;
+            const updateFabricLabelCmd = opCredCluster.commands["updatefabriclabel"]!;
+
+            const matterValue = { statusCode: 0, fabricIndex: 5 };
+            const result = convertMatterToWebSocketNameBased(
+                matterValue,
+                updateFabricLabelCmd.responseModel,
+                opCredCluster.model,
+            ) as Record<string, unknown>;
+
+            expect(result).to.deep.equal({ statusCode: 0, fabricIndex: 5 });
+        });
+
+        it("should leave tag-based (numeric key) conversion unaffected by the ID-casing fix (issue #927)", () => {
+            const cameraCluster = ClusterMap[1361]!;
+            const videoStreamAllocateCmd = cameraCluster.commands["videostreamallocate"]!;
+
+            const matterValue = { videoStreamId: 7 };
+            const result = convertMatterToWebSocketTagBased(
+                matterValue,
+                videoStreamAllocateCmd.responseModel,
+                cameraCluster.model,
+            ) as Record<string, unknown>;
+
+            expect(result).to.deep.equal({ 0: 7 });
+        });
+
         it("should convert nested structs with names", () => {
             // Descriptor cluster, DeviceTypeStruct
             const descriptorCluster = ClusterMap[29]!;

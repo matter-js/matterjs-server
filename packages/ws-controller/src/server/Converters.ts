@@ -369,12 +369,21 @@ function convertMatterToWebSocket(
             const result: { [key: string]: any } = {};
             for (const { name, id, model: memberModel } of getStructMembers(model)) {
                 if (Object.hasOwn(value, name)) {
-                    result[tagBased ? id : name] = convertMatterToWebSocket(
-                        value[name],
-                        memberModel,
-                        clusterModel,
-                        tagBased,
-                    );
+                    const converted = convertMatterToWebSocket(value[name], memberModel, clusterModel, tagBased);
+                    if (tagBased) {
+                        result[id] = converted;
+                    } else {
+                        result[name] = converted;
+                        // Backward-compat: matter.js spells some fields with a lowercase "Id"
+                        // suffix (e.g. "videoStreamId") where the CHIP SDK / python-matter-server
+                        // convention capitalizes it ("videoStreamID"). Expose both keys for now
+                        // rather than guessing/renaming - simplest fix, and doesn't break clients
+                        // reading either casing. Clean up once the WS protocol is redocumented and
+                        // officially switches to matter.js's own camelCase (see #927).
+                        if (name.length > 2 && name.endsWith("Id")) {
+                            result[`${name.slice(0, -2)}ID`] = converted;
+                        }
+                    }
                 }
             }
             return result;
