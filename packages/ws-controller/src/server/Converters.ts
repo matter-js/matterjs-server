@@ -7,6 +7,7 @@
 import { AttributeId, Bytes, camelize, ClusterId, isObject, Logger } from "@matter/main";
 import { ClusterModel, FieldModel, FieldValue, ValueModel } from "@matter/main/model";
 import { EndpointNumber, MATTER_EPOCH_OFFSET_S, MATTER_EPOCH_OFFSET_US } from "@matter/main/types";
+import { matterNameToWireField } from "@matter-server/ws-client";
 
 const logger = new Logger("ChipToolWebSocketHandler");
 
@@ -181,7 +182,12 @@ const PRIMITIVE_TYPEOF = new Set(["string", "number", "bigint", "boolean", "unde
 const modelKindCache = new WeakMap<ValueModel, ConvKind>();
 
 /** Precomputed struct member info: avoids camelize() on every conversion. */
-type StructMemberEntry = { readonly name: string; readonly id: number; readonly model: ValueModel };
+type StructMemberEntry = {
+    readonly name: string;
+    readonly rawName: string;
+    readonly id: number;
+    readonly model: ValueModel;
+};
 const structMemberCache = new WeakMap<ValueModel, StructMemberEntry[]>();
 
 /**
@@ -224,7 +230,7 @@ function getStructMembers(model: ValueModel): StructMemberEntry[] {
     members = [];
     for (const member of model.members) {
         if (member.name !== undefined && member.id !== undefined) {
-            members.push({ name: member.propertyName, id: member.id, model: member });
+            members.push({ name: member.propertyName, rawName: member.name, id: member.id, model: member });
         }
     }
     structMemberCache.set(model, members);
@@ -367,14 +373,18 @@ function convertMatterToWebSocket(
         case ConvKind.Struct: {
             if (!isObject(value)) return value;
             const result: { [key: string]: any } = {};
-            for (const { name, id, model: memberModel } of getStructMembers(model)) {
+            for (const { name, rawName, id, model: memberModel } of getStructMembers(model)) {
                 if (Object.hasOwn(value, name)) {
-                    result[tagBased ? id : name] = convertMatterToWebSocket(
-                        value[name],
-                        memberModel,
-                        clusterModel,
-                        tagBased,
-                    );
+                    const converted = convertMatterToWebSocket(value[name], memberModel, clusterModel, tagBased);
+                    if (tagBased) {
+                        result[id] = converted;
+                    } else {
+                        const wireName = matterNameToWireField(rawName, clusterModel?.name);
+                        result[wireName] = converted;
+                        if (wireName !== name) {
+                            result[name] = converted;
+                        }
+                    }
                 }
             }
             return result;
