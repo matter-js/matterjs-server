@@ -9,6 +9,7 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## **WORK IN PROGRESS**
 
+- Fix: (lboue) Name-based command responses (e.g. `VideoStreamAllocate`, `ProvideOffer`) now also expose the CHIP SDK/python-matter-server "ID" casing (e.g. `videoStreamID`) alongside matter.js's own casing (`videoStreamId`), so clients following either convention can read the response
 - Fix: Fixes the DST determination
 
 ## 1.3.1 (2026-07-23)
