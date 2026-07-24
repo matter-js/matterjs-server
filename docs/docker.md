@@ -285,8 +285,8 @@ If you encounter permission issues with the data volume:
 
 ```bash
 # Ensure the data directory and its contents are writable and owned by the correct user
-chown -r 1000:1000 data
-chmod -r 755 data
+chown -R 1000:1000 data
+chmod -R 755 data
 ```
 
 ### Viewing Logs
