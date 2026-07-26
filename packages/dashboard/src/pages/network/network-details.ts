@@ -211,7 +211,7 @@ export class NetworkDetails extends LitElement {
                 ${wifiDiag.wifiVersion !== null
                     ? html`
                           <div class="info-row">
-                              <span class="label">WiFi Version:</span>
+                              <span class="label">WiFi version:</span>
                               <span class="value">${getWiFiVersionName(wifiDiag.wifiVersion)}</span>
                           </div>
                       `
@@ -261,7 +261,7 @@ export class NetworkDetails extends LitElement {
                 ${extAddressHex
                     ? html`
                           <div class="info-row">
-                              <span class="label">Extended Address:</span>
+                              <span class="label">Extended address:</span>
                               <span class="value mono">${extAddressHex}</span>
                           </div>
                       `
@@ -462,7 +462,7 @@ export class NetworkDetails extends LitElement {
                 ${extMac !== undefined
                     ? html`
                           <div class="info-row">
-                              <span class="label">Extended Address:</span>
+                              <span class="label">Extended address:</span>
                               <span class="value mono">${extMac}</span>
                           </div>
                       `
@@ -510,13 +510,13 @@ export class NetworkDetails extends LitElement {
                     ? html`<p class="hint-text inline-note">${EXTERNAL_ROUTER_CAPABLE_NOTE}</p>`
                     : nothing}
                 <div class="info-row">
-                    <span class="label">Extended Address:</span>
+                    <span class="label">Extended address:</span>
                     <span class="value mono">${unknown.extAddressHex}</span>
                 </div>
                 ${unknown.networkName !== undefined
                     ? html`
                           <div class="info-row">
-                              <span class="label">Thread Network:</span>
+                              <span class="label">Thread network:</span>
                               <span class="value">${unknown.networkName}</span>
                           </div>
                       `
@@ -675,7 +675,7 @@ export class NetworkDetails extends LitElement {
             ${includeExtAddr
                 ? html`
                       <div class="info-row">
-                          <span class="label">Extended Address:</span>
+                          <span class="label">Extended address:</span>
                           <span class="value mono">${br.extAddressHex}</span>
                       </div>
                   `
@@ -834,7 +834,7 @@ export class NetworkDetails extends LitElement {
             ${br.meshcopPort !== undefined
                 ? html`
                       <div class="info-row">
-                          <span class="label">meshcop port:</span>
+                          <span class="label">MeshCoP port:</span>
                           <span class="value">${br.meshcopPort}</span>
                       </div>
                   `
@@ -842,7 +842,7 @@ export class NetworkDetails extends LitElement {
             ${br.trelPort !== undefined
                 ? html`
                       <div class="info-row">
-                          <span class="label">trel port:</span>
+                          <span class="label">TREL port:</span>
                           <span class="value">${br.trelPort}</span>
                       </div>
                   `
@@ -953,11 +953,11 @@ export class NetworkDetails extends LitElement {
                 ${brNode?.leaderData !== undefined
                     ? html`
                           <div class="info-row">
-                              <span class="label">Leader router id:</span>
+                              <span class="label">Leader router ID:</span>
                               <span class="value">${brNode.leaderData.leaderRouterId}</span>
                           </div>
                           <div class="info-row">
-                              <span class="label">Partition id:</span>
+                              <span class="label">Partition ID:</span>
                               <span class="value mono">${brNode.leaderData.partitionId.toString(16)}</span>
                           </div>
                       `
