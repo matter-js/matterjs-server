@@ -284,8 +284,8 @@ describe("TimeSyncManager", () => {
                 connector.setConnected(PEER_1);
                 failing.registerNode(PEER_1, makeTimeSyncAttrs());
 
-                // The delay is computed before the cycle body, so a throw used to abort the cycle
-                // before the finally that restarts the timer, stopping resyncs for good.
+                // The delay is computed before the cycle body and outside its finally, so a throw
+                // there must not cost the cycle or the reschedule that keeps the timer alive.
                 await MockTime.advance(PAST_STARTUP_MS);
                 await MockTime.yield3();
                 expect(connector.syncCalls.length, "first cycle must still run").to.be.greaterThan(0);
