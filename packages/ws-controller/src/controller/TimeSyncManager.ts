@@ -55,10 +55,11 @@ const MIN_ACCELERATED_DELAY = Minutes(1);
 // whether the node's time is still good, so a flapping node must not storm setUtcTime.
 const RECONNECT_SYNC_COOLDOWN = Hours(24);
 
-// A timeFailure event is the node reporting it has no usable time, so it is answered on a much
-// shorter leash than a reconnect. The spec rate-limits the node to one such event per hour
-// (§11.17.10.4), which already bounds this path without a long cooldown of our own.
-const TIME_FAILURE_SYNC_COOLDOWN = Hours(1);
+// A timeFailure event is the node reporting it has no usable time, so it is answered almost
+// immediately: long enough only to absorb a burst from one loss. Do not widen this on the spec's
+// one-event-per-hour limit (§11.17.10.4) — devices are observed emitting four in 49 s and then
+// giving up, so anything longer refuses the node and nothing asks again until the periodic pass.
+const TIME_FAILURE_SYNC_COOLDOWN = Minutes(1);
 
 /** Why a sync was triggered outside the periodic cycle. Decides how long the peer is then held off. */
 export enum SyncTrigger {

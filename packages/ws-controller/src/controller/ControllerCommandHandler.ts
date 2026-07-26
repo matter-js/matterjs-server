@@ -583,7 +583,7 @@ export class ControllerCommandHandler {
                 data.path.clusterId === TIME_SYNC_CLUSTER_ID &&
                 data.path.eventId === TIME_FAILURE_EVENT_ID
             ) {
-                logger.debug(`Received timeFailure event from node ${this.formatNode(nodeId)}, triggering time sync`);
+                logger.debug(`Received timeFailure event from node ${this.formatNode(nodeId)}`);
                 this.#timeSyncManager.syncNode(this.#peerOf(nodeId), SyncTrigger.TimeFailure);
             }
         });

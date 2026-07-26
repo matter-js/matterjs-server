@@ -443,14 +443,38 @@ describe("TimeSyncManager", () => {
             expect(connector.syncCalls.length, "a node asking for a time must still be answered").to.equal(2);
         });
 
-        it("holds off a timeFailure repeated inside the hour", async () => {
+        it("absorbs a burst of timeFailure events from one loss", async () => {
+            // Devices are observed emitting four within 49 s; only the first should be answered.
             manager.syncNode(PEER_1, SyncTrigger.TimeFailure);
             await MockTime.yield3();
             expect(connector.syncCalls.length).to.equal(1);
 
+            for (const offset of [9_000, 29_000, 49_000]) {
+                await MockTime.advance(offset === 9_000 ? 9_000 : 20_000);
+                await MockTime.yield3();
+                manager.syncNode(PEER_1, SyncTrigger.TimeFailure);
+                await MockTime.yield3();
+                expect(connector.syncCalls.length, `event at +${offset}ms must be absorbed`).to.equal(1);
+            }
+        });
+
+        it("answers a node that lost its clock minutes after its last timeFailure sync (#938)", async () => {
+            // Reported timeline: synced from a timeFailure, then power-cycled ~15 min later. The node
+            // asks again with no usable time and must not be refused; it stops asking after a few
+            // tries, so a refusal here is not retried until the periodic pass.
             manager.syncNode(PEER_1, SyncTrigger.TimeFailure);
             await MockTime.yield3();
             expect(connector.syncCalls.length).to.equal(1);
+
+            await MockTime.advance(15 * ONE_MINUTE_MS + 31_000);
+            await MockTime.yield3();
+            const afterIdle = connector.syncCalls.length;
+
+            manager.syncNode(PEER_1, SyncTrigger.TimeFailure);
+            await MockTime.yield3();
+            expect(connector.syncCalls.length, "the node reporting no usable time must be answered").to.equal(
+                afterIdle + 1,
+            );
         });
 
         it("allows a trigger sync after the 24h cooldown elapses", async () => {
