@@ -275,6 +275,29 @@ describe("TimeSyncManager", () => {
         });
     });
 
+    describe("cadence wiring", () => {
+        // MockTimer ignores interval assignment, so the timer cannot show which delay was chosen;
+        // assert the hook's own return value instead.
+        class Probe extends TimeSyncManager {
+            delay(): number {
+                return this.nextCycleDelay();
+            }
+        }
+
+        it("hands the timer a delay just past an imminent change, and the interval otherwise", async () => {
+            const near = new Probe(connector, fromMs => fromMs + 5 * ONE_HOUR_MS);
+            const none = new Probe(connector, () => null);
+            const past = new Probe(connector, fromMs => fromMs - ONE_HOUR_MS);
+            try {
+                expect(near.delay()).to.equal(5 * ONE_HOUR_MS + ONE_MINUTE_MS);
+                expect(none.delay()).to.equal(ONE_DAY_MS);
+                expect(past.delay()).to.equal(ONE_DAY_MS);
+            } finally {
+                await Promise.all([near.stop(), none.stop(), past.stop()]);
+            }
+        });
+    });
+
     describe("commissioned node count", () => {
         it("is read only while the startup delay can still change", async () => {
             let lookups = 0;

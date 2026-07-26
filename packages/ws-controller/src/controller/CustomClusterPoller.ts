@@ -123,7 +123,8 @@ export class CustomClusterPoller extends NodeProcessor {
     readonly #attributeReader: NodeAttributeReader;
 
     constructor(attributeReader: NodeAttributeReader) {
-        super("eve-poller", INITIAL_DELAY_MS + Math.random() * INITIAL_DELAY_MS, POLLING_INTERVAL_MS);
+        // Whole milliseconds: a fractional timer deadline is meaningless and MockTime rejects it.
+        super("eve-poller", INITIAL_DELAY_MS + Math.floor(Math.random() * INITIAL_DELAY_MS), POLLING_INTERVAL_MS);
         this.#attributeReader = attributeReader;
     }
 
