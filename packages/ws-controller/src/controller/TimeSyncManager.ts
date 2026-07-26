@@ -342,9 +342,9 @@ export class TimeSyncManager extends NodeProcessor {
         if (processedCount > 0) {
             // The interval comes from the timer, not RESYNC_INTERVAL: a cycle brought forward for an
             // offset change is armed for hours, and naming a day here would contradict it.
+            const next = intervalFormatted === "" ? "" : ` Next resync in ${intervalFormatted}.`;
             logger.info(
-                `Periodic resync complete: synced ${this.#cycleSyncedCount} of ${processedCount} nodes. ` +
-                    `Next resync in ${intervalFormatted}`,
+                `Periodic resync complete: synced ${this.#cycleSyncedCount} of ${processedCount} nodes.${next}`,
             );
         }
     }

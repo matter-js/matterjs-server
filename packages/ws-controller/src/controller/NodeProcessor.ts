@@ -117,7 +117,10 @@ export abstract class NodeProcessor {
      */
     protected onCycleStart(): void {}
 
-    /** Called after a full processing cycle completes. Override for cycle-complete logging. */
+    /**
+     * Called after a full processing cycle completes. `intervalFormatted` is empty when no next cycle
+     * was scheduled, i.e. every peer unregistered during this one.
+     */
     protected onCycleComplete(_processedCount: number, _intervalFormatted: string): void {}
 
     /** Delay before the cycle that follows this one. Override to vary the cadence. */
@@ -164,7 +167,9 @@ export abstract class NodeProcessor {
         }
 
         if (!this.#closed) {
-            this.onCycleComplete(processedCount, Duration.format(this.#timer.interval));
+            // scheduleIfNeeded() declines to arm the timer with no peers left, so naming an interval
+            // then would point at a timer that is not running.
+            this.onCycleComplete(processedCount, this.#timer.isRunning ? Duration.format(this.#timer.interval) : "");
         }
     }
 }
