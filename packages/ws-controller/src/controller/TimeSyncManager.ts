@@ -26,7 +26,7 @@ import { StatusResponseError } from "@matter/main/types";
 import { AttributesData } from "../types/CommandHandler.js";
 import { formatNodeId } from "../util/formatNodeId.js";
 import { nextOffsetChangeMs, resolveHostTimeZone, timeZonePlan } from "../util/hostTimeZone.js";
-import { NodeProcessor } from "./NodeProcessor.js";
+import { MAX_TIMER_DELAY_MS, NodeProcessor } from "./NodeProcessor.js";
 
 const logger = Logger.get("TimeSyncManager");
 
@@ -77,18 +77,21 @@ export interface TimeSyncConnector {
 /** Instant of the host zone's next offset change, or null when none is in view. */
 export type OffsetChangeLookup = (fromMs: number) => number | null;
 
-/** Delay before the first sync, long enough for node initialization to finish. */
+/**
+ * Delay before the first sync, long enough for node initialization to finish. Capped so the value
+ * reported to the log is the one the timer can actually be given.
+ */
 export function startupDelayMs(commissionedNodeCount: number): number {
-    return STARTUP_BASE_DELAY + commissionedNodeCount * STARTUP_DELAY_PER_NODE;
+    return Math.min(STARTUP_BASE_DELAY + commissionedNodeCount * STARTUP_DELAY_PER_NODE, MAX_TIMER_DELAY_MS);
 }
 
 /**
- * Delay before the next periodic cycle: normally the full interval, brought forward to just after an
- * upcoming offset change so a node's retired DST entry is replaced promptly. A change nearer than the
- * floor is left to the following cycle rather than scheduling a near-zero delay.
+ * Delay before the next periodic cycle: normally the full interval, brought forward to a minute past
+ * an upcoming offset change so a node's retired DST entry is replaced promptly. An instant that has
+ * already passed, or one beyond the interval, leaves the cadence alone.
  */
 export function resyncDelayMs(nowMs: number, nextChangeMs: number | null): number {
-    if (nextChangeMs === null) {
+    if (nextChangeMs === null || !Number.isFinite(nextChangeMs)) {
         return RESYNC_INTERVAL;
     }
     const delay = nextChangeMs + POST_CHANGE_MARGIN - nowMs;
@@ -147,7 +150,7 @@ export class TimeSyncManager extends NodeProcessor {
     readonly #offsetChangeLookup: OffsetChangeLookup;
     // Tracks in-flight immediate syncs per node to prevent parallel syncs
     #inFlightSyncs = new PeerAddressMap<Promise<void>>();
-    // Last trigger-driven sync attempt per node, used to enforce TRIGGER_SYNC_COOLDOWN
+    // Last trigger-driven sync attempt per node, measured against the cooldown for its trigger
     #lastTriggerSyncMs = new PeerAddressMap<number>();
     // True after the first periodic resync cycle, enabling immediate syncs on reconnect
     #startupComplete = false;

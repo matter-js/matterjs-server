@@ -9,7 +9,7 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## **WORK IN PROGRESS**
 
-- Fix: Fixes and Enhances the DST determination and also send up to two DST entries to the device
+- Fix: Fixes and enhances the DST determination, and sends a second TimeZone entry when the host zone has an upcoming permanent offset change, plus a closing DST entry when the device has room for one
 - Fix: A node reporting that it has no usable time is now resynced within the hour instead of being held off for up to a day, while reconnect-driven syncs keep their longer spacing
 - Fix: Command responses and events now expose acronym field names in the Python Matter Server casing (e.g. `videoStreamID`, `groupID`, `PAKEPasscodeVerifier`), matching the generated Python client and Home Assistant; the previous lowercased-acronym keys are still emitted alongside for compatibility
 

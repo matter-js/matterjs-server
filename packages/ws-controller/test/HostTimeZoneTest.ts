@@ -194,6 +194,18 @@ describe("hostTimeZone", () => {
             expectPlanMatchesZone("Asia/Almaty", Date.UTC(2024, 0, 15), SINGLE_TIME_ZONE_ENTRY);
         });
 
+        it("keeps the regime count inside the cluster's range whatever the node reports", () => {
+            // TimeZoneListMaxSize is 1..2; a node outside that range must not produce an empty list
+            // nor more entries than the cluster allows.
+            for (const maxRegimes of [-1, 0, 1, 2, 5]) {
+                const plan = timeZonePlan("Asia/Almaty", Date.UTC(2024, 0, 15), { maxRegimes, maxWindows: 2 });
+                const label = `maxRegimes=${maxRegimes}`;
+                expect(plan.regimes.length, label).to.be.at.least(1);
+                expect(plan.regimes.length, label).to.be.at.most(2);
+                expect(nodeOffsetSeconds(plan, Date.UTC(2024, 0, 15)), label).to.equal(21600);
+            }
+        });
+
         it("does not split a zone that is merely mid-DST at the sync instant", () => {
             // Sydney in January sits in DST, so its leading segment has a higher minimum than the
             // rest. Splitting there would call +11 a standard offset and +10 a future regime.

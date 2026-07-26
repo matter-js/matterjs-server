@@ -10,7 +10,7 @@ import { PeerAddress, PeerAddressSet } from "@matter/main/protocol";
 const logger = Logger.get("NodeProcessor");
 
 // Timer.interval rejects anything outside the 32-bit signed range.
-const MAX_TIMER_DELAY_MS = 2_147_483_647;
+export const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
 /**
  * Abstract base class for timer-driven periodic processing of registered nodes.
@@ -78,6 +78,11 @@ export abstract class NodeProcessor {
      */
     protected setNextCycleDelay(delayMs: number): boolean {
         if (this.#timer.isRunning || this.#isProcessing || this.#closed) return false;
+        return this.#applyInterval(delayMs);
+    }
+
+    /** Both assignment paths go through here, since nextCycleDelay() is open to any subclass. */
+    #applyInterval(delayMs: number): boolean {
         if (!Number.isFinite(delayMs) || delayMs < 0) {
             // A NaN passes Timer.interval's range check and then fires immediately, every cycle.
             logger.warn(`Ignoring invalid cycle delay ${delayMs}`);
@@ -113,7 +118,7 @@ export abstract class NodeProcessor {
 
         const nextInterval = this.nextCycleDelay();
         if (this.#timer.interval !== nextInterval) {
-            this.#timer.interval = nextInterval;
+            this.#applyInterval(nextInterval);
         }
 
         this.#isProcessing = true;

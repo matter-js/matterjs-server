@@ -23,7 +23,8 @@ const ONE_MINUTE_MS = 60_000;
 const ONE_HOUR_MS = 60 * ONE_MINUTE_MS;
 const ONE_DAY_MS = 24 * ONE_HOUR_MS;
 
-// Startup delay is 3 min plus 10 s per commissioned node; advancing 61 min always fires it
+// MockTimer ignores interval assignment, so the startup delay these cases see is the constructor
+// seed of 3 min rather than the node-count-scaled value; 61 min is well past either.
 const PAST_STARTUP_MS = 61 * ONE_MINUTE_MS;
 
 const PEER_1 = PeerAddress({ fabricIndex: FabricIndex(1), nodeId: NodeId(1) });
@@ -144,6 +145,12 @@ describe("resyncDelayMs", () => {
     it("still clears the floor for a change moments away, via the margin", () => {
         expect(resyncDelayMs(NOW, NOW + 1000)).to.equal(Minutes(1) + 1000);
         expect(resyncDelayMs(NOW, NOW)).to.equal(Minutes(1));
+    });
+
+    it("treats a non-finite instant as no change in view", () => {
+        // The lookup is injectable, and a NaN delay would otherwise reach the timer and fire at once.
+        expect(resyncDelayMs(NOW, NaN)).to.equal(Hours(24));
+        expect(resyncDelayMs(NOW, Number.POSITIVE_INFINITY)).to.equal(Hours(24));
     });
 
     it("defers a change whose instant has already passed", () => {
