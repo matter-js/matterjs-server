@@ -139,7 +139,12 @@ export function offsetSegments(zone: string, fromMs: number): OffsetSegment[] {
 export interface DstWindow {
     /** Offset in seconds added on top of the plan's standard offset. */
     offsetSeconds: number;
-    /** UTC instant (ms) the offset starts applying; null when it already applied at `fromMs`. */
+    /**
+     * UTC instant (ms) the offset starts applying, or null when it was already in effect before the
+     * scanned range began and so has no known start. A window covering `fromMs` normally carries a
+     * real instant, since the scan reaches back past the opening transition. Callers push null as
+     * the Matter epoch.
+     */
     validStartingMs: number | null;
     /** UTC instant (ms) the offset stops applying; null when it never does. */
     validUntilMs: number | null;
@@ -264,9 +269,9 @@ export function timeZonePlan(zone: string, fromMs: number, limits: TimeZonePlanL
 }
 
 /**
- * The next instant at or after `fromMs` where the plan changes the offset it reports, or null when
- * it reports the same offset throughout. Regime and window bounds are real transition instants, so
- * this covers seasonal DST changes and permanent offset changes alike.
+ * The next instant after `fromMs` where the plan changes the offset it reports, or null when it
+ * reports the same offset throughout. Bounds that carry an instant are real transitions, so this
+ * covers seasonal DST changes and permanent offset changes alike.
  */
 export function nextOffsetChangeMs(plan: TimeZonePlan, fromMs: number): number | null {
     let next: number | null = null;

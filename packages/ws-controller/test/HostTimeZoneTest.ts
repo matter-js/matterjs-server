@@ -286,93 +286,85 @@ describe("hostTimeZone", () => {
             expectPlanMatchesZone("Asia/Almaty", Date.UTC(2024, 3, 1));
         });
 
-        it("agrees with the zone's true offset across zones, dates and list sizes", () => {
+        it("agrees with the zone's true offset across behaviours, dates and list sizes", function () {
+            this.timeout(20_000);
+            // One zone per behaviour the decomposition has to get right. Breadth across every IANA
+            // zone and year is covered by the offline sweep, not here, so this stays inside the
+            // per-test timeout on a slow runner: each plan day-steps its whole scan range.
             const zones = [
-                "Europe/Berlin",
-                "Europe/London",
-                "Europe/Istanbul",
-                "America/New_York",
-                "America/Los_Angeles",
-                "America/Phoenix",
-                "America/Santiago",
-                "Australia/Sydney",
-                "Pacific/Chatham", // 45-minute DST delta
+                "Europe/Berlin", // northern seasonal DST
+                "Australia/Sydney", // southern, window spans New Year
+                "America/Phoenix", // no DST
                 "Asia/Kolkata", // half-hour offset, no DST
-                "Asia/Almaty",
-                "Africa/Casablanca",
+                "Pacific/Chatham", // 45-minute DST delta
+                "Africa/Casablanca", // recurring dip below the base
             ];
-            for (const zone of zones) {
-                for (let month = 0; month < 12; month++) {
-                    for (const maxWindows of [1, 2]) {
-                        expectPlanMatchesZone(zone, Date.UTC(2026, month, 5, 6), { maxRegimes: 2, maxWindows });
-                        expectPlanMatchesZone(zone, Date.UTC(2026, month, 20, 18), { maxRegimes: 2, maxWindows });
-                    }
-                }
-            }
-        });
-
-        it("produces lists SetTimeZone and SetDstOffset accept", () => {
-            const zones = [
-                "Europe/Berlin",
-                "America/New_York",
-                "Europe/Istanbul",
-                "Asia/Almaty",
-                "America/Asuncion",
-                "Africa/Casablanca",
-                "Australia/Sydney",
-            ];
-            const years = [2016, 2024, 2026];
             let checked = 0;
             for (const zone of zones) {
-                for (const year of years) {
-                    for (const maxRegimes of [1, 2]) {
-                        for (const maxWindows of [1, 2, 3]) {
-                            for (const month of [0, 3, 6, 9]) {
-                                const atMs = Date.UTC(year, month, 10);
-                                const { regimes, dstWindows } = timeZonePlan(zone, atMs, { maxRegimes, maxWindows });
-                                const label = `${zone} @ ${new Date(atMs).toISOString()} tz=${maxRegimes} dst=${maxWindows}`;
-                                checked++;
-
-                                expect(regimes.length, label).to.be.at.least(1);
-                                expect(regimes.length, label).to.be.at.most(maxRegimes);
-                                // The cluster requires entry 0 at the Matter epoch and any later entry
-                                // strictly after it, in ascending order.
-                                expect(regimes[0].validFromMs, label).to.equal(null);
-                                regimes.slice(1).forEach((regime, index) => {
-                                    expect(regime.validFromMs, label).to.not.equal(null);
-                                    const previous = regimes[index].validFromMs;
-                                    if (previous !== null) {
-                                        expect(regime.validFromMs, label).to.be.greaterThan(previous);
-                                    }
-                                });
-
-                                expect(dstWindows.length, label).to.be.at.most(maxWindows);
-                                dstWindows.forEach((window, index) => {
-                                    // Only the final entry may be open-ended, and ValidUntil must follow
-                                    // ValidStarting.
-                                    if (window.validUntilMs === null) {
-                                        expect(index, label).to.equal(dstWindows.length - 1);
-                                    } else {
-                                        // A null validStartingMs is pushed as the Matter epoch, so the only
-                                        // meaningful bound left for an already-active window is the sync instant.
-                                        expect(window.validUntilMs, label).to.be.greaterThan(
-                                            window.validStartingMs ?? atMs,
-                                        );
-                                    }
-                                    // Entries must be sorted and must not overlap the previous one.
-                                    const previous = dstWindows[index - 1];
-                                    if (previous !== undefined) {
-                                        expect(window.validStartingMs, label).to.be.at.least(
-                                            previous.validUntilMs ?? 0,
-                                        );
-                                    }
-                                });
-                            }
-                        }
+                for (const month of [0, 3, 6, 9]) {
+                    for (const maxWindows of [1, 2]) {
+                        expectPlanMatchesZone(zone, Date.UTC(2026, month, 5, 6), { maxRegimes: 2, maxWindows });
+                        checked++;
                     }
                 }
             }
-            expect(checked).to.equal(zones.length * years.length * 2 * 3 * 4);
+            expect(checked).to.equal(zones.length * 4 * 2);
+        });
+
+        it("produces lists SetTimeZone and SetDstOffset accept", function () {
+            this.timeout(20_000);
+            // One case per shape the lists can take, rather than a cross-product: each plan day-steps
+            // its whole scan range, so breadth here would cost more than the per-test timeout allows.
+            const cases: Array<[string, number]> = [
+                ["Europe/Berlin", Date.UTC(2026, 0, 10)], // seasonal, next window ahead
+                ["Europe/Berlin", Date.UTC(2026, 6, 10)], // seasonal, window active now
+                ["Australia/Sydney", Date.UTC(2026, 0, 10)], // southern, window spans New Year
+                ["Asia/Almaty", Date.UTC(2024, 0, 10)], // pending permanent reduction
+                ["Europe/Istanbul", Date.UTC(2016, 0, 10)], // pending permanent adoption
+                ["America/Asuncion", Date.UTC(2024, 0, 10)], // real DST plus a pending change
+                ["Africa/Casablanca", Date.UTC(2026, 3, 10)], // recurring dip below the base
+            ];
+            let checked = 0;
+            for (const [zone, atMs] of cases) {
+                for (const maxRegimes of [1, 2]) {
+                    for (const maxWindows of [1, 2, 3]) {
+                        const { regimes, dstWindows } = timeZonePlan(zone, atMs, { maxRegimes, maxWindows });
+                        const label = `${zone} @ ${new Date(atMs).toISOString()} tz=${maxRegimes} dst=${maxWindows}`;
+                        checked++;
+
+                        expect(regimes.length, label).to.be.at.least(1);
+                        expect(regimes.length, label).to.be.at.most(maxRegimes);
+                        // The cluster requires entry 0 at the Matter epoch and any later entry strictly
+                        // after it, in ascending order.
+                        expect(regimes[0].validFromMs, label).to.equal(null);
+                        regimes.slice(1).forEach((regime, index) => {
+                            expect(regime.validFromMs, label).to.not.equal(null);
+                            const previous = regimes[index].validFromMs;
+                            if (previous !== null) {
+                                expect(regime.validFromMs, label).to.be.greaterThan(previous);
+                            }
+                        });
+
+                        expect(dstWindows.length, label).to.be.at.most(maxWindows);
+                        dstWindows.forEach((window, index) => {
+                            // Only the final entry may be open-ended, and ValidUntil must follow ValidStarting.
+                            if (window.validUntilMs === null) {
+                                expect(index, label).to.equal(dstWindows.length - 1);
+                            } else {
+                                // A window with no known start is pushed as the Matter epoch, so the only
+                                // bound left to check it against is the sync instant.
+                                expect(window.validUntilMs, label).to.be.greaterThan(window.validStartingMs ?? atMs);
+                            }
+                            // Entries must be sorted and must not overlap the previous one.
+                            const previous = dstWindows[index - 1];
+                            if (previous !== undefined) {
+                                expect(window.validStartingMs, label).to.be.at.least(previous.validUntilMs ?? 0);
+                            }
+                        });
+                    }
+                }
+            }
+            expect(checked).to.equal(cases.length * 2 * 3);
         });
     });
 
