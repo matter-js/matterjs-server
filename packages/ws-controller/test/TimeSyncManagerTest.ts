@@ -275,6 +275,32 @@ describe("TimeSyncManager", () => {
         });
     });
 
+    describe("commissioned node count", () => {
+        it("is read only while the startup delay can still change", async () => {
+            let lookups = 0;
+            const counting = new (class extends StubConnector {
+                override commissionedNodeCount(): number {
+                    lookups++;
+                    return 6;
+                }
+            })();
+            const probed = new TimeSyncManager(counting, () => null);
+            try {
+                counting.setConnected(PEER_1);
+                probed.registerNode(PEER_1, makeTimeSyncAttrs());
+                expect(lookups).to.equal(1);
+
+                // The timer is running now, so a recomputed delay could not be applied anyway.
+                probed.registerNode(PEER_2, makeTimeSyncAttrs());
+                probed.registerNode(PEER_1, makeTimeSyncAttrs());
+                expect(lookups).to.equal(1);
+            } finally {
+                counting.resolveAll();
+                await probed.stop();
+            }
+        });
+    });
+
     describe("offset lookup failure", () => {
         it("keeps syncing and rescheduling when the lookup throws", async () => {
             const failing = new TimeSyncManager(connector, () => {

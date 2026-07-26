@@ -77,8 +77,13 @@ export abstract class NodeProcessor {
      * running, so callers must apply it before scheduleIfNeeded() starts the timer.
      */
     protected setNextCycleDelay(delayMs: number): boolean {
-        if (this.#timer.isRunning || this.#isProcessing || this.#closed) return false;
+        if (!this.cycleDelayAdjustable) return false;
         return this.#applyInterval(delayMs);
+    }
+
+    /** Whether setNextCycleDelay() can still take effect, so callers can skip computing a delay. */
+    protected get cycleDelayAdjustable(): boolean {
+        return !this.#timer.isRunning && !this.#isProcessing && !this.#closed;
     }
 
     /** Both assignment paths go through here, since nextCycleDelay() is open to any subclass. */

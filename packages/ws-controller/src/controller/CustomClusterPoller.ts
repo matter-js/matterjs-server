@@ -121,7 +121,6 @@ export function checkPolledAttributes(attributes: AttributesData): Set<Attribute
 export class CustomClusterPoller extends NodeProcessor {
     #polledAttributes = new PeerAddressMap<Set<AttributePath>>();
     readonly #attributeReader: NodeAttributeReader;
-    #currentReadPromise?: Promise<void>;
 
     constructor(attributeReader: NodeAttributeReader) {
         super("eve-poller", INITIAL_DELAY_MS + Math.random() * INITIAL_DELAY_MS, POLLING_INTERVAL_MS);
@@ -161,10 +160,8 @@ export class CustomClusterPoller extends NodeProcessor {
     }
 
     override async stop(): Promise<void> {
+        // super.stop() awaits the processing cycle, so any in-flight read has already settled.
         await super.stop();
-        if (this.#currentReadPromise) {
-            await this.#currentReadPromise;
-        }
         this.#polledAttributes.clear();
         logger.info("Custom attribute poller stopped");
     }
@@ -183,19 +180,12 @@ export class CustomClusterPoller extends NodeProcessor {
         try {
             // Read with fabricFiltered=true as per Eve's requirements
             // This automatically updates the attribute cache and triggers change events
-            const readPromise = this.#attributeReader.handleReadAttributes(peer, paths, true);
-            this.#currentReadPromise = readPromise.then(
-                () => {},
-                () => {},
-            );
-            await readPromise;
+            await this.#attributeReader.handleReadAttributes(peer, paths, true);
         } catch (error) {
             logger.warn(
                 `Failed to poll custom attributes for node ${formatNodeId(peer)}: `,
                 Diagnostic.errorMessage(asError(error)),
             );
-        } finally {
-            this.#currentReadPromise = undefined;
         }
     }
 

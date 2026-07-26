@@ -181,9 +181,9 @@ export class TimeSyncManager extends NodeProcessor {
         // the first periodic resync handles all nodes once initialization is done.
         if (this.#startupComplete) {
             this.syncNode(peer);
-        } else {
-            // The commissioned count is known in full by the first registration, so this lands once
-            // and later registrations are no-ops against the already-running timer.
+        } else if (this.cycleDelayAdjustable) {
+            // The commissioned count is known in full by the first registration, so this lands once;
+            // later registrations meet an already-running timer and skip the count entirely.
             let nodeCount = 0;
             try {
                 nodeCount = this.#connector.commissionedNodeCount();
