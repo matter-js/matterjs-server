@@ -45,7 +45,8 @@ function formatterFor(zone: string): Intl.DateTimeFormat {
 }
 
 export function resolveHostTimeZone(): string {
-    return new Intl.DateTimeFormat().resolvedOptions().timeZone;
+    // An unparseable TZ (e.g. "Bogus/Zone") makes Intl report no zone at all, against its own typing.
+    return new Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC";
 }
 
 export function offsetSecondsAt(zone: string, atMs: number): number {

@@ -281,6 +281,44 @@ describe("TimeSyncManager", () => {
         });
     });
 
+    describe("duplicate pushes", () => {
+        /** Advance a second at a time until the cycle has pushed its first peer, and stop there. */
+        async function advanceIntoCycle(): Promise<number> {
+            for (let i = 0; i < 400 && connector.syncCalls.length === 0; i++) {
+                await MockTime.advance(1000);
+                await MockTime.yield3();
+            }
+            expect(connector.syncCalls.length, "the cycle must have started").to.be.greaterThan(0);
+            return connector.syncCalls.length;
+        }
+
+        it("does not re-push a peer the periodic cycle just handled", async () => {
+            for (const peer of [PEER_1, PEER_2]) {
+                connector.setConnected(peer);
+                manager.registerNode(peer, makeTimeSyncAttrs());
+            }
+            const duringCycle = await advanceIntoCycle();
+
+            // Any reconnect signal re-registers a peer; here it lands inside the inter-node delay.
+            manager.registerNode(PEER_1, makeTimeSyncAttrs());
+            await MockTime.yield3();
+            expect(connector.syncCalls.length, "a routine re-register must not push again").to.equal(duringCycle);
+        });
+
+        it("still answers a timeFailure from a peer the cycle just handled", async () => {
+            for (const peer of [PEER_1, PEER_2]) {
+                connector.setConnected(peer);
+                manager.registerNode(peer, makeTimeSyncAttrs());
+            }
+            const duringCycle = await advanceIntoCycle();
+
+            // The node reporting no usable time means the push did not take, so it must be answered.
+            manager.syncNode(PEER_1, SyncTrigger.TimeFailure);
+            await MockTime.yield3();
+            expect(connector.syncCalls.length).to.equal(duringCycle + 1);
+        });
+    });
+
     describe("first cycle", () => {
         it("syncs a node that registers while the cycle is already running", async () => {
             // Three peers so the cycle is still between nodes when the late one arrives; the peer list

@@ -61,6 +61,11 @@ const RECONNECT_SYNC_COOLDOWN = Hours(24);
 // giving up, so anything longer refuses the node and nothing asks again until the periodic pass.
 const TIME_FAILURE_SYNC_COOLDOWN = Minutes(1);
 
+// The periodic cycle and the trigger paths are otherwise blind to each other, so a peer registering
+// during the cycle's inter-node delay is pushed twice seconds apart. Long enough to cover that delay,
+// far short of any cooldown, so it can never defer a cycle.
+const RECENT_SYNC_GUARD = Minutes(1);
+
 /** Why a sync was triggered outside the periodic cycle. Decides how long the peer is then held off. */
 export enum SyncTrigger {
     /** The node reconnected; its time may well still be correct. */
@@ -155,6 +160,8 @@ export class TimeSyncManager extends NodeProcessor {
     // a timeFailure is entitled to, least of all when that attempt failed.
     #lastReconnectSyncMs = new PeerAddressMap<number>();
     #lastTimeFailureSyncMs = new PeerAddressMap<number>();
+    // Last push attempt by any path, so the periodic cycle and a trigger cannot double up on a peer.
+    #lastSyncMs = new PeerAddressMap<number>();
     // Successful syncs in the running cycle; the base class counts attempts.
     #cycleSyncedCount = 0;
     // True after the first periodic resync cycle, enabling immediate syncs on reconnect
@@ -211,6 +218,7 @@ export class TimeSyncManager extends NodeProcessor {
     unregisterNode(peer: PeerAddress): void {
         this.#lastReconnectSyncMs.delete(peer);
         this.#lastTimeFailureSyncMs.delete(peer);
+        this.#lastSyncMs.delete(peer);
         if (this.unregisterPeer(peer)) {
             logger.info(`Unregistered node ${formatNodeId(peer)} from time synchronization`);
         }
@@ -231,6 +239,12 @@ export class TimeSyncManager extends NodeProcessor {
             logger.debug(`Time sync already in progress for node ${formatNodeId(peer)}, skipping`);
             return;
         }
+        // Never on the timeFailure path: the node is reporting it has no usable time, so a push we
+        // just made is evidence it did not take, not a reason to refuse. Only its own cooldown applies.
+        if (trigger !== SyncTrigger.TimeFailure && this.#syncedRecently(peer)) {
+            logger.debug(`Time sync for node ${formatNodeId(peer)} skipped, pushed moments ago`);
+            return;
+        }
         const { cooldown, stamps } =
             trigger === SyncTrigger.TimeFailure
                 ? { cooldown: TIME_FAILURE_SYNC_COOLDOWN, stamps: this.#lastTimeFailureSyncMs }
@@ -243,6 +257,7 @@ export class TimeSyncManager extends NodeProcessor {
             return;
         }
         stamps.set(peer, Time.nowMs);
+        this.#lastSyncMs.set(peer, Time.nowMs);
         const promise = this.#connector
             .syncTime(peer)
             .then(() => logger.info(`Synced time on node ${formatNodeId(peer)}`))
@@ -264,11 +279,17 @@ export class TimeSyncManager extends NodeProcessor {
         this.#inFlightSyncs.clear();
         this.#lastReconnectSyncMs.clear();
         this.#lastTimeFailureSyncMs.clear();
+        this.#lastSyncMs.clear();
         logger.info("Time sync manager stopped");
     }
 
     protected override shouldProcess(peer: PeerAddress): boolean {
-        return this.#connector.nodeConnected(peer) && !this.#inFlightSyncs.has(peer);
+        return this.#connector.nodeConnected(peer) && !this.#inFlightSyncs.has(peer) && !this.#syncedRecently(peer);
+    }
+
+    #syncedRecently(peer: PeerAddress): boolean {
+        const last = this.#lastSyncMs.get(peer);
+        return last !== undefined && Time.nowMs - last < RECENT_SYNC_GUARD;
     }
 
     /**
@@ -290,6 +311,7 @@ export class TimeSyncManager extends NodeProcessor {
     }
 
     protected override async processNode(peer: PeerAddress): Promise<void> {
+        this.#lastSyncMs.set(peer, Time.nowMs);
         // Register in #inFlightSyncs so a concurrent trigger sync (syncNode) for the same
         // peer dedupes against the periodic push instead of double-sending.
         const promise = this.#connector
@@ -316,11 +338,13 @@ export class TimeSyncManager extends NodeProcessor {
         }
     }
 
-    protected override onCycleComplete(processedCount: number, _intervalFormatted: string): void {
+    protected override onCycleComplete(processedCount: number, intervalFormatted: string): void {
         if (processedCount > 0) {
+            // The interval comes from the timer, not RESYNC_INTERVAL: a cycle brought forward for an
+            // offset change is armed for hours, and naming a day here would contradict it.
             logger.info(
                 `Periodic resync complete: synced ${this.#cycleSyncedCount} of ${processedCount} nodes. ` +
-                    `Next resync in ${Duration.format(RESYNC_INTERVAL)}`,
+                    `Next resync in ${intervalFormatted}`,
             );
         }
     }
