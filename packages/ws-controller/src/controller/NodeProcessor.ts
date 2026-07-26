@@ -116,10 +116,16 @@ export abstract class NodeProcessor {
     async #processAll(): Promise<void> {
         if (this.#isProcessing) return;
 
-        const nextInterval = this.nextCycleDelay();
-        if (this.#timer.interval !== nextInterval) {
-            this.#applyInterval(nextInterval);
+        // A throw here would skip the finally below, leaving the timer stopped and this processor
+        // dead until a peer re-registers. The cadence is never worth that.
+        let nextInterval: Duration;
+        try {
+            nextInterval = this.nextCycleDelay();
+        } catch (error) {
+            logger.warn("Falling back to the target interval, computing the next cycle delay failed:", error);
+            nextInterval = this.#targetInterval;
         }
+        this.#applyInterval(nextInterval);
 
         this.#isProcessing = true;
         let processedCount = 0;

@@ -268,7 +268,15 @@ export class TimeSyncManager extends NodeProcessor {
      */
     protected override nextCycleDelay(): Duration {
         const nowMs = Time.nowMs;
-        return Millis(resyncDelayMs(nowMs, this.#offsetChangeLookup(nowMs)));
+        let nextChangeMs: number | null = null;
+        try {
+            nextChangeMs = this.#offsetChangeLookup(nowMs);
+        } catch (error) {
+            // Bringing the cycle forward is an optimization; the zone lookup rests on Intl and the
+            // host's zone name, neither of which is worth a missed resync.
+            logger.warn("Could not determine the next time zone offset change:", error);
+        }
+        return Millis(resyncDelayMs(nowMs, nextChangeMs));
     }
 
     protected override async processNode(peer: PeerAddress): Promise<void> {

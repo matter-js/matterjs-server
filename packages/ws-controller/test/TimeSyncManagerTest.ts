@@ -275,6 +275,34 @@ describe("TimeSyncManager", () => {
         });
     });
 
+    describe("offset lookup failure", () => {
+        it("keeps syncing and rescheduling when the lookup throws", async () => {
+            const failing = new TimeSyncManager(connector, () => {
+                throw new Error("zone lookup exploded");
+            });
+            try {
+                connector.setConnected(PEER_1);
+                failing.registerNode(PEER_1, makeTimeSyncAttrs());
+
+                // The delay is computed before the cycle body, so a throw used to abort the cycle
+                // before the finally that restarts the timer, stopping resyncs for good.
+                await MockTime.advance(PAST_STARTUP_MS);
+                await MockTime.yield3();
+                expect(connector.syncCalls.length, "first cycle must still run").to.be.greaterThan(0);
+
+                const afterFirst = connector.syncCalls.length;
+                for (let i = 0; i < 3; i++) {
+                    await MockTime.advance(PAST_STARTUP_MS);
+                    await MockTime.yield3();
+                }
+                expect(connector.syncCalls.length, "timer must still be scheduled").to.be.greaterThan(afterFirst);
+            } finally {
+                connector.resolveAll();
+                await failing.stop();
+            }
+        });
+    });
+
     describe("startup window", () => {
         it("defers a trigger sync until the first periodic cycle", async () => {
             connector.setConnected(PEER_1);
