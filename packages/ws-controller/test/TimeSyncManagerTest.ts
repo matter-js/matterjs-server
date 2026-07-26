@@ -4,12 +4,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { FabricIndex, NodeId } from "@matter/main";
+import { FabricIndex, Hours, Minutes, NodeId, Seconds } from "@matter/main";
 import { PeerAddress, PeerAddressSet } from "@matter/main/protocol";
 import {
     dstOffsetListMaxSize,
     hasTimeSyncCluster,
     hasTimeZoneFeature,
+    resyncDelayMs,
+    startupDelayMs,
     TimeSyncConnector,
     TimeSyncManager,
 } from "../src/controller/TimeSyncManager.js";
@@ -19,7 +21,7 @@ const TIME_SYNC_CLUSTER_ID = 0x0038; // 56 decimal
 const ONE_MINUTE_MS = 60_000;
 const ONE_DAY_MS = 24 * 60 * ONE_MINUTE_MS;
 
-// Startup delay is random 30–60 min; advancing 61 min always fires it
+// Startup delay is 3 min plus 10 s per commissioned node; advancing 61 min always fires it
 const PAST_STARTUP_MS = 61 * ONE_MINUTE_MS;
 
 const PEER_1 = PeerAddress({ fabricIndex: FabricIndex(1), nodeId: NodeId(1) });
@@ -33,6 +35,7 @@ class StubConnector implements TimeSyncConnector {
     readonly syncCalls: PeerAddress[] = [];
     private readonly _connected = new PeerAddressSet();
     slowSync = false;
+    nodeCount = 0;
     readonly syncResolvers: Array<() => void> = [];
 
     setConnected(peer: PeerAddress): void {
@@ -41,6 +44,10 @@ class StubConnector implements TimeSyncConnector {
 
     nodeConnected(peer: PeerAddress): boolean {
         return this._connected.has(peer);
+    }
+
+    commissionedNodeCount(): number {
+        return this.nodeCount;
     }
 
     async syncTime(peer: PeerAddress): Promise<void> {
@@ -103,6 +110,46 @@ describe("dstOffsetListMaxSize", () => {
     });
 });
 
+describe("startupDelayMs", () => {
+    it("is 3 minutes plus 10 seconds per commissioned node", () => {
+        expect(startupDelayMs(0)).to.equal(Minutes(3));
+        expect(startupDelayMs(12)).to.equal(Minutes(5));
+        expect(startupDelayMs(100)).to.equal(Minutes(3) + Seconds(1000));
+    });
+
+    it("is deterministic, so restarts do not vary the first sync", () => {
+        expect(startupDelayMs(7)).to.equal(startupDelayMs(7));
+    });
+});
+
+describe("resyncDelayMs", () => {
+    const NOW = 1_700_000_000_000;
+
+    it("uses the full interval when no offset change is in view", () => {
+        expect(resyncDelayMs(NOW, null)).to.equal(Hours(24));
+    });
+
+    it("lands a minute past an offset change inside the interval", () => {
+        expect(resyncDelayMs(NOW, NOW + Hours(5))).to.equal(Hours(5) + Minutes(1));
+    });
+
+    it("uses the full interval when the change falls beyond it", () => {
+        expect(resyncDelayMs(NOW, NOW + Hours(30))).to.equal(Hours(24));
+        // A change exactly at the interval must not schedule past it.
+        expect(resyncDelayMs(NOW, NOW + Hours(24))).to.equal(Hours(24));
+    });
+
+    it("still clears the floor for a change moments away, via the margin", () => {
+        expect(resyncDelayMs(NOW, NOW + 1000)).to.equal(Minutes(1) + 1000);
+        expect(resyncDelayMs(NOW, NOW)).to.equal(Minutes(1));
+    });
+
+    it("defers a change whose instant has already passed", () => {
+        expect(resyncDelayMs(NOW, NOW - Hours(1))).to.equal(Hours(24));
+        expect(resyncDelayMs(NOW, NOW - Minutes(2))).to.equal(Hours(24));
+    });
+});
+
 describe("TimeSyncManager", () => {
     let connector: StubConnector;
     let manager: TimeSyncManager;
@@ -110,7 +157,8 @@ describe("TimeSyncManager", () => {
     beforeEach(() => {
         MockTime.reset();
         connector = new StubConnector();
-        manager = new TimeSyncManager(connector);
+        // No offset change in view, so these cases see the plain 24 h cadence.
+        manager = new TimeSyncManager(connector, () => null);
     });
 
     afterEach(async () => {
@@ -285,6 +333,31 @@ describe("TimeSyncManager", () => {
             manager.syncNode(PEER_1);
             await MockTime.yield3();
             expect(connector.syncCalls.length).to.equal(0);
+        });
+    });
+
+    describe("offset-change lookup", () => {
+        it("consults the lookup when scheduling the cycle that follows a sync", async () => {
+            const lookupCalls = new Array<number>();
+            const probed = new TimeSyncManager(connector, fromMs => {
+                lookupCalls.push(fromMs);
+                return null;
+            });
+            try {
+                connector.setConnected(PEER_1);
+                probed.registerNode(PEER_1, makeTimeSyncAttrs());
+                expect(lookupCalls.length, "not consulted before the first cycle").to.equal(0);
+
+                await MockTime.advance(PAST_STARTUP_MS);
+                await MockTime.yield3();
+
+                expect(connector.syncCalls.length).to.equal(1);
+                expect(lookupCalls.length).to.be.greaterThan(0);
+                expect(lookupCalls[0]).to.be.greaterThan(0);
+            } finally {
+                connector.resolveAll();
+                await probed.stop();
+            }
         });
     });
 

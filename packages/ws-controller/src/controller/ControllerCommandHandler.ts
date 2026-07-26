@@ -224,6 +224,7 @@ export class ControllerCommandHandler {
             this.#timeSyncManager = new TimeSyncManager({
                 syncTime: peer => this.#syncNodeTime(peer.nodeId),
                 nodeConnected: peer => !!(this.#nodes.has(peer.nodeId) && this.#nodes.get(peer.nodeId).isConnected),
+                commissionedNodeCount: () => this.#controller.getCommissionedNodes().length,
             });
         }
     }

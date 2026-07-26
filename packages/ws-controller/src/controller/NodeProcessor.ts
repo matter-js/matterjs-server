@@ -9,6 +9,9 @@ import { PeerAddress, PeerAddressSet } from "@matter/main/protocol";
 
 const logger = Logger.get("NodeProcessor");
 
+// Timer.interval rejects anything outside the 32-bit signed range.
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
 /**
  * Abstract base class for timer-driven periodic processing of registered nodes.
  * Handles timer lifecycle, node registration, and the per-node processing loop
@@ -69,6 +72,21 @@ export abstract class NodeProcessor {
         this.#timer.start();
     }
 
+    /**
+     * Override the delay before the next cycle. Only takes effect while no cycle is scheduled or
+     * running, so callers must apply it before scheduleIfNeeded() starts the timer.
+     */
+    protected setNextCycleDelay(delayMs: number): boolean {
+        if (this.#timer.isRunning || this.#isProcessing || this.#closed) return false;
+        if (!Number.isFinite(delayMs) || delayMs < 0) {
+            // A NaN passes Timer.interval's range check and then fires immediately, every cycle.
+            logger.warn(`Ignoring invalid cycle delay ${delayMs}`);
+            return false;
+        }
+        this.#timer.interval = Millis(Math.min(delayMs, MAX_TIMER_DELAY_MS));
+        return true;
+    }
+
     async stop(): Promise<void> {
         this.#closed = true;
         this.#currentDelayPromise?.cancel(new Error("Close"));
@@ -85,11 +103,17 @@ export abstract class NodeProcessor {
     /** Called after a full processing cycle completes. Override for cycle-complete logging. */
     protected onCycleComplete(_processedCount: number, _intervalFormatted: string): void {}
 
+    /** Delay before the cycle that follows this one. Override to vary the cadence. */
+    protected nextCycleDelay(): Duration {
+        return this.#targetInterval;
+    }
+
     async #processAll(): Promise<void> {
         if (this.#isProcessing) return;
 
-        if (this.#timer.interval !== this.#targetInterval) {
-            this.#timer.interval = this.#targetInterval;
+        const nextInterval = this.nextCycleDelay();
+        if (this.#timer.interval !== nextInterval) {
+            this.#timer.interval = nextInterval;
         }
 
         this.#isProcessing = true;

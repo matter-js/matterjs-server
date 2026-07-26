@@ -8,20 +8,21 @@
  * Handles time synchronization for nodes with the TimeSynchronization cluster.
  * Syncs time on three triggers:
  * 1. Node connects/reconnects after startup (immediate, once startup window has elapsed)
- * 2. Periodic resync every 24 hours
+ * 2. Periodic resync every 24 hours, brought forward when the host zone changes offset sooner
  * 3. Reactive resync when a node emits a timeFailure event (driven externally via syncNode())
  *
- * A startup window of 30–60 minutes prevents syncing during initial node connection
- * while the host's NTP is still stabilizing. This manager must only be enabled when
- * the host time source is known to be reliable (see --enable-time-sync CLI flag).
+ * A startup window scaled to the number of commissioned nodes prevents syncing while nodes are
+ * still being initialized. This manager must only be enabled when the host time source is known
+ * to be reliable (see --enable-time-sync CLI flag).
  */
 
-import { Duration, Hours, Logger, Minutes, Time } from "@matter/main";
+import { Duration, Hours, Logger, Millis, Minutes, Seconds, Time } from "@matter/main";
 import { TimeSynchronization } from "@matter/main/clusters";
 import { PeerAddress, PeerAddressMap } from "@matter/main/protocol";
 import { StatusResponseError } from "@matter/main/types";
 import { AttributesData } from "../types/CommandHandler.js";
 import { formatNodeId } from "../util/formatNodeId.js";
+import { nextOffsetChangeMs, resolveHostTimeZone, timeZonePlan } from "../util/hostTimeZone.js";
 import { NodeProcessor } from "./NodeProcessor.js";
 
 const logger = Logger.get("TimeSyncManager");
@@ -35,6 +36,18 @@ export const TIME_FAILURE_EVENT_ID = 0x03;
 // Periodic resync interval: 24 hours
 const RESYNC_INTERVAL = Hours(24);
 
+// Startup window, scaled to the node count: nodes initialize at roughly 10 per minute, so this
+// clears initialization before the first sync without idling on small installations.
+const STARTUP_BASE_DELAY = Minutes(3);
+const STARTUP_DELAY_PER_NODE = Seconds(10);
+
+// Land past an upcoming offset change rather than on it, so the cycle sees the post-change zone
+// state and replaces any DST entry the node has just retired.
+const POST_CHANGE_MARGIN = Minutes(1);
+// Floor for a brought-forward cycle. A future change already clears it via POST_CHANGE_MARGIN; this
+// catches a lookup returning an instant that has already passed, which would otherwise fire at once.
+const MIN_ACCELERATED_DELAY = Minutes(1);
+
 // Minimum spacing between trigger-driven (reconnect / timeFailure) syncs for one peer.
 // The periodic path already caps its own cadence; this stops a flapping node or a device
 // repeatedly emitting timeFailure from storming setUtcTime commands.
@@ -43,7 +56,35 @@ const TRIGGER_SYNC_COOLDOWN = Hours(24);
 export interface TimeSyncConnector {
     syncTime(peer: PeerAddress): Promise<void>;
     nodeConnected(peer: PeerAddress): boolean;
+    commissionedNodeCount(): number;
 }
+
+/** Instant of the host zone's next offset change, or null when none is in view. */
+export type OffsetChangeLookup = (fromMs: number) => number | null;
+
+/** Delay before the first sync, long enough for node initialization to finish. */
+export function startupDelayMs(commissionedNodeCount: number): number {
+    return STARTUP_BASE_DELAY + commissionedNodeCount * STARTUP_DELAY_PER_NODE;
+}
+
+/**
+ * Delay before the next periodic cycle: normally the full interval, brought forward to just after an
+ * upcoming offset change so a node's retired DST entry is replaced promptly. A change nearer than the
+ * floor is left to the following cycle rather than scheduling a near-zero delay.
+ */
+export function resyncDelayMs(nowMs: number, nextChangeMs: number | null): number {
+    if (nextChangeMs === null) {
+        return RESYNC_INTERVAL;
+    }
+    const delay = nextChangeMs + POST_CHANGE_MARGIN - nowMs;
+    return delay < MIN_ACCELERATED_DELAY || delay >= RESYNC_INTERVAL ? RESYNC_INTERVAL : delay;
+}
+
+const defaultOffsetChangeLookup: OffsetChangeLookup = fromMs => {
+    const zone = resolveHostTimeZone();
+    // A node with less capacity cannot surface a nearer boundary than the cluster maxima do.
+    return nextOffsetChangeMs(timeZonePlan(zone, fromMs, { maxRegimes: 2, maxWindows: 2 }), fromMs);
+};
 
 /** TimeNotAccepted means the node keeps a time source it prefers — expected, not an error. */
 function logSyncFailure(prefix: string, peer: PeerAddress, error: unknown) {
@@ -77,11 +118,18 @@ export function dstOffsetListMaxSize(attributes: AttributesData): number | undef
     return typeof value === "number" ? value : undefined;
 }
 
+/** TimeZoneListMaxSize (attribute 10) if the node reports it as a number. */
+export function timeZoneListMaxSize(attributes: AttributesData): number | undefined {
+    const value = attributes[`0/${TIME_SYNC_CLUSTER_ID}/10`];
+    return typeof value === "number" ? value : undefined;
+}
+
 /**
  * Manages time synchronization for nodes with the TimeSynchronization cluster.
  */
 export class TimeSyncManager extends NodeProcessor {
     readonly #connector: TimeSyncConnector;
+    readonly #offsetChangeLookup: OffsetChangeLookup;
     // Tracks in-flight immediate syncs per node to prevent parallel syncs
     #inFlightSyncs = new PeerAddressMap<Promise<void>>();
     // Last trigger-driven sync attempt per node, used to enforce TRIGGER_SYNC_COOLDOWN
@@ -89,12 +137,10 @@ export class TimeSyncManager extends NodeProcessor {
     // True after the first periodic resync cycle, enabling immediate syncs on reconnect
     #startupComplete = false;
 
-    constructor(connector: TimeSyncConnector) {
-        // Startup window: random 30–60 minutes to stagger across server restarts and
-        // allow NTP to stabilize before pushing time to devices
-        const startupDelayMs = Minutes(30) + Math.floor(Math.random() * Minutes(30));
-        super("time-sync-resync", startupDelayMs, RESYNC_INTERVAL);
+    constructor(connector: TimeSyncConnector, offsetChangeLookup: OffsetChangeLookup = defaultOffsetChangeLookup) {
+        super("time-sync-resync", STARTUP_BASE_DELAY, RESYNC_INTERVAL);
         this.#connector = connector;
+        this.#offsetChangeLookup = offsetChangeLookup;
     }
 
     /**
@@ -114,9 +160,23 @@ export class TimeSyncManager extends NodeProcessor {
         }
 
         // Only sync immediately if the startup window has elapsed. During startup,
-        // the first periodic resync handles all nodes once NTP has stabilized.
+        // the first periodic resync handles all nodes once initialization is done.
         if (this.#startupComplete) {
             this.syncNode(peer);
+        } else {
+            // The commissioned count is known in full by the first registration, so this lands once
+            // and later registrations are no-ops against the already-running timer.
+            let nodeCount = 0;
+            try {
+                nodeCount = this.#connector.commissionedNodeCount();
+            } catch (error) {
+                // Scaling the delay is an optimization; it must not abort the node's registration.
+                logger.warn("Could not determine the commissioned node count:", error);
+            }
+            const delay = startupDelayMs(nodeCount);
+            if (this.setNextCycleDelay(delay)) {
+                logger.info(`First time synchronization in ${Duration.format(Millis(delay))}`);
+            }
         }
 
         this.scheduleIfNeeded();
@@ -175,6 +235,16 @@ export class TimeSyncManager extends NodeProcessor {
 
     protected override shouldProcess(peer: PeerAddress): boolean {
         return this.#connector.nodeConnected(peer) && !this.#inFlightSyncs.has(peer);
+    }
+
+    /**
+     * Bring the next cycle forward to just after the host zone's next offset change. Nodes apply the
+     * change themselves from the DST list they already hold; resyncing refreshes a list whose final
+     * entry has just expired, which a node is otherwise entitled to discard entirely.
+     */
+    protected override nextCycleDelay(): Duration {
+        const nowMs = Time.nowMs;
+        return Millis(resyncDelayMs(nowMs, this.#offsetChangeLookup(nowMs)));
     }
 
     protected override async processNode(peer: PeerAddress): Promise<void> {
