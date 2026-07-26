@@ -29,6 +29,8 @@ const PAST_STARTUP_MS = 61 * ONE_MINUTE_MS;
 
 const PEER_1 = PeerAddress({ fabricIndex: FabricIndex(1), nodeId: NodeId(1) });
 const PEER_2 = PeerAddress({ fabricIndex: FabricIndex(1), nodeId: NodeId(2) });
+const PEER_3 = PeerAddress({ fabricIndex: FabricIndex(1), nodeId: NodeId(3) });
+const PEER_4 = PeerAddress({ fabricIndex: FabricIndex(1), nodeId: NodeId(4) });
 
 function makeTimeSyncAttrs(): AttributesData {
     return { [`0/${TIME_SYNC_CLUSTER_ID}/1`]: 1 };
@@ -38,6 +40,7 @@ class StubConnector implements TimeSyncConnector {
     readonly syncCalls: PeerAddress[] = [];
     private readonly _connected = new PeerAddressSet();
     slowSync = false;
+    failSync = false;
     nodeCount = 0;
     readonly syncResolvers: Array<() => void> = [];
 
@@ -58,6 +61,9 @@ class StubConnector implements TimeSyncConnector {
             await new Promise<void>(resolve => this.syncResolvers.push(resolve));
         }
         this.syncCalls.push(peer);
+        if (this.failSync) {
+            throw new Error("sync exploded");
+        }
     }
 
     resolveAll(): void {
@@ -275,6 +281,27 @@ describe("TimeSyncManager", () => {
         });
     });
 
+    describe("first cycle", () => {
+        it("syncs a node that registers while the cycle is already running", async () => {
+            // Three peers so the cycle is still between nodes when the late one arrives; the peer list
+            // is snapshotted at cycle start, so the late node can only be covered by the direct path.
+            for (const peer of [PEER_1, PEER_2, PEER_3]) {
+                connector.setConnected(peer);
+                manager.registerNode(peer, makeTimeSyncAttrs());
+            }
+
+            await MockTime.advance(PAST_STARTUP_MS);
+            await MockTime.yield3();
+
+            connector.setConnected(PEER_4);
+            manager.registerNode(PEER_4, makeTimeSyncAttrs());
+            await MockTime.yield3();
+
+            const synced = connector.syncCalls.map(peer => peer.nodeId);
+            expect(synced.includes(PEER_4.nodeId), `late registrant missing from ${synced}`).to.equal(true);
+        });
+    });
+
     describe("cadence wiring", () => {
         // MockTimer ignores interval assignment, so the timer cannot show which delay was chosen;
         // assert the hook's own return value instead.
@@ -402,6 +429,18 @@ describe("TimeSyncManager", () => {
             manager.syncNode(PEER_1, SyncTrigger.TimeFailure);
             await MockTime.yield3();
             expect(connector.syncCalls.length, "a node asking for a time is answered").to.equal(afterHour + 1);
+        });
+
+        it("does not let a failed reconnect attempt spend the timeFailure leash", async () => {
+            connector.failSync = true;
+            manager.syncNode(PEER_1, SyncTrigger.Reconnect);
+            await MockTime.yield3();
+            expect(connector.syncCalls.length, "the reconnect attempt happened and failed").to.equal(1);
+
+            connector.failSync = false;
+            manager.syncNode(PEER_1, SyncTrigger.TimeFailure);
+            await MockTime.yield3();
+            expect(connector.syncCalls.length, "a node asking for a time must still be answered").to.equal(2);
         });
 
         it("holds off a timeFailure repeated inside the hour", async () => {

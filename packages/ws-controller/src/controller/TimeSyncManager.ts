@@ -150,8 +150,12 @@ export class TimeSyncManager extends NodeProcessor {
     readonly #offsetChangeLookup: OffsetChangeLookup;
     // Tracks in-flight immediate syncs per node to prevent parallel syncs
     #inFlightSyncs = new PeerAddressMap<Promise<void>>();
-    // Last trigger-driven sync attempt per node, measured against the cooldown for its trigger
-    #lastTriggerSyncMs = new PeerAddressMap<number>();
+    // Last attempt per node, kept per trigger: a reconnect attempt must not spend the shorter leash
+    // a timeFailure is entitled to, least of all when that attempt failed.
+    #lastReconnectSyncMs = new PeerAddressMap<number>();
+    #lastTimeFailureSyncMs = new PeerAddressMap<number>();
+    // Successful syncs in the running cycle; the base class counts attempts.
+    #cycleSyncedCount = 0;
     // True after the first periodic resync cycle, enabling immediate syncs on reconnect
     #startupComplete = false;
 
@@ -204,7 +208,8 @@ export class TimeSyncManager extends NodeProcessor {
      * Unregister a node from time sync tracking.
      */
     unregisterNode(peer: PeerAddress): void {
-        this.#lastTriggerSyncMs.delete(peer);
+        this.#lastReconnectSyncMs.delete(peer);
+        this.#lastTimeFailureSyncMs.delete(peer);
         if (this.unregisterPeer(peer)) {
             logger.info(`Unregistered node ${formatNodeId(peer)} from time synchronization`);
         }
@@ -225,15 +230,18 @@ export class TimeSyncManager extends NodeProcessor {
             logger.debug(`Time sync already in progress for node ${formatNodeId(peer)}, skipping`);
             return;
         }
-        const cooldown = trigger === SyncTrigger.TimeFailure ? TIME_FAILURE_SYNC_COOLDOWN : RECONNECT_SYNC_COOLDOWN;
-        const lastSync = this.#lastTriggerSyncMs.get(peer);
+        const { cooldown, stamps } =
+            trigger === SyncTrigger.TimeFailure
+                ? { cooldown: TIME_FAILURE_SYNC_COOLDOWN, stamps: this.#lastTimeFailureSyncMs }
+                : { cooldown: RECONNECT_SYNC_COOLDOWN, stamps: this.#lastReconnectSyncMs };
+        const lastSync = stamps.get(peer);
         if (lastSync !== undefined && Time.nowMs - lastSync < cooldown) {
             logger.debug(
                 `Time sync for node ${formatNodeId(peer)} skipped, within ${Duration.format(cooldown)} ${trigger} cooldown`,
             );
             return;
         }
-        this.#lastTriggerSyncMs.set(peer, Time.nowMs);
+        stamps.set(peer, Time.nowMs);
         const promise = this.#connector
             .syncTime(peer)
             .then(() => logger.info(`Synced time on node ${formatNodeId(peer)}`))
@@ -253,7 +261,8 @@ export class TimeSyncManager extends NodeProcessor {
         await super.stop();
         await Promise.allSettled(this.#inFlightSyncs.values());
         this.#inFlightSyncs.clear();
-        this.#lastTriggerSyncMs.clear();
+        this.#lastReconnectSyncMs.clear();
+        this.#lastTimeFailureSyncMs.clear();
         logger.info("Time sync manager stopped");
     }
 
@@ -284,7 +293,10 @@ export class TimeSyncManager extends NodeProcessor {
         // peer dedupes against the periodic push instead of double-sending.
         const promise = this.#connector
             .syncTime(peer)
-            .then(() => logger.info(`Periodic resync: synced time on node ${formatNodeId(peer)}`))
+            .then(() => {
+                this.#cycleSyncedCount++;
+                logger.info(`Periodic resync: synced time on node ${formatNodeId(peer)}`);
+            })
             .catch(error => logSyncFailure("Periodic resync: ", peer, error))
             .finally(() => {
                 this.#inFlightSyncs.delete(peer);
@@ -293,14 +305,21 @@ export class TimeSyncManager extends NodeProcessor {
         await promise;
     }
 
-    protected override onCycleComplete(processedCount: number, _intervalFormatted: string): void {
+    protected override onCycleStart(): void {
+        this.#cycleSyncedCount = 0;
         if (!this.#startupComplete) {
+            // Opening the window here, not on completion: a node registering mid-cycle is absent from
+            // the peer snapshot, so it needs the immediate-sync path to be available already.
             this.#startupComplete = true;
             logger.info("Time sync startup window complete, immediate syncs enabled on reconnect");
         }
+    }
+
+    protected override onCycleComplete(processedCount: number, _intervalFormatted: string): void {
         if (processedCount > 0) {
             logger.info(
-                `Periodic resync complete: synced ${processedCount} nodes. Next resync in ${Duration.format(RESYNC_INTERVAL)}`,
+                `Periodic resync complete: synced ${this.#cycleSyncedCount} of ${processedCount} nodes. ` +
+                    `Next resync in ${Duration.format(RESYNC_INTERVAL)}`,
             );
         }
     }

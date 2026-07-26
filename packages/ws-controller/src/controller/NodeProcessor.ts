@@ -110,6 +110,13 @@ export abstract class NodeProcessor {
     /** Perform work for a single peer. Must handle its own errors. */
     protected abstract processNode(peer: PeerAddress): Promise<void>;
 
+    /**
+     * Called once a cycle is committed to running, before the peer list is snapshotted. A peer
+     * registering after this point is not in the snapshot, so anything a subclass gates on "the first
+     * cycle has run" must open here rather than in onCycleComplete, or that peer falls between the two.
+     */
+    protected onCycleStart(): void {}
+
     /** Called after a full processing cycle completes. Override for cycle-complete logging. */
     protected onCycleComplete(_processedCount: number, _intervalFormatted: string): void {}
 
@@ -136,6 +143,7 @@ export abstract class NodeProcessor {
         let processedCount = 0;
 
         try {
+            this.onCycleStart();
             const peers = Array.from(this.#peers);
             for (let i = 0; i < peers.length; i++) {
                 if (this.#closed) break;
