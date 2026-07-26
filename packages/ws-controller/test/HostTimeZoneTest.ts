@@ -288,9 +288,8 @@ describe("hostTimeZone", () => {
 
         it("agrees with the zone's true offset across behaviours, dates and list sizes", function () {
             this.timeout(20_000);
-            // One zone per behaviour the decomposition has to get right. Breadth across every IANA
-            // zone and year is covered by the offline sweep, not here, so this stays inside the
-            // per-test timeout on a slow runner: each plan day-steps its whole scan range.
+            // One zone per behaviour: each plan day-steps its whole scan range, so breadth across
+            // every IANA zone and year belongs to the offline sweep.
             const zones = [
                 "Europe/Berlin", // northern seasonal DST
                 "Australia/Sydney", // southern, window spans New Year
@@ -347,7 +346,6 @@ describe("hostTimeZone", () => {
 
                         expect(dstWindows.length, label).to.be.at.most(maxWindows);
                         dstWindows.forEach((window, index) => {
-                            // Only the final entry may be open-ended, and ValidUntil must follow ValidStarting.
                             if (window.validUntilMs === null) {
                                 expect(index, label).to.equal(dstWindows.length - 1);
                             } else {
@@ -355,7 +353,6 @@ describe("hostTimeZone", () => {
                                 // bound left to check it against is the sync instant.
                                 expect(window.validUntilMs, label).to.be.greaterThan(window.validStartingMs ?? atMs);
                             }
-                            // Entries must be sorted and must not overlap the previous one.
                             const previous = dstWindows[index - 1];
                             if (previous !== undefined) {
                                 expect(window.validStartingMs, label).to.be.at.least(previous.validUntilMs ?? 0);
