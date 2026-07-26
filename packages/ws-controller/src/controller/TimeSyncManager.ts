@@ -9,11 +9,14 @@
  * Syncs time on three triggers:
  * 1. Node connects/reconnects after startup (immediate, once startup window has elapsed)
  * 2. Periodic resync every 24 hours, brought forward when the host zone changes offset sooner
- * 3. Reactive resync when a node emits a timeFailure event (driven externally via syncNode())
+ * 3. Reactive resync when a node emits a timeFailure event (driven externally via syncNode()),
+ *    held off far more briefly than a reconnect because the node is asking to be given a time
  *
  * A startup window scaled to the number of commissioned nodes prevents syncing while nodes are
- * still being initialized. This manager must only be enabled when the host time source is known
- * to be reliable (see --enable-time-sync CLI flag).
+ * still being initialized, including on the reactive path: a restart can leave many nodes without
+ * a time at once, and answering each one individually is the traffic the window exists to avoid.
+ * This manager must only be enabled when the host time source is known to be reliable (see
+ * --enable-time-sync CLI flag).
  */
 
 import { Duration, Hours, Logger, Millis, Minutes, Seconds, Time } from "@matter/main";
@@ -48,10 +51,22 @@ const POST_CHANGE_MARGIN = Minutes(1);
 // catches a lookup returning an instant that has already passed, which would otherwise fire at once.
 const MIN_ACCELERATED_DELAY = Minutes(1);
 
-// Minimum spacing between trigger-driven (reconnect / timeFailure) syncs for one peer.
-// The periodic path already caps its own cadence; this stops a flapping node or a device
-// repeatedly emitting timeFailure from storming setUtcTime commands.
-const TRIGGER_SYNC_COOLDOWN = Hours(24);
+// Minimum spacing between reconnect-driven syncs for one peer. A reconnect says nothing about
+// whether the node's time is still good, so a flapping node must not storm setUtcTime.
+const RECONNECT_SYNC_COOLDOWN = Hours(24);
+
+// A timeFailure event is the node reporting it has no usable time, so it is answered on a much
+// shorter leash than a reconnect. The spec rate-limits the node to one such event per hour
+// (§11.17.10.4), which already bounds this path without a long cooldown of our own.
+const TIME_FAILURE_SYNC_COOLDOWN = Hours(1);
+
+/** Why a sync was triggered outside the periodic cycle. Decides how long the peer is then held off. */
+export enum SyncTrigger {
+    /** The node reconnected; its time may well still be correct. */
+    Reconnect = "reconnect",
+    /** The node reported it has no usable time and is asking to be given one. */
+    TimeFailure = "timeFailure",
+}
 
 export interface TimeSyncConnector {
     syncTime(peer: PeerAddress): Promise<void>;
@@ -196,16 +211,22 @@ export class TimeSyncManager extends NodeProcessor {
      * Trigger an immediate time sync for a node (fire-and-forget with deduplication).
      * Called externally when a timeFailure event is received from the node.
      */
-    syncNode(peer: PeerAddress): void {
+    syncNode(peer: PeerAddress, trigger = SyncTrigger.Reconnect): void {
         if (this.closed || !this.hasPeer(peer) || !this.#connector.nodeConnected(peer)) return;
+        if (!this.#startupComplete) {
+            // Nodes are still being initialized; the first periodic cycle covers every peer shortly.
+            logger.debug(`Time sync for node ${formatNodeId(peer)} deferred to the first periodic cycle`);
+            return;
+        }
         if (this.#inFlightSyncs.has(peer)) {
             logger.debug(`Time sync already in progress for node ${formatNodeId(peer)}, skipping`);
             return;
         }
+        const cooldown = trigger === SyncTrigger.TimeFailure ? TIME_FAILURE_SYNC_COOLDOWN : RECONNECT_SYNC_COOLDOWN;
         const lastSync = this.#lastTriggerSyncMs.get(peer);
-        if (lastSync !== undefined && Time.nowMs - lastSync < TRIGGER_SYNC_COOLDOWN) {
+        if (lastSync !== undefined && Time.nowMs - lastSync < cooldown) {
             logger.debug(
-                `Time sync for node ${formatNodeId(peer)} skipped, within ${Duration.format(TRIGGER_SYNC_COOLDOWN)} cooldown`,
+                `Time sync for node ${formatNodeId(peer)} skipped, within ${Duration.format(cooldown)} ${trigger} cooldown`,
             );
             return;
         }

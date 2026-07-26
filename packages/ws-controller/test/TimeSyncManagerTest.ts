@@ -12,6 +12,7 @@ import {
     hasTimeZoneFeature,
     resyncDelayMs,
     startupDelayMs,
+    SyncTrigger,
     TimeSyncConnector,
     TimeSyncManager,
 } from "../src/controller/TimeSyncManager.js";
@@ -19,7 +20,8 @@ import { AttributesData } from "../src/types/CommandHandler.js";
 
 const TIME_SYNC_CLUSTER_ID = 0x0038; // 56 decimal
 const ONE_MINUTE_MS = 60_000;
-const ONE_DAY_MS = 24 * 60 * ONE_MINUTE_MS;
+const ONE_HOUR_MS = 60 * ONE_MINUTE_MS;
+const ONE_DAY_MS = 24 * ONE_HOUR_MS;
 
 // Startup delay is 3 min plus 10 s per commissioned node; advancing 61 min always fires it
 const PAST_STARTUP_MS = 61 * ONE_MINUTE_MS;
@@ -266,6 +268,23 @@ describe("TimeSyncManager", () => {
         });
     });
 
+    describe("startup window", () => {
+        it("defers a trigger sync until the first periodic cycle", async () => {
+            connector.setConnected(PEER_1);
+            manager.registerNode(PEER_1, makeTimeSyncAttrs());
+
+            // A restart can leave many nodes reporting timeFailure at once, which is the traffic the
+            // window exists to avoid; the first cycle covers all of them together.
+            manager.syncNode(PEER_1, SyncTrigger.TimeFailure);
+            await MockTime.yield3();
+            expect(connector.syncCalls.length).to.equal(0);
+
+            await MockTime.advance(PAST_STARTUP_MS);
+            await MockTime.yield3();
+            expect(connector.syncCalls.length).to.be.greaterThan(0);
+        });
+    });
+
     describe("trigger sync cooldown", () => {
         beforeEach(() => {
             manager.registerNode(PEER_1, makeTimeSyncAttrs());
@@ -279,6 +298,34 @@ describe("TimeSyncManager", () => {
             expect(connector.syncCalls.length).to.equal(1);
 
             manager.syncNode(PEER_1); // within cooldown — dropped
+            await MockTime.yield3();
+            expect(connector.syncCalls.length).to.equal(1);
+        });
+
+        it("answers a timeFailure long before a reconnect would be allowed again", async () => {
+            manager.syncNode(PEER_1, SyncTrigger.Reconnect);
+            await MockTime.yield3();
+            expect(connector.syncCalls.length).to.equal(1);
+
+            await MockTime.advance(ONE_HOUR_MS);
+            await MockTime.yield3();
+            const afterHour = connector.syncCalls.length;
+
+            manager.syncNode(PEER_1, SyncTrigger.Reconnect);
+            await MockTime.yield3();
+            expect(connector.syncCalls.length, "reconnect stays held off for 24 h").to.equal(afterHour);
+
+            manager.syncNode(PEER_1, SyncTrigger.TimeFailure);
+            await MockTime.yield3();
+            expect(connector.syncCalls.length, "a node asking for a time is answered").to.equal(afterHour + 1);
+        });
+
+        it("holds off a timeFailure repeated inside the hour", async () => {
+            manager.syncNode(PEER_1, SyncTrigger.TimeFailure);
+            await MockTime.yield3();
+            expect(connector.syncCalls.length).to.equal(1);
+
+            manager.syncNode(PEER_1, SyncTrigger.TimeFailure);
             await MockTime.yield3();
             expect(connector.syncCalls.length).to.equal(1);
         });

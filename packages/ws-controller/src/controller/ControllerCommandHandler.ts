@@ -106,7 +106,7 @@ import { pingIp } from "../util/network.js";
 import { CustomClusterPoller } from "./CustomClusterPoller.js";
 import { Nodes } from "./Nodes.js";
 import { pushNodeTime, TimeSyncInvokers } from "./timeSyncCommands.js";
-import { TIME_FAILURE_EVENT_ID, TIME_SYNC_CLUSTER_ID, TimeSyncManager } from "./TimeSyncManager.js";
+import { SyncTrigger, TIME_FAILURE_EVENT_ID, TIME_SYNC_CLUSTER_ID, TimeSyncManager } from "./TimeSyncManager.js";
 import { attachWebRtcCallbackBridge } from "./WebRtcCallbackBridge.js";
 import {
     isTrackableWebRtcSession,
@@ -584,7 +584,7 @@ export class ControllerCommandHandler {
                 data.path.eventId === TIME_FAILURE_EVENT_ID
             ) {
                 logger.debug(`Received timeFailure event from node ${this.formatNode(nodeId)}, triggering time sync`);
-                this.#timeSyncManager.syncNode(this.#peerOf(nodeId));
+                this.#timeSyncManager.syncNode(this.#peerOf(nodeId), SyncTrigger.TimeFailure);
             }
         });
         nodeObservers.on(node.events.stateChanged, state => {
