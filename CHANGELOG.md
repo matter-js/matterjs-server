@@ -10,7 +10,7 @@ This page shows a detailed overview of the changes between versions without the 
 ## **WORK IN PROGRESS**
 
 - Feature: (lboue) Dashboard cluster view shows a "Semantic Tags (TagList)" panel on the Descriptor cluster
-- Feature: Thread nodes' neighbor and route tables are re-read a few minutes after startup and every 24h afterward; disabled together with the rest of the Thread diagnostics via `--disable-thread-diagnostics`
+- Enhancement: Thread nodes' neighbor and route tables are re-read a few minutes after startup and every 24h afterward; disabled together with the rest of the Thread diagnostics via `--disable-thread-diagnostics`
 - Enhancement: Optimized the Dashboard "Update Connection Data" dialog for sleepy ICD LIT devices
 - Enhancement: Optimized periodic node work (time synchronization, energy polling, Thread topology refresh) for sleepy ICD LIT devices
 - Fix: Fixes and enhances the DST determination, and sends a second TimeZone entry when the host zone has an upcoming permanent offset change, plus a closing DST entry when the device has room for one
