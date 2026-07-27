@@ -541,11 +541,20 @@ export class ControllerCommandHandler {
         return this.#controller.close();
     }
 
-    async #registerNode(nodeId: NodeId) {
-        const node = await this.#controller.getNode(nodeId);
+    /**
+     * Set up event observers for a node. Creates a new ObserverGroup and registers all event
+     * handlers. Safe to call multiple times — closes any existing observers before creating new ones.
+     *
+     * Sleepy end devices (ICDs) can lose their subscription during long idle periods. When matter.js
+     * re-establishes the subscription, the underlying event emitters may be replaced, orphaning old
+     * observers. This method re-wires observers to the current event emitters.
+     */
+    #setupNodeObservers(node: PairedNode): void {
+        const nodeId = node.nodeId;
         const attributeCache = this.#nodes.attributeCache;
 
-        // Per-node ObserverGroup so all subscriptions are cleaned up on decommission
+        this.#nodeObservers.get(nodeId)?.close();
+
         const nodeObservers = new ObserverGroup();
         this.#nodeObservers.set(nodeId, nodeObservers);
 
@@ -565,7 +574,6 @@ export class ControllerCommandHandler {
                 logger.info(
                     `Node ${this.formatNode(nodeId)} basic information changed, sending full node_updated in 6s`,
                 );
-                // TODO remove timer based refresh when migrating to the ClientNode API for events
                 const timer = Time.getTimer(`node-update-${nodeId}`, Seconds(6), () =>
                     this.#handleNodeStructureChange(node).catch(error =>
                         logger.warn(`Failed to handle structure change for node ${this.formatNode(nodeId)}:`, error),
@@ -576,7 +584,6 @@ export class ControllerCommandHandler {
         });
         nodeObservers.on(node.events.eventTriggered, data => {
             this.events.eventChanged.emit(nodeId, data);
-            // Filter timeFailure events to trigger time sync
             if (
                 this.#timeSyncManager !== undefined &&
                 data.path.clusterId === TIME_SYNC_CLUSTER_ID &&
@@ -606,6 +613,13 @@ export class ControllerCommandHandler {
         nodeObservers.on(node.events.nodeEndpointRemoved, endpointId =>
             this.events.nodeEndpointRemoved.emit(nodeId, endpointId),
         );
+    }
+
+    async #registerNode(nodeId: NodeId) {
+        const node = await this.#controller.getNode(nodeId);
+        const attributeCache = this.#nodes.attributeCache;
+
+        this.#setupNodeObservers(node);
 
         this.#nodes.set(nodeId, node);
 
@@ -682,6 +696,12 @@ export class ControllerCommandHandler {
                 const peer = this.#peerOf(nodeId);
                 this.#customClusterPoller.registerNode(peer, attributes);
                 this.#timeSyncManager?.registerNode(peer, attributes);
+            }
+            // Re-register observers to handle sleepy devices whose underlying event emitters may
+            // have been replaced during subscription re-establishment.
+            if (!fastReconnect) {
+                logger.debug(`Re-registering observers for node ${this.formatNode(nodeId)} after reconnection`);
+                this.#setupNodeObservers(node);
             }
         }
     }
