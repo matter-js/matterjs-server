@@ -404,9 +404,12 @@ describe("TimeSyncManager", () => {
                 await MockTime.yield3();
                 expect(connector.syncCalls.length, "first cycle must still run").to.be.greaterThan(0);
 
+                // The fallback delay is the full resync interval, and MockTime arms a timer restarted
+                // from inside its own callback relative to the end of the enclosing advance, so give
+                // the cycle several day-sized steps to land in.
                 const afterFirst = connector.syncCalls.length;
                 for (let i = 0; i < 3; i++) {
-                    await MockTime.advance(PAST_STARTUP_MS);
+                    await MockTime.advance(ONE_DAY_MS + ONE_MINUTE_MS);
                     await MockTime.yield3();
                 }
                 expect(connector.syncCalls.length, "timer must still be scheduled").to.be.greaterThan(afterFirst);

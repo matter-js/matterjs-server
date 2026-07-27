@@ -1,0 +1,6 @@
+# cluster-commands — non-obvious invariants
+
+- **Panel DOM reuse:** `matter-cluster-view` reuses panel elements across hash navigations (tag keyed by cluster id only). Every async flow must capture `const node = this.node` / `const endpoint = this.endpoint` before its first `await`, target the captured values, and guard post-await state writes with `BaseClusterCommands.isSameContext(node, endpoint)`. Guards go BEFORE the write/dialog, never after.
+- **Busy-flag resets:** ACL/Binding/BasicInformation reset `_busy`/`_saving` UNCONDITIONALLY in `finally` (avoids wedging a reused panel). The ICD panel instead resets only when `isSameContext` holds — safe solely because its `updated()` force-resets `_busy`/`_busyLabel` on node-id change AND IcdManagement is EP0-only. If ICD Management ever appears on a non-zero endpoint, that reset becomes reachable-stuck: make it unconditional then.
+- **Loaded-flag keys:** Binding keys its `_loadedKey` by node+endpoint; ICD (`#loadedForNode`) and ACL (`_loadedKey`) are node-only — justified because both clusters are EP0-only (ACL reads hardcode `0/31/0`). Endpoint-scoped panels must include the endpoint in their key.
+- **Incoming-event subscriptions** (e.g. chime's `addNodeEventListener`) correctly filter against LIVE `this.node`/`this.endpoint` — do not "fix" them to captured values; they are not request/response flows.

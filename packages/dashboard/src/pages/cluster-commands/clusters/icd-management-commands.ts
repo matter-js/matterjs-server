@@ -10,6 +10,7 @@ import "@material/web/progress/circular-progress";
 import "@material/web/radio/radio";
 import {
     ICD_MULTI_ADMIN_ERROR_CODE,
+    isLongIdleTimeCapable,
     ServerCommandError,
     type IcdStateData,
     type MatterNode,
@@ -24,7 +25,6 @@ import {
     ICD_CLUSTER_ID,
     icdInfo,
     isRegisteredByUs,
-    litSpecVersionOk,
     otherFabricClientCount,
     parseMultiAdminDetails,
     wakeInstruction,
@@ -142,12 +142,9 @@ export class IcdManagementClusterCommands extends BaseClusterCommands {
         return isRegisteredByUs(this._info.registeredClients, this.client.serverInfo?.controller_node_id);
     }
 
-    /** matter.js only treats a peer as LIT-capable with LITS feature AND spec version >= 1.4.0. */
+    /** The server's own IcdClient verdict wins; the attribute check is the fallback before it arrives. */
     private get _litSupported(): boolean {
-        return (
-            this._serverState?.lit_supported ??
-            (this._info.features.longIdleTimeSupport && litSpecVersionOk(this.node.attributes))
-        );
+        return this._serverState?.lit_supported ?? isLongIdleTimeCapable(this.node.attributes);
     }
 
     private get _actualMode(): IcdMode {

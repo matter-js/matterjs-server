@@ -9,7 +9,12 @@ import "@material/web/button/text-button";
 import "@material/web/checkbox/checkbox";
 import "@material/web/dialog/dialog";
 import { consume } from "@lit/context";
-import type { MatterClient, MatterNode } from "@matter-server/ws-client";
+import {
+    isLongIdleTimeDevice,
+    THREAD_TOPOLOGY_ATTRIBUTE_PATHS,
+    type MatterClient,
+    type MatterNode,
+} from "@matter-server/ws-client";
 import { mdiLoading } from "@mdi/js";
 import { LitElement, css, html, nothing, svg } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
@@ -23,11 +28,13 @@ declare global {
     }
 }
 
-/** Thread network attributes to read */
-const THREAD_ATTRIBUTE_PATHS = ["0/53/7", "0/53/8", "0/51/0"]; // NeighborTable, RouteTable, NetworkInterfaces
-
 /** WiFi network attributes to read */
 const WIFI_ATTRIBUTE_PATHS = ["0/54/0", "0/54/3", "0/54/4"]; // BSSID, Channel, RSSI
+
+// A LIT node answers when it next polls, which can be hours away. Give it a short grace period once
+// the other nodes are done, capped so one sleepy device cannot hold the dialog open.
+const LIT_GRACE_MS = 10_000;
+const LIT_MAX_WAIT_MS = 20_000;
 
 @customElement("update-connections-dialog")
 export class UpdateConnectionsDialog extends LitElement {
@@ -61,10 +68,20 @@ export class UpdateConnectionsDialog extends LitElement {
     /** Timeout ID for auto-close */
     private _timeoutId: ReturnType<typeof setTimeout> | null = null;
 
+    private _litTimeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    private _litGraceResolve: (() => void) | null = null;
+
     /** Track if we've already dispatched close event to prevent double-firing */
     private _hasClosedEvent: boolean = false;
 
     override firstUpdated(): void {
+        // A sleeping node cannot report its own link data in time, so its neighbours — which can — are
+        // the default target rather than an opt-in extra.
+        if (this._selectedIsLongIdleTime) {
+            this._includeNeighbors = true;
+        }
+
         // Open dialog when component is first rendered
         const dialog = this.shadowRoot?.querySelector("md-dialog") as HTMLElement & { show: () => void };
         dialog?.show();
@@ -77,6 +94,7 @@ export class UpdateConnectionsDialog extends LitElement {
             clearTimeout(this._timeoutId);
             this._timeoutId = null;
         }
+        this._endLongIdleTimeGrace();
     }
 
     /**
@@ -100,7 +118,7 @@ export class UpdateConnectionsDialog extends LitElement {
         const networkType = getNetworkType(node);
 
         if (networkType === "thread") {
-            return THREAD_ATTRIBUTE_PATHS;
+            return [...THREAD_TOPOLOGY_ATTRIBUTE_PATHS];
         }
         if (networkType === "wifi") {
             return WIFI_ATTRIBUTE_PATHS;
@@ -124,6 +142,54 @@ export class UpdateConnectionsDialog extends LitElement {
         return this.onlineNeighborIds;
     }
 
+    private _longIdleTimeGrace(startedAt: number): Promise<void> {
+        const budget = Math.min(LIT_GRACE_MS, LIT_MAX_WAIT_MS - (Date.now() - startedAt));
+        if (budget <= 0) return Promise.resolve();
+        return new Promise<void>(resolve => {
+            this._litGraceResolve = resolve;
+            this._litTimeoutId = setTimeout(resolve, budget);
+        });
+    }
+
+    /**
+     * Ends the grace period. Resolving is what matters: dropping the timer alone would leave the raced
+     * promise pending on a LIT read that only settles on the client's command timeout, holding this
+     * element and its node map alive for as long as that takes.
+     */
+    private _endLongIdleTimeGrace(): void {
+        if (this._litTimeoutId) {
+            clearTimeout(this._litTimeoutId);
+            this._litTimeoutId = null;
+        }
+        this._litGraceResolve?.();
+        this._litGraceResolve = null;
+    }
+
+    private get _selectedIsLongIdleTime(): boolean {
+        if (this.selectedNodeType !== "online" || this.selectedNodeId === null) return false;
+        const node = this.nodes[String(this.selectedNodeId)];
+        return node !== undefined && isLongIdleTimeDevice(node.attributes);
+    }
+
+    private get _longIdleTimeNodeIds(): string[] {
+        return this._getNodeIdsToUpdate().filter(nodeId => {
+            const node = this.nodes[nodeId];
+            return node !== undefined && isLongIdleTimeDevice(node.attributes);
+        });
+    }
+
+    private _readNode(nodeIdStr: string): Promise<void> {
+        const node = this.nodes[nodeIdStr];
+        if (!node) return Promise.resolve();
+
+        const paths = this._getAttributePathsForNode(nodeIdStr);
+        if (paths.length === 0) return Promise.resolve();
+
+        // fabric_filtered must match the node subscription's filter (true), else matter.js
+        // discards the read and no attribute_updated fires, leaving the store stale.
+        return this.client.readAttribute(node.node_id, paths, undefined, true).then(() => undefined);
+    }
+
     private async _executeUpdate(): Promise<void> {
         if (this._isUpdating || this._updateCount === 0) return;
 
@@ -135,24 +201,37 @@ export class UpdateConnectionsDialog extends LitElement {
             this._closeDialog();
         }, 30000);
 
+        const startedAt = Date.now();
+
         try {
+            const longIdleTime = new Set(this._longIdleTimeNodeIds);
             const nodeIds = this._getNodeIdsToUpdate();
 
-            // Build promises for all node updates
-            const updatePromises = nodeIds.map(async nodeIdStr => {
-                const node = this.nodes[nodeIdStr];
-                if (!node) return;
-
-                const paths = this._getAttributePathsForNode(nodeIdStr);
-                if (paths.length === 0) return;
-
-                // fabric_filtered must match the node subscription's filter (true), else matter.js
-                // discards the read and no attribute_updated fires, leaving the store stale.
-                await this.client.readAttribute(node.node_id, paths, undefined, true);
-            });
+            // A LIT node answers only when it next polls, so its read is started but never waited out:
+            // the value still lands in the store via attribute_updated whenever the node wakes up.
+            const litReads = new Array<Promise<void>>();
+            const reads = new Array<Promise<void>>();
+            let failures = 0;
+            for (const nodeId of nodeIds) {
+                const read = this._readNode(nodeId).catch(error => {
+                    failures++;
+                    console.warn(`Failed to refresh network data of node ${nodeId}:`, error);
+                });
+                (longIdleTime.has(nodeId) ? litReads : reads).push(read);
+            }
 
             // Return values are discarded; refreshed data arrives via attribute_updated events.
-            await Promise.all(updatePromises);
+            await Promise.all(reads);
+
+            if (failures === reads.length && reads.length > 0) {
+                console.error(`Refreshing network data failed for all ${failures} nodes`);
+            }
+
+            // Only worth a grace period when other nodes were waited for anyway; a selection of LIT
+            // nodes alone would just spin for the full budget, which is what the dialog says it won't do.
+            if (litReads.length > 0 && reads.length > 0) {
+                await Promise.race([Promise.all(litReads), this._longIdleTimeGrace(startedAt)]);
+            }
 
             // Close dialog on success
             this._closeDialog();
@@ -166,6 +245,7 @@ export class UpdateConnectionsDialog extends LitElement {
                 clearTimeout(this._timeoutId);
                 this._timeoutId = null;
             }
+            this._endLongIdleTimeGrace();
             this._isUpdating = false;
         }
     }
@@ -192,9 +272,20 @@ export class UpdateConnectionsDialog extends LitElement {
     }
 
     private _renderOnlineContent(): unknown {
+        const sleepy = this._selectedIsLongIdleTime;
+        const neighborCount = this.onlineNeighborIds.length;
+        const plural = neighborCount !== 1 ? "s" : "";
+
         return html`
-            <p>Refresh network information for "<strong>${this.selectedNodeName}</strong>".</p>
-            ${this.onlineNeighborIds.length > 0
+            ${sleepy
+                ? html`
+                      <p>
+                          "<strong>${this.selectedNodeName}</strong>" is a sleepy device (Matter LIT). It answers only
+                          when it next wakes, so its own network data arrives later.
+                      </p>
+                  `
+                : html`<p>Refresh network information for "<strong>${this.selectedNodeName}</strong>".</p>`}
+            ${neighborCount > 0
                 ? html`
                       <label class="checkbox-row">
                           <md-checkbox
@@ -203,12 +294,14 @@ export class UpdateConnectionsDialog extends LitElement {
                               ?disabled=${this._isUpdating}
                           ></md-checkbox>
                           <span
-                              >Include ${this.onlineNeighborIds.length} connected online
-                              neighbor${this.onlineNeighborIds.length !== 1 ? "s" : ""}</span
+                              >${sleepy ? "Refresh" : "Include"} ${neighborCount} connected online
+                              neighbor${plural}${sleepy ? " for current link data" : ""}</span
                           >
                       </label>
                   `
-                : nothing}
+                : sleepy
+                  ? html`<p class="note">No online neighbor can report its current link data either.</p>`
+                  : nothing}
         `;
     }
 
@@ -241,6 +334,23 @@ export class UpdateConnectionsDialog extends LitElement {
         `;
     }
 
+    private _renderLongIdleTimeNote(): unknown {
+        // The selected node's own sleep state is already spelled out by _renderOnlineContent.
+        const selectedId = String(this.selectedNodeId);
+        const count = this._longIdleTimeNodeIds.filter(
+            nodeId => !(this._selectedIsLongIdleTime && nodeId === selectedId),
+        ).length;
+        if (count === 0) return nothing;
+
+        return html`
+            <p class="note">
+                ${count === 1 ? "One of them is" : `${count} of them are`} a sleepy device (Matter LIT), so the update
+                does not wait for ${count === 1 ? "it" : "them"} — ${count === 1 ? "its" : "their"} data appears once
+                ${count === 1 ? "it wakes" : "they wake"} up.
+            </p>
+        `;
+    }
+
     override render() {
         const buttonText =
             this._updateCount === 0
@@ -256,6 +366,7 @@ export class UpdateConnectionsDialog extends LitElement {
                         : this.selectedNodeType === "offline"
                           ? this._renderOfflineContent()
                           : this._renderUnknownContent()}
+                    ${this._renderLongIdleTimeNote()}
                 </div>
                 <div slot="actions">
                     <md-text-button @click=${this._closeDialog} ?disabled=${this._isUpdating}>Cancel</md-text-button>
@@ -294,6 +405,12 @@ export class UpdateConnectionsDialog extends LitElement {
 
             [slot="content"] p:last-child {
                 margin-bottom: 0;
+            }
+
+            [slot="content"] p.note {
+                margin-top: 12px;
+                font-size: 0.8125rem;
+                color: var(--text-color, rgba(0, 0, 0, 0.6));
             }
 
             .checkbox-row {

@@ -4,7 +4,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type { BorderRouterEntry, ThreadDiagnosticsBatch, ThreadDiagnosticsNode } from "../models/model.js";
+import type {
+    AttributesData,
+    BorderRouterEntry,
+    ThreadDiagnosticsBatch,
+    ThreadDiagnosticsNode,
+} from "../models/model.js";
 import type {
     CategorizedDevices,
     DiagnosticMeshNode,
@@ -23,6 +28,13 @@ import type {
 const WIFI_FEATURE = 1 << 0; // Bit 0: WiFi Network Interface
 const THREAD_FEATURE = 1 << 1; // Bit 1: Thread Network Interface
 const ETHERNET_FEATURE = 1 << 2; // Bit 2: Ethernet Network Interface
+
+/**
+ * Attributes carrying a Thread node's view of the mesh: ThreadNetworkDiagnostics NeighborTable and
+ * RouteTable (cluster 0x35/53) plus GeneralDiagnostics NetworkInterfaces (0x33/51). Single source for
+ * every refresh path, so an automatic poll and a user-triggered update yield the same data.
+ */
+export const THREAD_TOPOLOGY_ATTRIBUTE_PATHS: readonly string[] = ["0/53/7", "0/53/8", "0/51/0"];
 
 // Thread LQI thresholds. Spec types LQI as uint8 (0-255), but OpenThread — the
 // dominant Thread stack — only ever reports 0-3. We classify on the 0-3 scale:
@@ -74,10 +86,10 @@ function normalizeExtAddress(value: unknown): bigint {
  * Detects the network type from the NetworkCommissioning cluster feature map.
  * Uses attribute 0/49/65532 (FeatureMap).
  */
-export function getNetworkType(node: TopologySourceNode): NetworkType {
-    const featureMap = node.attributes["0/49/65532"] as number | undefined;
+export function getNetworkTypeFromAttributes(attributes: AttributesData): NetworkType {
+    const featureMap = attributes["0/49/65532"];
 
-    if (featureMap === undefined) {
+    if (typeof featureMap !== "number") {
         return "unknown";
     }
 
@@ -93,6 +105,10 @@ export function getNetworkType(node: TopologySourceNode): NetworkType {
     }
 
     return "unknown";
+}
+
+export function getNetworkType(node: TopologySourceNode): NetworkType {
+    return getNetworkTypeFromAttributes(node.attributes);
 }
 
 /**

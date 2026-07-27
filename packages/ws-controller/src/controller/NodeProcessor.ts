@@ -6,29 +6,50 @@
 
 import { CancelablePromise, Duration, Logger, Millis, Time, Timer } from "@matter/main";
 import { PeerAddress, PeerAddressSet } from "@matter/main/protocol";
+import { AttributesData } from "../types/CommandHandler.js";
 
 const logger = Logger.get("NodeProcessor");
 
 // Timer.interval rejects anything outside the 32-bit signed range.
 export const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
+/** Attribute access a polling processor needs from the controller. */
+export interface NodeAttributeReader {
+    handleReadAttributes(
+        peer: PeerAddress,
+        attributePaths: string[],
+        fabricFiltered?: boolean,
+    ): Promise<AttributesData>;
+    nodeConnected(peer: PeerAddress): boolean;
+}
+
 /**
  * Abstract base class for timer-driven periodic processing of registered nodes.
  * Handles timer lifecycle, node registration, and the per-node processing loop
  * with inter-node delay. Subclasses provide the actual processing logic.
+ *
+ * Peers registered as Long Idle Time (LIT) are held back from the serial loop and processed together
+ * once it ends, concurrently and without being awaited: a LIT node can leave an interaction queued
+ * for the length of its idle interval, which would otherwise stall every node behind it for hours.
  */
 export abstract class NodeProcessor {
+    readonly #name: string;
+    readonly #initialDelay: Duration;
     readonly #targetInterval: Duration;
     readonly #timer: Timer;
     #peers = new PeerAddressSet();
+    #longIdleTimePeers = new PeerAddressSet();
     #isProcessing = false;
     #currentDelayPromise?: CancelablePromise;
     #processingPromise?: Promise<void>;
+    #longIdleTimeBatch?: Promise<unknown>;
     #closed = false;
 
     constructor(timerName: string, initialDelay: number, targetInterval: number) {
+        this.#name = timerName;
+        this.#initialDelay = Millis(initialDelay);
         this.#targetInterval = Millis(targetInterval);
-        this.#timer = Time.getTimer(timerName, Millis(initialDelay), () => this.#startProcessing());
+        this.#timer = Time.getTimer(timerName, this.#initialDelay, () => this.#startProcessing());
     }
 
     #startProcessing(): void {
@@ -45,24 +66,42 @@ export abstract class NodeProcessor {
         return this.#closed;
     }
 
-    /** Register a peer. Returns true if this was a new registration. */
-    protected registerPeer(peer: PeerAddress): boolean {
+    /**
+     * Register a peer. Returns true if this was a new registration. `longIdleTime` moves the peer to
+     * the deferred batch and is re-evaluated on every call, so a node changing mode picks the other
+     * path up on its next registration.
+     */
+    protected registerPeer(peer: PeerAddress, longIdleTime = false): boolean {
         const isNew = !this.#peers.has(peer);
         this.#peers.add(peer);
+        if (longIdleTime) {
+            this.#longIdleTimePeers.add(peer);
+        } else {
+            this.#longIdleTimePeers.delete(peer);
+        }
         return isNew;
     }
 
     /** Unregister a peer. Stops the timer if no peers remain. Returns true if was registered. */
     protected unregisterPeer(peer: PeerAddress): boolean {
         const removed = this.#peers.delete(peer);
+        this.#longIdleTimePeers.delete(peer);
         if (removed && this.#peers.size === 0) {
             this.#timer.stop();
+            // The next peer to arrive starts over: leaving the last applied interval in place would
+            // give a freshly commissioned node its first cycle a full interval out.
+            this.#applyInterval(this.#initialDelay);
         }
         return removed;
     }
 
     protected hasPeer(peer: PeerAddress): boolean {
         return this.#peers.has(peer);
+    }
+
+    /** Whether this peer is processed in the deferred batch instead of the serial loop. */
+    protected isLongIdleTime(peer: PeerAddress): boolean {
+        return this.#longIdleTimePeers.has(peer);
     }
 
     /** Start the timer if there are registered peers and it is not already running. */
@@ -97,6 +136,10 @@ export abstract class NodeProcessor {
         return true;
     }
 
+    /**
+     * Awaits an in-flight serial cycle, but never a running long idle time batch — that batch sits
+     * behind the nodes' idle intervals and would hold shutdown for hours.
+     */
     async stop(): Promise<void> {
         this.#closed = true;
         this.#currentDelayPromise?.cancel(new Error("Close"));
@@ -145,25 +188,36 @@ export abstract class NodeProcessor {
         this.#isProcessing = true;
         let processedCount = 0;
 
+        const longIdleTimePeers = new Array<PeerAddress>();
+
         try {
             this.onCycleStart();
-            const peers = Array.from(this.#peers);
-            for (let i = 0; i < peers.length; i++) {
+            for (const peer of Array.from(this.#peers)) {
                 if (this.#closed) break;
-                const peer = peers[i];
                 if (!this.#peers.has(peer) || !this.shouldProcess(peer)) continue;
-                processedCount++;
-                await this.processNode(peer);
-                if (i < peers.length - 1 && !this.#closed) {
+                if (this.#longIdleTimePeers.has(peer)) {
+                    longIdleTimePeers.push(peer);
+                    continue;
+                }
+                if (processedCount > 0) {
                     this.#currentDelayPromise = Time.sleep("node-processor-delay", Millis(2_000)).finally(() => {
                         this.#currentDelayPromise = undefined;
                     });
                     await this.#currentDelayPromise;
+                    // The peer may have unregistered or gone offline while this delay was pending, and
+                    // a trigger path may have covered it in the meantime.
+                    if (this.#closed) break;
+                    if (!this.#peers.has(peer) || !this.shouldProcess(peer)) continue;
                 }
+                processedCount++;
+                await this.processNode(peer);
             }
         } finally {
             this.#isProcessing = false;
             this.scheduleIfNeeded();
+            // Inside the finally so a throw from the loop cannot drop the held-back peers into
+            // another full interval of waiting.
+            this.#startLongIdleTimeBatch(longIdleTimePeers, processedCount);
         }
 
         if (!this.#closed) {
@@ -171,5 +225,40 @@ export abstract class NodeProcessor {
             // then would point at a timer that is not running.
             this.onCycleComplete(processedCount, this.#timer.isRunning ? Duration.format(this.#timer.interval) : "");
         }
+    }
+
+    /**
+     * Process the held-back LIT peers concurrently, after the timer for the next cycle is already
+     * armed. Not awaited by the cycle: the batch may outlive the cycle interval, and a cycle that
+     * finds one still running skips its own LIT peers rather than stacking a second batch on top. A
+     * peer that only registered after the running batch launched therefore waits for the cycle after
+     * it — the alternative is unbounded concurrent interactions against nodes that are asleep anyway.
+     */
+    #startLongIdleTimeBatch(peers: PeerAddress[], processedCount: number): void {
+        if (this.#closed || peers.length === 0) return;
+        if (this.#longIdleTimeBatch !== undefined) {
+            logger.info(
+                `${this.#name}: ${processedCount} nodes processed, ${peers.length} long idle time nodes skipped because the previous batch is still running`,
+            );
+            return;
+        }
+
+        const pending = peers.filter(peer => this.#peers.has(peer) && this.shouldProcess(peer));
+        if (pending.length === 0) {
+            logger.info(
+                `${this.#name}: ${processedCount} nodes processed, none of the ${peers.length} long idle time nodes is still eligible`,
+            );
+            return;
+        }
+
+        logger.info(
+            `${this.#name}: ${processedCount} nodes processed, now starting ${pending.length} long idle time nodes in the background`,
+        );
+        this.#longIdleTimeBatch = Promise.allSettled(pending.map(peer => this.processNode(peer)))
+            .finally(() => {
+                this.#longIdleTimeBatch = undefined;
+            })
+            .then(() => logger.info(`${this.#name}: long idle time batch of ${pending.length} nodes complete`))
+            .catch(error => logger.error(`${this.#name}: long idle time batch failed:`, error));
     }
 }

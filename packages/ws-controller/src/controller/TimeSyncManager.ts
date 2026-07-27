@@ -19,6 +19,7 @@
  * --enable-time-sync CLI flag).
  */
 
+import { isLongIdleTimeDevice } from "@matter-server/ws-client";
 import { Duration, Hours, Logger, Millis, Minutes, Seconds, Time } from "@matter/main";
 import { TimeSynchronization } from "@matter/main/clusters";
 import { PeerAddress, PeerAddressMap } from "@matter/main/protocol";
@@ -41,7 +42,7 @@ const RESYNC_INTERVAL = Hours(24);
 
 // Startup window, scaled to the node count: nodes initialize at roughly 10 per minute, so this
 // clears initialization before the first sync without idling on small installations.
-const STARTUP_BASE_DELAY = Minutes(3);
+export const STARTUP_BASE_DELAY = Minutes(3);
 const STARTUP_DELAY_PER_NODE = Seconds(10);
 
 // Land past an upcoming offset change rather than on it, so the cycle sees the post-change zone
@@ -180,12 +181,13 @@ export class TimeSyncManager extends NodeProcessor {
      * the server is initializing all nodes.
      */
     registerNode(peer: PeerAddress, attributes: AttributesData): void {
+        if (this.closed) return;
         if (!hasTimeSyncCluster(attributes)) {
             this.unregisterNode(peer);
             return;
         }
 
-        if (this.registerPeer(peer)) {
+        if (this.registerPeer(peer, isLongIdleTimeDevice(attributes))) {
             logger.info(`Registered node ${formatNodeId(peer)} for time synchronization`);
         }
 
@@ -258,12 +260,14 @@ export class TimeSyncManager extends NodeProcessor {
         }
         stamps.set(peer, Time.nowMs);
         this.#lastSyncMs.set(peer, Time.nowMs);
-        const promise = this.#connector
+        const promise: Promise<void> = this.#connector
             .syncTime(peer)
             .then(() => logger.info(`Synced time on node ${formatNodeId(peer)}`))
             .catch(error => logSyncFailure("", peer, error))
             .finally(() => {
-                this.#inFlightSyncs.delete(peer);
+                if (this.#inFlightSyncs.get(peer) === promise) {
+                    this.#inFlightSyncs.delete(peer);
+                }
             });
         this.#inFlightSyncs.set(peer, promise);
     }
@@ -275,7 +279,12 @@ export class TimeSyncManager extends NodeProcessor {
 
     override async stop(): Promise<void> {
         await super.stop();
-        await Promise.allSettled(this.#inFlightSyncs.values());
+        // A push to a long idle time node sits behind its idle interval, so it is left running rather
+        // than holding shutdown for hours; its own catch keeps the rejection handled.
+        const pending = Array.from(this.#inFlightSyncs.entries())
+            .filter(([peer]) => !this.isLongIdleTime(peer))
+            .map(([, promise]) => promise);
+        await Promise.allSettled(pending);
         this.#inFlightSyncs.clear();
         this.#lastReconnectSyncMs.clear();
         this.#lastTimeFailureSyncMs.clear();
@@ -311,18 +320,28 @@ export class TimeSyncManager extends NodeProcessor {
     }
 
     protected override async processNode(peer: PeerAddress): Promise<void> {
+        if (!this.hasPeer(peer)) return;
+        // A long idle time push can still be running when the next cycle reports, so it must not be
+        // counted into that cycle's total.
+        const counted = !this.isLongIdleTime(peer);
         this.#lastSyncMs.set(peer, Time.nowMs);
         // Register in #inFlightSyncs so a concurrent trigger sync (syncNode) for the same
         // peer dedupes against the periodic push instead of double-sending.
-        const promise = this.#connector
+        const promise: Promise<void> = this.#connector
             .syncTime(peer)
             .then(() => {
-                this.#cycleSyncedCount++;
+                if (counted) {
+                    this.#cycleSyncedCount++;
+                }
                 logger.info(`Periodic resync: synced time on node ${formatNodeId(peer)}`);
             })
             .catch(error => logSyncFailure("Periodic resync: ", peer, error))
             .finally(() => {
-                this.#inFlightSyncs.delete(peer);
+                // Only drop our own entry: a later push for this peer owns the slot and still needs
+                // the dedupe guard it provides.
+                if (this.#inFlightSyncs.get(peer) === promise) {
+                    this.#inFlightSyncs.delete(peer);
+                }
             });
         this.#inFlightSyncs.set(peer, promise);
         await promise;

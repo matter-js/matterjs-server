@@ -17,6 +17,9 @@ export * from "./connection.js";
 // Export exceptions
 export * from "./exceptions.js";
 
+// Export ICD helpers (shared by dashboard + server)
+export * from "./icd.js";
+
 // Export JSON utilities
 export * from "./json-utils.js";
 

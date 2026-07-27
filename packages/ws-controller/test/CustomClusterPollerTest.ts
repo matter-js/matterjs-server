@@ -6,7 +6,8 @@
 
 import { FabricIndex, NodeId } from "@matter/main";
 import { PeerAddress } from "@matter/main/protocol";
-import { CustomClusterPoller, NodeAttributeReader } from "../src/controller/CustomClusterPoller.js";
+import { CustomClusterPoller } from "../src/controller/CustomClusterPoller.js";
+import { NodeAttributeReader } from "../src/controller/NodeProcessor.js";
 import { AttributesData } from "../src/types/CommandHandler.js";
 
 const ONE_MINUTE_MS = 60_000;

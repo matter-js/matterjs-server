@@ -10,9 +10,14 @@ This page shows a detailed overview of the changes between versions without the 
 ## **WORK IN PROGRESS**
 
 - Feature: (lboue) Dashboard cluster view shows a "Semantic Tags (TagList)" panel on the Descriptor cluster
+- Feature: Thread nodes' neighbor and route tables are re-read a few minutes after startup and every 24h afterward; disabled together with the rest of the Thread diagnostics via `--disable-thread-diagnostics`
+- Enhancement: Optimized the Dashboard "Update Connection Data" dialog for sleepy ICD LIT devices
+- Enhancement: Optimized periodic node work (time synchronization, energy polling, Thread topology refresh) for sleepy ICD LIT devices
 - Fix: Fixes and enhances the DST determination, and sends a second TimeZone entry when the host zone has an upcoming permanent offset change, plus a closing DST entry when the device has room for one
 - Fix: A node reporting that it has no usable time is now resynced right away instead of being held off for up to a day, while reconnect-driven syncs keep their longer spacing
 - Fix: Command responses and events now expose acronym field names in the Python Matter Server casing (e.g. `videoStreamID`, `groupID`, `PAKEPasscodeVerifier`), matching the generated Python client and Home Assistant; the previous lowercased-acronym keys are still emitted alongside for compatibility
+- Fix: Update matter.js to 0.17.7
+    - Fixes and Optimizations
 
 ## 1.3.1 (2026-07-23)
 
