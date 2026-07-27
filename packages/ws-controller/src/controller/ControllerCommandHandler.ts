@@ -697,12 +697,12 @@ export class ControllerCommandHandler {
                 this.#customClusterPoller.registerNode(peer, attributes);
                 this.#timeSyncManager?.registerNode(peer, attributes);
             }
-            // Re-register observers to handle sleepy devices whose underlying event emitters may
-            // have been replaced during subscription re-establishment.
-            if (!fastReconnect) {
-                logger.debug(`Re-registering observers for node ${this.formatNode(nodeId)} after reconnection`);
-                this.#setupNodeObservers(node);
-            }
+            // Re-register observers on EVERY reconnection. Sleepy devices (ICDs) can orphan
+            // observers even on fast reconnects because matter.js may replace the underlying event
+            // emitters during subscription re-establishment. The cost of re-registration is minimal
+            // (just closing old observers and wiring new ones) compared to the cost of lost events.
+            logger.debug(`Re-registering observers for node ${this.formatNode(nodeId)} after reconnection`);
+            this.#setupNodeObservers(node);
         }
     }
 
