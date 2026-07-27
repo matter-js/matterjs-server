@@ -213,17 +213,20 @@ export class UpdateConnectionsDialog extends LitElement {
             const reads = new Array<Promise<void>>();
             let failures = 0;
             for (const nodeId of nodeIds) {
+                const sleepy = longIdleTime.has(nodeId);
                 const read = this._readNode(nodeId).catch(error => {
-                    failures++;
+                    // Only the awaited reads count: a LIT failure cannot say anything about the ones
+                    // this update actually reported on.
+                    if (!sleepy) failures++;
                     console.warn(`Failed to refresh network data of node ${nodeId}:`, error);
                 });
-                (longIdleTime.has(nodeId) ? litReads : reads).push(read);
+                (sleepy ? litReads : reads).push(read);
             }
 
             // Return values are discarded; refreshed data arrives via attribute_updated events.
             await Promise.all(reads);
 
-            if (failures === reads.length && reads.length > 0) {
+            if (reads.length > 0 && failures === reads.length) {
                 console.error(`Refreshing network data failed for all ${failures} nodes`);
             }
 

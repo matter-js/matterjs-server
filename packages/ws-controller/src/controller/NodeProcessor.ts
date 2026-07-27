@@ -243,7 +243,9 @@ export abstract class NodeProcessor {
             return;
         }
 
-        const pending = peers.filter(peer => this.#peers.has(peer) && this.shouldProcess(peer));
+        const pending = peers.filter(
+            peer => this.#peers.has(peer) && this.#longIdleTimePeers.has(peer) && this.shouldProcess(peer),
+        );
         if (pending.length === 0) {
             logger.info(
                 `${this.#name}: ${processedCount} nodes processed, none of the ${peers.length} long idle time nodes is still eligible`,
