@@ -10,11 +10,12 @@
  * a custom cluster without standard Matter subscription support.
  */
 
+import { isLongIdleTimeDevice } from "@matter-server/ws-client";
 import { asError, Diagnostic, Logger } from "@matter/main";
 import { PeerAddress, PeerAddressMap } from "@matter/main/protocol";
 import { AttributesData } from "../types/CommandHandler.js";
 import { formatNodeId } from "../util/formatNodeId.js";
-import { NodeProcessor } from "./NodeProcessor.js";
+import { NodeAttributeReader, NodeProcessor } from "./NodeProcessor.js";
 
 const logger = Logger.get("CustomClusterPoller");
 
@@ -43,15 +44,6 @@ const INITIAL_DELAY_MS = 30_000;
 
 // Attribute path format: endpoint/cluster/attribute
 type AttributePath = string;
-
-export interface NodeAttributeReader {
-    handleReadAttributes(
-        peer: PeerAddress,
-        attributePaths: string[],
-        fabricFiltered?: boolean,
-    ): Promise<AttributesData>;
-    nodeConnected(peer: PeerAddress): boolean;
-}
 
 /**
  * Check if a node needs custom attribute polling based on its attributes.
@@ -121,10 +113,10 @@ export function checkPolledAttributes(attributes: AttributesData): Set<Attribute
 export class CustomClusterPoller extends NodeProcessor {
     #polledAttributes = new PeerAddressMap<Set<AttributePath>>();
     readonly #attributeReader: NodeAttributeReader;
-    #currentReadPromise?: Promise<void>;
 
     constructor(attributeReader: NodeAttributeReader) {
-        super("eve-poller", INITIAL_DELAY_MS + Math.random() * INITIAL_DELAY_MS, POLLING_INTERVAL_MS);
+        // Whole milliseconds: a fractional timer deadline is meaningless and MockTime rejects it.
+        super("eve-poller", INITIAL_DELAY_MS + Math.floor(Math.random() * INITIAL_DELAY_MS), POLLING_INTERVAL_MS);
         this.#attributeReader = attributeReader;
     }
 
@@ -133,6 +125,7 @@ export class CustomClusterPoller extends NodeProcessor {
      * Call this after a node is connected and its attributes are available.
      */
     registerNode(peer: PeerAddress, attributes: AttributesData): void {
+        if (this.closed) return;
         const attributesToPoll = checkPolledAttributes(attributes);
 
         if (attributesToPoll.size === 0) {
@@ -141,7 +134,7 @@ export class CustomClusterPoller extends NodeProcessor {
         }
 
         this.#polledAttributes.set(peer, attributesToPoll);
-        if (this.registerPeer(peer)) {
+        if (this.registerPeer(peer, isLongIdleTimeDevice(attributes))) {
             logger.info(
                 `Registered node ${formatNodeId(peer)} for custom attribute polling: ${Array.from(attributesToPoll).join(", ")}`,
             );
@@ -161,10 +154,9 @@ export class CustomClusterPoller extends NodeProcessor {
     }
 
     override async stop(): Promise<void> {
+        // A long idle time batch outlives stop(), but its reads captured their paths before the first
+        // await, so clearing here cannot strand one mid-flight.
         await super.stop();
-        if (this.#currentReadPromise) {
-            await this.#currentReadPromise;
-        }
         this.#polledAttributes.clear();
         logger.info("Custom attribute poller stopped");
     }
@@ -183,25 +175,19 @@ export class CustomClusterPoller extends NodeProcessor {
         try {
             // Read with fabricFiltered=true as per Eve's requirements
             // This automatically updates the attribute cache and triggers change events
-            const readPromise = this.#attributeReader.handleReadAttributes(peer, paths, true);
-            this.#currentReadPromise = readPromise.then(
-                () => {},
-                () => {},
-            );
-            await readPromise;
+            await this.#attributeReader.handleReadAttributes(peer, paths, true);
         } catch (error) {
             logger.warn(
                 `Failed to poll custom attributes for node ${formatNodeId(peer)}: `,
                 Diagnostic.errorMessage(asError(error)),
             );
-        } finally {
-            this.#currentReadPromise = undefined;
         }
     }
 
     protected override onCycleComplete(processedCount: number, intervalFormatted: string): void {
         if (processedCount > 0) {
-            logger.info(`Polled ${processedCount} nodes for energy data. Next poll in ${intervalFormatted}`);
+            const next = intervalFormatted === "" ? "" : ` Next poll in ${intervalFormatted}.`;
+            logger.info(`Polled ${processedCount} nodes for energy data.${next}`);
         }
     }
 }

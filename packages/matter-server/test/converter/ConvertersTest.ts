@@ -1179,4 +1179,55 @@ describe("Converters", () => {
             expect(result).to.deep.equal([2, 3]);
         });
     });
+
+    describe("convertMatterToWebSocketNameBased - acronym casing dual-emit (issue #927)", () => {
+        it("emits both the corrected and legacy key for an acronym field", () => {
+            // Groups cluster (4), AddGroup response = AddGroupResponse { 0:Status, 1:GroupId }
+            const groupsCluster = ClusterMap[4]!;
+            const addGroupCmd = groupsCluster.commands["addgroup"]!;
+            const responseModel = addGroupCmd.responseModel;
+
+            const result = convertMatterToWebSocketNameBased(
+                { status: 0, groupId: 5 },
+                responseModel,
+                groupsCluster.model,
+            ) as Record<string, unknown>;
+
+            expect(result.groupID).to.equal(5);
+            expect(result.groupId).to.equal(5);
+            expect(result.status).to.equal(0);
+        });
+
+        it("does not duplicate a key when corrected name equals propertyName", () => {
+            const groupsCluster = ClusterMap[4]!;
+            const addGroupCmd = groupsCluster.commands["addgroup"]!;
+            const responseModel = addGroupCmd.responseModel;
+
+            const result = convertMatterToWebSocketNameBased(
+                { status: 0, groupId: 5 },
+                responseModel,
+                groupsCluster.model,
+            ) as Record<string, unknown>;
+
+            // "status" is acronym-free: exactly one key, no alias
+            expect(Object.keys(result).filter(k => k.toLowerCase() === "status")).to.have.length(1);
+        });
+
+        it("dual-emits an acronym field nested inside a struct", () => {
+            // GroupKeyManagement cluster (63), KeySetRead response = KeySetReadResponse { 0: GroupKeySet }
+            // GroupKeySetStruct nests GroupKeySetId, so the dual-emit must reach the nested level too.
+            const gkmCluster = ClusterMap[63]!;
+            const keySetReadCmd = gkmCluster.commands["keysetread"]!;
+            const responseModel = keySetReadCmd.responseModel;
+
+            const result = convertMatterToWebSocketNameBased(
+                { groupKeySet: { groupKeySetId: 5 } },
+                responseModel,
+                gkmCluster.model,
+            ) as Record<string, Record<string, unknown>>;
+
+            expect(result.groupKeySet.groupKeySetID).to.equal(5);
+            expect(result.groupKeySet.groupKeySetId).to.equal(5);
+        });
+    });
 });

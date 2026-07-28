@@ -230,7 +230,7 @@ export function parseCliArgs(argv?: string[]): CliOptions {
         .addOption(
             new Option(
                 "--disable-thread-diagnostics [value]",
-                "Disable the Thread Network diagnostics feature (Border Router mDNS discovery, REST/CoAP probing and diagnostic queries). Matter-over-Thread commissioning is unaffected.",
+                "Disable the Thread Network diagnostics feature (Border Router mDNS discovery, REST/CoAP probing and diagnostic queries, plus the periodic refresh of node neighbor/route tables). Matter-over-Thread commissioning is unaffected.",
             )
                 .argParser(parseBooleanEnv)
                 .preset(true)

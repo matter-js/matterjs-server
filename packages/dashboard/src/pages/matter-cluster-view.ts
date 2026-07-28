@@ -27,6 +27,12 @@ import "../pages/components/node-details";
 import { computeActiveClusterFeatures } from "../util/cluster-features.js";
 import { DevModeService } from "../util/dev-mode-service.js";
 import { formatHex, formatNodeAddress, getEffectiveFabricIndex } from "../util/format_hex.js";
+import {
+    decodeSemanticTagList,
+    describeSemanticTagListEntry,
+    DESCRIPTOR_CLUSTER_ID,
+    TAG_LIST_ATTR,
+} from "../util/semantic-tags.js";
 import { notFoundStyles } from "../util/shared-styles.js";
 import { BaseClusterCommands, getClusterCommandsTag } from "./cluster-commands/index.js";
 import { bindingContext } from "./components/context.js";
@@ -146,8 +152,7 @@ class MatterClusterView extends LitElement {
                 <node-details .node=${this.node}></node-details>
             </div>
 
-            <!-- Active features panel -->
-            ${this._renderFeaturesPanel()}
+            ${this._renderClusterInfoPanel()}
 
             <!-- Cluster commands section (if available for this cluster) -->
             ${this._renderClusterCommands()}
@@ -348,38 +353,74 @@ class MatterClusterView extends LitElement {
         });
     }
 
-    private _renderFeaturesPanel(): TemplateResult | typeof nothing {
-        if (this.cluster === undefined || !this.node) return nothing;
+    private _renderClusterInfoPanel(): TemplateResult | typeof nothing {
+        const sections = new Array<TemplateResult>();
+        for (const section of [this._renderFeaturesSection(), this._renderTagListSection()]) {
+            if (section !== undefined) sections.push(section);
+        }
+        if (sections.length === 0) return nothing;
+
+        return html`
+            <div class="container">
+                <div class="info-panel">${sections}</div>
+            </div>
+        `;
+    }
+
+    private _renderFeaturesSection(): TemplateResult | undefined {
+        if (this.cluster === undefined || !this.node) return undefined;
 
         const clusterMeta = clusters[this.cluster];
         const knownFeatures = Object.values(clusterMeta?.features ?? {});
-        if (knownFeatures.length === 0) return nothing;
+        if (knownFeatures.length === 0) return undefined;
 
         const featureMapValue = this.node.attributes[`${this.endpoint}/${this.cluster}/${FEATURE_MAP_ATTR}`];
-        if (featureMapValue === undefined) return nothing;
+        if (featureMapValue === undefined) return undefined;
 
         const activeFeatures = computeActiveClusterFeatures(featureMapValue, knownFeatures);
 
         return html`
-            <div class="container">
-                <div class="features-panel">
-                    <div class="features-panel-header">Active Features</div>
-                    <div class="features-panel-body">
-                        ${activeFeatures.length === 0
-                            ? html`<p class="empty">No active features</p>`
-                            : html`
-                                  <ul class="feature-chip-list">
-                                      ${activeFeatures.map(
-                                          feature => html`
-                                              <li class="feature-chip" title="Bit ${feature.bit} (${feature.code})">
-                                                  ${feature.label}
-                                              </li>
-                                          `,
-                                      )}
-                                  </ul>
-                              `}
-                    </div>
-                </div>
+            <div class="info-section">
+                <div class="info-section-header">Active Features</div>
+                ${activeFeatures.length === 0
+                    ? html`<p class="empty">No active features</p>`
+                    : html`
+                          <ul class="chip-list">
+                              ${activeFeatures.map(
+                                  feature => html`
+                                      <li class="chip" title="Bit ${feature.bit} (${feature.code})">
+                                          ${feature.label}
+                                      </li>
+                                  `,
+                              )}
+                          </ul>
+                      `}
+            </div>
+        `;
+    }
+
+    private _renderTagListSection(): TemplateResult | undefined {
+        if (this.cluster !== DESCRIPTOR_CLUSTER_ID || !this.node) return undefined;
+
+        const tagListValue = this.node.attributes[`${this.endpoint}/${this.cluster}/${TAG_LIST_ATTR}`];
+        const tagList = decodeSemanticTagList(tagListValue);
+        if (tagList === undefined) return undefined;
+
+        return html`
+            <div class="info-section">
+                <div class="info-section-header">Semantic Tags (TagList)</div>
+                ${tagList.length === 0
+                    ? html`<p class="empty">No semantic tags</p>`
+                    : html`
+                          <ul class="chip-list">
+                              ${tagList.map(entry => {
+                                  const { text, title, erroneous } = describeSemanticTagListEntry(entry);
+                                  return html`<li class=${erroneous ? "chip chip-error" : "chip"} title=${title}>
+                                      ${text}
+                                  </li>`;
+                              })}
+                          </ul>
+                      `}
             </div>
         `;
     }
@@ -670,20 +711,26 @@ class MatterClusterView extends LitElement {
                 border-radius: 3px;
             }
 
-            .features-panel {
+            .info-panel {
                 background-color: var(--md-sys-color-surface-container);
                 border: 1px solid var(--md-sys-color-outline-variant);
                 border-radius: 12px;
                 padding: 14px 16px;
             }
 
-            .features-panel-header {
+            .info-section + .info-section {
+                margin-top: 12px;
+                padding-top: 12px;
+                border-top: 1px solid var(--md-sys-color-outline-variant);
+            }
+
+            .info-section-header {
                 font-weight: 500;
                 color: var(--md-sys-color-on-surface);
                 margin-bottom: 10px;
             }
 
-            .feature-chip-list {
+            .chip-list {
                 list-style: none;
                 margin: 0;
                 padding: 0;
@@ -692,12 +739,19 @@ class MatterClusterView extends LitElement {
                 gap: 8px;
             }
 
-            .feature-chip {
+            .chip {
                 font-size: 0.85rem;
                 color: var(--md-sys-color-on-secondary-container);
                 background: var(--md-sys-color-secondary-container);
                 padding: 4px 10px;
                 border-radius: 8px;
+            }
+
+            .chip.chip-error {
+                color: var(--md-sys-color-on-error-container);
+                background: var(--md-sys-color-error-container);
+                border: 1px solid var(--md-sys-color-error);
+                font-family: var(--monospace-font);
             }
         `,
     ];

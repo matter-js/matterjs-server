@@ -37,6 +37,17 @@ export interface ClusterDescription {
     features: { [bit: string]: ClusterFeatureDescription };
 }
 
+export interface SemanticTagDescription {
+    id: number;
+    label: string;
+}
+
+export interface SemanticTagNamespaceDescription {
+    id: number;
+    label: string;
+    tags: { [tag_id: string]: SemanticTagDescription };
+}
+
 export const device_types: Record<number, DeviceType> = {
     "10": {
         "id": 10,
@@ -19796,5 +19807,1484 @@ export const clusters: Record<number, ClusterDescription> = {
         },
         "commands": {},
         "features": {}
+    }
+};
+
+export const semantic_tag_namespaces: Record<number, SemanticTagNamespaceDescription> = {
+    "1": {
+        "id": 1,
+        "label": "Common Closure",
+        "tags": {
+            "0": {
+                "id": 0,
+                "label": "Opening"
+            },
+            "1": {
+                "id": 1,
+                "label": "Closing"
+            },
+            "2": {
+                "id": 2,
+                "label": "Stop"
+            }
+        }
+    },
+    "2": {
+        "id": 2,
+        "label": "Common Compass Direction",
+        "tags": {
+            "0": {
+                "id": 0,
+                "label": "Northward"
+            },
+            "1": {
+                "id": 1,
+                "label": "North Eastward"
+            },
+            "2": {
+                "id": 2,
+                "label": "Eastward"
+            },
+            "3": {
+                "id": 3,
+                "label": "South Eastward"
+            },
+            "4": {
+                "id": 4,
+                "label": "Southward"
+            },
+            "5": {
+                "id": 5,
+                "label": "South Westward"
+            },
+            "6": {
+                "id": 6,
+                "label": "Westward"
+            },
+            "7": {
+                "id": 7,
+                "label": "North Westward"
+            }
+        }
+    },
+    "3": {
+        "id": 3,
+        "label": "Common Compass Location",
+        "tags": {
+            "0": {
+                "id": 0,
+                "label": "North"
+            },
+            "1": {
+                "id": 1,
+                "label": "North East"
+            },
+            "2": {
+                "id": 2,
+                "label": "East"
+            },
+            "3": {
+                "id": 3,
+                "label": "South East"
+            },
+            "4": {
+                "id": 4,
+                "label": "South"
+            },
+            "5": {
+                "id": 5,
+                "label": "South West"
+            },
+            "6": {
+                "id": 6,
+                "label": "West"
+            },
+            "7": {
+                "id": 7,
+                "label": "North West"
+            }
+        }
+    },
+    "4": {
+        "id": 4,
+        "label": "Common Direction",
+        "tags": {
+            "0": {
+                "id": 0,
+                "label": "Upward"
+            },
+            "1": {
+                "id": 1,
+                "label": "Downward"
+            },
+            "2": {
+                "id": 2,
+                "label": "Leftward"
+            },
+            "3": {
+                "id": 3,
+                "label": "Rightward"
+            },
+            "4": {
+                "id": 4,
+                "label": "Forward"
+            },
+            "5": {
+                "id": 5,
+                "label": "Backward"
+            }
+        }
+    },
+    "5": {
+        "id": 5,
+        "label": "Common Level",
+        "tags": {
+            "0": {
+                "id": 0,
+                "label": "Low"
+            },
+            "1": {
+                "id": 1,
+                "label": "Medium"
+            },
+            "2": {
+                "id": 2,
+                "label": "High"
+            }
+        }
+    },
+    "6": {
+        "id": 6,
+        "label": "Common Location",
+        "tags": {
+            "0": {
+                "id": 0,
+                "label": "Indoor"
+            },
+            "1": {
+                "id": 1,
+                "label": "Outdoor"
+            },
+            "2": {
+                "id": 2,
+                "label": "Inside"
+            },
+            "3": {
+                "id": 3,
+                "label": "Outside"
+            },
+            "4": {
+                "id": 4,
+                "label": "Zone"
+            }
+        }
+    },
+    "7": {
+        "id": 7,
+        "label": "Common Number",
+        "tags": {
+            "0": {
+                "id": 0,
+                "label": "Zero"
+            },
+            "1": {
+                "id": 1,
+                "label": "One"
+            },
+            "2": {
+                "id": 2,
+                "label": "Two"
+            },
+            "3": {
+                "id": 3,
+                "label": "Three"
+            },
+            "4": {
+                "id": 4,
+                "label": "Four"
+            },
+            "5": {
+                "id": 5,
+                "label": "Five"
+            },
+            "6": {
+                "id": 6,
+                "label": "Six"
+            },
+            "7": {
+                "id": 7,
+                "label": "Seven"
+            },
+            "8": {
+                "id": 8,
+                "label": "Eight"
+            },
+            "9": {
+                "id": 9,
+                "label": "Nine"
+            },
+            "10": {
+                "id": 10,
+                "label": "Ten"
+            },
+            "11": {
+                "id": 11,
+                "label": "Eleven"
+            },
+            "12": {
+                "id": 12,
+                "label": "Twelve"
+            },
+            "13": {
+                "id": 13,
+                "label": "Thirteen"
+            },
+            "14": {
+                "id": 14,
+                "label": "Fourteen"
+            },
+            "15": {
+                "id": 15,
+                "label": "Fifteen"
+            },
+            "16": {
+                "id": 16,
+                "label": "Sixteen"
+            },
+            "17": {
+                "id": 17,
+                "label": "Seventeen"
+            },
+            "18": {
+                "id": 18,
+                "label": "Eighteen"
+            },
+            "19": {
+                "id": 19,
+                "label": "Nineteen"
+            },
+            "20": {
+                "id": 20,
+                "label": "Twenty"
+            },
+            "21": {
+                "id": 21,
+                "label": "Twenty One"
+            },
+            "22": {
+                "id": 22,
+                "label": "Twenty Two"
+            },
+            "23": {
+                "id": 23,
+                "label": "Twenty Three"
+            },
+            "24": {
+                "id": 24,
+                "label": "Twenty Four"
+            },
+            "25": {
+                "id": 25,
+                "label": "Twenty Five"
+            },
+            "26": {
+                "id": 26,
+                "label": "Twenty Six"
+            },
+            "27": {
+                "id": 27,
+                "label": "Twenty Seven"
+            },
+            "28": {
+                "id": 28,
+                "label": "Twenty Eight"
+            },
+            "29": {
+                "id": 29,
+                "label": "Twenty Nine"
+            },
+            "30": {
+                "id": 30,
+                "label": "Thirty"
+            }
+        }
+    },
+    "8": {
+        "id": 8,
+        "label": "Common Position",
+        "tags": {
+            "0": {
+                "id": 0,
+                "label": "Left"
+            },
+            "1": {
+                "id": 1,
+                "label": "Right"
+            },
+            "2": {
+                "id": 2,
+                "label": "Top"
+            },
+            "3": {
+                "id": 3,
+                "label": "Bottom"
+            },
+            "4": {
+                "id": 4,
+                "label": "Middle"
+            },
+            "5": {
+                "id": 5,
+                "label": "Row"
+            },
+            "6": {
+                "id": 6,
+                "label": "Column"
+            }
+        }
+    },
+    "10": {
+        "id": 10,
+        "label": "Electrical Measurement",
+        "tags": {
+            "0": {
+                "id": 0,
+                "label": "Dc"
+            },
+            "1": {
+                "id": 1,
+                "label": "Ac"
+            },
+            "2": {
+                "id": 2,
+                "label": "Acphase1"
+            },
+            "3": {
+                "id": 3,
+                "label": "Acphase2"
+            },
+            "4": {
+                "id": 4,
+                "label": "Acphase3"
+            }
+        }
+    },
+    "11": {
+        "id": 11,
+        "label": "Commodity Tariff Chronology",
+        "tags": {
+            "0": {
+                "id": 0,
+                "label": "Current"
+            },
+            "1": {
+                "id": 1,
+                "label": "Previous"
+            },
+            "2": {
+                "id": 2,
+                "label": "Upcoming"
+            }
+        }
+    },
+    "13": {
+        "id": 13,
+        "label": "Commodity Tariff Commodity",
+        "tags": {
+            "0": {
+                "id": 0,
+                "label": "Electrical Energy"
+            }
+        }
+    },
+    "14": {
+        "id": 14,
+        "label": "Laundry",
+        "tags": {
+            "0": {
+                "id": 0,
+                "label": "Normal"
+            },
+            "1": {
+                "id": 1,
+                "label": "Light Dry"
+            },
+            "2": {
+                "id": 2,
+                "label": "Extra Dry"
+            },
+            "3": {
+                "id": 3,
+                "label": "No Dry"
+            }
+        }
+    },
+    "15": {
+        "id": 15,
+        "label": "Power Source",
+        "tags": {
+            "0": {
+                "id": 0,
+                "label": "Unknown"
+            },
+            "1": {
+                "id": 1,
+                "label": "Grid"
+            },
+            "2": {
+                "id": 2,
+                "label": "Solar"
+            },
+            "3": {
+                "id": 3,
+                "label": "Battery"
+            },
+            "4": {
+                "id": 4,
+                "label": "Ev"
+            }
+        }
+    },
+    "16": {
+        "id": 16,
+        "label": "Common Area Namespace",
+        "tags": {
+            "0": {
+                "id": 0,
+                "label": "Aisle"
+            },
+            "1": {
+                "id": 1,
+                "label": "Attic"
+            },
+            "2": {
+                "id": 2,
+                "label": "Back Door"
+            },
+            "3": {
+                "id": 3,
+                "label": "Back Yard"
+            },
+            "4": {
+                "id": 4,
+                "label": "Balcony"
+            },
+            "5": {
+                "id": 5,
+                "label": "Ballroom"
+            },
+            "6": {
+                "id": 6,
+                "label": "Bathroom"
+            },
+            "7": {
+                "id": 7,
+                "label": "Bedroom"
+            },
+            "8": {
+                "id": 8,
+                "label": "Border"
+            },
+            "9": {
+                "id": 9,
+                "label": "Boxroom"
+            },
+            "10": {
+                "id": 10,
+                "label": "Breakfast Room"
+            },
+            "11": {
+                "id": 11,
+                "label": "Carport"
+            },
+            "12": {
+                "id": 12,
+                "label": "Cellar"
+            },
+            "13": {
+                "id": 13,
+                "label": "Cloakroom"
+            },
+            "14": {
+                "id": 14,
+                "label": "Closet"
+            },
+            "15": {
+                "id": 15,
+                "label": "Conservatory"
+            },
+            "16": {
+                "id": 16,
+                "label": "Corridor"
+            },
+            "17": {
+                "id": 17,
+                "label": "Craft Room"
+            },
+            "18": {
+                "id": 18,
+                "label": "Cupboard"
+            },
+            "19": {
+                "id": 19,
+                "label": "Deck"
+            },
+            "20": {
+                "id": 20,
+                "label": "Den"
+            },
+            "21": {
+                "id": 21,
+                "label": "Dining"
+            },
+            "22": {
+                "id": 22,
+                "label": "Drawing Room"
+            },
+            "23": {
+                "id": 23,
+                "label": "Dressing Room"
+            },
+            "24": {
+                "id": 24,
+                "label": "Driveway"
+            },
+            "25": {
+                "id": 25,
+                "label": "Elevator"
+            },
+            "26": {
+                "id": 26,
+                "label": "Ensuite"
+            },
+            "27": {
+                "id": 27,
+                "label": "Entrance"
+            },
+            "28": {
+                "id": 28,
+                "label": "Entryway"
+            },
+            "29": {
+                "id": 29,
+                "label": "Family Room"
+            },
+            "30": {
+                "id": 30,
+                "label": "Foyer"
+            },
+            "31": {
+                "id": 31,
+                "label": "Front Door"
+            },
+            "32": {
+                "id": 32,
+                "label": "Front Yard"
+            },
+            "33": {
+                "id": 33,
+                "label": "Game Room"
+            },
+            "34": {
+                "id": 34,
+                "label": "Garage"
+            },
+            "35": {
+                "id": 35,
+                "label": "Garage Door"
+            },
+            "36": {
+                "id": 36,
+                "label": "Garden"
+            },
+            "37": {
+                "id": 37,
+                "label": "Garden Door"
+            },
+            "38": {
+                "id": 38,
+                "label": "Guest Bathroom"
+            },
+            "39": {
+                "id": 39,
+                "label": "Guest Bedroom"
+            },
+            "40": {
+                "id": 40,
+                "label": "Reserved28"
+            },
+            "41": {
+                "id": 41,
+                "label": "Guest Room"
+            },
+            "42": {
+                "id": 42,
+                "label": "Gym"
+            },
+            "43": {
+                "id": 43,
+                "label": "Hallway"
+            },
+            "44": {
+                "id": 44,
+                "label": "Hearth Room"
+            },
+            "45": {
+                "id": 45,
+                "label": "Kids Room"
+            },
+            "46": {
+                "id": 46,
+                "label": "Kids Bedroom"
+            },
+            "47": {
+                "id": 47,
+                "label": "Kitchen"
+            },
+            "48": {
+                "id": 48,
+                "label": "Reserved30"
+            },
+            "49": {
+                "id": 49,
+                "label": "Laundry Room"
+            },
+            "50": {
+                "id": 50,
+                "label": "Lawn"
+            },
+            "51": {
+                "id": 51,
+                "label": "Library"
+            },
+            "52": {
+                "id": 52,
+                "label": "Living Room"
+            },
+            "53": {
+                "id": 53,
+                "label": "Lounge"
+            },
+            "54": {
+                "id": 54,
+                "label": "Media Tv Room"
+            },
+            "55": {
+                "id": 55,
+                "label": "Mud Room"
+            },
+            "56": {
+                "id": 56,
+                "label": "Music Room"
+            },
+            "57": {
+                "id": 57,
+                "label": "Nursery"
+            },
+            "58": {
+                "id": 58,
+                "label": "Office"
+            },
+            "59": {
+                "id": 59,
+                "label": "Outdoor Kitchen"
+            },
+            "60": {
+                "id": 60,
+                "label": "Outside"
+            },
+            "61": {
+                "id": 61,
+                "label": "Pantry"
+            },
+            "62": {
+                "id": 62,
+                "label": "Parking Lot"
+            },
+            "63": {
+                "id": 63,
+                "label": "Parlor"
+            },
+            "64": {
+                "id": 64,
+                "label": "Patio"
+            },
+            "65": {
+                "id": 65,
+                "label": "Play Room"
+            },
+            "66": {
+                "id": 66,
+                "label": "Pool Room"
+            },
+            "67": {
+                "id": 67,
+                "label": "Porch"
+            },
+            "68": {
+                "id": 68,
+                "label": "Primary Bathroom"
+            },
+            "69": {
+                "id": 69,
+                "label": "Primary Bedroom"
+            },
+            "70": {
+                "id": 70,
+                "label": "Ramp"
+            },
+            "71": {
+                "id": 71,
+                "label": "Reception Room"
+            },
+            "72": {
+                "id": 72,
+                "label": "Recreation Room"
+            },
+            "73": {
+                "id": 73,
+                "label": "Reserved49"
+            },
+            "74": {
+                "id": 74,
+                "label": "Roof"
+            },
+            "75": {
+                "id": 75,
+                "label": "Sauna"
+            },
+            "76": {
+                "id": 76,
+                "label": "Scullery"
+            },
+            "77": {
+                "id": 77,
+                "label": "Sewing Room"
+            },
+            "78": {
+                "id": 78,
+                "label": "Shed"
+            },
+            "79": {
+                "id": 79,
+                "label": "Side Door"
+            },
+            "80": {
+                "id": 80,
+                "label": "Side Yard"
+            },
+            "81": {
+                "id": 81,
+                "label": "Sitting Room"
+            },
+            "82": {
+                "id": 82,
+                "label": "Snug"
+            },
+            "83": {
+                "id": 83,
+                "label": "Spa"
+            },
+            "84": {
+                "id": 84,
+                "label": "Staircase"
+            },
+            "85": {
+                "id": 85,
+                "label": "Steam Room"
+            },
+            "86": {
+                "id": 86,
+                "label": "Storage Room"
+            },
+            "87": {
+                "id": 87,
+                "label": "Studio"
+            },
+            "88": {
+                "id": 88,
+                "label": "Study"
+            },
+            "89": {
+                "id": 89,
+                "label": "Sun Room"
+            },
+            "90": {
+                "id": 90,
+                "label": "Swimming Pool"
+            },
+            "91": {
+                "id": 91,
+                "label": "Terrace"
+            },
+            "92": {
+                "id": 92,
+                "label": "Utility Room"
+            },
+            "93": {
+                "id": 93,
+                "label": "Ward"
+            },
+            "94": {
+                "id": 94,
+                "label": "Workshop"
+            },
+            "95": {
+                "id": 95,
+                "label": "Toilet"
+            }
+        }
+    },
+    "17": {
+        "id": 17,
+        "label": "Common Landmark Namespace",
+        "tags": {
+            "0": {
+                "id": 0,
+                "label": "Air Conditioner"
+            },
+            "1": {
+                "id": 1,
+                "label": "Air Purifier"
+            },
+            "2": {
+                "id": 2,
+                "label": "Back Door"
+            },
+            "3": {
+                "id": 3,
+                "label": "Bar Stool"
+            },
+            "4": {
+                "id": 4,
+                "label": "Bath Mat"
+            },
+            "5": {
+                "id": 5,
+                "label": "Bathtub"
+            },
+            "6": {
+                "id": 6,
+                "label": "Bed"
+            },
+            "7": {
+                "id": 7,
+                "label": "Bookshelf"
+            },
+            "8": {
+                "id": 8,
+                "label": "Chair"
+            },
+            "9": {
+                "id": 9,
+                "label": "Christmas Tree"
+            },
+            "10": {
+                "id": 10,
+                "label": "Coat Rack"
+            },
+            "11": {
+                "id": 11,
+                "label": "Coffee Table"
+            },
+            "12": {
+                "id": 12,
+                "label": "Cooking Range"
+            },
+            "13": {
+                "id": 13,
+                "label": "Couch"
+            },
+            "14": {
+                "id": 14,
+                "label": "Countertop"
+            },
+            "15": {
+                "id": 15,
+                "label": "Cradle"
+            },
+            "16": {
+                "id": 16,
+                "label": "Crib"
+            },
+            "17": {
+                "id": 17,
+                "label": "Desk"
+            },
+            "18": {
+                "id": 18,
+                "label": "Dining Table"
+            },
+            "19": {
+                "id": 19,
+                "label": "Dishwasher"
+            },
+            "20": {
+                "id": 20,
+                "label": "Door"
+            },
+            "21": {
+                "id": 21,
+                "label": "Dresser"
+            },
+            "22": {
+                "id": 22,
+                "label": "Laundry Dryer"
+            },
+            "23": {
+                "id": 23,
+                "label": "Fan"
+            },
+            "24": {
+                "id": 24,
+                "label": "Fireplace"
+            },
+            "25": {
+                "id": 25,
+                "label": "Freezer"
+            },
+            "26": {
+                "id": 26,
+                "label": "Front Door"
+            },
+            "27": {
+                "id": 27,
+                "label": "High Chair"
+            },
+            "28": {
+                "id": 28,
+                "label": "Kitchen Island"
+            },
+            "29": {
+                "id": 29,
+                "label": "Lamp"
+            },
+            "30": {
+                "id": 30,
+                "label": "Litter Box"
+            },
+            "31": {
+                "id": 31,
+                "label": "Mirror"
+            },
+            "32": {
+                "id": 32,
+                "label": "Nightstand"
+            },
+            "33": {
+                "id": 33,
+                "label": "Oven"
+            },
+            "34": {
+                "id": 34,
+                "label": "Pet Bed"
+            },
+            "35": {
+                "id": 35,
+                "label": "Pet Bowl"
+            },
+            "36": {
+                "id": 36,
+                "label": "Pet Crate"
+            },
+            "37": {
+                "id": 37,
+                "label": "Refrigerator"
+            },
+            "38": {
+                "id": 38,
+                "label": "Scratching Post"
+            },
+            "39": {
+                "id": 39,
+                "label": "Shoe Rack"
+            },
+            "40": {
+                "id": 40,
+                "label": "Shower"
+            },
+            "41": {
+                "id": 41,
+                "label": "Side Door"
+            },
+            "42": {
+                "id": 42,
+                "label": "Sink"
+            },
+            "43": {
+                "id": 43,
+                "label": "Sofa"
+            },
+            "44": {
+                "id": 44,
+                "label": "Stove"
+            },
+            "45": {
+                "id": 45,
+                "label": "Table"
+            },
+            "46": {
+                "id": 46,
+                "label": "Toilet"
+            },
+            "47": {
+                "id": 47,
+                "label": "Trash Can"
+            },
+            "48": {
+                "id": 48,
+                "label": "Laundry Washer"
+            },
+            "49": {
+                "id": 49,
+                "label": "Window"
+            },
+            "50": {
+                "id": 50,
+                "label": "Wine Cooler"
+            }
+        }
+    },
+    "18": {
+        "id": 18,
+        "label": "Common Relative Position",
+        "tags": {
+            "0": {
+                "id": 0,
+                "label": "Under"
+            },
+            "1": {
+                "id": 1,
+                "label": "Next To"
+            },
+            "2": {
+                "id": 2,
+                "label": "Around"
+            },
+            "3": {
+                "id": 3,
+                "label": "On"
+            },
+            "4": {
+                "id": 4,
+                "label": "Above"
+            },
+            "5": {
+                "id": 5,
+                "label": "Front Of"
+            },
+            "6": {
+                "id": 6,
+                "label": "Behind"
+            }
+        }
+    },
+    "19": {
+        "id": 19,
+        "label": "Commodity Tariff Flow",
+        "tags": {
+            "0": {
+                "id": 0,
+                "label": "Import"
+            },
+            "1": {
+                "id": 1,
+                "label": "Export"
+            }
+        }
+    },
+    "65": {
+        "id": 65,
+        "label": "Refrigerator",
+        "tags": {
+            "0": {
+                "id": 0,
+                "label": "Refrigerator"
+            },
+            "1": {
+                "id": 1,
+                "label": "Freezer"
+            }
+        }
+    },
+    "66": {
+        "id": 66,
+        "label": "Room Air Conditioner",
+        "tags": {
+            "0": {
+                "id": 0,
+                "label": "Evaporator"
+            },
+            "1": {
+                "id": 1,
+                "label": "Condenser"
+            }
+        }
+    },
+    "67": {
+        "id": 67,
+        "label": "Switches",
+        "tags": {
+            "0": {
+                "id": 0,
+                "label": "On"
+            },
+            "1": {
+                "id": 1,
+                "label": "Off"
+            },
+            "2": {
+                "id": 2,
+                "label": "Toggle"
+            },
+            "3": {
+                "id": 3,
+                "label": "Up"
+            },
+            "4": {
+                "id": 4,
+                "label": "Down"
+            },
+            "5": {
+                "id": 5,
+                "label": "Next"
+            },
+            "6": {
+                "id": 6,
+                "label": "Previous"
+            },
+            "7": {
+                "id": 7,
+                "label": "Enter Ok Select"
+            },
+            "8": {
+                "id": 8,
+                "label": "Custom"
+            },
+            "9": {
+                "id": 9,
+                "label": "Open"
+            },
+            "10": {
+                "id": 10,
+                "label": "Close"
+            },
+            "11": {
+                "id": 11,
+                "label": "Stop"
+            }
+        }
+    },
+    "68": {
+        "id": 68,
+        "label": "Closure",
+        "tags": {
+            "0": {
+                "id": 0,
+                "label": "Covering"
+            },
+            "1": {
+                "id": 1,
+                "label": "Window"
+            },
+            "2": {
+                "id": 2,
+                "label": "Barrier"
+            },
+            "3": {
+                "id": 3,
+                "label": "Cabinet"
+            },
+            "4": {
+                "id": 4,
+                "label": "Gate"
+            },
+            "5": {
+                "id": 5,
+                "label": "Garage Door"
+            },
+            "6": {
+                "id": 6,
+                "label": "Door"
+            }
+        }
+    },
+    "69": {
+        "id": 69,
+        "label": "Closure Panel",
+        "tags": {
+            "0": {
+                "id": 0,
+                "label": "Lift"
+            },
+            "1": {
+                "id": 1,
+                "label": "Tilt"
+            },
+            "2": {
+                "id": 2,
+                "label": "Sliding"
+            },
+            "3": {
+                "id": 3,
+                "label": "Rotate"
+            }
+        }
+    },
+    "70": {
+        "id": 70,
+        "label": "Closure Covering",
+        "tags": {
+            "0": {
+                "id": 0,
+                "label": "Blind"
+            },
+            "1": {
+                "id": 1,
+                "label": "Awning"
+            },
+            "2": {
+                "id": 2,
+                "label": "Shutter"
+            },
+            "3": {
+                "id": 3,
+                "label": "Venetian"
+            },
+            "4": {
+                "id": 4,
+                "label": "Curtain"
+            }
+        }
+    },
+    "71": {
+        "id": 71,
+        "label": "Closure Window",
+        "tags": {
+            "0": {
+                "id": 0,
+                "label": "Roof"
+            },
+            "1": {
+                "id": 1,
+                "label": "Facade"
+            }
+        }
+    },
+    "72": {
+        "id": 72,
+        "label": "Closure Cabinet",
+        "tags": {
+            "0": {
+                "id": 0,
+                "label": "Cabinet Door"
+            },
+            "1": {
+                "id": 1,
+                "label": "Drawer"
+            },
+            "2": {
+                "id": 2,
+                "label": "Flap"
+            }
+        }
+    },
+    "73": {
+        "id": 73,
+        "label": "Identified Object",
+        "tags": {
+            "0": {
+                "id": 0,
+                "label": "Unknown"
+            },
+            "1": {
+                "id": 1,
+                "label": "Adult"
+            },
+            "2": {
+                "id": 2,
+                "label": "Child"
+            },
+            "3": {
+                "id": 3,
+                "label": "Person"
+            },
+            "4": {
+                "id": 4,
+                "label": "Rvc"
+            },
+            "5": {
+                "id": 5,
+                "label": "Pet"
+            },
+            "6": {
+                "id": 6,
+                "label": "Dog"
+            },
+            "7": {
+                "id": 7,
+                "label": "Cat"
+            },
+            "8": {
+                "id": 8,
+                "label": "Animal"
+            },
+            "9": {
+                "id": 9,
+                "label": "Car"
+            },
+            "10": {
+                "id": 10,
+                "label": "Vehicle"
+            },
+            "11": {
+                "id": 11,
+                "label": "Package"
+            },
+            "12": {
+                "id": 12,
+                "label": "Clothes"
+            }
+        }
+    },
+    "74": {
+        "id": 74,
+        "label": "Identified Sound",
+        "tags": {
+            "0": {
+                "id": 0,
+                "label": "Unknown"
+            },
+            "1": {
+                "id": 1,
+                "label": "Object Fall"
+            },
+            "2": {
+                "id": 2,
+                "label": "Snoring"
+            },
+            "3": {
+                "id": 3,
+                "label": "Coughing"
+            },
+            "4": {
+                "id": 4,
+                "label": "Barking"
+            },
+            "5": {
+                "id": 5,
+                "label": "Shattering"
+            },
+            "6": {
+                "id": 6,
+                "label": "Baby Crying"
+            },
+            "7": {
+                "id": 7,
+                "label": "Utility Alarm"
+            },
+            "8": {
+                "id": 8,
+                "label": "Urgent Shouting"
+            },
+            "9": {
+                "id": 9,
+                "label": "Doorbell"
+            },
+            "10": {
+                "id": 10,
+                "label": "Knocking"
+            },
+            "11": {
+                "id": 11,
+                "label": "Urgent Siren"
+            },
+            "12": {
+                "id": 12,
+                "label": "Faucet Running"
+            },
+            "13": {
+                "id": 13,
+                "label": "Kettle Boiling"
+            },
+            "14": {
+                "id": 14,
+                "label": "Fan Dryer"
+            },
+            "15": {
+                "id": 15,
+                "label": "Clapping"
+            },
+            "16": {
+                "id": 16,
+                "label": "Finger Snapping"
+            },
+            "17": {
+                "id": 17,
+                "label": "Meowing"
+            },
+            "18": {
+                "id": 18,
+                "label": "Laughing"
+            },
+            "19": {
+                "id": 19,
+                "label": "Glass Breaking"
+            },
+            "20": {
+                "id": 20,
+                "label": "Door Knocking"
+            },
+            "21": {
+                "id": 21,
+                "label": "Person Talking"
+            }
+        }
+    },
+    "75": {
+        "id": 75,
+        "label": "Identified Human Activity",
+        "tags": {
+            "0": {
+                "id": 0,
+                "label": "Unknown"
+            },
+            "1": {
+                "id": 1,
+                "label": "Fall"
+            },
+            "2": {
+                "id": 2,
+                "label": "Sleeping"
+            },
+            "3": {
+                "id": 3,
+                "label": "Walking"
+            },
+            "4": {
+                "id": 4,
+                "label": "Workout"
+            },
+            "5": {
+                "id": 5,
+                "label": "Sitting"
+            },
+            "6": {
+                "id": 6,
+                "label": "Standing"
+            },
+            "7": {
+                "id": 7,
+                "label": "Dancing"
+            },
+            "8": {
+                "id": 8,
+                "label": "Package Delivery"
+            },
+            "9": {
+                "id": 9,
+                "label": "Package Retrieval"
+            }
+        }
     }
 };

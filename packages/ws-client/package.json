@@ -37,13 +37,14 @@
     "scripts": {
         "clean": "nacho-build clean",
         "build": "nacho-build",
-        "build-clean": "nacho-build --clean"
+        "build-clean": "nacho-build --clean",
+        "test": "matter-test --force-exit"
     },
     "dependencies": {
-        "@matter/thread-br-client": "0.17.7-alpha.0-20260723-8a6b27aed"
+        "@matter/thread-br-client": "0.17.7"
     },
     "devDependencies": {
-        "@matter/testing": "0.17.7-alpha.0-20260723-8a6b27aed",
+        "@matter/testing": "0.17.7",
         "@types/node": "^26.1.1",
         "@types/ws": "^8.18.1",
         "ws": "^8.21.1"
