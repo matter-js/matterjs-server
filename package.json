@@ -78,8 +78,8 @@
         "usb@2.18.0": true,
         "@serialport/bindings-cpp@12.0.1": true,
         "@stoprocent/bleno@0.12.5": true,
-        "@stoprocent/bluetooth-hci-socket@2.2.7": true,
-        "@stoprocent/noble@2.5.9": true,
+        "@stoprocent/bluetooth-hci-socket@2.2.8": true,
+        "@stoprocent/noble@2.5.10": true,
         "fsevents@2.3.2": true,
         "fsevents@2.3.3": true
     }
