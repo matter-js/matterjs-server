@@ -9,6 +9,7 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## **WORK IN PROGRESS**
 
+- Enhancement: (pkese) Dashboard network graphs space nodes by signal quality (Thread LQI, Wi-Fi RSSI) instead of using one fixed edge length
 - Fix: Update BLE library
 
 ## 1.3.2 (2026-07-28)

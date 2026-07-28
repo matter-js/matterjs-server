@@ -15,6 +15,7 @@ import {
     getNetworkType,
     getSignalColorFromRssi,
     getWiFiDiagnostics,
+    rssiToEdgeLength,
 } from "./network-utils.js";
 
 declare global {
@@ -146,7 +147,7 @@ export class WiFiGraph extends BaseNetworkGraph {
                 const apId = `ap_${wifiDiag.bssid.replace(/:/g, "")}`;
                 const signalColor = getSignalColorFromRssi(wifiDiag.rssi);
 
-                graphEdges.push({
+                const edge: NetworkGraphEdge = {
                     id: `edge_${edgeIndex++}`,
                     from: nodeId,
                     to: apId,
@@ -157,7 +158,11 @@ export class WiFiGraph extends BaseNetworkGraph {
                     width: 2,
                     title: wifiDiag.rssi !== null ? `RSSI: ${wifiDiag.rssi} dBm` : "RSSI: Unknown",
                     dashes: isOffline, // Dashed lines for offline devices
-                });
+                };
+                if (wifiDiag.rssi !== null) {
+                    edge.length = rssiToEdgeLength(wifiDiag.rssi);
+                }
+                graphEdges.push(edge);
             }
         }
 
