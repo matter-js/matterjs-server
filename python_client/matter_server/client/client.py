@@ -318,6 +318,10 @@ class MatterClient:
         building the snapshot (slower - seconds); otherwise it builds from the
         current attribute cache.
 
+        refresh=True costs real radio traffic on every online node, so it is a
+        user-initiated action - never poll it. The push event is the intended
+        source for keeping a graph current.
+
         Requires schema 13 (OHF Matter Server).
         """
         data = await self.send_command(
