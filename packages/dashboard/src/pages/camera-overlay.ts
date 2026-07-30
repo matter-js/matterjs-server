@@ -28,8 +28,7 @@ import "../components/webrtc-stream-view.js";
 import type { WebRtcStreamView } from "../components/webrtc-stream-view.js";
 import { asObject, pickNumber } from "../util/attribute-shapes.js";
 import { hasAvsumOnEndpoint } from "../util/avsum.js";
-import { LIVE_VIEW_DEVICE_TYPE_IDS } from "../util/device-icons.js";
-import { getEndpointDeviceTypes } from "../util/endpoints.js";
+import { supportsAudioOnlyLiveView, supportsLiveView, supportsSnapshot } from "../util/camera.js";
 
 type StreamState = "idle" | "connecting" | "streaming" | "error";
 
@@ -77,23 +76,12 @@ export class CameraOverlay extends LitElement {
 
     private get _liveViewSupported(): boolean {
         const node = this.client?.nodes[String(this.nodeId)];
-        if (!node) return false;
-        const deviceTypeIds = getEndpointDeviceTypes(node, this.endpointId).map(d => d.id);
-        return LIVE_VIEW_DEVICE_TYPE_IDS.some(id => deviceTypeIds.includes(id));
+        return node ? supportsLiveView(node, this.endpointId) : false;
     }
 
     private get _snapshotSupported(): boolean {
         const node = this.client?.nodes[String(this.nodeId)];
-        // CaptureSnapshot (cmd 12) must appear in AcceptedCommandList (attr 0xfff9 = 65529).
-        const accepted = node?.attributes[`${this.endpointId}/1361/65529`];
-        if (!Array.isArray(accepted) || !accepted.includes(12)) return false;
-        // FeatureMap (attr 0xfffc = 65532) bit 2 (SNP) advertises snapshot support — some cameras
-        // set the bit but leave SnapshotCapabilities empty, so the feature bit is the authoritative
-        // signal and SnapshotCapabilities a hint we fall back from.
-        const featureMap = node?.attributes[`${this.endpointId}/1361/65532`];
-        if (typeof featureMap === "number" && (featureMap & 0x04) !== 0) return true;
-        const caps = node?.attributes[`${this.endpointId}/1361/10`];
-        return Array.isArray(caps) && caps.length > 0;
+        return node ? supportsSnapshot(node, this.endpointId) : false;
     }
 
     private _streamViewRef = createRef<WebRtcStreamView>();
@@ -175,9 +163,8 @@ export class CameraOverlay extends LitElement {
     }
 
     private _getSensorSize(): { width: number; height: number } | null {
-        const node = this.client?.nodes[String(this.nodeId)];
-        if (!node) return null;
-        const raw = node.attributes[`${this.endpointId}/1361/7`];
+        // AVSM VideoSensorParams (attr 0x2): SensorWidth/SensorHeight.
+        const raw = this._readCachedAvsmAttribute(0x2);
         const obj = asObject(raw);
         if (!obj) return null;
         const w = pickNumber(obj, "sensorWidth", "0");
@@ -227,6 +214,18 @@ export class CameraOverlay extends LitElement {
         // stream is being torn down) or a not-yet-allocated null (during connecting).
         this._activeVideoStreamId =
             ev.detail.state === "streaming" ? (this._streamViewRef.value?.videoStreamId ?? null) : null;
+
+        // Audio-only "Listen" sessions have no video; starting muted would defeat the feature, so
+        // unmute on stream start. Started from the user's Start click, so autoplay policy allows it.
+        if (ev.detail.state === "streaming" && this._isAudioOnly()) {
+            this._streamViewRef.value?.setMuted(false);
+            this._muted = false;
+        }
+    }
+
+    private _isAudioOnly(): boolean {
+        const node = this.client?.nodes[String(this.nodeId)];
+        return node ? supportsAudioOnlyLiveView(node, this.endpointId) : false;
     }
 
     private _start(): void {

@@ -64,6 +64,8 @@ export interface NetworkGraphEdge {
     dashes?: boolean;
     /** Whether the edge should be hidden */
     hidden?: boolean;
+    /** vis.js per-edge spring length; overrides the global physics springLength */
+    length?: number;
     /** vis.js arrow configuration: shorthand string ("to", "from", "") or
      * object form for explicit head sizing on dashed edges. */
     arrows?: string | { to?: { enabled: boolean; scaleFactor: number } };

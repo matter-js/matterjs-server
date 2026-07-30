@@ -81,6 +81,32 @@ export function signalLevelToColor(level: SignalLevel): string {
     }
 }
 
+/** Spring length per LQI stage, index = LQI 0..3 (OpenThread reports 0-3). */
+const LQI_EDGE_LENGTHS = [340, 270, 190, 100];
+
+/** Extra spring length for an edge on a node with a single link, pushing leaves outward. */
+export const LEAF_EDGE_LENGTH_PENALTY = 70;
+
+/** Map an averaged LQI to a physics spring length, interpolating between stages. */
+export function lqiToEdgeLength(avgLqi: number): number {
+    const clamped = Math.min(LQI_EDGE_LENGTHS.length - 1, Math.max(0, avgLqi));
+    const lower = Math.floor(clamped);
+    const upper = Math.ceil(clamped);
+    if (lower === upper) return LQI_EDGE_LENGTHS[lower];
+    return LQI_EDGE_LENGTHS[lower] + (LQI_EDGE_LENGTHS[upper] - LQI_EDGE_LENGTHS[lower]) * (clamped - lower);
+}
+
+/** RSSI (dBm) and spring-length bounds for the Wi-Fi star layout. */
+const RSSI_EDGE_LENGTH_BOUNDS = { strongRssi: -50, weakRssi: -90, strongLength: 90, weakLength: 260 };
+
+/** Map an RSSI to a physics spring length, so weakly-attached devices sit further from their AP. */
+export function rssiToEdgeLength(rssi: number): number {
+    const { strongRssi, weakRssi, strongLength, weakLength } = RSSI_EDGE_LENGTH_BOUNDS;
+    const clamped = Math.min(strongRssi, Math.max(weakRssi, rssi));
+    const weakness = (strongRssi - clamped) / (strongRssi - weakRssi);
+    return strongLength + weakness * (weakLength - strongLength);
+}
+
 /**
  * Get signal color from an LQI value (0-3 in practice on OpenThread).
  * 0 = grey (no link), 1 = red, 2 = orange, 3 = green.

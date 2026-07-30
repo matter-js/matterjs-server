@@ -392,6 +392,7 @@ export class MatterController {
                 this.#bleProxyEnabled,
                 !this.#disableOtaProvider,
                 this.#enableTimeSync,
+                !this.#threadDiagnosticsDisabled,
             );
 
             this.#commandHandler.events.started.once(async () => {
