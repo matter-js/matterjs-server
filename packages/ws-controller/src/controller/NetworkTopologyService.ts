@@ -12,6 +12,7 @@ import {
     getNetworkType,
     getThreadExtendedAddressHex,
     getThreadExtendedPanId,
+    getThreadNetworkName,
     getThreadRloc16,
     getThreadRole,
     getWiFiDiagnostics,
@@ -42,11 +43,12 @@ const logger = Logger.get("NetworkTopologyService");
 const TOPOLOGY_CLUSTERS = new Set<number>([49, 51, 53, 54]);
 
 /**
- * Thread neighbor + route tables, interface list, own RLOC16 — the inputs to Thread edge
- * derivation. RLOC16 (0/53/64) is included because edge/unknown matching falls back to it
- * when extended-address matching fails, and it changes when a device re-attaches to the mesh.
+ * Thread neighbor + route tables, interface list, own RLOC16, routing role and network name —
+ * the inputs to Thread edge derivation and to the built node. RLOC16 (0/53/64) is included
+ * because edge/unknown matching falls back to it when extended-address matching fails, and it
+ * changes — like the routing role (0/53/1) — when a device re-attaches to the mesh.
  */
-export const THREAD_REFRESH_PATHS = ["0/53/7", "0/53/8", "0/51/0", "0/53/64"];
+export const THREAD_REFRESH_PATHS = ["0/53/7", "0/53/8", "0/51/0", "0/53/64", "0/53/1", "0/53/2"];
 /** WiFi BSSID + channel + RSSI — the inputs to the WiFi star. */
 export const WIFI_REFRESH_PATHS = ["0/54/0", "0/54/3", "0/54/4"];
 
@@ -132,6 +134,7 @@ export class NetworkTopologyService {
     readonly #refreshConcurrency: number;
     #debounceTimer?: NodeJS.Timeout;
     #periodicTimer?: NodeJS.Timeout;
+    #refreshInFlight?: Promise<NetworkTopology>;
     #lastHash?: string;
     #stopped = false;
 
@@ -184,10 +187,22 @@ export class NetworkTopologyService {
      * dashboard's "update connections" action. Once the overall deadline expires no further
      * reads start; reads already in flight run to completion (their results land in the
      * cache and surface via the next rebuild).
+     *
+     * Concurrent callers share one in-flight refresh: the read fan-out costs real radio
+     * traffic on every node, so N clients requesting a refresh at once must not multiply it.
      */
     async refresh(): Promise<NetworkTopology> {
         if (this.#stopped) return this.#build();
+        if (this.#refreshInFlight !== undefined) return this.#refreshInFlight;
 
+        const inFlight = this.#runRefresh().finally(() => {
+            if (this.#refreshInFlight === inFlight) this.#refreshInFlight = undefined;
+        });
+        this.#refreshInFlight = inFlight;
+        return inFlight;
+    }
+
+    async #runRefresh(): Promise<NetworkTopology> {
         const tasks: Array<() => Promise<void>> = [];
         for (const node of this.#opts.listNodes()) {
             if (node.available === false) continue;
@@ -314,7 +329,9 @@ export class NetworkTopologyService {
                     ext_address: getThreadExtendedAddressHex(node),
                     rloc16: getThreadRloc16(node),
                     ext_pan_id: extPanIdHex,
-                    network_name: extPanIdHex !== undefined ? networkNameByXp.get(extPanIdHex) : undefined,
+                    network_name:
+                        getThreadNetworkName(node) ??
+                        (extPanIdHex !== undefined ? networkNameByXp.get(extPanIdHex) : undefined),
                 });
             } else if (networkType === "wifi") {
                 nodes.push({
@@ -342,13 +359,20 @@ export class NetworkTopologyService {
         const extAddrMap = buildExtAddrMap(threadNodes);
         const rloc16Map = buildRloc16Map(threadNodes);
         const externals = findUnknownDevices(threadNodes, extAddrMap, rloc16Map, brByExt);
-        for (const ext of externals) {
-            nodes.push(mapExternal(ext));
-        }
         const edgePairs = buildThreadEdgePairs(threadNodes, extAddrMap, rloc16Map, externals);
+        const linkedIds = new Set<string>();
         for (const pair of edgePairs.values()) {
             const connection = mapThreadPair(pair);
-            if (connection !== undefined) connections.push(connection);
+            if (connection === undefined) continue;
+            connections.push(connection);
+            linkedIds.add(connection.source);
+            linkedIds.add(connection.target);
+        }
+        for (const ext of externals) {
+            // An external is materialized from any neighbor record, including dead ones (LQI 0),
+            // whose pair mapThreadPair drops — shipping it anyway would be a node with no edges.
+            if (!linkedIds.has(ext.id)) continue;
+            nodes.push(mapExternal(ext));
         }
 
         // --- WiFi star: one AP pseudo-node per BSSID, station → AP edges ---

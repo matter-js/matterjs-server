@@ -151,6 +151,15 @@ export function getThreadRole(node: TopologySourceNode): number | undefined {
 }
 
 /**
+ * Gets the Thread network name a node reports for itself.
+ * Uses attribute 0/53/2 (NetworkName, nullable per Matter spec).
+ */
+export function getThreadNetworkName(node: TopologySourceNode): string | undefined {
+    const v = node.attributes["0/53/2"];
+    return typeof v === "string" && v.length > 0 ? v : undefined;
+}
+
+/**
  * Gets the Thread channel for a node.
  * Uses attribute 0/53/0 (Channel, nullable per Matter spec).
  */

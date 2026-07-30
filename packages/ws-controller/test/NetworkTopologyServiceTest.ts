@@ -5,8 +5,10 @@
  */
 
 import type { NetworkTopology, TopologySourceNode } from "@matter-server/ws-client";
-import { Observable } from "@matter/main";
+import { NodeId, Observable } from "@matter/main";
 import type { BorderRouterEntry, BorderRouterRegistry } from "@matter/thread-br-client";
+import type { ControllerCommandHandler } from "../src/controller/ControllerCommandHandler.js";
+import { topologyAttributeReader } from "../src/controller/MatterController.js";
 import {
     NetworkTopologyService,
     THREAD_REFRESH_PATHS,
@@ -51,6 +53,7 @@ interface ThreadNodeOpts {
     neighbors?: Record<string, unknown>[];
     available?: boolean;
     isBridge?: boolean;
+    networkName?: string;
 }
 
 function mkThread(nodeId: number, opts: ThreadNodeOpts = {}): Node {
@@ -62,6 +65,7 @@ function mkThread(nodeId: number, opts: ThreadNodeOpts = {}): Node {
     if (opts.rloc16 !== undefined) attributes["0/53/64"] = opts.rloc16;
     if (opts.extBytes !== undefined) attributes["0/51/0"] = [{ "4": b64(opts.extBytes), "7": 4 }];
     if (opts.neighbors !== undefined) attributes["0/53/7"] = opts.neighbors;
+    if (opts.networkName !== undefined) attributes["0/53/2"] = opts.networkName;
     return { node_id: nodeId, available: opts.available ?? true, attributes, is_bridge: opts.isBridge };
 }
 
@@ -310,6 +314,26 @@ describe("NetworkTopologyService", () => {
             expect(unknown).to.not.equal(undefined);
             expect(unknown!.network_type).to.equal("thread");
             expect(topology.nodes.some(n => n.kind === "border_router")).to.equal(false);
+        });
+
+        it("drops an external whose only neighbour record is a dead link", () => {
+            const node1 = mkThread(1, {
+                role: 5,
+                rloc16: 1024,
+                neighbors: [neighbor(b64(BR_EXT_BYTES), 61440, 0, null, true)], // LQI 0 → "none"
+            });
+            const { service } = makeHarness({ nodes: () => [node1], brs: () => [makeBr()] });
+            const topology = service.getTopology();
+
+            expect(topology.connections).to.have.lengthOf(0);
+            expect(topology.nodes.map(n => n.id)).to.deep.equal(["1"]);
+        });
+
+        it("prefers the node's own Thread network name over the Border Router registry", () => {
+            const node1 = mkThread(1, { role: 5, rloc16: 1024, networkName: "OwnNet" });
+            const { service } = makeHarness({ nodes: () => [node1], brs: () => [makeBr()] });
+
+            expect(service.getTopology().nodes[0].network_name).to.equal("OwnNet");
         });
 
         it("marks an offline node unavailable and passes the bridge flag through", () => {
@@ -603,6 +627,33 @@ describe("NetworkTopologyService", () => {
             expect(emitted).to.have.lengthOf(1);
             expect(emitted[0].nodes).to.have.lengthOf(2);
         });
+
+        it("coalesces concurrent callers onto a single read fan-out", async () => {
+            let releaseRead!: () => void;
+            const readBlocked = new Promise<void>(resolve => {
+                releaseRead = resolve;
+            });
+            const reads: Array<number | bigint> = [];
+            const { service } = makeHarness({
+                nodes: () => [mkThread(1, { role: 5, rloc16: 1024 }), mkThread(2, { role: 5, rloc16: 1025 })],
+                readAttributes: async nodeId => {
+                    reads.push(nodeId);
+                    await readBlocked;
+                },
+            });
+
+            const first = service.refresh();
+            const second = service.refresh();
+            releaseRead();
+            const [a, b] = await Promise.all([first, second]);
+
+            expect(reads).to.deep.equal([1, 2]); // one read per node, not one per caller per node
+            expect(a).to.equal(b); // both callers observe the same snapshot
+
+            // Once settled, a later refresh starts a fresh run.
+            await service.refresh();
+            expect(reads).to.deep.equal([1, 2, 1, 2]);
+        });
     });
 
     describe("stop", () => {
@@ -650,6 +701,25 @@ describe("NetworkTopologyService", () => {
 
             expect(topology.nodes).to.have.lengthOf(2); // caller still gets the fresh snapshot
             expect(emitted).to.have.lengthOf(0); // but a stopped service does not broadcast it
+        });
+    });
+
+    describe("controller wiring", () => {
+        it("reads fabric-filtered so matter.js integrates the values into the node cache", async () => {
+            const reads: Array<{ nodeId: NodeId; paths: string[]; fabricFiltered?: boolean }> = [];
+            const handler: Pick<ControllerCommandHandler, "handleReadAttributes"> = {
+                async handleReadAttributes(nodeId, paths, fabricFiltered) {
+                    reads.push({ nodeId, paths, fabricFiltered });
+                    return {};
+                },
+            };
+
+            await topologyAttributeReader(handler)(1, THREAD_REFRESH_PATHS);
+
+            expect(reads).to.have.lengthOf(1);
+            expect(reads[0].nodeId).to.equal(NodeId(1));
+            expect(reads[0].paths).to.deep.equal(THREAD_REFRESH_PATHS);
+            expect(reads[0].fabricFiltered).to.equal(true);
         });
     });
 });

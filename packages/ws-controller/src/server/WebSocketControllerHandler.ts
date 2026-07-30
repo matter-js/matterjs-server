@@ -530,7 +530,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             // instantiate the service (timers, event subscriptions) for every connection, even
             // ones that never request topology.
             const ensureTopologyObserver = () => {
-                if (wantsNetworkTopology) return;
+                if (wantsNetworkTopology || this.#closed || this.#shuttingDown) return;
                 wantsNetworkTopology = true;
                 observers.on(this.#controller.networkTopology.events.topologyUpdated, topology => {
                     if (this.#closed || this.#shuttingDown) return;
