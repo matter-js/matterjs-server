@@ -19,6 +19,7 @@ import {
     type NetworkTopology,
     type NetworkTopologyConnection,
     type NetworkTopologyNode,
+    type SignalLevel,
     type ThreadConnection,
     type ThreadEdgePair,
     type ThreadExternalDevice,
@@ -455,7 +456,7 @@ function mapExternal(ext: ThreadExternalDevice): NetworkTopologyNode {
  */
 function mapThreadPair(pair: ThreadEdgePair): NetworkTopologyConnection | undefined {
     const { edgeAB, edgeBA } = pair; // edgeAB: nodeA→nodeB (source→target), edgeBA: nodeB→nodeA
-    const levels = [edgeAB?.signalLevel, edgeBA?.signalLevel].filter((l): l is TopologyStrength => l !== undefined);
+    const levels = [edgeAB?.signalLevel, edgeBA?.signalLevel].filter((l): l is SignalLevel => l !== undefined);
     if (levels.length === 0 || !levels.some(level => level !== "none")) return undefined;
 
     return {
@@ -474,18 +475,18 @@ function directionInfo(conn: ThreadConnection): TopologyDirectionInfo {
     return { strength: conn.signalLevel, lqi: conn.lqi, rssi: conn.rssi ?? undefined };
 }
 
-const LEVEL_RANK: Record<TopologyStrength, number> = { none: 0, weak: 1, medium: 2, strong: 3 };
+const LEVEL_RANK: Record<TopologyStrength, number> = { unknown: -1, none: 0, weak: 1, medium: 2, strong: 3 };
 
 function strongestLevel(levels: TopologyStrength[]): TopologyStrength {
     return levels.reduce((best, level) => (LEVEL_RANK[level] > LEVEL_RANK[best] ? level : best), "none");
 }
 
 /**
- * WiFi RSSI → strength (ports the dashboard's -70/-85 dBm thresholds). An unknown RSSI maps to
- * "none" (no measurement) rather than a synthetic level a consumer couldn't tell from a real one.
+ * WiFi RSSI → strength (ports the dashboard's -70/-85 dBm thresholds). An unmeasured RSSI is
+ * "unknown": "none" is reserved for an observed dead link, which consumers filter out of the graph.
  */
 function rssiToStrength(rssi: number | null): TopologyStrength {
-    if (rssi === null) return "none";
+    if (rssi === null) return "unknown";
     if (rssi > -70) return "strong";
     if (rssi > -85) return "medium";
     return "weak";

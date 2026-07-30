@@ -302,12 +302,12 @@ describe("NetworkTopologyService", () => {
             expect(wifiLink.source_to_target).to.deep.equal({ strength: "strong", rssi: -55 });
         });
 
-        it("reports an unknown Wi-Fi RSSI as strength none with no direction detail", () => {
+        it("reports an unmeasured Wi-Fi RSSI as strength unknown with no direction detail", () => {
             const { service } = makeHarness({ nodes: () => [mkWifi(5, { rssi: null })] });
             const topology = service.getTopology();
 
             const wifiLink = topology.connections.find(c => c.network === "wifi")!;
-            expect(wifiLink.strength).to.equal("none");
+            expect(wifiLink.strength).to.equal("unknown");
             expect(wifiLink.source_to_target).to.equal(undefined);
         });
 

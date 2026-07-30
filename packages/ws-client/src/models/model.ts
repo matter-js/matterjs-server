@@ -236,8 +236,12 @@ export type TopologyRole =
     | "station"
     | "ap";
 
-/** Link-quality bucket. Thread: LQI 0-3 → none/weak/medium/strong. Wi-Fi: RSSI thresholds. @since schema 13 */
-export type TopologyStrength = "strong" | "medium" | "weak" | "none";
+/**
+ * Link-quality bucket. Thread: LQI 0-3 → none/weak/medium/strong. Wi-Fi: RSSI thresholds.
+ * `none` means the link was observed dead; `unknown` means no measurement was available
+ * (the link is still there), so it must not be treated as a dead link. @since schema 13
+ */
+export type TopologyStrength = "strong" | "medium" | "weak" | "none" | "unknown";
 
 /** One direction's observed link quality. @since schema 13 */
 export interface TopologyDirectionInfo {
