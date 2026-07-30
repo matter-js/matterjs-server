@@ -76,7 +76,8 @@ function mkWifi(nodeId: number, opts: { rssi?: number | null; available?: boolea
         attributes: {
             "0/49/65532": 1 << 0, // NetworkCommissioning FeatureMap: WiFi
             "0/54/0": b64(BSSID_BYTES),
-            "0/54/4": opts.rssi ?? -55,
+            // preserve an explicit null (unknown RSSI); only default when omitted
+            "0/54/4": opts.rssi === undefined ? -55 : opts.rssi,
         },
     };
 }
@@ -299,6 +300,15 @@ describe("NetworkTopologyService", () => {
             expect(wifiLink.target).to.equal(AP_NODE_ID);
             expect(wifiLink.strength).to.equal("strong");
             expect(wifiLink.source_to_target).to.deep.equal({ strength: "strong", rssi: -55 });
+        });
+
+        it("reports an unknown Wi-Fi RSSI as strength none with no direction detail", () => {
+            const { service } = makeHarness({ nodes: () => [mkWifi(5, { rssi: null })] });
+            const topology = service.getTopology();
+
+            const wifiLink = topology.connections.find(c => c.network === "wifi")!;
+            expect(wifiLink.strength).to.equal("none");
+            expect(wifiLink.source_to_target).to.equal(undefined);
         });
 
         it("classifies an unmatched neighbour as thread_unknown when no BR matches", () => {

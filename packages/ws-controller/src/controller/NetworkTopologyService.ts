@@ -43,12 +43,13 @@ const logger = Logger.get("NetworkTopologyService");
 const TOPOLOGY_CLUSTERS = new Set<number>([49, 51, 53, 54]);
 
 /**
- * Thread neighbor + route tables, interface list, own RLOC16, routing role and network name —
- * the inputs to Thread edge derivation and to the built node. RLOC16 (0/53/64) is included
- * because edge/unknown matching falls back to it when extended-address matching fails, and it
- * changes — like the routing role (0/53/1) — when a device re-attaches to the mesh.
+ * Thread neighbor + route tables, interface list, own RLOC16, routing role, network name and
+ * extended PAN id — the inputs to Thread edge derivation and to the built node. RLOC16 (0/53/64)
+ * is included because edge/unknown matching falls back to it when extended-address matching fails;
+ * RLOC16, routing role (0/53/1), network name (0/53/2) and ext PAN id (0/53/4) all change when a
+ * device re-attaches to the mesh — the case a user triggers a refresh to reflect.
  */
-export const THREAD_REFRESH_PATHS = ["0/53/7", "0/53/8", "0/51/0", "0/53/64", "0/53/1", "0/53/2"];
+export const THREAD_REFRESH_PATHS = ["0/53/7", "0/53/8", "0/51/0", "0/53/64", "0/53/1", "0/53/2", "0/53/4"];
 /** WiFi BSSID + channel + RSSI — the inputs to the WiFi star. */
 export const WIFI_REFRESH_PATHS = ["0/54/0", "0/54/3", "0/54/4"];
 
@@ -392,7 +393,8 @@ export class NetworkTopologyService {
                 target: apId,
                 network: "wifi",
                 strength,
-                source_to_target: { strength, rssi: rssi ?? undefined },
+                // No RSSI measurement → no direction detail (rather than a synthetic level).
+                source_to_target: rssi === null ? undefined : { strength, rssi },
             });
         }
 
@@ -478,9 +480,12 @@ function strongestLevel(levels: TopologyStrength[]): TopologyStrength {
     return levels.reduce((best, level) => (LEVEL_RANK[level] > LEVEL_RANK[best] ? level : best), "none");
 }
 
-/** WiFi RSSI → strength (ports the dashboard's -70/-85 dBm thresholds). Unknown RSSI is treated as medium. */
+/**
+ * WiFi RSSI → strength (ports the dashboard's -70/-85 dBm thresholds). An unknown RSSI maps to
+ * "none" (no measurement) rather than a synthetic level a consumer couldn't tell from a real one.
+ */
 function rssiToStrength(rssi: number | null): TopologyStrength {
-    if (rssi === null) return "medium";
+    if (rssi === null) return "none";
     if (rssi > -70) return "strong";
     if (rssi > -85) return "medium";
     return "weak";
