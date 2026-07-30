@@ -9,23 +9,25 @@ import { TimeSynchronization } from "@matter/main/clusters";
 import { MATTER_EPOCH_OFFSET_US } from "@matter/main/types";
 import { AttributesData } from "../types/CommandHandler.js";
 import {
-    DstWindow,
-    dstWindows as defaultDstWindows,
     resolveHostTimeZone as defaultResolveHostTimeZone,
-    standardOffsetSeconds as defaultStandardOffsetSeconds,
+    timeZonePlan as defaultTimeZonePlan,
+    TimeZonePlan,
+    TimeZonePlanLimits,
 } from "../util/hostTimeZone.js";
-import { dstOffsetListMaxSize, hasTimeZoneFeature } from "./TimeSyncManager.js";
+import { dstOffsetListMaxSize, hasTimeZoneFeature, timeZoneListMaxSize } from "./TimeSyncManager.js";
 
 const logger = Logger.get("TimeSyncCommands");
 
 // Default when the node does not advertise DSTOffsetListMaxSize: covers the current DST
-// window plus the next one (spec minimum is 1).
+// window plus the next one.
 const DEFAULT_DST_LIST_MAX = 2;
+// Default when the node does not advertise TimeZoneListMaxSize. The cluster caps the list at 2, and
+// the second entry is what lets an upcoming standard-offset change be stated as such.
+const DEFAULT_TIME_ZONE_LIST_MAX = 2;
 
 export interface TimeZoneProvider {
     resolveHostTimeZone(): string;
-    standardOffsetSeconds(zone: string, atMs: number): number;
-    dstWindows(zone: string, fromMs: number, max: number): DstWindow[];
+    timeZonePlan(zone: string, fromMs: number, limits: TimeZonePlanLimits): TimeZonePlan;
 }
 
 export interface TimeSyncInvokers {
@@ -38,8 +40,7 @@ export interface TimeSyncInvokers {
 
 const defaultTimeZoneProvider: TimeZoneProvider = {
     resolveHostTimeZone: defaultResolveHostTimeZone,
-    standardOffsetSeconds: defaultStandardOffsetSeconds,
-    dstWindows: defaultDstWindows,
+    timeZonePlan: defaultTimeZonePlan,
 };
 
 function unixMsToEpochUs(ms: number): bigint {
@@ -72,19 +73,26 @@ export async function pushNodeTime(opts: {
     try {
         const tz = opts.tz ?? defaultTimeZoneProvider;
         const zone = tz.resolveHostTimeZone();
-        const offset = tz.standardOffsetSeconds(zone, nowMs);
+        const plan = tz.timeZonePlan(zone, nowMs, {
+            maxRegimes: timeZoneListMaxSize(attributes) ?? DEFAULT_TIME_ZONE_LIST_MAX,
+            maxWindows: dstOffsetListMaxSize(attributes) ?? DEFAULT_DST_LIST_MAX,
+        });
 
         const response = await invokers.setTimeZone({
-            // Spec: the first TimeZone entry's ValidAt is Matter-epoch 0. TlvEpochUs takes
-            // Unix-epoch µs and subtracts the Matter epoch, so the Matter epoch itself encodes to 0.
-            timeZone: [{ offset, validAt: MATTER_EPOCH_OFFSET_US, name: zone }],
+            timeZone: plan.regimes.map(regime => ({
+                offset: regime.offsetSeconds,
+                // Spec: the first entry's ValidAt is Matter-epoch 0 and a later entry's must not be.
+                // TlvEpochUs subtracts the Matter epoch, so passing it encodes to 0.
+                validAt: regime.validFromMs === null ? MATTER_EPOCH_OFFSET_US : unixMsToEpochUs(regime.validFromMs),
+                name: zone,
+            })),
         });
 
         if (response?.dstOffsetRequired) {
-            const max = dstOffsetListMaxSize(attributes) ?? DEFAULT_DST_LIST_MAX;
-            const dstOffset: TimeSynchronization.DstOffset[] = tz.dstWindows(zone, nowMs, max).map(window => ({
+            const dstOffset: TimeSynchronization.DstOffset[] = plan.dstWindows.map(window => ({
                 offset: window.offsetSeconds,
-                validStarting: unixMsToEpochUs(window.validStartingMs),
+                validStarting:
+                    window.validStartingMs === null ? MATTER_EPOCH_OFFSET_US : unixMsToEpochUs(window.validStartingMs),
                 validUntil: window.validUntilMs === null ? null : unixMsToEpochUs(window.validUntilMs),
             }));
             if (dstOffset.length === 0) {

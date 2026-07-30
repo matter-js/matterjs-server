@@ -4,12 +4,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { isLongIdleTimeCapable, isLongIdleTimeDevice } from "@matter-server/ws-client";
 import {
     decodeRegisteredClients,
     icdBadge,
     icdInfo,
     isRegisteredByUs,
-    litSpecVersionOk,
     otherFabricClientCount,
     parseIcdFeatures,
     parseMultiAdminDetails,
@@ -167,18 +167,29 @@ describe("icd util", () => {
         });
     });
 
-    describe("litSpecVersionOk", () => {
+    describe("isLongIdleTimeCapable", () => {
         it("true at exactly 1.4.0", () => {
-            expect(litSpecVersionOk({ "0/40/21": 0x01040000 })).to.equal(true);
-        });
-        it("false below 1.4.0", () => {
-            expect(litSpecVersionOk({ "0/40/21": 0x01030000 })).to.equal(false);
-        });
-        it("false when attribute missing", () => {
-            expect(litSpecVersionOk({})).to.equal(false);
+            expect(isLongIdleTimeCapable(LIT_ATTRS)).to.equal(true);
         });
         it("true above 1.4.0", () => {
-            expect(litSpecVersionOk({ "0/40/21": 0x01040100 })).to.equal(true);
+            expect(isLongIdleTimeCapable({ ...LIT_ATTRS, "0/40/21": 0x01040100 })).to.equal(true);
+        });
+        it("false below 1.4.0", () => {
+            expect(isLongIdleTimeCapable({ ...LIT_ATTRS, "0/40/21": 0x01030000 })).to.equal(false);
+        });
+        it("false when the specification version is missing", () => {
+            expect(isLongIdleTimeCapable({ ...LIT_ATTRS, "0/40/21": undefined })).to.equal(false);
+        });
+        it("false without the LongIdleTimeSupport feature", () => {
+            expect(isLongIdleTimeCapable({ ...LIT_ATTRS, "0/70/65532": 0b0011 })).to.equal(false);
+        });
+        it("false without the IcdManagement cluster", () => {
+            expect(isLongIdleTimeCapable({ "0/40/21": 0x01040000 })).to.equal(false);
+        });
+        it("ignores the operating mode, unlike isLongIdleTimeDevice", () => {
+            const sit = { ...LIT_ATTRS, "0/70/8": 0 };
+            expect(isLongIdleTimeCapable(sit)).to.equal(true);
+            expect(isLongIdleTimeDevice(sit)).to.equal(false);
         });
     });
 
