@@ -39,6 +39,7 @@ import { Readable } from "node:stream";
 import { ConfigStorage } from "../server/ConfigStorage.js";
 import { ControllerCommandHandler } from "./ControllerCommandHandler.js";
 import { LegacyDataInjector, LegacyServerData } from "./LegacyDataInjector.js";
+import { NetworkTopologyService } from "./NetworkTopologyService.js";
 import { resolveServerId } from "./ServerIdResolver.js";
 import { ThreadDiagnosticsService } from "./ThreadDiagnosticsService.js";
 
@@ -164,6 +165,20 @@ function formatDatasetForLog(ds: OperationalDataset): string {
 }
 
 /**
+ * The attribute reader {@link NetworkTopologyService} refreshes through.
+ *
+ * `fabricFiltered` MUST stay `true`: matter.js only integrates a read into the subscribed
+ * datasource when the read's filter matches the subscription's (which defaults to filtered),
+ * so a `false` read is discarded — no cache write, no `attributeChanged`, and the rebuild that
+ * follows sees the same stale values the refresh was issued to replace.
+ */
+export function topologyAttributeReader(
+    handler: Pick<ControllerCommandHandler, "handleReadAttributes">,
+): (nodeId: number | bigint, paths: string[]) => Promise<void> {
+    return (nodeId, paths) => handler.handleReadAttributes(NodeId(nodeId), paths, true).then(() => undefined);
+}
+
+/**
  * Split an `OtbrRestCapability.baseUrl` (e.g. `http://[fd00::1]:8081`) into the
  * host + port the {@link OtbrRestClient} constructor expects. Square-bracketed
  * IPv6 hosts are stripped — the client wraps them again itself.
@@ -196,6 +211,7 @@ export class MatterController {
     #stopped = false;
     readonly #credentials = new ThreadCredentialsRegistry();
     readonly #threadDiagnostics: ThreadDiagnosticsService;
+    #networkTopology?: NetworkTopologyService;
     #webRtcRequestor?: Endpoint<typeof CameraControllerDevice>;
     #services: SharedEnvironmentServices;
 
@@ -457,6 +473,33 @@ export class MatterController {
         return this.#threadDiagnostics;
     }
 
+    /**
+     * Lazily-constructed network topology service. Created on first access (i.e. the first
+     * client that queries/subscribes topology), wired to the command handler's node cache +
+     * events and the Border Router registry. Reused across connections. Throws once the
+     * controller is stopped rather than starting a service nothing will shut down again.
+     */
+    get networkTopology(): NetworkTopologyService {
+        if (this.#networkTopology === undefined) {
+            if (this.#stopped) {
+                throw new Error("Controller is stopped");
+            }
+            const handler = this.commandHandler;
+            this.#networkTopology = new NetworkTopologyService({
+                listNodes: () => handler.getNodeIds().map(nodeId => handler.getNodeDetails(nodeId)),
+                readAttributes: topologyAttributeReader(handler),
+                borderRouters: this.#borderRouterRegistry,
+                controllerEvents: {
+                    attributeChanged: handler.events.attributeChanged,
+                    nodeAvailabilityChanged: handler.events.nodeAvailabilityChanged,
+                    nodeAdded: handler.events.nodeAdded,
+                    nodeDecommissioned: handler.events.nodeDecommissioned,
+                },
+            });
+        }
+        return this.#networkTopology;
+    }
+
     #registerStoredThreadCredentials(): void {
         for (const entry of this.#config.listThreadCredentials()) {
             registerThreadCredentialsFromHex(this.#credentials, entry.dataset, `stored:${entry.id}`);
@@ -578,6 +621,7 @@ export class MatterController {
     async stop() {
         this.#stopped = true;
         await this.#settleBackgroundInit();
+        this.#networkTopology?.stop();
         if (!this.#threadDiagnosticsDisabled) {
             await this.#threadDiagnostics.stop();
             await this.#borderRouterRegistry.stop();
