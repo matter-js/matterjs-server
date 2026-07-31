@@ -99,7 +99,9 @@ const THREAD_DIAGNOSTICS_OPT_IN_COMMANDS = new Set(["get_thread_diagnostics", "g
 // thread-diagnostics opt-in: pre-schema-13 clients never subscribed, so they must not receive it.
 const NETWORK_TOPOLOGY_OPT_IN_COMMANDS = new Set(["get_network_topology"]);
 
-const skipMessageContentInLogFor = ["start_listening"];
+// Responses whose payload is large enough that logging it in full just bloats the debug log
+// (the full node/attribute dump, or the whole topology graph — hundreds of nodes/edges).
+const skipMessageContentInLogFor = ["start_listening", "get_network_topology"];
 
 /** Normalize a requested fabric label: matter.js requires a non-empty label of 1-32 chars. */
 function normalizeFabricLabel(label: string | null): string {
