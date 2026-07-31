@@ -55,6 +55,16 @@ Want to help out with development, testing, and/or documentation? Great! As both
 
 A preconfigured [dev container](./.devcontainer) is available with all required tools. See the [development docs](DEVELOPMENT.md#dev-container) for details.
 
+Please read the [contributing guide](CONTRIBUTING.md) before opening an issue or pull request.
+
+## AI policy
+
+This project follows the [Open Home Foundation AI Policy](AI_POLICY.md).
+
+AI tools are welcome as an aid, but you must fully understand and be able to explain every
+change you submit. Contributions created by autonomous agents — issues, pull requests, or
+comments posted without human review — are not accepted and will be closed.
+
 ## Installation / Running the Matter Server
 
 - Endusers of Home Assistant, refer to the [Home Assistant documentation](https://www.home-assistant.io/integrations/matter/) how to run Matter in Home Assistant using the official Matter Server add-on, which is based on this project. Choose the "Beta" version if you want to test the matter.js based server (soon)

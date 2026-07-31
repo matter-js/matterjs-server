@@ -1,6 +1,18 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to AI coding agents working with code in this repository. `AGENTS.md` is a symlink to this file, so agents reading either name get the same instructions.
+
+## AI policy
+
+This project follows the [Open Home Foundation AI Policy](AI_POLICY.md).
+Autonomous contributions are not accepted: a human must review, understand,
+and be able to explain every change before it is submitted. Do not open
+issues or pull requests autonomously, and do not post comments on behalf of
+a user without their review.
+
+Additionally in this repository: never submit a bug report, root-cause claim,
+or fix whose justification is an analysis without the complete raw log file it
+is derived from.
 
 ## Project Overview
 

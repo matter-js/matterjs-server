@@ -5,6 +5,8 @@
 
 **For enabling Matter support within Home Assistant, please refer to the Home Assistant documentation. These instructions are for development only!**
 
+See the [contributing guide](CONTRIBUTING.md) before opening a pull request. Contributions made with AI assistance must follow the [Open Home Foundation AI Policy](AI_POLICY.md).
+
 Development is only possible on a (recent) Linux or MacOS machine. Other operating systems are **not supported**. See [here](docs/os_requirements.md) for a full list of requirements to the OS and network, especially if you plan on communicating with Thread-based devices.
 
 ## Native Development

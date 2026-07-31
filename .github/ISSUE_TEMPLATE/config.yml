@@ -9,3 +9,6 @@ contact_links:
   - name: I have a usage question or want to discuss something
     url: https://www.home-assistant.io/join-chat/
     about: For usage questions and general discussion, join the Home Assistant Discord and use the Matter channel instead of opening an issue.
+  - name: I want to know how AI tools may be used when contributing
+    url: https://github.com/matter-js/matterjs-server/blob/main/AI_POLICY.md
+    about: The Open Home Foundation AI Policy applies to all issues, pull requests, and comments in this repository. Autonomously created contributions are closed.
