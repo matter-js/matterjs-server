@@ -7,6 +7,10 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
+## **WORK IN PROGRESS**
+
+- Fix: (LorbusChris) Python client: `node_diagnostics` classifies a node from the Thread diagnostics of whichever endpoint provides them, instead of only the root endpoint of a node attached over Thread, so a border router reached over Ethernet or Wi-Fi is reported by its routing role rather than as an unknown node type
+
 ## 1.3.3 (2026-07-28)
 
 - Enhancement: (pkese) Dashboard network graphs space nodes by signal quality (Thread LQI, Wi-Fi RSSI) instead of using one fixed edge length

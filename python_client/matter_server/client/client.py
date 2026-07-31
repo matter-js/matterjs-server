@@ -463,29 +463,42 @@ class MatterClient:
         # get thread/wifi specific info
         node_type = NodeType.UNKNOWN
         network_name = None
-        if network_type == NetworkType.THREAD:
-            thread_cluster: Clusters.ThreadNetworkDiagnostics = node.get_cluster(0, Clusters.ThreadNetworkDiagnostics)
-            if thread_cluster:
+        # A node does not have to be attached over Thread to be part of a
+        # Thread network, and it does not have to serve the diagnostics from
+        # the root endpoint: a border router is commonly reached over Ethernet
+        # or Wi-Fi and reports Thread from the endpoint that carries its
+        # border router device type. Take the cluster from wherever it is, so
+        # such a node is still described by the role it plays in the mesh.
+        thread_cluster: Clusters.ThreadNetworkDiagnostics | None = next(
+            (
+                cluster
+                for endpoint_id in sorted(node.endpoints)
+                if (cluster := node.endpoints[endpoint_id].get_cluster(Clusters.ThreadNetworkDiagnostics))
+            ),
+            None,
+        )
+        if thread_cluster:
+            if network_type == NetworkType.THREAD:
                 if isinstance(thread_cluster.networkName, bytes):
                     network_name = thread_cluster.networkName.decode("utf-8", errors="replace")
                 elif thread_cluster.networkName != NullValue:
                     network_name = thread_cluster.networkName
 
-                # parse routing role to (diagnostics) node type
-                RoutingRole = Clusters.ThreadNetworkDiagnostics.Enums.RoutingRoleEnum  # noqa: N806
-                if thread_cluster.routingRole == RoutingRole.kSleepyEndDevice:
-                    node_type = NodeType.SLEEPY_END_DEVICE
-                elif thread_cluster.routingRole in (
-                    RoutingRole.kLeader,
-                    RoutingRole.kRouter,
-                ):
-                    node_type = NodeType.ROUTING_END_DEVICE
-                elif thread_cluster.routingRole in (
-                    RoutingRole.kEndDevice,
-                    RoutingRole.kReed,
-                ):
-                    node_type = NodeType.END_DEVICE
-        elif network_type == NetworkType.WIFI:
+            # parse routing role to (diagnostics) node type
+            RoutingRole = Clusters.ThreadNetworkDiagnostics.Enums.RoutingRoleEnum  # noqa: N806
+            if thread_cluster.routingRole == RoutingRole.kSleepyEndDevice:
+                node_type = NodeType.SLEEPY_END_DEVICE
+            elif thread_cluster.routingRole in (
+                RoutingRole.kLeader,
+                RoutingRole.kRouter,
+            ):
+                node_type = NodeType.ROUTING_END_DEVICE
+            elif thread_cluster.routingRole in (
+                RoutingRole.kEndDevice,
+                RoutingRole.kReed,
+            ):
+                node_type = NodeType.END_DEVICE
+        if node_type == NodeType.UNKNOWN and network_type == NetworkType.WIFI:
             node_type = NodeType.END_DEVICE
         # use lastNetworkID from NetworkCommissioning cluster as fallback to get the network name
         # this allows getting the SSID as the wifi diagnostics cluster only has the BSSID
