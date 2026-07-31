@@ -890,6 +890,27 @@ describe("Converters", () => {
             // null is a valid value for nullable fields - must NOT be omitted
             expect(result).to.have.property("openDuration", null);
         });
+
+        it("should convert webRtcSessionID to webRtcSessionId for WebRtcTransportProvider ProvideOffer (issue #812)", () => {
+            // Clients following the Python CHIP SDK wire convention (python_client/chip/clusters/
+            // cluster_defs/WebRtcTransportProvider.py) send webRtcSessionID (capital ID) with a
+            // null session id for a fresh offer (mandatory nullable field). matter.js expects
+            // webRtcSessionId (lowercase d) - without conversion the key is dropped entirely and
+            // matter.js raises a "missing mandatory field" error.
+            const webRtcProviderCluster = ClusterMap[1363]!;
+            const provideOfferCmd = webRtcProviderCluster.commands["provideoffer"]!;
+
+            const payload = { webRtcSessionID: null, sdp: "v=0", streamUsage: 1 };
+
+            const result = convertCommandDataToMatter(payload, provideOfferCmd, webRtcProviderCluster.model) as Record<
+                string,
+                unknown
+            >;
+
+            expect(result).to.have.property("webRtcSessionId", null);
+            expect(result).to.not.have.property("webRtcSessionID");
+            expect(result).to.have.property("sdp", "v=0");
+        });
     });
 
     describe("convertMatterToWebSocketNameBased - named command responses (issue #70)", () => {
@@ -1156,6 +1177,57 @@ describe("Converters", () => {
             const descriptorCluster = ClusterMap[29]!;
             const result = convertMatterToWebSocketTagBased([2, 3], model, descriptorCluster.model);
             expect(result).to.deep.equal([2, 3]);
+        });
+    });
+
+    describe("convertMatterToWebSocketNameBased - acronym casing dual-emit (issue #927)", () => {
+        it("emits both the corrected and legacy key for an acronym field", () => {
+            // Groups cluster (4), AddGroup response = AddGroupResponse { 0:Status, 1:GroupId }
+            const groupsCluster = ClusterMap[4]!;
+            const addGroupCmd = groupsCluster.commands["addgroup"]!;
+            const responseModel = addGroupCmd.responseModel;
+
+            const result = convertMatterToWebSocketNameBased(
+                { status: 0, groupId: 5 },
+                responseModel,
+                groupsCluster.model,
+            ) as Record<string, unknown>;
+
+            expect(result.groupID).to.equal(5);
+            expect(result.groupId).to.equal(5);
+            expect(result.status).to.equal(0);
+        });
+
+        it("does not duplicate a key when corrected name equals propertyName", () => {
+            const groupsCluster = ClusterMap[4]!;
+            const addGroupCmd = groupsCluster.commands["addgroup"]!;
+            const responseModel = addGroupCmd.responseModel;
+
+            const result = convertMatterToWebSocketNameBased(
+                { status: 0, groupId: 5 },
+                responseModel,
+                groupsCluster.model,
+            ) as Record<string, unknown>;
+
+            // "status" is acronym-free: exactly one key, no alias
+            expect(Object.keys(result).filter(k => k.toLowerCase() === "status")).to.have.length(1);
+        });
+
+        it("dual-emits an acronym field nested inside a struct", () => {
+            // GroupKeyManagement cluster (63), KeySetRead response = KeySetReadResponse { 0: GroupKeySet }
+            // GroupKeySetStruct nests GroupKeySetId, so the dual-emit must reach the nested level too.
+            const gkmCluster = ClusterMap[63]!;
+            const keySetReadCmd = gkmCluster.commands["keysetread"]!;
+            const responseModel = keySetReadCmd.responseModel;
+
+            const result = convertMatterToWebSocketNameBased(
+                { groupKeySet: { groupKeySetId: 5 } },
+                responseModel,
+                gkmCluster.model,
+            ) as Record<string, Record<string, unknown>>;
+
+            expect(result.groupKeySet.groupKeySetID).to.equal(5);
+            expect(result.groupKeySet.groupKeySetId).to.equal(5);
         });
     });
 });

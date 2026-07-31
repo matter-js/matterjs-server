@@ -32,6 +32,17 @@ export abstract class BaseClusterCommands extends LitElement {
     public cluster!: number;
 
     /**
+     * True while the panel still shows the same node+endpoint a previously started async flow
+     * captured; the app reuses this element across hash navigations, so post-await writes must
+     * check this before touching `this.node`/component state.
+     */
+    protected isSameContext(node: MatterNode, endpoint: number): boolean {
+        return (
+            this.node !== undefined && String(this.node.node_id) === String(node.node_id) && this.endpoint === endpoint
+        );
+    }
+
+    /**
      * Send a command to the device.
      * @param command - The command name (PascalCase, e.g., "On", "Off", "MoveToLevel")
      * @param payload - Optional command payload

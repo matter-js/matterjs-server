@@ -28,7 +28,8 @@
         "generate": "tsx scripts/generate-descriptions.ts",
         "build": "npm run generate && nacho-build && npm run bundle",
         "build-clean": "npm run generate && nacho-build --clean && npm run bundle",
-        "bundle": "rollup -c"
+        "bundle": "rollup -c",
+        "test": "matter-test --force-exit"
     },
     "dependencies": {
         "@lit/context": "^1.1.6",
@@ -37,12 +38,13 @@
         "@matter-server/ws-client": "*",
         "@mdi/js": "^7.4.47",
         "lit": "^3.3.3",
+        "qrcode-generator": "^2.0.4",
         "tslib": "^2.8.1",
         "vis-network": "^10.1.0"
     },
     "devDependencies": {
         "@babel/preset-env": "^8.0.2",
-        "@matter/main": "0.17.5-alpha.0-20260704-9ea70abfa",
+        "@matter/main": "0.17.7",
         "@rollup/plugin-babel": "^7.1.0",
         "@rollup/plugin-commonjs": "^29.0.3",
         "@rollup/plugin-json": "^6.1.0",

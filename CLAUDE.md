@@ -41,11 +41,14 @@ npm run format-verify
 
 ## Monorepo Structure
 
-This is an npm workspaces monorepo with four packages:
+This is an npm workspaces monorepo with six packages:
 
-- **packages/ws-controller** (`@matter-server/ws-controller`): Core Matter controller library wrapping `@project-chip/matter.js`. Exports `MatterController`, `ControllerCommandHandler`, `WebSocketControllerHandler`, `ConfigStorage`
+- **packages/ws-controller** (`@matter-server/ws-controller`): Core Matter controller library wrapping `@project-chip/matter.js`. Exports `MatterController`, `ControllerCommandHandler`, `WebSocketControllerHandler`, `ConfigStorage`, `ThreadDiagnosticsService`. Consumes `@matter/thread-br-client` for Thread Border Router discovery/diagnostics.
+- **packages/ws-client** (`@matter-server/ws-client`): WebSocket client library + wire models for the Matter server (used by the dashboard and external clients)
 - **packages/dashboard** (`@matter-server/dashboard`): Web UI built with Lit, Rollup, and Material Web Components. Connects to server via WebSocket
 - **packages/matter-server** (`matter-server`): Main entry point. HTTP/WebSocket server using Express, combines controller + dashboard
+- **packages/ble-proxy** (`@matter-server/ble-proxy`): BLE proxy implementation — proxies BLE operations over WebSocket for remote commissioning
+- **packages/custom-clusters** (`@matter-server/custom-clusters`): Custom cluster definitions for matter.js-based projects
 - Build tooling is provided by the external `@nacho-iot/js-tools` dev dependency (CLI binaries `nacho-build`, `nacho-run`).
 
 ## Architecture
@@ -118,9 +121,60 @@ PRIMARY_INTERFACE=en0 MATTER_MDNS_NETWORKINTERFACE=en0 npm test
 
 All four checks must pass **in this order**. `npm run format` must be run **before** build/lint — it rewrites files in-place using oxfmt and the build/lint must validate the formatted output. Skipping format leads to formatting drift that gets caught later.
 
+#### Test scoping during iteration
+
+For fast iteration while working on a single workspace package, run scoped tests via the npm `-w` flag from the repo root. Example for `ws-controller`:
+
+```bash
+npm test -w @matter-server/ws-controller
+```
+
+This is the preferred verification mode for in-package work; the full `npm test` is the final gate before declaring work done.
+
+#### Pre-existing integration test caveats
+
+`packages/matter-server/test/IntegrationTest.ts` contains end-to-end tests that depend on real mDNS multicast and a live Matter device handshake on the local network. On developer machines and in some CI environments these can flake or fail with errors like:
+
+- `Integration Test > Device Discovery > should discover commissionable nodes via discover command — expected undefined to exist`
+- `Integration Test > Commission On Network > should commission device using passcode and long discriminator — expected '<vendor>' to equal 'Test Vendor'`
+
+When the full `npm test` reports only these matter-server integration failures and your changes are confined to other packages (e.g. `ws-controller` non-discovery code paths, `dashboard`), treat them as pre-existing environment failures rather than regressions. Confirm by running scoped tests for your package via `npm test -w <workspace>`. Per the global "When tests fail" rule, ask before chasing failures you suspect are pre-existing.
+
 ### Plan Documents
 
 Plan/design documents in `docs/plans/` are working files only. **Never commit them to git.** They may exist locally for reference but must not be included in any commit.
+
+### Code Comments
+
+WHY not WHAT. Only add a WHAT comment if the logic is genuinely non-obvious. Keep comments minimal. Audit every `//` and `/** */` before commit; **default to deleting, not shortening** — a wordy comment that survives review shorter is still a failure.
+
+**Decisive test (primary lens):** *"Would I need this comment to understand the code later if I had to fix something right here?"* If no → delete. This catches the true-but-useless comment the checklist below lets slip.
+
+Before adding any comment, ask in order:
+
+1. Does the commit message / `git blame` already carry this context? → no comment.
+2. Would a reader seeing only the final code (not the diff) benefit? → if no, no comment.
+3. Does the code already speak for itself via identifiers + jsdoc? → if yes, no comment.
+4. Am I narrating the change I just made rather than stating an invariant of the code? → put it in the commit message, not the code.
+5. Can I say the WHY in ≤1 line? → if no, it's almost certainly over-explanation.
+
+**Acceptable (rare) — keep to 1 line:**
+
+- An invariant a future refactor could innocently break (forward-looking).
+- A non-obvious spec / RFC / library constraint the code depends on.
+- A tradeoff record ("we accept X because Y is worse").
+- Cross-file / library coupling the type system can't express.
+
+Example from this codebase: `// Shared Observable: an uncaught throw here aborts the emit and starves other connections` on a `try/catch` around an observer body — matter.js's `Observable.emit` catches each observer error but its default `handleError` *rethrows*, so a per-connection throw aborts the shared emit and starves other connections; without the comment a future fixer assumes the guard is redundant and removes it.
+
+**Always-bad (delete on sight):**
+
+- WHAT-restatement of an identifier or `if` condition (`// Store event in the buffer` above `this.#addEventToHistory(...)`).
+- Changelog / historical narration ("Moved from A to B because…", "this used to do Y").
+- "Now do X" above code that does X; multi-line explanations of what the diff does.
+- Pointing at structure the reader can see ("Cleanup lives on an outer `.finally`", "Using a Map keyed by X").
+- Mechanism trivia about standard APIs (".finally runs in a microtask", "Promise.all rejects on first failure").
+- Rejected-alternative justification (`// .then().catch(), not .then(a,b)…`) — once the code IS that form, what it *isn't* is irrelevant; state the invariant, not the counterfactual.
 
 ## Dashboard Development
 

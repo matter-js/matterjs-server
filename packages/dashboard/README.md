@@ -41,13 +41,26 @@ Node colors indicate device status:
 - **Red**: Offline device (not responding)
 - **Orange**: Unknown/external device (not commissioned to this fabric, detected in neighbor tables)
 
+### Why a device shows as unknown/external
+
+Orange nodes are inferred from a commissioned node's Thread neighbor table but are not part of this fabric. The server cannot tell these cases apart, so an orange node may be any of:
+
+- A device commissioned to **another Matter fabric** on the same Thread network (Apple Home, Google, SmartThings, …).
+- A **native (non-Matter) Thread accessory** (HomeKit-over-Thread, Eve, Nanoleaf, …).
+- A **Border Router** whose Thread radio MAC differs from its MeshCoP border-agent ID, so it can't be matched to a known BR (common with Apple and Aqara).
+- A **stale neighbor entry** for a device that has left. Obvious stale ghosts (all observers offline, or a single-source entry from an otherwise-reachable node) are filtered out automatically.
+
+An **external router** is such a device advertising rx-on-when-idle (mains-powered, so router-capable); an **external device** is one that is not. "Router-capable" is not a confirmed routing role.
+
+A separate **Diagnostic Mesh Node** is inferred from a Border Router's own Route64 / child-table diagnostics rather than a neighbor table; it is likewise not commissioned to this fabric.
+
 ### Understanding Node Role Badges
 
-Thread nodes commissioned to this fabric carry a small corner badge over the device icon showing their Thread routing role:
+Thread nodes commissioned to this fabric carry a small corner badge over the device icon showing their Thread routing role. For the underlying Thread role definitions, see the [OpenThread node roles and types primer](https://openthread.io/guides/thread-primer/node-roles-and-types).
 
 - **Crown (amber)**: Leader — the elected coordinator of the Thread network
 - **Swap arrows (blue)**: Router — forwards traffic for other nodes
-- **Small dot (grey-blue)**: End Device or REED (Router-Eligible End Device)
+- **Small dot (grey-blue)**: End Device, or REED (Router-Eligible End Device) — a node that currently acts as an end device but can be promoted to a full Router when the mesh needs more routing capacity
 - **Zzz / sleep (grey-blue)**: Sleepy End Device — radio off when idle to save battery
 - **No badge**: Role unassigned/unspecified, or an external device whose role can't be queried
 
@@ -111,12 +124,41 @@ A connection with neither tag is bidirectional: both nodes see each other.
 
 #### Data Sources
 
-Thread devices maintain two tables:
+Thread devices itself maintain two tables:
 
 1. **Neighbor Table** (0/53/7): Direct RF neighbors visible to the device. All Thread devices have this.
 2. **Route Table** (0/53/8): Routing paths to other nodes. Only routers maintain this table.
 
 The visualization combines both tables directly from the devices to provide the most complete picture of your network.
+
+Additionally, if REST-APIs or network credentials are available on the Matter Server we also query the Border routers directly to get more detailed information (see below) and combine it with the device tables.
+
+### Thread Diagnostics from Border Routers
+
+Beyond what your own commissioned devices report, the dashboard can build a much fuller Thread mesh by
+asking the Thread **Border Routers** directly — including routers and children that aren't on your
+Matter fabric. Border Routers are discovered automatically on your LAN; querying their diagnostics
+needs a way into each Thread network:
+
+- **Store the network's credentials.** Open **Settings** (cog icon) and add the Thread network's
+  operational dataset. A dataset that includes the network key lets the server query that network's
+  Border Routers directly (over Thread's MeshCoP protocol). You can store **several networks** — one
+  entry per Thread network (e.g. your own, plus a Home Assistant, Apple, or Google network you also
+  have the dataset for) — and the dashboard will show each network's mesh.
+- **Some Border Routers need no credentials.** OpenThread-based Border Routers (e.g. the Home
+  Assistant add-on) expose a local API the dashboard can read directly, so their network populates
+  even without a stored dataset.
+- Networks with neither a stored dataset nor a readable Border Router are listed but show no per-node
+  diagnostics.
+
+**First view is live, then cached.** The first time you open the Thread network view in a session, the
+data is collected live from the Border Routers. This takes a moment: nodes **pop in progressively over
+about 20 seconds** as each responds — so an initially sparse mesh filling itself out is normal, not an
+error. Once collected, results are **cached** and shown instantly on later views. Use the refresh
+button to re-collect the latest data on demand.
+
+This whole subsystem is optional and can be turned off by the server operator (`--disable-thread-diagnostics`);
+Matter-over-Thread commissioning still works either way.
 
 ### Update Connections
 

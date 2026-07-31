@@ -30,15 +30,15 @@
     },
     "dependencies": {
         "@matter-server/ws-controller": "*",
-        "@matter/main": "0.17.5-alpha.0-20260704-9ea70abfa",
-        "ws": "^8.21.0"
+        "@matter/main": "0.17.7",
+        "ws": "^8.21.1"
     },
     "devDependencies": {
-        "@types/node": "^26.0.1",
+        "@types/node": "^26.1.1",
         "@types/ws": "^8.18.1"
     },
     "optionalDependencies": {
-        "@matter/nodejs-ble": "0.17.5-alpha.0-20260704-9ea70abfa",
+        "@matter/nodejs-ble": "0.17.7",
         "dbus-next": "npm:@jellybrick/dbus-next@^0.10.3"
     },
     "engines": {

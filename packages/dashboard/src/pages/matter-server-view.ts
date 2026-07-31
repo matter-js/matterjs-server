@@ -17,6 +17,7 @@ import { clientContext, tickContext } from "../client/client-context.js";
 import "../components/ha-svg-icon";
 import { getDeviceIcon } from "../util/device-icons.js";
 import { formatNodeAddress } from "../util/format_hex.js";
+import { ICD_CLUSTER_ID, icdBadge } from "../util/icd.js";
 import "./components/footer";
 import "./components/header";
 import type { ActiveView } from "./components/header.js";
@@ -84,6 +85,7 @@ class MatterServerView extends LitElement {
                         </div>
                     </md-list-item>
                     ${nodes.map(([_id, node]) => {
+                        const badge = icdBadge(node.attributes, node.available);
                         return html`
                             <md-list-item type="link" href=${`#node/${node.node_id}`}>
                                 <ha-svg-icon
@@ -102,7 +104,16 @@ class MatterServerView extends LitElement {
                                             node.node_id,
                                         )})</span
                                     >
-                                    ${node.available ? "" : html` <span class="status">OFFLINE</span> `}
+                                    ${node.available ? "" : html` <span class="status">OFFLINE</span>`}
+                                    ${badge
+                                        ? html`<a
+                                              class="icd-badge icd-${badge.state}"
+                                              href="#node/${node.node_id}/0/${ICD_CLUSTER_ID}"
+                                              title=${badge.hint}
+                                              @click=${(e: Event) => e.stopPropagation()}
+                                              >ICD</a
+                                          >`
+                                        : ""}
                                 </div>
                                 <div slot="supporting-text">
                                     ${node.nodeLabel ? `${node.nodeLabel} | ` : nothing} ${node.vendorName} |
@@ -154,6 +165,31 @@ class MatterServerView extends LitElement {
             font-weight: bold;
             font-size: 0.8em;
             margin-left: 8px;
+        }
+
+        .icd-badge {
+            margin-left: 4px;
+            padding: 0 4px;
+            border: 1px solid;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 0.8em;
+            text-decoration: none;
+        }
+
+        .icd-badge.icd-offline {
+            color: var(--danger-color);
+            border-color: var(--danger-color);
+        }
+
+        .icd-badge.icd-lit {
+            color: var(--success-color);
+            border-color: var(--success-color);
+        }
+
+        .icd-badge.icd-sit {
+            color: var(--text-color);
+            border-color: var(--text-color);
         }
 
         .hex-id {

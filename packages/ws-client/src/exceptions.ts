@@ -30,3 +30,14 @@ export class ConnectionClosedError extends MatterError {
         this.name = "ConnectionClosedError";
     }
 }
+
+/** Command failure reported by the server; preserves the wire error_code. */
+export class ServerCommandError extends MatterError {
+    constructor(
+        message: string,
+        readonly errorCode: number,
+    ) {
+        super(message);
+        this.name = "ServerCommandError";
+    }
+}

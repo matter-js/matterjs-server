@@ -1,4 +1,4 @@
-import { readdirSync, rmSync, statSync } from "fs";
+import { readdirSync, rmSync, statSync } from "node:fs";
 
 function readDirs(baseDir) {
     return readdirSync(baseDir)

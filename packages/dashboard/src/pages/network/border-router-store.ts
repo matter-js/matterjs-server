@@ -4,23 +4,30 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type { BorderRouterEntry, MatterClient } from "@matter-server/ws-client";
+import type { BorderRouterEntry, MatterClient, ThreadDiagnosticsBatch } from "@matter-server/ws-client";
 
 /**
- * Snapshot of mDNS-discovered Thread Border Routers.
+ * Snapshot of mDNS-discovered Thread Border Routers and the most recent Thread diagnostic
+ * batch per network.
  *
- * Refreshed on Thread-graph mount and on the reload-button click. The map is keyed by the
+ * Refreshed on Thread-graph mount and on the reload-button click. The BR map is keyed by the
  * uppercase 16-char xa hex so callers can join against neighbor-table extended addresses
- * normalized to the same casing.
+ * normalized to the same casing. The diagnostic map is keyed by the uppercase 16-char
+ * extPanId hex so callers can join against {@link BorderRouterEntry.extendedPanIdHex}.
  */
 export class BorderRouterStore {
     // Replaced (not mutated) on every refresh so Lit consumers passing this map as a
     // @property() detect the snapshot change via the default `===` identity compare and
     // re-render. Mutating in place would keep the same reference and silently skip updates.
     #entries: ReadonlyMap<string, BorderRouterEntry> = new Map();
+    #diagnostics: ReadonlyMap<string, ThreadDiagnosticsBatch> = new Map();
 
     get entries(): ReadonlyMap<string, BorderRouterEntry> {
         return this.#entries;
+    }
+
+    get diagnostics(): ReadonlyMap<string, ThreadDiagnosticsBatch> {
+        return this.#diagnostics;
     }
 
     async refresh(client: MatterClient): Promise<void> {
@@ -30,9 +37,49 @@ export class BorderRouterStore {
             next.set(entry.extAddressHex.toUpperCase(), entry);
         }
         this.#entries = next;
+
+        // Diagnostics are a schema-12, best-effort feature: their failure (an older
+        // server, or a transient error) must never abort the border-router refresh.
+        try {
+            const result = await client.sendCommand("get_thread_diagnostics", 12, {});
+            const batches = Array.isArray(result) ? result : result === undefined || result === null ? [] : [result];
+            const nextDiag = new Map<string, ThreadDiagnosticsBatch>();
+            for (const batch of batches) {
+                nextDiag.set(batch.extPanIdHex.toUpperCase(), batch);
+            }
+            this.#diagnostics = nextDiag;
+        } catch (err) {
+            console.warn("Thread diagnostics refresh skipped:", err);
+        }
+    }
+
+    /** Apply a single batch update from a thread_diagnostics_updated event. */
+    applyBatch(batch: ThreadDiagnosticsBatch): void {
+        const next = new Map(this.#diagnostics);
+        next.set(batch.extPanIdHex.toUpperCase(), batch);
+        this.#diagnostics = next;
+    }
+
+    /** Force-refresh diagnostics for a single network. */
+    async refreshDiagnosticsFor(client: MatterClient, extPanIdHex: string): Promise<void> {
+        try {
+            const result = await client.sendCommand("get_thread_diagnostics", 12, {
+                ext_pan_id: extPanIdHex.toLowerCase(),
+                force: true,
+            });
+            if (result === undefined || result === null) return;
+            if (Array.isArray(result)) {
+                for (const batch of result) this.applyBatch(batch);
+            } else {
+                this.applyBatch(result);
+            }
+        } catch (err) {
+            console.warn("Thread diagnostics refresh skipped:", err);
+        }
     }
 
     reset(): void {
         this.#entries = new Map();
+        this.#diagnostics = new Map();
     }
 }

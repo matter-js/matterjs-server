@@ -75,7 +75,7 @@ function getDefaultIconColor(): string {
  * Device type IDs from the Matter Device Library Specification.
  * Organized by spec categories. See https://csa-iot.org/ for the full specification.
  */
-const DeviceTypes = {
+export const DeviceTypes = {
     // Utility (per Matter spec - deprioritized for icon selection)
     ROOT_NODE: 0x0016,
     POWER_SOURCE: 0x0011,

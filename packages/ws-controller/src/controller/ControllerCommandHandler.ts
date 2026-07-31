@@ -13,6 +13,8 @@ import {
     CommissioningClient,
     FabricId,
     FabricIndex,
+    IcdClient,
+    IcdMultiAdminError,
     isObject,
     Logger,
     MatterAggregateError,
@@ -20,6 +22,7 @@ import {
     Minutes,
     NodeId,
     Observable,
+    ObserverGroup,
     Seconds,
     ServerAddress,
     SoftwareUpdateInfo,
@@ -27,18 +30,22 @@ import {
     Time,
     Timer,
     DnsRecordType,
+    NetworkClient,
 } from "@matter/main";
-import { OperationalCredentialsClient } from "@matter/main/behaviors";
+import { IcdManagementClient, OperationalCredentialsClient } from "@matter/main/behaviors";
 import {
     AccessControl,
     BasicInformation,
     Binding,
     BridgedDeviceBasicInformation,
     GeneralCommissioning,
+    IcdManagement,
     OperationalCredentials,
+    TimeSynchronization,
 } from "@matter/main/clusters";
 import { WebRtcTransportDefinitions } from "@matter/main/clusters/web-rtc-transport-definitions";
 import { WebRtcTransportProvider } from "@matter/main/clusters/web-rtc-transport-provider";
+import { ClusterRevision } from "@matter/main/model";
 import { DeviceAttestationCheck, Invoke, PeerAddress, Read, Specifier, PeerSet } from "@matter/main/protocol";
 import {
     AttributeId,
@@ -88,6 +95,7 @@ import {
     AccessControlTarget,
     AttributeWriteResult,
     BindingTarget,
+    IcdStateData,
     MatterSoftwareVersion,
     NodePingResult,
     ServerError,
@@ -96,8 +104,17 @@ import {
 import { formatNodeId } from "../util/formatNodeId.js";
 import { pingIp } from "../util/network.js";
 import { CustomClusterPoller } from "./CustomClusterPoller.js";
+import { NodeAttributeReader } from "./NodeProcessor.js";
 import { Nodes } from "./Nodes.js";
+import { ThreadDetailsPoller } from "./ThreadDetailsPoller.js";
+import { pushNodeTime, TimeSyncInvokers } from "./timeSyncCommands.js";
+import { SyncTrigger, TIME_FAILURE_EVENT_ID, TIME_SYNC_CLUSTER_ID, TimeSyncManager } from "./TimeSyncManager.js";
 import { attachWebRtcCallbackBridge } from "./WebRtcCallbackBridge.js";
+import {
+    isTrackableWebRtcSession,
+    resolveWebRtcSessionStreams,
+    selectWebRtcStreamFields,
+} from "./webRtcSessionStreams.js";
 
 const logger = Logger.get("ControllerCommandHandler");
 
@@ -149,8 +166,15 @@ export class ControllerCommandHandler {
     #availableUpdates = new Map<NodeId, SoftwareUpdateInfo>();
     /** Poller for custom cluster attributes (Eve energy, etc.) */
     #customClusterPoller: CustomClusterPoller;
+    /** Manages time synchronization for nodes with the TimeSynchronization cluster */
+    #timeSyncManager?: TimeSyncManager;
+    #threadDetailsPoller?: ThreadDetailsPoller;
+    /** Per-node ObserverGroups for cleanup on decommission */
+    #nodeObservers = new Map<NodeId, ObserverGroup>();
     /** Per-node timers that fire when Reconnecting state exceeds the timeout */
     #reconnectTimers = new Map<NodeId, Timer>();
+    /** Per-node timers that coalesce basic-info changes into a single delayed node_updated refresh. */
+    #nodeUpdateTimers = new Map<NodeId, Timer>();
     /**
      * Nodes whose basic information changed within the current subscription batch. A full node_updated
      * is deferred until the batch ends (connectionAlive) so consumers see one update per batch.
@@ -181,6 +205,8 @@ export class ControllerCommandHandler {
         bleEnabled: boolean,
         bleProxyEnabled: boolean,
         otaEnabled: boolean,
+        timeSyncEnabled = false,
+        threadDiagnosticsEnabled = false,
     ) {
         this.#controller = controllerInstance;
 
@@ -189,13 +215,28 @@ export class ControllerCommandHandler {
         logger.info(`BLE is ${bleEnabled ? "enabled" : "disabled"}${bleProxyEnabled ? " (proxy mode)" : ""}`);
         this.#otaEnabled = otaEnabled;
 
-        // Initialize custom cluster poller for Eve energy attributes etc.
-        // Reads automatically trigger change events through the normal attribute flow
-        this.#customClusterPoller = new CustomClusterPoller({
+        const attributeReader: NodeAttributeReader = {
             nodeConnected: peer => !!(this.#nodes.has(peer.nodeId) && this.#nodes.get(peer.nodeId).isConnected),
             handleReadAttributes: (peer, paths, fabricFiltered) =>
                 this.handleReadAttributes(peer.nodeId, paths, fabricFiltered),
-        });
+        };
+
+        // Initialize custom cluster poller for Eve energy attributes etc.
+        // Reads automatically trigger change events through the normal attribute flow
+        this.#customClusterPoller = new CustomClusterPoller(attributeReader);
+
+        if (threadDiagnosticsEnabled) {
+            this.#threadDetailsPoller = new ThreadDetailsPoller(attributeReader);
+        }
+
+        if (timeSyncEnabled) {
+            logger.info("Time synchronization enabled");
+            this.#timeSyncManager = new TimeSyncManager({
+                syncTime: peer => this.#syncNodeTime(peer.nodeId),
+                nodeConnected: peer => !!(this.#nodes.has(peer.nodeId) && this.#nodes.get(peer.nodeId).isConnected),
+                commissionedNodeCount: () => this.#controller.getCommissionedNodes().length,
+            });
+        }
     }
 
     /**
@@ -333,11 +374,33 @@ export class ControllerCommandHandler {
 
         const node = this.#nodes.get(nodeId);
 
+        const command = commandName === "ProvideOffer" ? "provideOffer" : "solicitOffer";
+
+        // `payload` arrives using the Python Matter Server wire convention (e.g. `webRtcSessionID`,
+        // see python_client/chip/clusters/cluster_defs), which does not match matter.js's own
+        // camelCase property names (e.g. `webRtcSessionId`). Route it through the same model-based
+        // conversion used for regular invokes so field names and value types (nullables, bytes,
+        // epochs, ...) line up with what matter.js expects.
+        const providerClusterEntry = ClusterMap[WebRtcTransportProvider.id];
+        const commandModel = providerClusterEntry?.commands[command.toLowerCase()];
+        const convertedPayload =
+            providerClusterEntry !== undefined && commandModel !== undefined
+                ? (convertCommandDataToMatter(payload, commandModel, providerClusterEntry.model) as Record<
+                      string,
+                      unknown
+                  >)
+                : payload;
+
         const fields: Record<string, unknown> = {
-            ...payload,
+            ...convertedPayload,
             originatingEndpointId,
         };
-        const command = commandName === "ProvideOffer" ? "provideOffer" : "solicitOffer";
+
+        const clusterRevision =
+            this.#nodes.attributeCache.get(nodeId)?.[
+                `${endpointId}/${WebRtcTransportProvider.id}/${ClusterRevision.id}`
+            ];
+        selectWebRtcStreamFields(fields, clusterRevision);
 
         const response = (await this.#invokeCommand(node.node, {
             endpoint: endpointId,
@@ -352,15 +415,60 @@ export class ControllerCommandHandler {
             );
         }
 
-        const streamUsage = payload.streamUsage as WebRtcTransportDefinitions.WebRtcSession["streamUsage"];
-        const metadataEnabled = (payload.metadataEnabled as boolean | undefined) ?? false;
-        const videoStreams = response.videoStreamId != null ? [response.videoStreamId] : new Array<number>();
-        const audioStreams = response.audioStreamId != null ? [response.audioStreamId] : new Array<number>();
+        const streamUsage = convertedPayload.streamUsage;
+        const metadataEnabled = convertedPayload.metadataEnabled === true;
+
+        const videoStreams = resolveWebRtcSessionStreams(
+            fields.videoStreams,
+            fields.videoStreamId,
+            response.videoStreamId,
+        );
+        const audioStreams = resolveWebRtcSessionStreams(
+            fields.audioStreams,
+            fields.audioStreamId,
+            response.audioStreamId,
+        );
+
+        // An untrackable session (no stream usage, or no stream — e.g. an auto-select/deferred
+        // SolicitOffer whose provider reports no stream id yet) cannot be stored in the requestor's
+        // CurrentSessions, so we could never route the peer's follow-up signaling for it. Rather than
+        // return a session id that will silently never deliver media, tear the just-created device
+        // session down and fail the command. Deferred/auto-select is thus unsupported for now; the
+        // dashboard never hits this (it always requests a concrete stream usage + id).
+        if (!isTrackableWebRtcSession(streamUsage, videoStreams, audioStreams)) {
+            logger.warn(
+                `Tearing down untrackable WebRTC session id=${response.webRtcSessionId} for node ${this.formatNode(
+                    nodeId,
+                )}: request lacks a stream usage or any video/audio stream, so signaling cannot be routed for it`,
+            );
+            try {
+                await this.#invokeCommand(node.node, {
+                    endpoint: endpointId,
+                    cluster: WebRtcTransportProvider,
+                    command: "endSession",
+                    fields: {
+                        webRtcSessionId: response.webRtcSessionId,
+                        reason: WebRtcTransportDefinitions.WebRtcEndReason.OutOfResources,
+                    },
+                });
+            } catch (err) {
+                logger.warn(
+                    `EndSession cleanup for untrackable WebRTC session id=${response.webRtcSessionId} failed: ${
+                        err instanceof Error ? err.message : String(err)
+                    }`,
+                );
+            }
+            throw ServerError.sdkStackError(
+                `${commandName} for node ${this.formatNode(nodeId)} produced a session with no stream usage or ` +
+                    `video/audio stream; deferred/auto-select streaming is not supported`,
+            );
+        }
+
         const session: WebRtcTransportDefinitions.WebRtcSession = {
             id: response.webRtcSessionId,
             peerNodeId: nodeId,
             peerEndpointId: endpointId,
-            streamUsage,
+            streamUsage: streamUsage as WebRtcTransportDefinitions.WebRtcSession["streamUsage"],
             metadataEnabled,
             videoStreams,
             audioStreams,
@@ -377,12 +485,79 @@ export class ControllerCommandHandler {
         return response;
     }
 
+    /**
+     * Drop a WebRTC session from the local requestor's CurrentSessions tracking. Call when the session
+     * is ended locally (e.g. the client invokes EndSession on the provider); peer-initiated ends are
+     * already removed by the requestor's own End handler. No-op if the id is not tracked.
+     */
+    async removeTrackedWebRtcSession(webRtcSessionId: number): Promise<void> {
+        await this.#cameraControllerEndpoint().act(agent => {
+            agent.get(WebRtcTransportRequestorServer).removeSession(webRtcSessionId);
+        });
+    }
+
+    /**
+     * Push UTC time (and, for TimeZone-feature nodes, time zone + DST) to a node's
+     * TimeSynchronization cluster.
+     */
+    async #syncNodeTime(nodeId: NodeId): Promise<void> {
+        const node = this.#nodes.get(nodeId).node;
+        const attributes = this.#nodes.attributeCache.get(nodeId) ?? {};
+        const invokers: TimeSyncInvokers = {
+            setUtcTime: async fields => {
+                await this.#invokeCommand(node, {
+                    endpoint: EndpointNumber(0),
+                    cluster: TimeSynchronization.Cluster,
+                    command: "setUtcTime",
+                    fields,
+                });
+            },
+            setTimeZone: async fields =>
+                (await this.#invokeCommand(node, {
+                    endpoint: EndpointNumber(0),
+                    cluster: TimeSynchronization.Cluster,
+                    command: "setTimeZone",
+                    fields,
+                })) as TimeSynchronization.SetTimeZoneResponse | undefined,
+            setDstOffset: async fields => {
+                await this.#invokeCommand(node, {
+                    endpoint: EndpointNumber(0),
+                    cluster: TimeSynchronization.Cluster,
+                    command: "setDstOffset",
+                    fields,
+                });
+            },
+        };
+        await pushNodeTime({ invokers, attributes, nowMs: Time.nowMs });
+    }
+
     async close() {
         for (const timer of this.#reconnectTimers.values()) {
             timer.stop();
         }
         this.#reconnectTimers.clear();
-        await this.#customClusterPoller.stop();
+        for (const timer of this.#nodeUpdateTimers.values()) {
+            timer.stop();
+        }
+        this.#nodeUpdateTimers.clear();
+        // Observers first: a state change reaching #handleNodeStateChange re-registers the node with
+        // every processor, so stopping them first leaves the processors re-populated.
+        for (const observers of this.#nodeObservers.values()) {
+            observers.close();
+        }
+        this.#nodeObservers.clear();
+        // Each stop() awaits an in-flight read against a possibly unresponsive node; serially they
+        // stack their timeouts, and a throw from one would skip the rest of the shutdown.
+        const stopped = await Promise.allSettled([
+            this.#customClusterPoller.stop(),
+            this.#threadDetailsPoller?.stop(),
+            this.#timeSyncManager?.stop(),
+        ]);
+        for (const result of stopped) {
+            if (result.status === "rejected") {
+                logger.warn("Stopping a node processor failed:", result.reason);
+            }
+        }
         if (!this.#started) {
             return;
         }
@@ -393,7 +568,11 @@ export class ControllerCommandHandler {
         const node = await this.#controller.getNode(nodeId);
         const attributeCache = this.#nodes.attributeCache;
 
-        node.events.attributeChanged.on(data => {
+        // Per-node ObserverGroup so all subscriptions are cleaned up on decommission
+        const nodeObservers = new ObserverGroup();
+        this.#nodeObservers.set(nodeId, nodeObservers);
+
+        nodeObservers.on(node.events.attributeChanged, data => {
             attributeCache.updateAttribute(nodeId, data);
             this.events.attributeChanged.emit(nodeId, data);
             if (
@@ -404,29 +583,52 @@ export class ControllerCommandHandler {
                 this.#basicInfoChangedInBatch.add(nodeId);
             }
         });
-        node.events.connectionAlive.on(() => {
-            if (this.#basicInfoChangedInBatch.delete(nodeId)) {
-                logger.info(`Node ${this.formatNode(nodeId)} basic information changed, sending full node_updated`);
-                this.events.nodeStructureChanged.emit(nodeId);
+        nodeObservers.on(node.events.connectionAlive, () => {
+            if (this.#basicInfoChangedInBatch.delete(nodeId) && !this.#nodeUpdateTimers.has(nodeId)) {
+                logger.info(
+                    `Node ${this.formatNode(nodeId)} basic information changed, sending full node_updated in 6s`,
+                );
+                // TODO remove timer based refresh when migrating to the ClientNode API for events
+                const timer = Time.getTimer(`node-update-${nodeId}`, Seconds(6), () =>
+                    this.#handleNodeStructureChange(node).catch(error =>
+                        logger.warn(`Failed to handle structure change for node ${this.formatNode(nodeId)}:`, error),
+                    ),
+                ).start();
+                this.#nodeUpdateTimers.set(nodeId, timer);
             }
         });
-        node.events.eventTriggered.on(data => this.events.eventChanged.emit(nodeId, data));
-        node.events.stateChanged.on(state => {
+        nodeObservers.on(node.events.eventTriggered, data => {
+            this.events.eventChanged.emit(nodeId, data);
+            // Filter timeFailure events to trigger time sync
+            if (
+                this.#timeSyncManager !== undefined &&
+                data.path.clusterId === TIME_SYNC_CLUSTER_ID &&
+                data.path.eventId === TIME_FAILURE_EVENT_ID
+            ) {
+                logger.debug(`Received timeFailure event from node ${this.formatNode(nodeId)}`);
+                this.#timeSyncManager.syncNode(this.#peerOf(nodeId), SyncTrigger.TimeFailure);
+            }
+        });
+        nodeObservers.on(node.events.stateChanged, state => {
             this.#handleNodeStateChange(node, state).catch(error =>
                 logger.warn(`Failed to handle state change for node ${this.formatNode(nodeId)}:`, error),
             );
         });
-        node.events.structureChanged.on(() => {
+        nodeObservers.on(node.events.structureChanged, () => {
             this.#handleNodeStructureChange(node).catch(error =>
                 logger.warn(`Failed to handle structure change for node ${this.formatNode(nodeId)}:`, error),
             );
         });
-        node.events.decommissioned.on(() => {
+        nodeObservers.on(node.events.decommissioned, () => {
             this.#cleanupNodeAfterRemoval(nodeId);
             this.events.nodeDecommissioned.emit(nodeId);
         });
-        node.events.nodeEndpointAdded.on(endpointId => this.#nodes.queueEndpointAdded(nodeId, endpointId));
-        node.events.nodeEndpointRemoved.on(endpointId => this.events.nodeEndpointRemoved.emit(nodeId, endpointId));
+        nodeObservers.on(node.events.nodeEndpointAdded, endpointId =>
+            this.#nodes.queueEndpointAdded(nodeId, endpointId),
+        );
+        nodeObservers.on(node.events.nodeEndpointRemoved, endpointId =>
+            this.events.nodeEndpointRemoved.emit(nodeId, endpointId),
+        );
 
         this.#nodes.set(nodeId, node);
 
@@ -436,7 +638,10 @@ export class ControllerCommandHandler {
             await attributeCache.add(node);
             const attributes = attributeCache.get(nodeId);
             if (attributes) {
-                this.#customClusterPoller.registerNode(this.#peerOf(nodeId), attributes);
+                const peer = this.#peerOf(nodeId);
+                this.#customClusterPoller.registerNode(peer, attributes);
+                this.#threadDetailsPoller?.registerNode(peer, attributes);
+                this.#timeSyncManager?.registerNode(peer, attributes);
             }
         }
 
@@ -498,7 +703,10 @@ export class ControllerCommandHandler {
             }
             const attributes = this.#nodes.attributeCache.get(nodeId);
             if (attributes) {
-                this.#customClusterPoller.registerNode(this.#peerOf(nodeId), attributes);
+                const peer = this.#peerOf(nodeId);
+                this.#customClusterPoller.registerNode(peer, attributes);
+                this.#threadDetailsPoller?.registerNode(peer, attributes);
+                this.#timeSyncManager?.registerNode(peer, attributes);
             }
         }
     }
@@ -507,10 +715,14 @@ export class ControllerCommandHandler {
         const nodeId = node.nodeId;
         this.#basicInfoChangedInBatch.delete(nodeId);
 
+        this.#nodeUpdateTimers.get(nodeId)?.stop();
+        this.#nodeUpdateTimers.delete(nodeId);
+
         if (node.isConnected) {
             await this.#nodes.attributeCache.update(node);
         }
         this.events.nodeStructureChanged.emit(nodeId);
+
         for (const endpointId of this.#nodes.drainPendingEndpointAdds(nodeId)) {
             this.events.nodeEndpointAdded.emit(nodeId, endpointId);
         }
@@ -548,10 +760,14 @@ export class ControllerCommandHandler {
         // Start connecting nodes to the network (fire-and-forget, actual I/O is async).
         for (const nodeId of this.#nodes.getIds()) {
             try {
-                this.#nodes.get(nodeId).connect({
-                    subscribeMinIntervalFloorSeconds: 1,
-                    subscribeMaxIntervalCeilingSeconds: undefined,
-                });
+                const node = this.#nodes.get(nodeId);
+
+                if (node.node.maybeStateOf(NetworkClient)?.defaultSubscription !== undefined) {
+                    // Clear former set subscription details, let matter.js handle that now
+                    await node.node.set({ network: { defaultSubscription: undefined } });
+                }
+
+                node.connect();
             } catch (error) {
                 logger.warn(`Failed to connect node "${this.formatNode(nodeId)}":`, error);
             }
@@ -782,12 +998,20 @@ export class ControllerCommandHandler {
         }
     }
 
-    /**
-     * Set the fabric label. Pass null or empty string to reset to "Home".
-     * Note: matter.js requires non-empty labels (1-32 chars), so null/empty resets to default.
-     */
+    /** Set the fabric label. matter.js requires a non-empty label of 1-32 chars; callers must normalize first. */
     async setFabricLabel(label: string) {
         await this.#controller.updateFabricLabel(label);
+    }
+
+    /** Current fabric label as known to matter.js, or undefined if the controller/fabric is not yet started. */
+    getFabricLabel(): string | undefined {
+        // matter.js `fabric` getter throws until the controller has finished starting; degrade to undefined
+        // so callers fall back to the configured label instead of surfacing an error.
+        try {
+            return this.#controller.fabric?.label;
+        } catch {
+            return undefined;
+        }
     }
 
     async handleWriteAttribute(data: WriteAttributeRequest): Promise<AttributeResponseStatus> {
@@ -976,8 +1200,7 @@ export class ControllerCommandHandler {
                     for (const f of findings) {
                         if (f.type === DeviceAttestationCheck.TrustedAsTestCertificate) {
                             testCertReason =
-                                'Device uses a test/development certificate. Enable the "Test Net DCL" option ' +
-                                "(--enable-test-net-dcl) to commission test or development devices";
+                                'This device uses a test/development certificate. To commission it, enable the "Test DCL" option in the settings — only do this if you trust the vendor.';
                         } else if (f.level === "error") {
                             hardError = true;
                         }
@@ -1227,10 +1450,17 @@ export class ControllerCommandHandler {
     #cleanupNodeAfterRemoval(nodeId: NodeId) {
         this.#reconnectTimers.get(nodeId)?.stop();
         this.#reconnectTimers.delete(nodeId);
+        this.#nodeUpdateTimers.get(nodeId)?.stop();
+        this.#nodeUpdateTimers.delete(nodeId);
+        this.#nodeObservers.get(nodeId)?.close();
+        this.#nodeObservers.delete(nodeId);
         this.#basicInfoChangedInBatch.delete(nodeId);
         this.#pendingLazyPopulate.delete(nodeId);
         this.#nodes.delete(nodeId);
-        this.#customClusterPoller.unregisterNode(this.#peerOf(nodeId));
+        const peer = this.#peerOf(nodeId);
+        this.#customClusterPoller.unregisterNode(peer);
+        this.#threadDetailsPoller?.unregisterNode(peer);
+        this.#timeSyncManager?.unregisterNode(peer);
         this.#availableUpdates.delete(nodeId);
     }
 
@@ -1278,6 +1508,77 @@ export class ControllerCommandHandler {
 
     removeFabric(nodeId: NodeId, fabricIndex: FabricIndex) {
         return this.#nodes.get(nodeId).node.commandsOf(OperationalCredentialsClient).removeFabric({ fabricIndex });
+    }
+
+    /**
+     * Register this controller as an ICD Check-In client on the peer.
+     * @throws {ServerError} with code IcdMultiAdmin if the peer has other-vendor administrators and
+     *   `options.allowMultiAdmin` is not set.
+     */
+    async registerIcd(
+        nodeId: NodeId,
+        options: { allowMultiAdmin?: boolean; ignoredVendors?: number[] },
+    ): Promise<void> {
+        const node = this.#nodes.get(nodeId);
+        try {
+            await node.node.act(agent =>
+                agent.get(IcdClient).register({
+                    allowMultiAdmin: options.allowMultiAdmin,
+                    ignoredVendors: options.ignoredVendors?.map(vendorId => VendorId(vendorId)),
+                }),
+            );
+        } catch (error) {
+            IcdMultiAdminError.accept(error);
+            throw ServerError.icdMultiAdmin(error.adminVendorIds.map(vendorId => Number(vendorId)));
+        }
+    }
+
+    /**
+     * Drop this controller's ICD Check-In registration.
+     * `force` skips the peer round-trip (for an unreachable peer) and only clears local state.
+     */
+    async unregisterIcd(nodeId: NodeId, force: boolean): Promise<void> {
+        const node = this.#nodes.get(nodeId);
+        await node.node.act(agent => (force ? agent.get(IcdClient).forget() : agent.get(IcdClient).unregister()));
+    }
+
+    /**
+     * Drop the local ICD registration and reconnect; a LIT peer re-registers automatically once subscribed.
+     */
+    async resyncIcd(nodeId: NodeId): Promise<void> {
+        const node = this.#nodes.get(nodeId);
+        await node.node.act(agent => agent.get(IcdClient).forget());
+        node.triggerReconnect();
+    }
+
+    async getIcdState(nodeId: NodeId): Promise<IcdStateData> {
+        const node = this.#nodes.get(nodeId);
+        const icdManagementState = node.node.endpoints.for(EndpointNumber(0)).maybeStateOf(IcdManagementClient);
+        if (icdManagementState === undefined) {
+            return {
+                supported: false,
+                lit_supported: false,
+                registered: false,
+                operating_mode: null,
+                awake: null,
+                available: null,
+                next_expected_checkin: null,
+            };
+        }
+
+        return node.node.act(agent => {
+            const icd = agent.get(IcdClient);
+            return {
+                supported: true,
+                lit_supported: icd.peerSupportsLit,
+                registered: icd.isRegistered,
+                operating_mode: icdManagementState.operatingMode === IcdManagement.OperatingMode.Lit ? "LIT" : "SIT",
+                // upstream d.ts types the awake getter as `any`; pin to boolean for the wire
+                awake: icd.awake === true,
+                available: icd.state.available,
+                next_expected_checkin: icd.nextExpectedCheckin !== undefined ? Number(icd.nextExpectedCheckin) : null,
+            };
+        });
     }
 
     /**

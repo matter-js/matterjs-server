@@ -192,14 +192,17 @@ export class ProxyBleCentralInterface implements Transport {
 
             let handshakeResponse: Uint8Array;
             try {
-                await connection.sendCommand(BleProxyCommand.WriteAndSubscribe, {
+                // Await both together, not sequentially: the handshake timer can reject handshakePromise
+                // while the write is still pending, and Promise.all keeps a handler on it from the start so
+                // that rejection surfaces here instead of escaping as an unhandled rejection.
+                const writeAndSubscribe = connection.sendCommand(BleProxyCommand.WriteAndSubscribe, {
                     connection_handle,
                     write_uuid: c1Uuid,
                     write_value: Buffer.from(btpHandshakeRequest as ArrayBuffer).toString("base64"),
                     write_response: true,
                     subscribe_uuid: c2Uuid,
                 });
-                handshakeResponse = await handshakePromise;
+                [, handshakeResponse] = await Promise.all([writeAndSubscribe, handshakePromise]);
             } finally {
                 connection.binaryFrameReceived.off(handshakeObserver);
                 btpHandshakeTimeout.stop();

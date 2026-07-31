@@ -24,8 +24,15 @@ import { showCommandInvokeDialog } from "../components/dialogs/dev/show-command-
 import "../components/ha-svg-icon";
 import "../pages/components/node-details";
 // Cluster command components (auto-register on import)
+import { computeActiveClusterFeatures } from "../util/cluster-features.js";
 import { DevModeService } from "../util/dev-mode-service.js";
 import { formatHex, formatNodeAddress, getEffectiveFabricIndex } from "../util/format_hex.js";
+import {
+    decodeSemanticTagList,
+    describeSemanticTagListEntry,
+    DESCRIPTOR_CLUSTER_ID,
+    TAG_LIST_ATTR,
+} from "../util/semantic-tags.js";
 import { notFoundStyles } from "../util/shared-styles.js";
 import { BaseClusterCommands, getClusterCommandsTag } from "./cluster-commands/index.js";
 import { bindingContext } from "./components/context.js";
@@ -42,6 +49,9 @@ const GLOBAL_ATTRIBUTE_MAX = 0xffff;
 
 // AcceptedCommandList global attribute (lists server-supported command IDs per cluster instance)
 const ACCEPTED_COMMAND_LIST_ATTR = 0xfff9;
+
+// FeatureMap global attribute (bitmap of cluster feature flags supported by this instance)
+const FEATURE_MAP_ATTR = 0xfffc;
 
 // How long to flash the refresh icon in success state.
 const REFRESH_SUCCESS_MS = 600;
@@ -141,6 +151,8 @@ class MatterClusterView extends LitElement {
             <div class="container">
                 <node-details .node=${this.node}></node-details>
             </div>
+
+            ${this._renderClusterInfoPanel()}
 
             <!-- Cluster commands section (if available for this cluster) -->
             ${this._renderClusterCommands()}
@@ -341,6 +353,78 @@ class MatterClusterView extends LitElement {
         });
     }
 
+    private _renderClusterInfoPanel(): TemplateResult | typeof nothing {
+        const sections = new Array<TemplateResult>();
+        for (const section of [this._renderFeaturesSection(), this._renderTagListSection()]) {
+            if (section !== undefined) sections.push(section);
+        }
+        if (sections.length === 0) return nothing;
+
+        return html`
+            <div class="container">
+                <div class="info-panel">${sections}</div>
+            </div>
+        `;
+    }
+
+    private _renderFeaturesSection(): TemplateResult | undefined {
+        if (this.cluster === undefined || !this.node) return undefined;
+
+        const clusterMeta = clusters[this.cluster];
+        const knownFeatures = Object.values(clusterMeta?.features ?? {});
+        if (knownFeatures.length === 0) return undefined;
+
+        const featureMapValue = this.node.attributes[`${this.endpoint}/${this.cluster}/${FEATURE_MAP_ATTR}`];
+        if (featureMapValue === undefined) return undefined;
+
+        const activeFeatures = computeActiveClusterFeatures(featureMapValue, knownFeatures);
+
+        return html`
+            <div class="info-section">
+                <div class="info-section-header">Active Features</div>
+                ${activeFeatures.length === 0
+                    ? html`<p class="empty">No active features</p>`
+                    : html`
+                          <ul class="chip-list">
+                              ${activeFeatures.map(
+                                  feature => html`
+                                      <li class="chip" title="Bit ${feature.bit} (${feature.code})">
+                                          ${feature.label}
+                                      </li>
+                                  `,
+                              )}
+                          </ul>
+                      `}
+            </div>
+        `;
+    }
+
+    private _renderTagListSection(): TemplateResult | undefined {
+        if (this.cluster !== DESCRIPTOR_CLUSTER_ID || !this.node) return undefined;
+
+        const tagListValue = this.node.attributes[`${this.endpoint}/${this.cluster}/${TAG_LIST_ATTR}`];
+        const tagList = decodeSemanticTagList(tagListValue);
+        if (tagList === undefined) return undefined;
+
+        return html`
+            <div class="info-section">
+                <div class="info-section-header">Semantic Tags (TagList)</div>
+                ${tagList.length === 0
+                    ? html`<p class="empty">No semantic tags</p>`
+                    : html`
+                          <ul class="chip-list">
+                              ${tagList.map(entry => {
+                                  const { text, title, erroneous } = describeSemanticTagListEntry(entry);
+                                  return html`<li class=${erroneous ? "chip chip-error" : "chip"} title=${title}>
+                                      ${text}
+                                  </li>`;
+                              })}
+                          </ul>
+                      `}
+            </div>
+        `;
+    }
+
     private async _showAttributeValue(value: any) {
         showAlertDialog({
             title: "Attribute value",
@@ -351,9 +435,10 @@ class MatterClusterView extends LitElement {
 
     private _renderClusterCommands() {
         if (this.cluster === undefined) return html``;
-        // ACL (31) and Binding (30) panels stay visible read-only for offline nodes; commands for
-        // other clusters are hidden while the device is unreachable.
-        const RENDER_WHEN_OFFLINE = new Set<number>([30, 31]);
+        // ACL (31) and Binding (30) panels stay visible read-only for offline nodes; ICD management (70)
+        // stays visible and actionable since its commands target sleeping devices. Commands for other
+        // clusters are hidden while the device is unreachable.
+        const RENDER_WHEN_OFFLINE = new Set<number>([30, 31, 70]);
         if (!this.node?.available && !RENDER_WHEN_OFFLINE.has(this.cluster)) return html``;
 
         const tagName = getClusterCommandsTag(this.cluster);
@@ -376,6 +461,7 @@ class MatterClusterView extends LitElement {
         // Reset per-attribute refresh state when navigating to a different cluster/endpoint.
         if (changedProperties.has("cluster") || changedProperties.has("endpoint")) {
             this._refreshState = {};
+            this._scrollCommandPanelIntoView();
         }
 
         // After render, find and configure the cluster commands component
@@ -388,6 +474,14 @@ class MatterClusterView extends LitElement {
                 commandsElement.cluster = this.cluster;
             }
         }
+    }
+
+    // Route change resets scroll to top; for clusters with a command panel land on the panel instead.
+    private _scrollCommandPanelIntoView() {
+        requestAnimationFrame(() => {
+            const container = this.shadowRoot?.getElementById("cluster-commands-container");
+            container?.scrollIntoView({ block: "start", behavior: "auto" });
+        });
     }
 
     private _goBack() {
@@ -615,6 +709,49 @@ class MatterClusterView extends LitElement {
                 background: var(--md-sys-color-surface-container-high);
                 padding: 0 4px;
                 border-radius: 3px;
+            }
+
+            .info-panel {
+                background-color: var(--md-sys-color-surface-container);
+                border: 1px solid var(--md-sys-color-outline-variant);
+                border-radius: 12px;
+                padding: 14px 16px;
+            }
+
+            .info-section + .info-section {
+                margin-top: 12px;
+                padding-top: 12px;
+                border-top: 1px solid var(--md-sys-color-outline-variant);
+            }
+
+            .info-section-header {
+                font-weight: 500;
+                color: var(--md-sys-color-on-surface);
+                margin-bottom: 10px;
+            }
+
+            .chip-list {
+                list-style: none;
+                margin: 0;
+                padding: 0;
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+
+            .chip {
+                font-size: 0.85rem;
+                color: var(--md-sys-color-on-secondary-container);
+                background: var(--md-sys-color-secondary-container);
+                padding: 4px 10px;
+                border-radius: 8px;
+            }
+
+            .chip.chip-error {
+                color: var(--md-sys-color-on-error-container);
+                background: var(--md-sys-color-error-container);
+                border: 1px solid var(--md-sys-color-error);
+                font-family: var(--monospace-font);
             }
         `,
     ];

@@ -24,6 +24,7 @@ class EventType(Enum):
     ENDPOINT_ADDED = "endpoint_added"
     ENDPOINT_REMOVED = "endpoint_removed"
     WEBRTC_CALLBACK = "webrtc_callback"
+    THREAD_DIAGNOSTICS_UPDATED = "thread_diagnostics_updated"  # schema 12+
 
 
 class APICommand(str, Enum):
@@ -54,9 +55,17 @@ class APICommand(str, Enum):
     CHECK_NODE_UPDATE = "check_node_update"
     UPDATE_NODE = "update_node"
     SET_DEFAULT_FABRIC_LABEL = "set_default_fabric_label"
+    GET_FABRIC_LABEL = "get_fabric_label"
     SET_ACL_ENTRY = "set_acl_entry"
     SET_NODE_BINDING = "set_node_binding"
     SEND_WEBRTC_PROVIDER_COMMAND = "send_webrtc_provider_command"
+    GET_ALL_CREDENTIALS = "get_all_credentials"
+    GET_THREAD_BORDER_ROUTERS = "get_thread_border_routers"
+    GET_THREAD_DIAGNOSTICS = "get_thread_diagnostics"
+    GET_ICD_STATE = "get_icd_state"
+    REGISTER_ICD = "register_icd"
+    RESYNC_ICD = "resync_icd"
+    UNREGISTER_ICD = "unregister_icd"
 
 
 EventCallBackType = Callable[[EventType, Any], None]
@@ -91,9 +100,7 @@ class MatterNodeData:
     # all attribute subscriptions we need to persist for this node,
     # a set of tuples in format (endpoint_id, cluster_id, attribute_id)
     # where each value can also be a None for wildcard
-    attribute_subscriptions: set[tuple[int | None, int | None, int | None]] = field(
-        default_factory=set
-    )
+    attribute_subscriptions: set[tuple[int | None, int | None, int | None]] = field(default_factory=set)
 
 
 @dataclass
@@ -192,7 +199,9 @@ class ErrorResultMessage(ResultMessageBase):
 class EventMessage:
     """Message sent when server or client signals a (stateless) event."""
 
-    event: EventType
+    # An event type unknown to this client is passed through by parse_value as a raw string rather
+    # than an EventType, so consumers must narrow before relying on enum members.
+    event: EventType | str
     data: Any
 
 
@@ -212,13 +221,7 @@ class ServerInfoMessage:
     ble_proxy_enabled: bool = False
 
 
-MessageType = (
-    CommandMessage
-    | EventMessage
-    | SuccessResultMessage
-    | ErrorResultMessage
-    | ServerInfoMessage
-)
+MessageType = CommandMessage | EventMessage | SuccessResultMessage | ErrorResultMessage | ServerInfoMessage
 
 
 @dataclass
@@ -252,6 +255,19 @@ class CommissioningParameters:
     setup_pin_code: int
     setup_manual_code: str
     setup_qr_code: str
+
+
+@dataclass
+class IcdStateData:
+    """ICD controller-side state for a node. Note: Only available with OHF Matter Server."""
+
+    supported: bool
+    lit_supported: bool
+    registered: bool
+    operating_mode: str | None
+    awake: bool | None
+    available: bool | None
+    next_expected_checkin: int | None
 
 
 class UpdateSource(Enum):

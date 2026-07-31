@@ -6,8 +6,17 @@
 
 import { consume } from "@lit/context";
 import "@material/web/divider/divider";
-import { isTestNodeId, type BorderRouterEntry, type MatterClient, type MatterNode } from "@matter-server/ws-client";
 import {
+    isTestNodeId,
+    type BorderRouterEntry,
+    type MatterClient,
+    type MatterNode,
+    type ThreadDiagnosticsBatch,
+    type ThreadDiagnosticsNode,
+    type ThreadDiagnosticsPartialReason,
+} from "@matter-server/ws-client";
+import {
+    mdiAlert,
     mdiClose,
     mdiLinkVariantOff,
     mdiRefresh,
@@ -28,12 +37,16 @@ import {
     formatThreadVersion,
     getDeviceName,
     getNetworkType,
+    DIAGNOSTIC_MESH_NODE_EXPLANATION,
+    EXTERNAL_ROUTER_CAPABLE_NOTE,
+    EXTERNAL_THREAD_DEVICE_CASES,
     getNodeConnectionsFromPairs,
     getRoutableDestinationsCount,
     getSignalColorFromRssi,
     getThreadChannel,
     getThreadExtendedAddressHex,
     getThreadRole,
+    getThreadRoleDescription,
     getThreadRoleName,
     getThreadVersion,
     getWiFiDiagnostics,
@@ -74,6 +87,9 @@ export class NetworkDetails extends LitElement {
 
     @property({ attribute: false })
     public borderRouters: ReadonlyMap<string, BorderRouterEntry> = new Map();
+
+    @property({ attribute: false })
+    public threadDiagnostics: ReadonlyMap<string, ThreadDiagnosticsBatch> = new Map();
 
     @property({ type: Object })
     public wifiAccessPoints: Map<string, { bssid: string; connectedNodes: string[] }> = new Map();
@@ -195,7 +211,7 @@ export class NetworkDetails extends LitElement {
                 ${wifiDiag.wifiVersion !== null
                     ? html`
                           <div class="info-row">
-                              <span class="label">WiFi Version:</span>
+                              <span class="label">WiFi version:</span>
                               <span class="value">${getWiFiVersionName(wifiDiag.wifiVersion)}</span>
                           </div>
                       `
@@ -225,6 +241,7 @@ export class NetworkDetails extends LitElement {
                     <span class="label">Role:</span>
                     <span class="value">${getThreadRoleName(threadRole)}</span>
                 </div>
+                <p class="hint-text inline-note">${getThreadRoleDescription(threadRole)}</p>
                 ${threadVersion !== undefined
                     ? html`
                           <div class="info-row">
@@ -244,7 +261,7 @@ export class NetworkDetails extends LitElement {
                 ${extAddressHex
                     ? html`
                           <div class="info-row">
-                              <span class="label">Extended Address:</span>
+                              <span class="label">Extended address:</span>
                               <span class="value mono">${extAddressHex}</span>
                           </div>
                       `
@@ -390,7 +407,7 @@ export class NetworkDetails extends LitElement {
             ${networkType === "thread"
                 ? html`
                       <md-divider></md-divider>
-                      ${this._renderThreadInfo(node)}
+                      ${this._renderThreadInfo(node)} ${this._renderNodeDiagnostics(node)}
                   `
                 : nothing}
             ${networkType === "wifi"
@@ -399,6 +416,79 @@ export class NetworkDetails extends LitElement {
                       ${this._renderWiFiInfo(node)}
                   `
                 : nothing}
+        `;
+    }
+
+    private _renderDiagnosticMeshNodeInfo(nodeId: string): TemplateResult {
+        let extMac: string | undefined;
+        let extPanId: string | undefined;
+        let rloc16: number | undefined;
+
+        if (nodeId.startsWith("thread_")) {
+            extMac = nodeId.slice("thread_".length).toUpperCase();
+            for (const batch of this.threadDiagnostics.values()) {
+                const found = batch.nodes.find(n => n.extMacAddress?.toUpperCase() === extMac);
+                if (found !== undefined) {
+                    extPanId = batch.extPanIdHex.toUpperCase();
+                    rloc16 = found.rloc16;
+                    break;
+                }
+            }
+        } else {
+            // meshrloc_<EXTPANID>_<rloc16>
+            const rest = nodeId.slice("meshrloc_".length);
+            const sep = rest.lastIndexOf("_");
+            if (sep >= 0) {
+                extPanId = rest.slice(0, sep).toUpperCase();
+                const parsed = Number(rest.slice(sep + 1));
+                rloc16 = Number.isFinite(parsed) ? parsed : undefined;
+                extMac = this.threadDiagnostics
+                    .get(extPanId)
+                    ?.nodes.find(n => n.rloc16 === rloc16)
+                    ?.extMacAddress?.toUpperCase();
+            }
+        }
+
+        const isRouter = rloc16 !== undefined ? (rloc16 & 0x3ff) === 0 : nodeId.startsWith("thread_");
+        const rlocHex = rloc16 !== undefined ? `0x${rloc16.toString(16).padStart(4, "0").toUpperCase()}` : undefined;
+
+        return html`
+            <div class="section">
+                <h4>Diagnostic Mesh Node</h4>
+                <div class="info-row">
+                    <span class="label">Role:</span>
+                    <span class="value">${isRouter ? "Router" : "End Device"}</span>
+                </div>
+                ${extMac !== undefined
+                    ? html`
+                          <div class="info-row">
+                              <span class="label">Extended address:</span>
+                              <span class="value mono">${extMac}</span>
+                          </div>
+                      `
+                    : nothing}
+                ${rlocHex !== undefined
+                    ? html`
+                          <div class="info-row">
+                              <span class="label">RLOC16:</span>
+                              <span class="value mono">${rlocHex}</span>
+                          </div>
+                      `
+                    : nothing}
+                ${extPanId !== undefined
+                    ? html`
+                          <div class="info-row">
+                              <span class="label">Extended PAN ID:</span>
+                              <span class="value mono">${extPanId}</span>
+                          </div>
+                      `
+                    : nothing}
+            </div>
+
+            <md-divider></md-divider>
+            <div class="section">
+                <p class="hint-text">${DIAGNOSTIC_MESH_NODE_EXPLANATION}</p>
+            </div>
         `;
     }
 
@@ -416,14 +506,17 @@ export class NetworkDetails extends LitElement {
                     <span class="label">Type:</span>
                     <span class="value">${unknown.isRouter ? "Router (external)" : "End Device (external)"}</span>
                 </div>
+                ${unknown.isRouter
+                    ? html`<p class="hint-text inline-note">${EXTERNAL_ROUTER_CAPABLE_NOTE}</p>`
+                    : nothing}
                 <div class="info-row">
-                    <span class="label">Extended Address:</span>
+                    <span class="label">Extended address:</span>
                     <span class="value mono">${unknown.extAddressHex}</span>
                 </div>
                 ${unknown.networkName !== undefined
                     ? html`
                           <div class="info-row">
-                              <span class="label">Thread Network:</span>
+                              <span class="label">Thread network:</span>
                               <span class="value">${unknown.networkName}</span>
                           </div>
                       `
@@ -451,10 +544,12 @@ export class NetworkDetails extends LitElement {
             <md-divider></md-divider>
             <div class="section">
                 <p class="hint-text">
-                    This device appears in Thread neighbor tables but is not commissioned to this fabric. It may be a
-                    Thread Border Router whose Thread radio MAC differs from its MeshCoP border-agent ID (common with
-                    Apple and Aqara), or a device from another Matter ecosystem.
+                    This device appears in a commissioned node's Thread neighbor table but is not part of this fabric.
+                    It may be:
                 </p>
+                <ul class="hint-text">
+                    ${EXTERNAL_THREAD_DEVICE_CASES.map(c => html`<li>${c}</li>`)}
+                </ul>
             </div>
         `;
     }
@@ -561,10 +656,26 @@ export class NetworkDetails extends LitElement {
                       </div>
                   `
                 : nothing}
+            ${br.swVersion
+                ? html`
+                      <div class="info-row">
+                          <span class="label">SW version:</span>
+                          <span class="value">${br.swVersion}</span>
+                      </div>
+                  `
+                : nothing}
+            ${br.recordVersion
+                ? html`
+                      <div class="info-row">
+                          <span class="label">Record version:</span>
+                          <span class="value">${br.recordVersion}</span>
+                      </div>
+                  `
+                : nothing}
             ${includeExtAddr
                 ? html`
                       <div class="info-row">
-                          <span class="label">Extended Address:</span>
+                          <span class="label">Extended address:</span>
                           <span class="value mono">${br.extAddressHex}</span>
                       </div>
                   `
@@ -723,7 +834,7 @@ export class NetworkDetails extends LitElement {
             ${br.meshcopPort !== undefined
                 ? html`
                       <div class="info-row">
-                          <span class="label">meshcop port:</span>
+                          <span class="label">MeshCoP port:</span>
                           <span class="value">${br.meshcopPort}</span>
                       </div>
                   `
@@ -731,7 +842,7 @@ export class NetworkDetails extends LitElement {
             ${br.trelPort !== undefined
                 ? html`
                       <div class="info-row">
-                          <span class="label">trel port:</span>
+                          <span class="label">TREL port:</span>
                           <span class="value">${br.trelPort}</span>
                       </div>
                   `
@@ -744,6 +855,222 @@ export class NetworkDetails extends LitElement {
                       </div>
                   `
                 : nothing}
+        `;
+    }
+
+    /**
+     * Locate a diagnostic node entry across all known batches by uppercase extMacAddress hex.
+     */
+    private _findDiagnosticNode(extAddressHex: string): ThreadDiagnosticsNode | undefined {
+        const target = extAddressHex.toUpperCase();
+        for (const batch of this.threadDiagnostics.values()) {
+            for (const node of batch.nodes) {
+                if (node.extMacAddress?.toUpperCase() === target) return node;
+            }
+        }
+        return undefined;
+    }
+
+    private _formatPartialReason(reason: ThreadDiagnosticsPartialReason): string | undefined {
+        switch (reason) {
+            case "petition_rejected":
+                return (
+                    "Diagnostics unavailable: Border Router rejected the commissioner request. " +
+                    "Stored credentials may not match this network."
+                );
+            case "dtls_failed":
+                return "Diagnostics unavailable: secure handshake to the Border Router failed.";
+            case "border_router_unreachable":
+                return "Diagnostics unavailable: Border Router not reachable.";
+            case "timeout":
+                return "Diagnostics unavailable: query timed out.";
+            case "rest_unreachable":
+                return "Diagnostics unavailable: REST API not reachable.";
+            case "rest_protocol":
+                return "Diagnostics unavailable: REST API returned an unexpected response.";
+            case "no_credentials":
+            case "no_source":
+                return undefined;
+        }
+    }
+
+    private _renderDiagnosticsErrorBanner(message: string): TemplateResult {
+        return html`
+            <div class="diagnostics-error">
+                <ha-svg-icon .path=${mdiAlert}></ha-svg-icon>
+                <span>${message}</span>
+            </div>
+        `;
+    }
+
+    private _renderBorderRouterDiagnostics(br: BorderRouterEntry): TemplateResult | typeof nothing {
+        if (br.extendedPanIdHex === undefined) return nothing;
+        const batch = this.threadDiagnostics.get(br.extendedPanIdHex.toUpperCase());
+        if (batch === undefined) return nothing;
+
+        const brNode = this._findDiagnosticNode(br.extAddressHex);
+        const errorMessage =
+            batch.partialReason !== undefined ? this._formatPartialReason(batch.partialReason) : undefined;
+        const errorBanner = errorMessage !== undefined ? this._renderDiagnosticsErrorBanner(errorMessage) : nothing;
+        const collected = new Date(batch.collectedAt).toLocaleTimeString();
+        const routerCount = brNode?.route64?.entries.length ?? 0;
+        const childCount = brNode?.childTable?.length ?? 0;
+
+        const heading =
+            errorMessage !== undefined
+                ? html`
+                      <h4>
+                          Diagnostics
+                          <ha-svg-icon class="error-icon" .path=${mdiAlert}></ha-svg-icon>
+                      </h4>
+                  `
+                : html`<h4>Diagnostics</h4>`;
+
+        return html`
+            <md-divider></md-divider>
+            <div class="section">
+                ${heading}${errorBanner}
+                ${batch.source !== "none"
+                    ? html`
+                          <div class="info-row">
+                              <span class="label">Source:</span>
+                              <span class="value">${batch.source}</span>
+                          </div>
+                      `
+                    : nothing}
+                <div class="info-row">
+                    <span class="label">Updated:</span>
+                    <span class="value">${collected}</span>
+                </div>
+                ${routerCount > 0
+                    ? html`
+                          <div class="info-row">
+                              <span class="label">Routers:</span>
+                              <span class="value">${routerCount}</span>
+                          </div>
+                      `
+                    : nothing}
+                ${brNode?.leaderData !== undefined
+                    ? html`
+                          <div class="info-row">
+                              <span class="label">Leader router ID:</span>
+                              <span class="value">${brNode.leaderData.leaderRouterId}</span>
+                          </div>
+                          <div class="info-row">
+                              <span class="label">Partition ID:</span>
+                              <span class="value mono">${brNode.leaderData.partitionId.toString(16)}</span>
+                          </div>
+                      `
+                    : nothing}
+                ${childCount > 0
+                    ? html`
+                          <div class="info-row">
+                              <span class="label">Children:</span>
+                              <span class="value">${childCount}</span>
+                          </div>
+                      `
+                    : nothing}
+                ${brNode?.vendorName !== undefined
+                    ? html`
+                          <div class="info-row">
+                              <span class="label">Diagnostic vendor:</span>
+                              <span class="value">${brNode.vendorName}</span>
+                          </div>
+                      `
+                    : nothing}
+                ${brNode?.vendorModel !== undefined
+                    ? html`
+                          <div class="info-row">
+                              <span class="label">Diagnostic model:</span>
+                              <span class="value">${brNode.vendorModel}</span>
+                          </div>
+                      `
+                    : nothing}
+                ${brNode?.threadStackVersion !== undefined
+                    ? html`
+                          <div class="info-row">
+                              <span class="label">Stack version:</span>
+                              <span class="value">${brNode.threadStackVersion}</span>
+                          </div>
+                      `
+                    : nothing}
+            </div>
+        `;
+    }
+
+    private _renderNodeDiagnostics(node: MatterNode): TemplateResult | typeof nothing {
+        const extAddressHex = getThreadExtendedAddressHex(node);
+        if (extAddressHex === undefined) return nothing;
+        const diagNode = this._findDiagnosticNode(extAddressHex);
+        if (diagNode === undefined) return nothing;
+
+        const macCounters = diagNode.macCounters;
+        const macTx =
+            macCounters !== undefined ? macCounters.ifOutUcastPkts + macCounters.ifOutBroadcastPkts : undefined;
+        const macRx = macCounters !== undefined ? macCounters.ifInUcastPkts + macCounters.ifInBroadcastPkts : undefined;
+        const ipv6Count = diagNode.ipv6Addresses?.length ?? 0;
+
+        return html`
+            <md-divider></md-divider>
+            <div class="section">
+                <h4>Thread Diagnostics</h4>
+                ${diagNode.vendorName !== undefined
+                    ? html`
+                          <div class="info-row">
+                              <span class="label">Diagnostic vendor:</span>
+                              <span class="value">${diagNode.vendorName}</span>
+                          </div>
+                      `
+                    : nothing}
+                ${diagNode.vendorModel !== undefined
+                    ? html`
+                          <div class="info-row">
+                              <span class="label">Diagnostic model:</span>
+                              <span class="value">${diagNode.vendorModel}</span>
+                          </div>
+                      `
+                    : nothing}
+                ${diagNode.vendorSwVersion !== undefined
+                    ? html`
+                          <div class="info-row">
+                              <span class="label">SW version:</span>
+                              <span class="value">${diagNode.vendorSwVersion}</span>
+                          </div>
+                      `
+                    : nothing}
+                ${diagNode.threadStackVersion !== undefined
+                    ? html`
+                          <div class="info-row">
+                              <span class="label">Stack version:</span>
+                              <span class="value">${diagNode.threadStackVersion}</span>
+                          </div>
+                      `
+                    : nothing}
+                ${ipv6Count > 0
+                    ? html`
+                          <div class="info-row">
+                              <span class="label">IPv6 addresses:</span>
+                              <span class="value">${ipv6Count}</span>
+                          </div>
+                      `
+                    : nothing}
+                ${macTx !== undefined && macRx !== undefined
+                    ? html`
+                          <div class="info-row">
+                              <span class="label">MAC tx/rx:</span>
+                              <span class="value">${macTx} / ${macRx}</span>
+                          </div>
+                      `
+                    : nothing}
+                ${diagNode.mleCounters?.parentChanges !== undefined
+                    ? html`
+                          <div class="info-row">
+                              <span class="label">Parent changes:</span>
+                              <span class="value">${diagNode.mleCounters.parentChanges}</span>
+                          </div>
+                      `
+                    : nothing}
+            </div>
         `;
     }
 
@@ -788,7 +1115,7 @@ export class NetworkDetails extends LitElement {
                       </div>
                   `
                 : nothing}
-            ${this._renderExternalDeviceNeighbors(deviceId)}
+            ${this._renderBorderRouterDiagnostics(br)} ${this._renderExternalDeviceNeighbors(deviceId)}
         `;
     }
 
@@ -906,6 +1233,21 @@ export class NetworkDetails extends LitElement {
 
     private _handleUpdateConnections(): void {
         this._showUpdateDialog = true;
+
+        // BR reload click also re-polls live diagnostics for that network. Skip when the
+        // BR has no extendedPanIdHex (Mode B observation only) — there's no key to query by.
+        if (typeof this.selectedNodeId === "string" && this.selectedNodeId.startsWith("br_")) {
+            const device = this.unknownDevices.get(this.selectedNodeId);
+            if (device?.kind === "br" && device.extendedPanIdHex !== undefined) {
+                this.dispatchEvent(
+                    new CustomEvent("refresh-diagnostics", {
+                        detail: { extPanIdHex: device.extendedPanIdHex },
+                        bubbles: true,
+                        composed: true,
+                    }),
+                );
+            }
+        }
     }
 
     private _handleDialogClose(): void {
@@ -1141,6 +1483,24 @@ export class NetworkDetails extends LitElement {
             `;
         }
 
+        // Diagnostic-only mesh node (inferred from BR Route64/child tables, not commissioned).
+        const isDiagnosticMeshNode =
+            typeof this.selectedNodeId === "string" &&
+            (this.selectedNodeId.startsWith("thread_") || this.selectedNodeId.startsWith("meshrloc_"));
+        if (isDiagnosticMeshNode) {
+            return html`
+                <div class="details-panel">
+                    <div class="header">
+                        <h3>Thread Mesh Node</h3>
+                        <button class="close-button" @click=${this._handleClose} aria-label="Close details panel">
+                            <ha-svg-icon .path=${mdiClose}></ha-svg-icon>
+                        </button>
+                    </div>
+                    <div class="content">${this._renderDiagnosticMeshNodeInfo(this.selectedNodeId as string)}</div>
+                </div>
+            `;
+        }
+
         const node = this.nodes[this.selectedNodeId.toString()];
         if (!node) {
             return html`
@@ -1313,6 +1673,33 @@ export class NetworkDetails extends LitElement {
                 color: var(--md-sys-color-primary, #6200ee);
                 text-transform: uppercase;
                 letter-spacing: 0.5px;
+                display: flex;
+                align-items: center;
+                gap: 6px;
+            }
+
+            .section h4 .error-icon {
+                --icon-primary-color: var(--md-sys-color-error, var(--danger-color));
+                width: 18px;
+                height: 18px;
+            }
+
+            .diagnostics-error {
+                display: flex;
+                align-items: flex-start;
+                gap: 8px;
+                margin-bottom: 12px;
+                padding: 8px 12px;
+                background-color: var(--md-sys-color-error-container, rgba(244, 67, 54, 0.08));
+                color: var(--md-sys-color-on-error-container, var(--danger-color));
+                border-radius: 4px;
+                font-size: 0.85rem;
+            }
+
+            .diagnostics-error ha-svg-icon {
+                flex-shrink: 0;
+                margin-top: 1px;
+                --icon-primary-color: var(--md-sys-color-error, var(--danger-color));
             }
 
             .subsection-label {
@@ -1446,6 +1833,14 @@ export class NetworkDetails extends LitElement {
                 color: var(--md-sys-color-on-surface-variant, #666);
                 line-height: 1.4;
                 margin: 0;
+            }
+
+            .hint-text.inline-note {
+                margin-top: 6px;
+                margin-bottom: 4px;
+                padding-left: 10px;
+                border-left: 2px solid var(--md-sys-color-outline-variant, #ccc);
+                font-size: 0.72rem;
             }
 
             .connected-nodes-list {

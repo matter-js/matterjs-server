@@ -13,7 +13,16 @@ import "@material/web/list/list";
 import "@material/web/list/list-item";
 import { consume } from "@lit/context";
 import { MatterClient, MatterNode, UpdateSource } from "@matter-server/ws-client";
-import { mdiChatProcessing, mdiPencil, mdiShareVariant, mdiTrashCan, mdiUpdate, mdiVideo } from "@mdi/js";
+import {
+    mdiCamera,
+    mdiChatProcessing,
+    mdiMicrophone,
+    mdiPencil,
+    mdiShareVariant,
+    mdiTrashCan,
+    mdiUpdate,
+    mdiVideo,
+} from "@mdi/js";
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { clientContext, tickContext } from "../../client/client-context.js";
@@ -23,8 +32,11 @@ import { showNodeLabelDialog } from "../../components/dialogs/node-label-dialog/
 import { handleAsync } from "../../util/async-handler.js";
 import "../../components/ha-svg-icon";
 import "../camera-overlay.js";
+import { supportsAudioOnlyLiveView, supportsCameraOverlay, supportsLiveView } from "../../util/camera.js";
 import { getDeviceIcon } from "../../util/device-icons.js";
 import { getEndpointDeviceTypes } from "../../util/endpoints.js";
+import { ICD_CLUSTER_ID, icdBadge } from "../../util/icd.js";
+import { formatManualPairingCode, renderPairingQrCodeDataUri } from "../../util/pairing-code.js";
 import { bindingContext } from "./context.js";
 
 /** Map updateState values to user-friendly labels */
@@ -78,8 +90,12 @@ export class NodeDetails extends LitElement {
     protected override render() {
         if (!this.node) return html``;
 
-        const deviceTypeIds = getEndpointDeviceTypes(this.node, this.endpoint).map(d => d.id);
-        const isCamera = deviceTypeIds.includes(0x0142) || deviceTypeIds.includes(0x0143);
+        const isCamera = supportsCameraOverlay(this.node, this.endpoint);
+        const isLiveViewCamera = supportsLiveView(this.node, this.endpoint);
+        // Audio-only live view (e.g. Audio Doorbell, Intercom) gets its own label/icon rather
+        // than "Live View", since no video is actually streamed.
+        const isAudioOnly = supportsAudioOnlyLiveView(this.node, this.endpoint);
+        const badge = icdBadge(this.node.attributes, this.node.available);
 
         return html`
             <md-list>
@@ -98,7 +114,15 @@ export class NodeDetails extends LitElement {
                                   </md-icon-button>
                               `
                             : nothing}
-                        ${this.node.available ? nothing : html` <span class="status">OFFLINE</span> `}
+                        ${this.node.available ? nothing : html` <span class="status">OFFLINE</span>`}
+                        ${badge
+                            ? html`<a
+                                  class="icd-badge icd-${badge.state}"
+                                  href="#node/${this.node.node_id}/0/${ICD_CLUSTER_ID}"
+                                  title=${badge.hint}
+                                  >ICD</a
+                              >`
+                            : nothing}
                     </div>
                 </md-list-item>
                 <md-list-item>
@@ -152,8 +176,11 @@ export class NodeDetails extends LitElement {
                                       @click=${() => this._openCameraOverlay()}
                                       ?disabled=${!this.node.available}
                                   >
-                                      Live View
-                                      <ha-svg-icon slot="icon" .path=${mdiVideo}></ha-svg-icon>
+                                      ${isAudioOnly ? "Listen" : isLiveViewCamera ? "Live View" : "Snapshot"}
+                                      <ha-svg-icon
+                                          slot="icon"
+                                          .path=${isAudioOnly ? mdiMicrophone : isLiveViewCamera ? mdiVideo : mdiCamera}
+                                      ></ha-svg-icon>
                                   </md-outlined-button>
                               `
                             : nothing}
@@ -189,7 +216,6 @@ export class NodeDetails extends LitElement {
                 title: "Reinterview node",
                 text: "Success!",
             });
-            location.hash = "#";
         } catch (err: any) {
             showAlertDialog({
                 title: "Failed to reinterview node",
@@ -232,6 +258,14 @@ export class NodeDetails extends LitElement {
         }
     }
 
+    /** "1.5 (1234)" from SoftwareVersionString (0/40/10) + SoftwareVersion (0/40/9); manufacturers mix these up, so show both. */
+    private _formatSoftwareVersion(): string {
+        const versionString = this.node?.attributes["0/40/10"];
+        const versionNumber = this.node?.attributes["0/40/9"];
+        const str = typeof versionString === "string" && versionString !== "" ? versionString : "unknown";
+        return typeof versionNumber === "number" ? `${str} (${versionNumber})` : str;
+    }
+
     private async _searchUpdate() {
         const nodeUpdate = await this.client.checkNodeUpdate(this.node!.node_id);
         if (!nodeUpdate) {
@@ -264,8 +298,9 @@ export class NodeDetails extends LitElement {
                           `
                         : nothing}
                     <p>
+                        Current version: <b>${this._formatSoftwareVersion()}</b><br />
                         Do you want to update this node to version
-                        <b>${nodeUpdate.software_version_string}</b>?
+                        <b>${nodeUpdate.software_version_string} (${nodeUpdate.software_version})</b>?
                     </p>
                     <p>
                         Note that updating firmware is at your own risk and may cause the device to malfunction or needs
@@ -302,9 +337,21 @@ export class NodeDetails extends LitElement {
         }
         try {
             const shareCode = await this.client.openCommissioningWindow(this.node!.node_id);
+            const manualCode = formatManualPairingCode(shareCode.setup_manual_code);
+            const qrDataUri = renderPairingQrCodeDataUri(shareCode.setup_qr_code);
             showAlertDialog({
                 title: "Share device",
-                text: `Setup code: ${shareCode.setup_manual_code}`,
+                text: html`
+                    <div style="display:flex;flex-direction:column;align-items:center;gap:16px;">
+                        <img src=${qrDataUri} alt="Commissioning QR code" style="width:200px;height:200px;" />
+                        <div style="text-align:center;">
+                            <div style="font-size:0.8rem;color:var(--md-sys-color-on-surface-variant);">Setup code</div>
+                            <div style="font-size:1.4rem;font-family:monospace;letter-spacing:0.05em;">
+                                ${manualCode}
+                            </div>
+                        </div>
+                    </div>
+                `,
             });
         } catch (err: any) {
             showAlertDialog({
@@ -362,6 +409,31 @@ export class NodeDetails extends LitElement {
             color: var(--danger-color);
             font-weight: bold;
             font-size: 0.8em;
+        }
+
+        .icd-badge {
+            margin-left: 4px;
+            padding: 0 4px;
+            border: 1px solid;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 0.8em;
+            text-decoration: none;
+        }
+
+        .icd-badge.icd-offline {
+            color: var(--danger-color);
+            border-color: var(--danger-color);
+        }
+
+        .icd-badge.icd-lit {
+            color: var(--success-color);
+            border-color: var(--success-color);
+        }
+
+        .icd-badge.icd-sit {
+            color: var(--text-color);
+            border-color: var(--text-color);
         }
     `;
 }

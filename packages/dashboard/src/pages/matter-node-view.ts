@@ -18,7 +18,7 @@ import { guard } from "lit/directives/guard.js";
 import { clientContext, tickContext } from "../client/client-context.js";
 import "../components/ha-svg-icon";
 import { getDeviceIcon, getEndpointIcon } from "../util/device-icons.js";
-import { getEndpointDeviceTypes } from "../util/endpoints.js";
+import { getEndpointDeviceTypes, getEndpointTree } from "../util/endpoints.js";
 import { formatNodeAddress, getEffectiveFabricIndex } from "../util/format_hex.js";
 import "./components/header";
 import "./components/node-details";
@@ -104,18 +104,22 @@ class MatterNodeView extends LitElement {
                         </div>
                     </md-list-item>
                     ${guard([this.node, this.node?.attributes], () =>
-                        getUniqueEndpoints(this.node!).map(endPointId => {
+                        getEndpointTree(this.node!, getUniqueEndpoints(this.node!)).map(({ endpointId, depth }) => {
                             return html`
-                                <md-list-item type="link" href=${`#node/${this.node!.node_id}/${endPointId}`}>
+                                <md-list-item
+                                    type="link"
+                                    href=${`#node/${this.node!.node_id}/${endpointId}`}
+                                    style=${depth > 0 ? `--md-list-item-leading-space: ${16 + depth * 24}px` : ""}
+                                >
                                     <ha-svg-icon
                                         slot="start"
                                         class="endpoint-icon"
-                                        .path=${getEndpointIcon(this.node!, endPointId)}
+                                        .path=${getEndpointIcon(this.node!, endpointId)}
                                     ></ha-svg-icon>
-                                    <div slot="headline">Endpoint ${endPointId}</div>
+                                    <div slot="headline">Endpoint ${endpointId}</div>
                                     <div slot="supporting-text">
                                         Device Type(s):
-                                        ${getEndpointDeviceTypes(this.node!, endPointId)
+                                        ${getEndpointDeviceTypes(this.node!, endpointId)
                                             .map(deviceType => {
                                                 return deviceType.label;
                                             })

@@ -5,7 +5,7 @@
 # Claude Code devcontainer based on the reference implementation at
 # https://github.com/anthropics/claude-code/tree/main/.devcontainer
 
-FROM mcr.microsoft.com/devcontainers/javascript-node:24-bookworm
+FROM mcr.microsoft.com/devcontainers/javascript-node:24-trixie
 
 ARG TZ
 ENV TZ="$TZ"

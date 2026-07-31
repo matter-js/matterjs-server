@@ -52,6 +52,9 @@ export interface CliOptions {
     // Network configuration
     primaryInterface: string | null;
 
+    // Fabric configuration
+    defaultFabricLabel: string | null;
+
     // Certificate configuration
     enableTestNetDcl: boolean;
     disableDclSeed: boolean;
@@ -64,9 +67,15 @@ export interface CliOptions {
     disableOta: boolean;
     otaProviderDir: string | null;
 
+    // Time synchronization configuration
+    enableTimeSync: boolean;
+
     // Dashboard configuration
     disableDashboard: boolean;
     productionMode: boolean;
+
+    // Thread Border Router configuration
+    disableThreadDiagnostics: boolean;
 }
 
 function parseIntOption(value: string): number {
@@ -148,6 +157,12 @@ export function parseCliArgs(argv?: string[]): CliOptions {
         )
         .addOption(
             new Option(
+                "--default-fabric-label <label>",
+                "Pin the fabric label to this value and ignore set_default_fabric_label WebSocket requests",
+            ).env("DEFAULT_FABRIC_LABEL"),
+        )
+        .addOption(
+            new Option(
                 "--enable-test-net-dcl [value]",
                 "Enable test-net DCL certificates and OTA updates additionally to Production DCL",
             )
@@ -187,11 +202,31 @@ export function parseCliArgs(argv?: string[]): CliOptions {
         )
         .addOption(new Option("--ota-provider-dir <path>", "Directory for OTA Provider files").env("OTA_PROVIDER_DIR"))
         .addOption(
+            new Option(
+                "--enable-time-sync [value]",
+                "Enable time synchronization for nodes with the TimeSynchronization cluster. Only enable when host NTP is reliable.",
+            )
+                .argParser(parseBooleanEnv)
+                .preset(true)
+                .default(false)
+                .env("ENABLE_TIME_SYNC"),
+        )
+        .addOption(
             new Option("--disable-dashboard [value]", "Disable the web dashboard")
                 .argParser(parseBooleanEnv)
                 .preset(true)
                 .default(false)
                 .env("DISABLE_DASHBOARD"),
+        )
+        .addOption(
+            new Option(
+                "--disable-thread-diagnostics [value]",
+                "Disable the Thread Network diagnostics feature (Border Router mDNS discovery, REST/CoAP probing and diagnostic queries, plus the periodic refresh of node neighbor/route tables). Matter-over-Thread commissioning is unaffected.",
+            )
+                .argParser(parseBooleanEnv)
+                .preset(true)
+                .default(false)
+                .env("DISABLE_THREAD_DIAGNOSTICS"),
         )
         .addOption(
             new Option(
@@ -263,14 +298,17 @@ export function parseCliArgs(argv?: string[]): CliOptions {
         logLevel: opts.logLevel,
         logFile: opts.logFile ?? null,
         primaryInterface: opts.primaryInterface ?? null,
+        defaultFabricLabel: opts.defaultFabricLabel ?? null,
         enableTestNetDcl: opts.enableTestNetDcl,
         disableDclSeed: opts.disableDclSeed,
         bluetoothAdapter: opts.bluetoothAdapter ?? null,
         bleProxy: opts.bleProxy,
         disableOta: opts.disableOta,
         otaProviderDir: opts.otaProviderDir ?? null,
+        enableTimeSync: opts.enableTimeSync,
         disableDashboard: opts.disableDashboard,
         productionMode: opts.productionMode,
+        disableThreadDiagnostics: opts.disableThreadDiagnostics,
     };
 }
 

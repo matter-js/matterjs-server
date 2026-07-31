@@ -7,9 +7,114 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
-## **WORK IN PROGRESS**
+## 1.3.3 (2026-07-28)
 
-- Enhancement: Update matter.js to add Matter 1.6 support
+- Enhancement: (pkese) Dashboard network graphs space nodes by signal quality (Thread LQI, Wi-Fi RSSI) instead of using one fixed edge length
+- Fix: Update BLE library
+
+## 1.3.2 (2026-07-28)
+
+- Feature: (lboue) Dashboard cluster view shows a "Semantic Tags (TagList)" panel on the Descriptor cluster
+- Enhancement: Thread nodes' neighbor and route tables are re-read a few minutes after startup and every 24h afterward; disabled together with the rest of the Thread diagnostics via `--disable-thread-diagnostics`
+- Enhancement: Optimized the Dashboard "Update Connection Data" dialog for sleepy ICD LIT devices
+- Enhancement: Optimized periodic node work (time synchronization, energy polling, Thread topology refresh) for sleepy ICD LIT devices
+- Fix: Fixes and enhances the DST determination, and sends a second TimeZone entry when the host zone has an upcoming permanent offset change, plus a closing DST entry when the device has room for one
+- Fix: A node reporting that it has no usable time is now resynced right away instead of being held off for up to a day, while reconnect-driven syncs keep their longer spacing
+- Fix: Command responses and events now expose acronym field names in the Python Matter Server casing (e.g. `videoStreamID`, `groupID`, `PAKEPasscodeVerifier`), matching the generated Python client and Home Assistant; the previous lowercased-acronym keys are still emitted alongside for compatibility
+- Fix: Update matter.js to 0.17.7
+    - Fixes and Optimizations
+
+## 1.3.1 (2026-07-23)
+
+- Feature: (lboue) Dashboard cluster view shows an "Active Features" panel listing the cluster's supported features by name, decoded from the FeatureMap attribute
+- Fix: (lboue) Dashboard now considers the audio/video features a Camera/Audio device advertises
+- Fix: Update matter.js to the latest 0.17.7 alpha
+    - Enhance workarounds in commissioning for devices that drop the BLE connection too early
+
+## 1.3.0 (2026-07-22)
+
+- Feature: (lboue) Dashboard adds a command panel for the ClosureControl cluster (Stop, Calibrate, MoveTo with position/latch/speed)
+- Enhancement: (lboue) Dashboard node view shows the endpoint list as an indented parent/child tree
+- Fix: (lboue) Detect camera Live View/Snapshot capabilities from the endpoint's clusters instead of hard-coding them by device type, so composed devices (e.g. Floodlight Camera) show the button only on the endpoint that actually supports streaming
+- Fix: (lboue) Dashboard now re-negotiates the snapshot stream when the selected resolution, codec, frame rate, or watermark/OSD settings change, captures at the selected resolution even when reusing an existing stream, and serializes concurrent capture requests
+- Fix: Update matter.js to the latest 0.17.7 alpha
+    - Optimizations and fixes
+
+## 1.2.8 (2026-07-20)
+
+- Fix: WebRTC camera live view — `ProvideOffer` again selects the stream fields by the provider's cluster revision
+- Fix: Ensures that updating Thread data from nodes in Thread visualization also updates the chart
+- Fix: (lboue) Dashboard no longer offers live-view streaming controls for the Snapshot Camera device type, which doesn't support WebRTC — only Snapshot capture is offered
+- Fix: Update matter.js to the latest 0.17.7 alpha
+    - Optimizes Fallback address handling on connections
+    - Ensures correct failsafe timer handling for long sleepy devices
+
+## 1.2.7 (2026-07-16)
+
+- Fix: WebRTC camera live view — Use `ProvideOffer` format that all cluster versions support, skip rev2 for now
+- Fix: Debounce the full `node_updated` refresh into a single delayed event per node after basic-information changes
+- Enhancement: Update matter.js to the latest 0.17.7 alpha
+    - Optimizes Cluster data initialization when the node structure changes
+
+## 1.2.6 (2026-07-15)
+
+- Fix: Dashboard now shows the camera Live View/Snapshot button for the Floodlight Camera and Snapshot Camera device types, not just Camera and Video Doorbell
+- Fix: Dashboard `ProvideOffer` requests now include `videoStreams`/`audioStreams` alongside deprecated singular stream IDs for WebRTC provider compatibility across cluster revisions
+- Enhancement: Update matter.js to the latest 0.17.6 alpha
+    - Optimizes OTA software updates
+    - Prevents blocking on stop when a BLE discovery is still in progress
+
+## 1.2.5 (2026-07-13)
+
+- Enhancement: Update matter.js to 0.17.5
+- Enhancement: Add a QR code when using the dashboard to share a device
+- Enhancement: Clarify Thread node role and unknown/external device descriptions in the network visualization (e.g. what a REED is, why a device shows as unknown/external) and link the OpenThread role primer
+
+## 1.2.4 (2026-07-12)
+
+- Enhancement: Update Docker base images to Debian trixie with the current Node 24 version
+- Fix: Some more camera fixes in the dashboard
+- Fix: Dashboard resets scroll position on navigation and focuses cluster command panels (ICD, ACL, Binding)
+- Fix: Update matter.js to the latest 0.17.5 nightly
+    - Tolerate non-compliant peers omitting mandatory Descriptor lists
+
+## 1.2.3 (2026-07-11)
+
+- Enhancement: Thread diagnostics fetch a Border Router's dataset via REST when no credentials are stored, enabling the faster MeshCoP (CoAP) transport instead of the slower REST collection
+- Fix: Update WebRTC and Camera-related logic to respect available Pixelrate and Encoders of the camera device
+- Fix: Optimize startup behavior
+
+## 1.2.2 (2026-07-10)
+
+- Fix: Ensure that WebSocket backpressure keeps the send-window full instead of draining one frame at a time, avoiding initial-sync stalls behind a high-latency proxy (e.g. Home Assistant ingress) that could drop the dashboard connection
+- Fix: Optimize TBR address and data handling
+- Fix: Update WebRTC and Camera-related logic and respect separate Audio/Video streams in Dashboard
+- Fix: Update matter.js to the latest 0.17.5 nightly
+    - Limit OTA/BDX block size to UDP max payload size
+
+## 1.2.1 (2026-07-09)
+
+- Fix: Optimize WebSocket backpressure calculation so a single large payload no longer trips congestion mode on a healthy client
+
+## 1.2.0 (2026-07-09)
+
+- Feature: Enhanced Thread Network diagnostics — collect and visualize per-Thread-network diagnostics also from Border Routers over MeshCoP (CoAP/DTLS) or the OTBR REST API (auto-selected, cached)
+- Feature: Adds WiFi and Thread credential management and allows to store multiple entries. Commissioning can pick which stored network to use
+- Feature: Adds ICD (Intermittently Connected Device) management including a "Power & Sleep (ICD)" dashboard panel. Requires devices with Matter 1.4+ for LIT management.
+- Feature: Allows defining the default fabric label to use as CLI/ENV-option which then blocks changing via the WebSocket API
+- Feature: Adds automatic time synchronization for devices that support it, pushing host time (UTC and time zone / DST). Enable it with the `--enable-time-sync` CLI option (env `ENABLE_TIME_SYNC`) when the host has a reliable, synced time source. Runs first 30-60 minutes after start, then every 24h.
+- Enhancement: When one WebSocket connection defines a fabric label then other connections are blocked from changing that as long as the defining connection is still active
+- Enhancement: Introduced WS schema 12 which supports the above features — see [WebSocket API schema changelog](docs/websocket-api-schema-changelog.md).
+- Enhancement: New `--disable-thread-diagnostics` CLI flag (env `DISABLE_THREAD_DIAGNOSTICS`) turns off the entire Thread Border Router subsystem (discovery, probing, diagnostics) for plain Matter-controller deployments. Matter-over-Thread commissioning is unaffected
+- Enhancement: WebSocket sends now apply per-connection backpressure — a slow or stalled client coalesces attribute/node updates and drops stale events instead of buffering without limit, preventing unbounded memory growth (OOM) under high event volume
+- Enhancement: Update matter.js to the latest 0.17.5 nightly
+    - Adds support for Matter 1.6.0
+    - Adds support for ICD (SIT and LIT) devices
+    - Fixes an invoke-issue where parallel multi-endpoint invokes were working but errors returned on WebSocket
+    - Optimizes subscription reporting intervals
+    - Ensures changed node structures are sent via WebSocket directly after re-subscribe and not delayed
+- Adjustment: `webrtc_callback` events are now delivered only to the connection that issued the `send_webrtc_provider_command` for that camera session, instead of being broadcast to every connected client
+- Fix: Ensures that the Python-Client does not crash anymore on unknown events from newer Server versions
 
 ## 1.1.7 (2026-07-01)
 

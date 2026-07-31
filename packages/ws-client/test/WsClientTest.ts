@@ -10,10 +10,11 @@ import {
     ConnectionClosedError,
     DEFAULT_COMMAND_TIMEOUT,
     MatterClient,
+    ServerCommandError,
     WebSocketLike,
 } from "../src/index.js";
 import { parseBigIntAwareJson, toBigIntAwareJson } from "../src/json-utils.js";
-import { MockMatterServer } from "./MockMatterServer.js";
+import { MockCommandError, MockMatterServer } from "./MockMatterServer.js";
 
 /**
  * Node.js WebSocket factory for MatterClient.
@@ -314,6 +315,71 @@ describe("ws-client", () => {
                     expect(error).to.be.instanceOf(Error);
                     expect((error as Error).message).to.equal("Node not found");
                 }
+            });
+
+            it("round-trips register_icd with args and returns state", async () => {
+                let received: Record<string, unknown> | undefined;
+                server.onCommand("register_icd", args => {
+                    received = args as Record<string, unknown>;
+                    return {
+                        supported: true,
+                        lit_supported: true,
+                        registered: true,
+                        operating_mode: "LIT",
+                        awake: false,
+                        available: true,
+                        next_expected_checkin: 1234,
+                    };
+                });
+                await client.connect();
+                const state = await client.registerIcd(BigInt(5), {
+                    allowMultiAdmin: true,
+                    ignoredVendors: [4631],
+                });
+                expect(received?.node_id).to.equal(5);
+                expect(received?.allow_multi_admin).to.equal(true);
+                expect(received?.ignored_vendors).to.deep.equal([4631]);
+                expect(state.registered).to.equal(true);
+            });
+
+            it("preserves error_code on command errors", async () => {
+                const details = '{"message":"multi admin","admin_vendor_ids":[4631]}';
+                server.onCommand("register_icd", () => {
+                    throw new MockCommandError(details, 100);
+                });
+                await client.connect();
+                try {
+                    await client.registerIcd(BigInt(5));
+                    expect.fail("Should have thrown");
+                } catch (error) {
+                    expect(error).to.be.instanceOf(ServerCommandError);
+                    expect((error as ServerCommandError).errorCode).to.equal(100);
+                    expect((error as ServerCommandError).message).to.equal(details);
+                }
+            });
+
+            it("round-trips unregister_icd force flag and resync/get state", async () => {
+                const state = {
+                    supported: true,
+                    lit_supported: true,
+                    registered: false,
+                    operating_mode: "SIT",
+                    awake: true,
+                    available: true,
+                    next_expected_checkin: null,
+                };
+                let forceSeen: unknown;
+                server.onCommand("unregister_icd", args => {
+                    forceSeen = (args as Record<string, unknown>).force;
+                    return state;
+                });
+                server.onCommand("resync_icd", () => null);
+                server.onCommand("get_icd_state", () => state);
+                await client.connect();
+                expect((await client.unregisterIcd(7, true)).registered).to.equal(false);
+                expect(forceSeen).to.equal(true);
+                expect(await client.resyncIcd(7)).to.equal(null);
+                expect((await client.getIcdState(7)).operating_mode).to.equal("SIT");
             });
         });
 

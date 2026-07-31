@@ -94,23 +94,28 @@ export class BasicInformationClusterCommands extends BaseClusterCommands {
             return;
         }
 
+        const node = this.node;
+        const endpoint = this.endpoint;
         this._saving = true;
 
         try {
             const label = this._nodeLabel.trim();
-            await writeNodeLabel(this.client, this.node, label);
-            this._nodeLabel = label;
-
-            showAlertDialog({
-                title: "Success",
-                text: `Node label set to "${label}"`,
-            });
+            await writeNodeLabel(this.client, node, label);
+            if (this.isSameContext(node, endpoint)) {
+                this._nodeLabel = label;
+                showAlertDialog({
+                    title: "Success",
+                    text: `Node label set to "${label}"`,
+                });
+            }
         } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            showAlertDialog({
-                title: "Failed to set node label",
-                text: errorMessage,
-            });
+            if (this.isSameContext(node, endpoint)) {
+                const errorMessage = error instanceof Error ? error.message : String(error);
+                showAlertDialog({
+                    title: "Failed to set node label",
+                    text: errorMessage,
+                });
+            }
         } finally {
             this._saving = false;
         }
