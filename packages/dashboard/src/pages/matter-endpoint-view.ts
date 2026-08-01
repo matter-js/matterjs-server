@@ -165,7 +165,7 @@ class MatterEndpointView extends LitElement {
                                 return html`
                                     <li class=${bound ? "chip chip-bound" : "chip"}>
                                         ${clusters[id]?.label ?? "Custom/Unknown Cluster"} ${formatHex(id)}
-                                        <span class="chip-state">${bound ? "Bound" : "Not bound"}</span>
+                                        ${bound ? html`<span class="chip-state">Bound</span>` : nothing}
                                     </li>
                                 `;
                             })}
