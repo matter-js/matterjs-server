@@ -14,7 +14,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Enhancement: (lboue) Dashboard endpoint view shows "Client Clusters" of an endpoint and their binding status when also a Binding cluster is available
 - Enhancement: Dashboard dev mode adds a second read button per attribute that reads across all fabrics and shows the result without caching it
 - Fix: Dashboard endpoint view refreshes its cluster list when a cluster appears or disappears on the node, or the viewed endpoint changes
-- Fix: Updates Dashboard attribute reads to request non-fabric-filtered data only when needed to ensure caching
+- Fix: Dashboard attribute reads are fabric-filtered like the subscription; only a read that needs to see other fabrics' data is non-fabric-filtered, and its result is not cached
 - Fix: Improves Dashboard ACL and binding edit error cases
 - Fix: Dashboard writes (node label, ACL, bindings, Chime, dev-mode attribute write) report a device-side rejection instead of appearing to succeed
 - Fix: Improves ICD LIT UI handling when deactivating
