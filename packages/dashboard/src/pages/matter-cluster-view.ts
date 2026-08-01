@@ -12,7 +12,7 @@ import "@material/web/iconbutton/outlined-icon-button";
 import "@material/web/list/list";
 import "@material/web/list/list-item";
 import { isTestNodeId, MatterClient, MatterNode, toBigIntAwareJson } from "@matter-server/ws-client";
-import { mdiAlertCircleOutline, mdiPencil, mdiPlay, mdiRefresh } from "@mdi/js";
+import { mdiAlertCircleOutline, mdiFilterOffOutline, mdiPencil, mdiPlay, mdiRefresh } from "@mdi/js";
 import { css, html, LitElement, nothing, type TemplateResult } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
@@ -105,6 +105,8 @@ class MatterClusterView extends LitElement {
 
     // Per-attribute refresh state, keyed by attribute id (within the current ep/cluster)
     @state() private _refreshState: Record<number, RefreshState> = {};
+    @state() private _unfilteredBusy: Record<number, boolean> = {};
+    private _viewKey = "";
 
     private _unsubscribeDev?: () => void;
 
@@ -229,6 +231,15 @@ class MatterClusterView extends LitElement {
                 >
                     <ha-svg-icon .path=${mdiRefresh}></ha-svg-icon>
                 </md-outlined-icon-button>
+                <md-outlined-icon-button
+                    class="dev-action unfiltered"
+                    title="Read unfiltered (all fabrics) — shown only, not cached"
+                    aria-label="Read attribute unfiltered"
+                    ?disabled=${!online || this._unfilteredBusy[attributeId] === true}
+                    @click=${() => this._readUnfiltered(attributeId)}
+                >
+                    <ha-svg-icon .path=${mdiFilterOffOutline}></ha-svg-icon>
+                </md-outlined-icon-button>
                 ${
                     meta?.writable
                         ? html`
@@ -280,7 +291,45 @@ class MatterClusterView extends LitElement {
             if (!isSameContext()) return;
             this._refreshState = { ...this._refreshState, [attributeId]: "idle" };
             const message = err instanceof Error ? err.message : String(err);
-            showAlertDialog({ title: "Read failed", text: message });
+            showAlertDialog({ title: "Read failed", text: message }).catch(alertErr =>
+                console.error("Failed to show the read error", alertErr),
+            );
+        }
+    }
+
+    /**
+     * Read across all fabrics for diagnostics. The result is displayed only — merging it would put
+     * values into the attribute cache that the fabric-filtered subscription never refreshes.
+     */
+    private async _readUnfiltered(attributeId: number) {
+        if (!this.node) return;
+        const nodeId = this.node.node_id;
+        const endpoint = this.endpoint;
+        const cluster = this.cluster;
+        const path = `${endpoint}/${cluster}/${attributeId}`;
+        // The busy flag is cleared for the same view even while detached, since nothing resets it on
+        // reconnect and the button would stay disabled forever.
+        const isSameView = () =>
+            this.node?.node_id === nodeId && this.endpoint === endpoint && this.cluster === cluster;
+        const isSameContext = () => this.isConnected && isSameView();
+
+        this._unfilteredBusy = { ...this._unfilteredBusy, [attributeId]: true };
+        try {
+            const result = await this.client.readAttribute(nodeId, path, undefined, false);
+            if (!isSameContext()) return;
+            showAlertDialog({
+                title: "Unfiltered read (all fabrics)",
+                text: path in result ? toBigIntAwareJson(result[path]) : "The device returned no value for this path.",
+                asCodeBlock: true,
+            }).catch(err => console.error("Failed to show the unfiltered read", err));
+        } catch (err) {
+            if (!isSameContext()) return;
+            showAlertDialog({
+                title: "Read failed",
+                text: err instanceof Error ? err.message : String(err),
+            }).catch(alertErr => console.error("Failed to show the read error", alertErr));
+        } finally {
+            if (isSameView()) this._unfilteredBusy = { ...this._unfilteredBusy, [attributeId]: false };
         }
     }
 
@@ -473,9 +522,13 @@ class MatterClusterView extends LitElement {
     override updated(changedProperties: Map<string, unknown>) {
         super.updated(changedProperties);
 
-        // Reset per-attribute refresh state when navigating to a different cluster/endpoint.
-        if (changedProperties.has("cluster") || changedProperties.has("endpoint")) {
+        // Reset per-attribute read state when navigating to a different node/endpoint/cluster. Keyed on
+        // the node id, not the property: `node` is a fresh object on every nodes_changed tick.
+        const viewKey = `${this.node?.node_id ?? ""}/${this.endpoint}/${this.cluster}`;
+        if (viewKey !== this._viewKey) {
+            this._viewKey = viewKey;
             this._refreshState = {};
+            this._unfilteredBusy = {};
             this._scrollCommandPanelIntoView();
         }
 

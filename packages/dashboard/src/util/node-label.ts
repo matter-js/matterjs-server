@@ -5,6 +5,7 @@
  */
 
 import type { MatterClient, MatterNode } from "@matter-server/ws-client";
+import { requireAttributeWriteSuccess } from "./matter-status.js";
 
 // BasicInformation cluster (0x28 / 40), always on endpoint 0 per Matter specification.
 export const NODE_LABEL_CLUSTER_ID = 0x28;
@@ -17,6 +18,9 @@ export const NODE_LABEL_ATTRIBUTE_PATH = `0/${NODE_LABEL_CLUSTER_ID}/${NODE_LABE
  * Write the BasicInformation NodeLabel attribute for a node.
  * Trims surrounding whitespace so the stored value matches what MatterNode.nodeLabel reads back.
  */
-export function writeNodeLabel(client: MatterClient, node: MatterNode, label: string): Promise<unknown> {
-    return client.writeAttribute(node.node_id, NODE_LABEL_ATTRIBUTE_PATH, label.trim());
+export async function writeNodeLabel(client: MatterClient, node: MatterNode, label: string): Promise<void> {
+    requireAttributeWriteSuccess(
+        await client.writeAttribute(node.node_id, NODE_LABEL_ATTRIBUTE_PATH, label.trim()),
+        "Writing the node label failed",
+    );
 }

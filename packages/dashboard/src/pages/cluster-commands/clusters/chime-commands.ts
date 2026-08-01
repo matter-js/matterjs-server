@@ -13,6 +13,7 @@ import { mdiPlay } from "@mdi/js";
 import { css, html, nothing } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import "../../../components/ha-svg-icon.js";
+import { showAlertDialog } from "../../../components/dialog-box/show-dialog-box.js";
 import { handleAsync, handleAsyncEvent } from "../../../util/async-handler.js";
 import {
     CHIME_CLUSTER_ID,
@@ -33,6 +34,17 @@ class ChimeClusterCommands extends BaseClusterCommands {
     @state() private _playDisabledUntil = 0;
     private _unsubscribeNodes?: () => void;
     private _unsubscribeEvents?: () => void;
+
+    /**
+     * The control has already moved itself to the value the device refused, and no report will arrive
+     * to correct it — re-render to snap it back to the cached state.
+     */
+    private _reportWriteFailure(err: Error) {
+        this.requestUpdate();
+        showAlertDialog({ title: "Chime write failed", text: err.message }).catch(dialogErr =>
+            console.error("Failed to show the chime write error", dialogErr),
+        );
+    }
 
     override updated(changedProperties: Map<string, unknown>) {
         super.updated(changedProperties);
@@ -88,14 +100,16 @@ class ChimeClusterCommands extends BaseClusterCommands {
                         <label class="enabled">
                             <md-switch
                                 ?selected=${enabled}
-                                @change=${handleAsyncEvent((e: Event) =>
-                                    setEnabled(
-                                        this.client,
-                                        this.node.node_id,
-                                        this.endpoint,
-                                        // md-switch exposes `.selected` but has no typed CustomEvent subclass
-                                        (e.target as HTMLElement & { selected: boolean }).selected,
-                                    ),
+                                @change=${handleAsyncEvent(
+                                    (e: Event) =>
+                                        setEnabled(
+                                            this.client,
+                                            this.node.node_id,
+                                            this.endpoint,
+                                            // md-switch exposes `.selected` but has no typed CustomEvent subclass
+                                            (e.target as HTMLElement & { selected: boolean }).selected,
+                                        ),
+                                    err => this._reportWriteFailure(err),
                                 )}
                             ></md-switch>
                             <span>Enabled</span>
@@ -105,10 +119,13 @@ class ChimeClusterCommands extends BaseClusterCommands {
                             <md-outlined-select
                                 .value=${selected !== null ? String(selected) : ""}
                                 ?disabled=${sounds.length === 0}
-                                @change=${handleAsyncEvent((e: Event) => {
-                                    const v = Number((e.target as HTMLSelectElement).value);
-                                    return setSelected(this.client, this.node.node_id, this.endpoint, v);
-                                })}
+                                @change=${handleAsyncEvent(
+                                    (e: Event) => {
+                                        const v = Number((e.target as HTMLSelectElement).value);
+                                        return setSelected(this.client, this.node.node_id, this.endpoint, v);
+                                    },
+                                    err => this._reportWriteFailure(err),
+                                )}
                             >
                                 ${sounds.map(
                                     s => html`
@@ -137,8 +154,15 @@ class ChimeClusterCommands extends BaseClusterCommands {
                                       s => html`
                                           <div
                                               class="sound-row ${s.chimeId === selected ? "selected" : ""}"
-                                              @click=${handleAsync(() =>
-                                                  setSelected(this.client, this.node.node_id, this.endpoint, s.chimeId),
+                                              @click=${handleAsync(
+                                                  () =>
+                                                      setSelected(
+                                                          this.client,
+                                                          this.node.node_id,
+                                                          this.endpoint,
+                                                          s.chimeId,
+                                                      ),
+                                                  err => this._reportWriteFailure(err),
                                               )}
                                           >
                                               <span class="pid">#${s.chimeId}</span>

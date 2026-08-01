@@ -135,6 +135,32 @@ export function analyzeBatchResults(results: Array<{ status: number }> | null | 
     return { outcome, successCount, failureCount, errorCounts, message };
 }
 
+/**
+ * Throw unless every write in the batch succeeded. A device-side status is reported in the response
+ * rather than thrown, so without this a rejected write reports success to the user.
+ */
+export function requireWriteSuccess(results: Array<{ status: number }> | null | undefined, what: string): void {
+    const batch = analyzeBatchResults(results);
+    if (batch.outcome === "all_success") return;
+    // A whole-list attribute write reports one result for the list, so batch phrasing ("1 of N
+    // entries failed") would suggest the other entries landed. Nothing landed.
+    if (results?.length === 1) {
+        throw new Error(`${what}: ${getMatterStatusName(results[0].status)} (${results[0].status})`);
+    }
+    throw new Error(`${what}: ${batch.message}`);
+}
+
+/** `write_attribute` keys its result in the Python Matter Server casing, unlike the other write commands. */
+export function requireAttributeWriteSuccess(
+    results: Array<{ Status: number }> | null | undefined,
+    what: string,
+): void {
+    requireWriteSuccess(
+        results?.map(result => ({ status: result.Status })),
+        what,
+    );
+}
+
 /** Format a human-readable message for batch results */
 function formatBatchMessage(
     outcome: BatchOutcome,

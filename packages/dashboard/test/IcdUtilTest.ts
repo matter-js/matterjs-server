@@ -111,15 +111,21 @@ describe("icd util", () => {
                 { checkInNodeId: BigInt(1234), monitoredSubject: BigInt(1234), fabricIndex: 2 },
             ]);
         });
-        it("skips malformed entries (missing/wrong-typed fields, non-objects)", () => {
+        it("skips entries without a usable FabricIndex", () => {
             const clients = decodeRegisteredClients([
                 { "1": 1234, "2": 1234, "254": 2 },
-                { "1": 1234, "254": 2 }, // missing MonitoredSubject
                 { "1": 1234, "2": 1234, "254": "2" }, // FabricIndex not a number
                 "not-an-object",
                 null,
             ]);
             expect(clients).to.deep.equal([{ checkInNodeId: 1234, monitoredSubject: 1234, fabricIndex: 2 }]);
+        });
+        it("keeps a foreign-fabric entry stripped to its FabricIndex", () => {
+            // Every other field of MonitoringRegistrationStruct is fabric-sensitive, so this is the
+            // wire form of another fabric's registration on an unfiltered read.
+            expect(decodeRegisteredClients([{ "254": 2 }])).to.deep.equal([
+                { checkInNodeId: undefined, monitoredSubject: undefined, fabricIndex: 2 },
+            ]);
         });
         it("returns empty for absent value", () => {
             expect(decodeRegisteredClients(undefined)).to.deep.equal([]);
@@ -137,6 +143,12 @@ describe("icd util", () => {
         it("false without controller node id", () => {
             expect(isRegisteredByUs(clients, undefined)).to.equal(false);
         });
+        // Characterization: a foreign-fabric entry arrives stripped of CheckInNodeID and must never
+        // read as ours, whatever the controller id is.
+        it("false for a foreign-fabric entry that carries no CheckInNodeID", () => {
+            const stub = [{ checkInNodeId: undefined, monitoredSubject: undefined, fabricIndex: 2 }];
+            expect(isRegisteredByUs(stub, 1234)).to.equal(false);
+        });
     });
 
     describe("otherFabricClientCount", () => {
@@ -149,6 +161,10 @@ describe("icd util", () => {
         });
         it("returns full count when our fabric unknown", () => {
             expect(otherFabricClientCount(clients, undefined)).to.equal(2);
+        });
+        it("counts a foreign registration as the wire delivers it", () => {
+            const wire = [{ "1": 1234, "2": 1234, "254": 1 }, { "254": 2 }];
+            expect(otherFabricClientCount(decodeRegisteredClients(wire), 1)).to.equal(1);
         });
     });
 

@@ -113,6 +113,8 @@ class AccessControlClusterCommands extends BaseClusterCommands {
                     title: "Delete failed",
                     text: err instanceof Error ? err.message : String(err),
                 });
+            } else {
+                console.error("Delete failed", err);
             }
         } finally {
             this._busy = false;
@@ -128,6 +130,8 @@ class AccessControlClusterCommands extends BaseClusterCommands {
         } catch (err) {
             if (this.isSameContext(node, endpoint)) {
                 await showAlertDialog({ title: "Fix failed", text: err instanceof Error ? err.message : String(err) });
+            } else {
+                console.error("Fix failed", err);
             }
         } finally {
             this._busy = false;

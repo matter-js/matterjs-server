@@ -15,7 +15,8 @@ import {
     nodeIdKey,
     subjectsInclude,
 } from "../../../util/access-control.js";
-import { BINDING_CLUSTER_ID } from "../../../util/binding.js";
+import { BINDING_CLUSTER_ID, sameBindingTarget } from "../../../util/binding.js";
+import { requireWriteSuccess } from "../../../util/matter-status.js";
 import { AccessControlEntryDataTransformer, type AccessControlEntryStruct } from "../acl/model.js";
 import { BindingEntryDataTransformer, type BindingEntryStruct } from "./model.js";
 
@@ -133,7 +134,10 @@ export async function ensureBindingAcl(
             fabricIndex: 0,
         });
     }
-    await client.setACLEntry(targetNodeId, acl.map(toApiAcl));
+    requireWriteSuccess(
+        await client.setACLEntry(targetNodeId, acl.map(toApiAcl)),
+        "Writing the access control list on the target node failed",
+    );
 }
 
 /** Downgrade an over-privileged (>Operate) binding ACL on the target back to Operate. */
@@ -153,7 +157,10 @@ export async function fixOverPrivilegedBindingAcl(
             ? { ...e, privilege: Privilege.Operate }
             : e,
     );
-    await client.setACLEntry(targetNodeId, updated.map(toApiAcl));
+    requireWriteSuccess(
+        await client.setACLEntry(targetNodeId, updated.map(toApiAcl)),
+        "Writing the access control list on the target node failed",
+    );
 }
 
 export async function addBinding(
@@ -174,24 +181,42 @@ export async function addBinding(
     );
     if (exists) return;
     bindings.push({ node: targetNodeId, group: undefined, endpoint: targetEndpoint, cluster, fabricIndex: undefined });
-    await client.setNodeBinding(sourceNode.node_id, sourceEndpoint, bindings.map(toBindingTarget));
+    try {
+        requireWriteSuccess(
+            await client.setNodeBinding(sourceNode.node_id, sourceEndpoint, bindings.map(toBindingTarget)),
+            "Writing the binding table failed",
+        );
+    } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        throw new Error(
+            `${detail}. An access grant for this node was already added on the target and may need cleanup.`,
+        );
+    }
 }
 
 /**
- * Remove the binding at `index`, then drop the matching target from the source's ACL entry on the
- * (binding) target node. Matches on the binding's TARGET endpoint + cluster.
+ * Remove the binding naming `target`, then drop the matching target from the source's ACL entry on
+ * the (binding) target node — that cleanup matches on the binding's TARGET endpoint + cluster.
+ *
+ * The binding itself is identified by its fields rather than by a row index: the caller's list comes
+ * from the attribute cache while this one is re-read, so the two need not be positionally aligned.
+ * A target that is no longer present is the desired end state, so it resolves without writing.
  */
-export async function deleteBindingAtIndex(
+export async function deleteBinding(
     client: MatterClient,
     sourceNode: MatterNode,
     sourceEndpoint: number,
-    index: number,
+    target: BindingEntryStruct,
 ): Promise<void> {
     const bindings = await freshOurBindings(client, sourceNode.node_id, sourceEndpoint);
+    const index = bindings.findIndex(b => sameBindingTarget(b, target));
     const removed = bindings[index];
     if (!removed) return;
     const updated = [...bindings.slice(0, index), ...bindings.slice(index + 1)];
-    await client.setNodeBinding(sourceNode.node_id, sourceEndpoint, updated.map(toBindingTarget));
+    requireWriteSuccess(
+        await client.setNodeBinding(sourceNode.node_id, sourceEndpoint, updated.map(toBindingTarget)),
+        "Writing the binding table failed",
+    );
 
     if (removed.node == null || removed.endpoint == null) return;
     // A self-binding never created an ACL entry, so there is nothing to clean up.
@@ -210,7 +235,10 @@ export async function deleteBindingAtIndex(
                 return { ...e, targets };
             })
             .filter((e): e is AccessControlEntryStruct => e !== undefined);
-        await client.setACLEntry(removed.node, kept.map(toApiAcl));
+        requireWriteSuccess(
+            await client.setACLEntry(removed.node, kept.map(toApiAcl)),
+            "Writing the access control list failed",
+        );
     } catch (err) {
         const detail = err instanceof Error ? err.message : String(err);
         throw new Error(

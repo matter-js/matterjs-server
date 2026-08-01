@@ -17,9 +17,13 @@ export interface IcdFeatures {
     dynamicSitLitSupport: boolean;
 }
 
+/**
+ * A registration on the device. Everything but FabricIndex is fabric-sensitive, so an entry another
+ * fabric owns arrives from an unfiltered read carrying only its FabricIndex.
+ */
 export interface IcdRegisteredClient {
-    checkInNodeId: number | bigint;
-    monitoredSubject: number | bigint;
+    checkInNodeId: number | bigint | undefined;
+    monitoredSubject: number | bigint | undefined;
     fabricIndex: number;
 }
 
@@ -62,13 +66,13 @@ function nodeOrSubjectId(value: unknown): number | bigint | undefined {
 
 function decodeRegisteredClient(entry: unknown): IcdRegisteredClient | undefined {
     if (!isRecord(entry)) return undefined;
-    const checkInNodeId = nodeOrSubjectId(entry["1"]);
-    const monitoredSubject = nodeOrSubjectId(entry["2"]);
     const fabricIndex = entry["254"];
-    if (checkInNodeId === undefined || monitoredSubject === undefined || typeof fabricIndex !== "number") {
-        return undefined;
-    }
-    return { checkInNodeId, monitoredSubject, fabricIndex };
+    if (typeof fabricIndex !== "number") return undefined;
+    return {
+        checkInNodeId: nodeOrSubjectId(entry["1"]),
+        monitoredSubject: nodeOrSubjectId(entry["2"]),
+        fabricIndex,
+    };
 }
 
 /** MonitoringRegistrationStruct wire entries are field-tag keyed: "1" CheckInNodeId, "2" MonitoredSubject, "254" FabricIndex. */

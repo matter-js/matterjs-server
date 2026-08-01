@@ -6,6 +6,7 @@
 
 import type { MatterClient, MatterNode } from "@matter-server/ws-client";
 import { asObject, pickNumber, pickString } from "./attribute-shapes.js";
+import { requireAttributeWriteSuccess } from "./matter-status.js";
 
 /** Chime cluster (Matter spec). */
 export const CHIME_CLUSTER_ID = 1366; // 0x0556
@@ -59,7 +60,10 @@ export async function setEnabled(
     endpoint: number,
     enabled: boolean,
 ): Promise<void> {
-    await client.writeAttribute(nodeId, `${endpoint}/${CHIME_CLUSTER_ID}/${ATTR_ENABLED}`, enabled);
+    requireAttributeWriteSuccess(
+        await client.writeAttribute(nodeId, `${endpoint}/${CHIME_CLUSTER_ID}/${ATTR_ENABLED}`, enabled),
+        "Writing the Chime Enabled attribute failed",
+    );
 }
 
 export async function setSelected(
@@ -68,7 +72,10 @@ export async function setSelected(
     endpoint: number,
     chimeId: number,
 ): Promise<void> {
-    await client.writeAttribute(nodeId, `${endpoint}/${CHIME_CLUSTER_ID}/${ATTR_SELECTED_CHIME}`, chimeId);
+    requireAttributeWriteSuccess(
+        await client.writeAttribute(nodeId, `${endpoint}/${CHIME_CLUSTER_ID}/${ATTR_SELECTED_CHIME}`, chimeId),
+        "Writing the selected chime failed",
+    );
 }
 
 export async function play(

@@ -12,6 +12,7 @@ import { css, html, LitElement, nothing } from "lit";
 import { customElement, property, query, state } from "lit/decorators.js";
 import { handleAsync } from "../../../util/async-handler.js";
 import { formatHex } from "../../../util/format_hex.js";
+import { requireAttributeWriteSuccess } from "../../../util/matter-status.js";
 import { preventDefault } from "../../../util/prevent_default.js";
 import { parseJsonPayload } from "./parse-json-payload.js";
 
@@ -61,7 +62,10 @@ export class AttributeWriteDialog extends LitElement {
         }
         this._busy = true;
         try {
-            await this.client.writeAttribute(this.nodeId, this._attributePath, parsed.value);
+            requireAttributeWriteSuccess(
+                await this.client.writeAttribute(this.nodeId, this._attributePath, parsed.value),
+                "Write failed",
+            );
             this._close();
         } catch (err) {
             this._error = err instanceof Error ? err.message : String(err);

@@ -22,6 +22,7 @@ import {
     MatterNodeEvent,
     MatterSoftwareVersion,
     NodePingResult,
+    ResponseOf,
     SuccessResultMessage,
     ThreadDiagnosticsBatch,
     WebRtcCallbackData,
@@ -350,7 +351,7 @@ export class MatterClient {
         attributePath: string,
         value: unknown,
         timeout?: number,
-    ): Promise<unknown> {
+    ): Promise<ResponseOf<"write_attribute">> {
         // Write an attribute(value) on a target node.
         return await this.sendCommand(
             "write_attribute",

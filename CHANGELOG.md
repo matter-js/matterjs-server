@@ -11,10 +11,13 @@ This page shows a detailed overview of the changes between versions without the 
 
 - Enhancement: Introduces Websocket Schema version 13 (backward compatible)
     - (MindFreeze) Adds Websocket command `get_network_topology` and event `network_topology_updated` to expose the Thread and WiFi network details for external visualization
-- Feature: (lboue) Dashboard endpoint view shows a "Client Clusters" panel listing the Descriptor's ClientList clusters when the endpoint has a Binding cluster, marking each as "Bound" or "Not bound"
+- Enhancement: (lboue) Dashboard endpoint view shows "Client Clusters" of an endpoint and their binding status when also a Binding cluster is available
+- Enhancement: Dashboard dev mode adds a second read button per attribute that reads across all fabrics and shows the result without caching it
 - Fix: Dashboard endpoint view refreshes its cluster list when a cluster appears or disappears on the node, or the viewed endpoint changes
-- Fix: Dashboard attribute reads that feed its local cache are now fabric-filtered like the subscription; an unfiltered read is data the server deliberately does not cache, so other fabrics' entries could linger in the dashboard's view — including phantom binding rows that shifted the index the delete button acts on
-- Fix: Dashboard ACL and binding edits abort instead of writing back a truncated list when the preceding read did not return the list; a partial read failure could previously wipe a node's access control list
+- Fix: Updates Dashboard attribute reads to request non-fabric-filtered data only when needed to ensure caching
+- Fix: Improves Dashboard ACL and binding edit error cases
+- Fix: Dashboard writes (node label, ACL, bindings, Chime, dev-mode attribute write) report a device-side rejection instead of appearing to succeed
+- Fix: Improves ICD LIT UI handling when deactivating
 
 ## 1.3.3 (2026-07-28)
 

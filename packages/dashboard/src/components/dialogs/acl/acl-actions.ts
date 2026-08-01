@@ -6,6 +6,7 @@
 
 import { AccessControlEntry, MatterClient } from "@matter-server/ws-client";
 import { Privilege, aclEntryKey, attributeArray, entriesForFabric } from "../../../util/access-control.js";
+import { requireWriteSuccess } from "../../../util/matter-status.js";
 import { AccessControlEntryDataTransformer, type AccessControlEntryStruct } from "./model.js";
 
 function toApiAcl(e: AccessControlEntryStruct): AccessControlEntry {
@@ -48,7 +49,7 @@ export async function addAclEntry(
 ): Promise<void> {
     const acl = await freshOurAcl(client, nodeId);
     acl.push(entry);
-    await client.setACLEntry(nodeId, acl.map(toApiAcl));
+    requireWriteSuccess(await client.setACLEntry(nodeId, acl.map(toApiAcl)), "Writing the access control list failed");
 }
 
 export async function deleteAclEntry(client: MatterClient, nodeId: number | bigint, key: string): Promise<void> {
@@ -61,7 +62,7 @@ export async function deleteAclEntry(client: MatterClient, nodeId: number | bigi
         }
         return true;
     });
-    await client.setACLEntry(nodeId, kept.map(toApiAcl));
+    requireWriteSuccess(await client.setACLEntry(nodeId, kept.map(toApiAcl)), "Writing the access control list failed");
 }
 
 /** Downgrade the given entries (by key) to Operate privilege. */
@@ -72,5 +73,8 @@ export async function downgradeToOperate(
 ): Promise<void> {
     const acl = await freshOurAcl(client, nodeId);
     const updated = acl.map(e => (keys.has(aclEntryKey(e)) ? { ...e, privilege: Privilege.Operate } : e));
-    await client.setACLEntry(nodeId, updated.map(toApiAcl));
+    requireWriteSuccess(
+        await client.setACLEntry(nodeId, updated.map(toApiAcl)),
+        "Writing the access control list failed",
+    );
 }

@@ -30,19 +30,39 @@ export function readBindings(node: MatterNode, endpoint: number): BindingEntrySt
     );
 }
 
+/**
+ * The endpoint's binding entries that belong to our fabric, or all of them while the node's
+ * CurrentFabricIndex is still uncached. Rendering a binding row uses this so the row set matches
+ * what a write's fabric-scoped re-read will act on.
+ */
+export function readOurBindings(node: MatterNode, endpoint: number): BindingEntryStruct[] {
+    const fabricIndex = nodeFabricIndex(node);
+    return readBindings(node, endpoint).filter(b => fabricIndex === undefined || b.fabricIndex === fabricIndex);
+}
+
+/** Whether two entries name the same binding target — the identity a delete has to match on. */
+export function sameBindingTarget(a: BindingEntryStruct, b: BindingEntryStruct): boolean {
+    const key = (id: number | bigint | undefined) => (id == null ? "" : nodeIdKey(id));
+    return key(a.node) === key(b.node) && a.group === b.group && a.endpoint === b.endpoint && a.cluster === b.cluster;
+}
+
 export interface EndpointBinding {
     endpoint: number;
     binding: BindingEntryStruct;
 }
 
+/** Every endpoint's binding entries of our fabric, on the same terms as {@link readOurBindings}. */
 export function readAllBindings(node: MatterNode): EndpointBinding[] {
+    const fabricIndex = nodeFabricIndex(node);
     const result = new Array<EndpointBinding>();
     for (const key of Object.keys(node.attributes)) {
         const m = BINDING_KEY_RE.exec(key);
         if (!m) continue;
         const endpoint = Number(m[1]);
         for (const value of attributeArray(node.attributes[key])) {
-            result.push({ endpoint, binding: BindingEntryDataTransformer.transform(value) });
+            const binding = BindingEntryDataTransformer.transform(value);
+            if (fabricIndex !== undefined && binding.fabricIndex !== fabricIndex) continue;
+            result.push({ endpoint, binding });
         }
     }
     return result;
@@ -68,10 +88,7 @@ export function sourceClientClusters(node: MatterNode, endpoint: number): number
  * the result correct even if a caller ever populates the cache from an unfiltered read.
  */
 export function boundClientClusterIds(node: MatterNode, endpoint: number): Set<number> {
-    const fabricIndex = nodeFabricIndex(node);
-    const bindings = readBindings(node, endpoint).filter(
-        b => fabricIndex === undefined || b.fabricIndex === fabricIndex,
-    );
+    const bindings = readOurBindings(node, endpoint);
     const bound = new Set(bindings.map(b => b.cluster).filter((c): c is number => c !== undefined));
     if (bindings.some(b => b.cluster === undefined && (b.group !== undefined || b.endpoint !== undefined))) {
         for (const cluster of sourceClientClusters(node, endpoint)) bound.add(cluster);
