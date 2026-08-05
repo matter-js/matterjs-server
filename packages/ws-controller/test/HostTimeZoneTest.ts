@@ -239,11 +239,17 @@ describe("hostTimeZone", () => {
         });
 
         it("does not split an ordinary DST zone or a recurring seasonal dip", () => {
-            for (const zone of ["Europe/Berlin", "America/New_York", "Africa/Casablanca"]) {
+            for (const zone of ["Europe/Berlin", "America/New_York"]) {
                 for (const month of [0, 3, 6, 9]) {
                     const plan = timeZonePlan(zone, Date.UTC(2026, month, 10), BOTH_MAX);
                     expect(plan.regimes.length, `${zone} month ${month}`).to.equal(1);
                 }
+            }
+            // Morocco's Ramadan dip only recurs historically: newer tzdata moves the zone
+            // permanently to +00 on 2026-09-21, making 2026 a pending-permanent-change case.
+            for (const month of [0, 3, 6, 9]) {
+                const plan = timeZonePlan("Africa/Casablanca", Date.UTC(2022, month, 10), BOTH_MAX);
+                expect(plan.regimes.length, `Africa/Casablanca month ${month}`).to.equal(1);
             }
         });
 
@@ -335,11 +341,12 @@ describe("hostTimeZone", () => {
                 "Pacific/Chatham", // 45-minute DST delta
                 "Africa/Casablanca", // recurring dip below the base
             ];
+            // 2022: a year Casablanca's dip recurs under every tzdata in circulation (see above)
             let checked = 0;
             for (const zone of zones) {
                 for (const month of [0, 3, 6, 9]) {
                     for (const maxWindows of [1, 2]) {
-                        expectPlanMatchesZone(zone, Date.UTC(2026, month, 5, 6), { maxRegimes: 2, maxWindows });
+                        expectPlanMatchesZone(zone, Date.UTC(2022, month, 5, 6), { maxRegimes: 2, maxWindows });
                         checked++;
                     }
                 }
@@ -358,7 +365,7 @@ describe("hostTimeZone", () => {
                 ["Asia/Almaty", Date.UTC(2024, 0, 10)], // pending permanent reduction
                 ["Europe/Istanbul", Date.UTC(2016, 0, 10)], // pending permanent adoption
                 ["America/Asuncion", Date.UTC(2024, 0, 10)], // real DST plus a pending change
-                ["Africa/Casablanca", Date.UTC(2026, 3, 10)], // recurring dip below the base
+                ["Africa/Casablanca", Date.UTC(2022, 3, 10)], // recurring dip below the base
             ];
             let checked = 0;
             for (const [zone, atMs] of cases) {
