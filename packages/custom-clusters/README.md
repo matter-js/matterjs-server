@@ -103,9 +103,10 @@ Some vendors do not define an entirely new cluster but instead add manufacturer-
 Such extensions are defined in `src/extensions/` using the `clusterExtension()` helper, which adds the attributes to the standard cluster in the matter.js model:
 
 ```typescript
+import { WindowCovering } from "@matter/main/clusters/window-covering";
 import { clusterExtension } from "./extension.js";
 
-clusterExtension("WindowCovering", [
+clusterExtension(WindowCovering.id, [
     {
         id: 0x15340001,
         name: "MyVendorTravelTime",

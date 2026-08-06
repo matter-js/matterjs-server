@@ -169,7 +169,7 @@ def test_mode_option_struct_has_fields() -> None:
     _assert_mode_option_struct_fields(OvenMode.Structs.ModeOptionStruct, "OvenMode")
 
 
-def test_wago_window_covering_extension_attributes_exist():
+def test_wago_window_covering_extension_attributes_exist() -> None:
     """WAGO vendor extension attributes on WindowCovering must be accessible."""
     from chip.clusters import Objects as clusters
 

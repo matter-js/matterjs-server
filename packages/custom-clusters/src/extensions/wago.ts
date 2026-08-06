@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { WindowCovering } from "@matter/main/clusters/window-covering";
 import { clusterExtension } from "./extension.js";
 
 /**
@@ -15,7 +16,7 @@ import { clusterExtension } from "./extension.js";
  * the covering. The device re-measures them on every full end-to-end travel,
  * so their values may change without an explicit write.
  */
-clusterExtension("WindowCovering", [
+clusterExtension(WindowCovering.id, [
     {
         id: 0x15340001,
         name: "WagoTravelTimeUp",

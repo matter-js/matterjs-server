@@ -36,10 +36,15 @@
     "scripts": {
         "clean": "nacho-build clean",
         "build": "nacho-build",
-        "build-clean": "nacho-build --clean"
+        "build-clean": "nacho-build --clean",
+        "test": "matter-test --force-exit"
     },
     "dependencies": {
         "@matter/main": "0.17.9"
+    },
+    "devDependencies": {
+        "@matter/testing": "0.17.9",
+        "@types/node": "^26.1.2"
     },
     "engines": {
         "node": ">=22.13.0"
