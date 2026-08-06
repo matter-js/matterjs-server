@@ -920,7 +920,6 @@ function generateClusterFile(
     // Global attributes (always present)
     w.line(`ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),`);
     w.line(`ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),`);
-    w.line(`ClusterObjectFieldDescriptor(Label="eventList", Tag=0x0000FFFA, Type=typing.List[uint]),`);
     w.line(`ClusterObjectFieldDescriptor(Label="attributeList", Tag=0x0000FFFB, Type=typing.List[uint]),`);
     w.line(`ClusterObjectFieldDescriptor(Label="featureMap", Tag=0x0000FFFC, Type=uint),`);
     w.line(`ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),`);
@@ -940,7 +939,6 @@ function generateClusterFile(
     // Global attribute fields
     w.line(`generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])`);
     w.line(`acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])`);
-    w.line(`eventList: typing.List[uint] = field(default_factory=lambda: [])`);
     w.line(`attributeList: typing.List[uint] = field(default_factory=lambda: [])`);
     w.line(`featureMap: uint = 0`);
     w.line(`clusterRevision: uint = 0`);
@@ -1062,8 +1060,6 @@ function generateClusterFile(
     generateGlobalAttribute(w, "GeneratedCommandList", 0xfff8, "typing.List[uint]", clusterId);
     w.blankLine();
     generateGlobalAttribute(w, "AcceptedCommandList", 0xfff9, "typing.List[uint]", clusterId);
-    w.blankLine();
-    generateGlobalAttribute(w, "EventList", 0xfffa, "typing.List[uint]", clusterId);
     w.blankLine();
     generateGlobalAttribute(w, "AttributeList", 0xfffb, "typing.List[uint]", clusterId);
     w.blankLine();

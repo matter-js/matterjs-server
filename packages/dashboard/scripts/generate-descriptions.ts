@@ -19,6 +19,9 @@ import "@matter-server/custom-clusters";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+/** Global EventList attribute: provisional, since deprecated, so devices do not implement it. */
+const EVENT_LIST_ATTRIBUTE_ID = 0xfffa;
+
 /**
  * Convert camelCase name to human-readable label with a title case.
  * e.g., "OnOffLight" -> "On Off Light" when "addSpaces" is set to true, else camelize with first letter uppercase
@@ -141,6 +144,7 @@ function generateDescriptions(): string {
 
         for (const ace of cluster.allAces) {
             if (ace instanceof AttributeModel && ace.id !== undefined) {
+                if (ace.id === EVENT_LIST_ATTRIBUTE_ID) continue;
                 attributes[ace.id] = {
                     id: ace.id,
                     cluster_id: cluster.id,

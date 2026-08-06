@@ -22,6 +22,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Fix: Improves ICD UI handling when deactivating the LIT mode
 - Fix: `WRITE_ATTRIBUTE` now also accepts struct members keyed by wire field name, not only by TLV tag
 - Fix: (lboue) Python client `write_attribute()` now serializes struct/list-of-struct values keyed by TLV tag instead of field name as the server's `WRITE_ATTRIBUTE` handler expects
+- Fix: Python client cluster definitions and Dashboard cluster descriptions no longer contain the global `EventList` attribute (0xFFFA), which was provisional and deprecated in the meantime
 - Fix: Update matter.js to 0.17.9
     - BLE improvements and fixes
     - OTA/BDX improvements and fixes
