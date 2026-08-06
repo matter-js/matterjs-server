@@ -33,7 +33,7 @@
     },
     "dependencies": {
         "@lit/context": "^1.1.6",
-        "@material/web": "^2.4.1",
+        "@material/web": "^2.5.0",
         "@matter-server/custom-clusters": "*",
         "@matter-server/ws-client": "*",
         "@mdi/js": "^7.4.47",
@@ -44,14 +44,14 @@
     },
     "devDependencies": {
         "@babel/preset-env": "^8.0.2",
-        "@matter/main": "0.17.7",
+        "@matter/main": "0.17.9",
         "@rollup/plugin-babel": "^7.1.0",
         "@rollup/plugin-commonjs": "^29.0.3",
         "@rollup/plugin-json": "^6.1.0",
         "@rollup/plugin-node-resolve": "^16.0.3",
         "@rollup/plugin-terser": "^1.0.0",
         "@rollup/plugin-typescript": "^12.3.0",
-        "rollup": "^4.62.2",
+        "rollup": "^4.62.4",
         "rollup-plugin-copy": "^3.5.0",
         "serve": "^14.2.6"
     }

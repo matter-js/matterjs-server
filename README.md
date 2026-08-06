@@ -15,8 +15,7 @@ as a base and provides a server implementation.
 
 The Open Home Foundation Matter Server software component is a project of the [Open Home Foundation](https://www.openhomefoundation.org/).
 
-The current version of the server supports Matter 1.4.2 and is a drop-in replacement for the Python Matter Server.
-The Home Assistant integration is based on the Python bindings of the Python Matter Server v8.1.2, which uses a Matter-SDK version 1.4.2 (from 30.06.2025).
+The current version of the server supports Matter 1.6.0 and is a drop-in replacement for the Python Matter Server.
 
 This repository consists of multiple packages that are provided in the `packages` directory:
 
@@ -132,8 +131,8 @@ Ble and Wifi should work when server gets startes with `--ble` flag, but Wifi on
 Alternatively, start the server with `--ble-proxy` (or `BLE_PROXY=true`) to expose a
 `/ble` WebSocket endpoint instead of using a local BLE adapter. A separate process —
 Home Assistant's Matter integration, the Bleak-based Python CLI
-[`matter-ble-proxy`](python_ble_proxy/), or the Noble JS reference client
-[`@matter-server/ble-proxy`](packages/ble-proxy/) — connects to that endpoint and
+[`matter-ble-proxy`](python_ble_proxy/README.md), or the Noble JS reference client
+[`@matter-server/ble-proxy`](packages/ble-proxy/README.md) — connects to that endpoint and
 bridges BLE traffic from wherever the adapter actually lives. See
 [`docs/ble-proxy-protocol.md`](docs/ble-proxy-protocol.md) for the protocol spec.
 

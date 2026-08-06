@@ -41,18 +41,18 @@
     },
     "dependencies": {
         "@matter-server/ws-client": "*",
-        "@matter/dcl-data": ">=2026.7.17",
-        "@matter/main": "0.17.7",
-        "@matter/thread-br-client": "0.17.7",
-        "@project-chip/matter.js": "0.17.7",
-        "ws": "^8.21.1"
+        "@matter/dcl-data": ">=2026.8.5",
+        "@matter/main": "0.17.9",
+        "@matter/thread-br-client": "0.17.9",
+        "@project-chip/matter.js": "0.17.9",
+        "ws": "^8.21.2"
     },
     "devDependencies": {
-        "@types/node": "^26.1.1",
+        "@types/node": "^26.1.2",
         "@types/ws": "^8.18.1"
     },
     "optionalDependencies": {
-        "@matter/nodejs-ble": "0.17.7",
+        "@matter/nodejs-ble": "0.17.9",
         "dbus-next": "npm:@jellybrick/dbus-next@^0.10.3"
     },
     "engines": {
