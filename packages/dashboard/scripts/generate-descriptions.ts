@@ -146,7 +146,9 @@ function generateDescriptions(): string {
                     cluster_id: cluster.id,
                     label: toLabel(ace.name),
                     type: getTypeString(ace),
-                    writable: ace.writable,
+                    // The matter.js model misreports the global EventList attribute
+                    // (0xfffa) as writable, it is server-reported and read-only.
+                    writable: ace.id === 0xfffa ? false : ace.writable,
                 };
             } else if (ace instanceof CommandModel && ace.id !== undefined && ace.isRequest) {
                 commands[ace.id] = {
