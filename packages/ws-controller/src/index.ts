@@ -13,6 +13,7 @@ export { WebRtcTransportRequestorServer } from "@matter/node/behaviors/web-rtc-t
 export * from "./controller/ControllerCommandHandler.js";
 export * from "./controller/LegacyDataInjector.js";
 export * from "./controller/MatterController.js";
+export * from "./controller/OtaUploadRegistry.js";
 export * from "./controller/ServerIdResolver.js";
 
 // Export model

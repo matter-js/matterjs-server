@@ -10,6 +10,7 @@ import {
     ConnectionClosedError,
     DEFAULT_COMMAND_TIMEOUT,
     MatterClient,
+    otaUploadUrl,
     ServerCommandError,
     WebSocketLike,
 } from "../src/index.js";
@@ -498,6 +499,32 @@ describe("ws-client", () => {
                 };
                 expect(parsed.args.value).to.equal(testValue);
             });
+        });
+    });
+
+    describe("otaUploadUrl", () => {
+        const uploadId = "0123456789abcdef0123456789abcdef";
+
+        it("swaps the /ws mount point for the upload path", () => {
+            expect(otaUploadUrl("ws://host:5580/ws", uploadId)).to.equal(`http://host:5580/ota-upload/${uploadId}`);
+        });
+
+        it("keeps a sub-path mount point and upgrades wss to https", () => {
+            expect(otaUploadUrl("wss://host/matter/ws", uploadId)).to.equal(
+                `https://host/matter/ota-upload/${uploadId}`,
+            );
+        });
+
+        it("does not double the slash when the socket sits at the root", () => {
+            expect(otaUploadUrl("ws://host:5580", uploadId)).to.equal(`http://host:5580/ota-upload/${uploadId}`);
+            expect(otaUploadUrl("ws://host:5580/", uploadId)).to.equal(`http://host:5580/ota-upload/${uploadId}`);
+            expect(otaUploadUrl("wss://host/ws/", uploadId)).to.equal(`https://host/ota-upload/${uploadId}`);
+        });
+
+        it("drops a query string carried by the WebSocket URL", () => {
+            expect(otaUploadUrl("ws://host:5580/ws?token=abc", uploadId)).to.equal(
+                `http://host:5580/ota-upload/${uploadId}`,
+            );
         });
     });
 

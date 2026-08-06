@@ -35,11 +35,14 @@ import {
     ThreadCredentialsRegistry,
 } from "@matter/thread-br-client";
 import { CommissioningController } from "@project-chip/matter.js";
+import { createReadStream } from "node:fs";
 import { Readable } from "node:stream";
+import { pathToFileURL } from "node:url";
 import { ConfigStorage } from "../server/ConfigStorage.js";
 import { ControllerCommandHandler } from "./ControllerCommandHandler.js";
 import { LegacyDataInjector, LegacyServerData } from "./LegacyDataInjector.js";
 import { NetworkTopologyService } from "./NetworkTopologyService.js";
+import { OtaImageInfo, OtaUploadOptions, OtaUploadRegistry } from "./OtaUploadRegistry.js";
 import { resolveServerId } from "./ServerIdResolver.js";
 import { ThreadDiagnosticsService } from "./ThreadDiagnosticsService.js";
 
@@ -98,6 +101,8 @@ export interface MatterControllerOptions {
      * dataset from config) is unaffected. Defaults to false.
      */
     disableThreadDiagnostics?: boolean;
+    /** Staging directory and limits for two-step OTA firmware uploads. */
+    otaUpload?: OtaUploadOptions;
 }
 
 /**
@@ -205,6 +210,8 @@ export class MatterController {
     #bleProxyEnabled = false;
     #enableTimeSync = false;
     #threadDiagnosticsDisabled = false;
+    #otaUploadOptions: OtaUploadOptions = {};
+    #otaUploads?: OtaUploadRegistry;
     readonly #borderRouterRegistry: BorderRouterRegistry;
     /** Background init tasks kept off the node-init critical path but given a bounded chance to settle on stop(). */
     readonly #backgroundInit = new Array<Promise<unknown>>();
@@ -295,6 +302,7 @@ export class MatterController {
         this.#bleProxyEnabled = options.bleProxyEnabled ?? this.#bleProxyEnabled;
         this.#enableTimeSync = options.enableTimeSync ?? this.#enableTimeSync;
         this.#threadDiagnosticsDisabled = options.disableThreadDiagnostics ?? this.#threadDiagnosticsDisabled;
+        this.#otaUploadOptions = options.otaUpload ?? this.#otaUploadOptions;
         this.#services = this.#env.asDependent();
         this.#threadDiagnostics = new ThreadDiagnosticsService({
             enabled: !this.#threadDiagnosticsDisabled,
@@ -458,6 +466,16 @@ export class MatterController {
 
     get borderRouters(): BorderRouterRegistry {
         return this.#borderRouterRegistry;
+    }
+
+    /** False when the OTA provider (and with it firmware upload) is disabled via `disableOtaProvider`. */
+    get otaEnabled(): boolean {
+        return !this.#disableOtaProvider;
+    }
+
+    /** Reservations and staging for the two-step OTA upload (`initiate_ota_upload`, then HTTP POST). */
+    get otaUploads(): OtaUploadRegistry {
+        return (this.#otaUploads ??= new OtaUploadRegistry(this, this.#otaUploadOptions));
     }
 
     get credentials(): ThreadCredentialsRegistry {
@@ -650,23 +668,41 @@ export class MatterController {
      * @returns true if stored successfully
      */
     async storeOtaImageFromFile(filePath: string): Promise<boolean> {
-        const { createReadStream } = await import("node:fs");
-        const { pathToFileURL } = await import("node:url");
-        const otaService = await this.otaUpdateService();
+        await this.storeOtaImage(filePath);
+        return true;
+    }
 
-        // Convert file path to file:// URL for the OTA service
+    /**
+     * Store an OTA image file from a file path and return the header data it was indexed by.
+     * @param filePath - Path to the OTA file
+     */
+    async storeOtaImage(filePath: string): Promise<OtaImageInfo> {
+        const otaService = await this.otaUpdateService();
         const fileUrl = pathToFileURL(filePath).href;
 
-        // Read the file twice - once for info, once for storage
-        const infoStream = Readable.toWeb(createReadStream(filePath)) as ReadableStream<Uint8Array>;
-        const updateInfo = await otaService.updateInfoFromStream(infoStream, fileUrl);
+        // The header parse and the store each consume a stream, so the file is read twice.
+        const updateInfo = await this.#readingOtaImage(filePath, stream =>
+            otaService.updateInfoFromStream(stream, fileUrl),
+        );
 
         logger.info(
             `Storing OTA image from ${filePath}: vendorId=0x${updateInfo.vid.toString(16)}, productId=0x${updateInfo.pid.toString(16)}, version=${updateInfo.softwareVersion} (${updateInfo.softwareVersionString})`,
         );
 
-        const storeStream = Readable.toWeb(createReadStream(filePath)) as ReadableStream<Uint8Array>;
-        await otaService.store(storeStream, updateInfo, "local");
-        return true;
+        await this.#readingOtaImage(filePath, stream => otaService.store(stream, updateInfo, "local"));
+        return updateInfo;
+    }
+
+    /**
+     * An aborted consumer (invalid header, failed store) leaves the reader open, so the fd would
+     * outlive the call and block deletion of the file on Windows.
+     */
+    async #readingOtaImage<T>(filePath: string, use: (stream: ReadableStream<Uint8Array>) => Promise<T>): Promise<T> {
+        const source = createReadStream(filePath);
+        try {
+            return await use(Readable.toWeb(source) as ReadableStream<Uint8Array>);
+        } finally {
+            source.destroy();
+        }
     }
 }

@@ -1791,6 +1791,18 @@ export class ControllerCommandHandler {
     }
 
     /**
+     * Drop cached update info for a vendor/product, so a newly stored image is seen by the next
+     * `check_node_update` instead of the answer cached before it existed.
+     */
+    invalidateAvailableUpdates(vendorId: number, productId: number) {
+        for (const [nodeId, update] of this.#availableUpdates) {
+            if (update.vendorId === vendorId && update.productId === productId) {
+                this.#availableUpdates.delete(nodeId);
+            }
+        }
+    }
+
+    /**
      * Convert SoftwareUpdateInfo to MatterSoftwareVersion format for WebSocket API.
      */
     #convertToMatterSoftwareVersion(updateInfo: SoftwareUpdateInfo): MatterSoftwareVersion {

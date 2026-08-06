@@ -28,6 +28,9 @@ export const DEFAULT_VENDOR_ID = 0xfff1;
 export const DEFAULT_FABRIC_ID = 1;
 const DEFAULT_PORT = 5580;
 const DEFAULT_STORAGE_PATH = join(homedir(), ".matter_server");
+const DEFAULT_OTA_UPLOAD_MAX_IN_FLIGHT = 5;
+/** Placeholder: shipping Matter images run ~1-8 MB, tens of MB for camera-class devices. */
+const DEFAULT_OTA_UPLOAD_MAX_SIZE_MB = 64;
 
 // Log level enums
 const LOG_LEVELS = ["fatal", "critical", "error", "warning", "warn", "notice", "info", "debug", "verbose"] as const;
@@ -66,6 +69,8 @@ export interface CliOptions {
     // OTA configuration
     disableOta: boolean;
     otaProviderDir: string | null;
+    otaUploadMaxInFlight: number;
+    otaUploadMaxSizeMb: number;
 
     // Time synchronization configuration
     enableTimeSync: boolean;
@@ -82,6 +87,14 @@ function parseIntOption(value: string): number {
     const parsed = parseInt(value, 10);
     if (isNaN(parsed)) {
         throw new Error(`Invalid integer: ${value}`);
+    }
+    return parsed;
+}
+
+function parsePositiveIntOption(value: string): number {
+    const parsed = parseIntOption(value);
+    if (parsed < 1) {
+        throw new InvalidArgumentError(`Value must be at least 1, got: ${value}`);
     }
     return parsed;
 }
@@ -203,6 +216,21 @@ export function parseCliArgs(argv?: string[]): CliOptions {
         .addOption(new Option("--ota-provider-dir <path>", "Directory for OTA Provider files").env("OTA_PROVIDER_DIR"))
         .addOption(
             new Option(
+                "--ota-upload-max-in-flight <count>",
+                "Maximum number of OTA firmware uploads that may be reserved or transferring at once",
+            )
+                .argParser(parsePositiveIntOption)
+                .default(DEFAULT_OTA_UPLOAD_MAX_IN_FLIGHT)
+                .env("OTA_UPLOAD_MAX_IN_FLIGHT"),
+        )
+        .addOption(
+            new Option("--ota-upload-max-size-mb <size>", "Maximum size in MB of an uploaded OTA firmware image")
+                .argParser(parsePositiveIntOption)
+                .default(DEFAULT_OTA_UPLOAD_MAX_SIZE_MB)
+                .env("OTA_UPLOAD_MAX_SIZE_MB"),
+        )
+        .addOption(
+            new Option(
                 "--enable-time-sync [value]",
                 "Enable time synchronization for nodes with the TimeSynchronization cluster. Only enable when host NTP is reliable.",
             )
@@ -305,6 +333,8 @@ export function parseCliArgs(argv?: string[]): CliOptions {
         bleProxy: opts.bleProxy,
         disableOta: opts.disableOta,
         otaProviderDir: opts.otaProviderDir ?? null,
+        otaUploadMaxInFlight: opts.otaUploadMaxInFlight,
+        otaUploadMaxSizeMb: opts.otaUploadMaxSizeMb,
         enableTimeSync: opts.enableTimeSync,
         disableDashboard: opts.disableDashboard,
         productionMode: opts.productionMode,

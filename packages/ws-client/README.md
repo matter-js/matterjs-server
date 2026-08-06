@@ -106,6 +106,7 @@ new MatterClient(url: string, wsFactory?: WebSocketFactory)
 | `setThreadOperationalDataset(dataset)` | Set Thread dataset for commissioning |
 | `checkNodeUpdate(nodeId)` | Check for firmware updates |
 | `updateNode(nodeId, version)` | Start firmware update |
+| `uploadOtaFile(file)` | Store a local `.ota` firmware image on the server (schema 13+) |
 | `addEventListener(event, callback)` | Listen for events |
 | `removeEventListener(event, callback)` | Remove event listener |
 

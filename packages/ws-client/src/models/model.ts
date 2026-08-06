@@ -560,6 +560,10 @@ export interface APICommands {
         requestArgs: { node_id: number | bigint; software_version: number | string };
         response: MatterSoftwareVersion | null;
     };
+    initiate_ota_upload: {
+        requestArgs: Record<string, never>;
+        response: OtaUploadTicket;
+    };
     discover_commissionable_nodes: {
         requestArgs: Record<string, never>;
         response: CommissionableNodeData[];
@@ -834,6 +838,16 @@ export interface MatterSoftwareVersion {
     max_applicable_software_version: number;
     release_notes_url?: string;
     update_source: UpdateSource;
+}
+
+/**
+ * Single-use authorization for one OTA firmware upload, returned by `initiate_ota_upload` and spent
+ * by a POST to `/ota-upload/<upload_id>`. `expires_in` seconds bounds when that POST may *start*.
+ */
+export interface OtaUploadTicket {
+    upload_id: string;
+    expires_in: number;
+    max_size: number;
 }
 
 export interface CommissioningParameters {

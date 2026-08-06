@@ -251,7 +251,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             return;
         }
 
-        wss.on("connection", ws => {
+        wss.on("connection", (ws, req: { socket?: { remoteAddress?: string } }) => {
             if (this.#closed || this.#shuttingDown) {
                 try {
                     ws.close(1001, "server shutting down");
@@ -577,7 +577,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             };
 
             ws.on("message", data => {
-                this.#handleWebSocketRequest(connId, connection, data.toString())
+                this.#handleWebSocketRequest(connId, connection, data.toString(), req?.socket?.remoteAddress)
                     .then(
                         ({
                             response,
@@ -668,6 +668,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         connId: string,
         connection: WebSocketConnection,
         data: string,
+        peerAddress?: string,
     ): Promise<{
         response: ErrorResultMessage | SuccessResultMessage;
         enableListeners?: boolean;
@@ -804,6 +805,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     break;
                 case "update_node":
                     result = await this.#handleUpdateNode(args);
+                    break;
+                case "initiate_ota_upload":
+                    result = await this.#controller.otaUploads.initiateOtaUpload(peerAddress);
                     break;
                 case "server_info":
                     result = await this.#getServerInfo();

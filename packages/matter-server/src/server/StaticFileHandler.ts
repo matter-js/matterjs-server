@@ -17,15 +17,21 @@ import { fileURLToPath } from "node:url";
 export class StaticFileHandler implements WebServerHandler {
     #staticPath: string;
     #productionMode: boolean;
+    #reservedPrefixes: string[];
     #indexHtml: string | null = null;
 
-    constructor(productionMode: boolean = false) {
+    /**
+     * @param reservedPrefixes Paths another registered handler answers. Anything not reserved is
+     * served (or 404'd) here, so a disabled feature's endpoint gets an answer rather than a hang.
+     */
+    constructor(productionMode: boolean = false, reservedPrefixes: string[] = []) {
         // Resolve the @matter-server/dashboard package entry point (dist/web/js/main.js)
         // and get its parent directory (dist/web) for serving static files
         const dashboardMain = import.meta.resolve("@matter-server/dashboard");
         // Go up from dist/web/js/ to dist/web/
         this.#staticPath = dirname(dirname(fileURLToPath(dashboardMain)));
         this.#productionMode = productionMode;
+        this.#reservedPrefixes = ["/ws", "/health", ...reservedPrefixes];
     }
 
     async register(server: HttpServer): Promise<void> {
@@ -44,8 +50,8 @@ export class StaticFileHandler implements WebServerHandler {
 
         // Attach to the existing server
         server.on("request", (req, res) => {
-            // Only handle requests that aren't already handled by other handlers
-            if (!req.url?.startsWith("/ws") && req.url !== "/health") {
+            const path = req.url?.split("?")[0] ?? "";
+            if (!this.#reservedPrefixes.some(prefix => path === prefix || path.startsWith(`${prefix}/`))) {
                 app(req, res);
             }
         });

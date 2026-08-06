@@ -6,6 +6,7 @@ import logging
 import os
 import pprint
 from typing import Final, cast
+from urllib.parse import urlparse, urlunparse
 
 from aiohttp import ClientSession, ClientWebSocketResponse, WSMsgType, client_exceptions
 
@@ -106,6 +107,37 @@ class MatterClientConnection:
             info.schema_version,
             info.sdk_version,
         )
+
+    def ota_upload_url(self, upload_id: str) -> str:
+        """Return the HTTP URL that takes the bytes for a reserved OTA upload id."""
+        parsed = urlparse(self.ws_server_url)
+        scheme = "https" if parsed.scheme == "wss" else "http"
+        path = parsed.path.removesuffix("/ws")
+        return urlunparse(
+            (scheme, parsed.netloc, f"{path}/ota-upload/{upload_id}", "", "", "")
+        )
+
+    async def post_ota_upload(
+        self, upload_id: str, data: bytes
+    ) -> tuple[int, dict | None]:
+        """POST raw .ota bytes for a reserved upload id.
+
+        Returns the HTTP status and the parsed JSON body, or None when the response is no
+        JSON at all (a proxy in front of the server may answer with anything).
+        """
+        url = self.ota_upload_url(upload_id)
+        LOGGER.debug("Uploading %s bytes of OTA image to %s", len(data), url)
+        try:
+            async with self._aiohttp_session.post(
+                url, data=data, headers={"Content-Type": "application/octet-stream"}
+            ) as response:
+                try:
+                    body = await response.json(loads=json_loads)
+                except (client_exceptions.ContentTypeError, ValueError):
+                    body = None
+                return response.status, body if isinstance(body, dict) else None
+        except client_exceptions.ClientError as err:
+            raise CannotConnect(err) from err
 
     async def disconnect(self) -> None:
         """Disconnect the client."""

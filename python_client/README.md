@@ -64,6 +64,22 @@ async with aiohttp.ClientSession() as session:
     nodes = client.get_nodes()
 ```
 
+### OHF-only extensions
+
+Beyond the `python-matter-server` API, the client exposes commands the Matter.js server adds:
+
+- `get_network_topology(refresh=False)` — the Thread/Wi-Fi network as a graph (schema 13+)
+- `upload_ota_file(image)` — store a local `.ota` firmware image in the server's OTA image store
+  (schema 13+). Takes the raw bytes or a path; reserves an upload id over the WebSocket session,
+  then streams the bytes to `POST /ota-upload/<upload_id>`. Raises `OtaUploadError` (code 101) for a
+  corrupt image, an expired/spent id, or disabled OTA support.
+- `get_icd_state`, `register_icd`, `unregister_icd`, `resync_icd` — ICD Check-In registration
+
+```python
+    version = await client.upload_ota_file("/path/to/firmware.ota")
+    print(version.vid, version.pid, version.software_version)
+```
+
 To use this package instead of `python-matter-server` in the Home Assistant Matter integration, change `manifest.json`:
 
 ```diff

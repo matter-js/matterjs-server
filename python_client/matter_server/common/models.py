@@ -68,6 +68,7 @@ class APICommand(str, Enum):
     RESYNC_ICD = "resync_icd"
     UNREGISTER_ICD = "unregister_icd"
     GET_NETWORK_TOPOLOGY = "get_network_topology"
+    INITIATE_OTA_UPLOAD = "initiate_ota_upload"
 
 
 EventCallBackType = Callable[[EventType, Any], None]
@@ -350,6 +351,19 @@ class UpdateSource(Enum):
     MAIN_NET_DCL = "main-net-dcl"
     TEST_NET_DCL = "test-net-dcl"
     LOCAL = "local"
+
+
+@dataclass
+class OtaUploadTicket:
+    """Single-use authorization for one OTA firmware upload.
+
+    Returned by the initiate_ota_upload command (schema 13) and spent by a POST to
+    /ota-upload/<upload_id>. `expires_in` seconds bounds when that POST may *start*.
+    """
+
+    upload_id: str
+    expires_in: int
+    max_size: int
 
 
 @dataclass

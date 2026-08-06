@@ -10,7 +10,7 @@ On connection, the server immediately sends a `server_info` message with fabric 
 {
   "fabric_id": 1234567890,
   "compressed_fabric_id": 9876543210,
-  "schema_version": 12,
+  "schema_version": 13,
   "min_supported_schema_version": 11,
   "sdk_version": "matter-server/1.1.7 (matter.js/0.17.5-alpha)",
   "wifi_credentials_set": true,
@@ -407,6 +407,27 @@ from Matter-over-Thread commissioning and can be turned off entirely with `--dis
 Issuing either Thread command opts the connection in to `thread_diagnostics_updated` events (see
 Events); a client that never queries Thread data never receives them.
 
+### Network Topology
+
+**get_network_topology** *(schema 13+)* - Return the whole Matter network as a graph
+
+Derives the Thread mesh and the Wi-Fi star from the nodes' own diagnostics, plus the discovered
+Border Routers. Optional `refresh: true` re-reads the diagnostics from every online node first
+(seconds, real radio traffic — user-initiated only, never polled). Issuing the command also opts
+the connection in to `network_topology_updated` events (see Events).
+
+```json
+{
+  "message_id": "1",
+  "command": "get_network_topology",
+  "args": { "refresh": false }
+}
+```
+
+The response is a `NetworkTopology` (`{ collected_at, nodes[], connections[] }`); see
+[the schema changelog](websocket-api-schema-changelog.md) for the node kinds, link directions and
+strength values, and `packages/ws-client/src/models/model.ts` for the exact wire shape.
+
 ### Attribute Operations
 
 **read_attribute** - Read attribute(s) from a node
@@ -660,6 +681,29 @@ Entry fields:
 }
 ```
 
+**initiate_ota_upload** *(schema 13+)* - Reserve an id for uploading a local `.ota` firmware file
+
+Returns an `upload_id` that must be POSTed to `/ota-upload/<upload_id>` (see HTTP Endpoints
+below) within `expires_in` seconds, from the same client that reserved it. Reserving an id also
+claims one of the server's limited in-flight upload slots, so a client must follow through or let
+the reservation expire before retrying. Requires OTA support to be enabled (no `--disable-ota`).
+
+```json
+{
+  "message_id": "1",
+  "command": "initiate_ota_upload",
+  "args": {}
+}
+```
+
+```json
+{
+  "upload_id": "3f9a1c2e8b7d4a10f6c9e0b2d4a17853",
+  "expires_in": 60,
+  "max_size": 67108864
+}
+```
+
 ### ICD Management
 
 Manage this controller's Intermittently Connected Device (ICD) Check-In registration with a peer node.
@@ -773,6 +817,48 @@ Import nodes from Home Assistant diagnostic dumps for testing purposes. Test nod
   }
 }
 ```
+
+## HTTP Endpoints
+
+Some functionality is exposed over plain HTTP instead of the WebSocket command channel,
+served by the same listener/port as `/ws`.
+
+**POST /ota-upload/&lt;upload_id&gt;** *(schema 13+)* - Store a local `.ota` firmware file in the OTA image store
+
+Uploading is a two-step process. First call the `initiate_ota_upload` WebSocket command (see
+Firmware Updates above) to reserve an `upload_id`; this also claims one of the server's limited
+in-flight upload slots, so the POST must follow within `expires_in` seconds. Then POST the raw
+`.ota` file bytes (no base64/JSON envelope) to that id. The id is single-use, only accepted from
+the client that reserved it, and is discarded once the POST is received, whether the upload
+succeeds or fails. The image is stored by vendor ID / product ID / software version parsed from
+its header, not tied to any particular node — `check_node_update` will surface it for any node
+whose vendor/product matches. The endpoint exists only while OTA support is enabled; with
+`--disable-ota` it is not registered at all.
+
+A *test* image (typically vendor ID `0xfff1`) is stored like any other, but the OTA provider only
+serves test images when the server also runs with `--enable-test-net-dcl` — the same restriction
+that applies to `--ota-provider-dir`.
+
+```
+POST /ota-upload/3f9a1c2e8b7d4a10f6c9e0b2d4a17853
+Content-Type: application/octet-stream
+
+<raw .ota file bytes>
+```
+
+Responses:
+
+- `200` with a JSON body matching the `MatterSoftwareVersion` shape (see `update_node`/
+  `check_node_update` above) on success.
+- `400` with `{ "error_code": number, "message": string }` on a corrupt image, an unknown/
+  expired/already-used upload id, or disabled OTA support (`error_code` 101, `OtaUploadError` —
+  see Error Codes below).
+- `404` with `{ "error": string }` if the path doesn't carry a well-formed upload id.
+- `405` with an `Allow: POST` header for any other method.
+- `413` with `{ "error": string }` if the upload exceeds the server's size limit
+  (`--ota-upload-max-size-mb`, default 64 MB). The remaining body is not read; the connection is
+  closed with the response.
+- `503` with `{ "error": string }` while the server is shutting down.
 
 ## Events
 
@@ -893,7 +979,7 @@ Format: `[node_id, "endpoint/cluster/attribute", value]`
   "data": {
     "fabric_id": 1234567890,
     "compressed_fabric_id": 9876543210,
-    "schema_version": 12,
+    "schema_version": 13,
     "min_supported_schema_version": 11,
     "sdk_version": "matter-server/1.1.7 (matter.js/0.17.5-alpha)",
     "wifi_credentials_set": true,
@@ -934,6 +1020,13 @@ older clients that don't understand the event never receive it.
 }
 ```
 
+**network_topology_updated** *(schema 13+)* - The derived network graph changed
+
+Carries the same `NetworkTopology` payload as `get_network_topology`, debounced and latest-wins
+coalesced, plus a slow periodic refresh so sleepy-device drift is eventually reflected.
+**Delivered only to connections that have issued `get_network_topology`** during their lifetime, so
+pre-schema-13 clients never receive it.
+
 ## Attribute Path Format
 
 Attribute paths use the format: `endpoint/cluster/attribute`
@@ -960,7 +1053,7 @@ Attribute paths use the format: `endpoint/cluster/attribute`
 
 ## Schema Version
 
-The current schema version is **12** (minimum supported **11**). The server reports `schema_version` and `min_supported_schema_version` in the initial connection message and via `server_info`. Clients should verify that the server's `schema_version` is within their supported range.
+The current schema version is **13** (minimum supported **11**). Commands and events added in the current schema are marked **(schema 13+)** below; see [the schema changelog](websocket-api-schema-changelog.md) for what each version added. The server reports `schema_version` and `min_supported_schema_version` in the initial connection message and via `server_info`. Clients should verify that the server's `schema_version` is within their supported range.
 
 ## BigInt Handling
 
@@ -991,6 +1084,7 @@ Error codes match the [Python Matter Server](https://github.com/home-assistant-l
 | 10 | UpdateCheckError | OTA update check failed |
 | 11 | UpdateError | OTA update failed |
 | 100 | IcdMultiAdmin | OHF extension (not in Python Matter Server). ICD registration rejected because other-vendor administrator fabrics may not support LIT. `details` is a JSON string: `{"message": string, "admin_vendor_ids": number[]}` |
+| 101 | OtaUploadError | OHF extension (not in Python Matter Server). `initiate_ota_upload` or `POST /ota-upload/<upload_id>` failed: corrupt image, unknown/expired/already-used upload id, disabled OTA support, or store failure |
 
 ## Python Matter Server Compatibility
 
@@ -1014,6 +1108,8 @@ These commands are available only in the Matter.js server and not in the Python 
 | `register_icd` | Register this controller as an ICD Check-In client |
 | `unregister_icd` | Drop this controller's ICD Check-In registration |
 | `resync_icd` | Drop the local ICD registration and reconnect |
+| `get_network_topology` | Return the Thread/Wi-Fi network as a graph (schema 13+) |
+| `initiate_ota_upload` | Reserve an id for the `POST /ota-upload/<upload_id>` HTTP endpoint (schema 13+) |
 
 ### Data Differences
 
