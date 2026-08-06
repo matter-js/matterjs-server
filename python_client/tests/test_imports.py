@@ -75,6 +75,7 @@ def test_custom_cluster_imports():
         InovelliCluster,
         NeoCluster,
         ThirdRealityMeteringCluster,
+        WagoCluster,
     )
 
     assert EveCluster is not None
@@ -83,6 +84,9 @@ def test_custom_cluster_imports():
     assert NeoCluster is not None
     assert ThirdRealityMeteringCluster is not None
     assert DraftElectricalMeasurementCluster is not None
+    assert WagoCluster is not None
+    assert hasattr(WagoCluster.Attributes, "DirectlyConnected")
+    assert hasattr(WagoCluster.Attributes, "SwitchType")
 
 
 def test_eve_new_attributes_exist():

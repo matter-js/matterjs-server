@@ -1,4 +1,4 @@
-"""UnitLocalization cluster definition (auto-generated, DO NOT edit)."""
+"""WagoCluster cluster definition (auto-generated, DO NOT edit)."""
 
 from __future__ import annotations
 
@@ -15,15 +15,15 @@ from ..Types import Nullable, NullValue
 
 
 @dataclass
-class UnitLocalization(Cluster):
-    id: typing.ClassVar[int] = 0x0000002D
+class WagoCluster(Cluster):
+    id: typing.ClassVar[int] = 0x1534FC00
 
     @ChipUtility.classproperty
     def descriptor(cls) -> ClusterObjectDescriptor:
         return ClusterObjectDescriptor(
             Fields=[
-                ClusterObjectFieldDescriptor(Label="temperatureUnit", Tag=0x00000000, Type=typing.Optional[UnitLocalization.Enums.TempUnitEnum]),
-                ClusterObjectFieldDescriptor(Label="supportedTemperatureUnits", Tag=0x00000001, Type=typing.Optional[typing.List[UnitLocalization.Enums.TempUnitEnum]]),
+                ClusterObjectFieldDescriptor(Label="directlyConnected", Tag=0x00000000, Type=typing.Optional[bool]),
+                ClusterObjectFieldDescriptor(Label="switchType", Tag=0x00000001, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="attributeList", Tag=0x0000FFFB, Type=typing.List[uint]),
@@ -31,35 +31,20 @@ class UnitLocalization(Cluster):
                 ClusterObjectFieldDescriptor(Label="clusterRevision", Tag=0x0000FFFD, Type=uint),
             ])
 
-    temperatureUnit: typing.Optional[UnitLocalization.Enums.TempUnitEnum] = None
-    supportedTemperatureUnits: typing.Optional[typing.List[UnitLocalization.Enums.TempUnitEnum]] = None
+    directlyConnected: typing.Optional[bool] = None
+    switchType: typing.Optional[uint] = None
     generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
     acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
     attributeList: typing.List[uint] = field(default_factory=lambda: [])
     featureMap: uint = 0
     clusterRevision: uint = 0
 
-    class Enums:
-        class TempUnitEnum(MatterIntEnum):
-            kFahrenheit = 0x00
-            kCelsius = 0x01
-            kKelvin = 0x02
-            # All received enum values that are not listed above will be mapped
-            # to kUnknownEnumValue. This is a helper enum value that should only
-            # be used by code to process how it handles receiving an unknown
-            # enum value. This specific value should never be transmitted.
-            kUnknownEnumValue = 3
-
-    class Bitmaps:
-        class Feature(IntFlag):
-            kTemperatureUnit = 0x1
-
     class Attributes:
         @dataclass
-        class TemperatureUnit(ClusterAttributeDescriptor):
+        class DirectlyConnected(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x0000002D
+                return 0x1534FC00
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
@@ -67,15 +52,15 @@ class UnitLocalization(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[UnitLocalization.Enums.TempUnitEnum])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[bool])
 
-            value: typing.Optional[UnitLocalization.Enums.TempUnitEnum] = None
+            value: typing.Optional[bool] = None
 
         @dataclass
-        class SupportedTemperatureUnits(ClusterAttributeDescriptor):
+        class SwitchType(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x0000002D
+                return 0x1534FC00
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
@@ -83,15 +68,15 @@ class UnitLocalization(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[typing.List[UnitLocalization.Enums.TempUnitEnum]])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
 
-            value: typing.Optional[typing.List[UnitLocalization.Enums.TempUnitEnum]] = None
+            value: typing.Optional[uint] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x0000002D
+                return 0x1534FC00
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
@@ -107,7 +92,7 @@ class UnitLocalization(Cluster):
         class AcceptedCommandList(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x0000002D
+                return 0x1534FC00
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
@@ -123,7 +108,7 @@ class UnitLocalization(Cluster):
         class AttributeList(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x0000002D
+                return 0x1534FC00
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
@@ -139,7 +124,7 @@ class UnitLocalization(Cluster):
         class FeatureMap(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x0000002D
+                return 0x1534FC00
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:
@@ -155,7 +140,7 @@ class UnitLocalization(Cluster):
         class ClusterRevision(ClusterAttributeDescriptor):
             @ChipUtility.classproperty
             def cluster_id(cls) -> int:
-                return 0x0000002D
+                return 0x1534FC00
 
             @ChipUtility.classproperty
             def attribute_id(cls) -> int:

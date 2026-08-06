@@ -44,16 +44,16 @@
         "@matter-server/custom-clusters": "*",
         "@matter-server/dashboard": "*",
         "@matter-server/ws-controller": "*",
-        "@matter/main": "0.17.7",
+        "@matter/main": "0.17.9",
         "commander": "^15.0.0",
         "express": "^5.2.1"
     },
     "devDependencies": {
         "@matter-server/ws-client": "*",
-        "@matter/nodejs": "0.17.7",
-        "@matter/testing": "0.17.7",
+        "@matter/nodejs": "0.17.9",
+        "@matter/testing": "0.17.9",
         "@types/express": "^5.0.6",
-        "@types/node": "^26.1.1"
+        "@types/node": "^26.1.2"
     },
     "engines": {
         "node": ">=22.13.0"

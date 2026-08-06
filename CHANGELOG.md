@@ -17,11 +17,16 @@ This page shows a detailed overview of the changes between versions without the 
 - Enhancement: Dashboard dev mode adds a second read button per attribute that reads across all fabrics and shows the result without caching it
 - Fix: Dashboard endpoint view refreshes its cluster list when a cluster appears or disappears on the node, or the viewed endpoint changes
 - Fix: Dashboard attribute reads are fabric-filtered like the subscription; only a read that needs to see other fabrics' data is non-fabric-filtered, and its result is not cached
-- Fix: Improves Dashboard ACL and binding edit error cases
+- Fix: Improves Dashboard ACL and binding handling of edit error cases
 - Fix: Dashboard writes (node label, ACL, bindings, Chime, dev-mode attribute write) report a device-side rejection instead of appearing to succeed
 - Fix: Improves ICD UI handling when deactivating the LIT mode
 - Fix: `WRITE_ATTRIBUTE` now also accepts struct members keyed by wire field name, not only by TLV tag
 - Fix: (lboue) Python client `write_attribute()` now serializes struct/list-of-struct values keyed by TLV tag instead of field name as the server's `WRITE_ATTRIBUTE` handler expects
+- Fix: Python client cluster definitions and Dashboard cluster descriptions no longer contain the global `EventList` attribute (0xFFFA), which was provisional and deprecated in the meantime
+- Fix: Update matter.js to 0.17.9
+    - BLE improvements and fixes
+    - OTA/BDX improvements and fixes
+    - State value access issue fixed
 
 ## 1.3.3 (2026-07-28)
 

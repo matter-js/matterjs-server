@@ -11,3 +11,4 @@ export * from "./inovelli.js";
 export * from "./neo.js";
 export * from "./tcl.js";
 export * from "./thirdreality.js";
+export * from "./wago.js";
