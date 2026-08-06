@@ -36,7 +36,9 @@
     "scripts": {
         "clean": "nacho-build clean",
         "build": "nacho-build",
-        "build-clean": "nacho-build --clean"
+        "build-clean": "nacho-build --clean",
+        "generate-cluster": "tsx scripts/generate-cluster-from-zap-xml.ts",
+        "test": "matter-test --force-exit"
     },
     "dependencies": {
         "@matter/main": "0.17.7"

@@ -20,6 +20,28 @@ Custom clusters are used by device manufacturers to expose proprietary functiona
 
 ## Adding a New Custom Cluster
 
+### Generating from a ZAP cluster XML file
+
+If the vendor (or a tool like Nordic's Matter Cluster Editor) provides a ZAP/CHIP cluster definition XML
+file — the format used by connectedhomeip's
+[sample-mei-cluster.xml](https://github.com/project-chip/connectedhomeip/blob/master/src/app/zap-templates/zcl/data-model/chip/sample-mei-cluster.xml) —
+you can generate a starting-point `src/clusters/*.ts` file from it instead of writing one by hand:
+
+```bash
+npm run generate-cluster -w @matter-server/custom-clusters -- path/to/vendor-cluster.xml
+```
+
+This writes `src/clusters/<cluster-name>.ts`, adds its export to `src/clusters/index.ts`, and prints a
+suggested row for the table above. Use `--dry-run` to preview the output without writing files, `--out`
+to pick a different output path, and `--class-name` to override the generated class name.
+
+Only `<attribute>` elements and response-less `<command>` elements are translated automatically —
+matching the decorators this package has an established, verified pattern for (see below). Commands with
+a `response=` link and `<event>` elements have no verified decorator usage in this package yet, so they're
+left out of the generated file and listed in a trailing comment instead of guessed at. **Always review the
+generated file**: datatypes are inferred from the XML's `type=`/`entryType=` attributes, not verified
+against a real device — see the "Data Types" section below.
+
 ### Basic Structure
 
 Create a new file in `src/clusters/` (e.g., `myvendor.ts`):

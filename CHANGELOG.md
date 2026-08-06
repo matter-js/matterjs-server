@@ -9,6 +9,7 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## **WORK IN PROGRESS**
 
+- Feature: (lboue) Adds a `generate-cluster` script to `@matter-server/custom-clusters` that converts a ZAP/CHIP custom cluster definition XML file (e.g. connectedhomeip's `sample-mei-cluster.xml`, or a file exported from Nordic's Matter Cluster Editor) into a custom cluster TypeScript definition
 - Enhancement: Introduces Websocket Schema version 13 (backward compatible)
     - (MindFreeze) Adds Websocket command `get_network_topology` and event `network_topology_updated` to expose the Thread and WiFi network details for external visualization
 - Enhancement: (lboue) Dashboard endpoint view shows "Client Clusters" of an endpoint and their binding status when also a Binding cluster is available
