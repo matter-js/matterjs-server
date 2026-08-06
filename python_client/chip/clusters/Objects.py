@@ -165,6 +165,7 @@ __all__ = [
     "UnitLocalization",
     "UserLabel",
     "ValveConfigurationAndControl",
+    "WagoCluster",
     "WakeOnLan",
     "WaterHeaterManagement",
     "WaterHeaterMode",

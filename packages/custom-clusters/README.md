@@ -16,6 +16,7 @@ Custom clusters are used by device manufacturers to expose proprietary functiona
 | `NeoCluster`                        | 0x125dfc11 | Neo (0x125d/4991)          | Power metering                             |
 | `HeimanCluster`                     | 0x120bfc01 | Heiman (0x120b/4619)       | Sensor states, alarms                      |
 | `ThirdRealityMeteringCluster`       | 0x130dfc02 | ThirdReality (0x130d/4877) | Power metering                             |
+| `WagoCluster`                       | 0x1534fc00 | WAGO (0x1534/5428)         | Relay switch input configuration           |
 | `DraftElectricalMeasurementCluster` | 0x00000b04 | Various                    | Draft Matter 1.0 electrical measurement    |
 
 ## Adding a New Custom Cluster

@@ -133,6 +133,7 @@ from .TotalVolatileOrganicCompoundsConcentrationMeasurement import TotalVolatile
 from .UnitLocalization import UnitLocalization
 from .UserLabel import UserLabel
 from .ValveConfigurationAndControl import ValveConfigurationAndControl
+from .WagoCluster import WagoCluster
 from .WakeOnLan import WakeOnLan
 from .WaterHeaterManagement import WaterHeaterManagement
 from .WaterHeaterMode import WaterHeaterMode
@@ -279,6 +280,7 @@ __all__ = [
     "UnitLocalization",
     "UserLabel",
     "ValveConfigurationAndControl",
+    "WagoCluster",
     "WakeOnLan",
     "WaterHeaterManagement",
     "WaterHeaterMode",

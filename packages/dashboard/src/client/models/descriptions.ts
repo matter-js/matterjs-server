@@ -19812,6 +19812,70 @@ export const clusters: Record<number, ClusterDescription> = {
         },
         "commands": {},
         "features": {}
+    },
+    "355793920": {
+        "id": 355793920,
+        "label": "WagoCluster",
+        "attributes": {
+            "0": {
+                "id": 0,
+                "cluster_id": 355793920,
+                "label": "DirectlyConnected",
+                "type": "Optional[bool]",
+                "writable": true
+            },
+            "1": {
+                "id": 1,
+                "cluster_id": 355793920,
+                "label": "SwitchType",
+                "type": "Optional[unknown]",
+                "writable": true
+            },
+            "65528": {
+                "id": 65528,
+                "cluster_id": 355793920,
+                "label": "GeneratedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65529": {
+                "id": 65529,
+                "cluster_id": 355793920,
+                "label": "AcceptedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65530": {
+                "id": 65530,
+                "cluster_id": 355793920,
+                "label": "EventList",
+                "type": "Optional[unknown]",
+                "writable": true
+            },
+            "65531": {
+                "id": 65531,
+                "cluster_id": 355793920,
+                "label": "AttributeList",
+                "type": "List[attrib-id]",
+                "writable": false
+            },
+            "65532": {
+                "id": 65532,
+                "cluster_id": 355793920,
+                "label": "FeatureMap",
+                "type": "map32",
+                "writable": false
+            },
+            "65533": {
+                "id": 65533,
+                "cluster_id": 355793920,
+                "label": "ClusterRevision",
+                "type": "uint16",
+                "writable": false
+            }
+        },
+        "commands": {},
+        "features": {}
     }
 };
 
