@@ -36,6 +36,9 @@ class WindowCovering(Cluster):
                 ClusterObjectFieldDescriptor(Label="currentPositionTiltPercent100ths", Tag=0x0000000F, Type=typing.Union[None, Nullable, uint]),
                 ClusterObjectFieldDescriptor(Label="mode", Tag=0x00000017, Type=WindowCovering.Bitmaps.Mode),
                 ClusterObjectFieldDescriptor(Label="safetyStatus", Tag=0x0000001A, Type=typing.Optional[WindowCovering.Bitmaps.SafetyStatus]),
+                ClusterObjectFieldDescriptor(Label="wagoTravelTimeUp", Tag=0x15340001, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="wagoTravelTimeDown", Tag=0x15340002, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="wagoSlatRotationTime", Tag=0x15340003, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="generatedCommandList", Tag=0x0000FFF8, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="acceptedCommandList", Tag=0x0000FFF9, Type=typing.List[uint]),
                 ClusterObjectFieldDescriptor(Label="eventList", Tag=0x0000FFFA, Type=typing.List[uint]),
@@ -58,6 +61,9 @@ class WindowCovering(Cluster):
     currentPositionTiltPercent100ths: typing.Union[None, Nullable, uint] = None
     mode: WindowCovering.Bitmaps.Mode = 0
     safetyStatus: typing.Optional[WindowCovering.Bitmaps.SafetyStatus] = None
+    wagoTravelTimeUp: typing.Optional[uint] = None
+    wagoTravelTimeDown: typing.Optional[uint] = None
+    wagoSlatRotationTime: typing.Optional[uint] = None
     generatedCommandList: typing.List[uint] = field(default_factory=lambda: [])
     acceptedCommandList: typing.List[uint] = field(default_factory=lambda: [])
     eventList: typing.List[uint] = field(default_factory=lambda: [])
@@ -470,6 +476,54 @@ class WindowCovering(Cluster):
                 return ClusterObjectFieldDescriptor(Type=typing.Optional[WindowCovering.Bitmaps.SafetyStatus])
 
             value: typing.Optional[WindowCovering.Bitmaps.SafetyStatus] = None
+
+        @dataclass
+        class WagoTravelTimeUp(ClusterAttributeDescriptor):
+            @ChipUtility.classproperty
+            def cluster_id(cls) -> int:
+                return 0x00000102
+
+            @ChipUtility.classproperty
+            def attribute_id(cls) -> int:
+                return 0x15340001
+
+            @ChipUtility.classproperty
+            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+
+            value: typing.Optional[uint] = None
+
+        @dataclass
+        class WagoTravelTimeDown(ClusterAttributeDescriptor):
+            @ChipUtility.classproperty
+            def cluster_id(cls) -> int:
+                return 0x00000102
+
+            @ChipUtility.classproperty
+            def attribute_id(cls) -> int:
+                return 0x15340002
+
+            @ChipUtility.classproperty
+            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+
+            value: typing.Optional[uint] = None
+
+        @dataclass
+        class WagoSlatRotationTime(ClusterAttributeDescriptor):
+            @ChipUtility.classproperty
+            def cluster_id(cls) -> int:
+                return 0x00000102
+
+            @ChipUtility.classproperty
+            def attribute_id(cls) -> int:
+                return 0x15340003
+
+            @ChipUtility.classproperty
+            def attribute_type(cls) -> ClusterObjectFieldDescriptor:
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+
+            value: typing.Optional[uint] = None
 
         @dataclass
         class GeneratedCommandList(ClusterAttributeDescriptor):

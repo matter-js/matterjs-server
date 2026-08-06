@@ -10436,6 +10436,27 @@ export const clusters: Record<number, ClusterDescription> = {
                 "label": "ClusterRevision",
                 "type": "ClusterRevision",
                 "writable": false
+            },
+            "355729409": {
+                "id": 355729409,
+                "cluster_id": 258,
+                "label": "WagoTravelTimeUp",
+                "type": "Optional[uint32]",
+                "writable": true
+            },
+            "355729410": {
+                "id": 355729410,
+                "cluster_id": 258,
+                "label": "WagoTravelTimeDown",
+                "type": "Optional[uint32]",
+                "writable": true
+            },
+            "355729411": {
+                "id": 355729411,
+                "cluster_id": 258,
+                "label": "WagoSlatRotationTime",
+                "type": "Optional[uint32]",
+                "writable": true
             }
         },
         "commands": {
