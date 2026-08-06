@@ -9,12 +9,12 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## **WORK IN PROGRESS**
 
-- Enhancement: Adds support for manufacturer-specific attributes on standard clusters and defines the WAGO Home Blind Control travel time attributes of the Window Covering cluster
 - Enhancement: Introduces Websocket Schema version 13 (backward compatible)
     - (MindFreeze) Adds Websocket command `get_network_topology` and event `network_topology_updated` to expose the Thread and WiFi network details for external visualization
     - (lboue) Adds Websocket command `initiate_ota_upload` plus HTTP endpoint `POST /ota-upload/<upload_id>` and error code 101 (`OtaUploadError`) to store a local `.ota` firmware image in the server's OTA image store; new CLI flags `--ota-upload-max-in-flight` and `--ota-upload-max-size-mb`
-- Feature: (lboue) Dashboard supports uploading a local `.ota` firmware file from a node's detail page
-- Feature: (lboue) Python client gained `upload_ota_file()` for the new upload endpoint
+- Enhancement: (lboue) Dashboard supports uploading a local `.ota` firmware file from a node's detail page
+- Enhancement: (lboue) Python client gained `upload_ota_file()` for the new upload endpoint
+- Enhancement: Adds support for manufacturer-specific attributes on standard clusters and defines the WAGO Home Blind Control travel time attributes of the Window Covering cluster
 - Enhancement: (lboue) Dashboard endpoint view shows "Client Clusters" of an endpoint and their binding status when also a Binding cluster is available
 - Enhancement: (lboue) Added a Schedule Configuration panel (Thermostat cluster MSCH feature) to Dashboard visualizing schedules
 - Enhancement: (lboue) Added read-only panels for the CommodityTariff and MeterIdentification clusters to Dashboard
