@@ -18851,13 +18851,6 @@ export const clusters: Record<number, ClusterDescription> = {
                 "type": "List[command-id]",
                 "writable": false
             },
-            "65530": {
-                "id": 65530,
-                "cluster_id": 355793920,
-                "label": "EventList",
-                "type": "Optional[unknown]",
-                "writable": true
-            },
             "65531": {
                 "id": 65531,
                 "cluster_id": 355793920,
