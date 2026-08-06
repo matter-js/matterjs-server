@@ -6,7 +6,8 @@
 // Must be first: applies storage-driver process.env defaults before any matter.js
 // import (which loads NodeJsEnvironment and locks in baseline variables).
 import "./pre-init.js";
-// Register the custom clusters
+// Register the custom clusters; must stay above the matter.js consuming imports below because extensions of standard
+// clusters fail once a cluster model is finalized
 import "@matter-server/custom-clusters";
 // Standard imports
 import { BleProxyHandler, ProxyBle } from "@matter-server/ble-proxy";

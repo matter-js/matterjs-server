@@ -8,13 +8,11 @@ import { WindowCovering } from "@matter/main/clusters/window-covering";
 import { clusterExtension } from "./extension.js";
 
 /**
- * WAGO (vendor ID 0x1534/5428) manufacturer-specific extensions to the
- * standard Window Covering cluster, as found on the WAGO Home Blind Control
- * (2757-1105/2757-1106).
+ * Manufacturer-specific extensions of all vendors to the standard Window Covering cluster.
  *
- * The travel times correspond to the reference times used for positioning
- * the covering. The device re-measures them on every full end-to-end travel,
- * so their values may change without an explicit write.
+ * WAGO (vendor ID 0x1534/5428), as found on the WAGO Home Blind Control (2757-1105/2757-1106): the travel times
+ * correspond to the reference times used for positioning the covering. The device re-measures them on every full
+ * end-to-end travel, so their values may change without an explicit write.
  */
 clusterExtension(WindowCovering.id, [
     {

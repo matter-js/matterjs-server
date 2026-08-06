@@ -178,3 +178,14 @@ def test_wago_window_covering_extension_attributes_exist() -> None:
     assert attrs.WagoTravelTimeDown.attribute_id == 0x15340002
     assert attrs.WagoSlatRotationTime.attribute_id == 0x15340003
     assert attrs.WagoTravelTimeUp.cluster_id == 0x0102
+
+    fields = clusters.WindowCovering.__dataclass_fields__
+    for name in ("wagoTravelTimeUp", "wagoTravelTimeDown", "wagoSlatRotationTime"):
+        assert name in fields, f"WindowCovering missing '{name}'"
+
+    tags = {
+        field.Label: field.Tag for field in clusters.WindowCovering.descriptor.Fields if field.Tag is not None
+    }
+    assert tags["wagoTravelTimeUp"] == 0x15340001
+    assert tags["wagoTravelTimeDown"] == 0x15340002
+    assert tags["wagoSlatRotationTime"] == 0x15340003

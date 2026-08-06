@@ -100,7 +100,7 @@ More advanced modifier or own datatype definitions can be added on request. Cont
 
 Some vendors do not define an entirely new cluster but instead add manufacturer-specific attributes to a standard Matter cluster, using vendor-prefixed attribute IDs (vendor ID in the upper 16 bits of the attribute ID).
 
-Such extensions are defined in `src/extensions/` using the `clusterExtension()` helper, which adds the attributes to the standard cluster in the matter.js model:
+Such extensions are defined in `src/extensions/` using the `clusterExtension()` helper, which adds the attributes to the standard cluster in the matter.js model. One file per extended cluster, named after that cluster, holds the attributes of all vendors, so that colliding attribute IDs or names are visible in one place:
 
 ```typescript
 import { WindowCovering } from "@matter/main/clusters/window-covering";
@@ -119,7 +119,7 @@ clusterExtension(WindowCovering.id, [
 
 Conformance is not declared: extension attributes are always optional (`O`).
 
-Prefix attribute names with the vendor name to avoid collisions with standard attributes. New extension files must be imported from `src/extensions/index.ts`.
+Prefix attribute names with the vendor name to avoid collisions with standard attributes. New cluster files must be imported from `src/extensions/index.ts`.
 
 ## Registration
 

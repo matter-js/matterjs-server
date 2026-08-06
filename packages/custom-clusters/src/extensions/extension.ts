@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { AttributeElement, AttributeModel, Matter, SchemaImplementationError } from "@matter/main/model";
+import { AttributeElement, AttributeModel, ClusterModel, Matter, SchemaImplementationError } from "@matter/main/model";
 import { ClusterId } from "@matter/main/types";
 
 /**
@@ -21,30 +21,57 @@ export type ExtensionAttribute = Omit<AttributeElement.Properties, "conformance"
  * and use vendor-prefixed attribute IDs (vendor ID in the upper 16 bits).
  */
 export function clusterExtension(cluster: ClusterId | string, attributes: ExtensionAttribute[]): void {
-    const clusterModel = Matter.clusters.require(cluster);
+    const clusterModel = Matter.clusters(cluster);
+    if (clusterModel === undefined) {
+        throw new SchemaImplementationError({ path: `${cluster}` }, "Cannot extend unknown cluster");
+    }
+    extendCluster(clusterModel, attributes);
+}
+
+/**
+ * Add extension attributes to a resolved cluster model. Either all attributes are added or none.
+ */
+export function extendCluster(cluster: ClusterModel, attributes: ExtensionAttribute[]): void {
     // A cluster model freezes once anything uses it, and pushing children then fails with an opaque TypeError
-    if (Object.isFrozen(clusterModel.children)) {
+    if (Object.isFrozen(cluster.children)) {
         throw new SchemaImplementationError(
-            { path: clusterModel.name },
+            { path: cluster.name },
             "Cluster is already in use and can no longer be extended; register extensions before using any cluster",
         );
     }
+
+    const models = new Array<AttributeModel>();
     for (const attribute of attributes) {
-        if (attribute.id <= 0xffff) {
-            throw new SchemaImplementationError(
-                { path: clusterModel.name },
-                `Extension attribute "${attribute.name}" must use a vendor prefixed ID (vendor ID in the upper 16 bits)`,
-            );
-        }
-        const conflict = clusterModel.attributes.find(
-            existing => existing.id === attribute.id || existing.name === attribute.name,
+        const model = new AttributeModel({ ...attribute, conformance: "O" });
+
+        assertVendorPrefixedId(cluster, model);
+
+        const conflict = [...cluster.properties, ...models].find(
+            existing => existing.id === model.id || existing.propertyName === model.propertyName,
         );
         if (conflict !== undefined) {
             throw new SchemaImplementationError(
-                { path: clusterModel.name },
-                `Extension attribute "${attribute.name}" (0x${attribute.id.toString(16)}) conflicts with attribute "${conflict.name}" (0x${conflict.id.toString(16)})`,
+                { path: cluster.name },
+                `Extension attribute "${model.name}" (0x${model.id.toString(16)}) conflicts with "${conflict.name}" (0x${conflict.id?.toString(16)})`,
             );
         }
-        clusterModel.children.push(new AttributeModel({ ...attribute, conformance: "O" }));
+
+        models.push(model);
+    }
+
+    cluster.children.push(...models);
+}
+
+/**
+ * Bounds are Matter's MEI bounds, additionally requiring a vendor prefix as extension attributes are never standard.
+ */
+function assertVendorPrefixedId(cluster: ClusterModel, attribute: AttributeModel) {
+    const vendorId = attribute.id >>> 16;
+    const suffix = attribute.id & 0xffff;
+    if (vendorId < 0x0001 || vendorId > 0xfff4 || suffix > 0xfffe) {
+        throw new SchemaImplementationError(
+            { path: cluster.name },
+            `Extension attribute "${attribute.name}" must use a vendor prefixed ID of the form 0xVVVVAAAA with a vendor ID of 0x0001 - 0xfff4 and an attribute ID of 0x0000 - 0xfffe`,
+        );
     }
 }
