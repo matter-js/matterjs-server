@@ -111,11 +111,12 @@ clusterExtension("WindowCovering", [
         name: "MyVendorTravelTime",
         type: "uint32",
         access: "RW VM",
-        conformance: "O",
         details: "Description of the attribute.",
     },
 ]);
 ```
+
+Conformance is not declared: extension attributes are always optional (`O`).
 
 Prefix attribute names with the vendor name to avoid collisions with standard attributes. New extension files must be imported from `src/extensions/index.ts`.
 

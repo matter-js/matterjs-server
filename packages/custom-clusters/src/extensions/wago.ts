@@ -21,7 +21,6 @@ clusterExtension("WindowCovering", [
         name: "WagoTravelTimeUp",
         type: "uint32",
         access: "RW VM",
-        conformance: "O",
         details: "Travel time from the fully closed to the fully open position, in units of 10 ms.",
     },
     {
@@ -29,7 +28,6 @@ clusterExtension("WindowCovering", [
         name: "WagoTravelTimeDown",
         type: "uint32",
         access: "RW VM",
-        conformance: "O",
         details: "Travel time from the fully open to the fully closed position, in units of 10 ms.",
     },
     {
@@ -37,7 +35,6 @@ clusterExtension("WindowCovering", [
         name: "WagoSlatRotationTime",
         type: "uint32",
         access: "RW VM",
-        conformance: "O",
         details: "Time for a full slat rotation, in milliseconds.",
     },
 ]);

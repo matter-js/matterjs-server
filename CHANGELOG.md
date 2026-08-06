@@ -9,6 +9,7 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## **WORK IN PROGRESS**
 
+- Enhancement: Adds support for manufacturer-specific attributes on standard clusters and defines the WAGO Home Blind Control travel time attributes of the Window Covering cluster
 - Enhancement: Introduces Websocket Schema version 13 (backward compatible)
     - (MindFreeze) Adds Websocket command `get_network_topology` and event `network_topology_updated` to expose the Thread and WiFi network details for external visualization
 - Enhancement: (lboue) Dashboard endpoint view shows "Client Clusters" of an endpoint and their binding status when also a Binding cluster is available

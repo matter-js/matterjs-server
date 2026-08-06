@@ -6,7 +6,7 @@
 
 import { Matter, Schema } from "@matter/main/model";
 import * as Clusters from "./clusters/index.js";
-// Register vendor specific extensions to standard clusters
+// Register vendor-specific extensions to standard clusters
 import "./extensions/index.js";
 
 for (const ClusterDefinition of Object.values(Clusters)) {
