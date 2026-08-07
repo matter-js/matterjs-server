@@ -14,6 +14,9 @@ const logger = Logger.get("OtaUploadHandler");
 
 const UPLOAD_PATH = /^\/ota-upload\/([0-9a-f]{32})$/;
 
+/** How long a rejected body may keep its socket busy before the connection is taken down. */
+const DISCARD_TIMEOUT_MS = 30_000;
+
 /** Thrown once the streamed body passes the configured limit, to distinguish it from I/O failures. */
 class UploadTooLargeError extends Error {}
 
@@ -199,8 +202,17 @@ export class OtaUploadHandler implements WebServerHandler {
             return;
         }
         if (discardBody) {
-            res.setHeader("Connection", "close");
-            res.once("finish", () => req.destroy());
+            res.once("finish", () => {
+                if (req.destroyed || req.readableEnded) {
+                    return;
+                }
+                // Tearing the socket down while the peer is still writing resets it, and the
+                // rejection it has not read yet goes with it. `Connection: close` counts as tearing
+                // it down: Node destroys the socket as soon as such a response is flushed.
+                const deadline = setTimeout(() => req.destroy(), DISCARD_TIMEOUT_MS).unref();
+                req.once("end", () => req.destroy());
+                req.once("close", () => clearTimeout(deadline));
+            });
         }
         req.resume();
         this.#respondJson(res, status, body);
