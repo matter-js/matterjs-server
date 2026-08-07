@@ -195,13 +195,20 @@ describe("OtaUploadHandler", () => {
         request.on("error", () => {});
 
         try {
+            let stillWriting: boolean | undefined;
             const response = await new Promise<IncomingMessage>((resolve, reject) => {
-                request.on("response", resolve);
+                request.on("response", message => {
+                    stillWriting = !request.writableFinished;
+                    resolve(message);
+                });
                 request.on("error", reject);
                 request.end(Buffer.alloc(declared));
             });
             response.resume();
 
+            // A body that drained before the answer arrived would leave nothing for the socket
+            // teardown to discard, and the test would pass without exercising the race at all.
+            expect(stillWriting).to.be.true;
             expect(response.statusCode).to.equal(413);
             expect(staging.completed).to.be.empty;
         } finally {
