@@ -8,7 +8,7 @@ import { ServerError, ServerErrorCode, UpdateSource, type MatterSoftwareVersion 
 import { Logger, LogLevel } from "@matter/main";
 import type { Diagnostic } from "@matter/main";
 import { chmod, mkdtemp, readdir, rm } from "node:fs/promises";
-import { createServer, type Server } from "node:http";
+import { createServer, request as httpRequest, type IncomingMessage, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { OtaUploadHandler } from "../src/server/OtaUploadHandler.js";
@@ -58,10 +58,22 @@ class TestStaging {
 
 const UPLOAD_ID = "0123456789abcdef0123456789abcdef";
 
+/**
+ * Node <=22 leaks the connection count of a socket the peer reset while a response was being
+ * written, and `close()` then never calls back.
+ */
+function closeServer(server: Server): Promise<void> {
+    return new Promise<void>(resolve => {
+        server.close(() => resolve());
+        server.closeAllConnections();
+    });
+}
+
 describe("OtaUploadHandler", () => {
     let stagingDir: string;
     let staging: TestStaging;
     let server: Server;
+    let port: number;
     let baseUrl: string;
     let logged: Diagnostic.Message[];
     let restoreLog: () => void;
@@ -85,12 +97,13 @@ describe("OtaUploadHandler", () => {
         if (address === null || typeof address === "string") {
             throw new Error("Expected a TCP address");
         }
-        baseUrl = `http://127.0.0.1:${address.port}`;
+        port = address.port;
+        baseUrl = `http://127.0.0.1:${port}`;
     });
 
     afterEach(async () => {
         restoreLog();
-        await new Promise<void>(resolve => server.close(() => resolve()));
+        await closeServer(server);
         await rm(stagingDir, { recursive: true, force: true });
     });
 
@@ -165,6 +178,42 @@ describe("OtaUploadHandler", () => {
         // client for the reservation lifetime, since a reservation cannot be handed back.
         expect(staging.released).to.deep.equal([UPLOAD_ID]);
         expect(await readdir(stagingDir)).to.be.empty;
+    });
+
+    it("delivers the rejection to a client still writing the body it declared", async () => {
+        const declared = 4 * 1024 * 1024;
+
+        const request = httpRequest({
+            host: "127.0.0.1",
+            port,
+            path: `/ota-upload/${UPLOAD_ID}`,
+            method: "POST",
+            headers: { "Content-Length": String(declared) },
+        });
+        // The rest of the body is still in flight once the answer is in, so the socket goes down
+        // under it either way; only a failure before the answer is a test failure.
+        request.on("error", () => {});
+
+        try {
+            let stillWriting: boolean | undefined;
+            const response = await new Promise<IncomingMessage>((resolve, reject) => {
+                request.on("response", message => {
+                    stillWriting = !request.writableFinished;
+                    resolve(message);
+                });
+                request.on("error", reject);
+                request.end(Buffer.alloc(declared));
+            });
+            response.resume();
+
+            // A body that drained before the answer arrived would leave nothing for the socket
+            // teardown to discard, and the test would pass without exercising the race at all.
+            expect(stillWriting).to.be.true;
+            expect(response.statusCode).to.equal(413);
+            expect(staging.completed).to.be.empty;
+        } finally {
+            request.destroy();
+        }
     });
 
     it("rejects a body that outgrows the limit without declaring its length", async () => {
@@ -258,7 +307,7 @@ describe("OtaUploadHandler", () => {
             expect(staging.completed).to.be.empty;
         } finally {
             await handler.unregister();
-            await new Promise<void>(resolve => shuttingDown.close(() => resolve()));
+            await closeServer(shuttingDown);
         }
     });
 

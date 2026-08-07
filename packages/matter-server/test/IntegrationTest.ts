@@ -14,6 +14,7 @@
 import { ServerErrorCode } from "@matter-server/ws-controller";
 import { ChildProcess } from "child_process";
 import { stat } from "node:fs/promises";
+import { request as httpRequest, type IncomingMessage } from "node:http";
 import {
     cleanupTempStorage,
     createTempStoragePaths,
@@ -316,12 +317,36 @@ describe("Integration Test", function () {
             it("should reject an OTA upload larger than the configured limit", async function () {
                 const ticket = await client.sendCommand("initiate_ota_upload", 13, {});
 
-                const response = await fetch(`http://localhost:${SERVER_PORT}/ota-upload/${ticket.upload_id}`, {
+                // The rejection lands on the declared length, so the body must stay unsent: a client
+                // still writing when the socket goes down reads a broken pipe, not the answer.
+                const request = httpRequest({
+                    host: "localhost",
+                    port: SERVER_PORT,
+                    path: `/ota-upload/${ticket.upload_id}`,
                     method: "POST",
-                    body: Buffer.alloc(ticket.max_size + 1),
+                    headers: { "Content-Length": String(ticket.max_size + 1) },
                 });
+                request.on("error", () => {});
 
-                expect(response.status).to.equal(413);
+                try {
+                    const response = await new Promise<IncomingMessage>((resolve, reject) => {
+                        request.on("response", resolve);
+                        request.on("error", reject);
+                        request.write("x");
+                    });
+                    response.resume();
+
+                    expect(response.statusCode).to.equal(413);
+                } finally {
+                    request.destroy();
+                }
+
+                const replay = await fetch(`http://localhost:${SERVER_PORT}/ota-upload/${ticket.upload_id}`, {
+                    method: "POST",
+                    body: Buffer.from("not a real ota file"),
+                });
+                expect(replay.status).to.equal(400);
+                expect((await replay.json()).error_code).to.equal(ServerErrorCode.OtaUploadError);
             });
 
             it("should reject an OTA upload POST without a valid id", async function () {

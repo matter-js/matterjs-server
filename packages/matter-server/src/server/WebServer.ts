@@ -111,6 +111,9 @@ export class WebServer {
                                 resolve();
                             }
                         });
+                        // Node <=22 leaks the connection count of a socket the peer reset while a
+                        // response was being written, and `close()` then never calls back.
+                        server.closeAllConnections();
                     }),
             ),
         );
