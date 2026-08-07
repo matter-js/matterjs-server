@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 from bleak import BleakScanner
 
+from ._bleak_compat import get_bleak_client_adapter_arg
 from .client import BleDeviceResolver, BleScanSource
 from .protocol import AdvertisementData
 
@@ -34,8 +35,9 @@ class BleakScanSource(BleScanSource):
     handshake) — typically tens to hundreds of milliseconds.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, hci_id: int | None = None) -> None:
         """Initialize."""
+        self._hci_id = hci_id
         self._scanner: BleakScanner | None = None
         self._callback: Callable[[AdvertisementData], None] | None = None
         # Cache the most recent BLEDevice per address so BleakDeviceResolver
@@ -53,7 +55,9 @@ class BleakScanSource(BleScanSource):
         self._callback = callback
         if self._scanner is not None:
             return
-        self._scanner = BleakScanner(detection_callback=self._on_detection)
+
+        self._scanner = self._get_bleak_scanner()
+
         await self._scanner.start()
 
     async def stop(self) -> None:
@@ -67,7 +71,16 @@ class BleakScanSource(BleScanSource):
             except Exception:
                 _LOGGER.debug("Error stopping BleakScanner", exc_info=True)
 
-    def _on_detection(self, device: BLEDevice, advertisement: BleakAdvertisementData) -> None:
+    def _get_bleak_scanner(self) -> BleakScanner:
+        bleak_adapter_args = get_bleak_client_adapter_arg(self._hci_id)
+        return BleakScanner(
+            detection_callback=self._on_detection,
+            **bleak_adapter_args,
+        )
+
+    def _on_detection(
+        self, device: BLEDevice, advertisement: BleakAdvertisementData
+    ) -> None:
         self._device_cache[device.address] = device
         cb = self._callback
         if cb is None:
