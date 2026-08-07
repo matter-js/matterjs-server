@@ -15,7 +15,7 @@ const logger = Logger.get("OtaUploadHandler");
 const UPLOAD_PATH = /^\/ota-upload\/([0-9a-f]{32})$/;
 
 /** How long a rejected body may keep its socket busy before the connection is taken down. */
-const DISCARD_TIMEOUT_MS = 30_000;
+const DISCARD_TIMEOUT_MS = 10_000;
 
 /** Thrown once the streamed body passes the configured limit, to distinguish it from I/O failures. */
 class UploadTooLargeError extends Error {}
