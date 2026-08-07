@@ -1779,12 +1779,11 @@ export class ControllerCommandHandler {
         await otaProvider.act(agent =>
             agent
                 .get(SoftwareUpdateManager)
-                .forceUpdate(
-                    this.#controller.fabric.addressOf(nodeId),
-                    updateInfo.vendorId,
-                    updateInfo.productId,
-                    softwareVersion,
-                ),
+                .forceUpdate(this.#controller.fabric.addressOf(nodeId), {
+                    vendorId: updateInfo.vendorId,
+                    productId: updateInfo.productId,
+                    targetSoftwareVersion: softwareVersion,
+                }),
         );
 
         return this.#convertToMatterSoftwareVersion(updateInfo);
