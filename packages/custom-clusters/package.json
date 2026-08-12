@@ -44,7 +44,7 @@
     },
     "devDependencies": {
         "@matter/testing": "0.17.9",
-        "@types/node": "^26.1.2"
+        "@types/node": "^26.2.0"
     },
     "engines": {
         "node": ">=22.13.0"
