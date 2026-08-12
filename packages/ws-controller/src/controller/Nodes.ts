@@ -4,9 +4,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { NodeId } from "@matter/main";
+import { ClientNode, NodeId } from "@matter/main";
 import { EndpointNumber } from "@matter/main/types";
-import { NodeStates, PairedNode } from "@project-chip/matter.js/device";
+import { NodeStates } from "@project-chip/matter.js/device";
 import { ServerError } from "../types/WebSocketMessageTypes.js";
 import { AttributeDataCache } from "./AttributeDataCache.js";
 
@@ -14,13 +14,13 @@ import { AttributeDataCache } from "./AttributeDataCache.js";
  * Manages node storage and tracks per-node availability.
  *
  * This class handles:
- * - Storage of PairedNode instances
+ * - Storage of ClientNode instances
  * - Node retrieval and existence checking
  * - Attribute data caching
  * - Connection state tracking for availability debouncing
  */
 export class Nodes {
-    #nodes = new Map<NodeId, PairedNode>();
+    #nodes = new Map<NodeId, ClientNode>();
     #attributeCache = new AttributeDataCache();
     /** Cached so serialization and event paths always agree on availability. */
     #lastAvailability = new Map<NodeId, boolean>();
@@ -40,7 +40,7 @@ export class Nodes {
     }
 
     /** @throws ServerError if node not found */
-    get(nodeId: NodeId): PairedNode {
+    get(nodeId: NodeId): ClientNode {
         const node = this.#nodes.get(nodeId);
         if (node === undefined) {
             throw ServerError.nodeNotExists(nodeId);
@@ -52,7 +52,7 @@ export class Nodes {
         return this.#nodes.has(nodeId);
     }
 
-    set(nodeId: NodeId, node: PairedNode): void {
+    set(nodeId: NodeId, node: ClientNode): void {
         this.#nodes.set(nodeId, node);
     }
 

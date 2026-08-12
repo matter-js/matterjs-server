@@ -6,11 +6,11 @@
 
 import { ClientNode, ClusterBehavior, Diagnostic, Logger, MatterError, Millis, NodeId, Time } from "@matter/main";
 import { DecodedAttributeReportValue } from "@matter/main/protocol";
-import { PairedNode } from "@project-chip/matter.js/device";
 import { ClusterMap } from "../model/ModelMapper.js";
 import { buildAttributePath, convertMatterToWebSocketTagBased } from "../server/Converters.js";
 import { AttributesData } from "../types/CommandHandler.js";
 import { formatNodeId } from "../util/formatNodeId.js";
+import { nodeIdOf } from "../util/nodeIdOf.js";
 
 const logger = Logger.get("AttributeDataCache");
 
@@ -40,7 +40,7 @@ export class AttributeDataCache {
      * Add a node to the cache and populate its attributes.
      * No entry is created if the node is not yet initialized.
      */
-    add(node: PairedNode): Promise<void> {
+    add(node: ClientNode): Promise<void> {
         return this.#populateFromNode(node, false);
     }
 
@@ -63,7 +63,7 @@ export class AttributeDataCache {
      * Creates a fresh cache from the node's current state.
      * Use this when the node structure may have changed (endpoints added/removed).
      */
-    update(node: PairedNode): Promise<void> {
+    update(node: ClientNode): Promise<void> {
         return this.#populateFromNode(node, true);
     }
 
@@ -128,9 +128,10 @@ export class AttributeDataCache {
      * pass redone from a caller that merely awaits completion (a read). Only the former schedules a
      * re-run; reads just await the in-flight promise, so frequent reads can never thrash the populate.
      */
-    #populateFromNode(node: PairedNode, rebuild: boolean): Promise<void> {
-        const nodeId = node.nodeId;
-        if (!node.initialized || !node.node.lifecycle.isCommissioned || !node.node.lifecycle.isReady) {
+    #populateFromNode(node: ClientNode, rebuild: boolean): Promise<void> {
+        const nodeId = nodeIdOf(node);
+        const { isSeeded, isCommissioned, isReady } = node.lifecycle;
+        if (!isSeeded || !isCommissioned || !isReady) {
             logger.debug(`Node ${formatNodeId(nodeId)} not initialized, skipping cache population`);
             return Promise.resolve();
         }
@@ -145,13 +146,12 @@ export class AttributeDataCache {
         }
 
         const context: PopulateContext = { rerun: false, cancelled: false, pending: [], promise: Promise.resolve() };
-        context.promise = this.#runPopulate(node, context);
+        context.promise = this.#runPopulate(nodeId, node, context);
         this.#inFlight.set(nodeId, context);
         return context.promise;
     }
 
-    async #runPopulate(node: PairedNode, context: PopulateContext): Promise<void> {
-        const nodeId = node.nodeId;
+    async #runPopulate(nodeId: NodeId, node: ClientNode, context: PopulateContext): Promise<void> {
         try {
             let attributeCount = 0;
             const startedAt = Time.nowMs;
@@ -160,7 +160,7 @@ export class AttributeDataCache {
                 context.pending = [];
 
                 const attributes: AttributesData = {};
-                await this.#collectAttributes(node.node, attributes, context);
+                await this.#collectAttributes(node, attributes, context);
 
                 // The node may have been deleted (or this run superseded) while suspended at a yield;
                 // dropping the snapshot avoids resurrecting a removed node's cache entry.

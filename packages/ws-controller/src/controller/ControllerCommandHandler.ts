@@ -103,6 +103,7 @@ import {
 } from "../types/WebSocketMessageTypes.js";
 import { formatNodeId } from "../util/formatNodeId.js";
 import { pingIp } from "../util/network.js";
+import { nodeIdOf } from "../util/nodeIdOf.js";
 import { CustomClusterPoller } from "./CustomClusterPoller.js";
 import { NodeAttributeReader } from "./NodeProcessor.js";
 import { Nodes } from "./Nodes.js";
@@ -162,6 +163,12 @@ export class ControllerCommandHandler {
     readonly #otaEnabled: boolean;
     /** Node management and attribute cache */
     #nodes = new Nodes();
+    /**
+     * Legacy per-node handles. Still the only source of the change/state event bus, of `connect()`/
+     * `triggerReconnect()`, and of the connection state PairedNode maintains independently of
+     * {@link ClientNode.lifecycle} — the two must not be mixed.
+     */
+    #pairedNodes = new Map<NodeId, PairedNode>();
     /** Cache of available updates keyed by nodeId */
     #availableUpdates = new Map<NodeId, SoftwareUpdateInfo>();
     /** Poller for custom cluster attributes (Eve energy, etc.) */
@@ -216,7 +223,7 @@ export class ControllerCommandHandler {
         this.#otaEnabled = otaEnabled;
 
         const attributeReader: NodeAttributeReader = {
-            nodeConnected: peer => !!(this.#nodes.has(peer.nodeId) && this.#nodes.get(peer.nodeId).isConnected),
+            nodeConnected: peer => this.#isConnected(peer.nodeId),
             handleReadAttributes: (peer, paths, fabricFiltered) =>
                 this.handleReadAttributes(peer.nodeId, paths, fabricFiltered),
         };
@@ -233,7 +240,7 @@ export class ControllerCommandHandler {
             logger.info("Time synchronization enabled");
             this.#timeSyncManager = new TimeSyncManager({
                 syncTime: peer => this.#syncNodeTime(peer.nodeId),
-                nodeConnected: peer => !!(this.#nodes.has(peer.nodeId) && this.#nodes.get(peer.nodeId).isConnected),
+                nodeConnected: peer => this.#isConnected(peer.nodeId),
                 commissionedNodeCount: () => this.#controller.getCommissionedNodes().length,
             });
         }
@@ -252,6 +259,11 @@ export class ControllerCommandHandler {
             throw new Error(`Cannot resolve PeerAddress for node ${nodeId}: controller fabric is not initialized`);
         }
         return PeerAddress({ fabricIndex: fabric.fabricIndex, nodeId });
+    }
+
+    /** Connection state still comes from the legacy handle; see {@link ControllerCommandHandler.#pairedNodes}. */
+    #isConnected(nodeId: NodeId): boolean {
+        return this.#pairedNodes.get(nodeId)?.isConnected ?? false;
     }
 
     /**
@@ -402,7 +414,7 @@ export class ControllerCommandHandler {
             ];
         selectWebRtcStreamFields(fields, clusterRevision);
 
-        const response = (await this.#invokeCommand(node.node, {
+        const response = (await this.#invokeCommand(node, {
             endpoint: endpointId,
             cluster: WebRtcTransportProvider,
             command,
@@ -442,7 +454,7 @@ export class ControllerCommandHandler {
                 )}: request lacks a stream usage or any video/audio stream, so signaling cannot be routed for it`,
             );
             try {
-                await this.#invokeCommand(node.node, {
+                await this.#invokeCommand(node, {
                     endpoint: endpointId,
                     cluster: WebRtcTransportProvider,
                     command: "endSession",
@@ -501,7 +513,7 @@ export class ControllerCommandHandler {
      * TimeSynchronization cluster.
      */
     async #syncNodeTime(nodeId: NodeId): Promise<void> {
-        const node = this.#nodes.get(nodeId).node;
+        const node = this.#nodes.get(nodeId);
         const attributes = this.#nodes.attributeCache.get(nodeId) ?? {};
         const invokers: TimeSyncInvokers = {
             setUtcTime: async fields => {
@@ -565,14 +577,15 @@ export class ControllerCommandHandler {
     }
 
     async #registerNode(nodeId: NodeId) {
-        const node = await this.#controller.getNode(nodeId);
+        const pairedNode = await this.#controller.getNode(nodeId);
+        const node = pairedNode.node;
         const attributeCache = this.#nodes.attributeCache;
 
         // Per-node ObserverGroup so all subscriptions are cleaned up on decommission
         const nodeObservers = new ObserverGroup();
         this.#nodeObservers.set(nodeId, nodeObservers);
 
-        nodeObservers.on(node.events.attributeChanged, data => {
+        nodeObservers.on(pairedNode.events.attributeChanged, data => {
             attributeCache.updateAttribute(nodeId, data);
             this.events.attributeChanged.emit(nodeId, data);
             if (
@@ -583,7 +596,7 @@ export class ControllerCommandHandler {
                 this.#basicInfoChangedInBatch.add(nodeId);
             }
         });
-        nodeObservers.on(node.events.connectionAlive, () => {
+        nodeObservers.on(pairedNode.events.connectionAlive, () => {
             if (this.#basicInfoChangedInBatch.delete(nodeId) && !this.#nodeUpdateTimers.has(nodeId)) {
                 logger.info(
                     `Node ${this.formatNode(nodeId)} basic information changed, sending full node_updated in 6s`,
@@ -597,7 +610,7 @@ export class ControllerCommandHandler {
                 this.#nodeUpdateTimers.set(nodeId, timer);
             }
         });
-        nodeObservers.on(node.events.eventTriggered, data => {
+        nodeObservers.on(pairedNode.events.eventTriggered, data => {
             this.events.eventChanged.emit(nodeId, data);
             // Filter timeFailure events to trigger time sync
             if (
@@ -609,32 +622,33 @@ export class ControllerCommandHandler {
                 this.#timeSyncManager.syncNode(this.#peerOf(nodeId), SyncTrigger.TimeFailure);
             }
         });
-        nodeObservers.on(node.events.stateChanged, state => {
+        nodeObservers.on(pairedNode.events.stateChanged, state => {
             this.#handleNodeStateChange(node, state).catch(error =>
                 logger.warn(`Failed to handle state change for node ${this.formatNode(nodeId)}:`, error),
             );
         });
-        nodeObservers.on(node.events.structureChanged, () => {
+        nodeObservers.on(pairedNode.events.structureChanged, () => {
             this.#handleNodeStructureChange(node).catch(error =>
                 logger.warn(`Failed to handle structure change for node ${this.formatNode(nodeId)}:`, error),
             );
         });
-        nodeObservers.on(node.events.decommissioned, () => {
+        nodeObservers.on(pairedNode.events.decommissioned, () => {
             this.#cleanupNodeAfterRemoval(nodeId);
             this.events.nodeDecommissioned.emit(nodeId);
         });
-        nodeObservers.on(node.events.nodeEndpointAdded, endpointId =>
+        nodeObservers.on(pairedNode.events.nodeEndpointAdded, endpointId =>
             this.#nodes.queueEndpointAdded(nodeId, endpointId),
         );
-        nodeObservers.on(node.events.nodeEndpointRemoved, endpointId =>
+        nodeObservers.on(pairedNode.events.nodeEndpointRemoved, endpointId =>
             this.events.nodeEndpointRemoved.emit(nodeId, endpointId),
         );
 
+        this.#pairedNodes.set(nodeId, pairedNode);
         this.#nodes.set(nodeId, node);
 
-        this.#nodes.seedState(nodeId, node.connectionState);
+        this.#nodes.seedState(nodeId, pairedNode.connectionState);
 
-        if (node.initialized) {
+        if (node.lifecycle.isSeeded) {
             await attributeCache.add(node);
             const attributes = attributeCache.get(nodeId);
             if (attributes) {
@@ -648,8 +662,8 @@ export class ControllerCommandHandler {
         return node;
     }
 
-    async #handleNodeStateChange(node: PairedNode, state: NodeStates): Promise<void> {
-        const nodeId = node.nodeId;
+    async #handleNodeStateChange(node: ClientNode, state: NodeStates): Promise<void> {
+        const nodeId = nodeIdOf(node);
 
         // Arm on Connected->Reconnecting only; keep running across later
         // non-Connected states; cancel on return to Connected.
@@ -711,14 +725,14 @@ export class ControllerCommandHandler {
         }
     }
 
-    async #handleNodeStructureChange(node: PairedNode): Promise<void> {
-        const nodeId = node.nodeId;
+    async #handleNodeStructureChange(node: ClientNode): Promise<void> {
+        const nodeId = nodeIdOf(node);
         this.#basicInfoChangedInBatch.delete(nodeId);
 
         this.#nodeUpdateTimers.get(nodeId)?.stop();
         this.#nodeUpdateTimers.delete(nodeId);
 
-        if (node.isConnected) {
+        if (this.#isConnected(nodeId)) {
             await this.#nodes.attributeCache.update(node);
         }
         this.events.nodeStructureChanged.emit(nodeId);
@@ -762,12 +776,17 @@ export class ControllerCommandHandler {
             try {
                 const node = this.#nodes.get(nodeId);
 
-                if (node.node.maybeStateOf(NetworkClient)?.defaultSubscription !== undefined) {
+                if (node.maybeStateOf(NetworkClient)?.defaultSubscription !== undefined) {
                     // Clear former set subscription details, let matter.js handle that now
-                    await node.node.set({ network: { defaultSubscription: undefined } });
+                    await node.set({ network: { defaultSubscription: undefined } });
                 }
 
-                node.connect();
+                const pairedNode = this.#pairedNodes.get(nodeId);
+                if (pairedNode === undefined) {
+                    logger.warn(`Node "${this.formatNode(nodeId)}" vanished before connecting, skipping`);
+                    continue;
+                }
+                pairedNode.connect();
             } catch (error) {
                 logger.warn(`Failed to connect node "${this.formatNode(nodeId)}":`, error);
             }
@@ -813,7 +832,7 @@ export class ControllerCommandHandler {
             }),
             includeKnownVersions: true, // do not send DataVersionFilters, so we do a new clean read
         };
-        for await (const _chunk of node.node.interaction.read(read));
+        for await (const _chunk of node.interaction.read(read));
     }
 
     /**
@@ -822,7 +841,7 @@ export class ControllerCommandHandler {
      */
     async ensureNodePopulated(nodeId: NodeId): Promise<void> {
         const node = this.#nodes.get(nodeId);
-        if (node.initialized && !this.#nodes.attributeCache.has(nodeId)) {
+        if (node.lifecycle.isSeeded && !this.#nodes.attributeCache.has(nodeId)) {
             await this.#nodes.attributeCache.add(node);
         }
     }
@@ -868,8 +887,10 @@ export class ControllerCommandHandler {
         }
 
         return {
-            node_id: node.nodeId,
-            date_commissioned: getDateAsString(new Date(node.state.commissioning.commissionedAt ?? Date.now())),
+            node_id: nodeId,
+            date_commissioned: getDateAsString(
+                new Date(node.maybeStateOf(CommissioningClient)?.commissionedAt ?? Date.now()),
+            ),
             last_interview: getDateAsString(lastInterviewDate ?? new Date()),
             interview_version: 6,
             available: this.#nodes.isAvailable(nodeId),
@@ -908,7 +929,7 @@ export class ControllerCommandHandler {
                 includeKnownVersions: true,
             };
 
-            for await (const chunk of node.node.interaction.read(readRequest)) {
+            for await (const chunk of node.interaction.read(readRequest)) {
                 for await (const entry of chunk) {
                     if (entry.kind === "attr-value") {
                         const { pathStr, value: wsValue } = this.#convertAttributeToWebSocket(
@@ -976,7 +997,7 @@ export class ControllerCommandHandler {
         const clusterProperty = clusterEntry.model.propertyName;
 
         try {
-            await node.node.endpoints.for(endpointId).setStateOf(clusterProperty, { [attributeName]: value });
+            await node.endpoints.for(endpointId).setStateOf(clusterProperty, { [attributeName]: value });
             return { status: 0 };
         } catch (error) {
             if (error instanceof MatterAggregateError) {
@@ -1081,7 +1102,7 @@ export class ControllerCommandHandler {
         const clusterName = clusterEntry.model.propertyName;
         const commandName = camelize(data.commandName);
         const commands = (
-            this.#nodes.get(nodeId).node.endpoints.for(endpointId).commands as Record<string, Record<string, unknown>>
+            this.#nodes.get(nodeId).endpoints.for(endpointId).commands as Record<string, Record<string, unknown>>
         )[clusterName];
         if (!commands[commandName]) {
             throw ServerError.invalidArguments(`Command "${commandName}" does not exist on cluster "${clusterName}"`);
@@ -1116,7 +1137,7 @@ export class ControllerCommandHandler {
 
         // Execute and track the command
         const invokePromise = this.#invokeCommand(
-            this.#nodes.get(nodeId).node,
+            this.#nodes.get(nodeId),
             {
                 endpoint: endpointId,
                 cluster,
@@ -1342,7 +1363,7 @@ export class ControllerCommandHandler {
 
         // Fall back to commissioning addresses from the node state if mDNS fails
         const node = this.#nodes.get(nodeId);
-        const commissioningAddresses = node.node.maybeStateOf(CommissioningClient)?.addresses;
+        const commissioningAddresses = node.maybeStateOf(CommissioningClient)?.addresses;
         if (commissioningAddresses !== undefined && commissioningAddresses.length > 0) {
             const fallbackAddresses = commissioningAddresses.filter(ServerAddress.isIp).map(addr => addr.ip);
             for (const address of fallbackAddresses) {
@@ -1393,8 +1414,9 @@ export class ControllerCommandHandler {
      * @returns A record of IP addresses to ping success status
      */
     async pingNode(nodeId: NodeId, attempts = 1): Promise<NodePingResult> {
-        const node = this.#nodes.get(nodeId);
-
+        if (!this.#nodes.has(nodeId)) {
+            throw ServerError.nodeNotExists(nodeId);
+        }
         const result: NodePingResult = {};
 
         // Get all IP addresses for the node (fresh lookup, not cached)
@@ -1419,7 +1441,7 @@ export class ControllerCommandHandler {
         await Promise.all(pingPromises);
 
         // If the node is connected, treat the connection as valid
-        if (node.isConnected) {
+        if (this.#isConnected(nodeId)) {
             // Find any successful ping or mark the connection as reachable
             const anySuccess = Object.values(result).some(v => v);
             if (!anySuccess && ipAddresses.length > 0) {
@@ -1433,17 +1455,16 @@ export class ControllerCommandHandler {
     }
 
     async decommissionNode(nodeId: NodeId) {
-        const node = this.#nodes.has(nodeId) ? this.#nodes.get(nodeId) : undefined;
-        if (node === undefined) {
+        if (!this.#nodes.has(nodeId)) {
             throw ServerError.nodeNotExists(nodeId);
         }
-        await this.#controller.removeNode(nodeId, !!node?.isConnected);
+        await this.#controller.removeNode(nodeId, this.#isConnected(nodeId));
         this.#cleanupNodeAfterRemoval(nodeId);
     }
 
     /**
      * Drop all references to a removed node so subsequent reads don't reach a
-     * destroyed PairedNode. Idempotent — both the `decommissioned` listener
+     * destroyed node handle. Idempotent — both the `decommissioned` listener
      * (external fabric leave) and `decommissionNode` invoke it, and the
      * listener may have run first.
      */
@@ -1456,6 +1477,7 @@ export class ControllerCommandHandler {
         this.#nodeObservers.delete(nodeId);
         this.#basicInfoChangedInBatch.delete(nodeId);
         this.#pendingLazyPopulate.delete(nodeId);
+        this.#pairedNodes.delete(nodeId);
         this.#nodes.delete(nodeId);
         const peer = this.#peerOf(nodeId);
         this.#customClusterPoller.unregisterNode(peer);
@@ -1467,7 +1489,12 @@ export class ControllerCommandHandler {
     async openCommissioningWindow(data: OpenCommissioningWindowRequest): Promise<OpenCommissioningWindowResponse> {
         const { nodeId, timeout } = data;
         const node = this.#nodes.get(nodeId);
-        const { manualPairingCode, qrPairingCode } = await node.openEnhancedCommissioningWindow(timeout);
+        if (timeout !== undefined && (!Number.isFinite(timeout) || timeout <= 0)) {
+            throw ServerError.invalidArguments(`Commissioning window timeout must be a positive number of seconds`);
+        }
+        const { manualPairingCode, qrPairingCode } = await node.openEnhancedCommissioningWindow(
+            timeout === undefined ? undefined : Seconds(timeout),
+        );
         return { manualCode: manualPairingCode, qrCode: qrPairingCode };
     }
 
@@ -1488,7 +1515,7 @@ export class ControllerCommandHandler {
             includeKnownVersions: true, // we want to read from device
         };
 
-        for await (const chunk of node.node.interaction.read(read)) {
+        for await (const chunk of node.interaction.read(read)) {
             for await (const attr of chunk) {
                 if (attr.kind === "attr-value" && Array.isArray(attr.value)) {
                     // We only expect one array response
@@ -1507,7 +1534,7 @@ export class ControllerCommandHandler {
     }
 
     removeFabric(nodeId: NodeId, fabricIndex: FabricIndex) {
-        return this.#nodes.get(nodeId).node.commandsOf(OperationalCredentialsClient).removeFabric({ fabricIndex });
+        return this.#nodes.get(nodeId).commandsOf(OperationalCredentialsClient).removeFabric({ fabricIndex });
     }
 
     /**
@@ -1521,7 +1548,7 @@ export class ControllerCommandHandler {
     ): Promise<void> {
         const node = this.#nodes.get(nodeId);
         try {
-            await node.node.act(agent =>
+            await node.act(agent =>
                 agent.get(IcdClient).register({
                     allowMultiAdmin: options.allowMultiAdmin,
                     ignoredVendors: options.ignoredVendors?.map(vendorId => VendorId(vendorId)),
@@ -1539,7 +1566,7 @@ export class ControllerCommandHandler {
      */
     async unregisterIcd(nodeId: NodeId, force: boolean): Promise<void> {
         const node = this.#nodes.get(nodeId);
-        await node.node.act(agent => (force ? agent.get(IcdClient).forget() : agent.get(IcdClient).unregister()));
+        await node.act(agent => (force ? agent.get(IcdClient).forget() : agent.get(IcdClient).unregister()));
     }
 
     /**
@@ -1547,13 +1574,18 @@ export class ControllerCommandHandler {
      */
     async resyncIcd(nodeId: NodeId): Promise<void> {
         const node = this.#nodes.get(nodeId);
-        await node.node.act(agent => agent.get(IcdClient).forget());
-        node.triggerReconnect();
+        await node.act(agent => agent.get(IcdClient).forget());
+        const pairedNode = this.#pairedNodes.get(nodeId);
+        if (pairedNode === undefined) {
+            logger.warn(`Node ${this.formatNode(nodeId)} vanished during ICD resync, not reconnecting`);
+            return;
+        }
+        pairedNode.triggerReconnect();
     }
 
     async getIcdState(nodeId: NodeId): Promise<IcdStateData> {
         const node = this.#nodes.get(nodeId);
-        const icdManagementState = node.node.endpoints.for(EndpointNumber(0)).maybeStateOf(IcdManagementClient);
+        const icdManagementState = node.maybeStateOf(IcdManagementClient);
         if (icdManagementState === undefined) {
             return {
                 supported: false,
@@ -1566,7 +1598,7 @@ export class ControllerCommandHandler {
             };
         }
 
-        return node.node.act(agent => {
+        return node.act(agent => {
             const icd = agent.get(IcdClient);
             return {
                 supported: true,
@@ -1587,10 +1619,7 @@ export class ControllerCommandHandler {
      * even though the spec allows server-side auto-fill, so we send the resolved index.
      */
     #currentFabricIndex(nodeId: NodeId): FabricIndex {
-        const state = this.#nodes
-            .get(nodeId)
-            .node.endpoints.for(EndpointNumber(0))
-            .maybeStateOf(OperationalCredentialsClient);
+        const state = this.#nodes.get(nodeId).maybeStateOf(OperationalCredentialsClient);
         return state?.currentFabricIndex ?? FabricIndex.NO_FABRIC;
     }
 
@@ -1706,7 +1735,7 @@ export class ControllerCommandHandler {
             // Query OTA provider for updates using dynamic behavior access
             const updatesAvailable = await otaProvider.act(agent =>
                 agent.get(SoftwareUpdateManager).queryUpdates({
-                    peerToCheck: node.node,
+                    peerToCheck: node,
                     includeStoredUpdates: true,
                 }),
             );
@@ -1777,13 +1806,11 @@ export class ControllerCommandHandler {
         logger.info(`Starting update for node ${this.formatNode(nodeId)} to version ${softwareVersion}`);
 
         await otaProvider.act(agent =>
-            agent
-                .get(SoftwareUpdateManager)
-                .forceUpdate(this.#controller.fabric.addressOf(nodeId), {
-                    vendorId: updateInfo.vendorId,
-                    productId: updateInfo.productId,
-                    targetSoftwareVersion: softwareVersion,
-                }),
+            agent.get(SoftwareUpdateManager).forceUpdate(this.#controller.fabric.addressOf(nodeId), {
+                vendorId: updateInfo.vendorId,
+                productId: updateInfo.productId,
+                targetSoftwareVersion: softwareVersion,
+            }),
         );
 
         return this.#convertToMatterSoftwareVersion(updateInfo);
