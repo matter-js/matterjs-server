@@ -5,12 +5,12 @@
  */
 
 import { ClientNode, ClusterBehavior, Diagnostic, Logger, MatterError, Millis, NodeId, Time } from "@matter/main";
-import { DecodedAttributeReportValue } from "@matter/main/protocol";
 import { ClusterMap } from "../model/ModelMapper.js";
 import { buildAttributePath, convertMatterToWebSocketTagBased } from "../server/Converters.js";
 import { AttributesData } from "../types/CommandHandler.js";
 import { formatNodeId } from "../util/formatNodeId.js";
 import { nodeIdOf } from "../util/nodeIdOf.js";
+import { AttributeChange } from "./PeerChangeBus.js";
 
 const logger = Logger.get("AttributeDataCache");
 
@@ -71,7 +71,7 @@ export class AttributeDataCache {
      * Update a single attribute in the cache.
      * Use this for incremental updates when an attribute value changes.
      */
-    updateAttribute(nodeId: NodeId, data: DecodedAttributeReportValue<any>): void {
+    updateAttribute(nodeId: NodeId, data: AttributeChange): void {
         const { endpointId, clusterId, attributeId } = data.path;
 
         const clusterData = ClusterMap[clusterId];

@@ -65,7 +65,6 @@ import { Endpoint } from "@matter/node";
 import { WebRtcTransportRequestorServer } from "@matter/node/behaviors/web-rtc-transport-requestor";
 import { CameraControllerDevice } from "@matter/node/devices/camera-controller";
 import { CommissioningController, NodeCommissioningOptions } from "@project-chip/matter.js";
-import type { DecodedAttributeReportValue, DecodedEventReportValue } from "@project-chip/matter.js/cluster";
 import { NodeStates, PairedNode } from "@project-chip/matter.js/device";
 import { ClusterMap, ClusterMapEntry, GlobalAttributes } from "../model/ModelMapper.js";
 import {
@@ -107,6 +106,7 @@ import { nodeIdOf } from "../util/nodeIdOf.js";
 import { CustomClusterPoller } from "./CustomClusterPoller.js";
 import { NodeAttributeReader } from "./NodeProcessor.js";
 import { Nodes } from "./Nodes.js";
+import { AttributeChange, EventChange, PeerChangeBus } from "./PeerChangeBus.js";
 import { ThreadDetailsPoller } from "./ThreadDetailsPoller.js";
 import { pushNodeTime, TimeSyncInvokers } from "./timeSyncCommands.js";
 import { SyncTrigger, TIME_FAILURE_EVENT_ID, TIME_SYNC_CLUSTER_ID, TimeSyncManager } from "./TimeSyncManager.js";
@@ -193,8 +193,8 @@ export class ControllerCommandHandler {
     readonly #inFlightInvokes = new Map<string, Promise<unknown>>();
     events = {
         started: new AsyncObservable(),
-        attributeChanged: new Observable<[nodeId: NodeId, data: DecodedAttributeReportValue<any>]>(),
-        eventChanged: new Observable<[nodeId: NodeId, data: DecodedEventReportValue<any>]>(),
+        attributeChanged: new Observable<[nodeId: NodeId, data: AttributeChange]>(),
+        eventChanged: new Observable<[nodeId: NodeId, data: EventChange]>(),
         nodeAdded: new Observable<[nodeId: NodeId]>(),
         nodeStateChanged: new Observable<[nodeId: NodeId, state: NodeStates]>(),
         /** Emitted when node availability changes (for sending node_updated events) */
@@ -206,6 +206,9 @@ export class ControllerCommandHandler {
         webRtcCallback: new Observable<[WebRtcCallbackData]>(),
     };
     #peers?: PeerSet;
+    #changeBus?: PeerChangeBus;
+    /** Subscriptions to {@link PeerChangeBus}, which outlives individual nodes. */
+    #busObservers = new ObserverGroup();
 
     constructor(
         controllerInstance: CommissioningController,
@@ -296,6 +299,7 @@ export class ControllerCommandHandler {
         await this.#controller.start();
         logger.notice(`Matter Controller started`);
         this.#peers = this.#controller.node.env.get(PeerSet);
+        this.#startChangeBus();
 
         if (this.#otaEnabled) {
             // Subscribe to OTA provider events to track available updates
@@ -304,6 +308,63 @@ export class ControllerCommandHandler {
 
         await this.events.started.emit();
         await this.#setupWebRtcCallbackBridge();
+    }
+
+    /**
+     * One node-wide change stream feeds every peer, so these subscriptions are established once here
+     * rather than per node in {@link ControllerCommandHandler.#registerNode}.
+     */
+    #startChangeBus() {
+        const bus = new PeerChangeBus(this.#controller.node);
+        this.#changeBus = bus;
+
+        // These run on one Observable shared by every peer; an uncaught throw would abort the emit and
+        // starve the remaining listeners, so each body is contained.
+        this.#busObservers.on(bus.events.attributeChanged, (nodeId, data) => {
+            this.#guard(nodeId, "attribute change", () => {
+                this.#nodes.attributeCache.updateAttribute(nodeId, data);
+                this.events.attributeChanged.emit(nodeId, data);
+                if (
+                    (data.path.clusterId === BasicInformation.id ||
+                        data.path.clusterId === BridgedDeviceBasicInformation.id) &&
+                    data.path.attributeId !== BasicInformation.attributes.nodeLabel.id
+                ) {
+                    this.#basicInfoChangedInBatch.add(nodeId);
+                }
+            });
+        });
+
+        this.#busObservers.on(bus.events.eventTriggered, (nodeId, data) => {
+            this.#guard(nodeId, "event", () => {
+                this.events.eventChanged.emit(nodeId, data);
+                if (
+                    this.#timeSyncManager !== undefined &&
+                    data.path.clusterId === TIME_SYNC_CLUSTER_ID &&
+                    data.path.eventId === TIME_FAILURE_EVENT_ID
+                ) {
+                    logger.debug(`Received timeFailure event from node ${this.formatNode(nodeId)}`);
+                    this.#timeSyncManager.syncNode(this.#peerOf(nodeId), SyncTrigger.TimeFailure);
+                }
+            });
+        });
+
+        this.#busObservers.on(bus.events.endpointRemoved, (nodeId, endpointId) => {
+            this.#guard(nodeId, "endpoint removal", () => {
+                this.events.nodeEndpointRemoved.emit(nodeId, endpointId);
+            });
+        });
+    }
+
+    /** Skips nodes no longer in the registry and contains throws; see {@link ControllerCommandHandler.#startChangeBus}. */
+    #guard(nodeId: NodeId, what: string, act: () => void) {
+        if (!this.#nodes.has(nodeId)) {
+            return;
+        }
+        try {
+            act();
+        } catch (error) {
+            logger.warn(`Failed to handle ${what} for node ${this.formatNode(nodeId)}:`, error);
+        }
     }
 
     /**
@@ -558,6 +619,9 @@ export class ControllerCommandHandler {
             observers.close();
         }
         this.#nodeObservers.clear();
+        this.#busObservers.close();
+        this.#changeBus?.close();
+        this.#changeBus = undefined;
         // Each stop() awaits an in-flight read against a possibly unresponsive node; serially they
         // stack their timeouts, and a throw from one would skip the rest of the shutdown.
         const stopped = await Promise.allSettled([
@@ -585,17 +649,6 @@ export class ControllerCommandHandler {
         const nodeObservers = new ObserverGroup();
         this.#nodeObservers.set(nodeId, nodeObservers);
 
-        nodeObservers.on(pairedNode.events.attributeChanged, data => {
-            attributeCache.updateAttribute(nodeId, data);
-            this.events.attributeChanged.emit(nodeId, data);
-            if (
-                (data.path.clusterId === BasicInformation.id ||
-                    data.path.clusterId === BridgedDeviceBasicInformation.id) &&
-                data.path.attributeId !== BasicInformation.attributes.nodeLabel.id
-            ) {
-                this.#basicInfoChangedInBatch.add(nodeId);
-            }
-        });
         nodeObservers.on(pairedNode.events.connectionAlive, () => {
             if (this.#basicInfoChangedInBatch.delete(nodeId) && !this.#nodeUpdateTimers.has(nodeId)) {
                 logger.info(
@@ -608,18 +661,6 @@ export class ControllerCommandHandler {
                     ),
                 ).start();
                 this.#nodeUpdateTimers.set(nodeId, timer);
-            }
-        });
-        nodeObservers.on(pairedNode.events.eventTriggered, data => {
-            this.events.eventChanged.emit(nodeId, data);
-            // Filter timeFailure events to trigger time sync
-            if (
-                this.#timeSyncManager !== undefined &&
-                data.path.clusterId === TIME_SYNC_CLUSTER_ID &&
-                data.path.eventId === TIME_FAILURE_EVENT_ID
-            ) {
-                logger.debug(`Received timeFailure event from node ${this.formatNode(nodeId)}`);
-                this.#timeSyncManager.syncNode(this.#peerOf(nodeId), SyncTrigger.TimeFailure);
             }
         });
         nodeObservers.on(pairedNode.events.stateChanged, state => {
@@ -639,10 +680,6 @@ export class ControllerCommandHandler {
         nodeObservers.on(pairedNode.events.nodeEndpointAdded, endpointId =>
             this.#nodes.queueEndpointAdded(nodeId, endpointId),
         );
-        nodeObservers.on(pairedNode.events.nodeEndpointRemoved, endpointId =>
-            this.events.nodeEndpointRemoved.emit(nodeId, endpointId),
-        );
-
         this.#pairedNodes.set(nodeId, pairedNode);
         this.#nodes.set(nodeId, node);
 
