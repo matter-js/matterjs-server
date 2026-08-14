@@ -19,7 +19,6 @@ import {
     Logger,
     MatterAggregateError,
     Millis,
-    Minutes,
     NodeId,
     Observable,
     ObserverGroup,
@@ -120,9 +119,6 @@ import {
 } from "./webRtcSessionStreams.js";
 
 const logger = Logger.get("ControllerCommandHandler");
-
-/** Grace period after leaving Connected before a node is declared unavailable. */
-const RECONNECT_TIMEOUT = Minutes(3);
 
 /** Coalescing window for structure and basic-information changes arriving as a burst. */
 const NODE_UPDATE_DEBOUNCE = Seconds(2);
@@ -244,8 +240,6 @@ export class ControllerCommandHandler {
     #threadDetailsPoller?: ThreadDetailsPoller;
     /** Per-node ObserverGroups for cleanup on decommission */
     #nodeObservers = new Map<NodeId, ObserverGroup>();
-    /** Per-node timers that fire when Reconnecting state exceeds the timeout */
-    #reconnectTimers = new Map<NodeId, Timer>();
     /** Per-node timers that coalesce basic-info changes into a single delayed node_updated refresh. */
     #nodeUpdateTimers = new Map<NodeId, Timer>();
     /**
@@ -678,10 +672,6 @@ export class ControllerCommandHandler {
     }
 
     async close() {
-        for (const timer of this.#reconnectTimers.values()) {
-            timer.stop();
-        }
-        this.#reconnectTimers.clear();
         for (const timer of this.#nodeUpdateTimers.values()) {
             timer.stop();
         }
@@ -826,36 +816,11 @@ export class ControllerCommandHandler {
     async #handleNodeStateChange(node: ClientNode, state: NodeConnectionState): Promise<void> {
         const nodeId = nodeIdOf(node);
 
-        // Arm on Connected->Reconnecting only; keep running across later
-        // non-Connected states; cancel on return to Connected.
-        let fastReconnect = false;
-        if (state === NodeConnectionState.Connected) {
-            // A still-armed reconnect timer means we returned to Connected within the grace period.
-            // Treat it as a blip and skip the rebuild, relying on attributeChanged/structureChanged to
-            // repair any deltas — a perf tradeoff that assumes resubscription re-reports what changed.
-            const reconnectTimer = this.#reconnectTimers.get(nodeId);
-            fastReconnect = reconnectTimer !== undefined;
-            reconnectTimer?.stop();
-            this.#reconnectTimers.delete(nodeId);
-        } else if (
-            state === NodeConnectionState.Reconnecting &&
-            !this.#reconnectTimers.has(nodeId) &&
-            this.#nodes.isAvailable(nodeId)
-        ) {
-            const timer = Time.getTimer(`reconnect-timeout-${nodeId}`, RECONNECT_TIMEOUT, () => {
-                this.#reconnectTimers.delete(nodeId);
-                if (this.#nodes.forceUnavailable(nodeId)) {
-                    logger.warn(`Node ${this.formatNode(nodeId)} offline grace period expired, marking unavailable`);
-                    this.events.nodeAvailabilityChanged.emit(nodeId, false);
-                }
-            });
-            timer.utility = true;
-            timer.start();
-            this.#reconnectTimers.set(nodeId, timer);
-        }
-
-        const debouncePending = this.#reconnectTimers.has(nodeId);
-        const result = this.#nodes.processStateChange(nodeId, state, debouncePending);
+        // A node that never became unavailable was only ever briefly re-establishing, so its data is
+        // still good: resubscription re-reports whatever changed. Rebuild only when it comes back from
+        // being considered offline.
+        const wasAvailable = this.#nodes.isAvailable(nodeId);
+        const result = this.#nodes.processStateChange(nodeId, state);
 
         this.events.nodeStateChanged.emit(nodeId, state);
 
@@ -870,10 +835,9 @@ export class ControllerCommandHandler {
         }
 
         // Populate last so the state/availability emits above are not delayed behind a multi-second
-        // rebuild. Skip the rebuild on a fast reconnect (data unchanged, repaired via its own events);
-        // still rebuild if the cache is missing.
+        // rebuild.
         if (state === NodeConnectionState.Connected) {
-            if (!fastReconnect || !this.#nodes.attributeCache.has(nodeId)) {
+            if (!wasAvailable || !this.#nodes.attributeCache.has(nodeId)) {
                 await this.#nodes.attributeCache.update(node);
             }
             const attributes = this.#nodes.attributeCache.get(nodeId);
@@ -1648,8 +1612,6 @@ export class ControllerCommandHandler {
      */
     #cleanupNodeAfterRemoval(nodeId: NodeId): boolean {
         const wasRegistered = this.#nodes.has(nodeId);
-        this.#reconnectTimers.get(nodeId)?.stop();
-        this.#reconnectTimers.delete(nodeId);
         this.#nodeUpdateTimers.get(nodeId)?.stop();
         this.#nodeUpdateTimers.delete(nodeId);
         this.#nodeUpdateDeadlines.delete(nodeId);

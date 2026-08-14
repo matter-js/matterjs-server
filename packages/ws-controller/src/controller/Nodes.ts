@@ -16,7 +16,7 @@ import { AttributeDataCache } from "./AttributeDataCache.js";
  * - Storage of ClientNode instances
  * - Node retrieval and existence checking
  * - Attribute data caching
- * - Connection state tracking for availability debouncing
+ * - Connection state tracking for availability
  */
 export class Nodes {
     #nodes = new Map<NodeId, ClientNode>();
@@ -82,17 +82,15 @@ export class Nodes {
     }
 
     seedState(nodeId: NodeId, initialState: NodeConnectionState): void {
-        this.#lastAvailability.set(nodeId, initialState === NodeConnectionState.Connected);
+        this.#lastAvailability.set(nodeId, this.isNodeAvailable(initialState));
     }
 
-    /** `debouncePending` = reconnect timer armed by caller; keeps non-Connected states available. */
     processStateChange(
         nodeId: NodeId,
         newState: NodeConnectionState,
-        debouncePending: boolean,
     ): { availabilityChanged: true; available: boolean } | { availabilityChanged: false } {
         const wasAvailable = this.#lastAvailability.get(nodeId) ?? false;
-        const available = this.isNodeAvailable(newState, debouncePending);
+        const available = this.isNodeAvailable(newState);
 
         this.#lastAvailability.set(nodeId, available);
 
@@ -102,18 +100,13 @@ export class Nodes {
         return { availabilityChanged: false };
     }
 
-    /** Returns true if the node was previously considered available. */
-    forceUnavailable(nodeId: NodeId): boolean {
-        const wasAvailable = this.#lastAvailability.get(nodeId) ?? false;
-        this.#lastAvailability.set(nodeId, false);
-        return wasAvailable;
-    }
-
-    isNodeAvailable(currentState: NodeConnectionState, debouncePending = false): boolean {
-        if (currentState === NodeConnectionState.Connected) {
-            return true;
-        }
-        return debouncePending;
+    /**
+     * Reconnecting counts as available: the new connection-state engine only reports
+     * WaitingForDeviceDiscovery once a peer is known unreachable — the MRP budget was exhausted with no
+     * reply, or a registered ICD missed its check-in.
+     */
+    isNodeAvailable(currentState: NodeConnectionState): boolean {
+        return currentState === NodeConnectionState.Connected || currentState === NodeConnectionState.Reconnecting;
     }
 
     /** Returns the cached value, not a recomputation — avoids disagreement with the event path. */
