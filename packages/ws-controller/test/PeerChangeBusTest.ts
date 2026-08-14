@@ -22,6 +22,7 @@ import { OnOffServer } from "@matter/node/behaviors/on-off";
 import { OnOffLightDevice } from "@matter/node/devices/on-off-light";
 import { SustainedSubscription } from "@matter/protocol";
 import { FabricId } from "@matter/types";
+import { prepareNodeForConnect } from "../src/controller/ControllerCommandHandler.js";
 import { AttributeChange, EventChange, PeerChangeBus } from "../src/controller/PeerChangeBus.js";
 
 const ControllerRootEndpoint = ServerNode.RootEndpoint.with(ControllerBehavior);
@@ -228,5 +229,20 @@ describe("PeerChangeBus", () => {
         await MockTime.resolve(peer().close(), { macrotasks: true });
 
         expect(removedEndpoints).deep.equals([]);
+    });
+
+    // CommissioningController turns autoSubscribe off for every restored peer on each start, so a
+    // node coming back from storage subscribes only if this is put back. Without it the peer never
+    // reports, never reaches Connected, and nothing is forwarded.
+    it("re-enables subscriptions for a peer whose autoSubscribe was cleared", async () => {
+        await site.commission(controller, device);
+        await awaitSubscribed();
+
+        await peer().set({ network: { autoSubscribe: false } });
+        expect(peer().stateOf(NetworkClient).autoSubscribe).equals(false);
+
+        await prepareNodeForConnect(peer());
+
+        expect(peer().stateOf(NetworkClient).autoSubscribe).equals(true);
     });
 });

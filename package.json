@@ -53,7 +53,7 @@
         "python-ble-proxy:run": "cd python_ble_proxy && { [ -x .venv/bin/matter-ble-proxy ] || (python3 -m venv .venv && .venv/bin/pip install -e .); } && .venv/bin/matter-ble-proxy"
     },
     "devDependencies": {
-        "@matter/testing": "0.18.0-alpha.0-20260807-335c3291b",
+        "@matter/testing": "0.18.0-alpha.0-20260814-a1fd0e210",
         "@nacho-iot/js-tools": "^0.2.0",
         "@types/mocha": "^10.0.10",
         "glob": "^13.0.6",

@@ -208,7 +208,7 @@ export class PeerChangeBus {
     }
 
     #emitEvent(nodeId: NodeId, change: ChangeNotificationService.EventOccurrence) {
-        const { endpoint, behavior, event, number, timestamp, priority, payload } = change;
+        const { endpoint, behavior, event, number, timestamp, timestampKind, priority, payload } = change;
         if (!ClusterBehavior.is(behavior)) {
             return;
         }
@@ -219,7 +219,18 @@ export class PeerChangeBus {
                 clusterId: behavior.cluster.id,
                 eventId: EventId(event.id),
             },
-            events: [{ eventNumber: number, priority, epochTimestamp: timestamp, data: payload }],
+            events: [
+                {
+                    eventNumber: number,
+                    priority,
+                    // The wire format distinguishes the two clocks, so report the one the device used
+                    // rather than labelling everything as epoch.
+                    ...(timestampKind === "system" || timestampKind === "system-delta"
+                        ? { systemTimestamp: timestamp }
+                        : { epochTimestamp: timestamp }),
+                    data: payload,
+                },
+            ],
         });
     }
 }

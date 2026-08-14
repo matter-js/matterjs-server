@@ -4,9 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { ClientNode, NodeId } from "@matter/main";
+import { ClientNode, NodeConnectionState, NodeId } from "@matter/main";
 import { EndpointNumber } from "@matter/main/types";
-import { NodeStates } from "@project-chip/matter.js/device";
 import { ServerError } from "../types/WebSocketMessageTypes.js";
 import { AttributeDataCache } from "./AttributeDataCache.js";
 
@@ -82,14 +81,14 @@ export class Nodes {
         return queue;
     }
 
-    seedState(nodeId: NodeId, initialState: NodeStates): void {
-        this.#lastAvailability.set(nodeId, initialState === NodeStates.Connected);
+    seedState(nodeId: NodeId, initialState: NodeConnectionState): void {
+        this.#lastAvailability.set(nodeId, initialState === NodeConnectionState.Connected);
     }
 
     /** `debouncePending` = reconnect timer armed by caller; keeps non-Connected states available. */
     processStateChange(
         nodeId: NodeId,
-        newState: NodeStates,
+        newState: NodeConnectionState,
         debouncePending: boolean,
     ): { availabilityChanged: true; available: boolean } | { availabilityChanged: false } {
         const wasAvailable = this.#lastAvailability.get(nodeId) ?? false;
@@ -110,8 +109,8 @@ export class Nodes {
         return wasAvailable;
     }
 
-    isNodeAvailable(currentState: NodeStates, debouncePending = false): boolean {
-        if (currentState === NodeStates.Connected) {
+    isNodeAvailable(currentState: NodeConnectionState, debouncePending = false): boolean {
+        if (currentState === NodeConnectionState.Connected) {
             return true;
         }
         return debouncePending;
