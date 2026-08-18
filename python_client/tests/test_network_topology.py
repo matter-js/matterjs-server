@@ -70,8 +70,23 @@ _WIRE_TOPOLOGY = {
             "vendor_name": "Apple",
             "last_seen": 1767887990000,
         },
-        {"id": "5", "kind": "matter", "network_type": "wifi", "node_id": 5, "role": "station"},
-        {"id": "ap_112233445566", "kind": "wifi_ap", "network_type": "wifi", "role": "ap"},
+        {
+            "id": "5",
+            "kind": "matter",
+            "network_type": "wifi",
+            "node_id": 5,
+            "role": "station",
+            "ssid": "MyWiFi",
+            "bssid": "11:22:33:44:55:66",
+        },
+        {
+            "id": "ap_112233445566",
+            "kind": "wifi_ap",
+            "network_type": "wifi",
+            "role": "ap",
+            "ssid": "MyWiFi",
+            "bssid": "11:22:33:44:55:66",
+        },
     ],
     "connections": [
         {
@@ -119,6 +134,11 @@ async def test_get_network_topology_uses_schema_13() -> None:
     )
     border_router = result.nodes[1]
     assert border_router.host_name == "Cuisine"
+    # the Wi-Fi pair reaches the dataclass on both the station and the AP
+    assert (result.nodes[2].ssid, result.nodes[2].bssid) == ("MyWiFi", "11:22:33:44:55:66")
+    assert (result.nodes[3].ssid, result.nodes[3].bssid) == ("MyWiFi", "11:22:33:44:55:66")
+    # a Thread node carries neither
+    assert (result.nodes[0].ssid, result.nodes[0].bssid) == (None, None)
     # a node the server sent no host_name for must default to None, not raise
     assert result.nodes[2].host_name is None
 

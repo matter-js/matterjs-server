@@ -16,6 +16,7 @@ import {
     getThreadRloc16,
     getThreadRole,
     getWiFiDiagnostics,
+    getWiFiSsid,
     stripMdnsHostname,
     type NetworkTopology,
     type NetworkTopologyConnection,
@@ -345,6 +346,8 @@ export class NetworkTopologyService {
                     role: "station",
                     available,
                     is_bridge: isBridge,
+                    ssid: getWiFiSsid(node) ?? undefined,
+                    bssid: getWiFiDiagnostics(node).bssid ?? undefined,
                 });
             } else {
                 nodes.push({
@@ -387,7 +390,17 @@ export class NetworkTopologyService {
             const apId = `ap_${bssid.replace(/:/g, "")}`;
             if (!seenAps.has(apId)) {
                 seenAps.add(apId);
-                nodes.push({ id: apId, kind: "wifi_ap", network_type: "wifi", role: "ap", network_name: bssid });
+                nodes.push({
+                    id: apId,
+                    kind: "wifi_ap",
+                    network_type: "wifi",
+                    role: "ap",
+                    // kept as the BSSID for pre-`bssid` consumers
+                    network_name: bssid,
+                    // the SSID of a station joined to this radio names the whole network
+                    ssid: getWiFiSsid(node) ?? undefined,
+                    bssid,
+                });
             }
             const strength = rssiToStrength(rssi);
             connections.push({

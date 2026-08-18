@@ -274,8 +274,19 @@ export interface NetworkTopologyNode {
     rloc16?: number;
     /** 16-char uppercase hex Thread extended PAN id (network key). */
     ext_pan_id?: string;
-    /** Thread network name, or Wi-Fi BSSID for `wifi_ap` nodes. */
+    /** Thread network name, or Wi-Fi BSSID for `wifi_ap` nodes. Superseded for Wi-Fi by `bssid`. */
     network_name?: string;
+    /**
+     * Wi-Fi SSID, on `wifi_ap` nodes and on the stations joined to them. Best-effort: it comes
+     * from NetworkCommissioning, which some devices leave empty, so keep a `bssid` fallback.
+     * Added after the schema 13 release -- treat as optional.
+     */
+    ssid?: string;
+    /**
+     * Wi-Fi BSSID (`AA:BB:CC:DD:EE:FF`), on `wifi_ap` nodes and on the stations joined to them.
+     * Identifies one AP radio, so a mesh reports several. Added after the schema 13 release.
+     */
+    bssid?: string;
     /**
      * Border Router mDNS host name as a display label: the trailing dot and a `.local` suffix
      * are removed (`"Cuisine.local."` -> `"Cuisine"`). Preferred over `vendor_name`/`model_name`,

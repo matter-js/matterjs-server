@@ -69,12 +69,16 @@ function mkThread(nodeId: number, opts: ThreadNodeOpts = {}): Node {
     return { node_id: nodeId, available: opts.available ?? true, attributes, is_bridge: opts.isBridge };
 }
 
-function mkWifi(nodeId: number, opts: { rssi?: number | null; available?: boolean } = {}): Node {
+function mkWifi(nodeId: number, opts: { rssi?: number | null; available?: boolean; ssid?: string | null } = {}): Node {
+    // preserve an explicit null (device reports no SSID); only default when omitted
+    const ssid = opts.ssid === undefined ? "MyWiFi" : opts.ssid;
     return {
         node_id: nodeId,
         available: opts.available ?? true,
         attributes: {
             "0/49/65532": 1 << 0, // NetworkCommissioning FeatureMap: WiFi
+            // NetworkCommissioning Networks: networkID is the SSID for WiFi
+            "0/49/1": ssid === null ? [] : [{ "0": b64([...new TextEncoder().encode(ssid)]), "1": true }],
             "0/54/0": b64(BSSID_BYTES),
             // preserve an explicit null (unknown RSSI); only default when omitted
             "0/54/4": opts.rssi === undefined ? -55 : opts.rssi,
@@ -269,6 +273,22 @@ describe("NetworkTopologyService", () => {
             expect(ap.network_type).to.equal("wifi");
             expect(ap.role).to.equal("ap");
             expect(ap.network_name).to.equal(BSSID_STR);
+            // network_name stays the BSSID for pre-`bssid` consumers; the split fields are additive
+            expect(ap.bssid).to.equal(BSSID_STR);
+            expect(ap.ssid).to.equal("MyWiFi");
+            // stations carry the same pair, which they had no field for before
+            expect(wifi.ssid).to.equal("MyWiFi");
+            expect(wifi.bssid).to.equal(BSSID_STR);
+        });
+
+        it("omits ssid when the device reports no NetworkCommissioning network", () => {
+            const { service } = makeHarness({ nodes: () => [mkWifi(5, { ssid: null })], brs: () => [] });
+            const byId = new Map(service.getTopology().nodes.map(n => [n.id, n]));
+
+            // the BSSID still identifies the radio, so the AP node and its edge survive
+            expect(byId.get(AP_NODE_ID)!.ssid).to.equal(undefined);
+            expect(byId.get(AP_NODE_ID)!.bssid).to.equal(BSSID_STR);
+            expect(byId.get("5")!.ssid).to.equal(undefined);
         });
 
         it("omits host_name when the Border Router has no mDNS hostname", () => {

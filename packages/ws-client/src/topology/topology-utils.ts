@@ -956,6 +956,41 @@ export function getWiFiDiagnostics(node: TopologySourceNode): WiFiDiagnostics {
     };
 }
 
+/**
+ * SSID from NetworkCommissioning (`0/49/1`). That cluster's `networkID` is typed by network
+ * kind -- the SSID for Wi-Fi, the extended PAN id for Thread, the interface name for Ethernet --
+ * so only call this for nodes whose network type is `wifi`. Returns null when the list is empty
+ * (some devices never populate it) or the payload is not decodable text, so callers must keep a
+ * BSSID fallback.
+ */
+export function getWiFiSsid(node: TopologySourceNode): string | null {
+    const networks = node.attributes["0/49/1"];
+    if (!Array.isArray(networks) || networks.length === 0) {
+        return null;
+    }
+    const entries = networks as Record<string, unknown>[];
+    // Field 1: connected -- prefer the joined network when a device lists several
+    const chosen = entries.find(entry => (entry["1"] ?? entry.connected) === true) ?? entries[0];
+    // Field 0: networkID, an octet string carried as base64
+    const raw = chosen?.["0"] ?? chosen?.networkID;
+    if (typeof raw !== "string" || raw === "") {
+        return null;
+    }
+    try {
+        const bytes = Uint8Array.from(atob(raw), c => c.charCodeAt(0));
+        // an SSID is at most 32 octets; anything longer is not one
+        if (bytes.length === 0 || bytes.length > 32) {
+            return null;
+        }
+        const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+        // binary ids (a Thread ext PAN id) can still decode as UTF-8, so reject control chars
+        // eslint-disable-next-line no-control-regex
+        return text === "" || /[\u0000-\u001f\u007f]/.test(text) ? null : text;
+    } catch {
+        return null;
+    }
+}
+
 /** Strips trailing dot and `.local` suffix from an mDNS hostname. */
 export function stripMdnsHostname(hostname: string): string {
     return hostname.replace(/\.$/, "").replace(/\.local$/i, "");

@@ -18,6 +18,7 @@ import {
     getSignalLevel,
     getSignalLevelFromLqi,
     getWiFiDiagnostics,
+    getWiFiSsid,
     makeDiagnosticRloc16Resolver,
     makePairKey,
     mergeDiagnosticEdges,
@@ -337,6 +338,54 @@ describe("topology-utils", () => {
             expect(diag.bssid).to.equal("11:22:33:44:55:66");
             expect(diag.rssi).to.equal(-55);
             expect(diag.channel).to.equal(6);
+        });
+    });
+
+    describe("getWiFiSsid", () => {
+        const utf8 = (text: string) => b64([...new TextEncoder().encode(text)]);
+
+        it("decodes the SSID from the NetworkCommissioning network list", () => {
+            expect(getWiFiSsid(mkNode(1, { "0/49/1": [{ "0": utf8("we@home"), "1": true }] }))).to.equal("we@home");
+        });
+
+        it("accepts the named field spelling as well as the tag number", () => {
+            expect(getWiFiSsid(mkNode(1, { "0/49/1": [{ networkID: utf8("MyWiFi"), connected: true }] }))).to.equal(
+                "MyWiFi",
+            );
+        });
+
+        it("prefers the connected network when a device lists several", () => {
+            expect(
+                getWiFiSsid(
+                    mkNode(1, {
+                        "0/49/1": [
+                            { "0": utf8("Guest"), "1": false },
+                            { "0": utf8("Home"), "1": true },
+                        ],
+                    }),
+                ),
+            ).to.equal("Home");
+        });
+
+        it("rejects a low-byte networkID, which decodes as valid UTF-8 control characters", () => {
+            // an ext PAN id of low bytes survives the UTF-8 decode, so the control-character
+            // check is the only thing standing between it and being rendered as an SSID
+            expect(
+                getWiFiSsid(mkNode(1, { "0/49/1": [{ "0": b64([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]) }] })),
+            ).to.equal(null);
+        });
+
+        it("rejects a binary networkID so a Thread ext PAN id is never shown as an SSID", () => {
+            // NetworkCommissioning.networkID is the ext PAN id on Thread and the interface
+            // name on Ethernet, so only text that could be an SSID may be returned
+            expect(
+                getWiFiSsid(mkNode(1, { "0/49/1": [{ "0": b64([0xa7, 0x48, 0xdb, 0xb0, 0xec, 0xc9, 0x44, 0xdc]) }] })),
+            ).to.equal(null);
+        });
+
+        it("returns null when the device reports no network", () => {
+            expect(getWiFiSsid(mkNode(1, { "0/49/1": [] }))).to.equal(null);
+            expect(getWiFiSsid(mkNode(1, {}))).to.equal(null);
         });
     });
 

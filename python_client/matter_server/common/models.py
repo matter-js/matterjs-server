@@ -307,6 +307,9 @@ class NetworkTopologyNode:
     rloc16: int | None = None
     ext_pan_id: str | None = None
     network_name: str | None = None
+    # Wi-Fi SSID and BSSID, on wifi_ap nodes and the stations joined to them.
+    ssid: str | None = None
+    bssid: str | None = None
     # Border router mDNS host name, already normalized to a display label.
     host_name: str | None = None
     vendor_name: str | None = None
