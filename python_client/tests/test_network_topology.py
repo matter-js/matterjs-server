@@ -66,6 +66,7 @@ _WIRE_TOPOLOGY = {
             "network_type": "thread",
             "role": "router",
             "ext_address": "1122AABBCC334455",
+            "host_name": "Cuisine",
             "vendor_name": "Apple",
             "last_seen": 1767887990000,
         },
@@ -116,6 +117,11 @@ async def test_get_network_topology_uses_schema_13() -> None:
         ext_pan_id="1122334455667788",
         network_name="OpenThread",
     )
+    border_router = result.nodes[1]
+    assert border_router.host_name == "Cuisine"
+    # a node the server sent no host_name for must default to None, not raise
+    assert result.nodes[2].host_name is None
+
     thread_link = result.connections[0]
     assert thread_link == NetworkTopologyConnection(
         source="1",

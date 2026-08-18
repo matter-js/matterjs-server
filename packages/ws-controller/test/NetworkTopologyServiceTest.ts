@@ -93,6 +93,7 @@ function makeBr(overrides: Partial<BorderRouterEntry> = {}): BorderRouterEntry {
         networkName: "OpenThread",
         vendorName: "Apple",
         modelName: "eero",
+        hostname: "Cuisine.local.",
         addresses: ["fd00::1"],
         sources: ["meshcop"],
         lastSeen: 1000,
@@ -260,12 +261,33 @@ describe("NetworkTopologyService", () => {
             expect(br.vendor_name).to.equal("Apple");
             expect(br.model_name).to.equal("eero");
             expect(br.network_name).to.equal("OpenThread");
+            // the mDNS FQDN is normalized to a display label before it reaches the wire
+            expect(br.host_name).to.equal("Cuisine");
 
             const ap = byId.get(AP_NODE_ID)!;
             expect(ap.kind).to.equal("wifi_ap");
             expect(ap.network_type).to.equal("wifi");
             expect(ap.role).to.equal("ap");
             expect(ap.network_name).to.equal(BSSID_STR);
+        });
+
+        it("omits host_name when the Border Router has no mDNS hostname", () => {
+            // the BR needs a neighbour edge or orphan pruning drops it from the graph
+            const node1 = mkThread(1, {
+                role: 5,
+                rloc16: 1024,
+                neighbors: [neighbor(b64(BR_EXT_BYTES), 61440, 2, -70, true)],
+            });
+            const { service } = makeHarness({
+                nodes: () => [node1],
+                brs: () => [makeBr({ hostname: undefined })],
+            });
+            const br = service.getTopology().nodes.find(n => n.id === BR_NODE_ID)!;
+
+            expect(br.kind).to.equal("border_router");
+            expect(br.host_name).to.equal(undefined);
+            // the generic vendor/model labels remain the only naming source
+            expect(br.vendor_name).to.equal("Apple");
         });
 
         it("folds both directions of a Thread link and summarises the strongest", () => {

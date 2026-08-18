@@ -307,6 +307,8 @@ class NetworkTopologyNode:
     rloc16: int | None = None
     ext_pan_id: str | None = None
     network_name: str | None = None
+    # Border router mDNS host name, already normalized to a display label.
+    host_name: str | None = None
     vendor_name: str | None = None
     model_name: str | None = None
     last_seen: int | None = None

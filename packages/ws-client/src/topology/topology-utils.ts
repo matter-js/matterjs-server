@@ -955,3 +955,8 @@ export function getWiFiDiagnostics(node: TopologySourceNode): WiFiDiagnostics {
         wifiVersion: wifiVersion ?? null,
     };
 }
+
+/** Strips trailing dot and `.local` suffix from an mDNS hostname. */
+export function stripMdnsHostname(hostname: string): string {
+    return hostname.replace(/\.$/, "").replace(/\.local$/i, "");
+}

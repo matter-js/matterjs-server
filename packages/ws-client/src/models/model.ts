@@ -276,6 +276,13 @@ export interface NetworkTopologyNode {
     ext_pan_id?: string;
     /** Thread network name, or Wi-Fi BSSID for `wifi_ap` nodes. */
     network_name?: string;
+    /**
+     * Border Router mDNS host name as a display label: the trailing dot and a `.local` suffix
+     * are removed (`"Cuisine.local."` -> `"Cuisine"`). Preferred over `vendor_name`/`model_name`,
+     * which for some vendors are identical across every unit. Present only when the border
+     * router was discovered over mDNS and its `_meshcop` SRV target resolved.
+     */
+    host_name?: string;
     vendor_name?: string;
     model_name?: string;
     /** Epoch ms the node was last observed (border routers). */
