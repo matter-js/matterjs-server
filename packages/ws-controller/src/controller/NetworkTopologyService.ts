@@ -310,6 +310,7 @@ export class NetworkTopologyService {
         const nodes: NetworkTopologyNode[] = [];
         const connections: NetworkTopologyConnection[] = [];
         const threadNodes: Record<string, TopologyNode> = {};
+        const wifiRadios = new Array<{ id: string; ssid?: string; bssid: string | null; rssi: number | null }>();
 
         // --- Commissioned Matter nodes ---
         for (const node of allNodes) {
@@ -338,6 +339,9 @@ export class NetworkTopologyService {
                         (extPanIdHex !== undefined ? networkNameByXp.get(extPanIdHex) : undefined),
                 });
             } else if (networkType === "wifi") {
+                const { bssid, rssi } = getWiFiDiagnostics(node);
+                const ssid = getWiFiSsid(node) ?? undefined;
+                wifiRadios.push({ id, ssid, bssid, rssi });
                 nodes.push({
                     id,
                     kind: "matter",
@@ -346,8 +350,8 @@ export class NetworkTopologyService {
                     role: "station",
                     available,
                     is_bridge: isBridge,
-                    ssid: getWiFiSsid(node) ?? undefined,
-                    bssid: getWiFiDiagnostics(node).bssid ?? undefined,
+                    ssid,
+                    bssid: bssid ?? undefined,
                 });
             } else {
                 nodes.push({
@@ -382,29 +386,30 @@ export class NetworkTopologyService {
         }
 
         // --- WiFi star: one AP pseudo-node per BSSID, station → AP edges ---
-        const seenAps = new Set<string>();
-        for (const node of allNodes) {
-            if (getNetworkType(node) !== "wifi") continue;
-            const { bssid, rssi } = getWiFiDiagnostics(node);
+        const apNodes = new Map<string, NetworkTopologyNode>();
+        for (const radio of wifiRadios) {
+            const { bssid, rssi } = radio;
             if (bssid === null) continue;
             const apId = `ap_${bssid.replace(/:/g, "")}`;
-            if (!seenAps.has(apId)) {
-                seenAps.add(apId);
-                nodes.push({
+            let ap = apNodes.get(apId);
+            if (ap === undefined) {
+                ap = {
                     id: apId,
                     kind: "wifi_ap",
                     network_type: "wifi",
                     role: "ap",
                     // kept as the BSSID for pre-`bssid` consumers
                     network_name: bssid,
-                    // the SSID of a station joined to this radio names the whole network
-                    ssid: getWiFiSsid(node) ?? undefined,
                     bssid,
-                });
+                };
+                apNodes.set(apId, ap);
+                nodes.push(ap);
             }
+            // the SSID names the network, not the radio: a station that can't read it must not settle the label
+            ap.ssid ??= radio.ssid;
             const strength = rssiToStrength(rssi);
             connections.push({
-                source: String(node.node_id),
+                source: radio.id,
                 target: apId,
                 network: "wifi",
                 strength,
@@ -447,7 +452,7 @@ function mapExternal(ext: ThreadExternalDevice): NetworkTopologyNode {
             ext_address: ext.extAddressHex,
             ext_pan_id: ext.extendedPanIdHex?.toUpperCase(),
             network_name: ext.networkName,
-            host_name: ext.hostname === undefined ? undefined : stripMdnsHostname(ext.hostname),
+            host_name: ext.hostname === undefined ? undefined : stripMdnsHostname(ext.hostname) || undefined,
             vendor_name: ext.vendorName,
             model_name: ext.modelName,
             last_seen: ext.lastSeen,

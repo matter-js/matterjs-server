@@ -291,6 +291,25 @@ describe("NetworkTopologyService", () => {
             expect(byId.get("5")!.ssid).to.equal(undefined);
         });
 
+        it("names the AP from a later station when the first one reports no network", () => {
+            const { service } = makeHarness({
+                nodes: () => [mkWifi(5, { ssid: null }), mkWifi(6)],
+                brs: () => [],
+            });
+            const topology = service.getTopology();
+            const byId = new Map(topology.nodes.map(n => [n.id, n]));
+
+            // the two stations share a radio, so they share one AP node
+            expect(topology.nodes).to.have.lengthOf(3);
+            expect(topology.connections.map(c => [c.source, c.target])).to.deep.equal([
+                ["5", AP_NODE_ID],
+                ["6", AP_NODE_ID],
+            ]);
+            expect(byId.get(AP_NODE_ID)!.ssid).to.equal("MyWiFi");
+            expect(byId.get("5")!.ssid).to.equal(undefined);
+            expect(byId.get("6")!.ssid).to.equal("MyWiFi");
+        });
+
         it("omits host_name when the Border Router has no mDNS hostname", () => {
             // the BR needs a neighbour edge or orphan pruning drops it from the graph
             const node1 = mkThread(1, {
@@ -308,6 +327,21 @@ describe("NetworkTopologyService", () => {
             expect(br.host_name).to.equal(undefined);
             // the generic vendor/model labels remain the only naming source
             expect(br.vendor_name).to.equal("Apple");
+        });
+
+        it("omits host_name when the mDNS hostname strips to nothing", () => {
+            const node1 = mkThread(1, {
+                role: 5,
+                rloc16: 1024,
+                neighbors: [neighbor(b64(BR_EXT_BYTES), 61440, 2, -70, true)],
+            });
+            const { service } = makeHarness({
+                nodes: () => [node1],
+                brs: () => [makeBr({ hostname: ".local." })],
+            });
+            const br = service.getTopology().nodes.find(n => n.id === BR_NODE_ID)!;
+
+            expect(br.host_name).to.equal(undefined);
         });
 
         it("folds both directions of a Thread link and summarises the strongest", () => {
