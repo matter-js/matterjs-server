@@ -57,11 +57,11 @@
         "@nacho-iot/js-tools": "^0.2.0",
         "@types/mocha": "^10.0.10",
         "glob": "^13.0.6",
-        "globals": "^17.9.0",
-        "oxfmt": "^0.62.0",
-        "oxlint": "^1.77.0",
+        "globals": "^17.11.0",
+        "oxfmt": "^0.63.0",
+        "oxlint": "^1.78.0",
         "oxlint-tsgolint": "^7.0.2001",
-        "tsx": "^4.23.11",
+        "tsx": "^4.23.12",
         "typescript": "~7.0.2"
     },
     "overrides": {
