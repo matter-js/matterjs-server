@@ -648,6 +648,10 @@ describe("NetworkTopologyService", () => {
             const byNode = new Map(readCalls.map(c => [c.nodeId, c.paths]));
             expect(byNode.get(1)).to.deep.equal(THREAD_REFRESH_PATHS);
             expect(byNode.get(2)).to.deep.equal(WIFI_REFRESH_PATHS);
+            // spelled out rather than compared to the constant: a refresh that cannot
+            // re-read the SSID would still satisfy the deep.equal above
+            expect(WIFI_REFRESH_PATHS).to.include("0/49/1");
+            expect(WIFI_REFRESH_PATHS).to.include("0/54/0");
             expect(byNode.has(3)).to.equal(false); // offline
             expect(byNode.has(4)).to.equal(false); // ethernet
             expect(readCalls).to.have.lengthOf(2);

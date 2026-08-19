@@ -383,6 +383,21 @@ describe("topology-utils", () => {
             ).to.equal(null);
         });
 
+        it("ignores saved networks the device is not joined to", () => {
+            // labelling a radio with a network the device is not on is worse than
+            // leaving it to the BSSID fallback
+            expect(
+                getWiFiSsid(
+                    mkNode(1, {
+                        "0/49/1": [
+                            { "0": utf8("Old"), "1": false },
+                            { "0": utf8("Older"), "1": false },
+                        ],
+                    }),
+                ),
+            ).to.equal(null);
+        });
+
         it("returns null when the device reports no network", () => {
             expect(getWiFiSsid(mkNode(1, { "0/49/1": [] }))).to.equal(null);
             expect(getWiFiSsid(mkNode(1, {}))).to.equal(null);

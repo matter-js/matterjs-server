@@ -53,8 +53,12 @@ const TOPOLOGY_CLUSTERS = new Set<number>([49, 51, 53, 54]);
  * device re-attaches to the mesh — the case a user triggers a refresh to reflect.
  */
 export const THREAD_REFRESH_PATHS = ["0/53/7", "0/53/8", "0/51/0", "0/53/64", "0/53/1", "0/53/2", "0/53/4"];
-/** WiFi BSSID + channel + RSSI — the inputs to the WiFi star. */
-export const WIFI_REFRESH_PATHS = ["0/54/0", "0/54/3", "0/54/4"];
+/**
+ * WiFi BSSID + channel + RSSI, plus the NetworkCommissioning network list — the inputs to the
+ * WiFi star. `0/49/1` carries the SSID, so without it a refresh could not fill in a missing one
+ * or replace the cached value after a device joins a different network.
+ */
+export const WIFI_REFRESH_PATHS = ["0/54/0", "0/54/3", "0/54/4", "0/49/1"];
 
 /** An Observable this service only needs to subscribe to; payloads are inspected structurally. */
 type AnyObservable = Observable<any[]>;

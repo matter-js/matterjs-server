@@ -969,10 +969,15 @@ export function getWiFiSsid(node: TopologySourceNode): string | null {
         return null;
     }
     const entries = networks as Record<string, unknown>[];
-    // Field 1: connected -- prefer the joined network when a device lists several
-    const chosen = entries.find(entry => (entry["1"] ?? entry.connected) === true) ?? entries[0];
+    // Field 1: connected. Only the joined network names the AP -- a device may list
+    // saved networks it is not on, and labelling the radio with one of those is worse
+    // than no label. The python client skips disconnected entries the same way.
+    const chosen = entries.find(entry => (entry["1"] ?? entry.connected) === true);
+    if (chosen === undefined) {
+        return null;
+    }
     // Field 0: networkID, an octet string carried as base64
-    const raw = chosen?.["0"] ?? chosen?.networkID;
+    const raw = chosen["0"] ?? chosen.networkID;
     if (typeof raw !== "string" || raw === "") {
         return null;
     }
