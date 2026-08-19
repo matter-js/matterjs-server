@@ -24,6 +24,7 @@ import {
     mergeDiagnosticEdges,
     parseNeighborTable,
     parseRouteTable,
+    stripMdnsHostname,
 } from "../src/index.js";
 
 function mkNode(nodeId: number, attributes: Record<string, unknown>): TopologySourceNode {
@@ -401,6 +402,19 @@ describe("topology-utils", () => {
         it("returns null when the device reports no network", () => {
             expect(getWiFiSsid(mkNode(1, { "0/49/1": [] }))).to.equal(null);
             expect(getWiFiSsid(mkNode(1, {}))).to.equal(null);
+        });
+    });
+
+    describe("stripMdnsHostname", () => {
+        it("reduces an mDNS FQDN to a display label", () => {
+            expect(stripMdnsHostname("Cuisine.local.")).to.equal("Cuisine");
+            expect(stripMdnsHostname("Cuisine")).to.equal("Cuisine");
+        });
+
+        it("yields undefined when nothing is left to show, so callers fall back", () => {
+            expect(stripMdnsHostname(".local.")).to.equal(undefined);
+            expect(stripMdnsHostname("")).to.equal(undefined);
+            expect(stripMdnsHostname(undefined)).to.equal(undefined);
         });
     });
 

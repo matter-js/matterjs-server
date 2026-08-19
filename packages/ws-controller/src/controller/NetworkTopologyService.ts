@@ -456,7 +456,7 @@ function mapExternal(ext: ThreadExternalDevice): NetworkTopologyNode {
             ext_address: ext.extAddressHex,
             ext_pan_id: ext.extendedPanIdHex?.toUpperCase(),
             network_name: ext.networkName,
-            host_name: ext.hostname === undefined ? undefined : stripMdnsHostname(ext.hostname) || undefined,
+            host_name: stripMdnsHostname(ext.hostname),
             vendor_name: ext.vendorName,
             model_name: ext.modelName,
             last_seen: ext.lastSeen,

@@ -996,7 +996,11 @@ export function getWiFiSsid(node: TopologySourceNode): string | null {
     }
 }
 
-/** Strips trailing dot and `.local` suffix from an mDNS hostname. */
-export function stripMdnsHostname(hostname: string): string {
-    return hostname.replace(/\.$/, "").replace(/\.local$/i, "");
+/**
+ * mDNS host name as a display label: the trailing dot and a `.local` suffix are removed. Returns
+ * undefined when nothing is left to show, so callers keep reaching their next naming source
+ * instead of rendering a blank label.
+ */
+export function stripMdnsHostname(hostname: string | undefined): string | undefined {
+    return hostname?.replace(/\.$/, "").replace(/\.local$/i, "") || undefined;
 }
