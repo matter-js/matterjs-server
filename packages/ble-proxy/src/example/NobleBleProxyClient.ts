@@ -676,7 +676,7 @@ export class NobleBleProxyClient {
         this.#sendSuccess(id);
     }
 
-    /** Returns false once an error response was sent. */
+    /** No-op when `uuid` is already subscribed. Returns false once an error response was sent. */
     async #subscribe(
         id: number,
         conn: ConnectionState,
@@ -684,6 +684,12 @@ export class NobleBleProxyClient {
         uuid: string,
         char: Characteristic,
     ): Promise<boolean> {
+        // noble's `_notify` resolves without re-enabling CCCD when already notifying, so a
+        // second "data" listener would double every forwarded notification.
+        if (conn.subscriptions.has(uuid)) {
+            return true;
+        }
+
         // Attached before the CCCD enable: noble drops "data" emitted with no listener attached.
         const onData = this.#notificationForwarder(handle, uuid);
         char.on("data", onData);
