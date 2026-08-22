@@ -4,14 +4,17 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { CancelablePromise, Duration, Logger, Millis, Time, Timer } from "@matter/main";
+import { CancelablePromise, Duration, Logger, Millis, Seconds, Time, Timer } from "@matter/main";
 import { PeerAddress, PeerAddressSet } from "@matter/main/protocol";
 import { AttributesData } from "../types/CommandHandler.js";
 
 const logger = Logger.get("NodeProcessor");
 
 // Timer.interval rejects anything outside the 32-bit signed range.
-export const MAX_TIMER_DELAY_MS = 2_147_483_647;
+export const MAX_TIMER_DELAY = Millis(2_147_483_647);
+
+/** Spacing between nodes inside one cycle, so a sweep does not burst every node at once. */
+const INTER_NODE_DELAY = Seconds(2);
 
 /** Attribute access a polling processor needs from the controller. */
 export interface NodeAttributeReader {
@@ -45,10 +48,10 @@ export abstract class NodeProcessor {
     #longIdleTimeBatch?: Promise<unknown>;
     #closed = false;
 
-    constructor(timerName: string, initialDelay: number, targetInterval: number) {
+    constructor(timerName: string, initialDelay: Duration, targetInterval: Duration) {
         this.#name = timerName;
-        this.#initialDelay = Millis(initialDelay);
-        this.#targetInterval = Millis(targetInterval);
+        this.#initialDelay = initialDelay;
+        this.#targetInterval = targetInterval;
         this.#timer = Time.getTimer(timerName, this.#initialDelay, () => this.#startProcessing());
     }
 
@@ -115,9 +118,9 @@ export abstract class NodeProcessor {
      * Override the delay before the next cycle. Only takes effect while no cycle is scheduled or
      * running, so callers must apply it before scheduleIfNeeded() starts the timer.
      */
-    protected setNextCycleDelay(delayMs: number): boolean {
+    protected setNextCycleDelay(delay: Duration): boolean {
         if (!this.cycleDelayAdjustable) return false;
-        return this.#applyInterval(delayMs);
+        return this.#applyInterval(delay);
     }
 
     /** Whether setNextCycleDelay() can still take effect, so callers can skip computing a delay. */
@@ -126,13 +129,13 @@ export abstract class NodeProcessor {
     }
 
     /** Both assignment paths go through here, since nextCycleDelay() is open to any subclass. */
-    #applyInterval(delayMs: number): boolean {
-        if (!Number.isFinite(delayMs) || delayMs < 0) {
+    #applyInterval(delay: Duration): boolean {
+        if (!Number.isFinite(delay) || delay < 0) {
             // A NaN passes Timer.interval's range check and then fires immediately, every cycle.
-            logger.warn(`Ignoring invalid cycle delay ${delayMs}`);
+            logger.warn(`Ignoring invalid cycle delay ${delay}`);
             return false;
         }
-        this.#timer.interval = Millis(Math.min(delayMs, MAX_TIMER_DELAY_MS));
+        this.#timer.interval = Duration.min(delay, MAX_TIMER_DELAY);
         return true;
     }
 
@@ -200,7 +203,7 @@ export abstract class NodeProcessor {
                     continue;
                 }
                 if (processedCount > 0) {
-                    this.#currentDelayPromise = Time.sleep("node-processor-delay", Millis(2_000)).finally(() => {
+                    this.#currentDelayPromise = Time.sleep("node-processor-delay", INTER_NODE_DELAY).finally(() => {
                         this.#currentDelayPromise = undefined;
                     });
                     await this.#currentDelayPromise;

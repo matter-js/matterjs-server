@@ -11,6 +11,7 @@ import {
     camelize,
     ClientNode,
     CommissioningClient,
+    Duration,
     FabricId,
     FabricIndex,
     IcdClient,
@@ -153,6 +154,18 @@ function determineMatterVersion(attributes: AttributesData): string | undefined 
     return undefined;
 }
 
+export interface ControllerCommandHandlerOptions {
+    bleEnabled: boolean;
+    bleProxyEnabled: boolean;
+    otaEnabled: boolean;
+    /** Defaults to false. */
+    timeSyncEnabled?: boolean;
+    /** Defaults to false. */
+    threadDiagnosticsEnabled?: boolean;
+    /** Interval between custom cluster polling cycles. Defaults to, and is floored at, 60 seconds. */
+    customClusterPollInterval?: Duration;
+}
+
 export class ControllerCommandHandler {
     #controller: CommissioningController;
     #started = false;
@@ -200,14 +213,16 @@ export class ControllerCommandHandler {
     };
     #peers?: PeerSet;
 
-    constructor(
-        controllerInstance: CommissioningController,
-        bleEnabled: boolean,
-        bleProxyEnabled: boolean,
-        otaEnabled: boolean,
-        timeSyncEnabled = false,
-        threadDiagnosticsEnabled = false,
-    ) {
+    constructor(controllerInstance: CommissioningController, options: ControllerCommandHandlerOptions) {
+        const {
+            bleEnabled,
+            bleProxyEnabled,
+            otaEnabled,
+            timeSyncEnabled = false,
+            threadDiagnosticsEnabled = false,
+            customClusterPollInterval,
+        } = options;
+
         this.#controller = controllerInstance;
 
         this.#bleEnabled = bleEnabled;
@@ -223,7 +238,7 @@ export class ControllerCommandHandler {
 
         // Initialize custom cluster poller for Eve energy attributes etc.
         // Reads automatically trigger change events through the normal attribute flow
-        this.#customClusterPoller = new CustomClusterPoller(attributeReader);
+        this.#customClusterPoller = new CustomClusterPoller(attributeReader, customClusterPollInterval);
 
         if (threadDiagnosticsEnabled) {
             this.#threadDetailsPoller = new ThreadDetailsPoller(attributeReader);
