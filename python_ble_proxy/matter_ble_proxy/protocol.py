@@ -7,6 +7,7 @@ specification.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import StrEnum
 import struct
 
 # Current protocol version. Must match the matter-server's
@@ -29,6 +30,54 @@ HANDSHAKE_TIMEOUT_SECONDS = 10.0
 # does not include an explicit `timeout`. Matter BLE commissioning windows are
 # 15 minutes; this only caps a single connect attempt.
 DEFAULT_CONNECT_TIMEOUT_MS = 30_000
+
+
+class BleProxyCommand(StrEnum):
+    """Commands the server may send to a client.
+
+    Mirrors `BleProxyCommand` in `packages/ble-proxy/src/BleProxyProtocol.ts`; a client must
+    implement every member of this enum.
+    """
+
+    START_SCAN = "start_scan"
+    STOP_SCAN = "stop_scan"
+    CONNECT = "connect"
+    DISCONNECT = "disconnect"
+    DISCOVER_SERVICES = "discover_services"
+    DISCOVER_CHARACTERISTICS = "discover_characteristics"
+    READ_CHARACTERISTIC = "read_characteristic"
+    WRITE_CHARACTERISTIC = "write_characteristic"
+    SUBSCRIBE_CHARACTERISTIC = "subscribe_characteristic"
+    WRITE_AND_SUBSCRIBE = "write_and_subscribe"
+    UNSUBSCRIBE_CHARACTERISTIC = "unsubscribe_characteristic"
+    REQUEST_MTU = "request_mtu"
+
+
+class BleProxyErrorCode(StrEnum):
+    """Error codes a client may return in a command response.
+
+    Mirrors `BleProxyErrorCode` in `packages/ble-proxy/src/BleProxyProtocol.ts`; the wire
+    value of every member is its name lowercased.
+    """
+
+    BLUETOOTH_UNAVAILABLE = "bluetooth_unavailable"
+    ALREADY_SCANNING = "already_scanning"
+    NOT_SCANNING = "not_scanning"
+    DEVICE_NOT_FOUND = "device_not_found"
+    CONNECTION_FAILED = "connection_failed"
+    ALREADY_CONNECTED = "already_connected"
+    NOT_CONNECTED = "not_connected"
+    TIMEOUT = "timeout"
+    SERVICE_NOT_FOUND = "service_not_found"
+    CHARACTERISTIC_NOT_FOUND = "characteristic_not_found"
+    READ_FAILED = "read_failed"
+    WRITE_FAILED = "write_failed"
+    SUBSCRIBE_FAILED = "subscribe_failed"
+    NOT_SUBSCRIBED = "not_subscribed"
+    NOTIFY_NOT_SUPPORTED = "notify_not_supported"
+    MTU_REQUEST_FAILED = "mtu_request_failed"
+    DISCOVERY_FAILED = "discovery_failed"
+    INTERNAL_ERROR = "internal_error"
 
 
 @dataclass(slots=True)

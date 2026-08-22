@@ -23,6 +23,7 @@ type CommandHandler = (args: Record<string, unknown>) => Promise<Record<string, 
 export class BleProxyTestClient {
     #ws?: WebSocket;
     #commandHandlers = new Map<BleProxyCommandName, CommandHandler>();
+    #commandErrors = new Map<BleProxyCommandName, { error: string; message: string }>();
     #receivedCommands: CommandMessage[] = [];
     #commandWaiters: Array<{ command: string; resolve: (msg: CommandMessage) => void }> = [];
 
@@ -74,6 +75,11 @@ export class BleProxyTestClient {
         this.#commandHandlers.set(command, handler);
     }
 
+    /** Answer `command` the way a real client does: bare message, code in its own field. */
+    onCommandError(command: BleProxyCommandName, error: string, message: string): void {
+        this.#commandErrors.set(command, { error, message });
+    }
+
     sendEvent(event: string, data: Record<string, unknown>): void {
         this.#ws?.send(JSON.stringify({ event, data }));
     }
@@ -115,6 +121,12 @@ export class BleProxyTestClient {
     }
 
     async #dispatchCommand(msg: CommandMessage): Promise<void> {
+        const failure = this.#commandErrors.get(msg.command);
+        if (failure) {
+            this.#ws?.send(JSON.stringify({ id: msg.id, success: false, ...failure }));
+            return;
+        }
+
         const handler = this.#commandHandlers.get(msg.command);
         if (!handler) {
             // Auto-respond with success for unhandled commands
