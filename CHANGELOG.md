@@ -10,6 +10,7 @@ This page shows a detailed overview of the changes between versions without the 
 ## **WORK IN PROGRESS**
 
 - Enhancement: (lboue) Added Presets and Thermostat Suggestions (Thermostat cluster PRES/TSUGGEST features) panels to Dashboard, including adding and removing suggestions
+- Enhancement: Adds CLI flag `--custom-cluster-poll-interval` (env `CUSTOM_CLUSTER_POLL_INTERVAL`) to configure the polling interval for custom cluster attributes without subscription support (legacy Eve Energy devices); defaults to the previous 60 seconds and accepts 60 to 86400 seconds
 
 ## 1.4.0 (2026-08-07)
 

@@ -10,6 +10,7 @@ import {
     CommissioningClient,
     Crypto,
     DclBehavior,
+    Duration,
     Environment,
     FabricId,
     GlobalFabricId,
@@ -103,6 +104,11 @@ export interface MatterControllerOptions {
     disableThreadDiagnostics?: boolean;
     /** Staging directory and limits for two-step OTA firmware uploads. */
     otaUpload?: OtaUploadOptions;
+    /**
+     * Interval between polling cycles for custom cluster attributes that do not support subscriptions
+     * (legacy Eve Energy devices). Defaults to, and is floored at, 60 seconds.
+     */
+    customClusterPollInterval?: Duration;
 }
 
 /**
@@ -210,6 +216,7 @@ export class MatterController {
     #bleProxyEnabled = false;
     #enableTimeSync = false;
     #threadDiagnosticsDisabled = false;
+    #customClusterPollInterval?: Duration;
     #otaUploadOptions: OtaUploadOptions = {};
     #otaUploads?: OtaUploadRegistry;
     readonly #borderRouterRegistry: BorderRouterRegistry;
@@ -302,6 +309,7 @@ export class MatterController {
         this.#bleProxyEnabled = options.bleProxyEnabled ?? this.#bleProxyEnabled;
         this.#enableTimeSync = options.enableTimeSync ?? this.#enableTimeSync;
         this.#threadDiagnosticsDisabled = options.disableThreadDiagnostics ?? this.#threadDiagnosticsDisabled;
+        this.#customClusterPollInterval = options.customClusterPollInterval;
         this.#otaUploadOptions = options.otaUpload ?? this.#otaUploadOptions;
         this.#services = this.#env.asDependent();
         this.#threadDiagnostics = new ThreadDiagnosticsService({
@@ -408,14 +416,14 @@ export class MatterController {
             throw new Error("Controller not initialized");
         }
         if (this.#commandHandler === undefined) {
-            this.#commandHandler = new ControllerCommandHandler(
-                this.#controllerInstance,
-                this.#env.vars.get("ble.enable", false),
-                this.#bleProxyEnabled,
-                !this.#disableOtaProvider,
-                this.#enableTimeSync,
-                !this.#threadDiagnosticsDisabled,
-            );
+            this.#commandHandler = new ControllerCommandHandler(this.#controllerInstance, {
+                bleEnabled: this.#env.vars.get("ble.enable", false),
+                bleProxyEnabled: this.#bleProxyEnabled,
+                otaEnabled: !this.#disableOtaProvider,
+                timeSyncEnabled: this.#enableTimeSync,
+                threadDiagnosticsEnabled: !this.#threadDiagnosticsDisabled,
+                customClusterPollInterval: this.#customClusterPollInterval,
+            });
 
             this.#commandHandler.events.started.once(async () => {
                 if (this.#stopped) return;

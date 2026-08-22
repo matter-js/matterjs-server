@@ -11,7 +11,7 @@
  */
 
 import { isLongIdleTimeDevice } from "@matter-server/ws-client";
-import { asError, Diagnostic, Logger } from "@matter/main";
+import { asError, Diagnostic, Duration, Logger, Millis, Seconds } from "@matter/main";
 import { PeerAddress, PeerAddressMap } from "@matter/main/protocol";
 import { AttributesData } from "../types/CommandHandler.js";
 import { formatNodeId } from "../util/formatNodeId.js";
@@ -36,11 +36,31 @@ const EVE_ENERGY_ATTRIBUTE_IDS = {
 // Standard Matter ElectricalPowerMeasurement cluster ID
 const ELECTRICAL_POWER_MEASUREMENT_CLUSTER_ID = 0x0090; // 144
 
-// Polling interval in milliseconds (60 seconds)
-const POLLING_INTERVAL_MS = 60_000;
+const DEFAULT_POLL_INTERVAL = Seconds(60);
+
+/** Floor for a configured interval; equal to the default because a faster cadence is what this option exists to avoid. */
+const MIN_POLL_INTERVAL = DEFAULT_POLL_INTERVAL;
+
+// Timer.interval takes this unvalidated, so a zero or sub-minute interval would be a read storm.
+// Forever stays untouched: it is the caller asking for the slowest cadence, not the fastest.
+function effectivePollInterval(pollInterval: Duration): Duration {
+    if (Number.isNaN(pollInterval)) {
+        logger.warn(
+            `Ignoring invalid custom cluster poll interval, polling every ${Duration.format(DEFAULT_POLL_INTERVAL)}`,
+        );
+        return DEFAULT_POLL_INTERVAL;
+    }
+    if (pollInterval < MIN_POLL_INTERVAL) {
+        logger.warn(
+            `Custom cluster poll interval ${Duration.format(pollInterval)} is below the ${Duration.format(MIN_POLL_INTERVAL)} minimum, polling every ${Duration.format(MIN_POLL_INTERVAL)} instead`,
+        );
+        return MIN_POLL_INTERVAL;
+    }
+    return pollInterval;
+}
 
 // Initial delay range: random 30-60s to stagger startup
-const INITIAL_DELAY_MS = 30_000;
+const INITIAL_DELAY = Seconds(30);
 
 // Attribute path format: endpoint/cluster/attribute
 type AttributePath = string;
@@ -114,9 +134,13 @@ export class CustomClusterPoller extends NodeProcessor {
     #polledAttributes = new PeerAddressMap<Set<AttributePath>>();
     readonly #attributeReader: NodeAttributeReader;
 
-    constructor(attributeReader: NodeAttributeReader) {
+    constructor(attributeReader: NodeAttributeReader, pollInterval: Duration = DEFAULT_POLL_INTERVAL) {
         // Whole milliseconds: a fractional timer deadline is meaningless and MockTime rejects it.
-        super("eve-poller", INITIAL_DELAY_MS + Math.floor(Math.random() * INITIAL_DELAY_MS), POLLING_INTERVAL_MS);
+        super(
+            "eve-poller",
+            Millis(INITIAL_DELAY + Math.floor(Math.random() * INITIAL_DELAY)),
+            effectivePollInterval(pollInterval),
+        );
         this.#attributeReader = attributeReader;
     }
 
