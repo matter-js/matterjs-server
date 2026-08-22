@@ -146,6 +146,11 @@ export class NobleBleProxyClient {
                     warn("Received invalid JSON from the server");
                     return;
                 }
+                // Valid JSON is not necessarily an object, and `"id" in null` throws.
+                if (typeof msg !== "object" || msg === null) {
+                    warn("Ignoring non-object JSON message from the server");
+                    return;
+                }
 
                 if (!handshakeComplete) {
                     if (msg.type === "hello_response") {
@@ -358,6 +363,9 @@ export class NobleBleProxyClient {
         });
 
         try {
+            // The hci-socket binding returns early from startScanning while a scan is running,
+            // keeping the previous service-uuid filter, so a filter change needs a stop first.
+            await this.#noble.stopScanningAsync();
             await this.#startScanning();
         } catch (err) {
             this.#scanRequested = false;
@@ -819,11 +827,14 @@ export class NobleBleProxyClient {
      * A no-op once `stop_scan` has been received, so the connect paths cannot resume a scan
      * the server already ended.
      */
-    #startScanning(): Promise<void> {
+    async #startScanning(): Promise<void> {
         if (!this.#scanRequested) {
-            return Promise.resolve();
+            return;
         }
-        return this.#noble!.startScanningAsync(this.#scanServiceUuids, true);
+        await this.#noble!.startScanningAsync(this.#scanServiceUuids, true);
+        if (!this.#scanRequested) {
+            await this.#noble!.stopScanningAsync();
+        }
     }
 
     // Forwarded regardless of noble's `isNotification`: on macOS that flag is derived from a
