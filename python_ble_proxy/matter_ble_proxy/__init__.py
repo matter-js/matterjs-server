@@ -22,6 +22,8 @@ from .protocol import (
     OPCODE_READ_RESPONSE,
     OPCODE_WRITE_DATA,
     AdvertisementData,
+    BleProxyCommand,
+    BleProxyErrorCode,
 )
 
 __all__ = [
@@ -32,6 +34,8 @@ __all__ = [
     "OPCODE_WRITE_DATA",
     "AdvertisementData",
     "BleDeviceResolver",
+    "BleProxyCommand",
+    "BleProxyErrorCode",
     "BleScanSource",
     "BleakDeviceResolver",
     "BleakScanSource",
