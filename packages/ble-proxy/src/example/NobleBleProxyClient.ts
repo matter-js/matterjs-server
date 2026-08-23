@@ -36,6 +36,12 @@ import {
     encodeBinaryFrame,
 } from "../BleProxyProtocol.js";
 
+/**
+ * The server connects off its own discovery cache, which it replays to a new discovery callback
+ * and never clears, so it can ask for an address this process has not advertised yet.
+ */
+const CONNECT_DISCOVERY_TIMEOUT_MS = 5_000;
+
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
     return Promise.race([promise, new Promise<never>((_, reject) => setTimeout(() => reject(new Error(message)), ms))]);
 }
@@ -99,6 +105,7 @@ export class NobleBleProxyClient {
     #connections = new Map<number, ConnectionState>();
     #nextHandle = 1;
     #discoveredPeripherals = new Map<string, Peripheral>();
+    #discoveryWaiters = new Map<string, Set<(peripheral: Peripheral) => void>>();
     #lastDiscoverFingerprint = new Map<string, DiscoverFingerprint>();
     #scanServiceUuids: string[] = [];
     #reportDuplicates = true;
@@ -312,6 +319,14 @@ export class NobleBleProxyClient {
             const address = peripheral.address || peripheral.id;
             this.#discoveredPeripherals.set(address, peripheral);
 
+            const waiters = this.#discoveryWaiters.get(address);
+            if (waiters) {
+                this.#discoveryWaiters.delete(address);
+                for (const resolve of waiters) {
+                    resolve(peripheral);
+                }
+            }
+
             const serviceData: Record<string, string> = {};
             for (const sd of peripheral.advertisement.serviceData ?? []) {
                 serviceData[sd.uuid] = Buffer.from(sd.data).toString("base64");
@@ -387,11 +402,40 @@ export class NobleBleProxyClient {
         this.#sendSuccess(id);
     }
 
+    /** Resolves once `address` is advertised, or undefined once the wait times out. */
+    #awaitDiscovered(address: string): Promise<Peripheral | undefined> {
+        const known = this.#discoveredPeripherals.get(address);
+        if (known) {
+            return Promise.resolve(known);
+        }
+
+        log(`[CONN] "${address}" not advertised yet, waiting up to ${CONNECT_DISCOVERY_TIMEOUT_MS}ms`);
+        return new Promise<Peripheral | undefined>(resolve => {
+            const waiters = this.#discoveryWaiters.get(address) ?? new Set();
+            this.#discoveryWaiters.set(address, waiters);
+
+            const timer = setTimeout(() => {
+                waiters.delete(onDiscovered);
+                if (waiters.size === 0) {
+                    this.#discoveryWaiters.delete(address);
+                }
+                resolve(undefined);
+            }, CONNECT_DISCOVERY_TIMEOUT_MS);
+
+            const onDiscovered = (peripheral: Peripheral) => {
+                clearTimeout(timer);
+                resolve(peripheral);
+            };
+            waiters.add(onDiscovered);
+        });
+    }
+
     async #handleConnect(id: number, args: ConnectArgs): Promise<void> {
-        const peripheral = this.#discoveredPeripherals.get(args.address);
+        const peripheral = await this.#awaitDiscovered(args.address);
         if (!peripheral) {
             error(
-                `[CONN] No peripheral found for address "${args.address}". Known: ${[...this.#discoveredPeripherals.keys()].join(", ")}`,
+                `[CONN] No peripheral found for address "${args.address}" after ${CONNECT_DISCOVERY_TIMEOUT_MS}ms.` +
+                    ` Known: ${[...this.#discoveredPeripherals.keys()].join(", ")}`,
             );
             this.#sendError(id, BleProxyErrorCode.DeviceNotFound, `No device found for address ${args.address}`);
             return;
