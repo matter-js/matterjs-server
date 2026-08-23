@@ -27,10 +27,18 @@ import {
     type ReadCharacteristicArgs,
     type SubscribeCharacteristicArgs,
     type UnsubscribeCharacteristicArgs,
+    type WriteAndSubscribeArgs,
     type WriteCharacteristicArgs,
     decodeBinaryFrame,
     encodeBinaryFrame,
 } from "../BleProxyProtocol.js";
+
+/**
+ * How long #handleConnect waits for a scan result to surface a peripheral the controller has
+ * already asked us to connect to. The controller drives connect off its own discovery bookkeeping,
+ * which can run ahead of our device_discovered event for the same advertisement.
+ */
+const CONNECT_DISCOVERY_TIMEOUT_MS = 5000;
 
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
     return Promise.race([promise, new Promise<never>((_, reject) => setTimeout(() => reject(new Error(message)), ms))]);
@@ -229,6 +237,9 @@ export class NobleBleProxyClient {
         this.#commandHandlers.set("subscribe_characteristic", (id, args) =>
             this.#handleSubscribeCharacteristic(id, args as unknown as SubscribeCharacteristicArgs),
         );
+        this.#commandHandlers.set("write_and_subscribe", (id, args) =>
+            this.#handleWriteAndSubscribe(id, args as unknown as WriteAndSubscribeArgs),
+        );
         this.#commandHandlers.set("unsubscribe_characteristic", (id, args) =>
             this.#handleUnsubscribeCharacteristic(id, args as unknown as UnsubscribeCharacteristicArgs),
         );
@@ -335,11 +346,28 @@ export class NobleBleProxyClient {
         this.#sendSuccess(id);
     }
 
+    /**
+     * Resolve a peripheral the controller wants to connect to, tolerating the case where its
+     * connect arrives before our own device_discovered event for the same advertisement.
+     */
+    async #awaitDiscoveredPeripheral(address: string): Promise<Peripheral | undefined> {
+        const deadline = Date.now() + CONNECT_DISCOVERY_TIMEOUT_MS;
+        while (Date.now() < deadline) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            const peripheral = this.#discoveredPeripherals.get(address);
+            if (peripheral) {
+                return peripheral;
+            }
+        }
+        return undefined;
+    }
+
     async #handleConnect(id: number, args: ConnectArgs): Promise<void> {
-        const peripheral = this.#discoveredPeripherals.get(args.address);
+        const peripheral =
+            this.#discoveredPeripherals.get(args.address) ?? (await this.#awaitDiscoveredPeripheral(args.address));
         if (!peripheral) {
             error(
-                `[CONN] No peripheral found for address "${args.address}". Known: ${[...this.#discoveredPeripherals.keys()].join(", ")}`,
+                `[CONN] No peripheral found for address "${args.address}" after ${CONNECT_DISCOVERY_TIMEOUT_MS}ms. Known: ${[...this.#discoveredPeripherals.keys()].join(", ")}`,
             );
             this.#sendError(id, "device_not_found", `No device found for address ${args.address}`);
             return;
@@ -593,6 +621,55 @@ export class NobleBleProxyClient {
         await char.subscribeAsync();
         conn.subscriptions.set(args.characteristic_uuid, char);
         log(`[GATT] subscribe ${args.characteristic_uuid} handle=${handle}`);
+        this.#sendSuccess(id);
+    }
+
+    /**
+     * Atomic write-then-subscribe used for BTP session establishment.
+     *
+     * The controller sends this instead of a separate write_characteristic and
+     * subscribe_characteristic pair because the peripheral only emits the BTP handshake
+     * response on C2 once both have happened, and it drops the endpoint after
+     * BTP_CONN_RSP_TIMEOUT. The data listener is attached before the write so an indication
+     * arriving between the write response and the subscribe response is not lost.
+     */
+    async #handleWriteAndSubscribe(id: number, args: WriteAndSubscribeArgs): Promise<void> {
+        const conn = this.#connections.get(args.connection_handle);
+        if (!conn) {
+            this.#sendError(id, "not_connected", `No connection with handle ${args.connection_handle}`);
+            return;
+        }
+
+        const writeChar = this.#findCharacteristic(conn, args.write_uuid);
+        if (!writeChar) {
+            this.#sendError(id, "characteristic_not_found", `Characteristic ${args.write_uuid} not found`);
+            return;
+        }
+
+        const subscribeChar = this.#findCharacteristic(conn, args.subscribe_uuid);
+        if (!subscribeChar) {
+            this.#sendError(id, "characteristic_not_found", `Characteristic ${args.subscribe_uuid} not found`);
+            return;
+        }
+
+        const handle = args.connection_handle;
+        subscribeChar.on("data", (data: Buffer) => {
+            log(`[GATT] notify ${args.subscribe_uuid} handle=${handle} ${data.length} bytes`);
+            this.#sendBinaryFrame(BinaryFrameOpcode.Notification, handle, new Uint8Array(data));
+        });
+
+        const data = Buffer.from(args.write_value, "base64");
+        // C1 is a write-with-response characteristic; the controller always sets this.
+        const withResponse = args.write_response ?? true;
+        log(
+            `[GATT] write_and_subscribe write ${args.write_uuid} ${data.length} bytes withResponse=${withResponse}` +
+                ` then subscribe ${args.subscribe_uuid} handle=${handle}`,
+        );
+        await writeChar.writeAsync(data, !withResponse);
+        conn.lastWriteCharacteristic = writeChar;
+
+        await subscribeChar.subscribeAsync();
+        conn.subscriptions.set(args.subscribe_uuid, subscribeChar);
         this.#sendSuccess(id);
     }
 
