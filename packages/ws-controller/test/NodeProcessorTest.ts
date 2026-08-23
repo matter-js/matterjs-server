@@ -4,11 +4,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { FabricIndex, NodeId } from "@matter/main";
+import { FabricIndex, Minutes, NodeId } from "@matter/main";
 import { PeerAddress, PeerAddressMap } from "@matter/main/protocol";
 import { NodeProcessor } from "../src/controller/NodeProcessor.js";
 
-const CYCLE_DELAY_MS = 60_000;
+const CYCLE_DELAY = Minutes(1);
 const PAST_CYCLE_DELAY_MS = 61_000;
 // The base class spaces serial nodes two seconds apart.
 const PAST_NODE_DELAY_MS = 2_100;
@@ -26,7 +26,7 @@ class TestProcessor extends NodeProcessor {
     #releases = new PeerAddressMap<() => void>();
 
     constructor() {
-        super("test-processor", CYCLE_DELAY_MS, CYCLE_DELAY_MS);
+        super("test-processor", CYCLE_DELAY, CYCLE_DELAY);
     }
 
     register(peer: PeerAddress, longIdleTime = false): void {

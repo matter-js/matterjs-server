@@ -20,14 +20,14 @@
  */
 
 import { isLongIdleTimeDevice } from "@matter-server/ws-client";
-import { Duration, Hours, Logger, Millis, Minutes, Seconds, Time } from "@matter/main";
+import { Duration, Hours, Logger, Millis, Minutes, Seconds, Time, Timestamp } from "@matter/main";
 import { TimeSynchronization } from "@matter/main/clusters";
 import { PeerAddress, PeerAddressMap, PeerAddressSet } from "@matter/main/protocol";
 import { StatusResponseError } from "@matter/main/types";
 import { AttributesData } from "../types/CommandHandler.js";
 import { formatNodeId } from "../util/formatNodeId.js";
 import { nextOffsetChangeMs, resolveHostTimeZone, timeZonePlan } from "../util/hostTimeZone.js";
-import { MAX_TIMER_DELAY_MS, NodeProcessor } from "./NodeProcessor.js";
+import { MAX_TIMER_DELAY, NodeProcessor } from "./NodeProcessor.js";
 
 const logger = Logger.get("TimeSyncManager");
 
@@ -82,14 +82,14 @@ export interface TimeSyncConnector {
 }
 
 /** Instant of the host zone's next offset change, or null when none is in view. */
-export type OffsetChangeLookup = (fromMs: number) => number | null;
+export type OffsetChangeLookup = (from: Timestamp) => number | null;
 
 /**
  * Delay before the first sync, long enough for node initialization to finish. Capped so the value
  * reported to the log is the one the timer can actually be given.
  */
-export function startupDelayMs(commissionedNodeCount: number): number {
-    return Math.min(STARTUP_BASE_DELAY + commissionedNodeCount * STARTUP_DELAY_PER_NODE, MAX_TIMER_DELAY_MS);
+export function startupDelay(commissionedNodeCount: number): Duration {
+    return Duration.min(Millis(STARTUP_BASE_DELAY + commissionedNodeCount * STARTUP_DELAY_PER_NODE), MAX_TIMER_DELAY);
 }
 
 /**
@@ -97,18 +97,18 @@ export function startupDelayMs(commissionedNodeCount: number): number {
  * an upcoming offset change so a node's retired DST entry is replaced promptly. An instant that has
  * already passed, or one beyond the interval, leaves the cadence alone.
  */
-export function resyncDelayMs(nowMs: number, nextChangeMs: number | null): number {
-    if (nextChangeMs === null || !Number.isFinite(nextChangeMs)) {
+export function resyncDelay(now: Timestamp, nextChange: number | null): Duration {
+    if (nextChange === null || !Number.isFinite(nextChange)) {
         return RESYNC_INTERVAL;
     }
-    const delay = nextChangeMs + POST_CHANGE_MARGIN - nowMs;
+    const delay = Millis(nextChange + POST_CHANGE_MARGIN - now);
     return delay < MIN_ACCELERATED_DELAY || delay >= RESYNC_INTERVAL ? RESYNC_INTERVAL : delay;
 }
 
-const defaultOffsetChangeLookup: OffsetChangeLookup = fromMs => {
+const defaultOffsetChangeLookup: OffsetChangeLookup = from => {
     const zone = resolveHostTimeZone();
     // A node with less capacity cannot surface a nearer boundary than the cluster maxima do.
-    return nextOffsetChangeMs(timeZonePlan(zone, fromMs, { maxRegimes: 2, maxWindows: 2 }), fromMs);
+    return nextOffsetChangeMs(timeZonePlan(zone, from, { maxRegimes: 2, maxWindows: 2 }), from);
 };
 
 /** TimeNotAccepted means the node keeps a time source it prefers — expected, not an error. */
@@ -209,9 +209,9 @@ export class TimeSyncManager extends NodeProcessor {
                 // Scaling the delay is an optimization; it must not abort the node's registration.
                 logger.warn("Could not determine the commissioned node count:", error);
             }
-            const delay = startupDelayMs(nodeCount);
+            const delay = startupDelay(nodeCount);
             if (this.setNextCycleDelay(delay)) {
-                logger.info(`First time synchronization in ${Duration.format(Millis(delay))}`);
+                logger.info(`First time synchronization in ${Duration.format(delay)}`);
             }
         }
 
@@ -326,16 +326,16 @@ export class TimeSyncManager extends NodeProcessor {
      * entry has just expired, which a node is otherwise entitled to discard entirely.
      */
     protected override nextCycleDelay(): Duration {
-        const nowMs = Time.nowMs;
-        let nextChangeMs: number | null = null;
+        const now = Time.nowMs;
+        let nextChange: number | null = null;
         try {
-            nextChangeMs = this.#offsetChangeLookup(nowMs);
+            nextChange = this.#offsetChangeLookup(now);
         } catch (error) {
             // Bringing the cycle forward is an optimization; the zone lookup rests on Intl and the
             // host's zone name, neither of which is worth a missed resync.
             logger.warn("Could not determine the next time zone offset change:", error);
         }
-        return Millis(resyncDelayMs(nowMs, nextChangeMs));
+        return resyncDelay(now, nextChange);
     }
 
     protected override async processNode(peer: PeerAddress): Promise<void> {
