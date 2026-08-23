@@ -137,7 +137,7 @@ export class CustomClusterPoller extends NodeProcessor {
     constructor(attributeReader: NodeAttributeReader, pollInterval: Duration = DEFAULT_POLL_INTERVAL) {
         // Whole milliseconds: a fractional timer deadline is meaningless and MockTime rejects it.
         super(
-            "eve-poller",
+            "custom-cluster-poller",
             Millis(INITIAL_DELAY + Math.floor(Math.random() * INITIAL_DELAY)),
             effectivePollInterval(pollInterval),
         );
