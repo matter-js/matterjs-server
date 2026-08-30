@@ -19,18 +19,28 @@ import {
     BLE_PROXY_PROTOCOL_VERSION,
     BinaryFrameOpcode,
     type BleProxyCommandName,
+    BleProxyErrorCode,
+    type BleProxyErrorCodeValue,
     type CommandMessage,
     type ConnectArgs,
     type DeviceDiscoveredData,
     type DiscoverCharacteristicsArgs,
     type DiscoverServicesArgs,
     type ReadCharacteristicArgs,
+    type StartScanArgs,
     type SubscribeCharacteristicArgs,
     type UnsubscribeCharacteristicArgs,
+    type WriteAndSubscribeArgs,
     type WriteCharacteristicArgs,
     decodeBinaryFrame,
     encodeBinaryFrame,
 } from "../BleProxyProtocol.js";
+
+/**
+ * The server connects off its own discovery cache, which it replays to a new discovery callback
+ * and never clears, so it can ask for an address this process has not advertised yet.
+ */
+const CONNECT_DISCOVERY_TIMEOUT_MS = 5_000;
 
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
     return Promise.race([promise, new Promise<never>((_, reject) => setTimeout(() => reject(new Error(message)), ms))]);
@@ -61,11 +71,19 @@ type Peripheral = import("@stoprocent/noble").Peripheral;
 type Characteristic = import("@stoprocent/noble").Characteristic;
 type Service = import("@stoprocent/noble").Service;
 
+/** noble reuses the "data" event for read responses, and delivers a null payload on read failure. */
+type NotificationListener = (payload: Buffer | null) => void;
+
+interface Subscription {
+    characteristic: Characteristic;
+    onData: NotificationListener;
+}
+
 interface ConnectionState {
     peripheral: Peripheral;
     services: Map<string, Service>;
     characteristics: Map<string, Characteristic>;
-    subscriptions: Map<string, Characteristic>;
+    subscriptions: Map<string, Subscription>;
     lastWriteCharacteristic?: Characteristic;
 }
 
@@ -87,7 +105,11 @@ export class NobleBleProxyClient {
     #connections = new Map<number, ConnectionState>();
     #nextHandle = 1;
     #discoveredPeripherals = new Map<string, Peripheral>();
+    #discoveryWaiters = new Map<string, Set<(peripheral: Peripheral) => void>>();
     #lastDiscoverFingerprint = new Map<string, DiscoverFingerprint>();
+    #scanServiceUuids: string[] = [];
+    #reportDuplicates = true;
+    #scanRequested = false;
     #commandHandlers = new Map<BleProxyCommandName, CommandHandler>();
     #closing = false;
 
@@ -95,6 +117,11 @@ export class NobleBleProxyClient {
         this.#serverUrl = serverUrl;
         this.#hciId = hciId;
         this.#registerCommandHandlers();
+    }
+
+    /** Command names this client implements. Must cover every `BleProxyCommand` value. */
+    get supportedCommands(): BleProxyCommandName[] {
+        return [...this.#commandHandlers.keys()];
     }
 
     async connect(): Promise<void> {
@@ -118,7 +145,19 @@ export class NobleBleProxyClient {
                     return;
                 }
 
-                const msg = JSON.parse(data.toString());
+                // A throw here escapes into ws's receiver and takes the process down with it.
+                let msg;
+                try {
+                    msg = JSON.parse(data.toString());
+                } catch {
+                    warn("Received invalid JSON from the server");
+                    return;
+                }
+                // Valid JSON is not necessarily an object, and `"id" in null` throws.
+                if (typeof msg !== "object" || msg === null) {
+                    warn("Ignoring non-object JSON message from the server");
+                    return;
+                }
 
                 if (!handshakeComplete) {
                     if (msg.type === "hello_response") {
@@ -208,7 +247,7 @@ export class NobleBleProxyClient {
     }
 
     #registerCommandHandlers(): void {
-        this.#commandHandlers.set("start_scan", (id, _args) => this.#handleStartScan(id));
+        this.#commandHandlers.set("start_scan", (id, args) => this.#handleStartScan(id, args));
         this.#commandHandlers.set("stop_scan", id => this.#handleStopScan(id));
         this.#commandHandlers.set("connect", (id, args) => this.#handleConnect(id, args as unknown as ConnectArgs));
         this.#commandHandlers.set("disconnect", (id, args) =>
@@ -229,6 +268,9 @@ export class NobleBleProxyClient {
         this.#commandHandlers.set("subscribe_characteristic", (id, args) =>
             this.#handleSubscribeCharacteristic(id, args as unknown as SubscribeCharacteristicArgs),
         );
+        this.#commandHandlers.set("write_and_subscribe", (id, args) =>
+            this.#handleWriteAndSubscribe(id, args as unknown as WriteAndSubscribeArgs),
+        );
         this.#commandHandlers.set("unsubscribe_characteristic", (id, args) =>
             this.#handleUnsubscribeCharacteristic(id, args as unknown as UnsubscribeCharacteristicArgs),
         );
@@ -247,25 +289,28 @@ export class NobleBleProxyClient {
         const handler = this.#commandHandlers.get(msg.command);
         if (!handler) {
             error(`[→ERR] id=${msg.id} Unknown command: ${msg.command}`);
-            this.#sendError(msg.id, "internal_error", `Unknown command: ${msg.command}`);
+            this.#sendError(msg.id, BleProxyErrorCode.InternalError, `Unknown command: ${msg.command}`);
             return;
         }
         try {
             await handler(msg.id, msg.args ?? {});
         } catch (err) {
             error(`[→ERR] id=${msg.id} ${msg.command} threw: ${(err as Error).message}`);
-            this.#sendError(msg.id, "internal_error", `${(err as Error).message}`);
+            this.#sendError(msg.id, BleProxyErrorCode.InternalError, `${(err as Error).message}`);
         }
     }
 
     // ─── Command Handlers ────────────────────────────────────────────────────
 
-    async #handleStartScan(id: number): Promise<void> {
+    async #handleStartScan(id: number, args: StartScanArgs): Promise<void> {
         if (!this.#noble) {
-            this.#sendError(id, "bluetooth_unavailable", "Noble not initialized");
+            this.#sendError(id, BleProxyErrorCode.BluetoothUnavailable, "Noble not initialized");
             return;
         }
 
+        this.#scanServiceUuids = args.service_uuids ?? [];
+        this.#reportDuplicates = args.allow_duplicates ?? true;
+        this.#scanRequested = true;
         this.#lastDiscoverFingerprint.clear();
         // Remove any existing discover listeners to prevent duplicates on repeated scans
         this.#noble.removeAllListeners("discover");
@@ -273,6 +318,14 @@ export class NobleBleProxyClient {
             // On macOS, peripheral.address is often empty — fall back to peripheral.id (UUID)
             const address = peripheral.address || peripheral.id;
             this.#discoveredPeripherals.set(address, peripheral);
+
+            const waiters = this.#discoveryWaiters.get(address);
+            if (waiters) {
+                this.#discoveryWaiters.delete(address);
+                for (const resolve of waiters) {
+                    resolve(peripheral);
+                }
+            }
 
             const serviceData: Record<string, string> = {};
             for (const sd of peripheral.advertisement.serviceData ?? []) {
@@ -301,7 +354,7 @@ export class NobleBleProxyClient {
                 prev.serviceUuids !== fingerprint.serviceUuids ||
                 prev.serviceData !== fingerprint.serviceData;
 
-            if (!changed) {
+            if (!this.#reportDuplicates && !changed) {
                 return;
             }
             this.#lastDiscoverFingerprint.set(address, fingerprint);
@@ -324,24 +377,67 @@ export class NobleBleProxyClient {
             this.#sendEvent("device_discovered", event as unknown as Record<string, unknown>);
         });
 
-        await this.#noble.startScanningAsync(["fff6"], true);
-        log("[SCAN] BLE scan started (filter: fff6)");
+        try {
+            // The hci-socket binding returns early from startScanning while a scan is running,
+            // keeping the previous service-uuid filter, so a filter change needs a stop first.
+            await this.#noble.stopScanningAsync();
+            await this.#startScanning();
+        } catch (err) {
+            this.#scanRequested = false;
+            this.#noble.removeAllListeners("discover");
+            this.#sendError(id, BleProxyErrorCode.InternalError, (err as Error).message);
+            return;
+        }
+        log(
+            `[SCAN] BLE scan started (filter: ${this.#scanServiceUuids.join(",") || "none"}` +
+                ` allowDuplicates=${this.#reportDuplicates})`,
+        );
         this.#sendSuccess(id);
     }
 
     async #handleStopScan(id: number): Promise<void> {
+        this.#scanRequested = false;
         await this.#noble?.stopScanningAsync();
         log("[SCAN] BLE scan stopped");
         this.#sendSuccess(id);
     }
 
+    /** Resolves once `address` is advertised, or undefined once the wait times out. */
+    #awaitDiscovered(address: string): Promise<Peripheral | undefined> {
+        const known = this.#discoveredPeripherals.get(address);
+        if (known) {
+            return Promise.resolve(known);
+        }
+
+        log(`[CONN] "${address}" not advertised yet, waiting up to ${CONNECT_DISCOVERY_TIMEOUT_MS}ms`);
+        return new Promise<Peripheral | undefined>(resolve => {
+            const waiters = this.#discoveryWaiters.get(address) ?? new Set();
+            this.#discoveryWaiters.set(address, waiters);
+
+            const timer = setTimeout(() => {
+                waiters.delete(onDiscovered);
+                if (waiters.size === 0) {
+                    this.#discoveryWaiters.delete(address);
+                }
+                resolve(undefined);
+            }, CONNECT_DISCOVERY_TIMEOUT_MS);
+
+            const onDiscovered = (peripheral: Peripheral) => {
+                clearTimeout(timer);
+                resolve(peripheral);
+            };
+            waiters.add(onDiscovered);
+        });
+    }
+
     async #handleConnect(id: number, args: ConnectArgs): Promise<void> {
-        const peripheral = this.#discoveredPeripherals.get(args.address);
+        const peripheral = await this.#awaitDiscovered(args.address);
         if (!peripheral) {
             error(
-                `[CONN] No peripheral found for address "${args.address}". Known: ${[...this.#discoveredPeripherals.keys()].join(", ")}`,
+                `[CONN] No peripheral found for address "${args.address}" after ${CONNECT_DISCOVERY_TIMEOUT_MS}ms.` +
+                    ` Known: ${[...this.#discoveredPeripherals.keys()].join(", ")}`,
             );
-            this.#sendError(id, "device_not_found", `No device found for address ${args.address}`);
+            this.#sendError(id, BleProxyErrorCode.DeviceNotFound, `No device found for address ${args.address}`);
             return;
         }
 
@@ -406,7 +502,7 @@ export class NobleBleProxyClient {
 
             // Resume scanning so the server can still observe new devices and rssi updates.
             log(`[SCAN] resuming scan after connect+interview...`);
-            await this.#noble!.startScanningAsync(["fff6"], true);
+            await this.#startScanning();
 
             this.#sendSuccess(id, { connection_handle: handle, mtu });
         } catch (err) {
@@ -424,19 +520,17 @@ export class NobleBleProxyClient {
                     );
             }
             // Always try to resume scanning so subsequent connect attempts still see devices.
-            this.#noble!
-                .startScanningAsync(["fff6"], true)
-                .catch(scanErr =>
-                    warn(`[SCAN] failed to resume scanning after connect failure: ${(scanErr as Error).message}`),
-                );
-            this.#sendError(id, "internal_error", reason);
+            this.#startScanning().catch(scanErr =>
+                warn(`[SCAN] failed to resume scanning after connect failure: ${(scanErr as Error).message}`),
+            );
+            this.#sendError(id, BleProxyErrorCode.ConnectionFailed, reason);
         }
     }
 
     async #handleDisconnect(id: number, connectionHandle: number): Promise<void> {
         const conn = this.#connections.get(connectionHandle);
         if (!conn) {
-            this.#sendError(id, "not_connected", `No connection with handle ${connectionHandle}`);
+            this.#sendError(id, BleProxyErrorCode.NotConnected, `No connection with handle ${connectionHandle}`);
             return;
         }
 
@@ -450,7 +544,7 @@ export class NobleBleProxyClient {
     async #handleDiscoverServices(id: number, args: DiscoverServicesArgs): Promise<void> {
         const conn = this.#connections.get(args.connection_handle);
         if (!conn) {
-            this.#sendError(id, "not_connected", `No connection with handle ${args.connection_handle}`);
+            this.#sendError(id, BleProxyErrorCode.NotConnected, `No connection with handle ${args.connection_handle}`);
             return;
         }
 
@@ -464,11 +558,17 @@ export class NobleBleProxyClient {
 
         // Fallback: lazy discover
         log(`[GATT] handle=${args.connection_handle} discovering services (lazy)...`);
-        const services = await withTimeout(
-            conn.peripheral.discoverServicesAsync([]),
-            10_000,
-            "discoverServices timed out after 10s",
-        );
+        let services: Service[];
+        try {
+            services = await withTimeout(
+                conn.peripheral.discoverServicesAsync([]),
+                10_000,
+                "discoverServices timed out after 10s",
+            );
+        } catch (err) {
+            this.#sendError(id, BleProxyErrorCode.DiscoveryFailed, (err as Error).message);
+            return;
+        }
         for (const service of services) {
             conn.services.set(service.uuid, service);
         }
@@ -482,13 +582,13 @@ export class NobleBleProxyClient {
     async #handleDiscoverCharacteristics(id: number, args: DiscoverCharacteristicsArgs): Promise<void> {
         const conn = this.#connections.get(args.connection_handle);
         if (!conn) {
-            this.#sendError(id, "not_connected", `No connection with handle ${args.connection_handle}`);
+            this.#sendError(id, BleProxyErrorCode.NotConnected, `No connection with handle ${args.connection_handle}`);
             return;
         }
 
         const service = conn.services.get(args.service_uuid);
         if (!service) {
-            this.#sendError(id, "service_not_found", `Service ${args.service_uuid} not found`);
+            this.#sendError(id, BleProxyErrorCode.ServiceNotFound, `Service ${args.service_uuid} not found`);
             return;
         }
 
@@ -510,11 +610,17 @@ export class NobleBleProxyClient {
 
         // Fallback: lazy discover
         log(`[GATT] handle=${args.connection_handle} discovering characteristics for ${args.service_uuid} (lazy)...`);
-        const characteristics = await withTimeout(
-            service.discoverCharacteristicsAsync([]),
-            10_000,
-            `discoverCharacteristics(${args.service_uuid}) timed out after 10s`,
-        );
+        let characteristics: Characteristic[];
+        try {
+            characteristics = await withTimeout(
+                service.discoverCharacteristicsAsync([]),
+                10_000,
+                `discoverCharacteristics(${args.service_uuid}) timed out after 10s`,
+            );
+        } catch (err) {
+            this.#sendError(id, BleProxyErrorCode.DiscoveryFailed, (err as Error).message);
+            return;
+        }
         for (const char of characteristics) {
             conn.characteristics.set(char.uuid, char);
         }
@@ -534,17 +640,31 @@ export class NobleBleProxyClient {
     async #handleReadCharacteristic(id: number, args: ReadCharacteristicArgs): Promise<void> {
         const conn = this.#connections.get(args.connection_handle);
         if (!conn) {
-            this.#sendError(id, "not_connected", `No connection with handle ${args.connection_handle}`);
+            this.#sendError(id, BleProxyErrorCode.NotConnected, `No connection with handle ${args.connection_handle}`);
             return;
         }
 
         const char = this.#findCharacteristic(conn, args.characteristic_uuid);
         if (!char) {
-            this.#sendError(id, "characteristic_not_found", `Characteristic ${args.characteristic_uuid} not found`);
+            this.#sendError(
+                id,
+                BleProxyErrorCode.CharacteristicNotFound,
+                `Characteristic ${args.characteristic_uuid} not found`,
+            );
             return;
         }
 
-        const data = await char.readAsync();
+        let data: Buffer;
+        try {
+            data = await char.readAsync();
+        } catch (err) {
+            this.#sendError(
+                id,
+                BleProxyErrorCode.ReadFailed,
+                `read(${args.characteristic_uuid}): ${(err as Error).message}`,
+            );
+            return;
+        }
         log(`[GATT] read ${args.characteristic_uuid} → ${data.length} bytes`);
         this.#sendSuccess(id, { value: Buffer.from(data).toString("base64") });
     }
@@ -552,20 +672,33 @@ export class NobleBleProxyClient {
     async #handleWriteCharacteristic(id: number, args: WriteCharacteristicArgs): Promise<void> {
         const conn = this.#connections.get(args.connection_handle);
         if (!conn) {
-            this.#sendError(id, "not_connected", `No connection with handle ${args.connection_handle}`);
+            this.#sendError(id, BleProxyErrorCode.NotConnected, `No connection with handle ${args.connection_handle}`);
             return;
         }
 
         const char = this.#findCharacteristic(conn, args.characteristic_uuid);
         if (!char) {
-            this.#sendError(id, "characteristic_not_found", `Characteristic ${args.characteristic_uuid} not found`);
+            this.#sendError(
+                id,
+                BleProxyErrorCode.CharacteristicNotFound,
+                `Characteristic ${args.characteristic_uuid} not found`,
+            );
             return;
         }
 
         const data = Buffer.from(args.value, "base64");
         const withResponse = args.response ?? false;
         log(`[GATT] write ${args.characteristic_uuid} ${data.length} bytes withResponse=${withResponse}`);
-        await char.writeAsync(data, !withResponse);
+        try {
+            await char.writeAsync(data, !withResponse);
+        } catch (err) {
+            this.#sendError(
+                id,
+                BleProxyErrorCode.WriteFailed,
+                `write(${args.characteristic_uuid}): ${(err as Error).message}`,
+            );
+            return;
+        }
         conn.lastWriteCharacteristic = char;
         this.#sendSuccess(id);
     }
@@ -573,44 +706,120 @@ export class NobleBleProxyClient {
     async #handleSubscribeCharacteristic(id: number, args: SubscribeCharacteristicArgs): Promise<void> {
         const conn = this.#connections.get(args.connection_handle);
         if (!conn) {
-            this.#sendError(id, "not_connected", `No connection with handle ${args.connection_handle}`);
+            this.#sendError(id, BleProxyErrorCode.NotConnected, `No connection with handle ${args.connection_handle}`);
             return;
         }
 
         const char = this.#findCharacteristic(conn, args.characteristic_uuid);
         if (!char) {
-            this.#sendError(id, "characteristic_not_found", `Characteristic ${args.characteristic_uuid} not found`);
+            this.#sendError(
+                id,
+                BleProxyErrorCode.CharacteristicNotFound,
+                `Characteristic ${args.characteristic_uuid} not found`,
+            );
             return;
         }
 
         const handle = args.connection_handle;
-        char.on("data", (data: Buffer) => {
-            // Send notification as binary frame for efficiency
-            log(`[GATT] notify ${args.characteristic_uuid} handle=${handle} ${data.length} bytes`);
-            this.#sendBinaryFrame(BinaryFrameOpcode.Notification, handle, new Uint8Array(data));
-        });
-
-        await char.subscribeAsync();
-        conn.subscriptions.set(args.characteristic_uuid, char);
+        if (!(await this.#subscribe(id, conn, handle, args.characteristic_uuid, char))) {
+            return;
+        }
         log(`[GATT] subscribe ${args.characteristic_uuid} handle=${handle}`);
+        this.#sendSuccess(id);
+    }
+
+    /** No-op when `uuid` is already subscribed. Returns false once an error response was sent. */
+    async #subscribe(
+        id: number,
+        conn: ConnectionState,
+        handle: number,
+        uuid: string,
+        char: Characteristic,
+    ): Promise<boolean> {
+        // noble's `_notify` resolves without re-enabling CCCD when already notifying, so a
+        // second "data" listener would double every forwarded notification.
+        if (conn.subscriptions.has(uuid)) {
+            return true;
+        }
+
+        // Attached before the CCCD enable: noble drops "data" emitted with no listener attached.
+        const onData = this.#notificationForwarder(handle, uuid);
+        char.on("data", onData);
+        try {
+            await char.subscribeAsync();
+        } catch (err) {
+            char.removeListener("data", onData);
+            this.#sendError(id, BleProxyErrorCode.SubscribeFailed, `subscribe(${uuid}): ${(err as Error).message}`);
+            return false;
+        }
+        conn.subscriptions.set(uuid, { characteristic: char, onData });
+        return true;
+    }
+
+    async #handleWriteAndSubscribe(id: number, args: WriteAndSubscribeArgs): Promise<void> {
+        const conn = this.#connections.get(args.connection_handle);
+        if (!conn) {
+            this.#sendError(id, BleProxyErrorCode.NotConnected, `No connection with handle ${args.connection_handle}`);
+            return;
+        }
+
+        const writeChar = this.#findCharacteristic(conn, args.write_uuid);
+        if (!writeChar) {
+            this.#sendError(
+                id,
+                BleProxyErrorCode.CharacteristicNotFound,
+                `Characteristic ${args.write_uuid} not found`,
+            );
+            return;
+        }
+
+        const subscribeChar = this.#findCharacteristic(conn, args.subscribe_uuid);
+        if (!subscribeChar) {
+            this.#sendError(
+                id,
+                BleProxyErrorCode.CharacteristicNotFound,
+                `Characteristic ${args.subscribe_uuid} not found`,
+            );
+            return;
+        }
+
+        const handle = args.connection_handle;
+        const value = Buffer.from(args.write_value, "base64");
+        const withResponse = args.write_response ?? false;
+        log(
+            `[GATT] write_and_subscribe handle=${handle} write=${args.write_uuid} ${value.length} bytes` +
+                ` withResponse=${withResponse} subscribe=${args.subscribe_uuid}`,
+        );
+
+        try {
+            await writeChar.writeAsync(value, !withResponse);
+        } catch (err) {
+            this.#sendError(id, BleProxyErrorCode.WriteFailed, `write(${args.write_uuid}): ${(err as Error).message}`);
+            return;
+        }
+        conn.lastWriteCharacteristic = writeChar;
+
+        if (!(await this.#subscribe(id, conn, handle, args.subscribe_uuid, subscribeChar))) {
+            return;
+        }
         this.#sendSuccess(id);
     }
 
     async #handleUnsubscribeCharacteristic(id: number, args: UnsubscribeCharacteristicArgs): Promise<void> {
         const conn = this.#connections.get(args.connection_handle);
         if (!conn) {
-            this.#sendError(id, "not_connected", `No connection with handle ${args.connection_handle}`);
+            this.#sendError(id, BleProxyErrorCode.NotConnected, `No connection with handle ${args.connection_handle}`);
             return;
         }
 
-        const char = conn.subscriptions.get(args.characteristic_uuid);
-        if (!char) {
-            this.#sendError(id, "not_subscribed", `Not subscribed to ${args.characteristic_uuid}`);
+        const subscription = conn.subscriptions.get(args.characteristic_uuid);
+        if (!subscription) {
+            this.#sendError(id, BleProxyErrorCode.NotSubscribed, `Not subscribed to ${args.characteristic_uuid}`);
             return;
         }
 
-        await char.unsubscribeAsync();
-        char.removeAllListeners("data");
+        await subscription.characteristic.unsubscribeAsync();
+        subscription.characteristic.removeListener("data", subscription.onData);
         conn.subscriptions.delete(args.characteristic_uuid);
         log(`[GATT] unsubscribe ${args.characteristic_uuid} handle=${args.connection_handle}`);
         this.#sendSuccess(id);
@@ -619,7 +828,7 @@ export class NobleBleProxyClient {
     async #handleRequestMtu(id: number, connectionHandle: number, mtu: number): Promise<void> {
         const conn = this.#connections.get(connectionHandle);
         if (!conn) {
-            this.#sendError(id, "not_connected", `No connection with handle ${connectionHandle}`);
+            this.#sendError(id, BleProxyErrorCode.NotConnected, `No connection with handle ${connectionHandle}`);
             return;
         }
         // Noble doesn't have explicit MTU request - return the peripheral's MTU
@@ -631,7 +840,14 @@ export class NobleBleProxyClient {
     // ─── Binary Frame Handling ───────────────────────────────────────────────
 
     #handleBinaryFrame(data: Buffer): void {
-        const frame = decodeBinaryFrame(new Uint8Array(data));
+        // A throw here escapes into ws's receiver and takes the process down with it.
+        let frame;
+        try {
+            frame = decodeBinaryFrame(new Uint8Array(data));
+        } catch (err) {
+            warn(`[←BIN] failed to decode binary frame: ${(err as Error).message}`);
+            return;
+        }
         log(`[←BIN] opcode=${frame.opcode} handle=${frame.connectionHandle} payload=${frame.payload.length} bytes`);
 
         if (frame.opcode === BinaryFrameOpcode.WriteData) {
@@ -650,6 +866,34 @@ export class NobleBleProxyClient {
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
+    /**
+     * Noble is always asked for duplicates; `allow_duplicates` is honoured when reporting.
+     * A no-op once `stop_scan` has been received, so the connect paths cannot resume a scan
+     * the server already ended.
+     */
+    async #startScanning(): Promise<void> {
+        if (!this.#scanRequested) {
+            return;
+        }
+        await this.#noble!.startScanningAsync(this.#scanServiceUuids, true);
+        if (!this.#scanRequested) {
+            await this.#noble!.stopScanningAsync();
+        }
+    }
+
+    // Forwarded regardless of noble's `isNotification`: on macOS that flag is derived from a
+    // manager-wide pendingRead, so it reads false for a notification racing a read on any
+    // peripheral. Safe only while no subscribed characteristic is ever read.
+    #notificationForwarder(handle: number, uuid: string): NotificationListener {
+        return payload => {
+            if (payload === null) {
+                return;
+            }
+            log(`[GATT] notify ${uuid} handle=${handle} ${payload.length} bytes`);
+            this.#sendBinaryFrame(BinaryFrameOpcode.Notification, handle, new Uint8Array(payload));
+        };
+    }
+
     #findCharacteristic(conn: ConnectionState, uuid: string): Characteristic | undefined {
         // Try exact match first, then case-insensitive
         return (
@@ -663,7 +907,7 @@ export class NobleBleProxyClient {
         this.#ws?.send(JSON.stringify({ id, success: true, result: result ?? {} }));
     }
 
-    #sendError(id: number, error: string, message: string): void {
+    #sendError(id: number, error: BleProxyErrorCodeValue, message: string): void {
         this.#ws?.send(JSON.stringify({ id, success: false, error, message }));
     }
 
