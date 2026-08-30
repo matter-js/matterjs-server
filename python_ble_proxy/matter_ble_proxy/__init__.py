@@ -14,7 +14,13 @@ standalone use; integrators (e.g. Home Assistant) supply their own backend.
 """
 
 from .bleak_backend import BleakDeviceResolver, BleakScanSource
-from .client import BleDeviceResolver, BleScanSource, ConnectionState, MatterBleProxy
+from .client import (
+    BleDeviceResolver,
+    BleScanSource,
+    ConnectionState,
+    MatterBleProxy,
+    default_connect_strategy,
+)
 from .protocol import (
     BINARY_FRAME_HEADER,
     BLE_PROXY_PROTOCOL_VERSION,
@@ -37,4 +43,5 @@ __all__ = [
     "BleakScanSource",
     "ConnectionState",
     "MatterBleProxy",
+    "default_connect_strategy",
 ]
