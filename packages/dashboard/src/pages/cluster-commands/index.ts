@@ -32,6 +32,7 @@ import "./clusters/commodity-tariff-commands.js";
 import "./clusters/door-lock-commands.js";
 import "./clusters/icd-management-commands.js";
 import "./clusters/level-control-commands.js";
+import "./clusters/media-playback-commands.js";
 import "./clusters/meter-identification-commands.js";
 import "./clusters/on-off-commands.js";
 import "./clusters/thermostat-commands.js";

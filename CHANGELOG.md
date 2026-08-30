@@ -9,6 +9,7 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## **WORK IN PROGRESS**
 
+- Enhancement: (lboue) Added a command panel for the MediaPlayback cluster to Dashboard, with transport controls (Play, Pause, Stop, Previous, Next, Rewind, Fast Forward, Start Over, Skip Forward/Backward) gated by the device's AcceptedCommandList, plus a playback state/position readout
 - Enhancement: (lboue) Added a command panel for the DoorLock cluster to Dashboard
 - Enhancement: (lboue) Added Presets and Thermostat Suggestions (Thermostat cluster PRES/TSUGGEST features) panels to Dashboard
 
