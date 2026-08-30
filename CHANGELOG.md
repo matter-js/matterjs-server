@@ -9,6 +9,7 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## **WORK IN PROGRESS**
 
+- Enhancement: (lboue) Added a command panel for the ClosureDimension cluster to Dashboard
 - Enhancement: (lboue) Added a command panel for the DoorLock cluster to Dashboard
 - Enhancement: (lboue) Added Presets and Thermostat Suggestions (Thermostat cluster PRES/TSUGGEST features) panels to Dashboard
 
