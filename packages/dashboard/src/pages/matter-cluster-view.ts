@@ -26,6 +26,7 @@ import "../pages/components/node-details";
 // Cluster command components (auto-register on import)
 import { computeActiveClusterFeatures } from "../util/cluster-features.js";
 import { DevModeService } from "../util/dev-mode-service.js";
+import { getEndpointLabel } from "../util/endpoint-label.js";
 import { formatHex, formatNodeAddress, getEffectiveFabricIndex } from "../util/format_hex.js";
 import {
     decodeSemanticTagList,
@@ -146,10 +147,11 @@ class MatterClusterView extends LitElement {
         const nodeHex = formatNodeAddress(fabricIndex, this.node.node_id);
 
         const clusterName = clusters[this.cluster]?.label ?? "Custom/Unknown Cluster";
+        const endpointLabel = getEndpointLabel(this.node, this.endpoint);
 
         return html`
             <dashboard-header
-                .title=${`Node ${this.node.node_id} ${nodeHex}  |  Endpoint ${this.endpoint}  |  Cluster ${this.cluster} (${clusterName})`}
+                .title=${`Node ${this.node.node_id} ${nodeHex}  |  Endpoint ${this.endpoint}${endpointLabel ? ` (${endpointLabel})` : ""}  |  Cluster ${this.cluster} (${clusterName})`}
                 .backButton=${`#node/${this.node.node_id}/${this.endpoint}`}
             ></dashboard-header>
 

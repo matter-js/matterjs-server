@@ -34,8 +34,30 @@ export const reducedMotionStyles = css`
     }
 `;
 
+/** Standalone `.chip-list`/`.chip` styling, reused anywhere a compact tag/label needs the same pill look. */
+export const chipListStyles = css`
+    .chip-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .chip {
+        font-size: 0.85rem;
+        color: var(--md-sys-color-on-secondary-container);
+        background: var(--md-sys-color-secondary-container);
+        padding: 4px 10px;
+        border-radius: 8px;
+    }
+`;
+
 /** Bordered panel holding one or more `.info-section` blocks, each optionally listing `.chip`s. */
 export const infoPanelStyles = css`
+    ${chipListStyles}
+
     .info-panel {
         background-color: var(--md-sys-color-surface-container);
         border: 1px solid var(--md-sys-color-outline-variant);
@@ -53,23 +75,6 @@ export const infoPanelStyles = css`
         font-weight: 500;
         color: var(--md-sys-color-on-surface);
         margin-bottom: 10px;
-    }
-
-    .chip-list {
-        list-style: none;
-        margin: 0;
-        padding: 0;
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-    }
-
-    .chip {
-        font-size: 0.85rem;
-        color: var(--md-sys-color-on-secondary-container);
-        background: var(--md-sys-color-secondary-container);
-        padding: 4px 10px;
-        border-radius: 8px;
     }
 `;
 

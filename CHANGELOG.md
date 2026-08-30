@@ -11,6 +11,7 @@ This page shows a detailed overview of the changes between versions without the 
 
 - Enhancement: (lboue) Added a command panel for the DoorLock cluster to Dashboard
 - Enhancement: (lboue) Added Presets and Thermostat Suggestions (Thermostat cluster PRES/TSUGGEST features) panels to Dashboard
+- Enhancement: (lboue) Dashboard Endpoints list and endpoint's Clusters panel show each endpoint's resolved label (BridgedDeviceBasicInformation NodeLabel, UserLabel, or FixedLabel) and Descriptor semantic tags (TagList), so an endpoint can be identified without opening it
 
 ## 1.4.0 (2026-08-07)
 
