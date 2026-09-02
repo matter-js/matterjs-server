@@ -41,7 +41,7 @@
     },
     "dependencies": {
         "@matter-server/ws-client": "*",
-        "@matter/dcl-data": ">=2026.8.22",
+        "@matter/dcl-data": ">=2026.8.28",
         "@matter/main": "0.17.9",
         "@matter/thread-br-client": "0.17.9",
         "@project-chip/matter.js": "0.17.9",
