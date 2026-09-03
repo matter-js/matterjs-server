@@ -25,21 +25,31 @@ podman build --build-arg MATTER_SERVER_VERSION=1.4.0 -f bun/Dockerfile -t matter
 
 ## Footprint
 
-Compiling removes the Bun runtime and all 330 MB of `node_modules` from the
-runtime image, and the binary starts with a smaller heap than the interpreter.
+Compiling removes the runtime and all 330 MB of `node_modules` from the
+image. **The win is disk, not memory** — see the caveat under the table.
 
-|                      | stock `bun` + `node_modules` | compiled binary |          |
-| -------------------- | ---------------------------: | --------------: | -------- |
-| Image                |                       507 MB |      **207 MB** | −59 %    |
-| RSS, idle            |                       248 MB |      **186 MB** | −25 %    |
-| `node_modules`       |                       330 MB |        **none** |          |
-| Executable           |                            — |           86 MB |          |
-| Time to `/health` ok |                          ~2 s |            ~2 s | no change |
+|                      | Node 22 | `bun` + `node_modules` | compiled binary |
+| -------------------- | ------: | ---------------------: | --------------: |
+| Image                |  615 MB |                 507 MB |      **207 MB** |
+| RSS, idle            |  185 MB |                 248 MB |          186 MB |
+| `node_modules`       |  330 MB |                 330 MB |        **none** |
+| Executable           |       — |                      — |           86 MB |
+| Time to `/health` ok |    ~2 s |                  ~2 s  |           ~2 s  |
 
-Both images run the same `matter-server` 1.4.0 with the same flags
-(`--disable-dashboard --disable-dcl-seed`) and no commissioned nodes. The
-baseline is `oven/bun:1-slim` + `bun add matter-server`, started with
-`bun run`; a `node:*` baseline would land in the same range.
+**On disk the compiled binary is a third of either runtime** — 66 % smaller
+than Node, 59 % smaller than Bun — and it ships as one file with nothing to
+resolve at startup.
+
+**On memory it is a wash against Node** (186 vs 185 MB). Compiling only claws
+back Bun's own interpreter overhead: uncompiled Bun idles ~60 MB above both.
+If you are on Node today and hoping to save RAM, this will not do it; the
+reason to use it is image size, a single-file deploy, and dropping the runtime
+and `node_modules` from the attack surface.
+
+All three run the same `matter-server` 1.4.0 with the same flags
+(`--disable-dashboard --disable-dcl-seed`) and no commissioned nodes.
+Baselines are `node:22-slim` + `npm install` (Node v22.23.2) and
+`oven/bun:1-slim` + `bun add`, each started through its own runtime.
 
 <details>
 <summary>How these were measured (2026-09-04)</summary>
@@ -50,7 +60,15 @@ podman run -d --name c -p 15580:5580 bun-compiled
 curl -s localhost:15580/health              # {"version":"1.4.0","node_count":0}
 podman exec c sh -c 'grep VmRSS /proc/1/status'
 podman images --format '{{.Repository}} {{.Size}}'
+
+# node_modules size, on the baselines only (the compiled image has none)
+podman run --rm --entrypoint du <baseline-image> -sh /app/node_modules
 ```
+
+The Node and Bun baselines were built the same way, from a two-line
+Dockerfile on `node:22-slim` / `oven/bun:1-slim` that installs
+`matter-server@1.4.0` and starts `node_modules/matter-server/dist/esm/MatterServer.js`
+through the respective runtime.
 
 `linux/arm64`, podman machine on macOS (5 CPUs / 2 GiB), idle with zero
 commissioned nodes, three RSS samples 4 s apart after the health check passed.
