@@ -6,6 +6,7 @@
 
 import { MatterNode, type MatterClient, type MatterNodeData } from "@matter-server/ws-client";
 import {
+    attachPinCredential,
     buildDaySegments,
     decodeHolidayScheduleResponse,
     decodeUserResponse,
@@ -13,6 +14,7 @@ import {
     decodeYearDayScheduleResponse,
     encodePinCode,
     formatDaysMask,
+    formatExpiringTimeoutHint,
     formatOperatingMode,
     formatScheduleStatus,
     formatTimeOfDay,
@@ -21,6 +23,7 @@ import {
     formatUserType,
     defaultHolidayMode,
     formatWallClock,
+    hasPinCredential,
     holidayModeChoices,
     fromDateTimeInputValue,
     holidayScheduleRangeError,
@@ -29,7 +32,12 @@ import {
     nextFreeUserIndex,
     nowAsWallClock,
     parseTimeOfDay,
+    pinCodeLengthError,
+    readExpiringUserTimeout,
     readHolidaySchedulesSupported,
+    readMaxPinCodeLength,
+    readMinPinCodeLength,
+    readNumberOfPinUsersSupported,
     readTotalUsersSupported,
     readUsers,
     readWeekDaySchedulesPerUser,
@@ -113,6 +121,17 @@ describe("door-lock util", () => {
             expect(requiresPinForRemoteOperation(node({ "1/257/51": true }), 1)).to.equal(true);
             expect(requiresPinForRemoteOperation(node({ "1/257/51": false }), 1)).to.equal(false);
             expect(requiresPinForRemoteOperation(node({}), 1)).to.equal(false);
+        });
+        it("reads the PIN credential capacity and length bounds", () => {
+            const lock = node({ "1/257/18": 8, "1/257/23": 8, "1/257/24": 4 });
+            expect(readNumberOfPinUsersSupported(lock, 1)).to.equal(8);
+            expect(readMaxPinCodeLength(lock, 1)).to.equal(8);
+            expect(readMinPinCodeLength(lock, 1)).to.equal(4);
+            expect(readNumberOfPinUsersSupported(node({}), 1)).to.equal(null);
+        });
+        it("reads ExpiringUserTimeout", () => {
+            expect(readExpiringUserTimeout(node({ "1/257/53": 1440 }), 1)).to.equal(1440);
+            expect(readExpiringUserTimeout(node({}), 1)).to.equal(null);
         });
     });
 
@@ -364,7 +383,26 @@ describe("door-lock util", () => {
                 userType: 2,
                 nextUserIndex: 4,
                 occupied: true,
+                credentials: [],
             });
+        });
+        it("decodes the user's credentials", () => {
+            const user = decodeUserResponse({
+                userIndex: 1,
+                userStatus: 1,
+                credentials: [{ credentialType: 1, credentialIndex: 3 }],
+            })!;
+            expect(user.credentials).to.deep.equal([{ credentialType: 1, credentialIndex: 3 }]);
+            expect(hasPinCredential(user)).to.equal(true);
+        });
+        it("reports no PIN credential when credentials are absent or of another type", () => {
+            expect(hasPinCredential(decodeUserResponse({ userIndex: 1, userStatus: 1 })!)).to.equal(false);
+            const rfidOnly = decodeUserResponse({
+                userIndex: 1,
+                userStatus: 1,
+                credentials: [{ credentialType: 2, credentialIndex: 0 }],
+            })!;
+            expect(hasPinCredential(rfidOnly)).to.equal(false);
         });
         it("treats a null and an Available status as a free slot", () => {
             expect(decodeUserResponse({ userIndex: 2, userStatus: null })?.occupied).to.equal(false);
@@ -558,6 +596,29 @@ describe("door-lock util", () => {
         });
     });
 
+    describe("pinCodeLengthError", () => {
+        it("rejects an empty PIN", () => {
+            expect(pinCodeLengthError("", null, null)).to.equal("Enter a PIN.");
+        });
+        it("accepts any non-empty PIN when the lock reports no length bounds", () => {
+            expect(pinCodeLengthError("1", null, null)).to.equal(null);
+        });
+        it("enforces known bounds", () => {
+            expect(pinCodeLengthError("123", 4, 8)).to.contain("at least 4");
+            expect(pinCodeLengthError("123456789", 4, 8)).to.contain("at most 8");
+            expect(pinCodeLengthError("1234", 4, 8)).to.equal(null);
+        });
+    });
+
+    describe("formatExpiringTimeoutHint", () => {
+        it("phrases the lock-wide timeout", () => {
+            expect(formatExpiringTimeoutHint(1440)).to.equal("Disables 1440 min after first PIN use");
+        });
+        it("is absent when the lock does not report the attribute", () => {
+            expect(formatExpiringTimeoutHint(null)).to.equal(null);
+        });
+    });
+
     describe("encodePinCode", () => {
         it("encodes the PIN as base64 for the octstr field", () => {
             expect(encodePinCode("1234")).to.equal("MTIzNA==");
@@ -611,6 +672,61 @@ describe("door-lock util", () => {
             const users = await readUsers(client, 1, 6, 2);
             expect(users.map(user => user.userIndex)).to.deep.equal([1, 2]);
             expect(calls).to.deep.equal([1, 2]);
+        });
+    });
+
+    describe("attachPinCredential", () => {
+        /** `occupiedChain` maps an occupied PIN credential index to the next occupied one (or null). */
+        function fakeCredentialClient(options: {
+            occupiedChain: Record<number, number | null>;
+            setCredentialResponse?: unknown;
+        }) {
+            const setCredentialCalls = new Array<Record<string, unknown>>();
+            const client = {
+                deviceCommand: (
+                    _nodeId: number | bigint,
+                    _endpointId: number,
+                    _clusterId: number,
+                    commandName: string,
+                    payload: Record<string, unknown> = {},
+                ) => {
+                    if (commandName === "GetCredentialStatus") {
+                        const { credentialIndex } = payload["credential"] as { credentialIndex: number };
+                        const exists = credentialIndex in options.occupiedChain;
+                        return Promise.resolve({
+                            credentialExists: exists,
+                            nextCredentialIndex: exists ? options.occupiedChain[credentialIndex] : null,
+                        });
+                    }
+                    if (commandName === "SetCredential") {
+                        setCredentialCalls.push(payload);
+                        return Promise.resolve(options.setCredentialResponse ?? { status: 0, userIndex: null });
+                    }
+                    throw new Error(`unexpected command ${commandName}`);
+                },
+            } as unknown as MatterClient;
+            return { client, setCredentialCalls };
+        }
+
+        it("attaches the PIN at the first free credential index", async () => {
+            const { client, setCredentialCalls } = fakeCredentialClient({ occupiedChain: { 1: 2, 2: null } });
+            await attachPinCredential(client, 1, 6, 3, "1234", 5);
+            expect(setCredentialCalls).to.have.length(1);
+            expect(setCredentialCalls[0]?.["credential"]).to.deep.equal({ credentialType: 1, credentialIndex: 3 });
+            expect(setCredentialCalls[0]?.["credentialData"]).to.equal(encodePinCode("1234"));
+            expect(setCredentialCalls[0]?.["userIndex"]).to.equal(3);
+            expect(setCredentialCalls[0]?.["userStatus"]).to.equal(null);
+            expect(setCredentialCalls[0]?.["userType"]).to.equal(null);
+        });
+
+        it("throws once every slot up to capacity is occupied", async () => {
+            const { client } = fakeCredentialClient({ occupiedChain: { 1: 2, 2: null } });
+            await expect(attachPinCredential(client, 1, 6, 3, "1234", 2)).to.be.rejectedWith("full");
+        });
+
+        it("throws the lock's status name when SetCredential reports failure", async () => {
+            const { client } = fakeCredentialClient({ occupiedChain: {}, setCredentialResponse: { status: 2 } });
+            await expect(attachPinCredential(client, 1, 6, 3, "1234", 5)).to.be.rejectedWith("Unknown(2)");
         });
     });
 });

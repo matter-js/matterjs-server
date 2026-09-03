@@ -10,6 +10,7 @@ This page shows a detailed overview of the changes between versions without the 
 ## **WORK IN PROGRESS**
 
 - Enhancement: (lboue) Added a command panel for the DoorLock cluster to Dashboard
+- Enhancement: (lboue) DoorLock cluster panel supports creating temporary/expiring PIN users (UserType=ExpiringUser) and configuring the lock's ExpiringUserTimeout
 - Enhancement: (lboue) Added Presets and Thermostat Suggestions (Thermostat cluster PRES/TSUGGEST features) panels to Dashboard
 
 ## 1.4.0 (2026-08-07)

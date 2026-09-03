@@ -6,9 +6,9 @@
 
 import type { MatterClient, MatterNode } from "@matter-server/ws-client";
 import { clusters } from "../client/models/descriptions.js";
-import { asObject, pickNumber, pickString } from "./attribute-shapes.js";
+import { asObject, pickArray, pickNumber, pickString } from "./attribute-shapes.js";
 import { computeActiveClusterFeatures } from "./cluster-features.js";
-import { getMatterStatusName } from "./matter-status.js";
+import { getMatterStatusName, requireAttributeWriteSuccess } from "./matter-status.js";
 import { MATTER_EPOCH_MAX_SECONDS, MATTER_EPOCH_OFFSET_SECONDS } from "./time.js";
 
 /** Door Lock cluster (Matter spec §5.2). */
@@ -19,11 +19,15 @@ const ATTR_LOCK_TYPE = 0x01;
 const ATTR_ACTUATOR_ENABLED = 0x02;
 const ATTR_DOOR_STATE = 0x03;
 const ATTR_NUMBER_OF_TOTAL_USERS_SUPPORTED = 0x11;
+const ATTR_NUMBER_OF_PIN_USERS_SUPPORTED = 0x12;
 const ATTR_NUMBER_OF_WEEK_DAY_SCHEDULES_SUPPORTED_PER_USER = 0x14;
 const ATTR_NUMBER_OF_YEAR_DAY_SCHEDULES_SUPPORTED_PER_USER = 0x15;
 const ATTR_NUMBER_OF_HOLIDAY_SCHEDULES_SUPPORTED = 0x16;
+const ATTR_MAX_PIN_CODE_LENGTH = 0x17;
+const ATTR_MIN_PIN_CODE_LENGTH = 0x18;
 const ATTR_SUPPORTED_OPERATING_MODES = 0x26;
 const ATTR_REQUIRE_PIN_FOR_REMOTE_OPERATION = 0x33;
+const ATTR_EXPIRING_USER_TIMEOUT = 0x35;
 const ATTR_ACCEPTED_COMMAND_LIST = 0xfff9;
 const ATTR_FEATURE_MAP = 0xfffc;
 
@@ -39,11 +43,33 @@ export const SCHEDULE_INDEX_ALL = 0xfe;
 /** UserStatusEnum.Available — a slot the lock reports as free (spec §5.2.6.17). */
 const USER_STATUS_AVAILABLE = 0;
 
-/** DataOperationTypeEnum.Add — the SetUser operation that creates a new user (spec §5.2.6.10). */
+/** DataOperationTypeEnum.Add — the SetUser/SetCredential operation that creates a new entry (spec §5.2.6.10). */
 const OPERATION_TYPE_ADD = 0;
+
+/** UserTypeEnum.ExpiringUser — access expires ExpiringUserTimeout minutes after the credential's first use. */
+export const USER_TYPE_EXPIRING = 7;
+
+/** UserStatusEnum.OccupiedEnabled — the status a newly created, active user is given (spec §5.2.6.17). */
+export const USER_STATUS_OCCUPIED_ENABLED = 1;
+
+/** CredentialTypeEnum.PIN — the only credential type this panel manages (spec §5.2.6.9). */
+const CREDENTIAL_TYPE_PIN = 1;
 
 /** SetUser's UserName constraint (spec §5.2.10.34.3), enforced here instead of round-tripping it. */
 export const USER_NAME_MAX_LENGTH = 10;
+
+/**
+ * Why the lock will reject this PIN, or null when it will accept it. `minLength`/`maxLength` are the lock's
+ * own MinPinCodeLength/MaxPinCodeLength, unknown on a lock that doesn't report them — in that case only
+ * non-emptiness is checked, same fallback as the schedule capacity attributes elsewhere in this file.
+ */
+export function pinCodeLengthError(pin: string, minLength: number | null, maxLength: number | null): string | null {
+    if (pin === "") return "Enter a PIN.";
+    const length = new TextEncoder().encode(pin).length;
+    if (minLength !== null && length < minLength) return `The PIN must be at least ${minLength} bytes.`;
+    if (maxLength !== null && length > maxLength) return `The PIN must be at most ${maxLength} bytes.`;
+    return null;
+}
 
 /**
  * Why the lock will reject this user name, or null when it will accept it. The constraint counts UTF-8
@@ -194,6 +220,11 @@ export interface HolidayScheduleSlot {
     schedule: HolidaySchedule | null;
 }
 
+export interface UserCredential {
+    credentialType: number;
+    credentialIndex: number;
+}
+
 export interface DoorLockUser {
     userIndex: number;
     userName: string | null;
@@ -201,6 +232,7 @@ export interface DoorLockUser {
     userType: number | null;
     nextUserIndex: number | null;
     occupied: boolean;
+    credentials: UserCredential[];
 }
 
 /** A schedule window projected onto one display day, in minutes from midnight. */
@@ -264,6 +296,42 @@ export function readYearDaySchedulesPerUser(node: MatterNode, endpoint: number):
 /** Unlike WDSCH/YDSCH, HolidaySchedules is a lock-wide table: it is not scoped to a user. */
 export function readHolidaySchedulesSupported(node: MatterNode, endpoint: number): number | null {
     return readNumberAttr(node, endpoint, ATTR_NUMBER_OF_HOLIDAY_SCHEDULES_SUPPORTED);
+}
+
+export function readNumberOfPinUsersSupported(node: MatterNode, endpoint: number): number | null {
+    return readNumberAttr(node, endpoint, ATTR_NUMBER_OF_PIN_USERS_SUPPORTED);
+}
+
+export function readMinPinCodeLength(node: MatterNode, endpoint: number): number | null {
+    return readNumberAttr(node, endpoint, ATTR_MIN_PIN_CODE_LENGTH);
+}
+
+export function readMaxPinCodeLength(node: MatterNode, endpoint: number): number | null {
+    return readNumberAttr(node, endpoint, ATTR_MAX_PIN_CODE_LENGTH);
+}
+
+/**
+ * Minutes an ExpiringUser's credential remains valid after its first use, lock-wide rather than per-user
+ * (spec §5.2.9.36). Absent on a lock that doesn't support ExpiringUser at all.
+ */
+export function readExpiringUserTimeout(node: MatterNode, endpoint: number): number | null {
+    return readNumberAttr(node, endpoint, ATTR_EXPIRING_USER_TIMEOUT);
+}
+
+export async function writeExpiringUserTimeout(
+    client: MatterClient,
+    nodeId: number | bigint,
+    endpoint: number,
+    minutes: number,
+): Promise<void> {
+    requireAttributeWriteSuccess(
+        await client.writeAttribute(
+            nodeId,
+            `${endpoint}/${DOOR_LOCK_CLUSTER_ID}/${ATTR_EXPIRING_USER_TIMEOUT}`,
+            minutes,
+        ),
+        "Writing the Expiring User Timeout attribute failed",
+    );
 }
 
 export function requiresPinForRemoteOperation(node: MatterNode, endpoint: number): boolean {
@@ -570,6 +638,17 @@ export function decodeHolidayScheduleResponse(response: unknown, holidayIndex: n
     };
 }
 
+function decodeCredentials(obj: Record<string, unknown>): UserCredential[] {
+    return pickArray(obj, "credentials").flatMap(entry => {
+        const obj = asObject(entry);
+        if (obj === null) return [];
+        const credentialType = pickNumber(obj, "credentialType");
+        const credentialIndex = pickNumber(obj, "credentialIndex");
+        if (credentialType === null || credentialIndex === null) return [];
+        return [{ credentialType, credentialIndex }];
+    });
+}
+
 export function decodeUserResponse(response: unknown): DoorLockUser | null {
     const obj = asObject(response);
     if (obj === null) return null;
@@ -584,7 +663,19 @@ export function decodeUserResponse(response: unknown): DoorLockUser | null {
         nextUserIndex: pickNumber(obj, "nextUserIndex"),
         // The spec nulls the whole record for a free slot, but locks in the field also report Available there.
         occupied: userStatus !== null && userStatus !== USER_STATUS_AVAILABLE,
+        credentials: decodeCredentials(obj),
     };
+}
+
+/** Whether a user carries a working PIN credential, as opposed to just a UserType badge. */
+export function hasPinCredential(user: DoorLockUser): boolean {
+    return user.credentials.some(credential => credential.credentialType === CREDENTIAL_TYPE_PIN);
+}
+
+/** The lock-wide ExpiringUserTimeout, phrased for display next to an ExpiringUser's badge. */
+export function formatExpiringTimeoutHint(minutes: number | null): string | null {
+    if (minutes === null) return null;
+    return `Disables ${minutes} min after first PIN use`;
 }
 
 /** Encode a PIN for the octstr PinCode field, which reaches the lock as base64. */
@@ -764,16 +855,112 @@ export async function addUser(
     endpoint: number,
     userIndex: number,
     userName: string,
+    userType: number | null = null,
+    userStatus: number | null = null,
 ): Promise<void> {
     await client.deviceCommand(nodeId, endpoint, DOOR_LOCK_CLUSTER_ID, "SetUser", {
         operationType: OPERATION_TYPE_ADD,
         userIndex,
         userName,
         userUniqueId: null,
-        userStatus: null,
-        userType: null,
+        userStatus,
+        userType,
         credentialRule: null,
     });
+}
+
+function decodeSetCredentialResponse(response: unknown): { status: number | null; userIndex: number | null } {
+    const obj = asObject(response);
+    return {
+        status: obj !== null ? pickNumber(obj, "status") : null,
+        userIndex: obj !== null ? pickNumber(obj, "userIndex") : null,
+    };
+}
+
+function decodeCredentialStatusResponse(response: unknown): {
+    credentialExists: boolean;
+    nextCredentialIndex: number | null;
+} {
+    const obj = asObject(response);
+    return {
+        credentialExists: obj !== null && obj["credentialExists"] === true,
+        nextCredentialIndex: obj !== null ? pickNumber(obj, "nextCredentialIndex") : null,
+    };
+}
+
+async function getCredentialStatus(
+    client: MatterClient,
+    nodeId: number | bigint,
+    endpoint: number,
+    credentialType: number,
+    credentialIndex: number,
+) {
+    const response = await client.deviceCommand(nodeId, endpoint, DOOR_LOCK_CLUSTER_ID, "GetCredentialStatus", {
+        credential: { credentialType, credentialIndex },
+    });
+    return decodeCredentialStatusResponse(response);
+}
+
+/**
+ * The lowest unoccupied PIN credential index in `[1, maxIndex]`, or null when every slot is taken.
+ * Mirrors nextFreeUserIndex/readUsers: GetCredentialStatus's NextCredentialIndex chains through the
+ * *occupied* slots only, so free slots are never queried directly — they are whatever is left over once
+ * the occupied ones are collected.
+ */
+async function nextFreePinCredentialIndex(
+    client: MatterClient,
+    nodeId: number | bigint,
+    endpoint: number,
+    maxIndex: number,
+): Promise<number | null> {
+    const occupied = new Set<number>();
+    // Visited is tracked separately from occupied: a lock reporting NextCredentialIndex values that never
+    // flag as existing (malformed, or genuinely free slots surfaced by mistake) must not loop forever just
+    // because `occupied` never grows.
+    const visited = new Set<number>();
+    let index: number | null = 1;
+    while (index !== null && visited.size <= maxIndex) {
+        if (visited.has(index)) break;
+        visited.add(index);
+        const status = await getCredentialStatus(client, nodeId, endpoint, CREDENTIAL_TYPE_PIN, index);
+        if (status.credentialExists) occupied.add(index);
+        index = status.nextCredentialIndex;
+    }
+    for (let candidate = 1; candidate <= maxIndex; candidate++) {
+        if (!occupied.has(candidate)) return candidate;
+    }
+    return null;
+}
+
+/**
+ * Attaches a PIN credential to an existing user (SetCredential's "add a credential to an existing user"
+ * use case — UserIndex given, UserStatus/UserType left null since the user already has both). `capacity`
+ * bounds the free-slot search, e.g. `readNumberOfPinUsersSupported(node, endpoint) ?? PIN_CREDENTIAL_SCAN_FALLBACK`.
+ */
+export async function attachPinCredential(
+    client: MatterClient,
+    nodeId: number | bigint,
+    endpoint: number,
+    userIndex: number,
+    pin: string,
+    capacity: number,
+): Promise<void> {
+    const credentialIndex = await nextFreePinCredentialIndex(client, nodeId, endpoint, capacity);
+    if (credentialIndex === null) {
+        throw new Error("The lock's PIN credential database is full.");
+    }
+    const response = await client.deviceCommand(nodeId, endpoint, DOOR_LOCK_CLUSTER_ID, "SetCredential", {
+        operationType: OPERATION_TYPE_ADD,
+        credential: { credentialType: CREDENTIAL_TYPE_PIN, credentialIndex },
+        credentialData: encodePinCode(pin),
+        userIndex,
+        userStatus: null,
+        userType: null,
+    });
+    const { status } = decodeSetCredentialResponse(response);
+    if (status !== 0) {
+        throw new Error(status === null ? "The lock did not report a result." : getMatterStatusName(status));
+    }
 }
 
 export async function removeUser(

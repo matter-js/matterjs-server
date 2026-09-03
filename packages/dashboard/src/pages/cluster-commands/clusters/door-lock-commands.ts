@@ -31,6 +31,7 @@ import "../../../components/ha-svg-icon.js";
 import { handleAsync } from "../../../util/async-handler.js";
 import {
     addUser,
+    attachPinCredential,
     buildDaySegments,
     clearHolidaySchedule,
     clearWeekDaySchedule,
@@ -40,12 +41,14 @@ import {
     DOOR_LOCK_CLUSTER_ID,
     formatDaysMask,
     formatDoorState,
+    formatExpiringTimeoutHint,
     formatScheduleStatus,
     formatLockState,
     formatLockType,
     formatOperatingMode,
     formatWallClock,
     defaultHolidayMode,
+    hasPinCredential,
     holidayModeChoices,
     formatTimeOfDay,
     formatUserLabel,
@@ -60,12 +63,17 @@ import {
     nextFreeUserIndex,
     nowAsWallClock,
     parseTimeOfDay,
+    pinCodeLengthError,
     readActuatorEnabled,
     readDoorState,
+    readExpiringUserTimeout,
     readHolidaySchedule,
     readHolidaySchedulesSupported,
     readLockState,
     readLockType,
+    readMaxPinCodeLength,
+    readMinPinCodeLength,
+    readNumberOfPinUsersSupported,
     readTotalUsersSupported,
     readUser,
     readUsers,
@@ -85,7 +93,10 @@ import {
     unlockWithTimeout,
     userNameLengthError,
     USER_NAME_MAX_LENGTH,
+    USER_STATUS_OCCUPIED_ENABLED,
+    USER_TYPE_EXPIRING,
     weekDayScheduleRangeError,
+    writeExpiringUserTimeout,
     writeHolidaySchedule,
     writeWeekDaySchedule,
     writeYearDaySchedule,
@@ -111,6 +122,12 @@ const DATE_TIME_MAX = "2136-02-07T06:28:15";
 
 /** Bounds the GetUser walk on a lock that leaves NumberOfTotalUsersSupported unreported. */
 const USER_SCAN_FALLBACK = 32;
+
+/** Bounds the free PIN credential slot search on a lock that leaves NumberOfPinUsersSupported unreported. */
+const PIN_CREDENTIAL_SCAN_FALLBACK = 32;
+
+/** UserTypeEnum.UnrestrictedUser — the default "Standard" choice in the add-user editor. */
+const USER_TYPE_STANDARD = 0;
 
 interface WeekDayEditor {
     kind: "weekDay";
@@ -160,7 +177,10 @@ class DoorLockClusterCommands extends BaseClusterCommands {
     @state() private _editorError?: string;
     @state() private _addingUser = false;
     @state() private _newUserName = "";
+    @state() private _newUserType = USER_TYPE_STANDARD;
+    @state() private _newUserPin = "";
     @state() private _userEditorError?: string;
+    @state() private _expiringTimeoutInput = "";
     @state() private _showEmptyWeekDay = false;
     @state() private _showEmptyYearDay = false;
     @state() private _showEmptyHoliday = false;
@@ -185,6 +205,8 @@ class DoorLockClusterCommands extends BaseClusterCommands {
      */
     #busyGeneration = 0;
     #freeIndexCapacity: number | null = null;
+    /** The context `_expiringTimeoutInput` was last synced from the device for, so a user's own edits stick. */
+    #expiringTimeoutSyncedFor: string | null = null;
 
     override willUpdate(changedProperties: PropertyValues) {
         super.willUpdate(changedProperties);
@@ -216,7 +238,11 @@ class DoorLockClusterCommands extends BaseClusterCommands {
             this._editorError = undefined;
             this._addingUser = false;
             this._newUserName = "";
+            this._newUserType = USER_TYPE_STANDARD;
+            this._newUserPin = "";
             this._userEditorError = undefined;
+            this._expiringTimeoutInput = "";
+            this.#expiringTimeoutSyncedFor = null;
             this._showEmptyWeekDay = false;
             this._showEmptyYearDay = false;
             this._showEmptyHoliday = false;
@@ -231,6 +257,16 @@ class DoorLockClusterCommands extends BaseClusterCommands {
         if (this._users !== undefined && userCapacity !== this.#freeIndexCapacity) {
             this.#freeIndexCapacity = userCapacity;
             this._freeUserIndex = nextFreeUserIndex(this._users, userCapacity ?? USER_SCAN_FALLBACK);
+        }
+
+        // Synced once per context rather than on every render, so a value the operator is mid-edit on isn't
+        // clobbered by the attribute simply being re-read.
+        if (this.#expiringTimeoutSyncedFor !== context) {
+            const expiringTimeout = readExpiringUserTimeout(this.node, this.endpoint);
+            if (expiringTimeout !== null) {
+                this._expiringTimeoutInput = String(expiringTimeout);
+                this.#expiringTimeoutSyncedFor = context;
+            }
         }
 
         // The attribute cache fills in progressively: the feature bits can resolve before the numeric
@@ -549,6 +585,27 @@ class DoorLockClusterCommands extends BaseClusterCommands {
         }
     }
 
+    /** Writes the lock-wide ExpiringUserTimeout attribute — how long a new Temporary PIN stays valid. */
+    async #saveExpiringTimeout() {
+        const node = this.node;
+        const endpoint = this.endpoint;
+        if (this._busy) return;
+        const minutes = Number(this._expiringTimeoutInput);
+        if (!Number.isInteger(minutes) || minutes < 1 || minutes > 0xffff) {
+            await showAlertDialog({ title: "Invalid timeout", text: "The timeout must be 1 to 65535 minutes." });
+            return;
+        }
+        const busyGeneration = this.#busyGeneration;
+        this._busy = true;
+        try {
+            await writeExpiringUserTimeout(this.client, node.node_id, endpoint, minutes);
+        } catch (error) {
+            this.#reportFailure("Set Temporary PIN expiry failed", error, node, endpoint);
+        } finally {
+            if (this.#busyGeneration === busyGeneration) this._busy = false;
+        }
+    }
+
     #saveEditor() {
         const editor = this._editor;
         if (editor === null) return;
@@ -686,6 +743,8 @@ class DoorLockClusterCommands extends BaseClusterCommands {
     #startAddUser() {
         this._userEditorError = undefined;
         this._newUserName = "";
+        this._newUserType = USER_TYPE_STANDARD;
+        this._newUserPin = "";
         this._addingUser = true;
     }
 
@@ -703,6 +762,20 @@ class DoorLockClusterCommands extends BaseClusterCommands {
             this._userEditorError = nameError;
             return;
         }
+        const canAddExpiring = isFeatureActive(node, endpoint, "PIN") && isFeatureActive(node, endpoint, "USR");
+        const expiring = canAddExpiring && this._newUserType === USER_TYPE_EXPIRING;
+        const pin = this._newUserPin.trim();
+        if (expiring) {
+            const pinError = pinCodeLengthError(
+                pin,
+                readMinPinCodeLength(node, endpoint),
+                readMaxPinCodeLength(node, endpoint),
+            );
+            if (pinError !== null) {
+                this._userEditorError = pinError;
+                return;
+            }
+        }
         const userIndex = this._freeUserIndex;
         if (userIndex === null) {
             this._userEditorError = "The lock's user database is full.";
@@ -712,10 +785,33 @@ class DoorLockClusterCommands extends BaseClusterCommands {
         const busyGeneration = this.#busyGeneration;
         this._busy = true;
         try {
-            await addUser(this.client, node.node_id, endpoint, userIndex, userName);
+            await addUser(
+                this.client,
+                node.node_id,
+                endpoint,
+                userIndex,
+                userName,
+                expiring ? USER_TYPE_EXPIRING : null,
+                expiring ? USER_STATUS_OCCUPIED_ENABLED : null,
+            );
             if (!this.isSameContext(node, endpoint)) return;
+            // The user record exists at this point regardless of what happens next, so a credential
+            // failure is reported without unwinding it — the reload below must still show it. The editor
+            // closes either way: leaving it open would let a retry recompute _freeUserIndex onto a new
+            // slot and create a duplicate user rather than retrying the credential for this one.
+            let credentialError: unknown;
+            if (expiring) {
+                try {
+                    const capacity = readNumberOfPinUsersSupported(node, endpoint) ?? PIN_CREDENTIAL_SCAN_FALLBACK;
+                    await attachPinCredential(this.client, node.node_id, endpoint, userIndex, pin, capacity);
+                } catch (error) {
+                    if (!this.isSameContext(node, endpoint)) return;
+                    credentialError = error;
+                }
+            }
             this._addingUser = false;
             this._newUserName = "";
+            this._newUserPin = "";
             this._userEditorError = undefined;
             this.#usersRequested = true;
             // Reload preserves the current selection, so point it at the user that was just created.
@@ -723,6 +819,9 @@ class DoorLockClusterCommands extends BaseClusterCommands {
             this._weekDaySlots = undefined;
             this._yearDaySlots = undefined;
             await this.#loadUsers();
+            if (credentialError !== undefined) {
+                this.#reportFailure("User created, but the PIN could not be set", credentialError, node, endpoint);
+            }
         } catch (error) {
             if (!this.isSameContext(node, endpoint)) return;
             this._userEditorError = errorText(error);
@@ -973,11 +1072,43 @@ class DoorLockClusterCommands extends BaseClusterCommands {
                         : nothing
                 }
             </div>
-            ${this._addingUser ? this.#renderAddUserEditor() : nothing}
+            ${this.#renderExpiringTimeoutRow()} ${this._addingUser ? this.#renderAddUserEditor() : nothing}
+        `;
+    }
+
+    /** ExpiringUserTimeout is lock-wide, not per-user, so it is edited independently of the Add user form. */
+    #renderExpiringTimeoutRow(): TemplateResult | typeof nothing {
+        if (readExpiringUserTimeout(this.node, this.endpoint) === null) return nothing;
+        return html`
+            <div class="command-row">
+                <label for="expiringTimeout">Temporary PIN expiry (min):</label>
+                <input
+                    id="expiringTimeout"
+                    type="number"
+                    min="1"
+                    max="65535"
+                    .value=${live(this._expiringTimeoutInput)}
+                    @input=${(event: Event) => {
+                        this._expiringTimeoutInput = (event.target as HTMLInputElement).value;
+                    }}
+                />
+                <md-outlined-button ?disabled=${this._busy} @click=${handleAsync(() => this.#saveExpiringTimeout())}>
+                    <ha-svg-icon slot="icon" .path=${mdiContentSaveOutline}></ha-svg-icon>
+                    Save
+                </md-outlined-button>
+            </div>
         `;
     }
 
     #renderAddUserEditor(): TemplateResult {
+        // A Temporary PIN is created directly with a working credential (SetCredential's combined-creation
+        // use case isn't used here — see attachPinCredential — but the operator still enters the PIN up
+        // front), so the option only makes sense where the lock can store PIN credentials at all.
+        const canAddExpiring =
+            isFeatureActive(this.node, this.endpoint, "PIN") && isFeatureActive(this.node, this.endpoint, "USR");
+        const expiring = canAddExpiring && this._newUserType === USER_TYPE_EXPIRING;
+        const minPinLength = readMinPinCodeLength(this.node, this.endpoint);
+        const maxPinLength = readMaxPinCodeLength(this.node, this.endpoint);
         return html`
             <div class="editor">
                 <div class="editor-row">
@@ -991,6 +1122,22 @@ class DoorLockClusterCommands extends BaseClusterCommands {
                             this._newUserName = (event.target as HTMLInputElement).value;
                         }}
                     />
+                    ${
+                        canAddExpiring
+                            ? html`
+                                  <label for="newUserType">Type:</label>
+                                  <select
+                                      id="newUserType"
+                                      @change=${(event: Event) => {
+                                          this._newUserType = Number((event.target as HTMLSelectElement).value);
+                                      }}
+                                  >
+                                      <option value=${USER_TYPE_STANDARD} .selected=${!expiring}>Standard</option>
+                                      <option value=${USER_TYPE_EXPIRING} .selected=${expiring}>Temporary PIN</option>
+                                  </select>
+                              `
+                            : nothing
+                    }
                     <md-outlined-button ?disabled=${this._busy} @click=${handleAsync(() => this.#saveNewUser())}>
                         <ha-svg-icon slot="icon" .path=${mdiContentSaveOutline}></ha-svg-icon>
                         Save
@@ -999,6 +1146,32 @@ class DoorLockClusterCommands extends BaseClusterCommands {
                         <ha-svg-icon .path=${mdiClose}></ha-svg-icon>
                     </md-outlined-icon-button>
                 </div>
+                ${
+                    expiring
+                        ? html`
+                              <div class="editor-row">
+                                  <label for="newUserPin">PIN:</label>
+                                  <input
+                                      id="newUserPin"
+                                      type="password"
+                                      autocomplete="off"
+                                      maxlength=${maxPinLength ?? nothing}
+                                      .value=${live(this._newUserPin)}
+                                      @input=${(event: Event) => {
+                                          this._newUserPin = (event.target as HTMLInputElement).value;
+                                      }}
+                                  />
+                                  ${
+                                      minPinLength !== null || maxPinLength !== null
+                                          ? html`<span class="meta">
+                                                ${minPinLength ?? 1}–${maxPinLength ?? "?"} characters
+                                            </span>`
+                                          : nothing
+                                  }
+                              </div>
+                          `
+                        : nothing
+                }
                 ${this._userEditorError !== undefined ? html`<p class="error">${this._userEditorError}</p>` : nothing}
             </div>
         `;
@@ -1009,9 +1182,15 @@ class DoorLockClusterCommands extends BaseClusterCommands {
         if (user === undefined) return nothing;
         const status = formatUserStatus(user.userStatus);
         const type = formatUserType(user.userType);
+        const expiringHint =
+            user.userType === USER_TYPE_EXPIRING
+                ? formatExpiringTimeoutHint(readExpiringUserTimeout(this.node, this.endpoint))
+                : null;
         return html`
             ${status !== null ? html`<span class="meta">${status}</span>` : nothing}
             ${type !== null ? html`<span class="meta">${type}</span>` : nothing}
+            ${hasPinCredential(user) ? html`<span class="meta">PIN</span>` : nothing}
+            ${expiringHint !== null ? html`<span class="meta">${expiringHint}</span>` : nothing}
         `;
     }
 
