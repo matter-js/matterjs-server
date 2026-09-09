@@ -6,7 +6,7 @@
 
 import { createServer } from "node:http";
 import { BleProxyHandler } from "../src/BleProxyHandler.js";
-import { BleProxyCommand } from "../src/BleProxyProtocol.js";
+import { BleProxyCommand, BleProxyErrorCode } from "../src/BleProxyProtocol.js";
 import { ProxyBleClient } from "../src/ProxyBleClient.js";
 import { BleProxyTestClient } from "./BleProxyTestClient.js";
 
@@ -113,6 +113,29 @@ describe("Multi-client BLE Proxy", function () {
         await new Promise<void>(resolve => setTimeout(resolve, 100));
 
         expect(stopped).to.be.true;
+    });
+
+    it("keeps a client that answers already_scanning tracked as scanning", async () => {
+        const a = await addClient();
+        await new Promise<void>(resolve => setTimeout(resolve, 50));
+
+        a.onCommandError(BleProxyCommand.StartScan, BleProxyErrorCode.AlreadyScanning, "A scan is already in progress");
+
+        let stoppedReason: string | undefined;
+        handler.scanStopped.on(reason => {
+            stoppedReason = reason;
+        });
+
+        await handler.startScan({ service_uuids: ["fff6"], allow_duplicates: false });
+        await new Promise<void>(resolve => setTimeout(resolve, 100));
+
+        expect(stoppedReason).to.be.undefined;
+
+        // Still tracked, so its own scan_stopped must still reach the Matter stack.
+        a.sendEvent("scan_stopped", { reason: "adapter_off" });
+        await new Promise<void>(resolve => setTimeout(resolve, 100));
+
+        expect(stoppedReason).to.equal("adapter_off");
     });
 
     it("assigns ownership to the first client that discovers a peripheral", async () => {

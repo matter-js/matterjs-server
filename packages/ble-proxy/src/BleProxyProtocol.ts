@@ -253,6 +253,17 @@ export const BleProxyErrorCode = {
 
 export type BleProxyErrorCodeValue = (typeof BleProxyErrorCode)[keyof typeof BleProxyErrorCode];
 
+/** A command the client answered with `success: false`, carrying the protocol error code. */
+export class BleProxyCommandError extends Error {
+    constructor(
+        readonly code: string,
+        readonly detail: string,
+    ) {
+        super(`${code}: ${detail}`);
+        this.name = "BleProxyCommandError";
+    }
+}
+
 // ─── Binary Frame Opcodes ────────────────────────────────────────────────────
 
 export const BinaryFrameOpcode = {

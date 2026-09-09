@@ -35,6 +35,8 @@ from .protocol import (
     OPCODE_NOTIFICATION,
     OPCODE_WRITE_DATA,
     AdvertisementData,
+    BleProxyCommand,
+    BleProxyErrorCode,
 )
 
 if TYPE_CHECKING:
@@ -44,6 +46,8 @@ if TYPE_CHECKING:
     from bleak.backends.characteristic import BleakGATTCharacteristic
     from bleak.backends.device import BLEDevice
     from bleak.backends.service import BleakGATTServiceCollection
+
+    CommandHandler = Callable[[int, dict[str, Any]], Coroutine[Any, Any, None]]
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -109,8 +113,8 @@ class ConnectionState:
         self.client = client
         self.handle = handle
         self.services: BleakGATTServiceCollection | None = None
-        self.subscriptions: dict[str, BleakGATTCharacteristic] = {}
-        self.last_write_characteristic: BleakGATTCharacteristic | None = None
+        self.subscriptions: set[str] = set()
+        self.last_write_uuid: str | None = None
         self.intentional_disconnect = False
 
 
@@ -167,10 +171,25 @@ class MatterBleProxy:
         self._connections: dict[int, ConnectionState] = {}
         self._next_handle = 1
         self._scanning = False
+        self._scan_key: tuple[frozenset[str] | None, bool] | None = None
         self._message_task: asyncio.Task[None] | None = None
         self._closed_event = asyncio.Event()
         self._loop: asyncio.AbstractEventLoop | None = None
         self._task_factory = task_factory
+        self._handlers: dict[BleProxyCommand, CommandHandler] = {
+            BleProxyCommand.START_SCAN: self._handle_start_scan,
+            BleProxyCommand.STOP_SCAN: self._handle_stop_scan,
+            BleProxyCommand.CONNECT: self._handle_connect,
+            BleProxyCommand.DISCONNECT: self._handle_disconnect,
+            BleProxyCommand.DISCOVER_SERVICES: self._handle_discover_services,
+            BleProxyCommand.DISCOVER_CHARACTERISTICS: self._handle_discover_characteristics,
+            BleProxyCommand.READ_CHARACTERISTIC: self._handle_read_characteristic,
+            BleProxyCommand.WRITE_CHARACTERISTIC: self._handle_write_characteristic,
+            BleProxyCommand.SUBSCRIBE_CHARACTERISTIC: self._handle_subscribe_characteristic,
+            BleProxyCommand.WRITE_AND_SUBSCRIBE: self._handle_write_and_subscribe,
+            BleProxyCommand.UNSUBSCRIBE_CHARACTERISTIC: self._handle_unsubscribe_characteristic,
+            BleProxyCommand.REQUEST_MTU: self._handle_request_mtu,
+        }
 
     async def connect(self) -> None:
         """Connect to the matter-server `/ble` endpoint and perform handshake."""
@@ -315,41 +334,34 @@ class MatterBleProxy:
             summary = {k: v for k, v in args.items() if k not in {"value"}}
             _LOGGER.debug("[←CMD] id=%s %s%s", cmd_id, command, f" {summary}" if summary else "")
 
-        handler = {
-            "start_scan": self._handle_start_scan,
-            "stop_scan": self._handle_stop_scan,
-            "connect": self._handle_connect,
-            "disconnect": self._handle_disconnect,
-            "discover_services": self._handle_discover_services,
-            "discover_characteristics": self._handle_discover_characteristics,
-            "read_characteristic": self._handle_read_characteristic,
-            "write_characteristic": self._handle_write_characteristic,
-            "subscribe_characteristic": self._handle_subscribe_characteristic,
-            "write_and_subscribe": self._handle_write_and_subscribe,
-            "unsubscribe_characteristic": self._handle_unsubscribe_characteristic,
-            "request_mtu": self._handle_request_mtu,
-        }.get(command)
-
-        if handler is None:
-            await self._send_error(cmd_id, "internal_error", f"Unknown command: {command}")
+        try:
+            handler = self._handlers[BleProxyCommand(command)]
+        except (KeyError, ValueError):
+            await self._send_error(cmd_id, BleProxyErrorCode.INTERNAL_ERROR, f"Unknown command: {command}")
             return
 
         try:
             await handler(cmd_id, args)
         except Exception as err:
             _LOGGER.exception("Error handling command %s", command)
-            await self._send_error(cmd_id, "internal_error", str(err))
+            await self._send_error(cmd_id, BleProxyErrorCode.INTERNAL_ERROR, str(err))
 
     # ─── Command Handlers ───────────────────────────────────────────────────
 
     async def _handle_start_scan(self, cmd_id: int, args: dict[str, Any]) -> None:
-        if self._scanning:
-            await self._send_error(cmd_id, "already_scanning", "A scan is already in progress")
-            return
-
         service_uuids: list[str] = args.get("service_uuids", [])
         service_uuid_set = {_normalize_uuid(u) for u in service_uuids} if service_uuids else None
         allow_duplicates: bool = bool(args.get("allow_duplicates", True))
+
+        # The server may re-send `start_scan` with different parameters while a scan runs.
+        # Restart the source rather than re-calling start(): a backend need not adopt a new callback.
+        scan_key = (frozenset(service_uuid_set) if service_uuid_set is not None else None, allow_duplicates)
+        if self._scanning:
+            if scan_key == self._scan_key:
+                await self._send_success(cmd_id)
+                return
+            await self._scan_source.stop()
+            self._scanning = False
 
         # When `allow_duplicates` is false, dedup by content fingerprint — Matter peripherals
         # broadcast at ~10 Hz and the server only needs state changes. When true, the server
@@ -398,11 +410,12 @@ class MatterBleProxy:
 
         await self._scan_source.start(_on_advertisement)
         self._scanning = True
+        self._scan_key = scan_key
         await self._send_success(cmd_id)
 
     async def _handle_stop_scan(self, cmd_id: int, _args: dict[str, Any]) -> None:
         if not self._scanning:
-            await self._send_error(cmd_id, "not_scanning", "No scan is currently active")
+            await self._send_error(cmd_id, BleProxyErrorCode.NOT_SCANNING, "No scan is currently active")
             return
         await self._scan_source.stop()
         self._scanning = False
@@ -416,7 +429,9 @@ class MatterBleProxy:
 
         target = await self._device_resolver.resolve(address)
         if target is None:
-            await self._send_error(cmd_id, "device_not_found", f"No BLE device found for address {address}")
+            await self._send_error(
+                cmd_id, BleProxyErrorCode.DEVICE_NOT_FOUND, f"No BLE device found for address {address}"
+            )
             return
 
         handle = self._next_handle
@@ -440,10 +455,12 @@ class MatterBleProxy:
             async with asyncio.timeout(timeout_ms / 1000):
                 await client.connect()
         except TimeoutError:
-            await self._send_error(cmd_id, "connection_failed", f"Timeout connecting to {address}")
+            await self._send_error(cmd_id, BleProxyErrorCode.CONNECTION_FAILED, f"Timeout connecting to {address}")
             return
         except Exception as err:
-            await self._send_error(cmd_id, "connection_failed", f"Failed to connect to {address}: {err}")
+            await self._send_error(
+                cmd_id, BleProxyErrorCode.CONNECTION_FAILED, f"Failed to connect to {address}: {err}"
+            )
             return
 
         conn = ConnectionState(client, handle)
@@ -456,7 +473,7 @@ class MatterBleProxy:
         handle: int = args["connection_handle"]
         conn = self._connections.pop(handle, None)
         if conn is None:
-            await self._send_error(cmd_id, "not_connected", f"No connection with handle {handle}")
+            await self._send_not_connected(cmd_id, handle)
             return
         conn.intentional_disconnect = True
         if conn.client.is_connected:
@@ -466,14 +483,14 @@ class MatterBleProxy:
     async def _handle_discover_services(self, cmd_id: int, args: dict[str, Any]) -> None:
         conn = self._get_connection(args["connection_handle"])
         if conn is None:
-            await self._send_error(cmd_id, "not_connected", f"No connection with handle {args['connection_handle']}")
+            await self._send_not_connected(cmd_id, args["connection_handle"])
             return
         # Bleak's stub claims `services` is always populated after `connect()`, but in
         # practice it can be `None` if the cache hasn't populated or the connection broke
         # before this command; cast to Optional so the None guard isn't unreachable.
         services: BleakGATTServiceCollection | None = conn.client.services
         if services is None:
-            await self._send_error(cmd_id, "discover_failed", "Service discovery has not completed")
+            await self._send_error(cmd_id, BleProxyErrorCode.DISCOVERY_FAILED, "Service discovery has not completed")
             return
         conn.services = services
         services_list = [{"uuid": service.uuid} for service in services]
@@ -482,17 +499,17 @@ class MatterBleProxy:
     async def _handle_discover_characteristics(self, cmd_id: int, args: dict[str, Any]) -> None:
         conn = self._get_connection(args["connection_handle"])
         if conn is None:
-            await self._send_error(cmd_id, "not_connected", f"No connection with handle {args['connection_handle']}")
+            await self._send_not_connected(cmd_id, args["connection_handle"])
             return
 
         service_uuid: str = args["service_uuid"]
         if conn.services is None:
-            await self._send_error(cmd_id, "service_not_found", "Services not discovered yet")
+            await self._send_error(cmd_id, BleProxyErrorCode.SERVICE_NOT_FOUND, "Services not discovered yet")
             return
 
         service = conn.services.get_service(service_uuid)
         if service is None:
-            await self._send_error(cmd_id, "service_not_found", f"Service {service_uuid} not found")
+            await self._send_error(cmd_id, BleProxyErrorCode.SERVICE_NOT_FOUND, f"Service {service_uuid} not found")
             return
 
         characteristics = [
@@ -503,20 +520,20 @@ class MatterBleProxy:
     async def _handle_read_characteristic(self, cmd_id: int, args: dict[str, Any]) -> None:
         conn = self._get_connection(args["connection_handle"])
         if conn is None:
-            await self._send_error(cmd_id, "not_connected", f"No connection with handle {args['connection_handle']}")
+            await self._send_not_connected(cmd_id, args["connection_handle"])
             return
         char_uuid: str = args["characteristic_uuid"]
         try:
             data = await conn.client.read_gatt_char(char_uuid)
         except Exception as err:
-            await self._send_error(cmd_id, "read_failed", f"read_gatt_char({char_uuid}): {err}")
+            await self._send_error(cmd_id, BleProxyErrorCode.READ_FAILED, f"read_gatt_char({char_uuid}): {err}")
             return
         await self._send_success(cmd_id, {"value": base64.b64encode(data).decode("ascii")})
 
     async def _handle_write_characteristic(self, cmd_id: int, args: dict[str, Any]) -> None:
         conn = self._get_connection(args["connection_handle"])
         if conn is None:
-            await self._send_error(cmd_id, "not_connected", f"No connection with handle {args['connection_handle']}")
+            await self._send_not_connected(cmd_id, args["connection_handle"])
             return
 
         char_uuid: str = args["characteristic_uuid"]
@@ -526,26 +543,27 @@ class MatterBleProxy:
         try:
             await conn.client.write_gatt_char(char_uuid, data, response=response)
         except Exception as err:
-            await self._send_error(cmd_id, "write_failed", f"write_gatt_char({char_uuid}): {err}")
+            await self._send_error(cmd_id, BleProxyErrorCode.WRITE_FAILED, f"write_gatt_char({char_uuid}): {err}")
             return
 
         # Remember the last-written characteristic so subsequent binary
         # WRITE_DATA frames know where to dispatch payload.
-        if conn.services is not None:
-            char_obj = conn.services.get_characteristic(char_uuid)
-            if char_obj is not None:
-                conn.last_write_characteristic = char_obj
+        conn.last_write_uuid = char_uuid
 
         await self._send_success(cmd_id)
 
     async def _handle_subscribe_characteristic(self, cmd_id: int, args: dict[str, Any]) -> None:
         conn = self._get_connection(args["connection_handle"])
         if conn is None:
-            await self._send_error(cmd_id, "not_connected", f"No connection with handle {args['connection_handle']}")
+            await self._send_not_connected(cmd_id, args["connection_handle"])
             return
 
         char_uuid: str = args["characteristic_uuid"]
         handle = conn.handle
+
+        if char_uuid in conn.subscriptions:
+            await self._send_success(cmd_id)
+            return
 
         def _on_notification(_char: BleakGATTCharacteristic, data: bytearray) -> None:
             payload = bytes(data)
@@ -559,15 +577,12 @@ class MatterBleProxy:
         try:
             await conn.client.start_notify(char_uuid, _on_notification)
         except Exception as err:
-            await self._send_error(cmd_id, "subscribe_failed", f"start_notify({char_uuid}): {err}")
+            await self._send_error(cmd_id, BleProxyErrorCode.SUBSCRIBE_FAILED, f"start_notify({char_uuid}): {err}")
             return
 
         # Track the subscription so `unsubscribe_characteristic` can detect
         # not-subscribed errors locally without leaning on Bleak's exception.
-        if conn.services is not None:
-            char_obj = conn.services.get_characteristic(char_uuid)
-            if char_obj is not None:
-                conn.subscriptions[char_uuid] = char_obj
+        conn.subscriptions.add(char_uuid)
         await self._send_success(cmd_id)
 
     async def _handle_write_and_subscribe(self, cmd_id: int, args: dict[str, Any]) -> None:
@@ -579,7 +594,7 @@ class MatterBleProxy:
         """
         conn = self._get_connection(args["connection_handle"])
         if conn is None:
-            await self._send_error(cmd_id, "not_connected", f"No connection with handle {args['connection_handle']}")
+            await self._send_not_connected(cmd_id, args["connection_handle"])
             return
 
         write_uuid: str = args["write_uuid"]
@@ -606,48 +621,46 @@ class MatterBleProxy:
         try:
             await conn.client.write_gatt_char(write_uuid, write_data, response=write_response)
         except Exception as err:
-            await self._send_error(cmd_id, "write_failed", f"write_gatt_char({write_uuid}): {err}")
+            await self._send_error(cmd_id, BleProxyErrorCode.WRITE_FAILED, f"write_gatt_char({write_uuid}): {err}")
             return
 
-        if conn.services is not None:
-            char_obj = conn.services.get_characteristic(write_uuid)
-            if char_obj is not None:
-                conn.last_write_characteristic = char_obj
+        conn.last_write_uuid = write_uuid
+
+        if subscribe_uuid in conn.subscriptions:
+            await self._send_success(cmd_id)
+            return
 
         try:
             await conn.client.start_notify(subscribe_uuid, _on_notification)
         except Exception as err:
-            await self._send_error(cmd_id, "subscribe_failed", f"start_notify({subscribe_uuid}): {err}")
+            await self._send_error(cmd_id, BleProxyErrorCode.SUBSCRIBE_FAILED, f"start_notify({subscribe_uuid}): {err}")
             return
 
-        if conn.services is not None:
-            sub_obj = conn.services.get_characteristic(subscribe_uuid)
-            if sub_obj is not None:
-                conn.subscriptions[subscribe_uuid] = sub_obj
+        conn.subscriptions.add(subscribe_uuid)
 
         await self._send_success(cmd_id)
 
     async def _handle_unsubscribe_characteristic(self, cmd_id: int, args: dict[str, Any]) -> None:
         conn = self._get_connection(args["connection_handle"])
         if conn is None:
-            await self._send_error(cmd_id, "not_connected", f"No connection with handle {args['connection_handle']}")
+            await self._send_not_connected(cmd_id, args["connection_handle"])
             return
         char_uuid: str = args["characteristic_uuid"]
         if char_uuid not in conn.subscriptions:
-            await self._send_error(cmd_id, "not_subscribed", f"Not subscribed to {char_uuid}")
+            await self._send_error(cmd_id, BleProxyErrorCode.NOT_SUBSCRIBED, f"Not subscribed to {char_uuid}")
             return
         try:
             await conn.client.stop_notify(char_uuid)
         except Exception as err:
-            await self._send_error(cmd_id, "internal_error", f"stop_notify({char_uuid}): {err}")
+            await self._send_error(cmd_id, BleProxyErrorCode.INTERNAL_ERROR, f"stop_notify({char_uuid}): {err}")
             return
-        conn.subscriptions.pop(char_uuid, None)
+        conn.subscriptions.discard(char_uuid)
         await self._send_success(cmd_id)
 
     async def _handle_request_mtu(self, cmd_id: int, args: dict[str, Any]) -> None:
         conn = self._get_connection(args["connection_handle"])
         if conn is None:
-            await self._send_error(cmd_id, "not_connected", f"No connection with handle {args['connection_handle']}")
+            await self._send_not_connected(cmd_id, args["connection_handle"])
             return
         # Bleak does not expose an explicit MTU request — return the current MTU.
         mtu = getattr(conn.client, "mtu_size", 23)
@@ -665,14 +678,21 @@ class MatterBleProxy:
 
         if opcode == OPCODE_WRITE_DATA:
             conn = self._get_connection(connection_handle)
-            if conn is None or conn.last_write_characteristic is None:
+            if conn is None:
+                _LOGGER.debug("Dropping WRITE_DATA frame for closed handle=%d", connection_handle)
+                return
+            if conn.last_write_uuid is None:
+                _LOGGER.warning(
+                    "Dropping WRITE_DATA frame for handle=%d: no write characteristic established",
+                    connection_handle,
+                )
                 return
             try:
                 # Matter BTP writes on C1 use ATT Write Request (with response).
                 # C1 typically does not advertise write-without-response, so a
                 # response=False here is silently dropped by the peripheral and
                 # the BTP session stalls.
-                await conn.client.write_gatt_char(conn.last_write_characteristic, payload, response=True)
+                await conn.client.write_gatt_char(conn.last_write_uuid, payload, response=True)
             except Exception:
                 _LOGGER.warning("Binary write error", exc_info=True)
 
@@ -685,9 +705,12 @@ class MatterBleProxy:
         if self._ws is not None and not self._ws.closed:
             await self._ws.send_json({"id": cmd_id, "success": True, "result": result or {}})
 
-    async def _send_error(self, cmd_id: int, error: str, message: str) -> None:
+    async def _send_error(self, cmd_id: int, error: BleProxyErrorCode, message: str) -> None:
         if self._ws is not None and not self._ws.closed:
-            await self._ws.send_json({"id": cmd_id, "success": False, "error": error, "message": message})
+            await self._ws.send_json({"id": cmd_id, "success": False, "error": error.value, "message": message})
+
+    async def _send_not_connected(self, cmd_id: int, handle: object) -> None:
+        await self._send_error(cmd_id, BleProxyErrorCode.NOT_CONNECTED, f"No connection with handle {handle}")
 
     async def _send_event(self, event: str, data: dict[str, Any]) -> None:
         if self._ws is not None and not self._ws.closed:

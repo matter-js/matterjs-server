@@ -9,6 +9,7 @@ import { Mark } from "@matter/main/protocol";
 import { WebSocket } from "ws";
 import {
     BLE_PROXY_PROTOCOL_VERSION,
+    BleProxyCommandError,
     decodeBinaryFrame,
     encodeBinaryFrame,
     type BinaryFrame,
@@ -237,7 +238,8 @@ export class BleProxyConnection {
         if (msg.success) {
             pending.resolver(msg.result);
         } else {
-            pending.rejecter(new Error(`${msg.error}: ${msg.message}`));
+            // `error`/`message` are client-supplied: normalize so the code stays a comparable string.
+            pending.rejecter(new BleProxyCommandError(String(msg.error), String(msg.message)));
         }
     }
 

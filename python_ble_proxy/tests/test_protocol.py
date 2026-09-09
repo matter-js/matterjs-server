@@ -10,11 +10,18 @@ from matter_ble_proxy.protocol import (
     OPCODE_READ_RESPONSE,
     OPCODE_WRITE_DATA,
     AdvertisementData,
+    BleProxyCommand,
+    BleProxyErrorCode,
 )
 
 
 def test_protocol_version_is_v1():
     assert BLE_PROXY_PROTOCOL_VERSION == 1
+
+
+def test_wire_names_are_member_names_lowercased():
+    for member in (*BleProxyCommand, *BleProxyErrorCode):
+        assert member.value == member.name.lower()
 
 
 def test_opcodes_are_distinct():
