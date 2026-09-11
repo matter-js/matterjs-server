@@ -9,6 +9,7 @@ import {
     Abort,
     AsyncObservable,
     camelize,
+    ChannelType,
     ClientNode,
     CommissioningClient,
     FabricId,
@@ -48,7 +49,16 @@ import {
 import { WebRtcTransportDefinitions } from "@matter/main/clusters/web-rtc-transport-definitions";
 import { WebRtcTransportProvider } from "@matter/main/clusters/web-rtc-transport-provider";
 import { ClusterRevision } from "@matter/main/model";
-import { DeviceAttestationCheck, Invoke, PeerAddress, Read, Specifier, PeerSet } from "@matter/main/protocol";
+import {
+    AttestationFinding,
+    DeviceAttestationCheck,
+    Fabric,
+    Invoke,
+    PeerAddress,
+    PeerSet,
+    Read,
+    Specifier,
+} from "@matter/main/protocol";
 import {
     AttributeId,
     ClusterId,
@@ -63,10 +73,10 @@ import {
     StatusResponseError,
     VendorId,
 } from "@matter/main/types";
-import { Endpoint } from "@matter/node";
+import { CommissioningDiscovery, Endpoint, ServerNode } from "@matter/node";
 import { WebRtcTransportRequestorServer } from "@matter/node/behaviors/web-rtc-transport-requestor";
 import { CameraControllerDevice } from "@matter/node/devices/camera-controller";
-import { CommissioningController, NodeCommissioningOptions } from "@project-chip/matter.js";
+import { OtaProviderEndpoint } from "@matter/node/endpoints/ota-provider";
 import { ClusterMap, ClusterMapEntry, GlobalAttributes } from "../model/ModelMapper.js";
 import {
     buildAttributePath,
@@ -196,34 +206,29 @@ function describesNodeStructure(path: AttributeChange["path"]): string | undefin
 }
 
 /**
- * Ready a restored peer for connection.
+ * Wait for a peer's structure to have been read, until told to give up.
  *
- * CommissioningController rewrites `autoSubscribe` from its own options during every start, so a peer
- * loaded from storage comes up with subscriptions off. Leaving it off means the node never subscribes:
- * no reports, no connection state, and nothing for consumers to observe.
+ * No timeout of its own: the device has just been commissioned, so it is reachable, and a bridge can take
+ * a long time to report its endpoints. Answering early would report a node whose structure is still
+ * arriving, which reads as success but is not. Shutdown is the one thing that ends the wait, because
+ * `seeded` fires at most once and never fires at all for a node that is torn down first.
  */
-export async function prepareNodeForConnect(node: ClientNode): Promise<void> {
-    const network = node.maybeStateOf(NetworkClient);
-    if (network === undefined) {
+async function awaitSeeded(node: ClientNode, abort: Abort): Promise<void> {
+    if (node.lifecycle.isSeeded) {
         return;
     }
-    const patch: { autoSubscribe?: boolean; defaultSubscription?: undefined } = {};
-
-    if (!network.autoSubscribe) {
-        patch.autoSubscribe = true;
-    }
-    if (network.defaultSubscription !== undefined) {
-        // Clear former set subscription details, let matter.js handle that now
-        patch.defaultSubscription = undefined;
-    }
-
-    if (Object.keys(patch).length > 0) {
-        await node.set({ network: patch });
+    const observers = new ObserverGroup();
+    try {
+        await abort.attempt(new Promise<void>(resolve => observers.on(node.lifecycle.seeded, () => resolve())));
+    } finally {
+        observers.close();
     }
 }
 
 export class ControllerCommandHandler {
-    #controller: CommissioningController;
+    #node: ServerNode;
+    #fabric: Fabric;
+    #otaProvider?: Endpoint<typeof OtaProviderEndpoint>;
     #started = false;
     #connected = false;
     readonly #bleEnabled: boolean;
@@ -248,8 +253,6 @@ export class ControllerCommandHandler {
      */
     #pendingNodeUpdates = new Set<NodeId>();
     #nodeUpdateDeadlines = new Map<NodeId, number>();
-    /** In-flight connection attempts, awaited on shutdown rather than left floating. */
-    #connecting = new Set<Promise<void>>();
     /** Nodes with a lazy getNodeDetails populate in flight, so concurrent reads emit node_updated once. */
     #pendingLazyPopulate = new Set<NodeId>();
     /** Track in-flight invoke-commands for deduplication across all WebSocket connections */
@@ -272,16 +275,22 @@ export class ControllerCommandHandler {
     #changeBus?: PeerChangeBus;
     /** Subscriptions to {@link PeerChangeBus}, which outlives individual nodes. */
     #busObservers = new ObserverGroup();
+    /** Aborted by {@link ControllerCommandHandler.close}, so no command outlives the handler. */
+    #shutdown = new Abort();
 
     constructor(
-        controllerInstance: CommissioningController,
+        controllerNode: ServerNode,
+        fabric: Fabric,
+        otaProvider: Endpoint<typeof OtaProviderEndpoint> | undefined,
         bleEnabled: boolean,
         bleProxyEnabled: boolean,
         otaEnabled: boolean,
         timeSyncEnabled = false,
         threadDiagnosticsEnabled = false,
     ) {
-        this.#controller = controllerInstance;
+        this.#node = controllerNode;
+        this.#fabric = fabric;
+        this.#otaProvider = otaProvider;
 
         this.#bleEnabled = bleEnabled;
         this.#bleProxyEnabled = bleProxyEnabled;
@@ -307,36 +316,23 @@ export class ControllerCommandHandler {
             this.#timeSyncManager = new TimeSyncManager({
                 syncTime: peer => this.#syncNodeTime(peer.nodeId),
                 nodeConnected: peer => this.#isConnected(peer.nodeId),
-                commissionedNodeCount: () => this.#controller.getCommissionedNodes().length,
+                commissionedNodeCount: () => this.#node.peers.commissioned.length,
             });
         }
     }
 
-    /**
-     * Build the canonical PeerAddress for the given node on this controller's fabric.
-     *
-     * Throws if the controller's fabric is not yet resolved. Callers must run after
-     * controller start; a silent fallback would intern PeerAddressMap entries under the
-     * wrong fabric index and leak poller registrations.
-     */
+    /** Build the canonical PeerAddress for the given node on this controller's fabric. */
     #peerOf(nodeId: NodeId): PeerAddress {
-        const fabric = this.#controller.fabric;
-        if (fabric === undefined) {
-            throw new Error(`Cannot resolve PeerAddress for node ${nodeId}: controller fabric is not initialized`);
-        }
-        return PeerAddress({ fabricIndex: fabric.fabricIndex, nodeId });
+        return PeerAddress({ fabricIndex: this.#fabric.fabricIndex, nodeId });
     }
 
     #isConnected(nodeId: NodeId): boolean {
         return this.#nodes.has(nodeId) && this.#nodes.get(nodeId).lifecycle.isConnected;
     }
 
-    /**
-     * Format a NodeId as a PeerAddress string for logging.
-     * Uses the controller's fabric index when available, otherwise "?" is used.
-     */
+    /** Format a NodeId as a PeerAddress string for logging. */
     formatNode(nodeId: NodeId): string {
-        const fabricIndex = this.#controller.fabric?.fabricIndex;
+        const fabricIndex = this.#fabric.fabricIndex;
         return formatNodeId(nodeId, fabricIndex);
     }
 
@@ -358,10 +354,13 @@ export class ControllerCommandHandler {
         }
         this.#started = true;
 
-        await this.#controller.start();
-        logger.notice(`Matter Controller started`);
-        this.#peers = this.#controller.node.env.get(PeerSet);
+        // Before the node comes online: bringing it up starts and subscribes every commissioned peer, and
+        // a report arriving before the bus exists is not forwarded to anyone.
+        this.#peers = this.#node.env.get(PeerSet);
         this.#startChangeBus();
+
+        await this.#node.start();
+        logger.notice(`Matter Controller started`);
 
         if (this.#otaEnabled) {
             // Subscribe to OTA provider events to track available updates
@@ -377,7 +376,7 @@ export class ControllerCommandHandler {
      * rather than per node in {@link ControllerCommandHandler.#registerNode}.
      */
     #startChangeBus() {
-        const bus = new PeerChangeBus(this.#controller.node);
+        const bus = new PeerChangeBus(this.#node);
         this.#changeBus = bus;
 
         // These run on one Observable shared by every peer; an uncaught throw would abort the emit and
@@ -415,13 +414,6 @@ export class ControllerCommandHandler {
         });
     }
 
-    #track(work: Promise<void>, nodeId: NodeId) {
-        const tracked: Promise<void> = work
-            .catch(error => logger.warn(`Failed to connect node "${this.formatNode(nodeId)}":`, error))
-            .finally(() => this.#connecting.delete(tracked));
-        this.#connecting.add(tracked);
-    }
-
     /** Skips nodes no longer in the registry and contains throws; see {@link ControllerCommandHandler.#startChangeBus}. */
     #guard(nodeId: NodeId, what: string, act: () => void) {
         if (!this.#nodes.has(nodeId)) {
@@ -442,7 +434,7 @@ export class ControllerCommandHandler {
             return;
         }
         try {
-            const otaProvider = this.#controller.otaProvider;
+            const otaProvider = this.#otaProvider;
             if (!otaProvider) {
                 logger.info("OTA provider not available");
                 return;
@@ -490,7 +482,7 @@ export class ControllerCommandHandler {
     }
 
     #cameraControllerEndpoint(): Endpoint<typeof CameraControllerDevice> {
-        return this.#controller.node.endpoints.for("camera-controller") as Endpoint<typeof CameraControllerDevice>;
+        return this.#node.endpoints.for("camera-controller") as Endpoint<typeof CameraControllerDevice>;
     }
 
     /** `originatingEndpointId` is server-injected; any client-supplied value in `payload` is overwritten. */
@@ -510,7 +502,7 @@ export class ControllerCommandHandler {
 
         const requestorEndpoint = this.#cameraControllerEndpoint();
         const originatingEndpointId = EndpointNumber(requestorEndpoint.number);
-        const fabricIndex = this.#controller.fabric.fabricIndex;
+        const fabricIndex = this.#fabric.fabricIndex;
 
         const node = this.#nodes.get(nodeId);
 
@@ -671,7 +663,9 @@ export class ControllerCommandHandler {
         await pushNodeTime({ invokers, attributes, nowMs: Time.nowMs });
     }
 
+    /** Release everything this handler owns. The controller node belongs to its creator and stays open. */
     async close() {
+        this.#shutdown.abort(new Error("The controller is shutting down"));
         for (const timer of this.#nodeUpdateTimers.values()) {
             timer.stop();
         }
@@ -687,8 +681,6 @@ export class ControllerCommandHandler {
         this.#busObservers.close();
         this.#changeBus?.close();
         this.#changeBus = undefined;
-        await Promise.allSettled([...this.#connecting]);
-        this.#connecting.clear();
         // Each stop() awaits an in-flight read against a possibly unresponsive node; serially they
         // stack their timeouts, and a throw from one would skip the rest of the shutdown.
         const stopped = await Promise.allSettled([
@@ -701,16 +693,12 @@ export class ControllerCommandHandler {
                 logger.warn("Stopping a node processor failed:", result.reason);
             }
         }
-        if (!this.#started) {
-            return;
-        }
-        return this.#controller.close();
     }
 
     async #registerNode(nodeId: NodeId) {
         // A node commissioned moments ago may not have its commissioning behavior active yet, so the
         // handle has to be created on demand rather than looked up.
-        const node = await this.#controller.node.peers.forAddress(this.#peerOf(nodeId));
+        const node = await this.#node.peers.forAddress(this.#peerOf(nodeId));
         const attributeCache = this.#nodes.attributeCache;
 
         // Per-node ObserverGroup so all subscriptions are cleaned up on decommission
@@ -868,8 +856,8 @@ export class ControllerCommandHandler {
     }
 
     /**
-     * Initialize the controller, register all commissioned nodes (populates attribute caches),
-     * and start connecting them to the network.
+     * Initialize the controller and register all commissioned nodes, which populates their attribute
+     * caches. Connecting the peers is the controller node's own job.
      *
      * Guarded by #connected so it runs exactly once, even if called multiple times
      * (e.g. when WebServer.start() registers handlers for multiple listen addresses).
@@ -882,7 +870,7 @@ export class ControllerCommandHandler {
 
         await this.start();
 
-        const nodes = this.#controller.getCommissionedNodes();
+        const nodes = this.#node.peers.commissioned.map(peer => nodeIdOf(peer));
         logger.info(`Found ${nodes.length} nodes: ${nodes.map(nodeId => this.formatNode(nodeId)).join(", ")}`);
 
         for (const nodeId of nodes) {
@@ -891,22 +879,6 @@ export class ControllerCommandHandler {
                 await this.#registerNode(nodeId);
             } catch (error) {
                 logger.warn(`Failed to initialize node "${this.formatNode(nodeId)}":`, error);
-            }
-        }
-
-        logger.info(`All ${nodes.length} nodes initialized, starting connections`);
-
-        // Start connecting nodes to the network (fire-and-forget, actual I/O is async).
-        for (const nodeId of this.#nodes.getIds()) {
-            try {
-                const node = this.#nodes.get(nodeId);
-                await prepareNodeForConnect(node);
-
-                // Not awaited: bringing every peer up in turn would serialise them behind the slowest.
-                // Collected so close() can await whatever is still in flight.
-                this.#track(node.stateOf(NetworkClient).isDisabled ? node.enable() : node.start(), nodeId);
-            } catch (error) {
-                logger.warn(`Failed to connect node "${this.formatNode(nodeId)}":`, error);
             }
         }
     }
@@ -924,7 +896,10 @@ export class ControllerCommandHandler {
      * Authoritative against matter.js rather than the locally tracked node set, which can drift from the fabric.
      */
     isNodeIdInUse(nodeId: NodeId): boolean {
-        return nodeId === this.#controller.nodeId || this.#controller.isNodeCommissioned(nodeId);
+        return (
+            nodeId === this.#fabric.rootNodeId ||
+            (this.#node.peers.get(this.#peerOf(nodeId))?.lifecycle.isCommissioned ?? false)
+        );
     }
 
     /**
@@ -1139,18 +1114,44 @@ export class ControllerCommandHandler {
 
     /** Set the fabric label. matter.js requires a non-empty label of 1-32 chars; callers must normalize first. */
     async setFabricLabel(label: string) {
-        await this.#controller.updateFabricLabel(label);
+        await this.#fabric.setLabel(label);
+        await this.#pushFabricLabel(label);
     }
 
-    /** Current fabric label as known to matter.js, or undefined if the controller/fabric is not yet started. */
-    getFabricLabel(): string | undefined {
-        // matter.js `fabric` getter throws until the controller has finished starting; degrade to undefined
-        // so callers fall back to the configured label instead of surfacing an error.
-        try {
-            return this.#controller.fabric?.label;
-        } catch {
-            return undefined;
+    /**
+     * Tell the currently connected nodes about a changed fabric label.
+     *
+     * The label the controller holds is the label, and telling the devices is best-effort: a device that
+     * refuses or cannot be reached keeps its own copy stale, which is cosmetic there and reconciled the
+     * next time matter.js brings that peer up in a new runtime. Failing the command instead would mean
+     * unwinding the devices that did accept, which no amount of local bookkeeping can do.
+     */
+    async #pushFabricLabel(label: string) {
+        const connected = this.#nodes.getIds().filter(nodeId => this.#isConnected(nodeId));
+        const results = await Promise.allSettled(
+            connected.map(async nodeId => {
+                const response = await this.#nodes
+                    .get(nodeId)
+                    .commandsOf(OperationalCredentialsClient)
+                    .updateFabricLabel({ label });
+                if (response?.statusCode !== OperationalCredentials.NodeOperationalCertStatus.Ok) {
+                    logger.notice(
+                        `Node ${this.formatNode(nodeId)} kept its own fabric label; status ${response?.statusCode}`,
+                    );
+                }
+            }),
+        );
+
+        for (const result of results) {
+            if (result.status === "rejected") {
+                logger.warn("Could not update the fabric label on a node:", result.reason);
+            }
         }
+    }
+
+    /** Current fabric label as known to matter.js. */
+    getFabricLabel(): string | undefined {
+        return this.#fabric.label;
     }
 
     async handleWriteAttribute(data: WriteAttributeRequest): Promise<AttributeResponseStatus> {
@@ -1277,13 +1278,12 @@ export class ControllerCommandHandler {
         });
     }
 
-    #determineCommissionOptions(data: CommissioningRequest): NodeCommissioningOptions {
+    #determineCommissionOptions(data: CommissioningRequest): CommissioningDiscovery.Options {
         let passcode: number | undefined = undefined;
         let shortDiscriminator: number | undefined = undefined;
         let longDiscriminator: number | undefined = undefined;
         let productId: number | undefined = undefined;
         let vendorId: VendorId | undefined = undefined;
-        let knownAddress: ServerAddress | undefined = undefined;
 
         if ("manualCode" in data && data.manualCode.length > 0) {
             const pairingCodeCodec = ManualPairingCodeCodec.decode(data.manualCode);
@@ -1312,72 +1312,130 @@ export class ControllerCommandHandler {
             throw ServerError.invalidArguments("No pairing code provided");
         }
 
-        if (data.knownAddress !== undefined) {
-            const { ip, port } = data.knownAddress;
-            knownAddress = {
-                type: "udp",
-                ip,
-                port,
-            };
-        }
-
         if (passcode == undefined) {
             throw ServerError.invalidArguments("No passcode provided");
         }
 
         const { onNetworkOnly, wifiCredentials: wifiNetwork, threadCredentials: threadNetwork } = data;
         return {
-            commissioning: {
-                nodeId: data.nodeId,
-                regulatoryLocation: GeneralCommissioning.RegulatoryLocationType.IndoorOutdoor,
-                regulatoryCountryCode: "XX",
-                wifiNetwork,
-                threadNetwork,
-                onAttestationFailure: findings => {
-                    let testCertReason: string | undefined;
-                    let hardError = false;
-                    for (const f of findings) {
-                        if (f.type === DeviceAttestationCheck.TrustedAsTestCertificate) {
-                            testCertReason =
-                                'This device uses a test/development certificate. To commission it, enable the "Test DCL" option in the settings — only do this if you trust the vendor.';
-                        } else if (f.level === "error") {
-                            hardError = true;
-                        }
-                        logger.info(`Attestation finding (${f.level}):`, f.type, f.message);
-                    }
-                    if (testCertReason !== undefined) {
-                        logger.notice(`Attestation rejected: ${testCertReason}`);
-                        return testCertReason;
-                    }
-                    logger.info(`Attestation ${hardError ? "rejected" : "accepted"}`);
-                    return !hardError;
-                },
-            },
-            discovery: {
-                knownAddress,
-                identifierData:
-                    longDiscriminator !== undefined
-                        ? { longDiscriminator }
-                        : shortDiscriminator !== undefined
-                          ? { shortDiscriminator }
-                          : vendorId !== undefined
-                            ? { vendorId, productId }
-                            : {},
-                discoveryCapabilities: {
-                    ble: this.bleEnabled && !onNetworkOnly,
-                    onIpNetwork: true,
-                },
-            },
             passcode,
+            ...(longDiscriminator !== undefined
+                ? { longDiscriminator }
+                : shortDiscriminator !== undefined
+                  ? { shortDiscriminator }
+                  : vendorId !== undefined
+                    ? { vendorId, productId }
+                    : {}),
+            discoveryCapabilities: {
+                ble: this.bleEnabled && !onNetworkOnly,
+                onIpNetwork: true,
+            },
+            nodeId: data.nodeId,
+            regulatoryLocation: GeneralCommissioning.RegulatoryLocationType.IndoorOutdoor,
+            regulatoryCountryCode: "XX",
+            wifiNetwork,
+            threadNetwork,
+            onAttestationFailure: (findings: AttestationFinding[]) => {
+                let testCertReason: string | undefined;
+                let hardError = false;
+                for (const f of findings) {
+                    if (f.type === DeviceAttestationCheck.TrustedAsTestCertificate) {
+                        testCertReason =
+                            'This device uses a test/development certificate. To commission it, enable the "Test DCL" option in the settings — only do this if you trust the vendor.';
+                    } else if (f.level === "error") {
+                        hardError = true;
+                    }
+                    logger.info(`Attestation finding (${f.level}):`, f.type, f.message);
+                }
+                if (testCertReason !== undefined) {
+                    logger.notice(`Attestation rejected: ${testCertReason}`);
+                    return testCertReason;
+                }
+                logger.info(`Attestation ${hardError ? "rejected" : "accepted"}`);
+                return !hardError;
+            },
         };
     }
 
+    /**
+     * Whether a failed commissioning attempt can be repeated against this node id.
+     *
+     * The caller chooses the id before commissioning starts, so the fabric itself answers this — no
+     * bookkeeping around the attempt is needed, and none would be trustworthy: `CommissioningClient`
+     * commits the peer address before it brings the node online, so a failure late in the flow still
+     * leaves a device that is genuinely ours. An id held by an unrelated device is equally a reason not
+     * to repeat, because the next attempt fails on the same conflict. Without a caller-chosen id there is
+     * nothing to look up and the answer is the cautious one.
+     */
+    #nothingJoined(nodeId: NodeId | undefined): boolean {
+        return nodeId !== undefined && !this.isNodeIdInUse(nodeId);
+    }
+
+    /**
+     * Commission a device whose address the caller supplied, skipping discovery.
+     *
+     * `runCommissioning` shields the peer from the expired-node cull while the flow runs and rejects a
+     * parallel attempt on the same node; `peers.commission` applies it for the discovery path itself.
+     */
+    async #commissionAtAddress(
+        knownAddress: NonNullable<CommissioningRequest["knownAddress"]>,
+        options: CommissioningDiscovery.Options,
+    ): Promise<ClientNode> {
+        const peer = await this.#node.peers.forDescriptor({
+            addresses: [{ type: "udp", ip: knownAddress.ip, port: knownAddress.port }],
+        });
+        try {
+            await this.#node.peers.runCommissioning(peer, () => peer.commission(options));
+        } catch (error) {
+            // This peer, not the node id: an id already taken by an unrelated device fails the attempt
+            // before anything joins, and the record forDescriptor persisted is then still ours to remove.
+            // A delete that fails leaves an entry behind until the expired-node cull — an address-only
+            // descriptor never matches an existing node, so a retry adds another rather than reusing it.
+            if (!peer.lifecycle.isCommissioned) {
+                await peer
+                    .delete()
+                    .catch(deleteError =>
+                        logger.warn("Could not remove the peer of a failed commissioning:", deleteError),
+                    );
+            }
+            throw error;
+        }
+        return peer;
+    }
+
     async commissionNode(data: CommissioningRequest): Promise<CommissioningResponse> {
+        const options = this.#determineCommissionOptions(data);
+        const { knownAddress } = data;
+
         let nodeId: NodeId;
         try {
-            nodeId = await this.#controller.commissionNode(this.#determineCommissionOptions(data), {
-                connectNodeAfterCommissioning: true,
-            });
+            let peer: ClientNode | undefined;
+            if (knownAddress !== undefined) {
+                try {
+                    peer = await this.#commissionAtAddress(knownAddress, options);
+                } catch (error) {
+                    if (!this.#nothingJoined(options.nodeId)) {
+                        // The device joined and only the rest of the flow failed. Commissioning it a
+                        // second time would fail against a device no longer in commissioning mode and
+                        // strand the entry it already has on the fabric.
+                        logger.notice(
+                            options.nodeId === undefined
+                                ? "Commissioning at the supplied address failed; without a chosen node id the attempt cannot be repeated safely"
+                                : `Node ${this.formatNode(options.nodeId)} is already on the fabric, so the attempt is not repeated by discovery`,
+                        );
+                        throw error;
+                    }
+                    // The address is a hint from the caller and can be stale — the device may have moved
+                    // to a new one since it was seen.
+                    logger.info(
+                        `Commissioning at the supplied address ${knownAddress.ip}:${knownAddress.port} failed, discovering the device instead:`,
+                        error,
+                    );
+                }
+            }
+            peer ??= await this.#node.peers.commission(options);
+            await awaitSeeded(peer, this.#shutdown);
+            nodeId = nodeIdOf(peer);
         } catch (error) {
             // Preserve the original error message with context
             const originalMessage = error instanceof Error ? error.message : String(error);
@@ -1394,7 +1452,7 @@ export class ControllerCommandHandler {
     }
 
     getCommissionerNodeId() {
-        return this.#controller.nodeId;
+        return this.#fabric.rootNodeId;
     }
 
     async getCommissionerFabricData(): Promise<{
@@ -1402,7 +1460,7 @@ export class ControllerCommandHandler {
         compressedFabricId: bigint;
         fabricIndex: number;
     }> {
-        const { fabricId, globalId, fabricIndex } = this.#controller.fabric;
+        const { fabricId, globalId, fabricIndex } = this.#fabric;
         return {
             fabricId,
             compressedFabricId: globalId,
@@ -1412,55 +1470,71 @@ export class ControllerCommandHandler {
 
     /** Discover commissionable devices */
     async handleDiscovery({ findBy }: DiscoveryRequest): Promise<DiscoveryResponse> {
-        const result = await this.#controller.discoverCommissionableDevices(
-            findBy ?? {},
-            { onIpNetwork: true },
-            undefined,
-            Seconds(3), // Just check for 3 sec
-        );
-        logger.info("Discovered result", result);
-        // Chip is not removing old discoveries when being stopped, so we still have old and new devices in the result
-        // but the expectation is that it was reset and only new devices are in the result
-        const latestDiscovery = result[result.length - 1];
-        if (latestDiscovery === undefined) {
+        const discovered = await this.#node.peers.discover({
+            ...(findBy ?? {}),
+            timeout: Seconds(3), // Just check for 3 sec
+            // Commissionable discovery over IP only: this command reports mDNS advertisements, and a
+            // BLE-discovered instance has no address or port to report.
+            scannerFilter: scanner => scanner.type === ChannelType.UDP,
+        });
+
+        // A device re-advertising within the window is emitted again for the same node, so the set has to
+        // be deduplicated before it is counted. Re-inserting keeps the order by last advertisement, which
+        // is what makes the pick below the freshest device rather than the first one ever seen.
+        const unique = new Map<string, ClientNode>();
+        for (const node of discovered) {
+            unique.delete(node.id);
+            unique.set(node.id, node);
+        }
+        logger.info(`Discovered ${unique.size} commissionable device(s)`);
+
+        const latest = Array.from(unique.values()).pop();
+        if (latest === undefined) {
             return [];
         }
-        return [latestDiscovery].map(({ DT, DN, CM, D, RI, PH, PI, T, VP, deviceIdentifier, addresses, SII, SAI }) => {
-            const supportsTcpClient = T?.tcpClient ?? false;
-            const supportsTcpServer = T?.tcpServer ?? false;
-            const vendorId = VP === undefined ? -1 : VP.includes("+") ? parseInt(VP.split("+")[0]) : parseInt(VP);
-            const productId = VP === undefined ? -1 : VP.includes("+") ? parseInt(VP.split("+")[1]) : -1;
-            const firstAddress = addresses[0];
-            const port = firstAddress && ServerAddress.isIp(firstAddress) ? firstAddress.port : 0;
-            const numIPs = addresses.length;
-            return {
-                commissioningMode: CM,
+
+        // The descriptor is the advertisement as received, so it carries the wire fields directly.
+        const descriptor = await latest.act(agent => agent.get(CommissioningClient).descriptor);
+        if (descriptor === undefined) {
+            return [];
+        }
+        const { deviceIdentifier = "", addresses = [], DT, DN, RI, PH, PI, T, VP, SII, SAI } = descriptor;
+        const discriminator = "D" in descriptor ? (descriptor.D ?? 0) : 0;
+        const commissioningMode = "CM" in descriptor ? (descriptor.CM ?? 0) : 0;
+
+        const vendorId = VP === undefined ? -1 : VP.includes("+") ? parseInt(VP.split("+")[0]) : parseInt(VP);
+        const productId = VP === undefined ? -1 : VP.includes("+") ? parseInt(VP.split("+")[1]) : -1;
+        const firstAddress = addresses[0];
+
+        return [
+            {
+                commissioningMode,
                 deviceName: DN ?? "",
                 deviceType: DT ?? 0,
                 hostName: "000000000000", // Right now we do not return real hostname, only used internally
                 instanceName: deviceIdentifier,
-                longDiscriminator: D,
-                numIPs,
+                longDiscriminator: discriminator,
+                numIPs: addresses.length,
                 pairingHint: PH ?? -1,
                 pairingInstruction: PI ?? "",
-                port,
+                port: firstAddress !== undefined && ServerAddress.isIp(firstAddress) ? firstAddress.port : 0,
                 productId,
                 rotatingId: RI ?? "",
                 rotatingIdLen: RI?.length ?? 0,
-                shortDiscriminator: (D >> 8) & 0x0f,
+                shortDiscriminator: (discriminator >> 8) & 0x0f,
                 vendorId,
-                supportsTcpServer,
-                supportsTcpClient,
+                supportsTcpServer: T?.tcpServer ?? false,
+                supportsTcpClient: T?.tcpClient ?? false,
                 addresses: addresses.filter(ServerAddress.isIp).map(({ ip }) => ip),
                 mrpSessionIdleInterval: SII,
                 mrpSessionActiveInterval: SAI,
-            };
-        });
+            },
+        ];
     }
 
     async getNodeIpAddresses(nodeId: NodeId, preferCache = true) {
         const addresses = new Set<string>();
-        const peer = this.#peers?.for(this.#controller.fabric.addressOf(nodeId));
+        const peer = this.#peers?.for(this.#fabric.addressOf(nodeId));
         if (peer) {
             for (const address of peer.service.addresses) {
                 addresses.add(address.ip);
@@ -1503,7 +1577,7 @@ export class ControllerCommandHandler {
                 return [];
             }
 
-            const peer = this.#peers.for(this.#controller.fabric.addressOf(nodeId));
+            const peer = this.#peers.for(this.#fabric.addressOf(nodeId));
 
             const abort = new Abort({ timeout: Seconds(3) });
             const names = peer.service.names;
@@ -1865,7 +1939,7 @@ export class ControllerCommandHandler {
         const node = this.#nodes.get(nodeId);
 
         try {
-            const otaProvider = this.#controller.otaProvider;
+            const otaProvider = this.#otaProvider;
             if (!otaProvider) {
                 logger.info("OTA provider not available");
                 return null;
@@ -1880,7 +1954,7 @@ export class ControllerCommandHandler {
             );
 
             // Find update for this specific node
-            const peerAddress = this.#controller.fabric.addressOf(nodeId);
+            const peerAddress = this.#fabric.addressOf(nodeId);
             const nodeUpdate = updatesAvailable.find(({ peerAddress: updateAddress }) =>
                 PeerAddress.is(peerAddress, updateAddress),
             );
@@ -1925,7 +1999,7 @@ export class ControllerCommandHandler {
             );
         }
 
-        const otaProvider = this.#controller.otaProvider;
+        const otaProvider = this.#otaProvider;
         if (!otaProvider) {
             throw ServerError.updateError("OTA provider not available");
         }
@@ -1945,7 +2019,7 @@ export class ControllerCommandHandler {
         logger.info(`Starting update for node ${this.formatNode(nodeId)} to version ${softwareVersion}`);
 
         await otaProvider.act(agent =>
-            agent.get(SoftwareUpdateManager).forceUpdate(this.#controller.fabric.addressOf(nodeId), {
+            agent.get(SoftwareUpdateManager).forceUpdate(this.#fabric.addressOf(nodeId), {
                 vendorId: updateInfo.vendorId,
                 productId: updateInfo.productId,
                 targetSoftwareVersion: softwareVersion,

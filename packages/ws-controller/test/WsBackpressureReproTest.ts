@@ -16,18 +16,17 @@
  * never drains. It then measures the server-side `ws.bufferedAmount` to prove the queue grows
  * without bound on the current (unfixed) code. No real Matter node or network is involved: a
  * minimal stand-in for `ControllerCommandHandler` supplies the event observables directly, since
- * the real class requires a live `CommissioningController`.
+ * the real class requires a live controller node.
  */
 
-import { Environment, FabricId, MockStorageService, NodeId, Observable } from "@matter/main";
+import { Environment, FabricId, MockStorageService, NodeConnectionState, NodeId, Observable } from "@matter/main";
 import { AttributeId, ClusterId, EndpointNumber, EventId, EventNumber, Priority } from "@matter/main/types";
-import type { DecodedAttributeReportValue, DecodedEventReportValue } from "@project-chip/matter.js/cluster";
-import { NodeStates } from "@project-chip/matter.js/device";
 import { once } from "node:events";
 import { createServer } from "node:http";
 import type { AddressInfo, Socket } from "node:net";
 import { WebSocket, WebSocketServer } from "ws";
 import type { MatterController } from "../src/controller/MatterController.js";
+import type { AttributeChange, EventChange } from "../src/controller/PeerChangeBus.js";
 import { ConfigStorage } from "../src/server/ConfigStorage.js";
 import { WebSocketControllerHandler } from "../src/server/WebSocketControllerHandler.js";
 
@@ -54,10 +53,10 @@ const HIGH_WATER = 1_048_576;
 const GROWTH_TARGET = HIGH_WATER * 2;
 
 interface FakeEvents {
-    attributeChanged: Observable<[nodeId: NodeId, data: DecodedAttributeReportValue<unknown>]>;
-    eventChanged: Observable<[nodeId: NodeId, data: DecodedEventReportValue<unknown>]>;
+    attributeChanged: Observable<[nodeId: NodeId, data: AttributeChange]>;
+    eventChanged: Observable<[nodeId: NodeId, data: EventChange]>;
     nodeAdded: Observable<[nodeId: NodeId]>;
-    nodeStateChanged: Observable<[nodeId: NodeId, state: NodeStates]>;
+    nodeStateChanged: Observable<[nodeId: NodeId, state: NodeConnectionState]>;
     nodeAvailabilityChanged: Observable<[nodeId: NodeId, available: boolean]>;
     nodeStructureChanged: Observable<[nodeId: NodeId]>;
     nodeDecommissioned: Observable<[nodeId: NodeId]>;
@@ -69,7 +68,7 @@ interface FakeEvents {
 /**
  * Minimal stand-in for `ControllerCommandHandler` exposing only the surface
  * `WebSocketControllerHandler.register()` and `start_listening` touch. The real class requires a
- * live `CommissioningController` (mDNS, sessions, fabric) to construct; its public members are
+ * live controller node (mDNS, sessions, fabric) to construct; its public members are
  * classic TS `private`/`#` fields, so no plain object is structurally assignable to it. The cast
  * at the call site is the only way to supply a collaborator here without changing production code
  * to add a test seam.
@@ -213,14 +212,12 @@ function fireRound(fakeCommandHandler: FakeCommandHandler, round: number): numbe
         const nodeId = NodeId(device);
         for (let endpoint = 1; endpoint <= ENDPOINTS_PER_DEVICE; endpoint++) {
             for (const attributeId of ENERGY_ATTRIBUTE_IDS) {
-                const data: DecodedAttributeReportValue<unknown> = {
+                const data: AttributeChange = {
                     path: {
                         endpointId: EndpointNumber(endpoint),
                         clusterId: ENERGY_CLUSTER_ID,
                         attributeId,
-                        attributeName: "energyAttribute",
                     },
-                    version: round,
                     value: round * 1000 + endpoint * 10 + Number(attributeId),
                 };
                 fakeCommandHandler.events.attributeChanged.emit(nodeId, data);
@@ -228,12 +225,11 @@ function fireRound(fakeCommandHandler: FakeCommandHandler, round: number): numbe
             }
         }
         // One periodic-energy event per device per round, matching the plan doc's second volume source.
-        const eventData: DecodedEventReportValue<unknown> = {
+        const eventData: EventChange = {
             path: {
                 endpointId: EndpointNumber(1),
                 clusterId: ENERGY_CLUSTER_ID,
                 eventId: EventId(1),
-                eventName: "periodicEnergyMeasured",
             },
             events: [
                 {

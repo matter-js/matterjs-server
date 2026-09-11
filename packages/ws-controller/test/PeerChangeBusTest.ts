@@ -4,91 +4,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import {
-    Crypto,
-    Entropy,
-    Environment,
-    MemoryStorageDriver,
-    MockCrypto,
-    MockStorageService,
-    Network,
-    NetworkSimulator,
-    Seconds,
-} from "@matter/general";
-import { ClientNode, ControllerBehavior, NetworkClient, NodeId, ObserverGroup, ServerNode } from "@matter/main";
+import { Seconds } from "@matter/general";
+import { ClientNode, NetworkClient, NodeId, ObserverGroup, ServerNode } from "@matter/main";
 import { BooleanState, OnOff } from "@matter/main/clusters";
-import { BooleanStateServer } from "@matter/node/behaviors/boolean-state";
 import { OnOffServer } from "@matter/node/behaviors/on-off";
-import { OnOffLightDevice } from "@matter/node/devices/on-off-light";
 import { SustainedSubscription } from "@matter/protocol";
-import { FabricId } from "@matter/types";
-import { prepareNodeForConnect } from "../src/controller/ControllerCommandHandler.js";
 import { AttributeChange, EventChange, PeerChangeBus } from "../src/controller/PeerChangeBus.js";
-
-const ControllerRootEndpoint = ServerNode.RootEndpoint.with(ControllerBehavior);
-
-/**
- * A controller and a light on one simulated network, so the bus runs against a real peer endpoint tree
- * rather than synthesised change records. Commissioning is a separate step so a test can observe the
- * seeding read it triggers.
- */
-class TestSite {
-    #simulator = new NetworkSimulator();
-    #nodes = new Set<ServerNode>();
-    #storage: Record<string, Record<string, any>> = {};
-    #nextIndex = 1;
-
-    async #addNode(config: Record<string, any>) {
-        const index = this.#nextIndex++;
-        const { id } = config;
-        const env = new Environment(id);
-        const crypto = MockCrypto(index);
-        env.set(Entropy, crypto);
-        env.set(Crypto, crypto);
-        env.set(Network, this.#simulator.addHost(index));
-        this.#storage[id] ??= {};
-        new MockStorageService(env, () => new MemoryStorageDriver(this.#storage[id]));
-
-        const node = new ServerNode({ ...config, environment: env });
-        this.#nodes.add(node);
-        return node;
-    }
-
-    async startPair() {
-        const controller = await this.#addNode({
-            id: "controller",
-            type: ControllerRootEndpoint,
-            commissioning: { enabled: false },
-            controller: { adminFabricId: FabricId(1) },
-        });
-        const device = await this.#addNode({ id: "device" });
-        const light = await device.add(OnOffLightDevice.with(BooleanStateServer), { id: "light" });
-
-        await device.start();
-        await controller.start();
-
-        return { controller, device, light };
-    }
-
-    async commission(controller: ServerNode, device: ServerNode) {
-        // Session ids collide without entropy while pairing.
-        const controllerCrypto = controller.env.get(Crypto) as MockCrypto;
-        const deviceCrypto = device.env.get(Crypto) as MockCrypto;
-        controllerCrypto.entropic = deviceCrypto.entropic = true;
-        try {
-            const { passcode, discriminator } = device.state.commissioning;
-            await MockTime.resolve(controller.peers.commission({ passcode, discriminator, timeout: Seconds(90) }), {
-                macrotasks: true,
-            });
-        } finally {
-            controllerCrypto.entropic = deviceCrypto.entropic = false;
-        }
-    }
-
-    async close() {
-        await MockTime.resolve(Promise.allSettled([...this.#nodes].map(node => node.close())), { macrotasks: true });
-    }
-}
+import { repairRestoredPeers } from "../src/controller/restoredPeers.js";
+import { TestSite } from "./support/ControllerSite.js";
 
 describe("PeerChangeBus", () => {
     let site: TestSite;
@@ -230,19 +153,81 @@ describe("PeerChangeBus", () => {
 
         expect(removedEndpoints).deep.equals([]);
     });
+});
 
-    // CommissioningController turns autoSubscribe off for every restored peer on each start, so a
-    // node coming back from storage subscribes only if this is put back. Without it the peer never
-    // reports, never reaches Connected, and nothing is forwarded.
-    it("re-enables subscriptions for a peer whose autoSubscribe was cleared", async () => {
+describe("repairRestoredPeers", () => {
+    let site: TestSite;
+    let controller: ServerNode;
+    let device: ServerNode;
+    let marker: {
+        peerSettingsRepairedFor: string | undefined;
+        markedFor: string[];
+        markPeerSettingsRepaired(scope: string): Promise<void>;
+    };
+
+    beforeEach(async () => {
+        MockTime.reset();
+        site = new TestSite();
+        ({ controller, device } = await site.startPair());
+        marker = {
+            peerSettingsRepairedFor: undefined,
+            markedFor: new Array<string>(),
+            async markPeerSettingsRepaired(scope: string) {
+                this.markedFor.push(scope);
+            },
+        };
         await site.commission(controller, device);
-        await awaitSubscribed();
+    });
 
-        await peer().set({ network: { autoSubscribe: false } });
-        expect(peer().stateOf(NetworkClient).autoSubscribe).equals(false);
+    afterEach(async () => {
+        await site.close();
+    });
 
-        await prepareNodeForConnect(peer());
+    function peer(): ClientNode {
+        const commissioned = controller.peers.commissioned[0];
+        expect(commissioned).not.undefined;
+        return commissioned;
+    }
+
+    it("re-enables a peer stored disabled and unsubscribed by an earlier version", async () => {
+        await peer().set({ network: { autoSubscribe: false, isDisabled: true } });
+
+        expect(await repairRestoredPeers(controller, "scope", marker)).equals(1);
 
         expect(peer().stateOf(NetworkClient).autoSubscribe).equals(true);
+        expect(peer().stateOf(NetworkClient).isDisabled).equals(false);
+        expect(marker.markedFor).deep.equals(["scope"]);
+    });
+
+    it("subscribes a peer that was stored enabled but unsubscribed", async () => {
+        await peer().set({ network: { autoSubscribe: false } });
+
+        expect(await repairRestoredPeers(controller, "scope", marker)).equals(1);
+
+        expect(peer().stateOf(NetworkClient).autoSubscribe).equals(true);
+    });
+
+    it("clears subscription parameters pinned by an earlier version", async () => {
+        await peer().set({ network: { defaultSubscription: { minIntervalFloor: Seconds(5) } } });
+
+        expect(await repairRestoredPeers(controller, "scope", marker)).equals(1);
+
+        expect(peer().stateOf(NetworkClient).defaultSubscription).equals(undefined);
+    });
+
+    it("leaves a peer stored by the current version alone", async () => {
+        expect(await repairRestoredPeers(controller, "scope", marker)).equals(0);
+        expect(marker.markedFor).deep.equals(["scope"]);
+    });
+
+    it("does not run again for a scope it already repaired", async () => {
+        await peer().set({ network: { autoSubscribe: false, isDisabled: true } });
+        marker.peerSettingsRepairedFor = "scope";
+
+        expect(await repairRestoredPeers(controller, "scope", marker)).equals(0);
+
+        expect(peer().stateOf(NetworkClient).autoSubscribe).equals(false);
+        expect(peer().stateOf(NetworkClient).isDisabled).equals(true);
+        expect(marker.markedFor).deep.equals([]);
     });
 });

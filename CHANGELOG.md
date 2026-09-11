@@ -7,6 +7,12 @@ This page shows a detailed overview of the changes between versions without the 
 	## **WORK IN PROGRESS**
 -->
 
+## **WORK IN PROGRESS**
+
+- Enhancement: Migrates the controller to the matter.js `ServerNode`/`ClientNode` API, replacing the deprecated `CommissioningController`/`PairedNode` surface, and updates matter.js to 0.18.0-alpha
+- Breaking (library API): `@matter-server/ws-controller` no longer exports `prepareNodeForConnect`; the new `createControllerNode` hands back the controller node, its fabric and the optional OTA provider endpoint as one closeable resource, and `ControllerCommandHandler` is constructed from those three and leaves closing the node to its owner
+- Fix: A node counts as available based on its connection state alone; the former 3-minute grace period after a connection loss is gone, so `node_updated` reports an unreachable node without delay
+
 ## 1.4.0 (2026-08-07)
 
 - Enhancement: Introduces Websocket Schema version 13 (backward compatible)

@@ -8,6 +8,7 @@ import { cdSigners, paaRoots, vendors } from "@matter/dcl-data/node";
 import {
     Bytes,
     CommissioningClient,
+    ControllerBehavior,
     Crypto,
     DclBehavior,
     Environment,
@@ -17,16 +18,27 @@ import {
     MatterAggregateError,
     Millis,
     NodeId,
+    ServerNode,
     SharedEnvironmentServices,
     SoftwareUpdateManager,
     Time,
     Timestamp,
 } from "@matter/main";
-import { VendorInfo, DclCertificateService, DclVendorInfoService, OperationalDataset } from "@matter/main/protocol";
+import {
+    Ble,
+    DclCertificateService,
+    DclVendorInfoService,
+    Fabric,
+    FabricAuthority,
+    FabricManager,
+    OperationalDataset,
+    VendorInfo,
+} from "@matter/main/protocol";
 import { VendorId } from "@matter/main/types";
 import { Endpoint } from "@matter/node";
 import { WebRtcTransportRequestorServer } from "@matter/node/behaviors/web-rtc-transport-requestor";
 import { CameraControllerDevice } from "@matter/node/devices/camera-controller";
+import { OtaProviderEndpoint } from "@matter/node/endpoints/ota-provider";
 import {
     BorderRouterRegistry,
     connectMeshcop,
@@ -34,7 +46,6 @@ import {
     OtbrRestDiagnosticSource,
     ThreadCredentialsRegistry,
 } from "@matter/thread-br-client";
-import { CommissioningController } from "@project-chip/matter.js";
 import { createReadStream } from "node:fs";
 import { Readable } from "node:stream";
 import { pathToFileURL } from "node:url";
@@ -43,8 +54,12 @@ import { ControllerCommandHandler } from "./ControllerCommandHandler.js";
 import { LegacyDataInjector, LegacyServerData } from "./LegacyDataInjector.js";
 import { NetworkTopologyService } from "./NetworkTopologyService.js";
 import { OtaImageInfo, OtaUploadOptions, OtaUploadRegistry } from "./OtaUploadRegistry.js";
+import { PeerSettingsRepairMarker, repairRestoredPeers } from "./restoredPeers.js";
 import { resolveServerId } from "./ServerIdResolver.js";
 import { ThreadDiagnosticsService } from "./ThreadDiagnosticsService.js";
+
+const ControllerRootEndpoint = ServerNode.RootEndpoint.with(ControllerBehavior);
+type ControllerRootEndpoint = typeof ControllerRootEndpoint;
 
 const logger = Logger.get("MatterController");
 
@@ -196,9 +211,112 @@ function parseRestBaseUrl(baseUrl: string): { host: string; port: number } {
     return { host, port };
 }
 
+export interface ControllerNodeOptions {
+    environment: Environment;
+    id: string;
+    adminVendorId?: VendorId;
+    adminFabricId?: FabricId;
+    adminFabricLabel: string;
+    serverVersion: string;
+    enableOtaProvider: boolean;
+
+    /**
+     * Where the one-shot repair of peers commissioned by an earlier version records that it has run.
+     * Omit to skip the repair.
+     */
+    peerSettingsRepair?: PeerSettingsRepairMarker;
+}
+
+/**
+ * The controller node with the fabric and endpoints built alongside it, owned as one resource.
+ *
+ * `ServerNode.create` takes the storage lock, so everything built after it belongs to the same lifetime
+ * and a single {@link ControllerNode.close} is what releases the lock.
+ */
+export interface ControllerNode {
+    readonly node: ServerNode<ControllerRootEndpoint>;
+    readonly fabric: Fabric;
+    readonly otaProvider?: Endpoint<typeof OtaProviderEndpoint>;
+
+    close(): Promise<void>;
+}
+
+/**
+ * Build the controller node, its fabric and the optional OTA provider endpoint.
+ */
+export async function createControllerNode(options: ControllerNodeOptions): Promise<ControllerNode> {
+    const { environment, id, adminVendorId, adminFabricId, adminFabricLabel, serverVersion } = options;
+    const adminNodeId = NodeId(112233); // TODO Remove when we switch to random IDs
+
+    const node = await ServerNode.create(ControllerRootEndpoint, {
+        environment,
+        id,
+        network: {
+            ble: false,
+            tcp: true,
+            transportPreference: "tcp",
+        },
+        basicInformation: {
+            vendorName: "Open Home Foundation",
+            productName: "OHF Matter Server",
+            productId: 1,
+            hardwareVersion: 1,
+            hardwareVersionString: "1.0",
+            softwareVersion: parseVersionToNumber(serverVersion) || 1,
+            softwareVersionString: serverVersion.split("-")[0], // Base version without alpha/beta suffix
+            vendorId: adminVendorId,
+        },
+        controller: {
+            adminFabricLabel,
+            adminFabricId,
+            adminNodeId,
+            ble: (environment.maybeGet(Ble) ?? Environment.default.maybeGet(Ble)) !== undefined,
+        },
+        // A controller is never itself commissionable, and subscription persistence is a device feature.
+        commissioning: { enabled: false },
+        subscriptions: { persistenceEnabled: false },
+    });
+
+    try {
+        const otaProvider = options.enableOtaProvider
+            ? await node.add(new Endpoint(OtaProviderEndpoint, { id: "ota-provider" }))
+            : undefined;
+
+        await node.env.load(FabricManager);
+        const fabricAuthority = await node.env.load(FabricAuthority);
+        // Rotates the operational keypair on every start where a fabric already exists, so no long-lived
+        // operational key is kept on disk. Peers still trust us: the NOC is reissued under the same CA and
+        // fabric identifiers.
+        const fabric = await fabricAuthority.defaultFabric({
+            adminFabricLabel,
+            adminVendorId,
+            adminNodeId,
+            adminFabricId,
+        });
+
+        if (options.peerSettingsRepair !== undefined) {
+            await repairRestoredPeers(node, id, options.peerSettingsRepair);
+        }
+
+        return { node, fabric, otaProvider, close: () => node.close() };
+    } catch (error) {
+        // The node already holds the storage lock and the caller has no handle to it yet, so a close that
+        // fails has to travel with the original error rather than be logged away.
+        try {
+            await node.close();
+        } catch (closeError) {
+            throw new MatterAggregateError(
+                [error, closeError].map(e => (e instanceof Error ? e : new Error(String(e)))),
+                "Controller node build failed and the node could not be closed",
+            );
+        }
+        throw error;
+    }
+}
+
 export class MatterController {
     #env: Environment;
-    #controllerInstance?: CommissioningController;
+    #controller?: ControllerNode;
     #commandHandler?: ControllerCommandHandler;
     #config: ConfigStorage;
     #serverId: string;
@@ -378,38 +496,28 @@ export class MatterController {
         }
         this.#services.get(DclCertificateService);
 
-        this.#controllerInstance = new CommissioningController({
-            environment: {
-                environment: this.#env,
-                id: this.#serverId,
-            },
-            autoConnect: false, // Do not auto-connect to the commissioned nodes
-            adminFabricLabel: this.#config.fabricLabel,
+        this.#controller = await createControllerNode({
+            environment: this.#env,
+            id: this.#serverId,
             adminVendorId: vendorId !== undefined ? VendorId(vendorId) : undefined,
             adminFabricId: fabricId !== undefined ? FabricId(fabricId) : undefined,
-            rootNodeId: NodeId(112233), // TODO Remove when we switch to random IDs
+            adminFabricLabel: this.#config.fabricLabel,
+            serverVersion: this.#serverVersion,
             enableOtaProvider: !this.#disableOtaProvider,
-            tcp: true,
-            transportPreference: "tcp",
-            basicInformation: {
-                vendorName: "Open Home Foundation",
-                productName: "OHF Matter Server",
-                productId: 1,
-                hardwareVersion: 1,
-                hardwareVersionString: "1.0",
-                softwareVersion: parseVersionToNumber(this.#serverVersion) || 1,
-                softwareVersionString: this.#serverVersion.split("-")[0], // Base version without alpha/beta suffix
-            },
+            peerSettingsRepair: this.#config,
         });
     }
 
     get commandHandler() {
-        if (this.#controllerInstance === undefined) {
+        const controller = this.#controller;
+        if (controller === undefined) {
             throw new Error("Controller not initialized");
         }
         if (this.#commandHandler === undefined) {
             this.#commandHandler = new ControllerCommandHandler(
-                this.#controllerInstance,
+                controller.node,
+                controller.fabric,
+                controller.otaProvider,
                 this.#env.vars.get("ble.enable", false),
                 this.#bleProxyEnabled,
                 !this.#disableOtaProvider,
@@ -419,8 +527,8 @@ export class MatterController {
 
             this.#commandHandler.events.started.once(async () => {
                 if (this.#stopped) return;
-                this.#controllerInstance!.node.behaviors.require(DclBehavior);
-                await this.#controllerInstance!.node.setStateOf(DclBehavior, {
+                controller.node.behaviors.require(DclBehavior);
+                await controller.node.setStateOf(DclBehavior, {
                     fetchTestCertificates: true,
                     acceptTestCertificates: this.#enableTestNetDcl,
                 });
@@ -532,10 +640,10 @@ export class MatterController {
     }
 
     async #enableWebRtcRequestor(): Promise<void> {
-        if (!this.#controllerInstance) {
+        if (this.#controller === undefined) {
             throw new Error("Controller not started");
         }
-        const node = this.#controllerInstance.node;
+        const node = this.#controller.node;
         if (node.endpoints.has("camera-controller")) {
             this.#webRtcRequestor = node.endpoints.for("camera-controller") as Endpoint<typeof CameraControllerDevice>;
             return;
@@ -550,10 +658,10 @@ export class MatterController {
      * Lazily initializes the service if not already present.
      */
     async vendorInfoService() {
-        if (this.#controllerInstance === undefined) {
+        if (this.#controller === undefined) {
             throw new Error("Controller not initialized");
         }
-        const service = await this.#controllerInstance.node.act(agent => agent.get(DclBehavior).vendorInfoService);
+        const service = await this.#controller.node.act(agent => agent.get(DclBehavior).vendorInfoService);
         await service.construction;
         return service;
     }
@@ -563,10 +671,10 @@ export class MatterController {
      * Lazily initializes the service if not already present.
      */
     async certificateService() {
-        if (this.#controllerInstance === undefined) {
+        if (this.#controller === undefined) {
             throw new Error("Controller not initialized");
         }
-        const service = await this.#controllerInstance.node.act(agent => agent.get(DclBehavior).certificateService);
+        const service = await this.#controller.node.act(agent => agent.get(DclBehavior).certificateService);
         await service.construction;
         return service;
     }
@@ -576,10 +684,10 @@ export class MatterController {
      * Lazily initializes the service if not already present.
      */
     async otaUpdateService() {
-        if (this.#controllerInstance === undefined) {
+        if (this.#controller === undefined) {
             throw new Error("Controller not initialized");
         }
-        const service = await this.#controllerInstance.node.act(agent => agent.get(DclBehavior).otaUpdateService);
+        const service = await this.#controller.node.act(agent => agent.get(DclBehavior).otaUpdateService);
         await service.construction;
         return service;
     }
@@ -600,13 +708,14 @@ export class MatterController {
     }
 
     async injectCommissionedDates() {
-        if (this.#controllerInstance === undefined || this.#legacyCommissionedDates === undefined) {
+        const controller = this.#controller;
+        if (controller === undefined || this.#legacyCommissionedDates === undefined) {
             return;
         }
         for (const [nodeIdStr, commissionedAt] of this.#legacyCommissionedDates) {
             try {
-                const peerAddress = this.#controllerInstance.fabric.addressOf(NodeId(BigInt(nodeIdStr)));
-                const node = await this.#controllerInstance.node.peers.forAddress(peerAddress);
+                const peerAddress = controller.fabric.addressOf(NodeId(BigInt(nodeIdStr)));
+                const node = await controller.node.peers.forAddress(peerAddress);
                 const commissioningState = node.maybeStateOf(CommissioningClient);
                 if (commissioningState !== undefined && commissioningState.commissionedAt === undefined) {
                     await node.setStateOf(CommissioningClient, { commissionedAt });
@@ -636,16 +745,42 @@ export class MatterController {
         }
     }
 
+    /**
+     * Shut down every part of the controller.
+     *
+     * Each step runs even when an earlier one fails: the controller node holds a storage lock and the
+     * shared environment services hold network resources, so skipping either on the way out leaves the
+     * process unable to start again. Failures are collected and reported once everything is down.
+     */
     async stop() {
         this.#stopped = true;
         await this.#settleBackgroundInit();
         this.#networkTopology?.stop();
+
+        const errors = new Array<Error>();
+        const shutDown = async (what: string, work: () => unknown) => {
+            try {
+                await work();
+            } catch (error) {
+                errors.push(
+                    error instanceof Error
+                        ? new Error(`Could not stop ${what}: ${error.message}`, { cause: error })
+                        : new Error(`Could not stop ${what}: ${String(error)}`),
+                );
+            }
+        };
+
         if (!this.#threadDiagnosticsDisabled) {
-            await this.#threadDiagnostics.stop();
-            await this.#borderRouterRegistry.stop();
+            await shutDown("Thread diagnostics", () => this.#threadDiagnostics.stop());
+            await shutDown("the border router registry", () => this.#borderRouterRegistry.stop());
         }
-        await this.#commandHandler?.close(); // This closes also the controller instance if started
-        await this.#services.close();
+        await shutDown("the command handler", async () => this.#commandHandler?.close());
+        await shutDown("the controller node", async () => this.#controller?.close());
+        await shutDown("the environment services", () => this.#services.close());
+
+        if (errors.length > 0) {
+            throw new MatterAggregateError(errors, "Controller shutdown incomplete");
+        }
     }
 
     /**
@@ -653,10 +788,11 @@ export class MatterController {
      * Must be called after the controller is started.
      */
     async #enableTestOtaImages() {
-        if (this.#controllerInstance === undefined) {
-            throw new Error("Controller not initialized");
+        const otaProvider = this.#controller?.otaProvider;
+        if (otaProvider === undefined) {
+            throw new Error("OTA provider not initialized");
         }
-        await this.#controllerInstance.otaProvider.setStateOf(SoftwareUpdateManager, {
+        await otaProvider.setStateOf(SoftwareUpdateManager, {
             allowTestOtaImages: true,
         });
         logger.info("Enabled test OTA images (test-net DCL)");

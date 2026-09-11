@@ -44,8 +44,6 @@ export type EventChange = {
 /**
  * Fans the controller's single node-wide {@link ChangeNotificationService} stream out into per-peer
  * attribute/event/endpoint-removal notifications.
- *
- * Replaces the per-node `PairedNode.events` bus, which was itself built on this stream.
  */
 export class PeerChangeBus {
     #observers = new ObserverGroup();
