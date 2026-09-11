@@ -17,7 +17,6 @@ import {
     parseBigIntAwareJson,
     toBigIntAwareJson,
 } from "@matter-server/ws-controller";
-import { Millis, Time, Timer } from "@matter/main";
 import { access, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { DEFAULT_FABRIC_ID, DEFAULT_VENDOR_ID } from "../cli.js";
@@ -120,6 +119,24 @@ function determineLegacyServerId(fabricId: number | bigint, vendorId: number, is
         return DEFAULT_SERVER_ID;
     }
     return computeServerId(fabricId, vendorId);
+}
+
+/**
+ * Legacy nodes the controller does not know.
+ *
+ * Retiring the source is only safe once this is empty: comparing counts instead would let a device
+ * commissioned since make up the numbers for one that never migrated, and the source holds that one's
+ * only remaining copy.
+ */
+export function missingLegacyNodes(
+    serverFile: LegacyServerFile | undefined,
+    knownNodeIds: Iterable<{ toString(): string }>,
+): string[] {
+    const known = new Set<string>();
+    for (const nodeId of knownNodeIds) {
+        known.add(String(nodeId));
+    }
+    return Object.keys(serverFile?.nodes ?? {}).filter(nodeId => !known.has(nodeId));
 }
 
 /** Result of loading legacy data */
@@ -412,283 +429,39 @@ export async function saveLegacyServerFile(
     );
 }
 
-/** Task type for queued operations */
-type LegacyWriteTask =
-    | { type: "add"; nodeId: bigint | number; dateCommissioned: string }
-    | { type: "remove"; nodeId: bigint | number };
-
-/** Default debounce delay in milliseconds (30 seconds) */
-const DEFAULT_DEBOUNCE_DELAY_MS = 30_000;
+/** Suffix given to python-matter-server files once their contents live in the current storage. */
+const MIGRATED_SUFFIX = ".migrated";
 
 /**
- * Race-condition safe writer for the legacy server file.
+ * Retire the python-matter-server source files after their contents have been imported.
  *
- * Batches additions and removals, applies them with a debounce timer,
- * and ensures only one file operation runs at a time. Provides a flush()
- * method to await pending operations during server shutdown.
+ * Renamed rather than deleted so an operator can still inspect or recover them. Renaming is what makes
+ * the import one-shot: {@link loadLegacyData} looks for exact names, so a retired file is not found and
+ * the next start has nothing to import.
  */
-export class LegacyDataWriter {
-    readonly #env: Environment;
-    readonly #storagePath: string;
-    readonly #fabricConfig: LegacyFabricConfigData;
+export async function retireLegacyFiles(
+    env: Environment,
+    storagePath: string,
+    fabricConfig: LegacyFabricConfigData,
+): Promise<string[]> {
+    const crypto = env.get(Crypto);
+    const compressedFabricId = await computeCompressedNodeId(crypto, fabricConfig.fabricId, fabricConfig.rootPublicKey);
+    const serverFileName = `${compressedFabricId}.json`;
 
-    /** Queued tasks to apply on next flush */
-    #pendingTasks: LegacyWriteTask[] = [];
-
-    /** Timer for debounced writes */
-    #debounceTimer: Timer;
-
-    /** Promise for the currently running file operation */
-    #activeOperation?: Promise<void>;
-
-    #ended = false;
-
-    constructor(
-        env: Environment,
-        storagePath: string,
-        fabricConfig: LegacyFabricConfigData,
-        debounceDelayMs: number = DEFAULT_DEBOUNCE_DELAY_MS,
-    ) {
-        this.#env = env;
-        this.#storagePath = storagePath;
-        this.#fabricConfig = fabricConfig;
-        this.#debounceTimer = Time.getTimer("legacy-data-writer", Millis(debounceDelayMs), () => this.#onTimerFired());
-    }
-
-    /**
-     * Queue a node addition. Starts or continues the debounce timer.
-     */
-    queueAddition(nodeId: bigint | number, dateCommissioned: string): void {
-        if (this.#ended) {
-            throw new Error("Cannot queue addition after writer has ended");
-        }
-        this.#pendingTasks.push({ type: "add", nodeId, dateCommissioned });
-        logger.debug(`Queued addition of node ${nodeId}`);
-        this.#scheduleFlush();
-    }
-
-    /**
-     * Queue a node removal. Starts or continues the debounce timer.
-     */
-    queueRemoval(nodeId: bigint | number): void {
-        if (this.#ended) {
-            throw new Error("Cannot queue removal after writer has ended");
-        }
-        this.#pendingTasks.push({ type: "remove", nodeId });
-        logger.debug(`Queued removal of node ${nodeId}`);
-        this.#scheduleFlush();
-    }
-
-    /**
-     * Check if there are pending tasks or an active operation.
-     */
-    hasPendingWork(): boolean {
-        return this.#pendingTasks.length > 0 || this.#activeOperation !== undefined;
-    }
-
-    /**
-     * Flush all pending tasks immediately, bypassing the debounce timer.
-     * Awaits any currently running operation first.
-     * Call this during server shutdown to ensure all changes are persisted.
-     */
-    async flush(): Promise<void> {
-        this.#ended = true;
-
-        // Stop the debounce timer if running
-        this.#debounceTimer.stop();
-
-        // Wait for any active operation to complete
-        if (this.#activeOperation !== undefined) {
-            await this.#activeOperation;
-        }
-
-        // Process any remaining tasks
-        if (this.#pendingTasks.length > 0) {
-            this.#executeTasks();
-
-            // Wait for any active operation to complete
-            if (this.#activeOperation !== undefined) {
-                await this.#activeOperation;
-            }
-        }
-    }
-
-    /**
-     * Schedule a flush after the debounce delay.
-     * Does not restart the timer if already running.
-     */
-    #scheduleFlush(): void {
-        // Don't start a new timer if one is already running
-        if (this.#debounceTimer.isRunning) {
-            return;
-        }
-
-        this.#debounceTimer.start();
-    }
-
-    /**
-     * Called when the debounced timer fires.
-     */
-    #onTimerFired(): void {
-        // If a previous operation is still running, reschedule
-        if (this.#activeOperation !== undefined) {
-            logger.debug("Previous file operation still running, rescheduling flush");
-            this.#scheduleFlush();
-            return;
-        }
-
-        // Execute the pending tasks
-        if (this.#pendingTasks.length > 0) {
-            this.#executeTasks();
-        }
-    }
-
-    /**
-     * Execute all pending tasks in a single file operation.
-     */
-    #executeTasks() {
-        // Take all current tasks and clear the queue
-        const tasks = this.#pendingTasks;
-        this.#pendingTasks = [];
-
-        if (tasks.length === 0) {
-            return;
-        }
-
-        logger.debug(`Executing ${tasks.length} queued task(s)`);
-
-        // Create the operation promise and store it
-        this.#activeOperation = this.#applyTasks(tasks);
-
-        this.#activeOperation
-            .catch()
-            .catch(error => logger.error("Error executing pending tasks", error))
-            .finally(() => {
-                this.#activeOperation = undefined;
-            });
-    }
-
-    /**
-     * Apply a batch of tasks to the server file.
-     */
-    async #applyTasks(tasks: LegacyWriteTask[]): Promise<void> {
-        const crypto = this.#env.get(Crypto);
-        const compressedFabricId = await computeCompressedNodeId(
-            crypto,
-            this.#fabricConfig.fabricId,
-            this.#fabricConfig.rootPublicKey,
-        );
-        const serverFileName = `${compressedFabricId}.json`;
-        const serverFilePath = join(this.#storagePath, serverFileName);
-
-        // Load an existing file or create a new structure (with backup fallback)
-        const backupFilePath = `${serverFilePath}.backup`;
-        let serverFile: LegacyServerFile | undefined;
-        let loadedFromMainFile = true;
-
-        // First, try to load the main file
+    const retired = new Array<string>();
+    for (const name of ["chip.json", serverFileName, `${serverFileName}.backup`]) {
+        const from = join(storagePath, name);
         try {
-            const content = await readFile(serverFilePath, "utf-8");
-            serverFile = parseBigIntAwareJson(content) as LegacyServerFile;
-
-            // Warn if the nodes key is missing
-            if (!serverFile.nodes) {
-                logger.warn(`Server file ${serverFileName} is missing "nodes" key`);
-                serverFile.nodes = {};
-            }
-            loadedFromMainFile = true;
-        } catch (err) {
-            if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-                logger.error(`Error loading server file ${serverFileName}: ${err}`);
-            }
-
-            // Main file failed, try the backup
-            try {
-                const content = await readFile(backupFilePath, "utf-8");
-                serverFile = parseBigIntAwareJson(content) as LegacyServerFile;
-
-                // Warn if the nodes key is missing
-                if (!serverFile.nodes) {
-                    logger.warn(`Backup file ${serverFileName}.backup is missing "nodes" key`);
-                    serverFile.nodes = {};
-                }
-
-                logger.warn(`Loaded server file from backup: ${serverFileName}.backup`);
-                loadedFromMainFile = false;
-            } catch (backupErr) {
-                if ((backupErr as NodeJS.ErrnoException).code !== "ENOENT") {
-                    logger.error(`Error loading backup file ${serverFileName}.backup: ${backupErr}`);
-                }
-                // Neither file could be loaded, will create new
-            }
+            await access(from);
+        } catch {
+            continue; // Never existed, or a previous run already retired it.
         }
-
-        // If no file could be loaded, create a new structure
-        if (!serverFile) {
-            serverFile = {
-                vendor_info: {},
-                last_node_id: 0,
-                nodes: {},
-            };
-            loadedFromMainFile = true; // Treat the new file as "main file" for backup logic
-        }
-
-        // Track changes for logging
-        const added: string[] = [];
-        const removed: string[] = [];
-
-        // Apply all tasks in order
-        for (const task of tasks) {
-            const nodeIdStr = String(task.nodeId);
-
-            if (task.type === "add") {
-                // Add the node entry
-                serverFile.nodes[nodeIdStr] = {
-                    node_id: task.nodeId,
-                    date_commissioned: task.dateCommissioned,
-                    last_interview: task.dateCommissioned,
-                    interview_version: 6,
-                    available: false,
-                    is_bridge: false,
-                    attributes: {},
-                    attribute_subscriptions: [],
-                };
-
-                // Update last_node_id if this node is higher (compare as BigInt for safety)
-                if (BigInt(task.nodeId) > BigInt(serverFile.last_node_id)) {
-                    serverFile.last_node_id = task.nodeId;
-                }
-
-                added.push(nodeIdStr);
-            } else {
-                // Remove the node entry
-                if (nodeIdStr in serverFile.nodes) {
-                    delete serverFile.nodes[nodeIdStr];
-                    removed.push(nodeIdStr);
-                } else {
-                    logger.debug(`Node ${nodeIdStr} not found in legacy server file, skipping removal`);
-                }
-            }
-        }
-
-        // Only save if there were actual changes
-        if (added.length > 0 || removed.length > 0) {
-            await saveLegacyServerFile(
-                this.#env,
-                this.#storagePath,
-                this.#fabricConfig,
-                serverFile,
-                loadedFromMainFile,
-            );
-
-            const changes: string[] = [];
-            if (added.length > 0) {
-                changes.push(`added: ${added.join(", ")}`);
-            }
-            if (removed.length > 0) {
-                changes.push(`removed: ${removed.join(", ")}`);
-            }
-            logger.info(`Batch update to legacy server file: ${changes.join("; ")}`);
+        try {
+            await rename(from, `${from}${MIGRATED_SUFFIX}`);
+            retired.push(name);
+        } catch (error) {
+            logger.warn(`Could not retire legacy file ${name}: ${error}`);
         }
     }
+    return retired;
 }

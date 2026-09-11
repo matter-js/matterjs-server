@@ -45,6 +45,7 @@ interface ConfigData {
     wifiCredentials?: string;
     threadDataset?: string;
     peerSettingsRepairedFor?: string;
+    legacyRetirementPending?: boolean;
 }
 
 export class ConfigStorage {
@@ -60,6 +61,7 @@ export class ConfigStorage {
         wifiCredentials: undefined,
         threadDataset: undefined,
         peerSettingsRepairedFor: undefined,
+        legacyRetirementPending: undefined,
     };
     #additionalWifiCredentials: WifiCredentialEntry[] = new Array<WifiCredentialEntry>();
     #additionalThreadCredentials: ThreadCredentialEntry[] = new Array<ThreadCredentialEntry>();
@@ -124,6 +126,9 @@ export class ConfigStorage {
         const peerSettingsRepairedFor = (await this.#configStore.has("peerSettingsRepairedFor"))
             ? await this.#configStore.get<string>("peerSettingsRepairedFor", "")
             : undefined;
+        const legacyRetirementPending = (await this.#configStore.has("legacyRetirementPending"))
+            ? await this.#configStore.get<boolean>("legacyRetirementPending", false)
+            : undefined;
         await this.set({
             fabricLabel,
             nextNodeId,
@@ -131,6 +136,7 @@ export class ConfigStorage {
             wifiCredentials,
             threadDataset,
             peerSettingsRepairedFor,
+            legacyRetirementPending,
         });
 
         if (await this.#configStore.has("additionalWifiCredentials")) {
@@ -174,6 +180,19 @@ export class ConfigStorage {
 
     async markPeerSettingsRepaired(scope: string) {
         await this.set({ peerSettingsRepairedFor: scope });
+    }
+
+    /**
+     * Whether retiring the python-matter-server source was started but not finished. Set before the first
+     * irreversible step, so a start that dies part-way through can complete it rather than leaving the
+     * imported storage behind forever — the files it would be recognised by are already gone by then.
+     */
+    get legacyRetirementPending() {
+        return this.#data.legacyRetirementPending === true;
+    }
+
+    async setLegacyRetirementPending(pending: boolean) {
+        await this.set({ legacyRetirementPending: pending });
     }
 
     /**
