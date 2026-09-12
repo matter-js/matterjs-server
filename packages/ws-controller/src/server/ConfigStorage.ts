@@ -44,6 +44,7 @@ interface ConfigData {
     wifiSsid?: string;
     wifiCredentials?: string;
     threadDataset?: string;
+    peerSettingsRepairedFor?: string;
 }
 
 export class ConfigStorage {
@@ -58,6 +59,7 @@ export class ConfigStorage {
         wifiSsid: undefined,
         wifiCredentials: undefined,
         threadDataset: undefined,
+        peerSettingsRepairedFor: undefined,
     };
     #additionalWifiCredentials: WifiCredentialEntry[] = new Array<WifiCredentialEntry>();
     #additionalThreadCredentials: ThreadCredentialEntry[] = new Array<ThreadCredentialEntry>();
@@ -119,7 +121,17 @@ export class ConfigStorage {
         const threadDataset = (await this.#configStore.has("threadDataset"))
             ? await this.#configStore.get<string>("threadDataset", "")
             : undefined;
-        await this.set({ fabricLabel, nextNodeId, wifiSsid, wifiCredentials, threadDataset });
+        const peerSettingsRepairedFor = (await this.#configStore.has("peerSettingsRepairedFor"))
+            ? await this.#configStore.get<string>("peerSettingsRepairedFor", "")
+            : undefined;
+        await this.set({
+            fabricLabel,
+            nextNodeId,
+            wifiSsid,
+            wifiCredentials,
+            threadDataset,
+            peerSettingsRepairedFor,
+        });
 
         if (await this.#configStore.has("additionalWifiCredentials")) {
             const raw = await this.#configStore.get<Array<Record<string, string>>>(
@@ -153,6 +165,15 @@ export class ConfigStorage {
     }
     get nextNodeId() {
         return this.#data.nextNodeId;
+    }
+
+    /** Storage scope whose peers had their network settings repaired, or undefined while outstanding. */
+    get peerSettingsRepairedFor() {
+        return this.#data.peerSettingsRepairedFor;
+    }
+
+    async markPeerSettingsRepaired(scope: string) {
+        await this.set({ peerSettingsRepairedFor: scope });
     }
 
     /**

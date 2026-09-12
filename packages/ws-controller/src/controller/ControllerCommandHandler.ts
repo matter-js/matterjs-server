@@ -9,6 +9,7 @@ import {
     Abort,
     AsyncObservable,
     camelize,
+    ChannelType,
     ClientNode,
     CommissioningClient,
     FabricId,
@@ -19,7 +20,6 @@ import {
     Logger,
     MatterAggregateError,
     Millis,
-    Minutes,
     NodeId,
     Observable,
     ObserverGroup,
@@ -30,13 +30,16 @@ import {
     Time,
     Timer,
     DnsRecordType,
+    EndpointLifecycle,
     NetworkClient,
+    NodeConnectionState,
 } from "@matter/main";
 import { IcdManagementClient, OperationalCredentialsClient } from "@matter/main/behaviors";
 import {
     AccessControl,
     BasicInformation,
     Binding,
+    Descriptor,
     BridgedDeviceBasicInformation,
     GeneralCommissioning,
     IcdManagement,
@@ -45,8 +48,17 @@ import {
 } from "@matter/main/clusters";
 import { WebRtcTransportDefinitions } from "@matter/main/clusters/web-rtc-transport-definitions";
 import { WebRtcTransportProvider } from "@matter/main/clusters/web-rtc-transport-provider";
-import { ClusterRevision } from "@matter/main/model";
-import { DeviceAttestationCheck, Invoke, PeerAddress, Read, Specifier, PeerSet } from "@matter/main/protocol";
+import { AcceptedCommandList, AttributeList, ClusterRevision, FeatureMap } from "@matter/main/model";
+import {
+    AttestationFinding,
+    DeviceAttestationCheck,
+    Fabric,
+    Invoke,
+    PeerAddress,
+    PeerSet,
+    Read,
+    Specifier,
+} from "@matter/main/protocol";
 import {
     AttributeId,
     ClusterId,
@@ -61,12 +73,10 @@ import {
     StatusResponseError,
     VendorId,
 } from "@matter/main/types";
-import { Endpoint } from "@matter/node";
+import { CommissioningDiscovery, Endpoint, ServerNode } from "@matter/node";
 import { WebRtcTransportRequestorServer } from "@matter/node/behaviors/web-rtc-transport-requestor";
 import { CameraControllerDevice } from "@matter/node/devices/camera-controller";
-import { CommissioningController, NodeCommissioningOptions } from "@project-chip/matter.js";
-import type { DecodedAttributeReportValue, DecodedEventReportValue } from "@project-chip/matter.js/cluster";
-import { NodeStates, PairedNode } from "@project-chip/matter.js/device";
+import { OtaProviderEndpoint } from "@matter/node/endpoints/ota-provider";
 import { ClusterMap, ClusterMapEntry, GlobalAttributes } from "../model/ModelMapper.js";
 import {
     buildAttributePath,
@@ -103,9 +113,11 @@ import {
 } from "../types/WebSocketMessageTypes.js";
 import { formatNodeId } from "../util/formatNodeId.js";
 import { pingIp } from "../util/network.js";
+import { nodeIdOf } from "../util/nodeIdOf.js";
 import { CustomClusterPoller } from "./CustomClusterPoller.js";
 import { NodeAttributeReader } from "./NodeProcessor.js";
 import { Nodes } from "./Nodes.js";
+import { AttributeChange, EventChange, PeerChangeBus } from "./PeerChangeBus.js";
 import { ThreadDetailsPoller } from "./ThreadDetailsPoller.js";
 import { pushNodeTime, TimeSyncInvokers } from "./timeSyncCommands.js";
 import { SyncTrigger, TIME_FAILURE_EVENT_ID, TIME_SYNC_CLUSTER_ID, TimeSyncManager } from "./TimeSyncManager.js";
@@ -118,8 +130,15 @@ import {
 
 const logger = Logger.get("ControllerCommandHandler");
 
-/** Grace period after leaving Connected before a node is declared unavailable. */
-const RECONNECT_TIMEOUT = Minutes(3);
+/** The controller's own camera endpoint, which receives the WebRTC callbacks a peer sends back. */
+export const CameraControllerEndpoint = CameraControllerDevice.with(WebRtcTransportRequestorServer);
+export type CameraControllerEndpoint = typeof CameraControllerEndpoint;
+
+/** Coalescing window for structure and basic-information changes arriving as a burst. */
+const NODE_UPDATE_DEBOUNCE = Seconds(2);
+
+/** Longest a pending refresh may be extended by further report batches before it is sent regardless. */
+const NODE_UPDATE_MAX_DEFERRAL = Seconds(10);
 
 /**
  * Determine the Matter specification version from cached attributes.
@@ -153,8 +172,82 @@ function determineMatterVersion(attributes: AttributesData): string | undefined 
     return undefined;
 }
 
+/**
+ * Attributes whose change alters the shape of a node rather than a value within it, so consumers need
+ * a full refresh rather than a single attribute update. Mirrors what the legacy bus raised
+ * `structureChanged` for.
+ */
+function describesNodeStructure(path: AttributeChange["path"]): string | undefined {
+    const { clusterId, attributeId } = path;
+
+    if (
+        (clusterId === BasicInformation.id || clusterId === BridgedDeviceBasicInformation.id) &&
+        attributeId !== BasicInformation.attributes.nodeLabel.id
+    ) {
+        return "basic information changed";
+    }
+
+    if (clusterId === Descriptor.Cluster.id) {
+        switch (attributeId) {
+            case Descriptor.Cluster.attributes.partsList.id:
+            case Descriptor.Cluster.attributes.serverList.id:
+            case Descriptor.Cluster.attributes.clientList.id:
+            case Descriptor.Cluster.attributes.deviceTypeList.id:
+                return "endpoint composition changed";
+        }
+    }
+
+    switch (attributeId) {
+        case ClusterRevision.id:
+        case FeatureMap.id:
+        case AttributeList.id:
+        case AcceptedCommandList.id:
+            return "cluster capabilities changed";
+    }
+
+    return undefined;
+}
+
+/**
+ * Wait for a peer's structure to have been read, until told to give up.
+ *
+ * No timeout of its own: the device has just been commissioned, so it is reachable, and a bridge can take
+ * a long time to report its endpoints. Answering early would report a node whose structure is still
+ * arriving, which reads as success but is not. Shutdown is the one thing that ends the wait, because
+ * `seeded` fires at most once and never fires at all for a node that is torn down first.
+ */
+async function awaitSeeded(node: ClientNode, abort: Abort): Promise<void> {
+    if (node.lifecycle.isSeeded) {
+        return;
+    }
+    const observers = new ObserverGroup();
+    try {
+        await abort.attempt(new Promise<void>(resolve => observers.on(node.lifecycle.seeded, () => resolve())));
+    } finally {
+        observers.close();
+    }
+}
+
+/**
+ * Discovered peers, one entry per device, ordered by the advertisement each was last seen in.
+ *
+ * A device re-advertising within the discovery window is emitted again for the same node, so the raw
+ * result counts one device many times, and the last entry is whichever device happened to be found first.
+ */
+export function uniqueByLastAdvertisement<T extends { id: string }>(discovered: readonly T[]): T[] {
+    const unique = new Map<string, T>();
+    for (const node of discovered) {
+        unique.delete(node.id);
+        unique.set(node.id, node);
+    }
+    return Array.from(unique.values());
+}
+
 export class ControllerCommandHandler {
-    #controller: CommissioningController;
+    #node: ServerNode;
+    #fabric: Fabric;
+    #otaProvider?: Endpoint<typeof OtaProviderEndpoint>;
+    #webRtcRequestor: Endpoint<CameraControllerEndpoint>;
     #started = false;
     #connected = false;
     readonly #bleEnabled: boolean;
@@ -171,25 +264,24 @@ export class ControllerCommandHandler {
     #threadDetailsPoller?: ThreadDetailsPoller;
     /** Per-node ObserverGroups for cleanup on decommission */
     #nodeObservers = new Map<NodeId, ObserverGroup>();
-    /** Per-node timers that fire when Reconnecting state exceeds the timeout */
-    #reconnectTimers = new Map<NodeId, Timer>();
     /** Per-node timers that coalesce basic-info changes into a single delayed node_updated refresh. */
     #nodeUpdateTimers = new Map<NodeId, Timer>();
     /**
-     * Nodes whose basic information changed within the current subscription batch. A full node_updated
-     * is deferred until the batch ends (connectionAlive) so consumers see one update per batch.
+     * Nodes awaiting a full node_updated. Held until a report batch completes so the refresh reflects
+     * a consistent node rather than one caught mid-report.
      */
-    #basicInfoChangedInBatch = new Set<NodeId>();
+    #pendingNodeUpdates = new Set<NodeId>();
+    #nodeUpdateDeadlines = new Map<NodeId, number>();
     /** Nodes with a lazy getNodeDetails populate in flight, so concurrent reads emit node_updated once. */
     #pendingLazyPopulate = new Set<NodeId>();
     /** Track in-flight invoke-commands for deduplication across all WebSocket connections */
     readonly #inFlightInvokes = new Map<string, Promise<unknown>>();
     events = {
         started: new AsyncObservable(),
-        attributeChanged: new Observable<[nodeId: NodeId, data: DecodedAttributeReportValue<any>]>(),
-        eventChanged: new Observable<[nodeId: NodeId, data: DecodedEventReportValue<any>]>(),
+        attributeChanged: new Observable<[nodeId: NodeId, data: AttributeChange]>(),
+        eventChanged: new Observable<[nodeId: NodeId, data: EventChange]>(),
         nodeAdded: new Observable<[nodeId: NodeId]>(),
-        nodeStateChanged: new Observable<[nodeId: NodeId, state: NodeStates]>(),
+        nodeStateChanged: new Observable<[nodeId: NodeId, state: NodeConnectionState]>(),
         /** Emitted when node availability changes (for sending node_updated events) */
         nodeAvailabilityChanged: new Observable<[nodeId: NodeId, available: boolean]>(),
         nodeStructureChanged: new Observable<[nodeId: NodeId]>(),
@@ -199,16 +291,27 @@ export class ControllerCommandHandler {
         webRtcCallback: new Observable<[WebRtcCallbackData]>(),
     };
     #peers?: PeerSet;
+    #changeBus?: PeerChangeBus;
+    /** Subscriptions to {@link PeerChangeBus}, which outlives individual nodes. */
+    #busObservers = new ObserverGroup();
+    /** Aborted by {@link ControllerCommandHandler.close}, so no command outlives the handler. */
+    #shutdown = new Abort();
 
     constructor(
-        controllerInstance: CommissioningController,
+        controllerNode: ServerNode,
+        fabric: Fabric,
+        otaProvider: Endpoint<typeof OtaProviderEndpoint> | undefined,
+        webRtcRequestor: Endpoint<CameraControllerEndpoint>,
         bleEnabled: boolean,
         bleProxyEnabled: boolean,
         otaEnabled: boolean,
         timeSyncEnabled = false,
         threadDiagnosticsEnabled = false,
     ) {
-        this.#controller = controllerInstance;
+        this.#node = controllerNode;
+        this.#fabric = fabric;
+        this.#otaProvider = otaProvider;
+        this.#webRtcRequestor = webRtcRequestor;
 
         this.#bleEnabled = bleEnabled;
         this.#bleProxyEnabled = bleProxyEnabled;
@@ -216,7 +319,7 @@ export class ControllerCommandHandler {
         this.#otaEnabled = otaEnabled;
 
         const attributeReader: NodeAttributeReader = {
-            nodeConnected: peer => !!(this.#nodes.has(peer.nodeId) && this.#nodes.get(peer.nodeId).isConnected),
+            nodeConnected: peer => this.#isConnected(peer.nodeId),
             handleReadAttributes: (peer, paths, fabricFiltered) =>
                 this.handleReadAttributes(peer.nodeId, paths, fabricFiltered),
         };
@@ -233,33 +336,24 @@ export class ControllerCommandHandler {
             logger.info("Time synchronization enabled");
             this.#timeSyncManager = new TimeSyncManager({
                 syncTime: peer => this.#syncNodeTime(peer.nodeId),
-                nodeConnected: peer => !!(this.#nodes.has(peer.nodeId) && this.#nodes.get(peer.nodeId).isConnected),
-                commissionedNodeCount: () => this.#controller.getCommissionedNodes().length,
+                nodeConnected: peer => this.#isConnected(peer.nodeId),
+                commissionedNodeCount: () => this.#node.peers.commissioned.length,
             });
         }
     }
 
-    /**
-     * Build the canonical PeerAddress for the given node on this controller's fabric.
-     *
-     * Throws if the controller's fabric is not yet resolved. Callers must run after
-     * controller start; a silent fallback would intern PeerAddressMap entries under the
-     * wrong fabric index and leak poller registrations.
-     */
+    /** Build the canonical PeerAddress for the given node on this controller's fabric. */
     #peerOf(nodeId: NodeId): PeerAddress {
-        const fabric = this.#controller.fabric;
-        if (fabric === undefined) {
-            throw new Error(`Cannot resolve PeerAddress for node ${nodeId}: controller fabric is not initialized`);
-        }
-        return PeerAddress({ fabricIndex: fabric.fabricIndex, nodeId });
+        return PeerAddress({ fabricIndex: this.#fabric.fabricIndex, nodeId });
     }
 
-    /**
-     * Format a NodeId as a PeerAddress string for logging.
-     * Uses the controller's fabric index when available, otherwise "?" is used.
-     */
+    #isConnected(nodeId: NodeId): boolean {
+        return this.#nodes.has(nodeId) && this.#nodes.get(nodeId).lifecycle.isConnected;
+    }
+
+    /** Format a NodeId as a PeerAddress string for logging. */
     formatNode(nodeId: NodeId): string {
-        const fabricIndex = this.#controller.fabric?.fabricIndex;
+        const fabricIndex = this.#fabric.fabricIndex;
         return formatNodeId(nodeId, fabricIndex);
     }
 
@@ -281,9 +375,13 @@ export class ControllerCommandHandler {
         }
         this.#started = true;
 
-        await this.#controller.start();
+        // Before the node comes online: bringing it up starts and subscribes every commissioned peer, and
+        // a report arriving before the bus exists is not forwarded to anyone.
+        this.#peers = this.#node.env.get(PeerSet);
+        this.#startChangeBus();
+
+        await this.#node.start();
         logger.notice(`Matter Controller started`);
-        this.#peers = this.#controller.node.env.get(PeerSet);
 
         if (this.#otaEnabled) {
             // Subscribe to OTA provider events to track available updates
@@ -295,6 +393,61 @@ export class ControllerCommandHandler {
     }
 
     /**
+     * One node-wide change stream feeds every peer, so these subscriptions are established once here
+     * rather than per node in {@link ControllerCommandHandler.#registerNode}.
+     */
+    #startChangeBus() {
+        const bus = new PeerChangeBus(this.#node);
+        this.#changeBus = bus;
+
+        // These run on one Observable shared by every peer; an uncaught throw would abort the emit and
+        // starve the remaining listeners, so each body is contained.
+        this.#busObservers.on(bus.events.attributeChanged, (nodeId, data) => {
+            this.#guard(nodeId, "attribute change", () => {
+                this.#nodes.attributeCache.updateAttribute(nodeId, data);
+                this.events.attributeChanged.emit(nodeId, data);
+                const reason = describesNodeStructure(data.path);
+                if (reason !== undefined) {
+                    this.#markNodeUpdatePending(this.#nodes.get(nodeId), reason);
+                }
+            });
+        });
+
+        this.#busObservers.on(bus.events.eventTriggered, (nodeId, data) => {
+            this.#guard(nodeId, "event", () => {
+                this.events.eventChanged.emit(nodeId, data);
+                if (
+                    this.#timeSyncManager !== undefined &&
+                    data.path.clusterId === TIME_SYNC_CLUSTER_ID &&
+                    data.path.eventId === TIME_FAILURE_EVENT_ID
+                ) {
+                    logger.debug(`Received timeFailure event from node ${this.formatNode(nodeId)}`);
+                    this.#timeSyncManager.syncNode(this.#peerOf(nodeId), SyncTrigger.TimeFailure);
+                }
+            });
+        });
+
+        this.#busObservers.on(bus.events.endpointRemoved, (nodeId, endpointId) => {
+            this.#guard(nodeId, "endpoint removal", () => {
+                this.events.nodeEndpointRemoved.emit(nodeId, endpointId);
+                this.#markNodeUpdatePending(this.#nodes.get(nodeId), "endpoint removed");
+            });
+        });
+    }
+
+    /** Skips nodes no longer in the registry and contains throws; see {@link ControllerCommandHandler.#startChangeBus}. */
+    #guard(nodeId: NodeId, what: string, act: () => void) {
+        if (!this.#nodes.has(nodeId)) {
+            return;
+        }
+        try {
+            act();
+        } catch (error) {
+            logger.warn(`Failed to handle ${what} for node ${this.formatNode(nodeId)}:`, error);
+        }
+    }
+
+    /**
      * Set up event handlers for OTA update notifications from the SoftwareUpdateManager.
      */
     async #setupOtaEventHandlers() {
@@ -302,7 +455,7 @@ export class ControllerCommandHandler {
             return;
         }
         try {
-            const otaProvider = this.#controller.otaProvider;
+            const otaProvider = this.#otaProvider;
             if (!otaProvider) {
                 logger.info("OTA provider not available");
                 return;
@@ -338,7 +491,7 @@ export class ControllerCommandHandler {
 
     async #setupWebRtcCallbackBridge() {
         try {
-            await this.#cameraControllerEndpoint().act(agent => {
+            await this.#webRtcRequestor.act(agent => {
                 attachWebRtcCallbackBridge(agent.get(WebRtcTransportRequestorServer).events, data =>
                     this.events.webRtcCallback.emit(data),
                 );
@@ -347,10 +500,6 @@ export class ControllerCommandHandler {
         } catch (error) {
             logger.warn("Failed to setup WebRTC callback bridge:", error);
         }
-    }
-
-    #cameraControllerEndpoint(): Endpoint<typeof CameraControllerDevice> {
-        return this.#controller.node.endpoints.for("camera-controller") as Endpoint<typeof CameraControllerDevice>;
     }
 
     /** `originatingEndpointId` is server-injected; any client-supplied value in `payload` is overwritten. */
@@ -368,9 +517,9 @@ export class ControllerCommandHandler {
             );
         }
 
-        const requestorEndpoint = this.#cameraControllerEndpoint();
+        const requestorEndpoint = this.#webRtcRequestor;
         const originatingEndpointId = EndpointNumber(requestorEndpoint.number);
-        const fabricIndex = this.#controller.fabric.fabricIndex;
+        const fabricIndex = this.#fabric.fabricIndex;
 
         const node = this.#nodes.get(nodeId);
 
@@ -402,7 +551,7 @@ export class ControllerCommandHandler {
             ];
         selectWebRtcStreamFields(fields, clusterRevision);
 
-        const response = (await this.#invokeCommand(node.node, {
+        const response = (await this.#invokeCommand(node, {
             endpoint: endpointId,
             cluster: WebRtcTransportProvider,
             command,
@@ -442,7 +591,7 @@ export class ControllerCommandHandler {
                 )}: request lacks a stream usage or any video/audio stream, so signaling cannot be routed for it`,
             );
             try {
-                await this.#invokeCommand(node.node, {
+                await this.#invokeCommand(node, {
                     endpoint: endpointId,
                     cluster: WebRtcTransportProvider,
                     command: "endSession",
@@ -491,7 +640,7 @@ export class ControllerCommandHandler {
      * already removed by the requestor's own End handler. No-op if the id is not tracked.
      */
     async removeTrackedWebRtcSession(webRtcSessionId: number): Promise<void> {
-        await this.#cameraControllerEndpoint().act(agent => {
+        await this.#webRtcRequestor.act(agent => {
             agent.get(WebRtcTransportRequestorServer).removeSession(webRtcSessionId);
         });
     }
@@ -501,7 +650,7 @@ export class ControllerCommandHandler {
      * TimeSynchronization cluster.
      */
     async #syncNodeTime(nodeId: NodeId): Promise<void> {
-        const node = this.#nodes.get(nodeId).node;
+        const node = this.#nodes.get(nodeId);
         const attributes = this.#nodes.attributeCache.get(nodeId) ?? {};
         const invokers: TimeSyncInvokers = {
             setUtcTime: async fields => {
@@ -531,21 +680,24 @@ export class ControllerCommandHandler {
         await pushNodeTime({ invokers, attributes, nowMs: Time.nowMs });
     }
 
+    /** Release everything this handler owns. The controller node belongs to its creator and stays open. */
     async close() {
-        for (const timer of this.#reconnectTimers.values()) {
-            timer.stop();
-        }
-        this.#reconnectTimers.clear();
+        this.#shutdown.abort(new Error("The controller is shutting down"));
         for (const timer of this.#nodeUpdateTimers.values()) {
             timer.stop();
         }
         this.#nodeUpdateTimers.clear();
+        this.#nodeUpdateDeadlines.clear();
+        this.#pendingNodeUpdates.clear();
         // Observers first: a state change reaching #handleNodeStateChange re-registers the node with
         // every processor, so stopping them first leaves the processors re-populated.
         for (const observers of this.#nodeObservers.values()) {
             observers.close();
         }
         this.#nodeObservers.clear();
+        this.#busObservers.close();
+        this.#changeBus?.close();
+        this.#changeBus = undefined;
         // Each stop() awaits an in-flight read against a possibly unresponsive node; serially they
         // stack their timeouts, and a throw from one would skip the rest of the shutdown.
         const stopped = await Promise.allSettled([
@@ -558,83 +710,57 @@ export class ControllerCommandHandler {
                 logger.warn("Stopping a node processor failed:", result.reason);
             }
         }
-        if (!this.#started) {
-            return;
-        }
-        return this.#controller.close();
     }
 
     async #registerNode(nodeId: NodeId) {
-        const node = await this.#controller.getNode(nodeId);
+        // A node commissioned moments ago may not have its commissioning behavior active yet, so the
+        // handle has to be created on demand rather than looked up.
+        const node = await this.#node.peers.forAddress(this.#peerOf(nodeId));
         const attributeCache = this.#nodes.attributeCache;
 
         // Per-node ObserverGroup so all subscriptions are cleaned up on decommission
         const nodeObservers = new ObserverGroup();
         this.#nodeObservers.set(nodeId, nodeObservers);
 
-        nodeObservers.on(node.events.attributeChanged, data => {
-            attributeCache.updateAttribute(nodeId, data);
-            this.events.attributeChanged.emit(nodeId, data);
-            if (
-                (data.path.clusterId === BasicInformation.id ||
-                    data.path.clusterId === BridgedDeviceBasicInformation.id) &&
-                data.path.attributeId !== BasicInformation.attributes.nodeLabel.id
-            ) {
-                this.#basicInfoChangedInBatch.add(nodeId);
-            }
-        });
-        nodeObservers.on(node.events.connectionAlive, () => {
-            if (this.#basicInfoChangedInBatch.delete(nodeId) && !this.#nodeUpdateTimers.has(nodeId)) {
-                logger.info(
-                    `Node ${this.formatNode(nodeId)} basic information changed, sending full node_updated in 6s`,
-                );
-                // TODO remove timer based refresh when migrating to the ClientNode API for events
-                const timer = Time.getTimer(`node-update-${nodeId}`, Seconds(6), () =>
-                    this.#handleNodeStructureChange(node).catch(error =>
-                        logger.warn(`Failed to handle structure change for node ${this.formatNode(nodeId)}:`, error),
-                    ),
-                ).start();
-                this.#nodeUpdateTimers.set(nodeId, timer);
-            }
-        });
-        nodeObservers.on(node.events.eventTriggered, data => {
-            this.events.eventChanged.emit(nodeId, data);
-            // Filter timeFailure events to trigger time sync
-            if (
-                this.#timeSyncManager !== undefined &&
-                data.path.clusterId === TIME_SYNC_CLUSTER_ID &&
-                data.path.eventId === TIME_FAILURE_EVENT_ID
-            ) {
-                logger.debug(`Received timeFailure event from node ${this.formatNode(nodeId)}`);
-                this.#timeSyncManager.syncNode(this.#peerOf(nodeId), SyncTrigger.TimeFailure);
-            }
-        });
-        nodeObservers.on(node.events.stateChanged, state => {
+        // These observables belong to matter.js and rethrow: `decommissioned` in particular is emitted
+        // inside the decommission transaction, so an uncaught throw here starves matter.js's own
+        // listeners and fails a removal the device already accepted.
+        //
+        // A report batch has completed, so the node's state is consistent. Extend the window rather
+        // than flushing at once: a large bridge reports its changes across several batches.
+        nodeObservers.on(node.eventsOf(NetworkClient).subscriptionAlive, () =>
+            this.#guard(nodeId, "subscription report", () => {
+                if (this.#pendingNodeUpdates.has(nodeId)) {
+                    this.#armNodeUpdate(node, true);
+                }
+            }),
+        );
+        nodeObservers.on(node.lifecycle.connectionStateChanged, state => {
             this.#handleNodeStateChange(node, state).catch(error =>
                 logger.warn(`Failed to handle state change for node ${this.formatNode(nodeId)}:`, error),
             );
         });
-        nodeObservers.on(node.events.structureChanged, () => {
-            this.#handleNodeStructureChange(node).catch(error =>
-                logger.warn(`Failed to handle structure change for node ${this.formatNode(nodeId)}:`, error),
-            );
-        });
-        nodeObservers.on(node.events.decommissioned, () => {
-            this.#cleanupNodeAfterRemoval(nodeId);
-            this.events.nodeDecommissioned.emit(nodeId);
-        });
-        nodeObservers.on(node.events.nodeEndpointAdded, endpointId =>
-            this.#nodes.queueEndpointAdded(nodeId, endpointId),
+        nodeObservers.on(node.lifecycle.changed, (type, endpoint) =>
+            this.#guard(nodeId, "endpoint lifecycle change", () => {
+                if (type !== EndpointLifecycle.Change.PartsReady || endpoint === node) {
+                    return;
+                }
+                this.#nodes.queueEndpointAdded(nodeId, EndpointNumber(endpoint.number));
+                this.#markNodeUpdatePending(node, "endpoint added");
+            }),
         );
-        nodeObservers.on(node.events.nodeEndpointRemoved, endpointId =>
-            this.events.nodeEndpointRemoved.emit(nodeId, endpointId),
+        nodeObservers.on(node.lifecycle.decommissioned, () =>
+            this.#guard(nodeId, "decommissioning", () => {
+                if (this.#cleanupNodeAfterRemoval(nodeId)) {
+                    this.events.nodeDecommissioned.emit(nodeId);
+                }
+            }),
         );
-
         this.#nodes.set(nodeId, node);
 
-        this.#nodes.seedState(nodeId, node.connectionState);
+        this.#nodes.seedState(nodeId, node.lifecycle.connectionState);
 
-        if (node.initialized) {
+        if (node.lifecycle.isSeeded) {
             await attributeCache.add(node);
             const attributes = attributeCache.get(nodeId);
             if (attributes) {
@@ -648,44 +774,64 @@ export class ControllerCommandHandler {
         return node;
     }
 
-    async #handleNodeStateChange(node: PairedNode, state: NodeStates): Promise<void> {
-        const nodeId = node.nodeId;
-
-        // Arm on Connected->Reconnecting only; keep running across later
-        // non-Connected states; cancel on return to Connected.
-        let fastReconnect = false;
-        if (state === NodeStates.Connected) {
-            // A still-armed reconnect timer means we returned to Connected within the grace period.
-            // Treat it as a blip and skip the rebuild, relying on attributeChanged/structureChanged to
-            // repair any deltas — a perf tradeoff that assumes resubscription re-reports what changed.
-            const reconnectTimer = this.#reconnectTimers.get(nodeId);
-            fastReconnect = reconnectTimer !== undefined;
-            reconnectTimer?.stop();
-            this.#reconnectTimers.delete(nodeId);
-        } else if (
-            state === NodeStates.Reconnecting &&
-            !this.#reconnectTimers.has(nodeId) &&
-            this.#nodes.isAvailable(nodeId)
-        ) {
-            const timer = Time.getTimer(`reconnect-timeout-${nodeId}`, RECONNECT_TIMEOUT, () => {
-                this.#reconnectTimers.delete(nodeId);
-                if (this.#nodes.forceUnavailable(nodeId)) {
-                    logger.warn(`Node ${this.formatNode(nodeId)} offline grace period expired, marking unavailable`);
-                    this.events.nodeAvailabilityChanged.emit(nodeId, false);
-                }
-            });
-            timer.utility = true;
-            timer.start();
-            this.#reconnectTimers.set(nodeId, timer);
+    /**
+     * Record that a node needs a full refresh. The refresh is deliberately not sent from here: a
+     * structure change is observed while its report batch is still being applied, so serialising the
+     * node now can capture an endpoint whose attributes have not arrived yet.
+     */
+    #markNodeUpdatePending(node: ClientNode, reason: string) {
+        const nodeId = nodeIdOf(node);
+        if (this.#pendingNodeUpdates.has(nodeId)) {
+            return;
         }
+        this.#pendingNodeUpdates.add(nodeId);
+        logger.info(`Node ${this.formatNode(nodeId)} ${reason}, full node_updated pending`);
+        // Fallback: a node whose subscription never reports again would otherwise stay pending.
+        this.#armNodeUpdate(node, false);
+    }
 
-        const debouncePending = this.#reconnectTimers.has(nodeId);
-        const result = this.#nodes.processStateChange(nodeId, state, debouncePending);
+    /**
+     * `restart` extends the window so changes spread over several report batches land in one refresh.
+     * Extension is capped: a node reporting faster than the window would otherwise defer its refresh
+     * indefinitely and never tell consumers about the change at all.
+     */
+    #armNodeUpdate(node: ClientNode, restart: boolean) {
+        const nodeId = nodeIdOf(node);
+        const running = this.#nodeUpdateTimers.get(nodeId);
+        if (running !== undefined) {
+            const deadline = this.#nodeUpdateDeadlines.get(nodeId);
+            if (!restart || (deadline !== undefined && Time.nowUs >= deadline)) {
+                return;
+            }
+            running.stop();
+        } else {
+            // Monotonic: an NTP step must not stretch or collapse the deferral window.
+            this.#nodeUpdateDeadlines.set(nodeId, Time.nowUs + NODE_UPDATE_MAX_DEFERRAL);
+        }
+        const timer = Time.getTimer(`node-update-${nodeId}`, NODE_UPDATE_DEBOUNCE, () => {
+            this.#nodeUpdateTimers.delete(nodeId);
+            this.#nodeUpdateDeadlines.delete(nodeId);
+            this.#pendingNodeUpdates.delete(nodeId);
+            this.#handleNodeStructureChange(node).catch(error =>
+                logger.warn(`Failed to handle structure change for node ${this.formatNode(nodeId)}:`, error),
+            );
+        }).start();
+        this.#nodeUpdateTimers.set(nodeId, timer);
+    }
+
+    async #handleNodeStateChange(node: ClientNode, state: NodeConnectionState): Promise<void> {
+        const nodeId = nodeIdOf(node);
+
+        // A node that never became unavailable was only ever briefly re-establishing, so its data is
+        // still good: resubscription re-reports whatever changed. Rebuild only when it comes back from
+        // being considered offline.
+        const wasAvailable = this.#nodes.isAvailable(nodeId);
+        const result = this.#nodes.processStateChange(nodeId, state);
 
         this.events.nodeStateChanged.emit(nodeId, state);
 
         if (result.availabilityChanged) {
-            const availabilityMessage = `Node ${this.formatNode(nodeId)} availability changed to ${result.available} (state: ${NodeStates[state]})`;
+            const availabilityMessage = `Node ${this.formatNode(nodeId)} availability changed to ${result.available} (state: ${NodeConnectionState[state]})`;
             if (result.available) {
                 logger.notice(availabilityMessage);
             } else {
@@ -695,10 +841,9 @@ export class ControllerCommandHandler {
         }
 
         // Populate last so the state/availability emits above are not delayed behind a multi-second
-        // rebuild. Skip the rebuild on a fast reconnect (data unchanged, repaired via its own events);
-        // still rebuild if the cache is missing.
-        if (state === NodeStates.Connected) {
-            if (!fastReconnect || !this.#nodes.attributeCache.has(nodeId)) {
+        // rebuild.
+        if (state === NodeConnectionState.Connected) {
+            if (!wasAvailable || !this.#nodes.attributeCache.has(nodeId)) {
                 await this.#nodes.attributeCache.update(node);
             }
             const attributes = this.#nodes.attributeCache.get(nodeId);
@@ -711,14 +856,14 @@ export class ControllerCommandHandler {
         }
     }
 
-    async #handleNodeStructureChange(node: PairedNode): Promise<void> {
-        const nodeId = node.nodeId;
-        this.#basicInfoChangedInBatch.delete(nodeId);
+    async #handleNodeStructureChange(node: ClientNode): Promise<void> {
+        const nodeId = nodeIdOf(node);
+        this.#pendingNodeUpdates.delete(nodeId);
 
         this.#nodeUpdateTimers.get(nodeId)?.stop();
         this.#nodeUpdateTimers.delete(nodeId);
 
-        if (node.isConnected) {
+        if (this.#isConnected(nodeId)) {
             await this.#nodes.attributeCache.update(node);
         }
         this.events.nodeStructureChanged.emit(nodeId);
@@ -729,8 +874,8 @@ export class ControllerCommandHandler {
     }
 
     /**
-     * Initialize the controller, register all commissioned nodes (populates attribute caches),
-     * and start connecting them to the network.
+     * Initialize the controller and register all commissioned nodes, which populates their attribute
+     * caches. Connecting the peers is the controller node's own job.
      *
      * Guarded by #connected so it runs exactly once, even if called multiple times
      * (e.g. when WebServer.start() registers handlers for multiple listen addresses).
@@ -743,7 +888,7 @@ export class ControllerCommandHandler {
 
         await this.start();
 
-        const nodes = this.#controller.getCommissionedNodes();
+        const nodes = this.#node.peers.commissioned.map(peer => nodeIdOf(peer));
         logger.info(`Found ${nodes.length} nodes: ${nodes.map(nodeId => this.formatNode(nodeId)).join(", ")}`);
 
         for (const nodeId of nodes) {
@@ -752,24 +897,6 @@ export class ControllerCommandHandler {
                 await this.#registerNode(nodeId);
             } catch (error) {
                 logger.warn(`Failed to initialize node "${this.formatNode(nodeId)}":`, error);
-            }
-        }
-
-        logger.info(`All ${nodes.length} nodes initialized, starting connections`);
-
-        // Start connecting nodes to the network (fire-and-forget, actual I/O is async).
-        for (const nodeId of this.#nodes.getIds()) {
-            try {
-                const node = this.#nodes.get(nodeId);
-
-                if (node.node.maybeStateOf(NetworkClient)?.defaultSubscription !== undefined) {
-                    // Clear former set subscription details, let matter.js handle that now
-                    await node.node.set({ network: { defaultSubscription: undefined } });
-                }
-
-                node.connect();
-            } catch (error) {
-                logger.warn(`Failed to connect node "${this.formatNode(nodeId)}":`, error);
             }
         }
     }
@@ -787,7 +914,10 @@ export class ControllerCommandHandler {
      * Authoritative against matter.js rather than the locally tracked node set, which can drift from the fabric.
      */
     isNodeIdInUse(nodeId: NodeId): boolean {
-        return nodeId === this.#controller.nodeId || this.#controller.isNodeCommissioned(nodeId);
+        return (
+            nodeId === this.#fabric.rootNodeId ||
+            (this.#node.peers.get(this.#peerOf(nodeId))?.lifecycle.isCommissioned ?? false)
+        );
     }
 
     /**
@@ -813,7 +943,7 @@ export class ControllerCommandHandler {
             }),
             includeKnownVersions: true, // do not send DataVersionFilters, so we do a new clean read
         };
-        for await (const _chunk of node.node.interaction.read(read));
+        for await (const _chunk of node.interaction.read(read));
     }
 
     /**
@@ -822,7 +952,7 @@ export class ControllerCommandHandler {
      */
     async ensureNodePopulated(nodeId: NodeId): Promise<void> {
         const node = this.#nodes.get(nodeId);
-        if (node.initialized && !this.#nodes.attributeCache.has(nodeId)) {
+        if (node.lifecycle.isSeeded && !this.#nodes.attributeCache.has(nodeId)) {
             await this.#nodes.attributeCache.add(node);
         }
     }
@@ -868,8 +998,10 @@ export class ControllerCommandHandler {
         }
 
         return {
-            node_id: node.nodeId,
-            date_commissioned: getDateAsString(new Date(node.state.commissioning.commissionedAt ?? Date.now())),
+            node_id: nodeId,
+            date_commissioned: getDateAsString(
+                new Date(node.maybeStateOf(CommissioningClient)?.commissionedAt ?? Date.now()),
+            ),
             last_interview: getDateAsString(lastInterviewDate ?? new Date()),
             interview_version: 6,
             available: this.#nodes.isAvailable(nodeId),
@@ -908,7 +1040,7 @@ export class ControllerCommandHandler {
                 includeKnownVersions: true,
             };
 
-            for await (const chunk of node.node.interaction.read(readRequest)) {
+            for await (const chunk of node.interaction.read(readRequest)) {
                 for await (const entry of chunk) {
                     if (entry.kind === "attr-value") {
                         const { pathStr, value: wsValue } = this.#convertAttributeToWebSocket(
@@ -976,7 +1108,7 @@ export class ControllerCommandHandler {
         const clusterProperty = clusterEntry.model.propertyName;
 
         try {
-            await node.node.endpoints.for(endpointId).setStateOf(clusterProperty, { [attributeName]: value });
+            await node.endpoints.for(endpointId).setStateOf(clusterProperty, { [attributeName]: value });
             return { status: 0 };
         } catch (error) {
             if (error instanceof MatterAggregateError) {
@@ -1000,18 +1132,44 @@ export class ControllerCommandHandler {
 
     /** Set the fabric label. matter.js requires a non-empty label of 1-32 chars; callers must normalize first. */
     async setFabricLabel(label: string) {
-        await this.#controller.updateFabricLabel(label);
+        await this.#fabric.setLabel(label);
+        await this.#pushFabricLabel(label);
     }
 
-    /** Current fabric label as known to matter.js, or undefined if the controller/fabric is not yet started. */
-    getFabricLabel(): string | undefined {
-        // matter.js `fabric` getter throws until the controller has finished starting; degrade to undefined
-        // so callers fall back to the configured label instead of surfacing an error.
-        try {
-            return this.#controller.fabric?.label;
-        } catch {
-            return undefined;
+    /**
+     * Tell the currently connected nodes about a changed fabric label.
+     *
+     * The label the controller holds is the label, and telling the devices is best-effort: a device that
+     * refuses or cannot be reached keeps its own copy stale, which is cosmetic there and reconciled the
+     * next time matter.js brings that peer up in a new runtime. Failing the command instead would mean
+     * unwinding the devices that did accept, which no amount of local bookkeeping can do.
+     */
+    async #pushFabricLabel(label: string) {
+        const connected = this.#nodes.getIds().filter(nodeId => this.#isConnected(nodeId));
+        const results = await Promise.allSettled(
+            connected.map(async nodeId => {
+                const response = await this.#nodes
+                    .get(nodeId)
+                    .commandsOf(OperationalCredentialsClient)
+                    .updateFabricLabel({ label });
+                if (response?.statusCode !== OperationalCredentials.NodeOperationalCertStatus.Ok) {
+                    logger.notice(
+                        `Node ${this.formatNode(nodeId)} kept its own fabric label; status ${response?.statusCode}`,
+                    );
+                }
+            }),
+        );
+
+        for (const result of results) {
+            if (result.status === "rejected") {
+                logger.warn("Could not update the fabric label on a node:", result.reason);
+            }
         }
+    }
+
+    /** Current fabric label as known to matter.js. */
+    getFabricLabel(): string | undefined {
+        return this.#fabric.label;
     }
 
     async handleWriteAttribute(data: WriteAttributeRequest): Promise<AttributeResponseStatus> {
@@ -1081,7 +1239,7 @@ export class ControllerCommandHandler {
         const clusterName = clusterEntry.model.propertyName;
         const commandName = camelize(data.commandName);
         const commands = (
-            this.#nodes.get(nodeId).node.endpoints.for(endpointId).commands as Record<string, Record<string, unknown>>
+            this.#nodes.get(nodeId).endpoints.for(endpointId).commands as Record<string, Record<string, unknown>>
         )[clusterName];
         if (!commands[commandName]) {
             throw ServerError.invalidArguments(`Command "${commandName}" does not exist on cluster "${clusterName}"`);
@@ -1116,7 +1274,7 @@ export class ControllerCommandHandler {
 
         // Execute and track the command
         const invokePromise = this.#invokeCommand(
-            this.#nodes.get(nodeId).node,
+            this.#nodes.get(nodeId),
             {
                 endpoint: endpointId,
                 cluster,
@@ -1138,13 +1296,12 @@ export class ControllerCommandHandler {
         });
     }
 
-    #determineCommissionOptions(data: CommissioningRequest): NodeCommissioningOptions {
+    #determineCommissionOptions(data: CommissioningRequest): CommissioningDiscovery.Options {
         let passcode: number | undefined = undefined;
         let shortDiscriminator: number | undefined = undefined;
         let longDiscriminator: number | undefined = undefined;
         let productId: number | undefined = undefined;
         let vendorId: VendorId | undefined = undefined;
-        let knownAddress: ServerAddress | undefined = undefined;
 
         if ("manualCode" in data && data.manualCode.length > 0) {
             const pairingCodeCodec = ManualPairingCodeCodec.decode(data.manualCode);
@@ -1173,72 +1330,130 @@ export class ControllerCommandHandler {
             throw ServerError.invalidArguments("No pairing code provided");
         }
 
-        if (data.knownAddress !== undefined) {
-            const { ip, port } = data.knownAddress;
-            knownAddress = {
-                type: "udp",
-                ip,
-                port,
-            };
-        }
-
         if (passcode == undefined) {
             throw ServerError.invalidArguments("No passcode provided");
         }
 
         const { onNetworkOnly, wifiCredentials: wifiNetwork, threadCredentials: threadNetwork } = data;
         return {
-            commissioning: {
-                nodeId: data.nodeId,
-                regulatoryLocation: GeneralCommissioning.RegulatoryLocationType.IndoorOutdoor,
-                regulatoryCountryCode: "XX",
-                wifiNetwork,
-                threadNetwork,
-                onAttestationFailure: findings => {
-                    let testCertReason: string | undefined;
-                    let hardError = false;
-                    for (const f of findings) {
-                        if (f.type === DeviceAttestationCheck.TrustedAsTestCertificate) {
-                            testCertReason =
-                                'This device uses a test/development certificate. To commission it, enable the "Test DCL" option in the settings — only do this if you trust the vendor.';
-                        } else if (f.level === "error") {
-                            hardError = true;
-                        }
-                        logger.info(`Attestation finding (${f.level}):`, f.type, f.message);
-                    }
-                    if (testCertReason !== undefined) {
-                        logger.notice(`Attestation rejected: ${testCertReason}`);
-                        return testCertReason;
-                    }
-                    logger.info(`Attestation ${hardError ? "rejected" : "accepted"}`);
-                    return !hardError;
-                },
-            },
-            discovery: {
-                knownAddress,
-                identifierData:
-                    longDiscriminator !== undefined
-                        ? { longDiscriminator }
-                        : shortDiscriminator !== undefined
-                          ? { shortDiscriminator }
-                          : vendorId !== undefined
-                            ? { vendorId, productId }
-                            : {},
-                discoveryCapabilities: {
-                    ble: this.bleEnabled && !onNetworkOnly,
-                    onIpNetwork: true,
-                },
-            },
             passcode,
+            ...(longDiscriminator !== undefined
+                ? { longDiscriminator }
+                : shortDiscriminator !== undefined
+                  ? { shortDiscriminator }
+                  : vendorId !== undefined
+                    ? { vendorId, productId }
+                    : {}),
+            discoveryCapabilities: {
+                ble: this.bleEnabled && !onNetworkOnly,
+                onIpNetwork: true,
+            },
+            nodeId: data.nodeId,
+            regulatoryLocation: GeneralCommissioning.RegulatoryLocationType.IndoorOutdoor,
+            regulatoryCountryCode: "XX",
+            wifiNetwork,
+            threadNetwork,
+            onAttestationFailure: (findings: AttestationFinding[]) => {
+                let testCertReason: string | undefined;
+                let hardError = false;
+                for (const f of findings) {
+                    if (f.type === DeviceAttestationCheck.TrustedAsTestCertificate) {
+                        testCertReason =
+                            'This device uses a test/development certificate. To commission it, enable the "Test DCL" option in the settings — only do this if you trust the vendor.';
+                    } else if (f.level === "error") {
+                        hardError = true;
+                    }
+                    logger.info(`Attestation finding (${f.level}):`, f.type, f.message);
+                }
+                if (testCertReason !== undefined) {
+                    logger.notice(`Attestation rejected: ${testCertReason}`);
+                    return testCertReason;
+                }
+                logger.info(`Attestation ${hardError ? "rejected" : "accepted"}`);
+                return !hardError;
+            },
         };
     }
 
+    /**
+     * Whether a failed commissioning attempt can be repeated against this node id.
+     *
+     * The caller chooses the id before commissioning starts, so the fabric itself answers this — no
+     * bookkeeping around the attempt is needed, and none would be trustworthy: `CommissioningClient`
+     * commits the peer address before it brings the node online, so a failure late in the flow still
+     * leaves a device that is genuinely ours. An id held by an unrelated device is equally a reason not
+     * to repeat, because the next attempt fails on the same conflict. Without a caller-chosen id there is
+     * nothing to look up and the answer is the cautious one.
+     */
+    #nothingJoined(nodeId: NodeId | undefined): boolean {
+        return nodeId !== undefined && !this.isNodeIdInUse(nodeId);
+    }
+
+    /**
+     * Commission a device whose address the caller supplied, skipping discovery.
+     *
+     * `runCommissioning` shields the peer from the expired-node cull while the flow runs and rejects a
+     * parallel attempt on the same node; `peers.commission` applies it for the discovery path itself.
+     */
+    async #commissionAtAddress(
+        knownAddress: NonNullable<CommissioningRequest["knownAddress"]>,
+        options: CommissioningDiscovery.Options,
+    ): Promise<ClientNode> {
+        const peer = await this.#node.peers.forDescriptor({
+            addresses: [{ type: "udp", ip: knownAddress.ip, port: knownAddress.port }],
+        });
+        try {
+            await this.#node.peers.runCommissioning(peer, () => peer.commission(options));
+        } catch (error) {
+            // This peer, not the node id: an id already taken by an unrelated device fails the attempt
+            // before anything joins, and the record forDescriptor persisted is then still ours to remove.
+            // A delete that fails leaves an entry behind until the expired-node cull — an address-only
+            // descriptor never matches an existing node, so a retry adds another rather than reusing it.
+            if (!peer.lifecycle.isCommissioned) {
+                await peer
+                    .delete()
+                    .catch(deleteError =>
+                        logger.warn("Could not remove the peer of a failed commissioning:", deleteError),
+                    );
+            }
+            throw error;
+        }
+        return peer;
+    }
+
     async commissionNode(data: CommissioningRequest): Promise<CommissioningResponse> {
+        const options = this.#determineCommissionOptions(data);
+        const { knownAddress } = data;
+
         let nodeId: NodeId;
         try {
-            nodeId = await this.#controller.commissionNode(this.#determineCommissionOptions(data), {
-                connectNodeAfterCommissioning: true,
-            });
+            let peer: ClientNode | undefined;
+            if (knownAddress !== undefined) {
+                try {
+                    peer = await this.#commissionAtAddress(knownAddress, options);
+                } catch (error) {
+                    if (!this.#nothingJoined(options.nodeId)) {
+                        // The device joined and only the rest of the flow failed. Commissioning it a
+                        // second time would fail against a device no longer in commissioning mode and
+                        // strand the entry it already has on the fabric.
+                        logger.notice(
+                            options.nodeId === undefined
+                                ? "Commissioning at the supplied address failed; without a chosen node id the attempt cannot be repeated safely"
+                                : `Node ${this.formatNode(options.nodeId)} is already on the fabric, so the attempt is not repeated by discovery`,
+                        );
+                        throw error;
+                    }
+                    // The address is a hint from the caller and can be stale — the device may have moved
+                    // to a new one since it was seen.
+                    logger.info(
+                        `Commissioning at the supplied address ${knownAddress.ip}:${knownAddress.port} failed, discovering the device instead:`,
+                        error,
+                    );
+                }
+            }
+            peer ??= await this.#node.peers.commission(options);
+            await awaitSeeded(peer, this.#shutdown);
+            nodeId = nodeIdOf(peer);
         } catch (error) {
             // Preserve the original error message with context
             const originalMessage = error instanceof Error ? error.message : String(error);
@@ -1255,7 +1470,7 @@ export class ControllerCommandHandler {
     }
 
     getCommissionerNodeId() {
-        return this.#controller.nodeId;
+        return this.#fabric.rootNodeId;
     }
 
     async getCommissionerFabricData(): Promise<{
@@ -1263,7 +1478,7 @@ export class ControllerCommandHandler {
         compressedFabricId: bigint;
         fabricIndex: number;
     }> {
-        const { fabricId, globalId, fabricIndex } = this.#controller.fabric;
+        const { fabricId, globalId, fabricIndex } = this.#fabric;
         return {
             fabricId,
             compressedFabricId: globalId,
@@ -1273,55 +1488,64 @@ export class ControllerCommandHandler {
 
     /** Discover commissionable devices */
     async handleDiscovery({ findBy }: DiscoveryRequest): Promise<DiscoveryResponse> {
-        const result = await this.#controller.discoverCommissionableDevices(
-            findBy ?? {},
-            { onIpNetwork: true },
-            undefined,
-            Seconds(3), // Just check for 3 sec
-        );
-        logger.info("Discovered result", result);
-        // Chip is not removing old discoveries when being stopped, so we still have old and new devices in the result
-        // but the expectation is that it was reset and only new devices are in the result
-        const latestDiscovery = result[result.length - 1];
-        if (latestDiscovery === undefined) {
+        const discovered = await this.#node.peers.discover({
+            ...(findBy ?? {}),
+            timeout: Seconds(3), // Just check for 3 sec
+            // Commissionable discovery over IP only: this command reports mDNS advertisements, and a
+            // BLE-discovered instance has no address or port to report.
+            scannerFilter: scanner => scanner.type === ChannelType.UDP,
+        });
+
+        const unique = uniqueByLastAdvertisement(discovered);
+        logger.info(`Discovered ${unique.length} commissionable device(s)`);
+
+        const latest = unique[unique.length - 1];
+        if (latest === undefined) {
             return [];
         }
-        return [latestDiscovery].map(({ DT, DN, CM, D, RI, PH, PI, T, VP, deviceIdentifier, addresses, SII, SAI }) => {
-            const supportsTcpClient = T?.tcpClient ?? false;
-            const supportsTcpServer = T?.tcpServer ?? false;
-            const vendorId = VP === undefined ? -1 : VP.includes("+") ? parseInt(VP.split("+")[0]) : parseInt(VP);
-            const productId = VP === undefined ? -1 : VP.includes("+") ? parseInt(VP.split("+")[1]) : -1;
-            const firstAddress = addresses[0];
-            const port = firstAddress && ServerAddress.isIp(firstAddress) ? firstAddress.port : 0;
-            const numIPs = addresses.length;
-            return {
-                commissioningMode: CM,
+
+        // The descriptor is the advertisement as received, so it carries the wire fields directly.
+        const descriptor = await latest.act(agent => agent.get(CommissioningClient).descriptor);
+        if (descriptor === undefined) {
+            return [];
+        }
+        const { deviceIdentifier = "", addresses = [], DT, DN, RI, PH, PI, T, VP, SII, SAI } = descriptor;
+        const discriminator = "D" in descriptor ? (descriptor.D ?? 0) : 0;
+        const commissioningMode = "CM" in descriptor ? (descriptor.CM ?? 0) : 0;
+
+        const vendorId = VP === undefined ? -1 : VP.includes("+") ? parseInt(VP.split("+")[0]) : parseInt(VP);
+        const productId = VP === undefined ? -1 : VP.includes("+") ? parseInt(VP.split("+")[1]) : -1;
+        const firstAddress = addresses[0];
+
+        return [
+            {
+                commissioningMode,
                 deviceName: DN ?? "",
                 deviceType: DT ?? 0,
                 hostName: "000000000000", // Right now we do not return real hostname, only used internally
                 instanceName: deviceIdentifier,
-                longDiscriminator: D,
-                numIPs,
+                longDiscriminator: discriminator,
+                numIPs: addresses.length,
                 pairingHint: PH ?? -1,
                 pairingInstruction: PI ?? "",
-                port,
+                port: firstAddress !== undefined && ServerAddress.isIp(firstAddress) ? firstAddress.port : 0,
                 productId,
                 rotatingId: RI ?? "",
                 rotatingIdLen: RI?.length ?? 0,
-                shortDiscriminator: (D >> 8) & 0x0f,
+                shortDiscriminator: (discriminator >> 8) & 0x0f,
                 vendorId,
-                supportsTcpServer,
-                supportsTcpClient,
+                supportsTcpServer: T?.tcpServer ?? false,
+                supportsTcpClient: T?.tcpClient ?? false,
                 addresses: addresses.filter(ServerAddress.isIp).map(({ ip }) => ip),
                 mrpSessionIdleInterval: SII,
                 mrpSessionActiveInterval: SAI,
-            };
-        });
+            },
+        ];
     }
 
     async getNodeIpAddresses(nodeId: NodeId, preferCache = true) {
         const addresses = new Set<string>();
-        const peer = this.#peers?.for(this.#controller.fabric.addressOf(nodeId));
+        const peer = this.#peers?.for(this.#fabric.addressOf(nodeId));
         if (peer) {
             for (const address of peer.service.addresses) {
                 addresses.add(address.ip);
@@ -1342,7 +1566,7 @@ export class ControllerCommandHandler {
 
         // Fall back to commissioning addresses from the node state if mDNS fails
         const node = this.#nodes.get(nodeId);
-        const commissioningAddresses = node.node.maybeStateOf(CommissioningClient)?.addresses;
+        const commissioningAddresses = node.maybeStateOf(CommissioningClient)?.addresses;
         if (commissioningAddresses !== undefined && commissioningAddresses.length > 0) {
             const fallbackAddresses = commissioningAddresses.filter(ServerAddress.isIp).map(addr => addr.ip);
             for (const address of fallbackAddresses) {
@@ -1364,7 +1588,7 @@ export class ControllerCommandHandler {
                 return [];
             }
 
-            const peer = this.#peers.for(this.#controller.fabric.addressOf(nodeId));
+            const peer = this.#peers.for(this.#fabric.addressOf(nodeId));
 
             const abort = new Abort({ timeout: Seconds(3) });
             const names = peer.service.names;
@@ -1393,8 +1617,9 @@ export class ControllerCommandHandler {
      * @returns A record of IP addresses to ping success status
      */
     async pingNode(nodeId: NodeId, attempts = 1): Promise<NodePingResult> {
-        const node = this.#nodes.get(nodeId);
-
+        if (!this.#nodes.has(nodeId)) {
+            throw ServerError.nodeNotExists(nodeId);
+        }
         const result: NodePingResult = {};
 
         // Get all IP addresses for the node (fresh lookup, not cached)
@@ -1419,7 +1644,7 @@ export class ControllerCommandHandler {
         await Promise.all(pingPromises);
 
         // If the node is connected, treat the connection as valid
-        if (node.isConnected) {
+        if (this.#isConnected(nodeId)) {
             // Find any successful ping or mark the connection as reachable
             const anySuccess = Object.values(result).some(v => v);
             if (!anySuccess && ipAddresses.length > 0) {
@@ -1433,28 +1658,51 @@ export class ControllerCommandHandler {
     }
 
     async decommissionNode(nodeId: NodeId) {
-        const node = this.#nodes.has(nodeId) ? this.#nodes.get(nodeId) : undefined;
-        if (node === undefined) {
+        if (!this.#nodes.has(nodeId)) {
             throw ServerError.nodeNotExists(nodeId);
         }
-        await this.#controller.removeNode(nodeId, !!node?.isConnected);
-        this.#cleanupNodeAfterRemoval(nodeId);
+        const node = this.#nodes.get(nodeId);
+
+        // A reachable device must be told to drop our fabric, or it keeps holding it and never becomes
+        // commissionable again without a manual factory reset. An unreachable one cannot be told
+        // anything, and attempting it costs the caller the full discovery and retry budget, so go
+        // straight to the local removal for those.
+        let removed = false;
+        if (this.#isConnected(nodeId)) {
+            try {
+                await node.decommission();
+                removed = true;
+            } catch (error) {
+                logger.warn(`Decommissioning node ${this.formatNode(nodeId)} failed:`, error);
+            }
+        }
+
+        if (!removed) {
+            // Leaves the device holding a fabric it can only shed via factory reset; the user has to be
+            // told, but the node still has to go locally or it lingers unusable.
+            logger.notice(`Removing node ${this.formatNode(nodeId)} locally without contacting it`);
+            await node.delete();
+        }
+
+        if (this.#cleanupNodeAfterRemoval(nodeId)) {
+            this.events.nodeDecommissioned.emit(nodeId);
+        }
     }
 
     /**
      * Drop all references to a removed node so subsequent reads don't reach a
-     * destroyed PairedNode. Idempotent — both the `decommissioned` listener
+     * destroyed node handle. Idempotent — both the `decommissioned` listener
      * (external fabric leave) and `decommissionNode` invoke it, and the
      * listener may have run first.
      */
-    #cleanupNodeAfterRemoval(nodeId: NodeId) {
-        this.#reconnectTimers.get(nodeId)?.stop();
-        this.#reconnectTimers.delete(nodeId);
+    #cleanupNodeAfterRemoval(nodeId: NodeId): boolean {
+        const wasRegistered = this.#nodes.has(nodeId);
         this.#nodeUpdateTimers.get(nodeId)?.stop();
         this.#nodeUpdateTimers.delete(nodeId);
+        this.#nodeUpdateDeadlines.delete(nodeId);
         this.#nodeObservers.get(nodeId)?.close();
         this.#nodeObservers.delete(nodeId);
-        this.#basicInfoChangedInBatch.delete(nodeId);
+        this.#pendingNodeUpdates.delete(nodeId);
         this.#pendingLazyPopulate.delete(nodeId);
         this.#nodes.delete(nodeId);
         const peer = this.#peerOf(nodeId);
@@ -1462,12 +1710,18 @@ export class ControllerCommandHandler {
         this.#threadDetailsPoller?.unregisterNode(peer);
         this.#timeSyncManager?.unregisterNode(peer);
         this.#availableUpdates.delete(nodeId);
+        return wasRegistered;
     }
 
     async openCommissioningWindow(data: OpenCommissioningWindowRequest): Promise<OpenCommissioningWindowResponse> {
         const { nodeId, timeout } = data;
         const node = this.#nodes.get(nodeId);
-        const { manualPairingCode, qrPairingCode } = await node.openEnhancedCommissioningWindow(timeout);
+        if (timeout !== undefined && (!Number.isFinite(timeout) || timeout <= 0)) {
+            throw ServerError.invalidArguments(`Commissioning window timeout must be a positive number of seconds`);
+        }
+        const { manualPairingCode, qrPairingCode } = await node.openEnhancedCommissioningWindow(
+            timeout === undefined ? undefined : Seconds(timeout),
+        );
         return { manualCode: manualPairingCode, qrCode: qrPairingCode };
     }
 
@@ -1488,7 +1742,7 @@ export class ControllerCommandHandler {
             includeKnownVersions: true, // we want to read from device
         };
 
-        for await (const chunk of node.node.interaction.read(read)) {
+        for await (const chunk of node.interaction.read(read)) {
             for await (const attr of chunk) {
                 if (attr.kind === "attr-value" && Array.isArray(attr.value)) {
                     // We only expect one array response
@@ -1507,7 +1761,7 @@ export class ControllerCommandHandler {
     }
 
     removeFabric(nodeId: NodeId, fabricIndex: FabricIndex) {
-        return this.#nodes.get(nodeId).node.commandsOf(OperationalCredentialsClient).removeFabric({ fabricIndex });
+        return this.#nodes.get(nodeId).commandsOf(OperationalCredentialsClient).removeFabric({ fabricIndex });
     }
 
     /**
@@ -1521,7 +1775,7 @@ export class ControllerCommandHandler {
     ): Promise<void> {
         const node = this.#nodes.get(nodeId);
         try {
-            await node.node.act(agent =>
+            await node.act(agent =>
                 agent.get(IcdClient).register({
                     allowMultiAdmin: options.allowMultiAdmin,
                     ignoredVendors: options.ignoredVendors?.map(vendorId => VendorId(vendorId)),
@@ -1539,7 +1793,7 @@ export class ControllerCommandHandler {
      */
     async unregisterIcd(nodeId: NodeId, force: boolean): Promise<void> {
         const node = this.#nodes.get(nodeId);
-        await node.node.act(agent => (force ? agent.get(IcdClient).forget() : agent.get(IcdClient).unregister()));
+        await node.act(agent => (force ? agent.get(IcdClient).forget() : agent.get(IcdClient).unregister()));
     }
 
     /**
@@ -1547,13 +1801,15 @@ export class ControllerCommandHandler {
      */
     async resyncIcd(nodeId: NodeId): Promise<void> {
         const node = this.#nodes.get(nodeId);
-        await node.node.act(agent => agent.get(IcdClient).forget());
-        node.triggerReconnect();
+        await node.act(agent => agent.get(IcdClient).forget());
+        // Tearing the sustained subscription down and back up is what forces the re-registration.
+        await node.set({ network: { autoSubscribe: false } });
+        await node.set({ network: { autoSubscribe: true } });
     }
 
     async getIcdState(nodeId: NodeId): Promise<IcdStateData> {
         const node = this.#nodes.get(nodeId);
-        const icdManagementState = node.node.endpoints.for(EndpointNumber(0)).maybeStateOf(IcdManagementClient);
+        const icdManagementState = node.maybeStateOf(IcdManagementClient);
         if (icdManagementState === undefined) {
             return {
                 supported: false,
@@ -1566,7 +1822,7 @@ export class ControllerCommandHandler {
             };
         }
 
-        return node.node.act(agent => {
+        return node.act(agent => {
             const icd = agent.get(IcdClient);
             return {
                 supported: true,
@@ -1587,10 +1843,7 @@ export class ControllerCommandHandler {
      * even though the spec allows server-side auto-fill, so we send the resolved index.
      */
     #currentFabricIndex(nodeId: NodeId): FabricIndex {
-        const state = this.#nodes
-            .get(nodeId)
-            .node.endpoints.for(EndpointNumber(0))
-            .maybeStateOf(OperationalCredentialsClient);
+        const state = this.#nodes.get(nodeId).maybeStateOf(OperationalCredentialsClient);
         return state?.currentFabricIndex ?? FabricIndex.NO_FABRIC;
     }
 
@@ -1697,7 +1950,7 @@ export class ControllerCommandHandler {
         const node = this.#nodes.get(nodeId);
 
         try {
-            const otaProvider = this.#controller.otaProvider;
+            const otaProvider = this.#otaProvider;
             if (!otaProvider) {
                 logger.info("OTA provider not available");
                 return null;
@@ -1706,13 +1959,13 @@ export class ControllerCommandHandler {
             // Query OTA provider for updates using dynamic behavior access
             const updatesAvailable = await otaProvider.act(agent =>
                 agent.get(SoftwareUpdateManager).queryUpdates({
-                    peerToCheck: node.node,
+                    peerToCheck: node,
                     includeStoredUpdates: true,
                 }),
             );
 
             // Find update for this specific node
-            const peerAddress = this.#controller.fabric.addressOf(nodeId);
+            const peerAddress = this.#fabric.addressOf(nodeId);
             const nodeUpdate = updatesAvailable.find(({ peerAddress: updateAddress }) =>
                 PeerAddress.is(peerAddress, updateAddress),
             );
@@ -1757,7 +2010,7 @@ export class ControllerCommandHandler {
             );
         }
 
-        const otaProvider = this.#controller.otaProvider;
+        const otaProvider = this.#otaProvider;
         if (!otaProvider) {
             throw ServerError.updateError("OTA provider not available");
         }
@@ -1777,14 +2030,11 @@ export class ControllerCommandHandler {
         logger.info(`Starting update for node ${this.formatNode(nodeId)} to version ${softwareVersion}`);
 
         await otaProvider.act(agent =>
-            agent
-                .get(SoftwareUpdateManager)
-                .forceUpdate(
-                    this.#controller.fabric.addressOf(nodeId),
-                    updateInfo.vendorId,
-                    updateInfo.productId,
-                    softwareVersion,
-                ),
+            agent.get(SoftwareUpdateManager).forceUpdate(this.#fabric.addressOf(nodeId), {
+                vendorId: updateInfo.vendorId,
+                productId: updateInfo.productId,
+                targetSoftwareVersion: softwareVersion,
+            }),
         );
 
         return this.#convertToMatterSoftwareVersion(updateInfo);

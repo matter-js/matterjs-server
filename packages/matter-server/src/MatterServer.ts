@@ -180,6 +180,14 @@ async function start() {
         await config.lockFabricLabel(label);
     }
 
+    // Registered before the controller is built: the controller node records BLE availability as behavior
+    // state at construction, and that state is what decides whether a BLE scanner is installed.
+    let bleProxyHandler: BleProxyHandler | undefined;
+    if (cliOptions.bleProxy) {
+        bleProxyHandler = new BleProxyHandler();
+        env.set(Ble, new ProxyBle(bleProxyHandler, env));
+    }
+
     controller = await MatterController.create(
         env,
         config,
@@ -219,19 +227,6 @@ async function start() {
         controller.commandHandler.events.nodeDecommissioned.on(nodeId => {
             legacyDataWriter!.queueRemoval(nodeId);
         });
-    }
-
-    // Register the proxy Ble on the environment and the /ble WebSocket handler.
-    // Done after MatterController.create() because the controller's BLE bootstrap reads env.Ble
-    // and we want the proxy to win even if some path auto-installs a default.
-    let bleProxyHandler: BleProxyHandler | undefined;
-    if (cliOptions.bleProxy) {
-        const existingBle = env.has(Ble) ? env.get(Ble) : undefined;
-        if (existingBle) {
-            logger.info(`Replacing existing BLE implementation (${existingBle.constructor.name}) with ProxyBle`);
-        }
-        bleProxyHandler = new BleProxyHandler();
-        env.set(Ble, new ProxyBle(bleProxyHandler, env));
     }
 
     const wsHandler = new WebSocketControllerHandler(controller, config, MATTER_SERVER_VERSION);

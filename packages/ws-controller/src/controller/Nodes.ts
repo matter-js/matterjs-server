@@ -4,9 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { NodeId } from "@matter/main";
+import { ClientNode, NodeConnectionState, NodeId } from "@matter/main";
 import { EndpointNumber } from "@matter/main/types";
-import { NodeStates, PairedNode } from "@project-chip/matter.js/device";
 import { ServerError } from "../types/WebSocketMessageTypes.js";
 import { AttributeDataCache } from "./AttributeDataCache.js";
 
@@ -14,13 +13,13 @@ import { AttributeDataCache } from "./AttributeDataCache.js";
  * Manages node storage and tracks per-node availability.
  *
  * This class handles:
- * - Storage of PairedNode instances
+ * - Storage of ClientNode instances
  * - Node retrieval and existence checking
  * - Attribute data caching
- * - Connection state tracking for availability debouncing
+ * - Connection state tracking for availability
  */
 export class Nodes {
-    #nodes = new Map<NodeId, PairedNode>();
+    #nodes = new Map<NodeId, ClientNode>();
     #attributeCache = new AttributeDataCache();
     /** Cached so serialization and event paths always agree on availability. */
     #lastAvailability = new Map<NodeId, boolean>();
@@ -40,7 +39,7 @@ export class Nodes {
     }
 
     /** @throws ServerError if node not found */
-    get(nodeId: NodeId): PairedNode {
+    get(nodeId: NodeId): ClientNode {
         const node = this.#nodes.get(nodeId);
         if (node === undefined) {
             throw ServerError.nodeNotExists(nodeId);
@@ -52,7 +51,7 @@ export class Nodes {
         return this.#nodes.has(nodeId);
     }
 
-    set(nodeId: NodeId, node: PairedNode): void {
+    set(nodeId: NodeId, node: ClientNode): void {
         this.#nodes.set(nodeId, node);
     }
 
@@ -82,18 +81,16 @@ export class Nodes {
         return queue;
     }
 
-    seedState(nodeId: NodeId, initialState: NodeStates): void {
-        this.#lastAvailability.set(nodeId, initialState === NodeStates.Connected);
+    seedState(nodeId: NodeId, initialState: NodeConnectionState): void {
+        this.#lastAvailability.set(nodeId, this.isNodeAvailable(initialState));
     }
 
-    /** `debouncePending` = reconnect timer armed by caller; keeps non-Connected states available. */
     processStateChange(
         nodeId: NodeId,
-        newState: NodeStates,
-        debouncePending: boolean,
+        newState: NodeConnectionState,
     ): { availabilityChanged: true; available: boolean } | { availabilityChanged: false } {
         const wasAvailable = this.#lastAvailability.get(nodeId) ?? false;
-        const available = this.isNodeAvailable(newState, debouncePending);
+        const available = this.isNodeAvailable(newState);
 
         this.#lastAvailability.set(nodeId, available);
 
@@ -103,18 +100,13 @@ export class Nodes {
         return { availabilityChanged: false };
     }
 
-    /** Returns true if the node was previously considered available. */
-    forceUnavailable(nodeId: NodeId): boolean {
-        const wasAvailable = this.#lastAvailability.get(nodeId) ?? false;
-        this.#lastAvailability.set(nodeId, false);
-        return wasAvailable;
-    }
-
-    isNodeAvailable(currentState: NodeStates, debouncePending = false): boolean {
-        if (currentState === NodeStates.Connected) {
-            return true;
-        }
-        return debouncePending;
+    /**
+     * Reconnecting counts as available: the new connection-state engine only reports
+     * WaitingForDeviceDiscovery once a peer is known unreachable — the MRP budget was exhausted with no
+     * reply, or a registered ICD missed its check-in.
+     */
+    isNodeAvailable(currentState: NodeConnectionState): boolean {
+        return currentState === NodeConnectionState.Connected || currentState === NodeConnectionState.Reconnecting;
     }
 
     /** Returns the cached value, not a recomputation — avoids disagreement with the event path. */
