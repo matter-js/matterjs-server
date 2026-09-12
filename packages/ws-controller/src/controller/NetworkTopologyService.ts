@@ -16,6 +16,8 @@ import {
     getThreadRloc16,
     getThreadRole,
     getWiFiDiagnostics,
+    getWiFiSsid,
+    stripMdnsHostname,
     type NetworkTopology,
     type NetworkTopologyConnection,
     type NetworkTopologyNode,
@@ -51,8 +53,12 @@ const TOPOLOGY_CLUSTERS = new Set<number>([49, 51, 53, 54]);
  * device re-attaches to the mesh — the case a user triggers a refresh to reflect.
  */
 export const THREAD_REFRESH_PATHS = ["0/53/7", "0/53/8", "0/51/0", "0/53/64", "0/53/1", "0/53/2", "0/53/4"];
-/** WiFi BSSID + channel + RSSI — the inputs to the WiFi star. */
-export const WIFI_REFRESH_PATHS = ["0/54/0", "0/54/3", "0/54/4"];
+/**
+ * WiFi BSSID + channel + RSSI, plus the NetworkCommissioning network list — the inputs to the
+ * WiFi star. `0/49/1` carries the SSID, so without it a refresh could not fill in a missing one
+ * or replace the cached value after a device joins a different network.
+ */
+export const WIFI_REFRESH_PATHS = ["0/54/0", "0/54/3", "0/54/4", "0/49/1"];
 
 /** An Observable this service only needs to subscribe to; payloads are inspected structurally. */
 type AnyObservable = Observable<any[]>;
@@ -308,6 +314,7 @@ export class NetworkTopologyService {
         const nodes: NetworkTopologyNode[] = [];
         const connections: NetworkTopologyConnection[] = [];
         const threadNodes: Record<string, TopologyNode> = {};
+        const wifiRadios = new Array<{ id: string; ssid?: string; bssid: string | null; rssi: number | null }>();
 
         // --- Commissioned Matter nodes ---
         for (const node of allNodes) {
@@ -336,6 +343,9 @@ export class NetworkTopologyService {
                         (extPanIdHex !== undefined ? networkNameByXp.get(extPanIdHex) : undefined),
                 });
             } else if (networkType === "wifi") {
+                const { bssid, rssi } = getWiFiDiagnostics(node);
+                const ssid = getWiFiSsid(node) ?? undefined;
+                wifiRadios.push({ id, ssid, bssid, rssi });
                 nodes.push({
                     id,
                     kind: "matter",
@@ -344,6 +354,8 @@ export class NetworkTopologyService {
                     role: "station",
                     available,
                     is_bridge: isBridge,
+                    ssid,
+                    bssid: bssid ?? undefined,
                 });
             } else {
                 nodes.push({
@@ -378,19 +390,30 @@ export class NetworkTopologyService {
         }
 
         // --- WiFi star: one AP pseudo-node per BSSID, station → AP edges ---
-        const seenAps = new Set<string>();
-        for (const node of allNodes) {
-            if (getNetworkType(node) !== "wifi") continue;
-            const { bssid, rssi } = getWiFiDiagnostics(node);
+        const apNodes = new Map<string, NetworkTopologyNode>();
+        for (const radio of wifiRadios) {
+            const { bssid, rssi } = radio;
             if (bssid === null) continue;
             const apId = `ap_${bssid.replace(/:/g, "")}`;
-            if (!seenAps.has(apId)) {
-                seenAps.add(apId);
-                nodes.push({ id: apId, kind: "wifi_ap", network_type: "wifi", role: "ap", network_name: bssid });
+            let ap = apNodes.get(apId);
+            if (ap === undefined) {
+                ap = {
+                    id: apId,
+                    kind: "wifi_ap",
+                    network_type: "wifi",
+                    role: "ap",
+                    // kept as the BSSID for pre-`bssid` consumers
+                    network_name: bssid,
+                    bssid,
+                };
+                apNodes.set(apId, ap);
+                nodes.push(ap);
             }
+            // the SSID names the network, not the radio: a station that can't read it must not settle the label
+            ap.ssid ??= radio.ssid;
             const strength = rssiToStrength(rssi);
             connections.push({
-                source: String(node.node_id),
+                source: radio.id,
                 target: apId,
                 network: "wifi",
                 strength,
@@ -433,6 +456,7 @@ function mapExternal(ext: ThreadExternalDevice): NetworkTopologyNode {
             ext_address: ext.extAddressHex,
             ext_pan_id: ext.extendedPanIdHex?.toUpperCase(),
             network_name: ext.networkName,
+            host_name: stripMdnsHostname(ext.hostname),
             vendor_name: ext.vendorName,
             model_name: ext.modelName,
             last_seen: ext.lastSeen,

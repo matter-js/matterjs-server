@@ -10,9 +10,10 @@
  * API has no equivalent hook, so a store predating 0.16 would silently stop being migrated and its fabric
  * and peers would become unreachable.
  *
- * Three places diverge from upstream, each marked DIVERGES FROM UPSTREAM at the code it applies to:
+ * Four places diverge from upstream, each marked DIVERGES FROM UPSTREAM at the code it applies to:
  * certificate relocation is decided on its own rather than together with the fabric, an empty
- * `commissionedNodes` list ends step two, and migrated peers keep the default `autoSubscribe`.
+ * `commissionedNodes` list ends step two, migrated peers keep the default `autoSubscribe`, and the
+ * cleanup reports whether it actually ran.
  */
 
 import {
@@ -274,15 +275,19 @@ export async function migrateLegacyCommissionedNodes(
  * `--cleanup-legacy-storage` flag). Running it against a store where step 1 or step 2 has not fully completed
  * loses the un-migrated data; that is accepted, and is the caller's responsibility. Idempotent.
  */
-export async function cleanupLegacyStorage(env: Environment, id: string): Promise<void> {
+export async function cleanupLegacyStorage(env: Environment, id: string): Promise<boolean> {
     const mgr = await env.get(StorageService).open(id);
     try {
         if ((await stepOneNeeded(mgr)) || (await stepTwoNeeded(mgr))) {
+            // DIVERGES FROM UPSTREAM. Upstream returns void, so a refusal is indistinguishable from a
+            // cleanup. Here the caller uses the answer to decide whether the retirement is finished, and
+            // treating a refusal as done would leave these contexts with nothing left to trigger a retry.
             logger.warn(`Refusing legacy cleanup for store ${id}: migration has not completed`);
-            return;
+            return false;
         }
         await wipeLegacyContexts(mgr);
         logger.info(`Removed legacy storage artifacts for store ${id}`);
+        return true;
     } finally {
         await closeStorage(mgr, id);
     }

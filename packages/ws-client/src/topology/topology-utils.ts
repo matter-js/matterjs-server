@@ -955,3 +955,52 @@ export function getWiFiDiagnostics(node: TopologySourceNode): WiFiDiagnostics {
         wifiVersion: wifiVersion ?? null,
     };
 }
+
+/**
+ * SSID from NetworkCommissioning (`0/49/1`). That cluster's `networkID` is typed by network
+ * kind -- the SSID for Wi-Fi, the extended PAN id for Thread, the interface name for Ethernet --
+ * so only call this for nodes whose network type is `wifi`. Returns null when the list is empty
+ * (some devices never populate it) or the payload is not decodable text, so callers must keep a
+ * BSSID fallback.
+ */
+export function getWiFiSsid(node: TopologySourceNode): string | null {
+    const networks = node.attributes["0/49/1"];
+    if (!Array.isArray(networks) || networks.length === 0) {
+        return null;
+    }
+    const entries = networks as Record<string, unknown>[];
+    // Field 1: connected. Only the joined network names the AP -- a device may list
+    // saved networks it is not on, and labelling the radio with one of those is worse
+    // than no label. The python client skips disconnected entries the same way.
+    const chosen = entries.find(entry => (entry["1"] ?? entry.connected) === true);
+    if (chosen === undefined) {
+        return null;
+    }
+    // Field 0: networkID, an octet string carried as base64
+    const raw = chosen["0"] ?? chosen.networkID;
+    if (typeof raw !== "string" || raw === "") {
+        return null;
+    }
+    try {
+        const bytes = Uint8Array.from(atob(raw), c => c.charCodeAt(0));
+        // an SSID is at most 32 octets; anything longer is not one
+        if (bytes.length === 0 || bytes.length > 32) {
+            return null;
+        }
+        const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+        // binary ids (a Thread ext PAN id) can still decode as UTF-8, so reject control chars
+        // eslint-disable-next-line no-control-regex
+        return text === "" || /[\u0000-\u001f\u007f]/.test(text) ? null : text;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * mDNS host name as a display label: the trailing dot and a `.local` suffix are removed. Returns
+ * undefined when nothing is left to show, so callers keep reaching their next naming source
+ * instead of rendering a blank label.
+ */
+export function stripMdnsHostname(hostname: string | undefined): string | undefined {
+    return hostname?.replace(/\.$/, "").replace(/\.local$/i, "") || undefined;
+}

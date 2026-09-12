@@ -30,6 +30,7 @@ import {
 } from "../../../util/access-control.js";
 import { handleAsync } from "../../../util/async-handler.js";
 import { detectBindingRelationship, type RelationshipResult } from "../../../util/binding.js";
+import { errorText } from "../../../util/error-text.js";
 import { getDeviceName } from "../../../util/node-name.js";
 import { BaseClusterCommands } from "../base-cluster-commands.js";
 import { registerClusterCommands } from "../registry.js";
@@ -111,7 +112,7 @@ class AccessControlClusterCommands extends BaseClusterCommands {
             if (this.isSameContext(node, endpoint)) {
                 await showAlertDialog({
                     title: "Delete failed",
-                    text: err instanceof Error ? err.message : String(err),
+                    text: errorText(err),
                 });
             } else {
                 console.error("Delete failed", err);
@@ -129,7 +130,7 @@ class AccessControlClusterCommands extends BaseClusterCommands {
             await downgradeToOperate(this.client, node.node_id, keys);
         } catch (err) {
             if (this.isSameContext(node, endpoint)) {
-                await showAlertDialog({ title: "Fix failed", text: err instanceof Error ? err.message : String(err) });
+                await showAlertDialog({ title: "Fix failed", text: errorText(err) });
             } else {
                 console.error("Fix failed", err);
             }

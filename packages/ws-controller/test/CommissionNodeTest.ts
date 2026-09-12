@@ -5,8 +5,9 @@
  */
 
 import { Crypto, FabricId, MockCrypto, NodeId, ServerNode } from "@matter/main";
+import { Endpoint } from "@matter/node";
 import { FabricAuthority } from "@matter/protocol";
-import { ControllerCommandHandler } from "../src/controller/ControllerCommandHandler.js";
+import { CameraControllerEndpoint, ControllerCommandHandler } from "../src/controller/ControllerCommandHandler.js";
 import { TestSite } from "./support/ControllerSite.js";
 
 const NODE_ID = NodeId(42n);
@@ -31,7 +32,15 @@ describe("commissionNode", () => {
             adminFabricId: FabricId(1),
             adminNodeId: NodeId(112233),
         });
-        handler = new ControllerCommandHandler(controller, fabric, undefined, false, false, false);
+        handler = new ControllerCommandHandler(
+            controller,
+            fabric,
+            undefined,
+            await controller.add(new Endpoint(CameraControllerEndpoint, { id: "camera-controller" })),
+            false,
+            false,
+            false,
+        );
         await MockTime.resolve(handler.start(), { macrotasks: true });
     });
 

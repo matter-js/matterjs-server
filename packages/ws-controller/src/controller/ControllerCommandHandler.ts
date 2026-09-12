@@ -48,7 +48,7 @@ import {
 } from "@matter/main/clusters";
 import { WebRtcTransportDefinitions } from "@matter/main/clusters/web-rtc-transport-definitions";
 import { WebRtcTransportProvider } from "@matter/main/clusters/web-rtc-transport-provider";
-import { ClusterRevision } from "@matter/main/model";
+import { AcceptedCommandList, AttributeList, ClusterRevision, FeatureMap } from "@matter/main/model";
 import {
     AttestationFinding,
     DeviceAttestationCheck,
@@ -130,11 +130,15 @@ import {
 
 const logger = Logger.get("ControllerCommandHandler");
 
+/** The controller's own camera endpoint, which receives the WebRTC callbacks a peer sends back. */
+export const CameraControllerEndpoint = CameraControllerDevice.with(WebRtcTransportRequestorServer);
+export type CameraControllerEndpoint = typeof CameraControllerEndpoint;
+
 /** Coalescing window for structure and basic-information changes arriving as a burst. */
 const NODE_UPDATE_DEBOUNCE = Seconds(2);
 
 /** Longest a pending refresh may be extended by further report batches before it is sent regardless. */
-const NODE_UPDATE_MAX_DEFERRAL_MS = 10_000;
+const NODE_UPDATE_MAX_DEFERRAL = Seconds(10);
 
 /**
  * Determine the Matter specification version from cached attributes.
@@ -193,12 +197,11 @@ function describesNodeStructure(path: AttributeChange["path"]): string | undefin
         }
     }
 
-    // Global attribute ids are fixed by the specification.
     switch (attributeId) {
-        case 0xfffd: // ClusterRevision
-        case 0xfffc: // FeatureMap
-        case 0xfffb: // AttributeList
-        case 0xfff9: // AcceptedCommandList
+        case ClusterRevision.id:
+        case FeatureMap.id:
+        case AttributeList.id:
+        case AcceptedCommandList.id:
             return "cluster capabilities changed";
     }
 
@@ -225,10 +228,26 @@ async function awaitSeeded(node: ClientNode, abort: Abort): Promise<void> {
     }
 }
 
+/**
+ * Discovered peers, one entry per device, ordered by the advertisement each was last seen in.
+ *
+ * A device re-advertising within the discovery window is emitted again for the same node, so the raw
+ * result counts one device many times, and the last entry is whichever device happened to be found first.
+ */
+export function uniqueByLastAdvertisement<T extends { id: string }>(discovered: readonly T[]): T[] {
+    const unique = new Map<string, T>();
+    for (const node of discovered) {
+        unique.delete(node.id);
+        unique.set(node.id, node);
+    }
+    return Array.from(unique.values());
+}
+
 export class ControllerCommandHandler {
     #node: ServerNode;
     #fabric: Fabric;
     #otaProvider?: Endpoint<typeof OtaProviderEndpoint>;
+    #webRtcRequestor: Endpoint<CameraControllerEndpoint>;
     #started = false;
     #connected = false;
     readonly #bleEnabled: boolean;
@@ -282,6 +301,7 @@ export class ControllerCommandHandler {
         controllerNode: ServerNode,
         fabric: Fabric,
         otaProvider: Endpoint<typeof OtaProviderEndpoint> | undefined,
+        webRtcRequestor: Endpoint<CameraControllerEndpoint>,
         bleEnabled: boolean,
         bleProxyEnabled: boolean,
         otaEnabled: boolean,
@@ -291,6 +311,7 @@ export class ControllerCommandHandler {
         this.#node = controllerNode;
         this.#fabric = fabric;
         this.#otaProvider = otaProvider;
+        this.#webRtcRequestor = webRtcRequestor;
 
         this.#bleEnabled = bleEnabled;
         this.#bleProxyEnabled = bleProxyEnabled;
@@ -470,7 +491,7 @@ export class ControllerCommandHandler {
 
     async #setupWebRtcCallbackBridge() {
         try {
-            await this.#cameraControllerEndpoint().act(agent => {
+            await this.#webRtcRequestor.act(agent => {
                 attachWebRtcCallbackBridge(agent.get(WebRtcTransportRequestorServer).events, data =>
                     this.events.webRtcCallback.emit(data),
                 );
@@ -479,10 +500,6 @@ export class ControllerCommandHandler {
         } catch (error) {
             logger.warn("Failed to setup WebRTC callback bridge:", error);
         }
-    }
-
-    #cameraControllerEndpoint(): Endpoint<typeof CameraControllerDevice> {
-        return this.#node.endpoints.for("camera-controller") as Endpoint<typeof CameraControllerDevice>;
     }
 
     /** `originatingEndpointId` is server-injected; any client-supplied value in `payload` is overwritten. */
@@ -500,7 +517,7 @@ export class ControllerCommandHandler {
             );
         }
 
-        const requestorEndpoint = this.#cameraControllerEndpoint();
+        const requestorEndpoint = this.#webRtcRequestor;
         const originatingEndpointId = EndpointNumber(requestorEndpoint.number);
         const fabricIndex = this.#fabric.fabricIndex;
 
@@ -623,7 +640,7 @@ export class ControllerCommandHandler {
      * already removed by the requestor's own End handler. No-op if the id is not tracked.
      */
     async removeTrackedWebRtcSession(webRtcSessionId: number): Promise<void> {
-        await this.#cameraControllerEndpoint().act(agent => {
+        await this.#webRtcRequestor.act(agent => {
             agent.get(WebRtcTransportRequestorServer).removeSession(webRtcSessionId);
         });
     }
@@ -783,12 +800,13 @@ export class ControllerCommandHandler {
         const running = this.#nodeUpdateTimers.get(nodeId);
         if (running !== undefined) {
             const deadline = this.#nodeUpdateDeadlines.get(nodeId);
-            if (!restart || (deadline !== undefined && Time.nowMs >= deadline)) {
+            if (!restart || (deadline !== undefined && Time.nowUs >= deadline)) {
                 return;
             }
             running.stop();
         } else {
-            this.#nodeUpdateDeadlines.set(nodeId, Time.nowMs + NODE_UPDATE_MAX_DEFERRAL_MS);
+            // Monotonic: an NTP step must not stretch or collapse the deferral window.
+            this.#nodeUpdateDeadlines.set(nodeId, Time.nowUs + NODE_UPDATE_MAX_DEFERRAL);
         }
         const timer = Time.getTimer(`node-update-${nodeId}`, NODE_UPDATE_DEBOUNCE, () => {
             this.#nodeUpdateTimers.delete(nodeId);
@@ -1478,17 +1496,10 @@ export class ControllerCommandHandler {
             scannerFilter: scanner => scanner.type === ChannelType.UDP,
         });
 
-        // A device re-advertising within the window is emitted again for the same node, so the set has to
-        // be deduplicated before it is counted. Re-inserting keeps the order by last advertisement, which
-        // is what makes the pick below the freshest device rather than the first one ever seen.
-        const unique = new Map<string, ClientNode>();
-        for (const node of discovered) {
-            unique.delete(node.id);
-            unique.set(node.id, node);
-        }
-        logger.info(`Discovered ${unique.size} commissionable device(s)`);
+        const unique = uniqueByLastAdvertisement(discovered);
+        logger.info(`Discovered ${unique.length} commissionable device(s)`);
 
-        const latest = Array.from(unique.values()).pop();
+        const latest = unique[unique.length - 1];
         if (latest === undefined) {
             return [];
         }

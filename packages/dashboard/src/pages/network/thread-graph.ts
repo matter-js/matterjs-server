@@ -391,7 +391,7 @@ export class ThreadGraph extends BaseNetworkGraph {
             const diagNode = this._findDiagnosticNode(device.extAddressHex);
 
             if (device.kind === "br") {
-                const hostname = device.hostname !== undefined ? stripMdnsHostname(device.hostname) : undefined;
+                const hostname = stripMdnsHostname(device.hostname);
                 // Only show network name on a second line when the first line came from a
                 // distinct hostname; otherwise `top` would already be the (possibly truncated)
                 // network name and the second line would just repeat it.

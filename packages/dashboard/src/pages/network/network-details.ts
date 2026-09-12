@@ -158,8 +158,9 @@ export class NetworkDetails extends LitElement {
 
     private _getExternalDeviceLabel(conn: NodeConnection): TemplateResult {
         const device = this.unknownDevices.get(String(conn.connectedNodeId));
-        if (device?.kind === "br" && device.hostname) {
-            return html`${stripMdnsHostname(device.hostname)}`;
+        const hostname = device?.kind === "br" ? stripMdnsHostname(device.hostname) : undefined;
+        if (hostname !== undefined) {
+            return html`${hostname}`;
         }
         return html`External: <span class="mono">${conn.extAddressHex}</span>`;
     }

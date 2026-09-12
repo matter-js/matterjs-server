@@ -45,7 +45,7 @@ interface ConfigData {
     wifiCredentials?: string;
     threadDataset?: string;
     peerSettingsRepairedFor?: string;
-    legacyRetirementPending?: boolean;
+    legacyRetirementPendingFor?: string;
 }
 
 export class ConfigStorage {
@@ -61,7 +61,7 @@ export class ConfigStorage {
         wifiCredentials: undefined,
         threadDataset: undefined,
         peerSettingsRepairedFor: undefined,
-        legacyRetirementPending: undefined,
+        legacyRetirementPendingFor: undefined,
     };
     #additionalWifiCredentials: WifiCredentialEntry[] = new Array<WifiCredentialEntry>();
     #additionalThreadCredentials: ThreadCredentialEntry[] = new Array<ThreadCredentialEntry>();
@@ -126,8 +126,8 @@ export class ConfigStorage {
         const peerSettingsRepairedFor = (await this.#configStore.has("peerSettingsRepairedFor"))
             ? await this.#configStore.get<string>("peerSettingsRepairedFor", "")
             : undefined;
-        const legacyRetirementPending = (await this.#configStore.has("legacyRetirementPending"))
-            ? await this.#configStore.get<boolean>("legacyRetirementPending", false)
+        const legacyRetirementPendingFor = (await this.#configStore.has("legacyRetirementPendingFor"))
+            ? await this.#configStore.get<string>("legacyRetirementPendingFor", "")
             : undefined;
         await this.set({
             fabricLabel,
@@ -136,7 +136,7 @@ export class ConfigStorage {
             wifiCredentials,
             threadDataset,
             peerSettingsRepairedFor,
-            legacyRetirementPending,
+            legacyRetirementPendingFor,
         });
 
         if (await this.#configStore.has("additionalWifiCredentials")) {
@@ -183,16 +183,17 @@ export class ConfigStorage {
     }
 
     /**
-     * Whether retiring the python-matter-server source was started but not finished. Set before the first
-     * irreversible step, so a start that dies part-way through can complete it rather than leaving the
-     * imported storage behind forever — the files it would be recognised by are already gone by then.
+     * Storage scope whose python-matter-server source was being retired when the last start ended, or
+     * undefined when there is nothing outstanding. Set before the first irreversible step, so a start that
+     * dies part-way through can finish the job — the files it would otherwise be recognised by are already
+     * gone by then. Scoped, because a server started against a different fabric retires different data.
      */
-    get legacyRetirementPending() {
-        return this.#data.legacyRetirementPending === true;
+    get legacyRetirementPendingFor() {
+        return this.#data.legacyRetirementPendingFor;
     }
 
-    async setLegacyRetirementPending(pending: boolean) {
-        await this.set({ legacyRetirementPending: pending });
+    async setLegacyRetirementPendingFor(scope: string | undefined) {
+        await this.set({ legacyRetirementPendingFor: scope });
     }
 
     /**

@@ -20,6 +20,7 @@ import { customElement, state } from "lit/decorators.js";
 import { showAlertDialog, showPromptDialog } from "../../../components/dialog-box/show-dialog-box.js";
 import { handleAsync } from "../../../util/async-handler.js";
 import { formatDuration } from "../../../util/duration.js";
+import { errorText } from "../../../util/error-text.js";
 import {
     decodeRegisteredClients,
     ICD_CLUSTER_ID,
@@ -489,7 +490,7 @@ export class IcdManagementClusterCommands extends BaseClusterCommands {
         try {
             await action();
         } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
+            const message = errorText(error);
             if (this.isSameContext(node, endpoint)) {
                 await showAlertDialog({ title: "ICD operation failed", text: message });
             }

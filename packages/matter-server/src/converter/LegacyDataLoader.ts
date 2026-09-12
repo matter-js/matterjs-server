@@ -443,13 +443,27 @@ export async function retireLegacyFiles(
     env: Environment,
     storagePath: string,
     fabricConfig: LegacyFabricConfigData,
+    chipConfig?: ChipConfigData,
 ): Promise<string[]> {
     const crypto = env.get(Crypto);
     const compressedFabricId = await computeCompressedNodeId(crypto, fabricConfig.fabricId, fabricConfig.rootPublicKey);
     const serverFileName = `${compressedFabricId}.json`;
 
+    // chip.json holds every fabric, and each one is imported by its own server instance against its own
+    // server file. Renaming it while another fabric is still in it would leave that fabric with no
+    // credentials to import from.
+    const otherFabrics = (chipConfig?.getFabricIndices() ?? []).filter(
+        fabricIndex => chipConfig?.getFabricConfig(fabricIndex)?.fabricId !== fabricConfig.fabricId,
+    );
+    const names = [serverFileName, `${serverFileName}.backup`];
+    if (otherFabrics.length === 0) {
+        names.unshift("chip.json");
+    } else {
+        logger.info(`Keeping chip.json: ${otherFabrics.length} other fabric(s) still have to be migrated`);
+    }
+
     const retired = new Array<string>();
-    for (const name of ["chip.json", serverFileName, `${serverFileName}.backup`]) {
+    for (const name of names) {
         const from = join(storagePath, name);
         try {
             await access(from);

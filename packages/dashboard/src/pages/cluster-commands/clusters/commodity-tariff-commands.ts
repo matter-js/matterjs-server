@@ -9,12 +9,12 @@ import { customElement } from "lit/decorators.js";
 import {
     COMMODITY_TARIFF_CLUSTER_ID,
     commodityTariffInfo,
-    formatEpochTime,
     formatMinutesOfDay,
     type ScheduleRow,
     type TariffComponentInfo,
     type TariffRange,
 } from "../../../util/commodity-tariff.js";
+import { formatEpochTime } from "../../../util/time.js";
 import { BaseClusterCommands } from "../base-cluster-commands.js";
 import { registerClusterCommands } from "../registry.js";
 

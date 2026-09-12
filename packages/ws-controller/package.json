@@ -41,13 +41,13 @@
     },
     "dependencies": {
         "@matter-server/ws-client": "*",
-        "@matter/dcl-data": ">=2026.8.13",
+        "@matter/dcl-data": ">=2026.9.6",
         "@matter/main": "0.18.0-alpha.0-20260814-a1fd0e210",
         "@matter/thread-br-client": "0.18.0-alpha.0-20260814-a1fd0e210",
-        "ws": "^8.21.2"
+        "ws": "^8.21.3"
     },
     "devDependencies": {
-        "@types/node": "^26.1.2",
+        "@types/node": "^26.4.1",
         "@types/ws": "^8.18.1"
     },
     "optionalDependencies": {

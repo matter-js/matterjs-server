@@ -10,6 +10,7 @@ import { css, html, nothing, type CSSResultGroup } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { showAlertDialog } from "../../../components/dialog-box/show-dialog-box.js";
 import { handleAsync } from "../../../util/async-handler.js";
+import { errorText } from "../../../util/error-text.js";
 import { MAX_NODE_LABEL_LENGTH, NODE_LABEL_CLUSTER_ID, writeNodeLabel } from "../../../util/node-label.js";
 import { BaseClusterCommands } from "../base-cluster-commands.js";
 import { registerClusterCommands } from "../registry.js";
@@ -112,7 +113,7 @@ export class BasicInformationClusterCommands extends BaseClusterCommands {
             }
         } catch (error) {
             if (this.isSameContext(node, endpoint)) {
-                const errorMessage = error instanceof Error ? error.message : String(error);
+                const errorMessage = errorText(error);
                 showAlertDialog({
                     title: "Failed to set node label",
                     text: errorMessage,

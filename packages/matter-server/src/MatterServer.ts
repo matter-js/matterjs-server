@@ -242,7 +242,7 @@ async function start() {
 
     // Only once the server is up: a start that fails leaves the source untouched and simply retries.
     // Detached from the start path so retiring a large node file cannot delay coming up.
-    if (config.legacyRetirementPending) {
+    if (config.legacyRetirementPendingFor === controller.serverId) {
         finishLegacyRetirement(legacyData.fabricConfig).catch(error =>
             logger.warn("Could not finish retiring legacy python-matter-server data:", error),
         );
@@ -271,7 +271,7 @@ async function retireLegacyData(fabricConfig: NonNullable<LegacyData["fabricConf
         return;
     }
 
-    await config.setLegacyRetirementPending(true);
+    await config.setLegacyRetirementPendingFor(controller.serverId);
     await finishLegacyRetirement(fabricConfig);
 }
 
@@ -289,13 +289,17 @@ async function finishLegacyRetirement(fabricConfig: LegacyData["fabricConfig"]) 
     }
 
     if (fabricConfig !== undefined) {
-        const retired = await retireLegacyFiles(env, cliOptions.storagePath, fabricConfig);
+        const retired = await retireLegacyFiles(env, cliOptions.storagePath, fabricConfig, legacyData.chipConfig);
         if (retired.length > 0) {
             logger.notice(`Migration complete; retired legacy data file(s): ${retired.join(", ")}`);
         }
     }
-    await cleanupLegacyStorage(env, controller.serverId);
-    await config.setLegacyRetirementPending(false);
+    if (!(await cleanupLegacyStorage(env, controller.serverId))) {
+        // The cleanup refused because the migration is not complete after all. Leaving the job flagged is
+        // what gets it another attempt; clearing it here would strand the imported storage.
+        return;
+    }
+    await config.setLegacyRetirementPendingFor(undefined);
 }
 
 async function stop() {

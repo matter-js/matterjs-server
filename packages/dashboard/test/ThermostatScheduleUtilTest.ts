@@ -13,11 +13,13 @@ import {
     firstClaimedDay,
     formatDayOfWeek,
     formatHandleShort,
+    formatPresetLabel,
     formatMinutes,
     formatSegmentTooltip,
     formatSetpoint,
-    isMSCHActive,
+    isFeatureActive,
     pickSetpointForMode,
+    readActivePresetHandle,
     readActiveScheduleHandle,
     readPresets,
     readSchedules,
@@ -88,19 +90,49 @@ function schedule(
 }
 
 function preset(handle: string, overrides: Partial<ThermostatPreset> = {}): ThermostatPreset {
-    return { handle, name: null, coolingSetpoint: null, heatingSetpoint: null, ...overrides };
+    return {
+        handle,
+        scenario: null,
+        name: null,
+        coolingSetpoint: null,
+        heatingSetpoint: null,
+        builtIn: null,
+        ...overrides,
+    };
 }
 
 describe("thermostat-schedule util", () => {
-    describe("isMSCHActive", () => {
-        it("is true when the MSCH bit is set on the real Thermostat FeatureMap", () => {
-            expect(isMSCHActive(node({ "6/513/65532": 1 << 7 }), 6)).to.equal(true);
+    describe("isFeatureActive", () => {
+        it("is true when the given bit is set on the real Thermostat FeatureMap", () => {
+            expect(isFeatureActive(node({ "6/513/65532": 1 << 7 }), 6, "MSCH")).to.equal(true);
         });
-        it("is false when MSCH is not set", () => {
-            expect(isMSCHActive(node({ "6/513/65532": 0b1 }), 6)).to.equal(false);
+        it("is false when the given feature is not set", () => {
+            expect(isFeatureActive(node({ "6/513/65532": 0b1 }), 6, "MSCH")).to.equal(false);
         });
         it("is false when FeatureMap is absent", () => {
-            expect(isMSCHActive(node({}), 6)).to.equal(false);
+            expect(isFeatureActive(node({}), 6, "MSCH")).to.equal(false);
+        });
+        it("resolves PRES and TSUGGEST against the real FeatureMap", () => {
+            const presOnly = node({ "6/513/65532": 1 << 8 });
+            expect(isFeatureActive(presOnly, 6, "PRES")).to.equal(true);
+            expect(isFeatureActive(presOnly, 6, "TSUGGEST")).to.equal(false);
+            expect(isFeatureActive(node({ "6/513/65532": 1 << 10 }), 6, "TSUGGEST")).to.equal(true);
+        });
+    });
+
+    describe("formatPresetLabel", () => {
+        it("prefers the preset's own name", () => {
+            expect(formatPresetLabel(preset(HANDLE_1, { name: "Night", scenario: 3 }))).to.equal("Night");
+        });
+        it("falls back to the PresetScenario label", () => {
+            expect(formatPresetLabel(preset(HANDLE_1, { scenario: 3 }))).to.equal("Sleep");
+            expect(formatPresetLabel(preset(HANDLE_1, { scenario: 254 }))).to.equal("User Defined");
+        });
+        it("names an unknown scenario by its numeric value", () => {
+            expect(formatPresetLabel(preset(HANDLE_1, { scenario: 42 }))).to.equal("Scenario 42");
+        });
+        it("falls back to the short handle when neither name nor scenario is reported", () => {
+            expect(formatPresetLabel(preset(HANDLE_1))).to.equal("0x01");
         });
     });
 
@@ -111,6 +143,16 @@ describe("thermostat-schedule util", () => {
         it("returns null when null/absent", () => {
             expect(readActiveScheduleHandle(node({ "6/513/79": null }), 6)).to.equal(null);
             expect(readActiveScheduleHandle(node({}), 6)).to.equal(null);
+        });
+    });
+
+    describe("readActivePresetHandle", () => {
+        it("reads the handle string", () => {
+            expect(readActivePresetHandle(node({ "6/513/78": HANDLE_1 }), 6)).to.equal(HANDLE_1);
+        });
+        it("returns null when null/absent", () => {
+            expect(readActivePresetHandle(node({ "6/513/78": null }), 6)).to.equal(null);
+            expect(readActivePresetHandle(node({}), 6)).to.equal(null);
         });
     });
 
@@ -206,12 +248,27 @@ describe("thermostat-schedule util", () => {
                 6,
             );
             expect(presets).to.deep.equal([
-                { handle: HANDLE_1, name: "Night", coolingSetpoint: null, heatingSetpoint: 1700 },
-                { handle: HANDLE_2, name: "Morning", coolingSetpoint: 2600, heatingSetpoint: 2100 },
+                {
+                    handle: HANDLE_1,
+                    scenario: 4,
+                    name: "Night",
+                    coolingSetpoint: null,
+                    heatingSetpoint: 1700,
+                    builtIn: null,
+                },
+                {
+                    handle: HANDLE_2,
+                    scenario: 1,
+                    name: "Morning",
+                    coolingSetpoint: 2600,
+                    heatingSetpoint: 2100,
+                    builtIn: null,
+                },
             ]);
         });
-        it("returns empty when absent", () => {
-            expect(readPresets(node({}), 6)).to.deep.equal([]);
+        it("distinguishes an absent attribute from an empty list", () => {
+            expect(readPresets(node({}), 6)).to.equal(undefined);
+            expect(readPresets(node({ "6/513/80": [] }), 6)).to.deep.equal([]);
         });
     });
 

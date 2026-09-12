@@ -43,6 +43,7 @@ export {
     mergeDiagnosticEdges,
     parseNeighborTable,
     parseRouteTable,
+    stripMdnsHostname,
 } from "@matter-server/ws-client";
 export type { WiFiDiagnostics } from "@matter-server/ws-client";
 
@@ -265,11 +266,6 @@ export function getWiFiVersionName(version: number | null): string {
         default:
             return "Unknown";
     }
-}
-
-/** Strips trailing dot and `.local` suffix from an mDNS hostname. */
-export function stripMdnsHostname(hostname: string): string {
-    return hostname.replace(/\.$/, "").replace(/\.local$/i, "");
 }
 
 /**
