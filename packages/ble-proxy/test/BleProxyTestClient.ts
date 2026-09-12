@@ -10,6 +10,7 @@
  * registering command handlers and sending events/binary frames.
  */
 
+import { InternalError } from "@matter/main";
 import { WebSocket } from "ws";
 import {
     BLE_PROXY_PROTOCOL_VERSION,
@@ -112,6 +113,33 @@ export class BleProxyTestClient {
 
     close(): void {
         this.#ws?.close();
+    }
+
+    /** Resolves once the server's ping has been received and answered by the `ws` auto-pong. */
+    async waitForPing(timeoutMs = 1000): Promise<void> {
+        const ws = this.#ws;
+        if (ws === undefined) {
+            throw new InternalError("Not connected");
+        }
+        await new Promise<void>((resolve, reject) => {
+            const timer = setTimeout(() => {
+                ws.off("ping", onPing);
+                reject(new InternalError("Timeout waiting for ping"));
+            }, timeoutMs);
+            const onPing = () => {
+                clearTimeout(timer);
+                resolve();
+            };
+            ws.once("ping", onPing);
+        });
+    }
+
+    /**
+     * Simulate an abruptly powered-off proxy: the socket stays open from the server's point of
+     * view but the client processes nothing, so no automatic pong answers the server's pings.
+     */
+    simulateHalfOpen(): void {
+        this.#ws?.pause();
     }
 
     async #dispatchCommand(msg: CommandMessage): Promise<void> {
