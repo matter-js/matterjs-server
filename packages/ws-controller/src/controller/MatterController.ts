@@ -50,6 +50,7 @@ import { pathToFileURL } from "node:url";
 import { ConfigStorage } from "../server/ConfigStorage.js";
 import { CameraControllerEndpoint, ControllerCommandHandler } from "./ControllerCommandHandler.js";
 import { LegacyDataInjector, LegacyServerData } from "./LegacyDataInjector.js";
+import { migrateLegacyCommissionedNodes, migrateLegacyControllerCredentials } from "./legacyStorageMigration.js";
 import { NetworkTopologyService } from "./NetworkTopologyService.js";
 import { OtaImageInfo, OtaUploadOptions, OtaUploadRegistry } from "./OtaUploadRegistry.js";
 import { PeerSettingsRepairMarker, repairRestoredPeers } from "./restoredPeers.js";
@@ -247,6 +248,8 @@ export async function createControllerNode(options: ControllerNodeOptions): Prom
     const { environment, id, adminVendorId, adminFabricId, adminFabricLabel, serverVersion } = options;
     const adminNodeId = NodeId(112233); // TODO Remove when we switch to random IDs
 
+    await migrateLegacyControllerCredentials(environment, id);
+
     const node = await ServerNode.create(ControllerRootEndpoint, {
         environment,
         id,
@@ -293,6 +296,14 @@ export async function createControllerNode(options: ControllerNodeOptions): Prom
             adminNodeId,
             adminFabricId,
         });
+
+        const { nodes: migrated, endpoints, failed } = await migrateLegacyCommissionedNodes(node);
+        if (migrated > 0) {
+            logger.info(`Legacy storage migration: ${migrated} node(s), ${endpoints} endpoint(s) migrated`);
+        }
+        if (failed > 0) {
+            logger.warn(`${failed} peer(s) failed to migrate; the legacy data stays in place to retry on next start`);
+        }
 
         if (options.peerSettingsRepair !== undefined) {
             await repairRestoredPeers(node, id, options.peerSettingsRepair);
@@ -505,6 +516,11 @@ export class MatterController {
             enableOtaProvider: !this.#disableOtaProvider,
             peerSettingsRepair: this.#config,
         });
+    }
+
+    /** Storage scope this controller's data lives under. */
+    get serverId(): string {
+        return this.#serverId;
     }
 
     get commandHandler() {

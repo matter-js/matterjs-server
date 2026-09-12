@@ -45,6 +45,7 @@ interface ConfigData {
     wifiCredentials?: string;
     threadDataset?: string;
     peerSettingsRepairedFor?: string;
+    legacyRetirementPendingFor?: string;
 }
 
 export class ConfigStorage {
@@ -60,6 +61,7 @@ export class ConfigStorage {
         wifiCredentials: undefined,
         threadDataset: undefined,
         peerSettingsRepairedFor: undefined,
+        legacyRetirementPendingFor: undefined,
     };
     #additionalWifiCredentials: WifiCredentialEntry[] = new Array<WifiCredentialEntry>();
     #additionalThreadCredentials: ThreadCredentialEntry[] = new Array<ThreadCredentialEntry>();
@@ -124,6 +126,9 @@ export class ConfigStorage {
         const peerSettingsRepairedFor = (await this.#configStore.has("peerSettingsRepairedFor"))
             ? await this.#configStore.get<string>("peerSettingsRepairedFor", "")
             : undefined;
+        const legacyRetirementPendingFor = (await this.#configStore.has("legacyRetirementPendingFor"))
+            ? await this.#configStore.get<string>("legacyRetirementPendingFor", "")
+            : undefined;
         await this.set({
             fabricLabel,
             nextNodeId,
@@ -131,6 +136,7 @@ export class ConfigStorage {
             wifiCredentials,
             threadDataset,
             peerSettingsRepairedFor,
+            legacyRetirementPendingFor,
         });
 
         if (await this.#configStore.has("additionalWifiCredentials")) {
@@ -174,6 +180,20 @@ export class ConfigStorage {
 
     async markPeerSettingsRepaired(scope: string) {
         await this.set({ peerSettingsRepairedFor: scope });
+    }
+
+    /**
+     * Storage scope whose python-matter-server source was being retired when the last start ended, or
+     * undefined when there is nothing outstanding. Set before the first irreversible step, so a start that
+     * dies part-way through can finish the job — the files it would otherwise be recognised by are already
+     * gone by then. Scoped, because a server started against a different fabric retires different data.
+     */
+    get legacyRetirementPendingFor() {
+        return this.#data.legacyRetirementPendingFor;
+    }
+
+    async setLegacyRetirementPendingFor(scope: string | undefined) {
+        await this.set({ legacyRetirementPendingFor: scope });
     }
 
     /**

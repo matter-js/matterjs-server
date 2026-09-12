@@ -10,8 +10,10 @@ This page shows a detailed overview of the changes between versions without the 
 ## **WORK IN PROGRESS**
 
 - Enhancement: Migrates the controller to the matter.js `ServerNode`/`ClientNode` API, replacing the deprecated `CommissioningController`/`PairedNode` surface, and updates matter.js to 0.18.0-alpha
+- Enhancement: The python-matter-server import is now a one-shot. Once a start has brought every node from the legacy file across, `chip.json` and the fabric file are renamed to `*.migrated` and the storage they were imported into is dropped, so later starts no longer re-read them
 - Enhancement: (lboue) Added a command panel for the DoorLock cluster to Dashboard
 - Enhancement: (lboue) Added Presets and Thermostat Suggestions (Thermostat cluster PRES/TSUGGEST features) panels to Dashboard
+- Breaking: The server no longer writes commissioning changes back into the python-matter-server files, so returning to python-matter-server after a successful start is no longer possible
 - Breaking (library API): `@matter-server/ws-controller` no longer exports `prepareNodeForConnect`; the new `createControllerNode` hands back the controller node, its fabric and the optional OTA provider endpoint as one closeable resource, and `ControllerCommandHandler` is constructed from those three and leaves closing the node to its owner
 - Fix: A node counts as available based on its connection state alone; the former 3-minute grace period after a connection loss is gone, so `node_updated` reports an unreachable node without delay
 - Fix: BLE proxy connections are pinged every 15 seconds and terminated after 45 to 60 seconds of silence, so a proxy client that loses power is detected instead of staying registered indefinitely
