@@ -23,6 +23,9 @@ export * from "./icd.js";
 // Export JSON utilities
 export * from "./json-utils.js";
 
+// Export debug-log redaction (shared by the client's own logging and the server's request logging)
+export * from "./logging-redaction.js";
+
 // Export models
 export * from "./models/model.js";
 export * from "./models/node.js";

@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { redactSensitiveCommandFields } from "@matter-server/ws-client";
 import {
     MatterError,
     Diagnostic,
@@ -679,7 +680,17 @@ export class WebSocketControllerHandler implements WebServerHandler {
         let messageId: string | undefined;
         let command: string | undefined;
         try {
-            logger.debug(`[${connId}] WebSocket request`, () => data);
+            logger.debug(`[${connId}] WebSocket request`, () => {
+                try {
+                    const parsed = parseBigIntAwareJson(data);
+                    if (parsed === null || typeof parsed !== "object") throw new Error("not an object");
+                    return toBigIntAwareJson(redactSensitiveCommandFields(parsed));
+                } catch {
+                    // A frame that cannot be parsed cannot be redacted either, and it may still carry a
+                    // credential, so only its size reaches the log.
+                    return `<unparseable request, ${data.length} bytes>`;
+                }
+            });
             const request = parseBigIntAwareJson(data) as { message_id: string; command: string; args: any };
             const { args } = request;
             messageId = request.message_id;
