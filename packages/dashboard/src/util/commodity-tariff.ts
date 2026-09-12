@@ -57,9 +57,6 @@ const TARIFF_UNIT_NAMES: Record<number, string> = { 0: "kWh", 1: "kVAh" };
 /** ISO 4217 numeric currency codes; falls back to the raw code when not listed here. */
 const CURRENCY_SYMBOLS: Record<number, string> = { 978: "€", 840: "$", 826: "£", 756: "CHF" };
 
-/** Matter epoch-s values count seconds since 2000-01-01T00:00:00Z, not the Unix epoch. */
-const MATTER_EPOCH_OFFSET_SECONDS = 946_684_800;
-
 export interface CurrencyInfo {
     code: number;
     decimalPoints: number;
@@ -368,21 +365,6 @@ export function formatMinutesOfDay(minutes: number): string {
     const hours = Math.floor(minutes / 60);
     const mins = minutes % 60;
     return `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
-}
-
-/** Formats a Matter epoch-s instant as a local time, prefixed with the date when it isn't today. */
-export function formatEpochTime(matterEpochSeconds: number, relativeTo: Date = new Date()): string {
-    const date = new Date((matterEpochSeconds + MATTER_EPOCH_OFFSET_SECONDS) * 1000);
-    const time = date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
-    if (date.toDateString() === relativeTo.toDateString()) return time;
-    const tomorrow = new Date(relativeTo);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    if (date.toDateString() === tomorrow.toDateString()) return `tomorrow ${time}`;
-    const dateOptions: Intl.DateTimeFormatOptions =
-        date.getFullYear() === relativeTo.getFullYear()
-            ? { month: "2-digit", day: "2-digit" }
-            : { year: "numeric", month: "2-digit", day: "2-digit" };
-    return `${date.toLocaleDateString(undefined, dateOptions)} ${time}`;
 }
 
 export function commodityTariffInfo(attributes: Record<string, unknown>, endpoint: number): CommodityTariffInfo {

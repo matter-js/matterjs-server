@@ -69,12 +69,16 @@ function mkThread(nodeId: number, opts: ThreadNodeOpts = {}): Node {
     return { node_id: nodeId, available: opts.available ?? true, attributes, is_bridge: opts.isBridge };
 }
 
-function mkWifi(nodeId: number, opts: { rssi?: number | null; available?: boolean } = {}): Node {
+function mkWifi(nodeId: number, opts: { rssi?: number | null; available?: boolean; ssid?: string | null } = {}): Node {
+    // preserve an explicit null (device reports no SSID); only default when omitted
+    const ssid = opts.ssid === undefined ? "MyWiFi" : opts.ssid;
     return {
         node_id: nodeId,
         available: opts.available ?? true,
         attributes: {
             "0/49/65532": 1 << 0, // NetworkCommissioning FeatureMap: WiFi
+            // NetworkCommissioning Networks: networkID is the SSID for WiFi
+            "0/49/1": ssid === null ? [] : [{ "0": b64([...new TextEncoder().encode(ssid)]), "1": true }],
             "0/54/0": b64(BSSID_BYTES),
             // preserve an explicit null (unknown RSSI); only default when omitted
             "0/54/4": opts.rssi === undefined ? -55 : opts.rssi,
@@ -93,6 +97,7 @@ function makeBr(overrides: Partial<BorderRouterEntry> = {}): BorderRouterEntry {
         networkName: "OpenThread",
         vendorName: "Apple",
         modelName: "eero",
+        hostname: "Cuisine.local.",
         addresses: ["fd00::1"],
         sources: ["meshcop"],
         lastSeen: 1000,
@@ -260,12 +265,83 @@ describe("NetworkTopologyService", () => {
             expect(br.vendor_name).to.equal("Apple");
             expect(br.model_name).to.equal("eero");
             expect(br.network_name).to.equal("OpenThread");
+            // the mDNS FQDN is normalized to a display label before it reaches the wire
+            expect(br.host_name).to.equal("Cuisine");
 
             const ap = byId.get(AP_NODE_ID)!;
             expect(ap.kind).to.equal("wifi_ap");
             expect(ap.network_type).to.equal("wifi");
             expect(ap.role).to.equal("ap");
             expect(ap.network_name).to.equal(BSSID_STR);
+            // network_name stays the BSSID for pre-`bssid` consumers; the split fields are additive
+            expect(ap.bssid).to.equal(BSSID_STR);
+            expect(ap.ssid).to.equal("MyWiFi");
+            // stations carry the same pair, which they had no field for before
+            expect(wifi.ssid).to.equal("MyWiFi");
+            expect(wifi.bssid).to.equal(BSSID_STR);
+        });
+
+        it("omits ssid when the device reports no NetworkCommissioning network", () => {
+            const { service } = makeHarness({ nodes: () => [mkWifi(5, { ssid: null })], brs: () => [] });
+            const byId = new Map(service.getTopology().nodes.map(n => [n.id, n]));
+
+            // the BSSID still identifies the radio, so the AP node and its edge survive
+            expect(byId.get(AP_NODE_ID)!.ssid).to.equal(undefined);
+            expect(byId.get(AP_NODE_ID)!.bssid).to.equal(BSSID_STR);
+            expect(byId.get("5")!.ssid).to.equal(undefined);
+        });
+
+        it("names the AP from a later station when the first one reports no network", () => {
+            const { service } = makeHarness({
+                nodes: () => [mkWifi(5, { ssid: null }), mkWifi(6)],
+                brs: () => [],
+            });
+            const topology = service.getTopology();
+            const byId = new Map(topology.nodes.map(n => [n.id, n]));
+
+            // the two stations share a radio, so they share one AP node
+            expect(topology.nodes).to.have.lengthOf(3);
+            expect(topology.connections.map(c => [c.source, c.target])).to.deep.equal([
+                ["5", AP_NODE_ID],
+                ["6", AP_NODE_ID],
+            ]);
+            expect(byId.get(AP_NODE_ID)!.ssid).to.equal("MyWiFi");
+            expect(byId.get("5")!.ssid).to.equal(undefined);
+            expect(byId.get("6")!.ssid).to.equal("MyWiFi");
+        });
+
+        it("omits host_name when the Border Router has no mDNS hostname", () => {
+            // the BR needs a neighbour edge or orphan pruning drops it from the graph
+            const node1 = mkThread(1, {
+                role: 5,
+                rloc16: 1024,
+                neighbors: [neighbor(b64(BR_EXT_BYTES), 61440, 2, -70, true)],
+            });
+            const { service } = makeHarness({
+                nodes: () => [node1],
+                brs: () => [makeBr({ hostname: undefined })],
+            });
+            const br = service.getTopology().nodes.find(n => n.id === BR_NODE_ID)!;
+
+            expect(br.kind).to.equal("border_router");
+            expect(br.host_name).to.equal(undefined);
+            // the generic vendor/model labels remain the only naming source
+            expect(br.vendor_name).to.equal("Apple");
+        });
+
+        it("omits host_name when the mDNS hostname strips to nothing", () => {
+            const node1 = mkThread(1, {
+                role: 5,
+                rloc16: 1024,
+                neighbors: [neighbor(b64(BR_EXT_BYTES), 61440, 2, -70, true)],
+            });
+            const { service } = makeHarness({
+                nodes: () => [node1],
+                brs: () => [makeBr({ hostname: ".local." })],
+            });
+            const br = service.getTopology().nodes.find(n => n.id === BR_NODE_ID)!;
+
+            expect(br.host_name).to.equal(undefined);
         });
 
         it("folds both directions of a Thread link and summarises the strongest", () => {
@@ -572,6 +648,10 @@ describe("NetworkTopologyService", () => {
             const byNode = new Map(readCalls.map(c => [c.nodeId, c.paths]));
             expect(byNode.get(1)).to.deep.equal(THREAD_REFRESH_PATHS);
             expect(byNode.get(2)).to.deep.equal(WIFI_REFRESH_PATHS);
+            // spelled out rather than compared to the constant: a refresh that cannot
+            // re-read the SSID would still satisfy the deep.equal above
+            expect(WIFI_REFRESH_PATHS).to.include("0/49/1");
+            expect(WIFI_REFRESH_PATHS).to.include("0/54/0");
             expect(byNode.has(3)).to.equal(false); // offline
             expect(byNode.has(4)).to.equal(false); // ethernet
             expect(readCalls).to.have.lengthOf(2);

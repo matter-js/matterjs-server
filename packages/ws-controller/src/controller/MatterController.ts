@@ -36,8 +36,6 @@ import {
 } from "@matter/main/protocol";
 import { VendorId } from "@matter/main/types";
 import { Endpoint } from "@matter/node";
-import { WebRtcTransportRequestorServer } from "@matter/node/behaviors/web-rtc-transport-requestor";
-import { CameraControllerDevice } from "@matter/node/devices/camera-controller";
 import { OtaProviderEndpoint } from "@matter/node/endpoints/ota-provider";
 import {
     BorderRouterRegistry,
@@ -50,7 +48,7 @@ import { createReadStream } from "node:fs";
 import { Readable } from "node:stream";
 import { pathToFileURL } from "node:url";
 import { ConfigStorage } from "../server/ConfigStorage.js";
-import { ControllerCommandHandler } from "./ControllerCommandHandler.js";
+import { CameraControllerEndpoint, ControllerCommandHandler } from "./ControllerCommandHandler.js";
 import { LegacyDataInjector, LegacyServerData } from "./LegacyDataInjector.js";
 import { NetworkTopologyService } from "./NetworkTopologyService.js";
 import { OtaImageInfo, OtaUploadOptions, OtaUploadRegistry } from "./OtaUploadRegistry.js";
@@ -237,6 +235,7 @@ export interface ControllerNode {
     readonly node: ServerNode<ControllerRootEndpoint>;
     readonly fabric: Fabric;
     readonly otaProvider?: Endpoint<typeof OtaProviderEndpoint>;
+    readonly webRtcRequestor: Endpoint<CameraControllerEndpoint>;
 
     close(): Promise<void>;
 }
@@ -281,6 +280,7 @@ export async function createControllerNode(options: ControllerNodeOptions): Prom
         const otaProvider = options.enableOtaProvider
             ? await node.add(new Endpoint(OtaProviderEndpoint, { id: "ota-provider" }))
             : undefined;
+        const webRtcRequestor = await node.add(new Endpoint(CameraControllerEndpoint, { id: "camera-controller" }));
 
         await node.env.load(FabricManager);
         const fabricAuthority = await node.env.load(FabricAuthority);
@@ -298,7 +298,7 @@ export async function createControllerNode(options: ControllerNodeOptions): Prom
             await repairRestoredPeers(node, id, options.peerSettingsRepair);
         }
 
-        return { node, fabric, otaProvider, close: () => node.close() };
+        return { node, fabric, otaProvider, webRtcRequestor, close: () => node.close() };
     } catch (error) {
         // The node already holds the storage lock and the caller has no handle to it yet, so a close that
         // fails has to travel with the original error rather than be logged away.
@@ -337,7 +337,6 @@ export class MatterController {
     readonly #credentials = new ThreadCredentialsRegistry();
     readonly #threadDiagnostics: ThreadDiagnosticsService;
     #networkTopology?: NetworkTopologyService;
-    #webRtcRequestor?: Endpoint<typeof CameraControllerDevice>;
     #services: SharedEnvironmentServices;
 
     static async create(
@@ -518,6 +517,7 @@ export class MatterController {
                 controller.node,
                 controller.fabric,
                 controller.otaProvider,
+                controller.webRtcRequestor,
                 this.#env.vars.get("ble.enable", false),
                 this.#bleProxyEnabled,
                 !this.#disableOtaProvider,
@@ -549,8 +549,6 @@ export class MatterController {
                 if (!this.#disableOtaProvider && this.#enableTestNetDcl) {
                     initPromises.push(this.#enableTestOtaImages());
                 }
-
-                initPromises.push(this.#enableWebRtcRequestor());
 
                 if (!this.#threadDiagnosticsDisabled) {
                     // Diagnostics-only discovery — never gate node init / WS availability on it.
@@ -632,25 +630,11 @@ export class MatterController {
         }
     }
 
-    get webRtcRequestor(): Endpoint<typeof CameraControllerDevice> {
-        if (!this.#webRtcRequestor) {
+    get webRtcRequestor(): Endpoint<CameraControllerEndpoint> {
+        if (this.#controller === undefined) {
             throw new Error("WebRTC requestor endpoint not initialized");
         }
-        return this.#webRtcRequestor;
-    }
-
-    async #enableWebRtcRequestor(): Promise<void> {
-        if (this.#controller === undefined) {
-            throw new Error("Controller not started");
-        }
-        const node = this.#controller.node;
-        if (node.endpoints.has("camera-controller")) {
-            this.#webRtcRequestor = node.endpoints.for("camera-controller") as Endpoint<typeof CameraControllerDevice>;
-            return;
-        }
-        this.#webRtcRequestor = await node.add(
-            new Endpoint(CameraControllerDevice.with(WebRtcTransportRequestorServer), { id: "camera-controller" }),
-        );
+        return this.#controller.webRtcRequestor;
     }
 
     /**
@@ -755,8 +739,6 @@ export class MatterController {
     async stop() {
         this.#stopped = true;
         await this.#settleBackgroundInit();
-        this.#networkTopology?.stop();
-
         const errors = new Array<Error>();
         const shutDown = async (what: string, work: () => unknown) => {
             try {
@@ -770,6 +752,7 @@ export class MatterController {
             }
         };
 
+        await shutDown("the network topology service", () => this.#networkTopology?.stop());
         if (!this.#threadDiagnosticsDisabled) {
             await shutDown("Thread diagnostics", () => this.#threadDiagnostics.stop());
             await shutDown("the border router registry", () => this.#borderRouterRegistry.stop());

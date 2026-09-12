@@ -4,10 +4,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { NetworkClient, ServerNode } from "@matter/main";
+import { Endpoint, NetworkClient, ServerNode } from "@matter/main";
 import { OperationalCredentialsServer } from "@matter/node/behaviors/operational-credentials";
 import { FabricManager, SustainedSubscription } from "@matter/protocol";
-import { ControllerCommandHandler } from "../src/controller/ControllerCommandHandler.js";
+import { CameraControllerEndpoint, ControllerCommandHandler } from "../src/controller/ControllerCommandHandler.js";
 import { TestSite } from "./support/ControllerSite.js";
 
 describe("setFabricLabel", () => {
@@ -23,7 +23,15 @@ describe("setFabricLabel", () => {
         await site.commission(controller, device);
 
         const fabric = controller.env.get(FabricManager).fabrics[0];
-        handler = new ControllerCommandHandler(controller, fabric, undefined, false, false, false);
+        handler = new ControllerCommandHandler(
+            controller,
+            fabric,
+            undefined,
+            await controller.add(new Endpoint(CameraControllerEndpoint, { id: "camera-controller" })),
+            false,
+            false,
+            false,
+        );
         await MockTime.resolve(handler.initializeNodes(), { macrotasks: true });
         await awaitSubscribed();
     });

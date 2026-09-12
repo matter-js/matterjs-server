@@ -6,11 +6,11 @@
 
 import {
     commodityTariffInfo,
-    formatEpochTime,
     formatMinutesOfDay,
     formatPrice,
     type CurrencyInfo,
 } from "../src/util/commodity-tariff.js";
+import { formatEpochTime } from "../src/util/time.js";
 
 const MATTER_EPOCH_OFFSET_SECONDS = 946_684_800;
 
