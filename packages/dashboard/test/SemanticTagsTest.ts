@@ -4,7 +4,27 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { decodeSemanticTagList, describeSemanticTag, describeSemanticTagListEntry } from "../src/util/semantic-tags.js";
+import { MatterNode, type MatterNodeData } from "@matter-server/ws-client";
+import {
+    decodeSemanticTagList,
+    describeSemanticTag,
+    describeSemanticTagListEntry,
+    getEndpointSemanticTags,
+} from "../src/util/semantic-tags.js";
+
+function node(attributes: Record<string, unknown>, node_id: number | bigint = 1): MatterNode {
+    const data: MatterNodeData = {
+        node_id,
+        date_commissioned: "",
+        last_interview: "",
+        interview_version: 1,
+        available: true,
+        is_bridge: false,
+        attributes,
+        attribute_subscriptions: [],
+    };
+    return new MatterNode(data);
+}
 
 // SemanticTagStruct wire entries are field-tag keyed ("0" MfgCode, "1" NamespaceID, "2" Tag, "3" Label),
 // matching how packages/ws-controller serializes attribute-read struct values (Converters.ts tagBased path).
@@ -120,5 +140,24 @@ describe("describeSemanticTagListEntry", () => {
     it("renders an undefined raw entry without crashing", () => {
         const { text } = describeSemanticTagListEntry({ kind: "raw", raw: undefined });
         expect(text).to.equal("undefined");
+    });
+});
+
+describe("getEndpointSemanticTags", () => {
+    it("returns an empty array when the endpoint has no TagList attribute", () => {
+        const n = node({});
+        expect(getEndpointSemanticTags(n, 1)).to.deep.equal([]);
+    });
+
+    it("decodes the Descriptor TagList for the given endpoint", () => {
+        const n = node({ "1/29/4": [{ "1": 8, "2": 2 }] });
+        expect(getEndpointSemanticTags(n, 1)).to.deep.equal([
+            { kind: "tag", semtag: { mfgCode: null, namespaceId: 8, tag: 2, label: null } },
+        ]);
+    });
+
+    it("is scoped per endpoint", () => {
+        const n = node({ "1/29/4": [{ "1": 8, "2": 2 }] });
+        expect(getEndpointSemanticTags(n, 2)).to.deep.equal([]);
     });
 });
