@@ -850,8 +850,7 @@ class MatterClient:
         if isinstance(msg, ResultMessageBase):
             future = self._result_futures.get(msg.message_id)
 
-            if future is None:
-                # no listener for this result
+            if future is None or future.done():
                 return
 
             if isinstance(msg, SuccessResultMessage):

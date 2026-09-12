@@ -2,11 +2,72 @@
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from chip.clusters import Objects as clusters
 from matter_server.client.client import MatterClient
-from matter_server.common.models import APICommand
+from matter_server.common.errors import MatterError
+from matter_server.common.models import APICommand, ErrorResultMessage, SuccessResultMessage
+
+
+def _make_client() -> MatterClient:
+    return MatterClient(ws_server_url="ws://example.invalid/ws", aiohttp_session=MagicMock())
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        SuccessResultMessage(message_id="late-result", result={"ok": True}),
+        ErrorResultMessage(message_id="late-result", error_code=1, details="late error"),
+    ],
+    ids=["success", "error"],
+)
+@pytest.mark.parametrize("done_state", ["cancelled", "resolved"])
+async def test_handle_incoming_message_ignores_result_for_done_future(
+    message: SuccessResultMessage | ErrorResultMessage, done_state: str
+) -> None:
+    client = _make_client()
+    future = asyncio.get_running_loop().create_future()
+    client._result_futures[message.message_id] = future
+
+    if done_state == "cancelled":
+        future.cancel()
+    else:
+        future.set_result("existing result")
+
+    client._handle_incoming_message(message)
+
+    if done_state == "cancelled":
+        assert future.cancelled()
+    else:
+        assert future.result() == "existing result"
+
+
+async def test_handle_incoming_message_resolves_pending_success() -> None:
+    client = _make_client()
+    future = asyncio.get_running_loop().create_future()
+    client._result_futures["pending-success"] = future
+
+    client._handle_incoming_message(SuccessResultMessage(message_id="pending-success", result={"ok": True}))
+
+    assert future.result() == {"ok": True}
+
+
+async def test_handle_incoming_message_rejects_pending_error() -> None:
+    client = _make_client()
+    future = asyncio.get_running_loop().create_future()
+    client._result_futures["pending-error"] = future
+
+    client._handle_incoming_message(
+        ErrorResultMessage(message_id="pending-error", error_code=1, details="expected error")
+    )
+
+    error = future.exception()
+    assert isinstance(error, MatterError)
+    assert str(error) == "expected error"
 
 
 async def test_write_attribute_sends_tag_keyed_value() -> None:
