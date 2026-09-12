@@ -123,11 +123,11 @@ class ClosureControlClusterCommands extends BaseClusterCommands {
                     }
 
                     <div class="states-grid">
-                        <div class="state-block">
+                        <div class="state-block state-block--current">
                             <div class="state-block-header">Current</div>
                             ${this._renderState(current, features)}
                         </div>
-                        <div class="state-block">
+                        <div class="state-block state-block--target">
                             <div class="state-block-header">Target</div>
                             ${this._renderState(target, features)}
                         </div>
@@ -379,9 +379,21 @@ class ClosureControlClusterCommands extends BaseClusterCommands {
                 padding: 12px 0;
                 margin-bottom: 12px;
             }
+            .state-block {
+                padding: 8px 12px;
+                border-radius: 8px;
+                background: var(--md-sys-color-surface-container-highest);
+                border-left: 3px solid var(--md-sys-color-outline-variant);
+            }
+            .state-block--target {
+                border-left-color: var(--md-sys-color-primary);
+            }
             .state-block-header {
                 font-weight: 500;
                 margin-bottom: 6px;
+            }
+            .state-block--target .state-block-header {
+                color: var(--md-sys-color-primary);
             }
             .state-fields {
                 display: flex;
