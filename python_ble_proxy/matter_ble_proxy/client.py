@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, Any
 
 import aiohttp
 
+from ._bleak_compat import get_bleak_client_adapter_arg
 from .protocol import (
     BINARY_FRAME_HEADER,
     BLE_PROXY_PROTOCOL_VERSION,
@@ -143,6 +144,7 @@ class MatterBleProxy:
         *,
         session: aiohttp.ClientSession | None = None,
         task_factory: Callable[[Coroutine[Any, Any, Any]], asyncio.Task[Any]] | None = None,
+        hci_id: int | None = None,
     ) -> None:
         """Initialize the proxy.
 
@@ -156,7 +158,8 @@ class MatterBleProxy:
                 work (e.g. event forwarding). Defaults to
                 `asyncio.get_event_loop().create_task`. Pass
                 `hass.async_create_task` from Home Assistant.
-
+            hci_id: BLE adapter HCI ID (e.g., 0 for hci0) used for connecting to
+                peripherals
         """
         self._ws_url = ws_url
         self._scan_source = scan_source
@@ -171,6 +174,7 @@ class MatterBleProxy:
         self._closed_event = asyncio.Event()
         self._loop: asyncio.AbstractEventLoop | None = None
         self._task_factory = task_factory
+        self._hci_id = hci_id
 
     async def connect(self) -> None:
         """Connect to the matter-server `/ble` endpoint and perform handshake."""
@@ -435,7 +439,8 @@ class MatterBleProxy:
                 self._send_event("disconnected", {"connection_handle": handle}),
             )
 
-        client = BleakClient(target, disconnected_callback=_on_disconnect)
+        bleak_adapter_args = get_bleak_client_adapter_arg(self._hci_id)
+        client = BleakClient(target, disconnected_callback=_on_disconnect, **bleak_adapter_args)
         try:
             async with asyncio.timeout(timeout_ms / 1000):
                 await client.connect()
