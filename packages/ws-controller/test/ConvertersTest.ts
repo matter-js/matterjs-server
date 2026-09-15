@@ -5,9 +5,10 @@
  */
 
 import { Bytes } from "@matter/main";
-import { GeneralDiagnostics, Thermostat } from "@matter/main/clusters";
+import { GeneralDiagnostics, OccupancySensing, Thermostat, TimeSynchronization } from "@matter/main/clusters";
+import { MATTER_EPOCH_OFFSET_US } from "@matter/main/types";
 import { ClusterMap } from "../src/model/ModelMapper.js";
-import { convertWebSocketTagBasedToMatter } from "../src/server/Converters.js";
+import { convertWebsocketDataToMatter, convertWebSocketTagBasedToMatter } from "../src/server/Converters.js";
 
 describe("convertWebSocketTagBasedToMatter", () => {
     const clusterEntry = ClusterMap[Thermostat.Cluster.id];
@@ -175,5 +176,44 @@ describe("convertWebSocketTagBasedToMatter - legacy propertyName wire-name fallb
 
         const addresses = result[ipv4AddressesMember.propertyName] as Uint8Array[];
         expect(Bytes.toHex(addresses[0])).to.equal("0a000001");
+    });
+});
+
+describe("convertWebsocketDataToMatter", () => {
+    function attributeModel(clusterId: number, attributeName: string) {
+        const clusterEntry = ClusterMap[clusterId];
+        if (clusterEntry === undefined) {
+            throw new Error(`Cluster ${clusterId} missing from ClusterMap`);
+        }
+        const attribute = clusterEntry.attributes[attributeName];
+        if (attribute === undefined) {
+            throw new Error(`Attribute ${attributeName} missing from cluster ${clusterId}`);
+        }
+        return attribute;
+    }
+
+    it("keeps full precision for epoch-us values sent as a decimal string", () => {
+        const utcTime = attributeModel(TimeSynchronization.Cluster.id, "utctime");
+        const unixMicroseconds = 9007199254740993n; // Number.MAX_SAFE_INTEGER + 2
+
+        const result = convertWebsocketDataToMatter(unixMicroseconds.toString(), utcTime);
+
+        expect(result).to.equal(unixMicroseconds + MATTER_EPOCH_OFFSET_US);
+    });
+
+    it("decodes single-bit bitmap members from a numeric string", () => {
+        const occupancy = attributeModel(OccupancySensing.Cluster.id, "occupancy");
+
+        const result = convertWebsocketDataToMatter("1", occupancy) as Record<string, unknown>;
+
+        expect(result.occupied).to.equal(true);
+    });
+
+    it("omits bitmap members whose bit is not set", () => {
+        const occupancy = attributeModel(OccupancySensing.Cluster.id, "occupancy");
+
+        const result = convertWebsocketDataToMatter("0", occupancy) as Record<string, unknown>;
+
+        expect(result.occupied).to.equal(undefined);
     });
 });

@@ -17712,7 +17712,7 @@ export const clusters: Record<number, ClusterDescription> = {
                 "cluster_id": 1875,
                 "label": "AdministratorFabricIndex",
                 "type": "Nullable[fabric-idx]",
-                "writable": true
+                "writable": false
             },
             "65528": {
                 "id": 65528,
