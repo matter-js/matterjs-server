@@ -31,7 +31,7 @@ BLE proxies) to a Matter.js server for BLE-based device commissioning.
 
 ## Connection Lifecycle
 
-1. The server exposes the `/ble` WebSocket endpoint accepting a single client connection
+1. The server exposes the `/ble` WebSocket endpoint
 2. The client connects as soon as BLE is available, latest when BLE operations are needed (e.g., at commissioning time)
 3. The client sends a `hello` handshake message (see below)
 4. The server responds with `hello_response` confirming the protocol version
@@ -39,8 +39,23 @@ BLE proxies) to a Matter.js server for BLE-based device commissioning.
 6. Either side may close the WebSocket when BLE operations are complete
 7. The client should clean up all active BLE connections when the WebSocket closes
 
-Only one client connection is allowed at a time. If a second client attempts to connect while
-one is already active, the server rejects the new connection.
+Any number of clients may be connected at the same time. The server broadcasts scan commands to
+all of them and routes per-peripheral traffic to the one client that owns the peripheral, which is
+the first client that reported it via `device_discovered`. When the last client that reported a
+peripheral disconnects, ownership of that peripheral is released, and a connect attempt on it
+fails until a connected client reports it again.
+
+### Liveness
+
+After the handshake the server sends a WebSocket ping every 15 seconds. A client must answer with
+a pong — every compliant WebSocket implementation does this automatically. When neither a pong nor
+a protocol message has arrived for more than 45 seconds, the server terminates the connection and
+runs the normal disconnect cleanup. The check runs on the same 15-second schedule as the ping, so
+a dead client is dropped between 45 and 60 seconds after its last sign of life.
+
+This is what detects a client that lost power: such a client sends neither a close frame nor a
+TCP FIN, and the server enables no TCP keepalive, so without the ping the socket stays open
+indefinitely and its peripherals stay routed to a client that can no longer answer.
 
 ### Handshake
 

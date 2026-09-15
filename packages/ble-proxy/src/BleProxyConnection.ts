@@ -4,7 +4,17 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { createPromise, Logger, Observable, Seconds, Time, withTimeout } from "@matter/main";
+import {
+    createPromise,
+    Duration,
+    Logger,
+    Millis,
+    Observable,
+    Seconds,
+    Time,
+    type Timer,
+    withTimeout,
+} from "@matter/main";
 import { Mark } from "@matter/main/protocol";
 import { WebSocket } from "ws";
 import {
@@ -52,6 +62,10 @@ const HANDSHAKE_TIMEOUT = Seconds(10);
  */
 const COMMAND_TIMEOUT = Seconds(60);
 
+const PING_INTERVAL = Seconds(15);
+/** Evaluated on the ping schedule, so a dead client is detected between this and one extra {@link PING_INTERVAL}. */
+const LIVENESS_TIMEOUT = Seconds(45);
+
 /**
  * One BLE proxy client socket. Owns that client's handshake state, pending
  * command map, and command/event/binary-frame plumbing. The hub
@@ -62,12 +76,16 @@ export class BleProxyConnection {
     readonly #id = generateConnectionId();
     #handshakeComplete = false;
     #closedEmitted = false;
+    /** Cleanup is terminal: a torn-down connection must never handshake again on a late `hello`. */
+    #destroyed = false;
     #pendingCommands = new Map<
         number,
         { resolver: (result: Record<string, unknown> | undefined) => void; rejecter: (reason?: unknown) => void }
     >();
     /** Command ID counter. Rolls over at 0xFFFF to stay in safe integer range. */
     #nextCommandId = 0;
+    #lastSeen = Time.nowUs;
+    #livenessTimer?: Timer;
 
     readonly binaryFrameReceived = new Observable<[frame: BinaryFrame]>();
     readonly eventReceived = new Observable<[event: BleProxyEventName, data: Record<string, unknown>]>();
@@ -88,7 +106,12 @@ export class BleProxyConnection {
             }
         }).start();
 
+        ws.on("pong", () => {
+            this.#lastSeen = Time.nowUs;
+        });
+
         ws.on("message", (data, isBinary) => {
+            this.#lastSeen = Time.nowUs;
             if (isBinary) {
                 this.#handleBinaryMessage(data as Buffer);
             } else {
@@ -163,6 +186,10 @@ export class BleProxyConnection {
     }
 
     #handleTextMessage(raw: string, handshakeTimer: { stop: () => void }): void {
+        if (this.#destroyed) {
+            return;
+        }
+
         let parsed: unknown;
         try {
             parsed = JSON.parse(raw);
@@ -221,6 +248,7 @@ export class BleProxyConnection {
         }
 
         this.#handshakeComplete = true;
+        this.#startLivenessCheck();
         this.#ws.send(JSON.stringify({ type: "hello_response", version: BLE_PROXY_PROTOCOL_VERSION }));
         logger.info(`[${this.#id}] BLE proxy handshake complete (version ${BLE_PROXY_PROTOCOL_VERSION})`);
         this.handshakeCompleted.emit();
@@ -242,6 +270,10 @@ export class BleProxyConnection {
     }
 
     #handleBinaryMessage(data: Buffer): void {
+        if (this.#destroyed) {
+            return;
+        }
+
         if (!this.#handshakeComplete) {
             logger.warn(`[${this.#id}] Received binary frame before handshake`);
             return;
@@ -266,8 +298,27 @@ export class BleProxyConnection {
         this.#cleanup();
     }
 
+    #startLivenessCheck(): void {
+        this.#lastSeen = Time.nowUs;
+        this.#livenessTimer = Time.getPeriodicTimer("BLE proxy liveness check", PING_INTERVAL, () => {
+            const silence = Millis(Time.nowUs - this.#lastSeen);
+            if (silence > LIVENESS_TIMEOUT) {
+                logger.warn(
+                    `[${this.#id}] No response for ${Duration.format(silence)} - terminating dead BLE proxy connection`,
+                );
+                this.#ws.terminate();
+                this.#cleanup();
+                return;
+            }
+            this.#ws.ping();
+        }).start();
+    }
+
     #cleanup(): void {
+        this.#destroyed = true;
         this.#handshakeComplete = false;
+        this.#livenessTimer?.stop();
+        this.#livenessTimer = undefined;
 
         for (const [id, pending] of this.#pendingCommands) {
             pending.rejecter(new Error("BLE proxy client disconnected"));
