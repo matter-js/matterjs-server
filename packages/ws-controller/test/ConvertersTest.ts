@@ -15,7 +15,11 @@ import {
 import { AttributeModel, ClusterModel, FieldModel } from "@matter/main/model";
 import { MATTER_EPOCH_OFFSET_US } from "@matter/main/types";
 import { ClusterMap } from "../src/model/ModelMapper.js";
-import { convertWebsocketDataToMatter, convertWebSocketTagBasedToMatter } from "../src/server/Converters.js";
+import {
+    convertMatterToWebSocketTagBased,
+    convertWebsocketDataToMatter,
+    convertWebSocketTagBasedToMatter,
+} from "../src/server/Converters.js";
 
 describe("convertWebSocketTagBasedToMatter", () => {
     const clusterEntry = ClusterMap[Thermostat.Cluster.id];
@@ -273,5 +277,46 @@ describe("convertWebsocketDataToMatter", () => {
         const result = convertWebsocketDataToMatter("0", occupancy) as Record<string, unknown>;
 
         expect(result.occupied).to.equal(undefined);
+    });
+});
+
+describe("convertMatterToWebSocketTagBased - bitmap packing", () => {
+    const clusterEntry = ClusterMap[WindowCovering.Cluster.id];
+    if (clusterEntry === undefined) {
+        throw new Error("WindowCovering cluster missing from ClusterMap");
+    }
+    const operationalStatus = clusterEntry.attributes.operationalstatus;
+    if (operationalStatus === undefined) {
+        throw new Error("WindowCovering OperationalStatus attribute missing from ClusterMap");
+    }
+
+    it("packs multi-bit subfields at their own offsets", () => {
+        const result = convertMatterToWebSocketTagBased(
+            { global: 2, lift: 1, tilt: 1 },
+            operationalStatus,
+            clusterEntry.model,
+        );
+
+        // 0b010110: Global (bits 0-1) = 2, Lift (bits 2-3) = 1, Tilt (bits 4-5) = 1
+        expect(result).to.equal(22);
+    });
+
+    it("packs a boolean supplied for a multi-bit subfield into that subfield's lowest bit", () => {
+        const result = convertMatterToWebSocketTagBased({ lift: true }, operationalStatus, clusterEntry.model);
+
+        expect(result).to.equal(4);
+    });
+
+    it("masks a subfield value that exceeds its width", () => {
+        const result = convertMatterToWebSocketTagBased({ tilt: 7 }, operationalStatus, clusterEntry.model);
+
+        // Tilt occupies bits 4-5, so only the low two bits of 7 survive
+        expect(result).to.equal(0x30);
+    });
+
+    it("round-trips a multi-bit bitmap through both directions", () => {
+        const decoded = convertWebSocketTagBasedToMatter(22, operationalStatus, clusterEntry.model);
+
+        expect(convertMatterToWebSocketTagBased(decoded, operationalStatus, clusterEntry.model)).to.equal(22);
     });
 });
