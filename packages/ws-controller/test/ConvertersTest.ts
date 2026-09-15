@@ -6,6 +6,7 @@
 
 import { Bytes } from "@matter/main";
 import { GeneralDiagnostics, OccupancySensing, Thermostat, TimeSynchronization } from "@matter/main/clusters";
+import { AttributeModel, ClusterModel, FieldModel } from "@matter/main/model";
 import { MATTER_EPOCH_OFFSET_US } from "@matter/main/types";
 import { ClusterMap } from "../src/model/ModelMapper.js";
 import { convertWebsocketDataToMatter, convertWebSocketTagBasedToMatter } from "../src/server/Converters.js";
@@ -207,6 +208,30 @@ describe("convertWebsocketDataToMatter", () => {
         const result = convertWebsocketDataToMatter("1", occupancy) as Record<string, unknown>;
 
         expect(result.occupied).to.equal(true);
+    });
+
+    it("decodes multi-bit bitmap subfields as numbers", () => {
+        const flags = new ClusterModel({
+            name: "SyntheticBitmapTest",
+            id: 0xfff1,
+            children: [
+                new AttributeModel({
+                    name: "Flags",
+                    id: 0x0000,
+                    type: "map8",
+                    children: [
+                        new FieldModel({ name: "Low", constraint: "0" }),
+                        new FieldModel({ name: "Level", constraint: "2 to 3" }),
+                    ],
+                }),
+            ],
+        }).attributes.require("Flags");
+
+        // 0b1101: bit 0 set, bits 2..3 hold the value 3
+        const result = convertWebsocketDataToMatter("13", flags) as Record<string, unknown>;
+
+        expect(result.low).to.equal(true);
+        expect(result.level).to.equal(3);
     });
 
     it("omits bitmap members whose bit is not set", () => {
