@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import type { MatterNode } from "@matter-server/ws-client";
 import { toBigIntAwareJson } from "@matter-server/ws-client";
 import { semantic_tag_namespaces } from "../client/models/descriptions.js";
 import { attributeArray } from "./access-control.js";
@@ -52,6 +53,11 @@ export function decodeSemanticTagList(value: unknown): SemanticTagListEntry[] | 
         const semtag = decodeSemanticTag(entry);
         return semtag === undefined ? { kind: "raw", raw: entry } : { kind: "tag", semtag };
     });
+}
+
+/** Decoded semantic tags (Descriptor TagList) for one endpoint; empty when it reports none. */
+export function getEndpointSemanticTags(node: MatterNode, endpoint: number): SemanticTagListEntry[] {
+    return decodeSemanticTagList(node.attributes[`${endpoint}/${DESCRIPTOR_CLUSTER_ID}/${TAG_LIST_ATTR}`]) ?? [];
 }
 
 const RAW_ENTRY_TEXT_MAX = 60;

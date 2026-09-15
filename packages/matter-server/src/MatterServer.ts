@@ -25,8 +25,8 @@ import {
     WebSocketControllerHandler,
 } from "@matter-server/ws-controller";
 import { Ble } from "@matter/main/protocol";
-import { join } from "node:path";
 import { getCliOptions, getOriginalArgv, type LogLevel as CliLogLevel } from "./cli.js";
+import { controllerOptionsFrom } from "./controller-options.js";
 import { LegacyDataWriter, loadLegacyData, type LegacyData } from "./converter/index.js";
 import { createFileLogger } from "./file-logger.js";
 import { initializeOta } from "./ota.js";
@@ -183,22 +183,7 @@ async function start() {
     controller = await MatterController.create(
         env,
         config,
-        {
-            enableTestNetDcl: cliOptions.enableTestNetDcl,
-            disableOtaProvider: cliOptions.disableOta,
-            disableDclSeed: cliOptions.disableDclSeed,
-            serverId: legacyData.serverId,
-            serverVersion: MATTER_SERVER_VERSION,
-            bleProxyEnabled: cliOptions.bleProxy,
-            enableTimeSync: cliOptions.enableTimeSync,
-            disableThreadDiagnostics: cliOptions.disableThreadDiagnostics,
-            otaUpload: {
-                // Staged next to the images it feeds, so importing one never crosses a filesystem.
-                tempDir: join(cliOptions.otaProviderDir ?? cliOptions.storagePath, "ota-uploads"),
-                maxInFlight: cliOptions.otaUploadMaxInFlight,
-                maxSizeBytes: cliOptions.otaUploadMaxSizeMb * 1024 * 1024,
-            },
-        },
+        controllerOptionsFrom(cliOptions, legacyData.serverId, MATTER_SERVER_VERSION),
         legacyServerData,
     );
 

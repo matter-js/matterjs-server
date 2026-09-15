@@ -4,14 +4,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { FabricIndex, Hours, Minutes, NodeId, Seconds } from "@matter/main";
+import { FabricIndex, Hours, Minutes, NodeId, Seconds, Timestamp } from "@matter/main";
 import { PeerAddress, PeerAddressSet } from "@matter/main/protocol";
 import {
     dstOffsetListMaxSize,
     hasTimeSyncCluster,
     hasTimeZoneFeature,
-    resyncDelayMs,
-    startupDelayMs,
+    resyncDelay,
+    startupDelay,
     SyncTrigger,
     TimeSyncConnector,
     TimeSyncManager,
@@ -122,49 +122,49 @@ describe("dstOffsetListMaxSize", () => {
     });
 });
 
-describe("startupDelayMs", () => {
+describe("startupDelay", () => {
     it("is 3 minutes plus 10 seconds per commissioned node", () => {
-        expect(startupDelayMs(0)).to.equal(Minutes(3));
-        expect(startupDelayMs(12)).to.equal(Minutes(5));
-        expect(startupDelayMs(100)).to.equal(Minutes(3) + Seconds(1000));
+        expect(startupDelay(0)).to.equal(Minutes(3));
+        expect(startupDelay(12)).to.equal(Minutes(5));
+        expect(startupDelay(100)).to.equal(Minutes(3) + Seconds(1000));
     });
 
     it("is deterministic, so restarts do not vary the first sync", () => {
-        expect(startupDelayMs(7)).to.equal(startupDelayMs(7));
+        expect(startupDelay(7)).to.equal(startupDelay(7));
     });
 });
 
-describe("resyncDelayMs", () => {
-    const NOW = 1_700_000_000_000;
+describe("resyncDelay", () => {
+    const NOW = Timestamp(1_700_000_000_000);
 
     it("uses the full interval when no offset change is in view", () => {
-        expect(resyncDelayMs(NOW, null)).to.equal(Hours(24));
+        expect(resyncDelay(NOW, null)).to.equal(Hours(24));
     });
 
     it("lands a minute past an offset change inside the interval", () => {
-        expect(resyncDelayMs(NOW, NOW + Hours(5))).to.equal(Hours(5) + Minutes(1));
+        expect(resyncDelay(NOW, NOW + Hours(5))).to.equal(Hours(5) + Minutes(1));
     });
 
     it("uses the full interval when the change falls beyond it", () => {
-        expect(resyncDelayMs(NOW, NOW + Hours(30))).to.equal(Hours(24));
+        expect(resyncDelay(NOW, NOW + Hours(30))).to.equal(Hours(24));
         // A change exactly at the interval must not schedule past it.
-        expect(resyncDelayMs(NOW, NOW + Hours(24))).to.equal(Hours(24));
+        expect(resyncDelay(NOW, NOW + Hours(24))).to.equal(Hours(24));
     });
 
     it("still clears the floor for a change moments away, via the margin", () => {
-        expect(resyncDelayMs(NOW, NOW + 1000)).to.equal(Minutes(1) + 1000);
-        expect(resyncDelayMs(NOW, NOW)).to.equal(Minutes(1));
+        expect(resyncDelay(NOW, NOW + 1000)).to.equal(Minutes(1) + 1000);
+        expect(resyncDelay(NOW, NOW)).to.equal(Minutes(1));
     });
 
     it("treats a non-finite instant as no change in view", () => {
         // The lookup is injectable, and a NaN delay would otherwise reach the timer and fire at once.
-        expect(resyncDelayMs(NOW, NaN)).to.equal(Hours(24));
-        expect(resyncDelayMs(NOW, Number.POSITIVE_INFINITY)).to.equal(Hours(24));
+        expect(resyncDelay(NOW, NaN)).to.equal(Hours(24));
+        expect(resyncDelay(NOW, Number.POSITIVE_INFINITY)).to.equal(Hours(24));
     });
 
     it("defers a change whose instant has already passed", () => {
-        expect(resyncDelayMs(NOW, NOW - Hours(1))).to.equal(Hours(24));
-        expect(resyncDelayMs(NOW, NOW - Minutes(2))).to.equal(Hours(24));
+        expect(resyncDelay(NOW, NOW - Hours(1))).to.equal(Hours(24));
+        expect(resyncDelay(NOW, NOW - Minutes(2))).to.equal(Hours(24));
     });
 });
 
@@ -344,8 +344,6 @@ describe("TimeSyncManager", () => {
     });
 
     describe("cadence wiring", () => {
-        // MockTimer ignores interval assignment, so the timer cannot show which delay was chosen;
-        // assert the hook's own return value instead.
         class Probe extends TimeSyncManager {
             delay(): number {
                 return this.nextCycleDelay();

@@ -9,7 +9,7 @@
  * Tests the full flow: BleProxyHandler <-> BleProxyTestClient with mock data.
  */
 
-import { Seconds } from "@matter/main";
+import { InternalError, Seconds } from "@matter/main";
 import { createServer } from "node:http";
 import { BleProxyHandler } from "../src/BleProxyHandler.js";
 import { BinaryFrameOpcode, BleProxyCommand } from "../src/BleProxyProtocol.js";
@@ -19,6 +19,17 @@ import { BleProxyTestClient } from "./BleProxyTestClient.js";
 import { MockBleDevice } from "./MockBleDevice.js";
 
 const TEST_PORT = 15580;
+
+/** Polls a condition against real IO, which the WebSocket round-trips in these tests run on. */
+async function waitFor(condition: () => boolean, timeoutMs = 2000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (!condition()) {
+        if (Date.now() > deadline) {
+            throw new InternalError("Timeout waiting for condition");
+        }
+        await new Promise<void>(resolve => setTimeout(resolve, 10));
+    }
+}
 const TEST_BLE_URL = `ws://localhost:${TEST_PORT}/ble`;
 
 describe("BLE Proxy Integration", function () {
@@ -53,6 +64,62 @@ describe("BLE Proxy Integration", function () {
     describe("handshake", () => {
         it("should complete handshake and report connected", () => {
             expect(handler.connected).to.be.true;
+        });
+    });
+
+    describe("liveness", () => {
+        /**
+         * The liveness timer is created during the handshake, so MockTime must already be enabled
+         * when the connection is accepted — otherwise the timer binds to the real clock and
+         * `MockTime.advance` never drives it. The connection from `beforeEach` is dropped first so
+         * `handler.connected`, an OR across all connections, speaks about this connection alone.
+         */
+        const connectAloneUnderMockTime = async (): Promise<BleProxyTestClient> => {
+            testClient.close();
+            await waitFor(() => !handler.connected);
+            MockTime.enable();
+            const client = new BleProxyTestClient();
+            await client.connect(TEST_BLE_URL);
+            return client;
+        };
+
+        /**
+         * `MockTime.advance` never yields to the event loop's poll phase, so an incoming pong can
+         * only be read between two advances. Both liveness tests therefore push the mocked clock
+         * across the timeout in two hops with a real-IO hop in between; without it neither test can
+         * tell a client that answers from one that does not.
+         */
+        const advancePastLivenessTimeout = async (client: BleProxyTestClient): Promise<void> => {
+            const ping = client.waitForPing().catch(() => {});
+            await MockTime.advance(Seconds(40));
+            await ping;
+            await new Promise<void>(resolve => setTimeout(resolve, 50));
+            await MockTime.advance(Seconds(40));
+        };
+
+        it("terminates a connection whose client stopped answering", async () => {
+            const deadClient = await connectAloneUnderMockTime();
+            try {
+                deadClient.simulateHalfOpen();
+                await advancePastLivenessTimeout(deadClient);
+
+                expect(handler.connected).to.be.false;
+            } finally {
+                MockTime.disable();
+                deadClient.close();
+            }
+        });
+
+        it("keeps a connection alive while its client answers pings", async () => {
+            const liveClient = await connectAloneUnderMockTime();
+            try {
+                await advancePastLivenessTimeout(liveClient);
+
+                expect(handler.connected).to.be.true;
+            } finally {
+                MockTime.disable();
+                liveClient.close();
+            }
         });
     });
 

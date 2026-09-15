@@ -31,6 +31,10 @@ const DEFAULT_STORAGE_PATH = join(homedir(), ".matter_server");
 const DEFAULT_OTA_UPLOAD_MAX_IN_FLIGHT = 5;
 /** Placeholder: shipping Matter images run ~1-8 MB, tens of MB for camera-class devices. */
 const DEFAULT_OTA_UPLOAD_MAX_SIZE_MB = 64;
+// Duplicated from the ws-controller poller default: cli.ts must stay free of matter.js imports (see pre-init.ts).
+const DEFAULT_CUSTOM_CLUSTER_POLL_INTERVAL = 60;
+const MIN_CUSTOM_CLUSTER_POLL_INTERVAL = 60;
+const MAX_CUSTOM_CLUSTER_POLL_INTERVAL = 86_400;
 
 // Log level enums
 const LOG_LEVELS = ["fatal", "critical", "error", "warning", "warn", "notice", "info", "debug", "verbose"] as const;
@@ -81,6 +85,9 @@ export interface CliOptions {
 
     // Thread Border Router configuration
     disableThreadDiagnostics: boolean;
+
+    // Custom cluster polling configuration
+    customClusterPollInterval: number;
 }
 
 function parseIntOption(value: string): number {
@@ -95,6 +102,16 @@ function parsePositiveIntOption(value: string): number {
     const parsed = parseIntOption(value);
     if (parsed < 1) {
         throw new InvalidArgumentError(`Value must be at least 1, got: ${value}`);
+    }
+    return parsed;
+}
+
+export function parseCustomClusterPollIntervalOption(value: string): number {
+    const parsed = parseInt(value, 10);
+    if (isNaN(parsed) || parsed < MIN_CUSTOM_CLUSTER_POLL_INTERVAL || parsed > MAX_CUSTOM_CLUSTER_POLL_INTERVAL) {
+        throw new InvalidArgumentError(
+            `Value must be between ${MIN_CUSTOM_CLUSTER_POLL_INTERVAL} and ${MAX_CUSTOM_CLUSTER_POLL_INTERVAL} seconds, got: ${value}`,
+        );
     }
     return parsed;
 }
@@ -258,6 +275,15 @@ export function parseCliArgs(argv?: string[]): CliOptions {
         )
         .addOption(
             new Option(
+                "--custom-cluster-poll-interval <seconds>",
+                "Interval in seconds for polling custom cluster attributes that do not support subscriptions (legacy Eve Energy devices). Raise it to reduce periodic Thread traffic at the cost of less current energy readings.",
+            )
+                .argParser(parseCustomClusterPollIntervalOption)
+                .default(DEFAULT_CUSTOM_CLUSTER_POLL_INTERVAL)
+                .env("CUSTOM_CLUSTER_POLL_INTERVAL"),
+        )
+        .addOption(
+            new Option(
                 "--production-mode [value]",
                 "Force dashboard production mode (auto-connect to server). Use when running behind a reverse proxy.",
             )
@@ -339,6 +365,7 @@ export function parseCliArgs(argv?: string[]): CliOptions {
         disableDashboard: opts.disableDashboard,
         productionMode: opts.productionMode,
         disableThreadDiagnostics: opts.disableThreadDiagnostics,
+        customClusterPollInterval: opts.customClusterPollInterval,
     };
 }
 

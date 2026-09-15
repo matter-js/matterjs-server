@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { redactSensitiveCommandFields } from "@matter-server/ws-client";
 import {
     MatterError,
     Diagnostic,
@@ -679,8 +680,10 @@ export class WebSocketControllerHandler implements WebServerHandler {
         let messageId: string | undefined;
         let command: string | undefined;
         try {
-            logger.debug(`[${connId}] WebSocket request`, () => data);
+            // Parse before logging: an unparseable frame cannot be redacted and may carry a credential.
             const request = parseBigIntAwareJson(data) as { message_id: string; command: string; args: any };
+            // Deferred: matter.js calls this only at DEBUG, keeping redaction off the hot path.
+            logger.debug(`[${connId}] WebSocket request`, () => redactSensitiveCommandFields(request));
             const { args } = request;
             messageId = request.message_id;
             command = request.command;

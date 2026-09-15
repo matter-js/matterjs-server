@@ -58,6 +58,18 @@ follows:
   to another connected client that has also reported that peripheral. If no such client
   remains, the peripheral is dropped and must be rediscovered.
 
+### Liveness
+
+After the handshake the server sends a WebSocket ping every 15 seconds. A client must answer with
+a pong — every compliant WebSocket implementation does this automatically. When neither a pong nor
+a protocol message has arrived for more than 45 seconds, the server terminates the connection and
+runs the normal disconnect cleanup. The check runs on the same 15-second schedule as the ping, so
+a dead client is dropped between 45 and 60 seconds after its last sign of life.
+
+This is what detects a client that lost power: such a client sends neither a close frame nor a
+TCP FIN, and the server enables no TCP keepalive, so without the ping the socket stays open
+indefinitely and its peripherals stay routed to a client that can no longer answer.
+
 ### Handshake
 
 Immediately after the WebSocket connection is established, the client must send a `hello`
