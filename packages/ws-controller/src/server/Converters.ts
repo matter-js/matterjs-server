@@ -20,14 +20,45 @@ export function parseNumber(number: string): number | bigint {
     return parsed;
 }
 
-/**
- * Bit positions are always small integers, but matter.js types constraint values as `number | bigint`
- * because the same accessor serves 64-bit value constraints. Callers apply the result with 32-bit
- * bitwise operators, so a future map64 bitmap needs more than this coercion.
- */
+/** The position a bitmap member occupies: a single flag bit or an inclusive range of value bits. */
+type BitField = { readonly bit: number } | { readonly min: number; readonly max: number };
+
 function bitPosition(value: FieldValue.Open | undefined): number | undefined {
     const numeric = FieldValue.numericValue(value);
     return numeric === undefined ? undefined : Number(numeric);
+}
+
+/**
+ * A member without a numeric position cannot be mapped to any bit, so it is skipped rather than
+ * decoded as bit 0.
+ */
+function bitFieldOf(member: ValueModel): BitField | undefined {
+    const bit = bitPosition(member.constraint.value);
+    if (bit !== undefined) {
+        return { bit };
+    }
+    const min = bitPosition(member.constraint.min);
+    const max = bitPosition(member.constraint.max);
+    return min !== undefined && max !== undefined ? { min, max } : undefined;
+}
+
+/** Bit arithmetic is 32-bit in JavaScript, so map64 members beyond bit 31 cannot be represented. */
+function unpackBitField(value: number, field: BitField): boolean | number {
+    if ("bit" in field) {
+        return (value & (1 << field.bit)) !== 0;
+    }
+    const width = field.max - field.min + 1;
+    const shifted = value >>> field.min;
+    return width >= 32 ? shifted : shifted & ((1 << width) - 1);
+}
+
+function packBitField(memberValue: boolean | number, field: BitField): number {
+    if ("bit" in field) {
+        return memberValue ? 1 << field.bit : 0;
+    }
+    const width = field.max - field.min + 1;
+    const numeric = typeof memberValue === "boolean" ? 1 : memberValue;
+    return (width >= 32 ? numeric : numeric & ((1 << width) - 1)) << field.min;
 }
 
 function convertWebSocketGenericToMatter(value: unknown, model: ValueModel, clusterModel: ClusterModel): unknown {
@@ -47,22 +78,11 @@ function convertWebSocketGenericToMatter(value: unknown, model: ValueModel, clus
                 continue;
             }
 
-            const constraintValue = bitPosition(member.constraint.value);
-            if (constraintValue !== undefined) {
-                // Single bit - extract as boolean
-                bitmapValue[memberName] = (value & (1 << constraintValue)) !== 0;
-            } else {
-                const minBit = bitPosition(member.constraint.min) ?? 0;
-                const maxBit = bitPosition(member.constraint.max);
-                if (maxBit !== undefined) {
-                    // Multi-bit field - extract value
-                    const mask = ((1 << (maxBit - minBit + 1)) - 1) << minBit;
-                    bitmapValue[memberName] = (value & mask) >> minBit;
-                } else {
-                    // Single bit at minBit position
-                    bitmapValue[memberName] = (value & (1 << minBit)) !== 0;
-                }
+            const field = bitFieldOf(member);
+            if (field === undefined) {
+                continue;
             }
+            bitmapValue[memberName] = unpackBitField(value, field);
         }
 
         return bitmapValue;
@@ -459,12 +479,9 @@ function convertMatterToWebSocket(
                     throw new Error(`Invalid bitmap value for ${member.propertyName}: ${String(memberValue)}`);
                 }
 
-                const constraintValue = bitPosition(member.constraint.value);
-                if (constraintValue !== undefined) {
-                    numberValue |= 1 << constraintValue;
-                } else {
-                    const minBit = bitPosition(member.constraint.min) ?? 0;
-                    numberValue |= typeof memberValue === "boolean" ? 1 : memberValue << minBit;
+                const field = bitFieldOf(member);
+                if (field !== undefined) {
+                    numberValue |= packBitField(memberValue, field);
                 }
             }
             return numberValue;
@@ -699,25 +716,13 @@ export function convertWebsocketDataToMatter(value: unknown, model: ValueModel):
                 if (member.name === undefined) {
                     continue;
                 }
-                const bit = bitPosition(member.constraint.value);
-                if (bit !== undefined) {
-                    if (numberValue & (1 << bit)) {
-                        bitmapValue[member.propertyName] = true;
-                    }
+                const field = bitFieldOf(member);
+                if (field === undefined) {
                     continue;
                 }
-                const minBit = bitPosition(member.constraint.min) ?? 0;
-                const maxBit = bitPosition(member.constraint.max);
-                if (maxBit === undefined) {
-                    if (numberValue & (1 << minBit)) {
-                        bitmapValue[member.propertyName] = true;
-                    }
-                    continue;
-                }
-                const mask = ((1 << (maxBit - minBit + 1)) - 1) << minBit;
-                const fieldValue = (numberValue & mask) >> minBit;
-                if (fieldValue !== 0) {
-                    bitmapValue[member.propertyName] = fieldValue;
+                const decoded = unpackBitField(numberValue, field);
+                if (decoded !== false && decoded !== 0) {
+                    bitmapValue[member.propertyName] = decoded;
                 }
             }
             return bitmapValue;

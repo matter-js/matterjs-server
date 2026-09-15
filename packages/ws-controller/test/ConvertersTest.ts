@@ -5,7 +5,13 @@
  */
 
 import { Bytes } from "@matter/main";
-import { GeneralDiagnostics, OccupancySensing, Thermostat, TimeSynchronization } from "@matter/main/clusters";
+import {
+    GeneralDiagnostics,
+    OccupancySensing,
+    Thermostat,
+    TimeSynchronization,
+    WindowCovering,
+} from "@matter/main/clusters";
 import { AttributeModel, ClusterModel, FieldModel } from "@matter/main/model";
 import { MATTER_EPOCH_OFFSET_US } from "@matter/main/types";
 import { ClusterMap } from "../src/model/ModelMapper.js";
@@ -181,6 +187,14 @@ describe("convertWebSocketTagBasedToMatter - legacy propertyName wire-name fallb
 });
 
 describe("convertWebsocketDataToMatter", () => {
+    function syntheticBitmap(type: string, children: FieldModel[]) {
+        return new ClusterModel({
+            name: "SyntheticBitmapTest",
+            id: 0xfff1,
+            children: [new AttributeModel({ name: "Flags", id: 0x0000, type, children })],
+        }).attributes.require("Flags");
+    }
+
     function attributeModel(clusterId: number, attributeName: string) {
         const clusterEntry = ClusterMap[clusterId];
         if (clusterEntry === undefined) {
@@ -211,27 +225,34 @@ describe("convertWebsocketDataToMatter", () => {
     });
 
     it("decodes multi-bit bitmap subfields as numbers", () => {
-        const flags = new ClusterModel({
-            name: "SyntheticBitmapTest",
-            id: 0xfff1,
-            children: [
-                new AttributeModel({
-                    name: "Flags",
-                    id: 0x0000,
-                    type: "map8",
-                    children: [
-                        new FieldModel({ name: "Low", constraint: "0" }),
-                        new FieldModel({ name: "Level", constraint: "2 to 3" }),
-                    ],
-                }),
-            ],
-        }).attributes.require("Flags");
+        const operationalStatus = attributeModel(WindowCovering.Cluster.id, "operationalstatus");
 
-        // 0b1101: bit 0 set, bits 2..3 hold the value 3
-        const result = convertWebsocketDataToMatter("13", flags) as Record<string, unknown>;
+        // 0b010110: Global (bits 0-1) = 2, Lift (bits 2-3) = 1, Tilt (bits 4-5) = 1
+        const result = convertWebsocketDataToMatter("22", operationalStatus) as Record<string, unknown>;
 
-        expect(result.low).to.equal(true);
-        expect(result.level).to.equal(3);
+        expect(result.global).to.equal(2);
+        expect(result.lift).to.equal(1);
+        expect(result.tilt).to.equal(1);
+    });
+
+    it("decodes a multi-bit subfield at the top of a map32 without sign extension", () => {
+        const flags = syntheticBitmap("map32", [new FieldModel({ name: "High", constraint: "30 to 31" })]);
+
+        const result = convertWebsocketDataToMatter("2147483648", flags) as Record<string, unknown>;
+
+        expect(result.high).to.equal(2);
+    });
+
+    it("skips bitmap members that have no bit position", () => {
+        const flags = syntheticBitmap("map8", [
+            new FieldModel({ name: "Positioned", constraint: "0" }),
+            new FieldModel({ name: "Unpositioned" }),
+        ]);
+
+        const result = convertWebsocketDataToMatter("1", flags) as Record<string, unknown>;
+
+        expect(result.positioned).to.equal(true);
+        expect(Object.keys(result)).to.deep.equal(["positioned"]);
     });
 
     it("omits bitmap members whose bit is not set", () => {
