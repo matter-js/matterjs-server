@@ -28,21 +28,26 @@ function bitPosition(value: FieldValue.Open | undefined): number | undefined {
     return numeric === undefined ? undefined : Number(numeric);
 }
 
+/** JavaScript bitwise operators mask the shift count modulo 32, so a higher position cannot be applied. */
+const MAX_BIT_POSITION = 31;
+
 /**
- * A member without a numeric position cannot be mapped to any bit, so it is skipped rather than
- * decoded as bit 0.
+ * A member with no numeric position, or one beyond {@link MAX_BIT_POSITION}, is skipped rather than
+ * silently decoded as some other bit.
  */
 function bitFieldOf(member: ValueModel): BitField | undefined {
     const bit = bitPosition(member.constraint.value);
     if (bit !== undefined) {
-        return { bit };
+        return bit > MAX_BIT_POSITION ? undefined : { bit };
     }
     const min = bitPosition(member.constraint.min);
     const max = bitPosition(member.constraint.max);
-    return min !== undefined && max !== undefined ? { min, max } : undefined;
+    if (min === undefined || max === undefined || max > MAX_BIT_POSITION) {
+        return undefined;
+    }
+    return { min, max };
 }
 
-/** Bit arithmetic is 32-bit in JavaScript, so map64 members beyond bit 31 cannot be represented. */
 function unpackBitField(value: number, field: BitField): boolean | number {
     if ("bit" in field) {
         return (value & (1 << field.bit)) !== 0;

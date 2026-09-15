@@ -243,6 +243,18 @@ describe("convertWebsocketDataToMatter", () => {
         expect(result.high).to.equal(2);
     });
 
+    it("skips map64 members beyond the 32-bit shift range instead of decoding another bit", () => {
+        const flags = syntheticBitmap("map64", [
+            new FieldModel({ name: "Low", constraint: "0" }),
+            new FieldModel({ name: "Beyond", constraint: "32" }),
+        ]);
+
+        const result = convertWebsocketDataToMatter("1", flags) as Record<string, unknown>;
+
+        expect(result.low).to.equal(true);
+        expect(Object.keys(result)).to.deep.equal(["low"]);
+    });
+
     it("skips bitmap members that have no bit position", () => {
         const flags = syntheticBitmap("map8", [
             new FieldModel({ name: "Positioned", constraint: "0" }),
