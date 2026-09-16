@@ -314,6 +314,25 @@ describe("convertMatterToWebSocketTagBased - bitmap packing", () => {
         expect(result).to.equal(0x30);
     });
 
+    it("packs a member at the top bit of a map32 as an unsigned value", () => {
+        const cluster = new ClusterModel({
+            name: "SyntheticBitmapTest",
+            id: 0xfff1,
+            children: [
+                new AttributeModel({
+                    name: "Flags",
+                    id: 0x0000,
+                    type: "map32",
+                    children: [new FieldModel({ name: "Top", constraint: "31" })],
+                }),
+            ],
+        });
+
+        const result = convertMatterToWebSocketTagBased({ top: true }, cluster.attributes.require("Flags"), cluster);
+
+        expect(result).to.equal(0x80000000);
+    });
+
     it("round-trips a multi-bit bitmap through both directions", () => {
         const decoded = convertWebSocketTagBasedToMatter(22, operationalStatus, clusterEntry.model);
 

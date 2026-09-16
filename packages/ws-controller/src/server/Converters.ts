@@ -489,7 +489,8 @@ function convertMatterToWebSocket(
                     numberValue |= packBitField(memberValue, field);
                 }
             }
-            return numberValue;
+            // Bitmaps are unsigned on the wire, but |= yields a signed 32-bit result
+            return numberValue >>> 0;
         }
     }
 }
