@@ -53,6 +53,7 @@ import {
     getWiFiDiagnostics,
     getWiFiSecurityTypeName,
     getWiFiVersionName,
+    isObserverOnline,
     stripMdnsHostname,
 } from "./network-utils.js";
 import "./update-connections-dialog.js";
@@ -1311,10 +1312,7 @@ export class NetworkDetails extends LitElement {
         const device = this.unknownDevices.get(this.selectedNodeId);
         if (!device) return [];
 
-        return device.seenBy.filter(nodeId => {
-            const node = this.nodes[nodeId.toString()];
-            return node?.available === true;
-        });
+        return device.seenBy.filter(nodeId => isObserverOnline(this.nodes, nodeId.toString()));
     }
 
     /**

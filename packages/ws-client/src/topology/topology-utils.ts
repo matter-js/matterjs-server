@@ -656,22 +656,55 @@ export function findDiagnosticRecordByExtAddress(
 }
 
 /**
- * Whether a diagnostics record is strong enough to vouch for an external device's existence.
- *
- * A partial batch is an aborted query, so an entry in it may predate the failure; and a record
- * from another Thread network says nothing about a device on this one. Batch age is deliberately
- * not considered — the server already bounds it with the diagnostics cache TTL, and re-deriving
- * a freshness rule here would drift from it.
+ * Whether a node can still confirm what it reported. An id with no node behind it cannot, and a
+ * node whose availability is unknown is taken as online — the wire omits the flag only for
+ * records that carry no reachability information.
  */
-export function corroboratesExternalDevice(
+export function isObserverOnline(nodes: Record<string, TopologySourceNode>, nodeId: string): boolean {
+    const node = nodes[nodeId];
+    return node !== undefined && node.available !== false;
+}
+
+/**
+ * Find a diagnostics record that can vouch for an external device's existence, independently of
+ * the neighbor table that reported it.
+ *
+ * All batches are searched, because the first record carrying the address is not necessarily the
+ * one that qualifies: the same device can still appear in a batch for a network it has since
+ * left. A record qualifies when
+ *
+ * - its batch is complete: a batch with a `partialReason` is an aborted query, so an entry in it
+ *   may predate the failure; and
+ * - its batch describes the device's own Thread network. When the observing node does not report
+ *   an extended PAN ID, the device's network is unknown, so a record qualifies only while no
+ *   other network reports the same address — with two candidates there is nothing to decide
+ *   between them.
+ *
+ * Batch age is deliberately not considered: the server bounds it with the diagnostics cache TTL,
+ * and a second freshness rule here would drift from it.
+ */
+export function findCorroboratingDiagnostics(
+    batches: ReadonlyMap<string, ThreadDiagnosticsBatch>,
     device: ThreadExternalDevice,
-    record: ThreadDiagnosticsRecord | undefined,
-): boolean {
-    if (record === undefined || record.batch.partialReason !== undefined) {
-        return false;
+): ThreadDiagnosticsRecord | undefined {
+    const target = device.extAddressHex.toUpperCase();
+    const deviceXp = device.extendedPanIdHex?.toUpperCase();
+    const candidates = new Array<ThreadDiagnosticsRecord>();
+
+    for (const batch of batches.values()) {
+        if (batch.partialReason !== undefined) continue;
+        for (const node of batch.nodes) {
+            if (node.extMacAddress?.toUpperCase() !== target) continue;
+            if (deviceXp !== undefined && batch.extPanIdHex.toUpperCase() !== deviceXp) continue;
+            candidates.push({ node, batch });
+        }
     }
-    const deviceXp = device.extendedPanIdHex;
-    return deviceXp === undefined || deviceXp.toUpperCase() === record.batch.extPanIdHex.toUpperCase();
+
+    if (deviceXp !== undefined) {
+        return candidates[0];
+    }
+    const networks = new Set(candidates.map(candidate => candidate.batch.extPanIdHex.toUpperCase()));
+    return networks.size === 1 ? candidates[0] : undefined;
 }
 
 /**
@@ -684,20 +717,19 @@ export function corroboratesExternalDevice(
  *
  * Both filters are lifted for a device with evidence from a source other than the observer's
  * cached neighbor table: a Border Router (mDNS), or a diagnostics record accepted by
- * {@link corroboratesExternalDevice}. Such a device follows the user's offline-nodes toggle
+ * {@link findCorroboratingDiagnostics}. Such a device follows the user's offline-nodes toggle
  * like any commissioned node.
  */
 export function shouldHideExternalDevice(
     device: ThreadExternalDevice,
     nodes: Record<string, TopologySourceNode>,
-    options: { diagnostics?: ThreadDiagnosticsRecord; hideOfflineNodes: boolean },
+    options: { diagnostics?: ReadonlyMap<string, ThreadDiagnosticsBatch>; hideOfflineNodes: boolean },
 ): boolean {
-    const hasOnlineObserver = device.seenBy.some(nodeId => {
-        const node = nodes[nodeId];
-        return node !== undefined && node.available !== false;
-    });
+    const hasOnlineObserver = device.seenBy.some(nodeId => isObserverOnline(nodes, nodeId));
 
-    if (device.kind === "br" || corroboratesExternalDevice(device, options.diagnostics)) {
+    const corroborated =
+        options.diagnostics !== undefined && findCorroboratingDiagnostics(options.diagnostics, device) !== undefined;
+    if (device.kind === "br" || corroborated) {
         return options.hideOfflineNodes && !hasOnlineObserver;
     }
 

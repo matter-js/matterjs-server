@@ -4,13 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type {
-    BorderRouterEntry,
-    ThreadDiagnosticsBatch,
-    ThreadDiagnosticsRecord,
-    ThreadEdgePair,
-    TopologySourceNode,
-} from "../src/index.js";
+import type { BorderRouterEntry, ThreadDiagnosticsBatch, ThreadEdgePair, TopologySourceNode } from "../src/index.js";
 import {
     buildExtAddrMap,
     buildMatterRloc16ByXp,
@@ -26,6 +20,7 @@ import {
     getSignalLevelFromLqi,
     getWiFiDiagnostics,
     getWiFiSsid,
+    isObserverOnline,
     makeDiagnosticRloc16Resolver,
     makePairKey,
     mergeDiagnosticEdges,
@@ -267,6 +262,26 @@ describe("topology-utils", () => {
         });
     });
 
+    describe("isObserverOnline", () => {
+        const nodes: Record<string, TopologySourceNode> = {
+            "1": { node_id: 1, available: true, attributes: {} },
+            "2": { node_id: 2, available: false, attributes: {} },
+            "3": { node_id: 3, attributes: {} },
+        };
+
+        it("treats a node with no availability flag as online", () => {
+            expect(isObserverOnline(nodes, "3")).to.equal(true);
+        });
+
+        it("treats an unavailable node as offline", () => {
+            expect(isObserverOnline(nodes, "2")).to.equal(false);
+        });
+
+        it("treats an id with no node behind it as offline", () => {
+            expect(isObserverOnline(nodes, "9")).to.equal(false);
+        });
+    });
+
     describe("shouldHideExternalDevice", () => {
         const XP_HEX = "1122334455667788";
         const observer = (available: boolean, neighborCount: number): TopologySourceNode => ({
@@ -300,17 +315,16 @@ describe("topology-utils", () => {
             const device = findUnknownDevices({ "1": observer(true, 3) }, new Map(), new Map(), registry)[0];
             return { ...device, seenBy };
         };
-        const diagnostics = (over: Partial<ThreadDiagnosticsBatch> = {}): ThreadDiagnosticsRecord => {
-            const batch: ThreadDiagnosticsBatch = {
-                extPanIdHex: XP_HEX,
-                networkName: "TestNet",
-                collectedAt: 0,
-                source: "meshcop",
-                nodes: [{ extMacAddress: EXT_HEX, rloc16: 52224 }],
-                ...over,
-            };
-            return { node: batch.nodes[0], batch };
-        };
+        const mkBatch = (over: Partial<ThreadDiagnosticsBatch> = {}): ThreadDiagnosticsBatch => ({
+            extPanIdHex: XP_HEX,
+            networkName: "TestNet",
+            collectedAt: 0,
+            source: "meshcop",
+            nodes: [{ extMacAddress: EXT_HEX, rloc16: 52224 }],
+            ...over,
+        });
+        const diagnostics = (...batches: ThreadDiagnosticsBatch[]): ReadonlyMap<string, ThreadDiagnosticsBatch> =>
+            new Map((batches.length > 0 ? batches : [mkBatch()]).map(batch => [batch.extPanIdHex, batch]));
 
         it("hides a single-observer unknown that no other source reports", () => {
             const hidden = shouldHideExternalDevice(
@@ -374,7 +388,7 @@ describe("topology-utils", () => {
                 mkExternal(["1"]),
                 { "1": observer(true, 3) },
                 {
-                    diagnostics: diagnostics({ partialReason: "border_router_unreachable" }),
+                    diagnostics: diagnostics(mkBatch({ partialReason: "border_router_unreachable" })),
                     hideOfflineNodes: false,
                 },
             );
@@ -386,7 +400,7 @@ describe("topology-utils", () => {
                 mkExternal(["1"]),
                 { "1": observer(true, 3) },
                 {
-                    diagnostics: diagnostics({ extPanIdHex: "8877665544332211" }),
+                    diagnostics: diagnostics(mkBatch({ extPanIdHex: "8877665544332211" })),
                     hideOfflineNodes: false,
                 },
             );
@@ -398,11 +412,51 @@ describe("topology-utils", () => {
                 mkExternal(["1"]),
                 { "1": observer(true, 3) },
                 {
-                    diagnostics: diagnostics({ extPanIdHex: XP_HEX.toLowerCase() }),
+                    diagnostics: diagnostics(mkBatch({ extPanIdHex: XP_HEX.toLowerCase() })),
                     hideOfflineNodes: false,
                 },
             );
             expect(hidden).to.equal(false);
+        });
+
+        it("corroborates from a later batch when an earlier one reports the device on another network", () => {
+            const stale = mkBatch({ extPanIdHex: "8877665544332211" });
+            const current = mkBatch();
+            const hidden = shouldHideExternalDevice(
+                mkExternal(["1"]),
+                { "1": observer(true, 3) },
+                {
+                    diagnostics: diagnostics(stale, current),
+                    hideOfflineNodes: false,
+                },
+            );
+            expect(hidden).to.equal(false);
+        });
+
+        it("corroborates a device of unknown network from the only network reporting it", () => {
+            const device = { ...mkExternal(["1"]), extendedPanIdHex: undefined };
+            const hidden = shouldHideExternalDevice(
+                device,
+                { "1": observer(true, 3) },
+                {
+                    diagnostics: diagnostics(),
+                    hideOfflineNodes: false,
+                },
+            );
+            expect(hidden).to.equal(false);
+        });
+
+        it("refuses to corroborate a device of unknown network reported by two networks", () => {
+            const device = { ...mkExternal(["1"]), extendedPanIdHex: undefined };
+            const hidden = shouldHideExternalDevice(
+                device,
+                { "1": observer(true, 3) },
+                {
+                    diagnostics: diagnostics(mkBatch(), mkBatch({ extPanIdHex: "8877665544332211" })),
+                    hideOfflineNodes: false,
+                },
+            );
+            expect(hidden).to.equal(true);
         });
 
         it("hides an uncorroborated unknown whose observers are all offline", () => {

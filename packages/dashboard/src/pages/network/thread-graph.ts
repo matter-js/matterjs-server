@@ -231,10 +231,17 @@ export class ThreadGraph extends BaseNetworkGraph {
             }
 
             for (const [unknownId, unknown] of this._unknownDevicesMapCache) {
-                if (normalizeExtendedAddressInput(unknown.extAddressHex) === normalized) {
-                    this.selectNode(unknownId);
-                    return true;
+                if (normalizeExtendedAddressInput(unknown.extAddressHex) !== normalized) continue;
+                if (
+                    shouldHideExternalDevice(unknown, this.nodes, {
+                        diagnostics: this.threadDiagnostics,
+                        hideOfflineNodes: this.hideOfflineNodes,
+                    })
+                ) {
+                    continue;
                 }
+                this.selectNode(unknownId);
+                return true;
             }
         }
 
@@ -347,11 +354,10 @@ export class ThreadGraph extends BaseNetworkGraph {
         // unidentified neighbors keep the generic question-mark style.
         for (const device of this._unknownDevices) {
             const isSelected = device.id === this._selectedNodeId;
-            const diagnostics = findDiagnosticRecordByExtAddress(this.threadDiagnostics, device.extAddressHex);
-            const diagNode = diagnostics?.node;
+            const diagNode = findDiagnosticRecordByExtAddress(this.threadDiagnostics, device.extAddressHex)?.node;
 
             const shouldHide = shouldHideExternalDevice(device, this.nodes, {
-                diagnostics,
+                diagnostics: this.threadDiagnostics,
                 hideOfflineNodes: this.hideOfflineNodes,
             });
 

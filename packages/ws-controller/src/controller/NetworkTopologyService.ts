@@ -122,6 +122,12 @@ export interface NetworkTopologyServiceOptions {
  * plus mDNS-discovered Border Routers. The richer MeshCoP diagnostic enrichment (route64 /
  * childTable → router-router links and diagnostic-only mesh nodes) is a planned follow-up;
  * the wire model already accommodates it.
+ *
+ * Every external device with a live edge is published, including ones a client may choose to
+ * hide as a stale-cache ghost (see `shouldHideExternalDevice` in `@matter-server/ws-client`).
+ * Deciding that here would be guesswork, because the MeshCoP diagnostics a ghost is checked
+ * against are not available to this service: it would drop exactly the devices that evidence
+ * vindicates. The wire carries the evidence; visibility is a display decision.
  */
 export class NetworkTopologyService {
     static readonly DEFAULT_DEBOUNCE_MS = 2_000;
