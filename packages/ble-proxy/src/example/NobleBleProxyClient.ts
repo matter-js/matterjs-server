@@ -83,12 +83,48 @@ export interface NobleApi {
     removeAllListeners(event: "discover"): unknown;
 }
 
-type Peripheral = import("@stoprocent/noble").Peripheral;
-type Characteristic = import("@stoprocent/noble").Characteristic;
-type Service = import("@stoprocent/noble").Service;
+/**
+ * The parts of noble's GATT objects this client drives. Structural for the same reason as
+ * `NobleApi`: a test can supply stand-ins, and noble's own types satisfy these on assignment.
+ */
+export interface Characteristic {
+    readonly uuid: string;
+    readonly properties: string[];
+    readAsync(): Promise<Buffer>;
+    writeAsync(data: Buffer, withoutResponse: boolean): Promise<void>;
+    subscribeAsync(): Promise<void>;
+    unsubscribeAsync(): Promise<void>;
+    on(event: "data", listener: NotificationListener): unknown;
+    removeListener(event: "data", listener: NotificationListener): unknown;
+}
+
+export interface Service {
+    readonly uuid: string;
+    readonly characteristics?: Characteristic[];
+    discoverCharacteristicsAsync(uuids?: string[]): Promise<Characteristic[]>;
+}
+
+export interface Peripheral {
+    readonly id: string;
+    readonly address: string;
+    readonly rssi: number;
+    readonly mtu?: number | null;
+    readonly state: string;
+    readonly connectable?: boolean;
+    readonly advertisement: {
+        localName?: string;
+        serviceUuids?: string[];
+        serviceData?: Array<{ uuid: string; data: Uint8Array }>;
+    };
+    connectAsync(): Promise<void>;
+    disconnectAsync(): Promise<void>;
+    discoverServicesAsync(serviceUuids: string[]): Promise<Service[]>;
+    once(event: "disconnect", listener: () => void): unknown;
+    removeListener(event: "disconnect", listener: () => void): unknown;
+}
 
 /** noble reuses the "data" event for read responses, and delivers a null payload on read failure. */
-type NotificationListener = (payload: Buffer | null) => void;
+export type NotificationListener = (payload: Buffer | null) => void;
 
 interface Subscription {
     characteristic: Characteristic;
@@ -142,7 +178,7 @@ export class NobleBleProxyClient {
     #discoveryWaiters = new Map<string, Set<DiscoveryWaiter>>();
     #lastDiscoverFingerprint = new Map<string, DiscoverFingerprint>();
     #desiredScan?: ScanConfig;
-    #scanPaused = false;
+    #scanPauses = 0;
     #scanGeneration = 0;
     #scanOperations: Promise<unknown> = Promise.resolve();
     #discoverListenerInstalled = false;
@@ -521,12 +557,13 @@ export class NobleBleProxyClient {
         peripheral.once("disconnect", disconnectListener);
 
         log(`[CONN] Connecting to "${args.address}" (state=${peripheral.state})...`);
+        let releaseScanPause: (() => Promise<void>) | undefined;
         try {
             // Pause scanning during connect + GATT discovery. On macOS, scanning concurrently
             // with `service.discoverCharacteristicsAsync` causes the CoreBluetooth delegate
             // callback to never fire; the peripheral stays connected but discovery hangs.
             log(`[SCAN] pausing scan for connect+interview...`);
-            await this.#setScanPaused(true);
+            releaseScanPause = await this.#acquireScanPause();
 
             await peripheral.connectAsync();
             log(`[CONN] Connected handle=${handle} state=${peripheral.state} mtu=${peripheral.mtu ?? "?"}`);
@@ -559,10 +596,6 @@ export class NobleBleProxyClient {
             const mtu = peripheral.mtu ?? 23;
             log(`[GATT] handle=${handle} ready mtu=${mtu}`);
 
-            // Resume scanning so the server can still observe new devices and rssi updates.
-            log(`[SCAN] resuming scan after connect+interview...`);
-            await this.#setScanPaused(false);
-
             this.#sendSuccess(id, { connection_handle: handle, mtu });
         } catch (err) {
             const reason = disconnectedReason ?? (err as Error).message;
@@ -578,11 +611,12 @@ export class NobleBleProxyClient {
                         warn(`[CONN] handle=${handle} cleanup disconnect failed: ${(disconnectErr as Error).message}`),
                     );
             }
-            // Always try to resume scanning so subsequent connect attempts still see devices.
-            this.#setScanPaused(false).catch(scanErr =>
-                warn(`[SCAN] failed to resume scanning after connect failure: ${(scanErr as Error).message}`),
-            );
             this.#sendError(id, BleProxyErrorCode.ConnectionFailed, reason);
+        } finally {
+            log(`[SCAN] resuming scan after connect+interview...`);
+            await releaseScanPause?.().catch(scanErr =>
+                warn(`[SCAN] failed to resume scanning after connect: ${(scanErr as Error).message}`),
+            );
         }
     }
 
@@ -933,10 +967,31 @@ export class NobleBleProxyClient {
         return this.#reconcileScan(++this.#scanGeneration);
     }
 
-    /** Suspends the running scan without forgetting it, so a resume restores the server's filter. */
-    #setScanPaused(paused: boolean): Promise<void> {
-        this.#scanPaused = paused;
-        return this.#reconcileScan(++this.#scanGeneration);
+    /**
+     * Suspends the running scan without forgetting it, so a resume restores the server's filter.
+     * Counted, not a flag: `connect` commands overlap, and the first to finish must not resume a
+     * scan while another is still interviewing — on macOS that reinstates the discovery hang the
+     * pause exists to prevent. Returns the release, which is safe to call more than once.
+     */
+    async #acquireScanPause(): Promise<() => Promise<void>> {
+        this.#scanPauses++;
+        let released = false;
+        const release = async () => {
+            if (released) {
+                return;
+            }
+            released = true;
+            this.#scanPauses--;
+            await this.#reconcileScan(++this.#scanGeneration);
+        };
+
+        try {
+            await this.#reconcileScan(++this.#scanGeneration);
+        } catch (err) {
+            await release();
+            throw err;
+        }
+        return release;
     }
 
     /**
@@ -950,7 +1005,7 @@ export class NobleBleProxyClient {
             if (generation !== this.#scanGeneration) {
                 return;
             }
-            const target = this.#scanPaused ? undefined : this.#desiredScan;
+            const target = this.#scanPauses > 0 ? undefined : this.#desiredScan;
             // The hci-socket binding returns early from startScanning while a scan is running,
             // keeping the previous service-uuid filter, so a filter change needs a stop first.
             await this.#callNoble(noble => noble.stopScanningAsync(), "stopScanning");

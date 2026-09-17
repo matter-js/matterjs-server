@@ -27,6 +27,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Fix: Python client removes the pending command future when the send itself fails or is cancelled, so the entry no longer leaks and a late result can no longer settle a future nobody awaits
 - Fix: The Noble BLE proxy reference client implements `write_and_subscribe`, so commissioning over `--ble-proxy` no longer fails at the BTP handshake with `Unknown command: write_and_subscribe`
 - Fix: The Noble BLE proxy reference client honours `start_scan`'s `service_uuids` and `allow_duplicates`, reconciles its scan state through a single serialized path so overlapping scan commands can no longer leave one unanswered or start a scan the server already ended, bounds each scan call so a wedged adapter cannot stall later commands, and drops malformed frames instead of terminating the process
+- Fix: The Noble BLE proxy reference client counts connect scan pauses, so a connect that finishes while another is still interviewing no longer resumes scanning and reinstates the macOS characteristic-discovery hang
 - Fix: A BLE proxy client that answers `already_scanning` stays tracked as scanning, so its later `scan_stopped` still reaches the Matter stack
 - Fix: The Python BLE proxy client tracks subscriptions and the last written characteristic without requiring a prior `discover_services`, and re-arms a running scan when `start_scan` changes its parameters
 
