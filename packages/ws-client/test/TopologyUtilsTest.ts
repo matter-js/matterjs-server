@@ -4,13 +4,20 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type { BorderRouterEntry, ThreadDiagnosticsBatch, ThreadEdgePair, TopologySourceNode } from "../src/index.js";
+import type {
+    BorderRouterEntry,
+    ThreadDiagnosticsBatch,
+    ThreadDiagnosticsRecord,
+    ThreadEdgePair,
+    TopologySourceNode,
+} from "../src/index.js";
 import {
     buildExtAddrMap,
     buildMatterRloc16ByXp,
     buildRloc16Map,
     buildThreadEdgePairs,
     categorizeDevices,
+    findDiagnosticRecordByExtAddress,
     findUnknownDevices,
     getEdgeSignalScore,
     getNetworkType,
@@ -24,6 +31,7 @@ import {
     mergeDiagnosticEdges,
     parseNeighborTable,
     parseRouteTable,
+    shouldHideExternalDevice,
     stripMdnsHostname,
 } from "../src/index.js";
 
@@ -256,6 +264,206 @@ describe("topology-utils", () => {
             expect(found[0].kind).to.equal("br");
             expect(found[0].id).to.equal(`br_${EXT_HEX}`);
             expect((found[0] as { networkName?: string }).networkName).to.equal("TestNet");
+        });
+    });
+
+    describe("shouldHideExternalDevice", () => {
+        const XP_HEX = "1122334455667788";
+        const observer = (available: boolean, neighborCount: number): TopologySourceNode => ({
+            node_id: 1,
+            available,
+            attributes: {
+                "0/51/0": [{ "0": "", "1": true, "5": b64(EXT_BYTES), "8": 2 }],
+                "0/53/4": BigInt(`0x${XP_HEX}`),
+                "0/53/7": Array.from({ length: neighborCount }, (_, i) => ({
+                    "0": i === 0 ? EXT_BIGINT : BigInt(i + 1),
+                    "2": 1024 + i,
+                })),
+            },
+        });
+        const mkExternal = (seenBy: string[], kind: "unknown" | "br" = "unknown") => {
+            const registry =
+                kind === "br"
+                    ? new Map([
+                          [
+                              EXT_HEX,
+                              {
+                                  extAddressHex: EXT_HEX,
+                                  extendedPanIdHex: XP_HEX,
+                                  addresses: [],
+                                  sources: ["meshcop"],
+                                  lastSeen: 0,
+                              } satisfies BorderRouterEntry,
+                          ],
+                      ])
+                    : undefined;
+            const device = findUnknownDevices({ "1": observer(true, 3) }, new Map(), new Map(), registry)[0];
+            return { ...device, seenBy };
+        };
+        const diagnostics = (over: Partial<ThreadDiagnosticsBatch> = {}): ThreadDiagnosticsRecord => {
+            const batch: ThreadDiagnosticsBatch = {
+                extPanIdHex: XP_HEX,
+                networkName: "TestNet",
+                collectedAt: 0,
+                source: "meshcop",
+                nodes: [{ extMacAddress: EXT_HEX, rloc16: 52224 }],
+                ...over,
+            };
+            return { node: batch.nodes[0], batch };
+        };
+
+        it("hides a single-observer unknown that no other source reports", () => {
+            const hidden = shouldHideExternalDevice(
+                mkExternal(["1"]),
+                { "1": observer(true, 3) },
+                {
+                    hideOfflineNodes: false,
+                },
+            );
+            expect(hidden).to.equal(true);
+        });
+
+        it("shows a single-observer unknown that Thread diagnostics also report", () => {
+            const hidden = shouldHideExternalDevice(
+                mkExternal(["1"]),
+                { "1": observer(true, 3) },
+                {
+                    diagnostics: diagnostics(),
+                    hideOfflineNodes: false,
+                },
+            );
+            expect(hidden).to.equal(false);
+        });
+
+        it("keeps a corroborated device visible while an observer is online and the toggle is set", () => {
+            const hidden = shouldHideExternalDevice(
+                mkExternal(["1"]),
+                { "1": observer(true, 3) },
+                {
+                    diagnostics: diagnostics(),
+                    hideOfflineNodes: true,
+                },
+            );
+            expect(hidden).to.equal(false);
+        });
+
+        it("hides a corroborated device whose observers are offline only when the toggle is set", () => {
+            const nodes = { "1": observer(false, 3) };
+            const device = mkExternal(["1"]);
+            expect(
+                shouldHideExternalDevice(device, nodes, { diagnostics: diagnostics(), hideOfflineNodes: false }),
+            ).to.equal(false);
+            expect(
+                shouldHideExternalDevice(device, nodes, { diagnostics: diagnostics(), hideOfflineNodes: true }),
+            ).to.equal(true);
+        });
+
+        it("applies the same toggle-only rule to a border router with no diagnostics", () => {
+            const br = mkExternal(["1"], "br");
+            expect(br.kind).to.equal("br");
+            expect(shouldHideExternalDevice(br, { "1": observer(true, 3) }, { hideOfflineNodes: false })).to.equal(
+                false,
+            );
+            expect(shouldHideExternalDevice(br, { "1": observer(false, 3) }, { hideOfflineNodes: true })).to.equal(
+                true,
+            );
+        });
+
+        it("rejects a partial diagnostics batch as corroboration", () => {
+            const hidden = shouldHideExternalDevice(
+                mkExternal(["1"]),
+                { "1": observer(true, 3) },
+                {
+                    diagnostics: diagnostics({ partialReason: "border_router_unreachable" }),
+                    hideOfflineNodes: false,
+                },
+            );
+            expect(hidden).to.equal(true);
+        });
+
+        it("rejects a diagnostics batch from another Thread network as corroboration", () => {
+            const hidden = shouldHideExternalDevice(
+                mkExternal(["1"]),
+                { "1": observer(true, 3) },
+                {
+                    diagnostics: diagnostics({ extPanIdHex: "8877665544332211" }),
+                    hideOfflineNodes: false,
+                },
+            );
+            expect(hidden).to.equal(true);
+        });
+
+        it("matches the network of a corroborating batch case-insensitively", () => {
+            const hidden = shouldHideExternalDevice(
+                mkExternal(["1"]),
+                { "1": observer(true, 3) },
+                {
+                    diagnostics: diagnostics({ extPanIdHex: XP_HEX.toLowerCase() }),
+                    hideOfflineNodes: false,
+                },
+            );
+            expect(hidden).to.equal(false);
+        });
+
+        it("hides an uncorroborated unknown whose observers are all offline", () => {
+            const hidden = shouldHideExternalDevice(
+                mkExternal(["1"]),
+                { "1": observer(false, 3) },
+                {
+                    hideOfflineNodes: false,
+                },
+            );
+            expect(hidden).to.equal(true);
+        });
+
+        it("hides an unknown whose sole offline observer has no other neighbor", () => {
+            const hidden = shouldHideExternalDevice(
+                mkExternal(["1"]),
+                { "1": observer(false, 1) },
+                {
+                    hideOfflineNodes: false,
+                },
+            );
+            expect(hidden).to.equal(true);
+        });
+
+        it("hides an unknown whose sole observer is no longer a known node", () => {
+            const hidden = shouldHideExternalDevice(mkExternal(["1"]), {}, { hideOfflineNodes: false });
+            expect(hidden).to.equal(true);
+        });
+
+        it("keeps an uncorroborated unknown reported by more than one observer", () => {
+            const nodes = { "1": observer(true, 3), "2": { ...observer(true, 3), node_id: 2 } };
+            expect(shouldHideExternalDevice(mkExternal(["1", "2"]), nodes, { hideOfflineNodes: false })).to.equal(
+                false,
+            );
+        });
+
+        it("keeps an uncorroborated unknown whose only observer has no other neighbor", () => {
+            expect(
+                shouldHideExternalDevice(mkExternal(["1"]), { "1": observer(true, 1) }, { hideOfflineNodes: false }),
+            ).to.equal(false);
+        });
+    });
+
+    describe("findDiagnosticRecordByExtAddress", () => {
+        const batch: ThreadDiagnosticsBatch = {
+            extPanIdHex: "1122334455667788",
+            networkName: "TestNet",
+            collectedAt: 0,
+            source: "meshcop",
+            nodes: [{ extMacAddress: EXT_HEX.toLowerCase(), rloc16: 52224 }],
+        };
+
+        it("matches an extended address regardless of hex casing", () => {
+            const record = findDiagnosticRecordByExtAddress(new Map([[batch.extPanIdHex, batch]]), EXT_HEX);
+            expect(record?.node.rloc16).to.equal(52224);
+            expect(record?.batch).to.equal(batch);
+        });
+
+        it("returns undefined when no batch reports the address", () => {
+            const record = findDiagnosticRecordByExtAddress(new Map([[batch.extPanIdHex, batch]]), "0000000000000001");
+            expect(record).to.equal(undefined);
         });
     });
 

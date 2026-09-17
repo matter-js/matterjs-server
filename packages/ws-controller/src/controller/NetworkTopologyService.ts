@@ -64,11 +64,10 @@ export const WIFI_REFRESH_PATHS = ["0/54/0", "0/54/3", "0/54/4", "0/49/1"];
 type AnyObservable = Observable<any[]>;
 
 /**
- * A source node plus the availability + bridge flags surfaced on the wire. Neither is part of
- * the pure derivation ({@link TopologySourceNode}, which reads only `node_id`/`attributes`);
- * both ride along from the controller's node details ({@link MatterNodeData}).
+ * A source node plus the bridge flag surfaced on the wire, which rides along from the
+ * controller's node details ({@link MatterNodeData}) rather than from the derivation.
  */
-export type TopologyNode = TopologySourceNode & { available?: boolean; is_bridge?: boolean };
+export type TopologyNode = TopologySourceNode & { is_bridge?: boolean };
 
 /**
  * An additional provider of graph nodes (e.g. imported test nodes), registered via

@@ -632,6 +632,85 @@ export function findUnknownDevices(
     return out;
 }
 
+/** A diagnostics node together with the batch that carried it. */
+export interface ThreadDiagnosticsRecord {
+    node: ThreadDiagnosticsNode;
+    batch: ThreadDiagnosticsBatch;
+}
+
+/**
+ * Locate the diagnostics entry for a Thread extended (MAC) address across all batches.
+ * Matching is case-insensitive; batches and Matter attributes disagree on hex casing.
+ */
+export function findDiagnosticRecordByExtAddress(
+    batches: ReadonlyMap<string, ThreadDiagnosticsBatch>,
+    extAddressHex: string,
+): ThreadDiagnosticsRecord | undefined {
+    const target = extAddressHex.toUpperCase();
+    for (const batch of batches.values()) {
+        for (const node of batch.nodes) {
+            if (node.extMacAddress?.toUpperCase() === target) return { node, batch };
+        }
+    }
+    return undefined;
+}
+
+/**
+ * Whether a diagnostics record is strong enough to vouch for an external device's existence.
+ *
+ * A partial batch is an aborted query, so an entry in it may predate the failure; and a record
+ * from another Thread network says nothing about a device on this one. Batch age is deliberately
+ * not considered — the server already bounds it with the diagnostics cache TTL, and re-deriving
+ * a freshness rule here would drift from it.
+ */
+export function corroboratesExternalDevice(
+    device: ThreadExternalDevice,
+    record: ThreadDiagnosticsRecord | undefined,
+): boolean {
+    if (record === undefined || record.batch.partialReason !== undefined) {
+        return false;
+    }
+    const deviceXp = device.extendedPanIdHex;
+    return deviceXp === undefined || deviceXp.toUpperCase() === record.batch.extPanIdHex.toUpperCase();
+}
+
+/**
+ * Decide whether an external Thread device should be omitted from the topology graph.
+ *
+ * Unknown externals are pure neighbor-table inference, so two stale-cache signatures are
+ * filtered regardless of the offline-nodes toggle: every observer is offline (the entry can
+ * no longer be re-confirmed), or a single observer that has other neighbors reports it (a
+ * single-source ghost from a node that is clearly otherwise reachable).
+ *
+ * Both filters are lifted for a device with evidence from a source other than the observer's
+ * cached neighbor table: a Border Router (mDNS), or a diagnostics record accepted by
+ * {@link corroboratesExternalDevice}. Such a device follows the user's offline-nodes toggle
+ * like any commissioned node.
+ */
+export function shouldHideExternalDevice(
+    device: ThreadExternalDevice,
+    nodes: Record<string, TopologySourceNode>,
+    options: { diagnostics?: ThreadDiagnosticsRecord; hideOfflineNodes: boolean },
+): boolean {
+    const hasOnlineObserver = device.seenBy.some(nodeId => {
+        const node = nodes[nodeId];
+        return node !== undefined && node.available !== false;
+    });
+
+    if (device.kind === "br" || corroboratesExternalDevice(device, options.diagnostics)) {
+        return options.hideOfflineNodes && !hasOnlineObserver;
+    }
+
+    if (!hasOnlineObserver) {
+        return true;
+    }
+    if (device.seenBy.length !== 1) {
+        return false;
+    }
+    const observer = nodes[device.seenBy[0]];
+    return observer !== undefined && getNeighborTableLength(observer) > 1;
+}
+
 /** Determine signal level from a Thread neighbor's LQI. */
 export function getSignalLevel(neighbor: ThreadNeighbor): SignalLevel {
     return getSignalLevelFromLqi(neighbor.lqi);

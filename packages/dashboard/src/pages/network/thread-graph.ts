@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type { BorderRouterEntry, ThreadDiagnosticsBatch, ThreadDiagnosticsNode } from "@matter-server/ws-client";
+import type { BorderRouterEntry, ThreadDiagnosticsBatch } from "@matter-server/ws-client";
 import { html } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import {
@@ -31,11 +31,11 @@ import {
     EXTERNAL_ROUTER_CAPABLE_NOTE,
     EXTERNAL_THREAD_DEVICE_EXPLANATION,
     findDiagnosticMeshNodes,
+    findDiagnosticRecordByExtAddress,
     findUnknownDevices,
     makeDiagnosticRloc16Resolver,
     getDeviceName,
     getEdgeSignalScore,
-    getNeighborTableLength,
     getNetworkType,
     getThreadExtendedAddressHex,
     getThreadRole,
@@ -43,6 +43,7 @@ import {
     LEAF_EDGE_LENGTH_PENALTY,
     lqiToEdgeLength,
     mergeDiagnosticEdges,
+    shouldHideExternalDevice,
     signalLevelToColor,
     stripMdnsHostname,
 } from "./network-utils.js";
@@ -108,20 +109,6 @@ export class ThreadGraph extends BaseNetworkGraph {
     /** Get computed edge pairs (for potential use by other components) */
     public get edgePairs(): Map<string, ThreadEdgePair> {
         return this._edgePairs;
-    }
-
-    /**
-     * Locate a diagnostic node entry across all known batches by uppercase extMacAddress hex.
-     * Returns undefined if no batch reports a node with that MAC.
-     */
-    private _findDiagnosticNode(extAddressHex: string): ThreadDiagnosticsNode | undefined {
-        const target = extAddressHex.toUpperCase();
-        for (const batch of this.threadDiagnostics.values()) {
-            for (const node of batch.nodes) {
-                if (node.extMacAddress?.toUpperCase() === target) return node;
-            }
-        }
-        return undefined;
     }
 
     /**
@@ -360,35 +347,17 @@ export class ThreadGraph extends BaseNetworkGraph {
         // unidentified neighbors keep the generic question-mark style.
         for (const device of this._unknownDevices) {
             const isSelected = device.id === this._selectedNodeId;
+            const diagnostics = findDiagnosticRecordByExtAddress(this.threadDiagnostics, device.extAddressHex);
+            const diagNode = diagnostics?.node;
 
-            // Unknown externals are pure neighbor-table inference. Two stale-cache
-            // signatures we always filter, regardless of the offline-nodes toggle:
-            //   1. every observer is offline — entry can no longer be re-confirmed.
-            //   2. exactly one observer that has other neighbors — single-source
-            //      ghost from a node that's clearly otherwise reachable.
-            // BRs have independent mDNS evidence — honor only the user toggle for them.
-            const hasOnlineObserver = device.seenBy.some(nodeId => {
-                const node = this.nodes[nodeId];
-                return node !== undefined && node.available !== false;
+            const shouldHide = shouldHideExternalDevice(device, this.nodes, {
+                diagnostics,
+                hideOfflineNodes: this.hideOfflineNodes,
             });
-            let shouldHide: boolean;
-            if (device.kind === "unknown") {
-                shouldHide = !hasOnlineObserver;
-                if (!shouldHide && device.seenBy.length === 1) {
-                    const observer = this.nodes[device.seenBy[0]];
-                    if (observer !== undefined && getNeighborTableLength(observer) > 1) {
-                        shouldHide = true;
-                    }
-                }
-            } else {
-                shouldHide = this.hideOfflineNodes && !hasOnlineObserver;
-            }
 
             if (shouldHide) {
                 hiddenNodeIds.add(device.id);
             }
-
-            const diagNode = this._findDiagnosticNode(device.extAddressHex);
 
             if (device.kind === "br") {
                 const hostname = stripMdnsHostname(device.hostname);

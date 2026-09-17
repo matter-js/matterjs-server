@@ -25,6 +25,7 @@ This page shows a detailed overview of the changes between versions without the 
 - Fix: BLE proxy connections are pinged every 15 seconds and terminated after 45 to 60 seconds of silence, so a proxy client that loses power is detected instead of staying registered indefinitely
 - Fix: (colin-kiegel) Python client ignores a command result whose future is already done, so a result arriving after a disconnect no longer kills the read loop with `InvalidStateError`
 - Fix: Python client removes the pending command future when the send itself fails or is cancelled, so the entry no longer leaks and a late result can no longer settle a future nobody awaits
+- Fix: Dashboard Thread graph no longer hides an external Thread device whose neighbor-table evidence comes from a single Matter node when a complete Thread diagnostics snapshot for the same network also reports that extended address; such a device now follows the "hide offline nodes" toggle like any other node. A native (non-Matter) Thread router seen by exactly one commissioned device stayed invisible before, while dashboard search still found it
 
 ## 1.4.0 (2026-08-07)
 
