@@ -27,6 +27,7 @@ export function controllerOptionsFrom(
         bleProxyEnabled: cliOptions.bleProxy,
         enableTimeSync: cliOptions.enableTimeSync,
         disableThreadDiagnostics: cliOptions.disableThreadDiagnostics,
+        threadRestProbePort: cliOptions.threadRestProbePort ?? undefined,
         customClusterPollInterval: Seconds(cliOptions.customClusterPollInterval),
         otaUpload: {
             // Staged next to the images it feeds, so importing one never crosses a filesystem.

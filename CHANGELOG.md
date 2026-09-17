@@ -9,6 +9,7 @@ This page shows a detailed overview of the changes between versions without the 
 
 ## **WORK IN PROGRESS**
 
+- Enhancement: Adds CLI flag `--thread-rest-probe-port` (env `THREAD_REST_PROBE_PORT`) to configure the OTBR REST API port probed on discovered Thread Border Routers (default 8081), and raises the per-request REST probe timeout from 1500 ms to 3000 ms for Border Routers with a slow `/diagnostics` endpoint (a Border Router that accepts the connection and then stalls now delays the first diagnostics batch by up to 9 seconds instead of 4.5)
 - Enhancement: Adds CLI flag `--custom-cluster-poll-interval` (env `CUSTOM_CLUSTER_POLL_INTERVAL`) to configure the polling interval for custom cluster attributes without subscription support (legacy Eve Energy devices); defaults to the previous 60 seconds and accepts 60 to 86400 seconds
 - Enhancement: (lboue) Dashboard Endpoints list and endpoint's Clusters panel show each endpoint's resolved label and Descriptor semantic tags (TagList) to simplify identification
 - Enhancement: (lboue) Added a command panel for the DoorLock cluster to the Dashboard
@@ -26,6 +27,11 @@ This page shows a detailed overview of the changes between versions without the 
 - Fix: (colin-kiegel) Python client ignores a command result whose future is already done, so a result arriving after a disconnect no longer kills the read loop with `InvalidStateError`
 - Fix: Python client removes the pending command future when the send itself fails or is cancelled, so the entry no longer leaks and a late result can no longer settle a future nobody awaits
 - Fix: Dashboard Thread graph no longer hides an external Thread device whose neighbor-table evidence comes from a single Matter node when a complete Thread diagnostics snapshot for the same network also reports that extended address; such a device now follows the "hide offline nodes" toggle like any other node. A native (non-Matter) Thread router seen by exactly one commissioned device stayed invisible before, while dashboard search still found it
+- Fix: The Noble BLE proxy reference client implements `write_and_subscribe`, so commissioning over `--ble-proxy` no longer fails at the BTP handshake with `Unknown command: write_and_subscribe`
+- Fix: The Noble BLE proxy reference client honours `start_scan`'s `service_uuids` and `allow_duplicates`, reconciles its scan state through a single serialized path so overlapping scan commands can no longer leave one unanswered or start a scan the server already ended, bounds each scan call so a wedged adapter cannot stall later commands, and drops malformed frames instead of terminating the process
+- Fix: The Noble BLE proxy reference client counts connect scan pauses, so a connect that finishes while another is still interviewing no longer resumes scanning and reinstates the macOS characteristic-discovery hang
+- Fix: A BLE proxy client that answers `already_scanning` stays tracked as scanning, so its later `scan_stopped` still reaches the Matter stack
+- Fix: The Python BLE proxy client tracks subscriptions and the last written characteristic without requiring a prior `discover_services`, and re-arms a running scan when `start_scan` changes its parameters
 
 ## 1.4.0 (2026-08-07)
 
