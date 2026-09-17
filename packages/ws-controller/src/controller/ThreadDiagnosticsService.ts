@@ -90,7 +90,7 @@ export interface ThreadDiagnosticsServiceOpts {
     debounceMs?: number;
     /** OTBR REST probe port. Defaults to 8081. */
     restProbePort?: number;
-    /** OTBR REST probe timeout in ms. Defaults to 1500. */
+    /** OTBR REST probe timeout in ms. Defaults to 3000. */
     restProbeTimeoutMs?: number;
     /** @internal — for testing. Override the probe factory. */
     probeRest?: (host: string, port: number, timeoutMs: number) => Promise<OtbrRestCapability | null>;
@@ -135,7 +135,7 @@ export class ThreadDiagnosticsService {
     static readonly DEFAULT_FIRST_BATCH_MS = 5_000;
     static readonly DEFAULT_DEBOUNCE_MS = 5_000;
     static readonly DEFAULT_REST_PROBE_PORT = 8081;
-    static readonly DEFAULT_REST_PROBE_TIMEOUT_MS = 1_500;
+    static readonly DEFAULT_REST_PROBE_TIMEOUT_MS = 3_000;
 
     readonly events = {
         batchUpdated: new Observable<[ThreadDiagnosticsBatch]>(),
@@ -183,6 +183,11 @@ export class ThreadDiagnosticsService {
                 this.#handleBrRemoved(br);
             });
         }
+    }
+
+    /** Port probed for the OTBR REST API on every discovered Border Router address. */
+    get restProbePort(): number {
+        return this.#restProbePort;
     }
 
     listCached(): ReadonlyArray<ThreadDiagnosticsBatch> {

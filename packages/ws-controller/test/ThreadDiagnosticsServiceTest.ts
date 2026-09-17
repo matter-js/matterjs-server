@@ -34,6 +34,9 @@ const FAST_TIMING = {
     windowMs: 20,
     firstBatchMs: 5,
     debounceMs: 5,
+    // Tests without a probe stub probe an unreachable address for real; the product default
+    // outlasts the 2s per-test timeout.
+    restProbeTimeoutMs: 20,
 };
 
 function makeBr(overrides: Partial<BorderRouterEntry> = {}): BorderRouterEntry {
@@ -1031,6 +1034,58 @@ describe("ThreadDiagnosticsService", () => {
 
         expect(probeCalls).to.have.lengthOf(2);
         expect(probeCalls.map(c => c.host).sort()).to.deep.equal(["192.0.2.1", "fd00::1"]);
+        expect(probeCalls.map(c => c.port)).to.deep.equal([
+            ThreadDiagnosticsService.DEFAULT_REST_PROBE_PORT,
+            ThreadDiagnosticsService.DEFAULT_REST_PROBE_PORT,
+        ]);
+        void service;
+    });
+
+    it("probes with the default timeout when none is configured", async () => {
+        const probeCalls = new Array<number>();
+        const stub = brsListing([]);
+        const service = new ThreadDiagnosticsService({
+            windowMs: FAST_TIMING.windowMs,
+            firstBatchMs: FAST_TIMING.firstBatchMs,
+            debounceMs: FAST_TIMING.debounceMs,
+            borderRouters: brRegistryFrom(stub),
+            credentials: credsRegistryFrom(credsLookup(new Map())),
+            makeRestSource: () => syncRestSource([SAMPLE_NODE]),
+            makeMeshcopSource: async () => meshcopHandle(syncMeshcopSource([])),
+            probeRest: async (_host, _port, timeoutMs) => {
+                probeCalls.push(timeoutMs);
+                return makeCap();
+            },
+        });
+
+        stub.events.added.emit(makeBr({ addresses: ["fd00::1"] }));
+        await new Promise(r => setTimeout(r, 5));
+
+        expect(probeCalls).to.deep.equal([ThreadDiagnosticsService.DEFAULT_REST_PROBE_TIMEOUT_MS]);
+        expect(ThreadDiagnosticsService.DEFAULT_REST_PROBE_TIMEOUT_MS).to.equal(3000);
+        void service;
+    });
+
+    it("probes the configured REST port instead of the default", async () => {
+        const probeCalls = new Array<{ host: string; port: number; timeoutMs: number }>();
+        const stub = brsListing([]);
+        const service = new ThreadDiagnosticsService({
+            ...FAST_TIMING,
+            restProbePort: 8080,
+            borderRouters: brRegistryFrom(stub),
+            credentials: credsRegistryFrom(credsLookup(new Map())),
+            makeRestSource: () => syncRestSource([SAMPLE_NODE]),
+            makeMeshcopSource: async () => meshcopHandle(syncMeshcopSource([])),
+            probeRest: async (host, port, timeoutMs) => {
+                probeCalls.push({ host, port, timeoutMs });
+                return makeCap();
+            },
+        });
+
+        stub.events.added.emit(makeBr({ addresses: ["fd00::1"] }));
+        await new Promise(r => setTimeout(r, 5));
+
+        expect(probeCalls).to.deep.equal([{ host: "fd00::1", port: 8080, timeoutMs: FAST_TIMING.restProbeTimeoutMs }]);
         void service;
     });
 
@@ -1444,9 +1499,9 @@ describe("ThreadDiagnosticsService", () => {
     it("first-batch resolves with meshcop_no_responses_yet when no arrivals before firstBatchMs", async () => {
         const stub = brsListing([makeBr()]);
         const service = new ThreadDiagnosticsService({
+            ...FAST_TIMING,
             windowMs: 30,
             firstBatchMs: 10,
-            debounceMs: 5,
             borderRouters: brRegistryFrom(stub),
             credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
             makeRestSource: () => syncRestSource([]),
