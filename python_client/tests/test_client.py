@@ -11,6 +11,7 @@ import pytest
 from chip.clusters import Objects as clusters
 from matter_server.client.client import MatterClient
 from matter_server.client.connection import MatterClientConnection
+from matter_server.common.const import SCHEMA_VERSION
 from matter_server.common.errors import NodeCommissionFailed
 from matter_server.common.models import (
     APICommand,
@@ -153,7 +154,7 @@ class _FakeConnection(MatterClientConnection):
             fabric_id=1,
             compressed_fabric_id=1,
             schema_version=_FAKE_SERVER_SCHEMA_VERSION,
-            min_supported_schema_version=_FAKE_SERVER_SCHEMA_VERSION,
+            min_supported_schema_version=SCHEMA_VERSION,
             sdk_version="test",
             wifi_credentials_set=False,
             thread_credentials_set=False,
@@ -192,7 +193,10 @@ async def test_send_command_forgets_the_future_when_the_send_fails() -> None:
     assert client._result_futures == {}
 
 
-async def test_late_result_after_disconnect_keeps_the_read_loop_alive() -> None:
+async def test_late_result_after_disconnect_keeps_the_read_loop_alive(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level("DEBUG", logger="matter_server.client")
     client = _make_client()
     connection = _FakeConnection()
     client.connection = connection
@@ -215,3 +219,4 @@ async def test_late_result_after_disconnect_keeps_the_read_loop_alive() -> None:
     with pytest.raises(asyncio.CancelledError):
         await command_task
     assert client._result_futures == {}
+    assert f"Result arrived for already settled message id {message_id}" in caplog.text
