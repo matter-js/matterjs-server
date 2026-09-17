@@ -24,6 +24,10 @@ This page shows a detailed overview of the changes between versions without the 
 - Fix: Door Lock PIN fields (`credentialData`, `pinCode`) are redacted from the debug logs
 - Fix: BLE proxy connections are pinged every 15 seconds and terminated after 45 to 60 seconds of silence, so a proxy client that loses power is detected instead of staying registered indefinitely
 - Fix: (colin-kiegel) Prevents errors in python client for late results for done futures
+- Fix: The Noble BLE proxy reference client implements `write_and_subscribe`, so commissioning over `--ble-proxy` no longer fails at the BTP handshake with `Unknown command: write_and_subscribe`
+- Fix: The Noble BLE proxy reference client honours `start_scan`'s `service_uuids` and `allow_duplicates`, reconciles its scan state through a single serialized path so overlapping scan commands can no longer leave one unanswered or start a scan the server already ended, bounds each scan call so a wedged adapter cannot stall later commands, and drops malformed frames instead of terminating the process
+- Fix: A BLE proxy client that answers `already_scanning` stays tracked as scanning, so its later `scan_stopped` still reaches the Matter stack
+- Fix: The Python BLE proxy client tracks subscriptions and the last written characteristic without requiring a prior `discover_services`, and re-arms a running scan when `start_scan` changes its parameters
 
 ## 1.4.0 (2026-08-07)
 

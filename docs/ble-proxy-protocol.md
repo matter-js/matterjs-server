@@ -371,6 +371,11 @@ Read the current value of a characteristic.
 For large or frequent reads, the client may alternatively send a binary frame with
 opcode `0x03` instead of a JSON result (see in the Binary Frames section).
 
+The server must not read a characteristic it is subscribed to. A read delivers its value through
+the same stack notification path as an indication, so a client cannot distinguish the two and will
+forward the read value as a `NOTIFICATION` frame, injecting it into the BTP stream. The Matter
+mapping honours this: C3 is read and never subscribed, C2 is subscribed and never read.
+
 **Errors:**
 
 | Error Code                 | Description                             |

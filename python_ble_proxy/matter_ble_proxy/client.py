@@ -113,6 +113,7 @@ class ConnectionState:
         self.client = client
         self.handle = handle
         self.services: BleakGATTServiceCollection | None = None
+        # Keyed by `_normalize_uuid`: the server may spell one characteristic several ways.
         self.subscriptions: set[str] = set()
         self.last_write_uuid: str | None = None
         self.intentional_disconnect = False
@@ -561,7 +562,7 @@ class MatterBleProxy:
         char_uuid: str = args["characteristic_uuid"]
         handle = conn.handle
 
-        if char_uuid in conn.subscriptions:
+        if _normalize_uuid(char_uuid) in conn.subscriptions:
             await self._send_success(cmd_id)
             return
 
@@ -582,7 +583,7 @@ class MatterBleProxy:
 
         # Track the subscription so `unsubscribe_characteristic` can detect
         # not-subscribed errors locally without leaning on Bleak's exception.
-        conn.subscriptions.add(char_uuid)
+        conn.subscriptions.add(_normalize_uuid(char_uuid))
         await self._send_success(cmd_id)
 
     async def _handle_write_and_subscribe(self, cmd_id: int, args: dict[str, Any]) -> None:
@@ -626,7 +627,7 @@ class MatterBleProxy:
 
         conn.last_write_uuid = write_uuid
 
-        if subscribe_uuid in conn.subscriptions:
+        if _normalize_uuid(subscribe_uuid) in conn.subscriptions:
             await self._send_success(cmd_id)
             return
 
@@ -636,7 +637,7 @@ class MatterBleProxy:
             await self._send_error(cmd_id, BleProxyErrorCode.SUBSCRIBE_FAILED, f"start_notify({subscribe_uuid}): {err}")
             return
 
-        conn.subscriptions.add(subscribe_uuid)
+        conn.subscriptions.add(_normalize_uuid(subscribe_uuid))
 
         await self._send_success(cmd_id)
 
@@ -646,7 +647,7 @@ class MatterBleProxy:
             await self._send_not_connected(cmd_id, args["connection_handle"])
             return
         char_uuid: str = args["characteristic_uuid"]
-        if char_uuid not in conn.subscriptions:
+        if _normalize_uuid(char_uuid) not in conn.subscriptions:
             await self._send_error(cmd_id, BleProxyErrorCode.NOT_SUBSCRIBED, f"Not subscribed to {char_uuid}")
             return
         try:
@@ -654,7 +655,7 @@ class MatterBleProxy:
         except Exception as err:
             await self._send_error(cmd_id, BleProxyErrorCode.INTERNAL_ERROR, f"stop_notify({char_uuid}): {err}")
             return
-        conn.subscriptions.discard(char_uuid)
+        conn.subscriptions.discard(_normalize_uuid(char_uuid))
         await self._send_success(cmd_id)
 
     async def _handle_request_mtu(self, cmd_id: int, args: dict[str, Any]) -> None:

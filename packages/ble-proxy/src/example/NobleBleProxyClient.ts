@@ -37,10 +37,13 @@ import {
 } from "../BleProxyProtocol.js";
 
 /**
- * The server connects off its own discovery cache, which it replays to a new discovery callback
- * and never clears, so it can ask for an address this process has not advertised yet.
+ * A `connect` can arrive before this process has advertised the address it names — observed at
+ * 104 ms ahead of the client's own `device_discovered`.
  */
 const CONNECT_DISCOVERY_TIMEOUT_MS = 5_000;
+
+/** Bounds one noble scan call, so a wedged adapter cannot stall every later scan and connect. */
+const SCAN_OPERATION_TIMEOUT_MS = 10_000;
 
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
     return Promise.race([promise, new Promise<never>((_, reject) => setTimeout(() => reject(new Error(message)), ms))]);
@@ -67,6 +70,19 @@ function error(...args: unknown[]): void {
     console.error(...args);
 }
 
+/**
+ * The part of noble this client drives. Structural so a test can supply a stand-in without
+ * implementing the full `Noble` surface; the real instance satisfies it.
+ */
+export interface NobleApi {
+    startScanningAsync(serviceUuids: string[], allowDuplicates: boolean): Promise<void>;
+    stopScanningAsync(): Promise<void>;
+    stop(): void;
+    on(event: "warning" | "stateChange", listener: (value: string) => void): unknown;
+    on(event: "discover", listener: (peripheral: Peripheral) => void): unknown;
+    removeAllListeners(event: "discover"): unknown;
+}
+
 type Peripheral = import("@stoprocent/noble").Peripheral;
 type Characteristic = import("@stoprocent/noble").Characteristic;
 type Service = import("@stoprocent/noble").Service;
@@ -77,6 +93,24 @@ type NotificationListener = (payload: Buffer | null) => void;
 interface Subscription {
     characteristic: Characteristic;
     onData: NotificationListener;
+}
+
+/** The scan the server has asked for; `undefined` means it has asked for none. */
+interface ScanConfig {
+    serviceUuids: string[];
+    reportDuplicates: boolean;
+}
+
+export interface NobleBleProxyClientOptions {
+    /** Stand-in for the dynamically imported noble instance. */
+    noble?: NobleApi;
+    scanOperationTimeoutMs?: number;
+}
+
+/** A pending `#awaitDiscovered`, kept so shutdown can settle it and clear its timer. */
+interface DiscoveryWaiter {
+    resolve: (peripheral: Peripheral | undefined) => void;
+    timer: ReturnType<typeof setTimeout>;
 }
 
 interface ConnectionState {
@@ -101,21 +135,26 @@ export class NobleBleProxyClient {
     readonly #serverUrl: string;
     readonly #hciId?: number;
     #ws?: WebSocket;
-    #noble?: import("@stoprocent/noble").Noble;
+    #noble?: NobleApi;
     #connections = new Map<number, ConnectionState>();
     #nextHandle = 1;
     #discoveredPeripherals = new Map<string, Peripheral>();
-    #discoveryWaiters = new Map<string, Set<(peripheral: Peripheral) => void>>();
+    #discoveryWaiters = new Map<string, Set<DiscoveryWaiter>>();
     #lastDiscoverFingerprint = new Map<string, DiscoverFingerprint>();
-    #scanServiceUuids: string[] = [];
-    #reportDuplicates = true;
-    #scanRequested = false;
+    #desiredScan?: ScanConfig;
+    #scanPaused = false;
+    #scanGeneration = 0;
+    #scanOperations: Promise<unknown> = Promise.resolve();
+    #discoverListenerInstalled = false;
+    readonly #scanOperationTimeoutMs: number;
     #commandHandlers = new Map<BleProxyCommandName, CommandHandler>();
     #closing = false;
 
-    constructor(serverUrl: string, hciId?: number) {
+    constructor(serverUrl: string, hciId?: number, options: NobleBleProxyClientOptions = {}) {
         this.#serverUrl = serverUrl;
         this.#hciId = hciId;
+        this.#noble = options.noble;
+        this.#scanOperationTimeoutMs = options.scanOperationTimeoutMs ?? SCAN_OPERATION_TIMEOUT_MS;
         this.#registerCommandHandlers();
     }
 
@@ -221,11 +260,21 @@ export class NobleBleProxyClient {
             }
         }
         this.#connections.clear();
+        for (const waiters of this.#discoveryWaiters.values()) {
+            for (const waiter of waiters) {
+                clearTimeout(waiter.timer);
+                waiter.resolve(undefined);
+            }
+        }
+        this.#discoveryWaiters.clear();
         this.#noble?.stop();
         this.#ws?.close();
     }
 
     async #loadNoble(): Promise<void> {
+        if (this.#noble) {
+            return;
+        }
         if (this.#hciId !== undefined) {
             process.env.NOBLE_HCI_DEVICE_ID = this.#hciId.toString();
         }
@@ -308,13 +357,33 @@ export class NobleBleProxyClient {
             return;
         }
 
-        this.#scanServiceUuids = args.service_uuids ?? [];
-        this.#reportDuplicates = args.allow_duplicates ?? true;
-        this.#scanRequested = true;
+        const config: ScanConfig = {
+            serviceUuids: args.service_uuids ?? [],
+            reportDuplicates: args.allow_duplicates ?? true,
+        };
         this.#lastDiscoverFingerprint.clear();
-        // Remove any existing discover listeners to prevent duplicates on repeated scans
-        this.#noble.removeAllListeners("discover");
-        this.#noble.on("discover", (peripheral: Peripheral) => {
+        this.#installDiscoverListener();
+
+        try {
+            await this.#requestScan(config);
+        } catch (err) {
+            this.#sendError(id, BleProxyErrorCode.InternalError, (err as Error).message);
+            return;
+        }
+        log(
+            `[SCAN] BLE scan started (filter: ${config.serviceUuids.join(",") || "none"}` +
+                ` allowDuplicates=${config.reportDuplicates})`,
+        );
+        this.#sendSuccess(id);
+    }
+
+    /** Installed once and kept: noble emits `discover` only while a scan is running. */
+    #installDiscoverListener(): void {
+        if (this.#discoverListenerInstalled) {
+            return;
+        }
+        this.#discoverListenerInstalled = true;
+        this.#noble!.on("discover", (peripheral: Peripheral) => {
             // On macOS, peripheral.address is often empty — fall back to peripheral.id (UUID)
             const address = peripheral.address || peripheral.id;
             this.#discoveredPeripherals.set(address, peripheral);
@@ -322,8 +391,9 @@ export class NobleBleProxyClient {
             const waiters = this.#discoveryWaiters.get(address);
             if (waiters) {
                 this.#discoveryWaiters.delete(address);
-                for (const resolve of waiters) {
-                    resolve(peripheral);
+                for (const waiter of waiters) {
+                    clearTimeout(waiter.timer);
+                    waiter.resolve(peripheral);
                 }
             }
 
@@ -354,7 +424,7 @@ export class NobleBleProxyClient {
                 prev.serviceUuids !== fingerprint.serviceUuids ||
                 prev.serviceData !== fingerprint.serviceData;
 
-            if (!this.#reportDuplicates && !changed) {
+            if (!(this.#desiredScan?.reportDuplicates ?? true) && !changed) {
                 return;
             }
             this.#lastDiscoverFingerprint.set(address, fingerprint);
@@ -376,28 +446,15 @@ export class NobleBleProxyClient {
 
             this.#sendEvent("device_discovered", event as unknown as Record<string, unknown>);
         });
-
-        try {
-            // The hci-socket binding returns early from startScanning while a scan is running,
-            // keeping the previous service-uuid filter, so a filter change needs a stop first.
-            await this.#noble.stopScanningAsync();
-            await this.#startScanning();
-        } catch (err) {
-            this.#scanRequested = false;
-            this.#noble.removeAllListeners("discover");
-            this.#sendError(id, BleProxyErrorCode.InternalError, (err as Error).message);
-            return;
-        }
-        log(
-            `[SCAN] BLE scan started (filter: ${this.#scanServiceUuids.join(",") || "none"}` +
-                ` allowDuplicates=${this.#reportDuplicates})`,
-        );
-        this.#sendSuccess(id);
     }
 
     async #handleStopScan(id: number): Promise<void> {
-        this.#scanRequested = false;
-        await this.#noble?.stopScanningAsync();
+        try {
+            await this.#requestScan(undefined);
+        } catch (err) {
+            this.#sendError(id, BleProxyErrorCode.InternalError, (err as Error).message);
+            return;
+        }
         log("[SCAN] BLE scan stopped");
         this.#sendSuccess(id);
     }
@@ -409,24 +466,26 @@ export class NobleBleProxyClient {
             return Promise.resolve(known);
         }
 
+        if (!this.#desiredScan) {
+            return Promise.resolve(undefined);
+        }
+
         log(`[CONN] "${address}" not advertised yet, waiting up to ${CONNECT_DISCOVERY_TIMEOUT_MS}ms`);
         return new Promise<Peripheral | undefined>(resolve => {
             const waiters = this.#discoveryWaiters.get(address) ?? new Set();
             this.#discoveryWaiters.set(address, waiters);
 
-            const timer = setTimeout(() => {
-                waiters.delete(onDiscovered);
-                if (waiters.size === 0) {
-                    this.#discoveryWaiters.delete(address);
-                }
-                resolve(undefined);
-            }, CONNECT_DISCOVERY_TIMEOUT_MS);
-
-            const onDiscovered = (peripheral: Peripheral) => {
-                clearTimeout(timer);
-                resolve(peripheral);
+            const waiter: DiscoveryWaiter = {
+                resolve,
+                timer: setTimeout(() => {
+                    waiters.delete(waiter);
+                    if (waiters.size === 0) {
+                        this.#discoveryWaiters.delete(address);
+                    }
+                    resolve(undefined);
+                }, CONNECT_DISCOVERY_TIMEOUT_MS),
             };
-            waiters.add(onDiscovered);
+            waiters.add(waiter);
         });
     }
 
@@ -467,7 +526,7 @@ export class NobleBleProxyClient {
             // with `service.discoverCharacteristicsAsync` causes the CoreBluetooth delegate
             // callback to never fire; the peripheral stays connected but discovery hangs.
             log(`[SCAN] pausing scan for connect+interview...`);
-            await this.#noble!.stopScanningAsync();
+            await this.#setScanPaused(true);
 
             await peripheral.connectAsync();
             log(`[CONN] Connected handle=${handle} state=${peripheral.state} mtu=${peripheral.mtu ?? "?"}`);
@@ -502,7 +561,7 @@ export class NobleBleProxyClient {
 
             // Resume scanning so the server can still observe new devices and rssi updates.
             log(`[SCAN] resuming scan after connect+interview...`);
-            await this.#startScanning();
+            await this.#setScanPaused(false);
 
             this.#sendSuccess(id, { connection_handle: handle, mtu });
         } catch (err) {
@@ -520,7 +579,7 @@ export class NobleBleProxyClient {
                     );
             }
             // Always try to resume scanning so subsequent connect attempts still see devices.
-            this.#startScanning().catch(scanErr =>
+            this.#setScanPaused(false).catch(scanErr =>
                 warn(`[SCAN] failed to resume scanning after connect failure: ${(scanErr as Error).message}`),
             );
             this.#sendError(id, BleProxyErrorCode.ConnectionFailed, reason);
@@ -738,7 +797,8 @@ export class NobleBleProxyClient {
     ): Promise<boolean> {
         // noble's `_notify` resolves without re-enabling CCCD when already notifying, so a
         // second "data" listener would double every forwarded notification.
-        if (conn.subscriptions.has(uuid)) {
+        const key = NobleBleProxyClient.#subscriptionKey(uuid);
+        if (conn.subscriptions.has(key)) {
             return true;
         }
 
@@ -752,7 +812,7 @@ export class NobleBleProxyClient {
             this.#sendError(id, BleProxyErrorCode.SubscribeFailed, `subscribe(${uuid}): ${(err as Error).message}`);
             return false;
         }
-        conn.subscriptions.set(uuid, { characteristic: char, onData });
+        conn.subscriptions.set(key, { characteristic: char, onData });
         return true;
     }
 
@@ -812,7 +872,8 @@ export class NobleBleProxyClient {
             return;
         }
 
-        const subscription = conn.subscriptions.get(args.characteristic_uuid);
+        const key = NobleBleProxyClient.#subscriptionKey(args.characteristic_uuid);
+        const subscription = conn.subscriptions.get(key);
         if (!subscription) {
             this.#sendError(id, BleProxyErrorCode.NotSubscribed, `Not subscribed to ${args.characteristic_uuid}`);
             return;
@@ -820,7 +881,7 @@ export class NobleBleProxyClient {
 
         await subscription.characteristic.unsubscribeAsync();
         subscription.characteristic.removeListener("data", subscription.onData);
-        conn.subscriptions.delete(args.characteristic_uuid);
+        conn.subscriptions.delete(key);
         log(`[GATT] unsubscribe ${args.characteristic_uuid} handle=${args.connection_handle}`);
         this.#sendSuccess(id);
     }
@@ -866,19 +927,59 @@ export class NobleBleProxyClient {
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
+    /** Records the scan the server wants, then drives noble to it. Resolves once that settled. */
+    #requestScan(config: ScanConfig | undefined): Promise<void> {
+        this.#desiredScan = config;
+        return this.#reconcileScan(++this.#scanGeneration);
+    }
+
+    /** Suspends the running scan without forgetting it, so a resume restores the server's filter. */
+    #setScanPaused(paused: boolean): Promise<void> {
+        this.#scanPaused = paused;
+        return this.#reconcileScan(++this.#scanGeneration);
+    }
+
     /**
-     * Noble is always asked for duplicates; `allow_duplicates` is honoured when reporting.
-     * A no-op once `stop_scan` has been received, so the connect paths cannot resume a scan
-     * the server already ended.
+     * Drives noble to the state `generation` asked for, or returns once a later request has taken
+     * ownership of the outcome. noble registers each scan call's completion callback with
+     * `onceExclusive`, which removes the previously registered one, so two overlapping calls leave
+     * the earlier promise unsettled forever — every scan call is therefore serialized here.
      */
-    async #startScanning(): Promise<void> {
-        if (!this.#scanRequested) {
+    #reconcileScan(generation: number): Promise<void> {
+        return this.#serializeScanOperation(async () => {
+            if (generation !== this.#scanGeneration) {
+                return;
+            }
+            const target = this.#scanPaused ? undefined : this.#desiredScan;
+            // The hci-socket binding returns early from startScanning while a scan is running,
+            // keeping the previous service-uuid filter, so a filter change needs a stop first.
+            await this.#callNoble(noble => noble.stopScanningAsync(), "stopScanning");
+            if (target) {
+                // Noble is always asked for duplicates; `allow_duplicates` is honoured when reporting.
+                await this.#callNoble(noble => noble.startScanningAsync(target.serviceUuids, true), "startScanning");
+            }
+        });
+    }
+
+    #serializeScanOperation<T>(operation: () => Promise<T>): Promise<T> {
+        const result = this.#scanOperations.then(operation);
+        this.#scanOperations = result.catch(() => undefined);
+        return result;
+    }
+
+    async #callNoble(call: (noble: NobleApi) => Promise<void>, description: string): Promise<void> {
+        const noble = this.#noble;
+        if (!noble) {
             return;
         }
-        await this.#noble!.startScanningAsync(this.#scanServiceUuids, true);
-        if (!this.#scanRequested) {
-            await this.#noble!.stopScanningAsync();
-        }
+        const pending = call(noble);
+        // Rejecting after the timeout has already won the race still needs a handler here.
+        pending.catch(() => undefined);
+        await withTimeout(
+            pending,
+            this.#scanOperationTimeoutMs,
+            `${description} did not settle within ${this.#scanOperationTimeoutMs}ms`,
+        );
     }
 
     // Forwarded regardless of noble's `isNotification`: on macOS that flag is derived from a
@@ -892,6 +993,11 @@ export class NobleBleProxyClient {
             log(`[GATT] notify ${uuid} handle=${handle} ${payload.length} bytes`);
             this.#sendBinaryFrame(BinaryFrameOpcode.Notification, handle, new Uint8Array(payload));
         };
+    }
+
+    /** Subscription key; `#findCharacteristic` resolves spellings that differ only in case or dashes. */
+    static #subscriptionKey(uuid: string): string {
+        return uuid.replace(/-/g, "").toLowerCase();
     }
 
     #findCharacteristic(conn: ConnectionState, uuid: string): Characteristic | undefined {

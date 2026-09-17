@@ -126,6 +126,23 @@ async def test_subscribe_to_an_already_subscribed_uuid_does_not_reenter_start_no
     assert ws.sent == [{"id": 3, "success": True, "result": {}}]
 
 
+async def test_unsubscribe_accepts_another_spelling_of_the_subscribed_uuid():
+    proxy, ws = _proxy()
+    conn, client = _connection(proxy, 1)
+
+    await proxy._handle_subscribe_characteristic(3, {"connection_handle": 1, "characteristic_uuid": "fff6"})
+    await proxy._handle_unsubscribe_characteristic(
+        4, {"connection_handle": 1, "characteristic_uuid": "0000FFF6-0000-1000-8000-00805F9B34FB"}
+    )
+
+    assert client.start_notify_uuids == ["fff6"]
+    assert conn.subscriptions == set()
+    assert ws.sent == [
+        {"id": 3, "success": True, "result": {}},
+        {"id": 4, "success": True, "result": {}},
+    ]
+
+
 async def test_write_and_subscribe_skips_a_second_cccd_enable():
     proxy, ws = _proxy()
     conn, client = _connection(proxy, 1)
