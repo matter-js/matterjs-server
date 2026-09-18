@@ -129,6 +129,12 @@ interface InFlightStream {
  *
  * Concurrent fetches for the same xp share one stream.
  */
+/** Partials from a query still in flight: they carry nodes, so they age like a complete batch. */
+const STREAMING_PARTIAL_REASONS: ReadonlySet<ThreadDiagnosticsPartialReason> = new Set([
+    "in_progress",
+    "meshcop_no_responses_yet",
+]);
+
 export class ThreadDiagnosticsService {
     static readonly DEFAULT_TTL_MS = 3_600_000;
     static readonly DEFAULT_WINDOW_MS = 20_000;
@@ -191,20 +197,23 @@ export class ThreadDiagnosticsService {
     }
 
     /**
-     * Every cached batch a caller may still act on: complete batches within the TTL, plus every
-     * partial regardless of age.
+     * Every cached batch a caller may still act on: anything within the TTL, plus a batch stating
+     * why a query failed, at any age.
      *
-     * A complete batch past the TTL is stale evidence — {@link getOrFetch} already refuses to
-     * serve it, and a client that receives it here has no way to tell how old it is. A partial
-     * carries no evidence, only the reason a query failed, and the panel that renders that reason
-     * shows nothing at all when the batch is absent, so withholding it would replace a stale
-     * explanation with none.
+     * Past the TTL a batch that describes a network is stale evidence — {@link getOrFetch} already
+     * refuses to serve it, and a client receiving it here cannot tell how old it is. That covers
+     * the streaming snapshots too ({@link STREAMING_PARTIAL_REASONS}): they carry nodes, and an
+     * old one means a stream that never completed. A terminal partial carries no nodes, only the
+     * reason, and the panel that renders it shows nothing at all when the batch is absent — so
+     * withholding it would replace a stale explanation with none.
      */
     listCached(): ReadonlyArray<ThreadDiagnosticsBatch> {
         const now = Date.now();
-        return Array.from(this.#cache.values()).filter(
-            batch => batch.partialReason !== undefined || now - batch.collectedAt < this.#cacheTtlMs,
-        );
+        return Array.from(this.#cache.values()).filter(batch => {
+            const terminalPartial =
+                batch.partialReason !== undefined && !STREAMING_PARTIAL_REASONS.has(batch.partialReason);
+            return terminalPartial || now - batch.collectedAt < this.#cacheTtlMs;
+        });
     }
 
     /**

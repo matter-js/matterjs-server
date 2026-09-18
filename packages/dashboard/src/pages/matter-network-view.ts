@@ -154,11 +154,9 @@ class MatterNetworkView extends LitElement {
         document.addEventListener("click", this._documentClickHandler);
         document.addEventListener("keydown", this._documentKeyHandler);
         if (this.client !== undefined) {
-            this._diagnosticsUnsubscribe = this.client.addEventListener("thread_diagnostics_updated", () => {
+            this._diagnosticsUnsubscribe = this.client.addThreadDiagnosticsListener(batch => {
                 try {
-                    for (const batch of this.client.threadDiagnostics.values()) {
-                        this._borderRouterStore.applyBatch(batch);
-                    }
+                    this._borderRouterStore.applyBatch(batch);
                 } finally {
                     this.requestUpdate();
                 }

@@ -99,6 +99,7 @@ export class MatterClient {
     private msgId = Math.floor(Math.random() * 0x7fffffff);
     private eventListeners: Record<string, Array<() => void>> = {};
     private webrtcCallbackListeners: Array<(data: WebRtcCallbackData) => void> = [];
+    private threadDiagnosticsListeners: Array<(batch: ThreadDiagnosticsBatch) => void> = [];
     private nodeEventListeners: Array<(event: MatterNodeEvent) => void> = [];
 
     /**
@@ -139,6 +140,20 @@ export class MatterClient {
         this.webrtcCallbackListeners.push(listener);
         return () => {
             this.webrtcCallbackListeners = this.webrtcCallbackListeners.filter(l => l !== listener);
+        };
+    }
+
+    /**
+     * Subscribe to thread_diagnostics_updated with the batch that arrived.
+     *
+     * {@link threadDiagnostics} accumulates batches for the life of the connection and drops one
+     * only when the whole map is reset, so a consumer that rebuilds its own state from that map
+     * reinstates batches the server has since stopped serving. Take the batch from here.
+     */
+    addThreadDiagnosticsListener(listener: (batch: ThreadDiagnosticsBatch) => void): () => void {
+        this.threadDiagnosticsListeners.push(listener);
+        return () => {
+            this.threadDiagnosticsListeners = this.threadDiagnosticsListeners.filter(l => l !== listener);
         };
     }
 
@@ -779,6 +794,9 @@ export class MatterClient {
             const next = new Map(this.threadDiagnostics);
             next.set(event.data.extPanIdHex.toUpperCase(), event.data);
             this.threadDiagnostics = next;
+            for (const listener of this.threadDiagnosticsListeners) {
+                listener(event.data);
+            }
             this.fireEvent("thread_diagnostics_updated");
             return;
         }
