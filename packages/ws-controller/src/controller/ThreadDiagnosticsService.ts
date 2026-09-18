@@ -39,6 +39,30 @@ export type ThreadDiagnosticsPartialReason =
     | "meshcop_no_responses_yet"
     | "rest_no_responses_yet";
 
+/**
+ * Whether a partial describes a query still running or one that ended without data.
+ *
+ * A `streaming` partial carries nodes and is superseded by the next snapshot, so it ages like a
+ * complete batch. A `terminal` one carries only the reason the query failed, which stays worth
+ * showing however old it is.
+ *
+ * Exhaustive by construction: a reason added to {@link ThreadDiagnosticsPartialReason} without a
+ * kind here is a compile error, not a batch that silently outlives its data.
+ */
+const PARTIAL_REASON_KIND: Record<ThreadDiagnosticsPartialReason, "streaming" | "terminal"> = {
+    petition_rejected: "terminal",
+    dtls_failed: "terminal",
+    border_router_unreachable: "terminal",
+    no_credentials: "terminal",
+    no_source: "terminal",
+    rest_unreachable: "terminal",
+    rest_protocol: "terminal",
+    timeout: "terminal",
+    in_progress: "streaming",
+    meshcop_no_responses_yet: "streaming",
+    rest_no_responses_yet: "streaming",
+};
+
 export interface ThreadDiagnosticsBatch {
     /** 16-char lowercase hex of the extPanId. Internal cache key; serializeBatch uppercases for wire. */
     extPanIdHex: string;
@@ -129,12 +153,6 @@ interface InFlightStream {
  *
  * Concurrent fetches for the same xp share one stream.
  */
-/** Partials from a query still in flight: they carry nodes, so they age like a complete batch. */
-const STREAMING_PARTIAL_REASONS: ReadonlySet<ThreadDiagnosticsPartialReason> = new Set([
-    "in_progress",
-    "meshcop_no_responses_yet",
-]);
-
 export class ThreadDiagnosticsService {
     static readonly DEFAULT_TTL_MS = 3_600_000;
     static readonly DEFAULT_WINDOW_MS = 20_000;
@@ -202,8 +220,8 @@ export class ThreadDiagnosticsService {
      *
      * Past the TTL a batch that describes a network is stale evidence — {@link getOrFetch} already
      * refuses to serve it, and a client receiving it here cannot tell how old it is. That covers
-     * the streaming snapshots too ({@link STREAMING_PARTIAL_REASONS}): they carry nodes, and an
-     * old one means a stream that never completed. A terminal partial carries no nodes, only the
+     * the snapshots of a query still in flight ({@link PARTIAL_REASON_KIND}): they carry nodes, and
+     * an old one means a stream that never completed. A terminal partial carries no nodes, only the
      * reason, and the panel that renders it shows nothing at all when the batch is absent — so
      * withholding it would replace a stale explanation with none.
      */
@@ -211,7 +229,7 @@ export class ThreadDiagnosticsService {
         const now = Date.now();
         return Array.from(this.#cache.values()).filter(batch => {
             const terminalPartial =
-                batch.partialReason !== undefined && !STREAMING_PARTIAL_REASONS.has(batch.partialReason);
+                batch.partialReason !== undefined && PARTIAL_REASON_KIND[batch.partialReason] === "terminal";
             return terminalPartial || now - batch.collectedAt < this.#cacheTtlMs;
         });
     }
