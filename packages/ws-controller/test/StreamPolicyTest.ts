@@ -56,6 +56,64 @@ describe("streamPolicy", () => {
             ).to.equal(800000);
         });
 
+        it("clamps a caller maxBitRate above the camera's network bandwidth to the camera's value", () => {
+            const envelope = computeVideoEnvelope({
+                capabilities: CAPABILITIES,
+                codec: H265,
+                sdp: undefined,
+                hints: { maxBitRate: 50000000 },
+            });
+            expect(envelope.maxBitRate).to.equal(CAPABILITIES.maxNetworkBandwidth);
+        });
+
+        it("clamps a caller maxBitRate above the SDP's maxBitRate to the SDP's value", () => {
+            const envelope = computeVideoEnvelope({
+                capabilities: CAPABILITIES,
+                codec: H265,
+                sdp: {
+                    codecs: ["H265"],
+                    audioCodecs: [],
+                    hasVideo: true,
+                    hasAudio: false,
+                    wantsTalkback: false,
+                    maxBitRate: 3000000,
+                },
+                hints: { maxBitRate: 50000000 },
+            });
+            expect(envelope.maxBitRate).to.equal(3000000);
+        });
+
+        it("clamps a caller minBitRate above every stated ceiling down to the ceiling, without raising it", () => {
+            const envelope = computeVideoEnvelope({
+                capabilities: CAPABILITIES,
+                codec: H265,
+                sdp: undefined,
+                hints: { minBitRate: 50000000 },
+            });
+            expect(envelope.maxBitRate).to.equal(CAPABILITIES.maxNetworkBandwidth);
+            expect(envelope.minBitRate).to.equal(CAPABILITIES.maxNetworkBandwidth);
+        });
+
+        it("falls back to the default maxBitRate when no ceiling is stated anywhere", () => {
+            const envelope = computeVideoEnvelope({
+                capabilities: { ...CAPABILITIES, maxNetworkBandwidth: undefined },
+                codec: H265,
+                sdp: undefined,
+                hints: undefined,
+            });
+            expect(envelope.maxBitRate).to.equal(8000000);
+        });
+
+        it("does not cap a camera whose network bandwidth exceeds the default", () => {
+            const envelope = computeVideoEnvelope({
+                capabilities: { ...CAPABILITIES, maxNetworkBandwidth: 20000000 },
+                codec: H265,
+                sdp: undefined,
+                hints: undefined,
+            });
+            expect(envelope.maxBitRate).to.equal(20000000);
+        });
+
         it("uses the smallest advertised point as the floor when no viewport minimum is reported", () => {
             const envelope = computeVideoEnvelope({
                 capabilities: { ...CAPABILITIES, minViewport: undefined },

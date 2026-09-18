@@ -106,11 +106,13 @@ export function computeVideoEnvelope(args: VideoEnvelopeArgs): VideoEnvelope {
     const applicable = codecPoints
         .filter(point => pixels(point.resolution) <= pixels(maxResolution))
         .sort((a, b) => pixels(b.resolution) - pixels(a.resolution))[0];
-    const minBitRate = hints?.minBitRate ?? applicable?.minBitRate ?? 1;
-    const maxBitRate = Math.max(
-        minBitRate,
-        hints?.maxBitRate ?? sdp?.maxBitRate ?? capabilities.maxNetworkBandwidth ?? DEFAULT_MAX_BIT_RATE,
+    // Every stated ceiling binds; the default applies only when the camera, the SDP and the caller
+    // all state none. The floor then clamps down to the ceiling, never the ceiling up to the floor.
+    const ceilings = [hints?.maxBitRate, sdp?.maxBitRate, capabilities.maxNetworkBandwidth].filter(
+        (value): value is number => value !== undefined,
     );
+    const maxBitRate = ceilings.length > 0 ? Math.min(...ceilings) : DEFAULT_MAX_BIT_RATE;
+    const minBitRate = Math.min(hints?.minBitRate ?? applicable?.minBitRate ?? 1, maxBitRate);
 
     return {
         codec,
