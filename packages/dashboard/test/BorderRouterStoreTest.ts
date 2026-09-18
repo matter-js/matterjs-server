@@ -117,10 +117,30 @@ describe("BorderRouterStore", () => {
             expect(store.pruneExpired(monotonicNow() + 20_000)).to.equal(false);
         });
 
-        it("ignores a lifetime that is not a positive finite number", () => {
+        it("drops a batch whose stated lifetime is already spent", () => {
             const store = new BorderRouterStore();
 
-            for (const lifetime of [Number.NaN, Number.POSITIVE_INFINITY, 0, -1_000]) {
+            // The server clamps the remaining lifetime at zero, and a send delayed past the TTL
+            // delivers exactly that. Zero is spent, not absent.
+            store.applyBatch(batch(XP_A, 0));
+
+            expect(store.nextExpiryAt).to.not.equal(undefined);
+            expect(store.pruneExpired()).to.equal(true);
+            expect(store.diagnostics.has(XP_A)).to.equal(false);
+        });
+
+        it("drops a batch whose stated lifetime is negative", () => {
+            const store = new BorderRouterStore();
+            store.applyBatch(batch(XP_A, -1_000));
+
+            expect(store.pruneExpired()).to.equal(true);
+            expect(store.diagnostics.has(XP_A)).to.equal(false);
+        });
+
+        it("ignores a lifetime that is not a finite number", () => {
+            const store = new BorderRouterStore();
+
+            for (const lifetime of [Number.NaN, Number.POSITIVE_INFINITY]) {
                 store.applyBatch(batch(XP_A, lifetime));
                 expect(store.nextExpiryAt, `lifetime ${lifetime}`).to.equal(undefined);
             }

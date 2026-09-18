@@ -673,8 +673,9 @@ export function isObserverOnline(nodes: Record<string, TopologySourceNode>, node
  * one that qualifies: the same device can still appear in a batch for a network it has since
  * left. A record qualifies when
  *
- * - its batch is complete: a batch with a `partialReason` is an aborted query, so an entry in it
- *   may predate the failure; and
+ * - its batch is complete: a `partialReason` marks a query still running or one that ended without
+ *   data, and neither is a full view of the network — an entry in it may already be out of date or
+ *   may be about to be superseded; and
  * - its batch describes the device's own Thread network. A device whose observer reports no
  *   extended PAN ID is never corroborated: the batches at hand cover only networks with a
  *   discovered Border Router, so a lone record matching the address cannot establish that the

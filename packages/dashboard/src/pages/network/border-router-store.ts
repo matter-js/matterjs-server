@@ -78,13 +78,17 @@ export class BorderRouterStore {
     }
 
     /**
-     * Record when `batch` stops being current. A lifetime that is not a positive finite number is
-     * no lifetime at all: it comes off the wire, and treating a NaN or a negative as a deadline
-     * would make every comparison against it false and spin the caller's reschedule loop.
+     * Record when `batch` stops being current.
+     *
+     * Only an absent lifetime means "never expires". A lifetime of zero is the opposite — the
+     * server clamps it there once a batch has run out, which a delayed send can deliver — so it
+     * yields a deadline already in the past and the batch goes at the next check. A value that is
+     * not a finite number cannot be a deadline at all: arithmetic on it makes every comparison
+     * false and spins the caller's reschedule loop, so it is treated as no lifetime.
      */
     #trackExpiry(expiry: Map<string, number>, key: string, batch: ThreadDiagnosticsBatch, now: number): void {
         const lifetime = batch.expiresInMs;
-        if (lifetime === undefined || !Number.isFinite(lifetime) || lifetime <= 0) {
+        if (lifetime === undefined || !Number.isFinite(lifetime)) {
             expiry.delete(key);
             return;
         }
