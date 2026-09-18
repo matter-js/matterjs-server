@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { Millis } from "@matter/main";
 import type { ThreadDiagnosticsBatch } from "../src/controller/ThreadDiagnosticsService.js";
 import { serializeBatch } from "../src/server/serializeBatch.js";
 
@@ -24,7 +25,7 @@ describe("serializeBatch", () => {
     });
 
     it("carries the remaining lifetime when one is given", () => {
-        expect(serializeBatch(batch(), 42_000).expiresInMs).to.equal(42_000);
+        expect(serializeBatch(batch(), Millis(42_000)).expiresInMs).to.equal(42_000);
     });
 
     it("omits the lifetime for a batch that never expires", () => {

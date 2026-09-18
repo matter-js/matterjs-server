@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Observable } from "@matter/main";
+import { Millis, Observable } from "@matter/main";
 import {
     type BorderRouterEntry,
     type BorderRouterRegistry,
@@ -987,7 +987,7 @@ describe("ThreadDiagnosticsService", () => {
         expect(cached).to.have.lengthOf(2);
     });
 
-    it("remainingTtlMs counts down for a batch that expires and is absent for a terminal partial", async () => {
+    it("remainingTtl counts down for a batch that expires and is absent for a terminal partial", async () => {
         const service = new ThreadDiagnosticsService({
             ...FAST_TIMING,
             cacheTtlMs: 60_000,
@@ -1000,12 +1000,12 @@ describe("ThreadDiagnosticsService", () => {
 
         const complete = await service.getOrFetch(EXT_PAN_HEX_LOWER);
         expect(complete?.partialReason).to.equal(undefined);
-        const remaining = service.remainingTtlMs(complete!);
-        expect(remaining).to.be.greaterThan(0);
-        expect(remaining).to.be.at.most(60_000);
+        const remaining = service.remainingTtl(complete!);
+        expect(Millis.of(remaining!)).to.be.greaterThan(0);
+        expect(Millis.of(remaining!)).to.be.at.most(60_000);
 
         const terminal = { ...complete!, partialReason: "border_router_unreachable" as const };
-        expect(service.remainingTtlMs(terminal)).to.equal(undefined);
+        expect(service.remainingTtl(terminal)).to.equal(undefined);
     });
 
     it("listCached withholds a complete batch once it is past the cache TTL", async () => {

@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Bytes, Logger, Observable } from "@matter/main";
+import { Bytes, Duration, Logger, Millis, Observable } from "@matter/main";
 import {
     type BorderRouterEntry,
     type BorderRouterRegistry,
@@ -235,14 +235,14 @@ export class ThreadDiagnosticsService {
     }
 
     /**
-     * How much longer {@link listCached} will serve this batch, in ms. `undefined` for a batch that
-     * never expires — one reporting a query that ended without data.
+     * How much longer {@link listCached} will serve this batch. `undefined` for a batch that never
+     * expires — one reporting a query that ended without data.
      */
-    remainingTtlMs(batch: ThreadDiagnosticsBatch): number | undefined {
+    remainingTtl(batch: ThreadDiagnosticsBatch): Duration | undefined {
         if (batch.partialReason !== undefined && PARTIAL_REASON_KIND[batch.partialReason] === "terminal") {
             return undefined;
         }
-        return Math.max(0, this.#cacheTtlMs - (Date.now() - batch.collectedAt));
+        return Duration.max(0, Millis(this.#cacheTtlMs - (Date.now() - batch.collectedAt)));
     }
 
     /**

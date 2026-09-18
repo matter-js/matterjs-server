@@ -524,7 +524,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     connection.sendCoalescable(`thread:${batch.extPanIdHex}`, () =>
                         toBigIntAwareJson({
                             event: "thread_diagnostics_updated",
-                            data: serializeBatch(batch, this.#controller.threadDiagnostics.remainingTtlMs(batch)),
+                            data: serializeBatch(batch, this.#controller.threadDiagnostics.remainingTtl(batch)),
                         }),
                     );
                 } catch (err) {
@@ -1401,7 +1401,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         if (args?.ext_pan_id === undefined) {
             this.#controller.threadDiagnostics.refreshAllKnown({ force: args?.force });
             const diagnostics = this.#controller.threadDiagnostics;
-            return diagnostics.listCached().map(batch => serializeBatch(batch, diagnostics.remainingTtlMs(batch)));
+            return diagnostics.listCached().map(batch => serializeBatch(batch, diagnostics.remainingTtl(batch)));
         }
         if (!/^[0-9a-fA-F]{16}$/.test(args.ext_pan_id)) {
             throw ServerError.invalidArguments(`Invalid ext_pan_id "${args.ext_pan_id}": expected 16 hex characters`);
@@ -1413,7 +1413,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         // diagnostics disabled" into a generic sdk_stack_error.
         return batch === undefined
             ? null
-            : serializeBatch(batch, this.#controller.threadDiagnostics.remainingTtlMs(batch));
+            : serializeBatch(batch, this.#controller.threadDiagnostics.remainingTtl(batch));
     }
 
     async #handleGetNetworkTopology(args: ArgsOf<"get_network_topology">): Promise<ResponseOf<"get_network_topology">> {
