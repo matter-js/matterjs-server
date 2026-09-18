@@ -24,9 +24,14 @@ from .device_types import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from matter_server.common.models import MatterNodeData
 
 LOGGER = logging.getLogger(__name__)
+
+# the Matter specification places the Root Node on endpoint 0 of every node
+ROOT_ENDPOINT_ID = 0
 
 # pylint: disable=invalid-name
 _CLUSTER_T = TypeVar("_CLUSTER_T", bound=Clusters.Cluster)
@@ -42,6 +47,18 @@ def get_object_params(
         if desc.Tag == object_id:
             return (desc.Label, desc.Type)
     raise KeyError(f"No descriptor found for object {object_id}")
+
+
+def _reaches(start_id: int, target_id: int, parents: Mapping[int, int]) -> bool:
+    """Return whether walking up the parent chain from an endpoint arrives at another."""
+    seen: set[int] = set()
+    current: int | None = start_id
+    while current is not None and current not in seen:
+        if current == target_id:
+            return True
+        seen.add(current)
+        current = parents.get(current)
+    return False
 
 
 @dataclass
@@ -74,7 +91,10 @@ class MatterEndpoint:
     @property
     def is_bridged_device(self) -> bool:
         """Return if this endpoint represents a Bridged device."""
-        return BridgedNode in self.device_types
+        return (
+            BridgedNode in self.device_types
+            or self.node.get_bridge_parent(self.endpoint_id) is not None
+        )
 
     @property
     def is_composed_device(self) -> bool:
@@ -84,18 +104,28 @@ class MatterEndpoint:
     @property
     def device_info(
         self,
-    ) -> Clusters.BasicInformation | Clusters.BridgedDeviceBasicInformation:
+    ) -> Clusters.BasicInformation | Clusters.BridgedDeviceBasicInformation | None:
         """
         Return device info.
 
-        If this endpoint represents a BridgedDevice, returns BridgedDeviceBasic.
-        If this endpoint represents a ComposedDevice, returns the info of the compose device.
-        Otherwise, returns BasicInformation from the Node itself (endpoint 0).
+        Returns the BridgedDeviceBasicInformation of the endpoint itself, else the info of the
+        device this endpoint is a part of, and finally the BasicInformation of the Node itself.
+        A bridged device has no info beyond its own: when it does not report
+        BridgedDeviceBasicInformation the result is None, because the info of the bridge or of the
+        Aggregator above it belongs to a different device.
         """
-        if self.is_bridged_device:
-            return self.get_cluster(Clusters.BridgedDeviceBasicInformation)
-        if compose_parent := self.node.get_compose_parent(self.endpoint_id):
-            return compose_parent.device_info
+        endpoint = self
+        seen: set[int] = set()
+        while endpoint.endpoint_id not in seen:
+            seen.add(endpoint.endpoint_id)
+            if own_info := endpoint.get_cluster(Clusters.BridgedDeviceBasicInformation):
+                return own_info
+            if endpoint.is_bridged_device:
+                return None
+            parent = endpoint.node.get_compose_parent(endpoint.endpoint_id)
+            if parent is None:
+                break
+            endpoint = parent
         return self.node.device_info
 
     def has_cluster(self, cluster: type[_CLUSTER_T] | int) -> bool:
@@ -222,12 +252,15 @@ class MatterEndpoint:
             self.set_attribute_value(attribute_path, attribute_value)
         # extract device types from Descriptor Cluster
         if cluster := self.get_cluster(Clusters.Descriptor):
+            device_types: set[type[DeviceType]] = set()
             for dev_info in cluster.deviceTypeList:
                 device_type = DEVICE_TYPES.get(dev_info.deviceType)
                 if device_type is None:
                     LOGGER.debug("Found unknown device type %s", dev_info)
                     continue
-                self.device_types.add(device_type)
+                device_types.add(device_type)
+            # a snapshot carries the complete device type list, never a delta
+            self.device_types = device_types
 
     def __repr__(self) -> str:
         """Return the representation."""
@@ -240,9 +273,9 @@ class MatterNode:
     def __init__(self, node_data: MatterNodeData) -> None:
         """Initialize MatterNode from MatterNodeData."""
         self.endpoints: dict[int, MatterEndpoint] = {}
-        # composed devices reference to other endpoints through the partsList attribute
-        # create a mapping table
         self._composed_endpoints: dict[int, int] = {}
+        self._bridge_parents: dict[int, int] = {}
+        self._reported_missing_bridged_info: set[int] = set()
         self.update(node_data)
 
     @property
@@ -263,11 +296,12 @@ class MatterNode:
         return self.node_data.available
 
     @property
-    def device_info(self) -> Clusters.BasicInformation:
+    def device_info(self) -> Clusters.BasicInformation | None:
         """
         Return device info for this Node.
 
-        Returns BasicInformation from the Node itself (endpoint 0).
+        Returns BasicInformation from the Node itself (endpoint 0), or None while the node has not
+        reported it.
         """
         return self.get_cluster(0, Clusters.BasicInformation)
 
@@ -304,17 +338,29 @@ class MatterNode:
 
         Returns None is the Cluster is not present on the node.
         """
-        return self.endpoints[endpoint].get_cluster(cluster)
+        if (endpoint_obj := self.endpoints.get(endpoint)) is None:
+            return None
+        return endpoint_obj.get_cluster(cluster)
 
     def get_compose_parent(self, endpoint_id: int) -> MatterEndpoint | None:
         """Return endpoint of parent if the endpoint belongs to a Composed device."""
-        if parent_id := self._composed_endpoints.get(endpoint_id):
-            return self.endpoints[parent_id]
-        return None
+        if (parent_id := self._composed_endpoints.get(endpoint_id)) is None:
+            return None
+        return self.endpoints.get(parent_id)
 
-    def get_compose_child_ids(self, endpoint_id: int) -> tuple[int, ...] | None:
+    def get_compose_child_ids(self, endpoint_id: int) -> tuple[int, ...]:
         """Return endpoint IDs of any child if the endpoint represents a Composed device."""
-        return tuple(x for x, y in self._composed_endpoints.items() if y == endpoint_id)
+        return tuple(sorted(x for x, y in self._composed_endpoints.items() if y == endpoint_id))
+
+    def get_bridge_parent(self, endpoint_id: int) -> MatterEndpoint | None:
+        """Return the Aggregator endpoint that bridges the given endpoint, if any."""
+        if (parent_id := self._bridge_parents.get(endpoint_id)) is None:
+            return None
+        return self.endpoints.get(parent_id)
+
+    def get_bridge_child_ids(self, endpoint_id: int) -> tuple[int, ...]:
+        """Return endpoint IDs of the devices bridged by the given Aggregator endpoint."""
+        return tuple(sorted(x for x, y in self._bridge_parents.items() if y == endpoint_id))
 
     def update(self, node_data: MatterNodeData) -> None:
         """Update MatterNode from MatterNodeData."""
@@ -326,6 +372,10 @@ class MatterNode:
             if endpoint_id not in endpoint_data:
                 endpoint_data[endpoint_id] = {}
             endpoint_data[endpoint_id][attribute_path] = attribute_data
+        for endpoint_id in [
+            endpoint_id for endpoint_id in self.endpoints if endpoint_id not in endpoint_data
+        ]:
+            self._drop_endpoint(endpoint_id)
         for endpoint_id, attributes_data in endpoint_data.items():
             if endpoint_id in self.endpoints:
                 self.endpoints[endpoint_id].update(attributes_data)
@@ -333,16 +383,40 @@ class MatterNode:
                 self.endpoints[endpoint_id] = MatterEndpoint(
                     endpoint_id=endpoint_id, attributes_data=attributes_data, node=self
                 )
-        # composed devices reference to other endpoints through the partsList attribute
-        # create a mapping table to quickly map this
+        self._map_endpoint_parents()
+
+    def _remove_endpoint(self, endpoint_id: int) -> None:
+        """Remove an endpoint and resolve the parent mapping against what is left.
+
+        May only be called by logic that received data from the server.
+        """
+        if not self._drop_endpoint(endpoint_id):
+            return
+        self._map_endpoint_parents()
+
+    def _drop_endpoint(self, endpoint_id: int) -> bool:
+        """Forget an endpoint the node no longer has. Returns whether it was known."""
+        if self.endpoints.pop(endpoint_id, None) is None:
+            return False
+        self._reported_missing_bridged_info.discard(endpoint_id)
+        return True
+
+    def _map_endpoint_parents(self) -> None:
+        """Resolve each endpoint to its closest parent endpoint, split by parent kind.
+
+        An endpoint's partsList may enumerate its whole family - every descendant, not just
+        the direct children - which is the pattern a bridge uses. Of the endpoints listing a
+        given endpoint, the closest one is therefore the endpoint that lists none of the
+        others - on contradictory lists the smaller family wins, then the lower endpoint
+        number - and a parent is only accepted while the relations stay a tree.
+
+        Children of an Aggregator are independent bridged devices and are mapped in
+        `_bridge_parents`; children of any other endpoint are parts of a composed device and
+        are mapped in `_composed_endpoints`. Children of the root endpoint are neither, and
+        an endpoint whose own device types are not known yet classifies nothing.
+        """
+        families: dict[int, set[int]] = {}
         for endpoint in self.endpoints.values():
-            if RootNode in endpoint.device_types:
-                # ignore root endpoint
-                continue
-            if Aggregator in endpoint.device_types:
-                # ignore Bridge endpoint
-                # (as that will also use partsList to indicate its child's)
-                continue
             descriptor = endpoint.get_cluster(Clusters.Descriptor)
             if descriptor is None:
                 LOGGER.warning(
@@ -351,9 +425,75 @@ class MatterNode:
                     endpoint.endpoint_id,
                 )
                 continue
-            if descriptor.partsList:
-                for endpoint_id in descriptor.partsList:
-                    self._composed_endpoints[endpoint_id] = endpoint.endpoint_id
+            families[endpoint.endpoint_id] = {
+                child_id
+                for child_id in descriptor.partsList or ()
+                if child_id in self.endpoints and child_id != endpoint.endpoint_id
+            }
+
+        candidates: dict[int, set[int]] = {}
+        for parent_id, family in families.items():
+            for child_id in family:
+                candidates.setdefault(child_id, set()).add(parent_id)
+
+        self._composed_endpoints = {}
+        self._bridge_parents = {}
+        parents: dict[int, int] = {}
+        for child_id in sorted(candidates):
+            parent_ids = candidates[child_id]
+            for parent_id in sorted(
+                parent_ids,
+                key=lambda pid: (
+                    len((parent_ids - {pid}) & families[pid]),
+                    len(families[pid]),
+                    pid,
+                ),
+            ):
+                if _reaches(parent_id, child_id, parents):
+                    LOGGER.warning(
+                        "Ignoring cyclic partsList relation: Node %s, endpoint %s below %s",
+                        self.node_id,
+                        child_id,
+                        parent_id,
+                    )
+                    continue
+                parents[child_id] = parent_id
+                self._map_endpoint_parent(child_id, parent_id)
+                break
+
+        self._report_bridged_devices_without_info()
+
+    def _report_bridged_devices_without_info(self) -> None:
+        """Warn about bridged devices the bridge does not describe, once per endpoint.
+
+        Such an endpoint has no device info of its own, and the info of the bridge describes a
+        different device, so it stays unnamed until the bridge reports it.
+        """
+        for endpoint_id, endpoint in self.endpoints.items():
+            if endpoint_id in self._reported_missing_bridged_info:
+                continue
+            if not endpoint.is_bridged_device:
+                continue
+            if endpoint.get_cluster(Clusters.BridgedDeviceBasicInformation) is not None:
+                continue
+            self._reported_missing_bridged_info.add(endpoint_id)
+            LOGGER.warning(
+                "Bridged device without BridgedDeviceBasicInformation: Node %s, endpoint %s",
+                self.node_id,
+                endpoint_id,
+            )
+
+    def _map_endpoint_parent(self, child_id: int, parent_id: int) -> None:
+        """Record what the parent endpoint makes of the endpoint below it."""
+        if parent_id == ROOT_ENDPOINT_ID:
+            return
+        device_types = self.endpoints[parent_id].device_types
+        if RootNode in device_types or not device_types:
+            return
+        if Aggregator in device_types:
+            self._bridge_parents[child_id] = parent_id
+        else:
+            self._composed_endpoints[child_id] = parent_id
 
     def update_attribute(self, attribute_path: str, new_value: Any) -> None:
         """Handle Attribute value update."""

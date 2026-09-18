@@ -102,6 +102,7 @@ import {
     ServerError,
     UpdateSource,
 } from "../types/WebSocketMessageTypes.js";
+import { isBridgeNode } from "../util/bridgeDetection.js";
 import { formatNodeId } from "../util/formatNodeId.js";
 import { pingIp } from "../util/network.js";
 import { CustomClusterPoller } from "./CustomClusterPoller.js";
@@ -851,8 +852,6 @@ export class ControllerCommandHandler {
         const node = this.#nodes.get(nodeId);
         const attributeCache = this.#nodes.attributeCache;
 
-        let isBridge = false;
-
         // Ensure the cache is populated if node is initialized but cache doesn't exist yet.
         // Populate runs asynchronously, so this call returns an empty snapshot; emit node_updated once
         // it completes so the requester receives the populated data. The #pendingLazyPopulate guard
@@ -875,20 +874,13 @@ export class ControllerCommandHandler {
         // Get cached attributes (empty object if node not yet initialized)
         const attributes = attributeCache.get(nodeId) ?? {};
 
-        // Bridge detection: Check endpoint 1's Descriptor cluster (29) DeviceTypeList attribute (0)
-        // for device type 14 (Aggregator), matching Python Matter Server behavior
-        const endpoint1DeviceTypes = attributes["1/29/0"];
-        if (Array.isArray(endpoint1DeviceTypes)) {
-            isBridge = endpoint1DeviceTypes.some(entry => entry["0"] === 14);
-        }
-
         return {
             node_id: node.nodeId,
             date_commissioned: getDateAsString(new Date(node.state.commissioning.commissionedAt ?? Date.now())),
             last_interview: getDateAsString(lastInterviewDate ?? new Date()),
             interview_version: 6,
             available: this.#nodes.isAvailable(nodeId),
-            is_bridge: isBridge,
+            is_bridge: isBridgeNode(attributes),
             attributes,
             attribute_subscriptions: [],
             matter_version: determineMatterVersion(attributes),

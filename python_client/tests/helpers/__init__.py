@@ -2,6 +2,7 @@
 
 from .matter_test_client import MatterTestClient
 from .process_helpers import (
+    BRIDGE_MANUAL_PAIRING_CODE,
     DEVICE_PORT,
     MANUAL_PAIRING_CODE,
     REPO_ROOT,
@@ -11,12 +12,14 @@ from .process_helpers import (
     create_temp_storage_paths,
     kill_process,
     start_server,
+    start_test_bridge_device,
     start_test_device,
     wait_for_device_ready,
     wait_for_port,
 )
 
 __all__ = [
+    "BRIDGE_MANUAL_PAIRING_CODE",
     "DEVICE_PORT",
     "MANUAL_PAIRING_CODE",
     "REPO_ROOT",
@@ -27,6 +30,7 @@ __all__ = [
     "create_temp_storage_paths",
     "kill_process",
     "start_server",
+    "start_test_bridge_device",
     "start_test_device",
     "wait_for_device_ready",
     "wait_for_port",

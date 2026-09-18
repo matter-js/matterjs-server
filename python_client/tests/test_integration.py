@@ -15,6 +15,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import tempfile
 from typing import TYPE_CHECKING
 
 import aiohttp
@@ -28,6 +29,7 @@ from matter_server.common.models import APICommand, EventType, OtaUploadTicket
 if TYPE_CHECKING:
     from chip.clusters import Objects as Clusters
 from tests.helpers import (
+    BRIDGE_MANUAL_PAIRING_CODE,
     MANUAL_PAIRING_CODE,
     SERVER_PORT,
     SERVER_WS_URL,
@@ -36,6 +38,7 @@ from tests.helpers import (
     create_temp_storage_paths,
     kill_process,
     start_server,
+    start_test_bridge_device,
     start_test_device,
     wait_for_device_ready,
     wait_for_port,
@@ -60,6 +63,9 @@ def _require_state(env: dict, *keys: str) -> None:
     for key in keys:
         if env.get(key) is None:
             pytest.skip(f"Required state '{key}' not set — a prior test likely failed or was skipped")
+
+
+AGGREGATOR_DEVICE_TYPE = 14
 
 
 # ---------------------------------------------------------------------------
@@ -119,6 +125,9 @@ async def env():
             "listen_task": listen_task,
             "test_node_id": None,
             "test_node2_id": None,
+            "bridge_proc": None,
+            "bridge_path": None,
+            "bridge_node_id": None,
         }
     )
 
@@ -133,7 +142,10 @@ async def env():
     await session.close()
     kill_process(_state.get("server_proc"))
     kill_process(_state.get("device_proc"))
+    kill_process(_state.get("bridge_proc"))
     cleanup_temp_storage(server_path, device_path)
+    if _state.get("bridge_path"):
+        cleanup_temp_storage(_state["bridge_path"], _state["bridge_path"])
 
 
 # ============================================================================
@@ -1249,6 +1261,157 @@ class TestDecommissioning:
         nodes = client.get_nodes()
         real_nodes = [n for n in nodes if n.node_id < 0xFFFFFFFE00000000]
         assert real_nodes == []
+
+
+# ============================================================================
+# Section 10 -- Bridge topology (own device)
+# ============================================================================
+
+
+class TestBridgeTopology:
+    """A bridge with several aggregators, a nested aggregator and a composed bridged device."""
+
+    # endpoint layout of packages/matter-server/test/fixtures/TestBridgeDevice.ts
+    LOCAL_LIGHT = 1
+    PRIMARY_AGGREGATOR = 2
+    BRIDGED_LIGHT = 3
+    COMPOSED_SENSOR = 4
+    COMPOSED_TEMPERATURE = 5
+    COMPOSED_HUMIDITY = 6
+    NESTED_AGGREGATOR = 7
+    NESTED_LIGHT = 8
+    NESTED_SENSOR = 9
+    NESTED_UNTAGGED_LIGHT = 10
+    NESTED_UNTAGGED_LIGHT_2 = 11
+    SECONDARY_AGGREGATOR = 12
+    SECONDARY_LIGHT = 13
+
+    async def test_64_commission_bridge(self, env):
+        """Commission the bridge device; the node is reported as a bridge."""
+        client: MatterTestClient = env["client"]
+        bridge_path = tempfile.mkdtemp(prefix="matter-test-bridge-")
+        env["bridge_path"] = bridge_path
+        env["bridge_proc"] = start_test_bridge_device(bridge_path)
+        await wait_for_device_ready(env["bridge_proc"])
+
+        node_data = await client.commission_with_code(BRIDGE_MANUAL_PAIRING_CODE)
+        env["bridge_node_id"] = node_data.node_id
+        logger.info("Bridge commissioned: %s", node_data.node_id)
+
+        # no aggregator sits on endpoint 1 of this device
+        endpoint1_types = node_data.attributes[f"{self.LOCAL_LIGHT}/29/0"]
+        assert all(entry["0"] != AGGREGATOR_DEVICE_TYPE for entry in endpoint1_types)
+        assert node_data.is_bridge is True
+
+    async def test_65_bridge_endpoints_resolve_to_their_device(self, env):
+        """Every endpoint resolves to the bridged or composed device it belongs to."""
+        _require_state(env, "bridge_node_id")
+        client: MatterTestClient = env["client"]
+        node = client.get_node(env["bridge_node_id"])
+
+        bridge_parents = {
+            endpoint_id: parent.endpoint_id
+            for endpoint_id in node.endpoints
+            if (parent := node.get_bridge_parent(endpoint_id)) is not None
+        }
+        compose_parents = {
+            endpoint_id: parent.endpoint_id
+            for endpoint_id in node.endpoints
+            if (parent := node.get_compose_parent(endpoint_id)) is not None
+        }
+
+        assert bridge_parents == {
+            self.BRIDGED_LIGHT: self.PRIMARY_AGGREGATOR,
+            self.COMPOSED_SENSOR: self.PRIMARY_AGGREGATOR,
+            self.NESTED_AGGREGATOR: self.PRIMARY_AGGREGATOR,
+            self.NESTED_LIGHT: self.NESTED_AGGREGATOR,
+            self.NESTED_SENSOR: self.NESTED_AGGREGATOR,
+            self.NESTED_UNTAGGED_LIGHT: self.NESTED_AGGREGATOR,
+            self.NESTED_UNTAGGED_LIGHT_2: self.NESTED_AGGREGATOR,
+            self.SECONDARY_LIGHT: self.SECONDARY_AGGREGATOR,
+        }
+        assert compose_parents == {
+            self.COMPOSED_TEMPERATURE: self.COMPOSED_SENSOR,
+            self.COMPOSED_HUMIDITY: self.COMPOSED_SENSOR,
+        }
+        assert node.get_bridge_child_ids(self.NESTED_AGGREGATOR) == (
+            self.NESTED_LIGHT,
+            self.NESTED_SENSOR,
+            self.NESTED_UNTAGGED_LIGHT,
+            self.NESTED_UNTAGGED_LIGHT_2,
+        )
+
+    async def test_66_bridge_device_info(self, env):
+        """Each bridged device keeps its own info; the ones without info get none."""
+        _require_state(env, "bridge_node_id")
+        client: MatterTestClient = env["client"]
+        node = client.get_node(env["bridge_node_id"])
+
+        def label(endpoint_id: int) -> str | None:
+            info = node.endpoints[endpoint_id].device_info
+            return None if info is None else info.nodeLabel
+
+        assert label(self.BRIDGED_LIGHT) == "Bridged Light"
+        assert label(self.NESTED_AGGREGATOR) == "Nested Aggregator"
+        assert label(self.NESTED_LIGHT) == "Nested Light"
+        assert label(self.SECONDARY_LIGHT) == "Secondary Light"
+        # parts of a composed bridged device share its info
+        assert label(self.COMPOSED_TEMPERATURE) == "Composed Sensor"
+        assert label(self.COMPOSED_HUMIDITY) == "Composed Sensor"
+        # the bridge does not describe these two, so they have no info of their own
+        assert label(self.NESTED_UNTAGGED_LIGHT) is None
+        assert label(self.NESTED_UNTAGGED_LIGHT_2) is None
+        # an endpoint of the bridge itself falls back to the node
+        assert label(self.LOCAL_LIGHT) == "Test Bridge"
+
+    async def test_67_control_device_behind_the_bridge(self, env):
+        """Commands reach a bridged endpoint and its attribute update comes back."""
+        _require_state(env, "bridge_node_id")
+        client: MatterTestClient = env["client"]
+        node_id = env["bridge_node_id"]
+
+        for endpoint_id in (self.BRIDGED_LIGHT, self.NESTED_UNTAGGED_LIGHT):
+            client.clear_events()
+            await client.send_device_command(
+                node_id, endpoint_id, _onoff_command("On")
+            )
+            event = await client.wait_for_event(
+                EventType.ATTRIBUTE_UPDATED.value,
+                matcher=lambda data: data is True,
+                timeout=10.0,
+            )
+            assert event.data is True
+
+            value = await client.read_attribute(node_id, f"{endpoint_id}/6/0")
+            assert value[f"{endpoint_id}/6/0"] is True
+
+            client.clear_events()
+            await client.send_device_command(
+                node_id, endpoint_id, _onoff_command("Off")
+            )
+            await client.wait_for_event(
+                EventType.ATTRIBUTE_UPDATED.value,
+                matcher=lambda data: data is False,
+                timeout=10.0,
+            )
+
+    async def test_68_remove_bridge(self, env):
+        """Remove the bridge node again so the suite leaves no node behind."""
+        _require_state(env, "bridge_node_id")
+        client: MatterTestClient = env["client"]
+        node_id = env["bridge_node_id"]
+
+        client.clear_events()
+        await client.remove_node(node_id)
+        event = await client.wait_for_event(
+            EventType.NODE_REMOVED.value,
+            matcher=lambda data: data == node_id,
+            timeout=10.0,
+        )
+        assert event.data == node_id
+
+        kill_process(env.get("bridge_proc"))
+        env["bridge_proc"] = None
 
 
 # ============================================================================
