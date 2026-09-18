@@ -247,20 +247,20 @@ class MatterEndpoint:
 
     def update(self, attributes_data: dict[str, Any]) -> None:
         """Update MatterEndpoint from (endpoint-specific) raw Attributes data."""
+        # a snapshot carries the complete state of the endpoint, never a delta
+        self.clusters = {}
+        self.device_types = set()
         # unwrap cluster and clusterattributes from raw node data attributes
         for attribute_path, attribute_value in attributes_data.items():
             self.set_attribute_value(attribute_path, attribute_value)
         # extract device types from Descriptor Cluster
         if cluster := self.get_cluster(Clusters.Descriptor):
-            device_types: set[type[DeviceType]] = set()
             for dev_info in cluster.deviceTypeList:
                 device_type = DEVICE_TYPES.get(dev_info.deviceType)
                 if device_type is None:
                     LOGGER.debug("Found unknown device type %s", dev_info)
                     continue
-                device_types.add(device_type)
-            # a snapshot carries the complete device type list, never a delta
-            self.device_types = device_types
+                self.device_types.add(device_type)
 
     def __repr__(self) -> str:
         """Return the representation."""

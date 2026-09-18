@@ -849,3 +849,40 @@ def test_a_bridged_device_is_reported_again_after_it_came_back(
     assert [
         record for record in caplog.records if "without BridgedDeviceBasicInformation" in record.message
     ]
+
+
+def test_an_endpoint_that_stops_reporting_its_descriptor_parents_nothing() -> None:
+    """A snapshot without an endpoint's Descriptor drops its device types and its children."""
+    node = _node_with_endpoints(
+        {
+            0: {_DEVICE_TYPE_LIST: [{"0": _ROOT_NODE, "1": 1}], _PARTS_LIST: [1, 100]},
+            1: {
+                _DEVICE_TYPE_LIST: [{"0": _AGGREGATOR, "1": 1}],
+                _PARTS_LIST: [100],
+            },
+            100: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}]},
+        }
+    )
+
+    assert node.get_bridge_parent(100) is node.endpoints[1]
+
+    node.update(
+        _node_data(
+            {
+                **_descriptor_attributes(
+                    {
+                        0: {
+                            _DEVICE_TYPE_LIST: [{"0": _ROOT_NODE, "1": 1}],
+                            _PARTS_LIST: [1, 100],
+                        },
+                        100: {_DEVICE_TYPE_LIST: [{"0": _ON_OFF_LIGHT, "1": 1}]},
+                    }
+                ),
+                f"1/40/{_NODE_LABEL}": "still here, but without a Descriptor",
+            }
+        )
+    )
+
+    assert node.endpoints[1].device_types == set()
+    assert node.get_bridge_parent(100) is None
+    assert node.get_compose_parent(100) is None

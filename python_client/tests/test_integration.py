@@ -1264,7 +1264,7 @@ class TestDecommissioning:
 
 
 # ============================================================================
-# Section 10 -- Bridge topology (own device)
+# Section 12 -- Bridge topology (own device)
 # ============================================================================
 
 
