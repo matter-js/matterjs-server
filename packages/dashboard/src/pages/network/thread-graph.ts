@@ -31,6 +31,7 @@ import {
     EXTERNAL_ROUTER_CAPABLE_NOTE,
     EXTERNAL_THREAD_DEVICE_EXPLANATION,
     findDiagnosticMeshNodes,
+    findCorroboratingDiagnostics,
     findDiagnosticRecordByExtAddress,
     findUnknownDevices,
     makeDiagnosticRloc16Resolver,
@@ -354,7 +355,15 @@ export class ThreadGraph extends BaseNetworkGraph {
         // unidentified neighbors keep the generic question-mark style.
         for (const device of this._unknownDevices) {
             const isSelected = device.id === this._selectedNodeId;
-            const diagNode = findDiagnosticRecordByExtAddress(this.threadDiagnostics, device.extAddressHex)?.node;
+            // A Border Router stands on its own mDNS evidence, so it may be labelled from any batch
+            // that names it. An unknown device is drawn only because a diagnostics record vouches
+            // for it, so it takes its label from that same record — labelling it from a record the
+            // visibility rule rejected would put vendor text on the graph that nothing supports.
+            const corroborating = findCorroboratingDiagnostics(this.threadDiagnostics, device);
+            const diagNode =
+                device.kind === "br"
+                    ? findDiagnosticRecordByExtAddress(this.threadDiagnostics, device.extAddressHex)?.node
+                    : corroborating?.node;
 
             const shouldHide = shouldHideExternalDevice(device, this.nodes, {
                 diagnostics: this.threadDiagnostics,

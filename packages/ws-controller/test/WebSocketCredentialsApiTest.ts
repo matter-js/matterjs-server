@@ -66,6 +66,9 @@ function makeStubController(credentials: ThreadCredentialsRegistry) {
         listCached() {
             return [];
         },
+        remainingTtlMs() {
+            return 3_600_000;
+        },
         refreshAllKnown() {},
     };
 

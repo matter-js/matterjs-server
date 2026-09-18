@@ -15,13 +15,16 @@ import { reducedMotionStyles } from "../util/shared-styles.js";
 import "./components/footer";
 import "./components/header";
 import type { ActiveView } from "./components/header.js";
-import { BorderRouterStore } from "./network/border-router-store.js";
+import { BorderRouterStore, monotonicNow } from "./network/border-router-store.js";
 import "./network/device-panel";
 import "./network/network-details";
 import "./network/thread-graph";
 import type { ThreadGraph } from "./network/thread-graph.js";
 import "./network/wifi-graph";
 import type { WiFiGraph } from "./network/wifi-graph.js";
+
+/** setTimeout stores its delay in a signed 32-bit int; anything larger wraps to "fire now". */
+const MAX_TIMEOUT_MS = 2_147_483_647;
 
 declare global {
     interface HTMLElementTagNameMap {
@@ -94,6 +97,7 @@ class MatterNetworkView extends LitElement {
 
     private _initialSelectionApplied = false;
     private _selectRetryTimer?: ReturnType<typeof setTimeout>;
+    private _diagnosticsExpiryTimer?: ReturnType<typeof setTimeout>;
     private _diagnosticsUnsubscribe?: () => void;
 
     @query("thread-graph")
@@ -113,10 +117,57 @@ class MatterNetworkView extends LitElement {
     private async _refreshBorderRouters(): Promise<void> {
         try {
             await this._borderRouterStore.refresh(this.client);
+            this._scheduleDiagnosticsExpiry();
             this.requestUpdate();
         } catch (err) {
             console.warn("Failed to refresh border router store:", err);
         }
+    }
+
+    /**
+     * Refetch when the next held batch runs out of lifetime.
+     *
+     * A batch that stops being current produces no event, so nothing else would notice. Refetching
+     * rather than discarding is what keeps the graph honest in both directions: the server answers
+     * with a current batch for a network that still reports, and omits one that no longer does.
+     * Dropping the batch on its own would make every device it vouches for vanish from a view left
+     * open past the TTL, with nothing to bring it back.
+     *
+     * The store is pruned only when that refresh fails, so failing to reach the server degrades to
+     * "stop trusting the old evidence" rather than to "keep it forever".
+     */
+    private _scheduleDiagnosticsExpiry(): void {
+        if (this._diagnosticsExpiryTimer !== undefined) {
+            clearTimeout(this._diagnosticsExpiryTimer);
+            this._diagnosticsExpiryTimer = undefined;
+        }
+        if (!this.isConnected) return;
+
+        const nextAt = this._borderRouterStore.nextExpiryAt;
+        if (nextAt === undefined) return;
+
+        // setTimeout treats a delay above the 32-bit range as 0, which would spin this loop.
+        const delay = Math.min(Math.max(0, nextAt - monotonicNow()), MAX_TIMEOUT_MS);
+        this._diagnosticsExpiryTimer = setTimeout(() => {
+            this._diagnosticsExpiryTimer = undefined;
+            this._refreshExpiredDiagnostics().catch(err =>
+                console.warn("Failed to refresh expired thread diagnostics:", err),
+            );
+        }, delay);
+    }
+
+    private async _refreshExpiredDiagnostics(): Promise<void> {
+        try {
+            await this._borderRouterStore.refresh(this.client);
+        } catch (err) {
+            console.warn("Thread diagnostics refresh on expiry failed:", err);
+            if (this._borderRouterStore.pruneExpired()) this.requestUpdate();
+            this._scheduleDiagnosticsExpiry();
+            return;
+        }
+        if (this._borderRouterStore.pruneExpired()) this.requestUpdate();
+        this.requestUpdate();
+        this._scheduleDiagnosticsExpiry();
     }
 
     private _handleConnectionsUpdated(): void {
@@ -129,7 +180,10 @@ class MatterNetworkView extends LitElement {
     private _handleRefreshDiagnostics(event: CustomEvent<{ extPanIdHex: string }>): void {
         const extPanIdHex = event.detail.extPanIdHex;
         this._borderRouterStore.refreshDiagnosticsFor(this.client, extPanIdHex).then(
-            () => this.requestUpdate(),
+            () => {
+                this._scheduleDiagnosticsExpiry();
+                this.requestUpdate();
+            },
             err => console.warn("Failed to refresh thread diagnostics:", err),
         );
     }
@@ -154,9 +208,11 @@ class MatterNetworkView extends LitElement {
         document.addEventListener("click", this._documentClickHandler);
         document.addEventListener("keydown", this._documentKeyHandler);
         if (this.client !== undefined) {
+            this._scheduleDiagnosticsExpiry();
             this._diagnosticsUnsubscribe = this.client.addThreadDiagnosticsListener(batch => {
                 try {
                     this._borderRouterStore.applyBatch(batch);
+                    this._scheduleDiagnosticsExpiry();
                 } finally {
                     this.requestUpdate();
                 }
@@ -170,6 +226,10 @@ class MatterNetworkView extends LitElement {
         document.removeEventListener("keydown", this._documentKeyHandler);
         if (this._selectRetryTimer) {
             clearTimeout(this._selectRetryTimer);
+        }
+        if (this._diagnosticsExpiryTimer !== undefined) {
+            clearTimeout(this._diagnosticsExpiryTimer);
+            this._diagnosticsExpiryTimer = undefined;
         }
         this._diagnosticsUnsubscribe?.();
         this._diagnosticsUnsubscribe = undefined;

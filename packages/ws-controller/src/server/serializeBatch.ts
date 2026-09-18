@@ -92,7 +92,7 @@ function serializeNode(r: DiagnosticResponse): ThreadDiagnosticsNodeWire {
     return out;
 }
 
-export function serializeBatch(batch: ThreadDiagnosticsBatch): ThreadDiagnosticsBatchWire {
+export function serializeBatch(batch: ThreadDiagnosticsBatch, expiresInMs?: number): ThreadDiagnosticsBatchWire {
     const wire: ThreadDiagnosticsBatchWire = {
         extPanIdHex: batch.extPanIdHex.toUpperCase(),
         networkName: batch.networkName,
@@ -101,5 +101,6 @@ export function serializeBatch(batch: ThreadDiagnosticsBatch): ThreadDiagnostics
         nodes: batch.nodes.map(serializeNode),
     };
     if (batch.partialReason !== undefined) wire.partialReason = batch.partialReason;
+    if (expiresInMs !== undefined) wire.expiresInMs = expiresInMs;
     return wire;
 }

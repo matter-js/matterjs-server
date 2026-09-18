@@ -218,11 +218,11 @@ export class ThreadDiagnosticsService {
      * Every cached batch a caller may still act on: anything within the TTL, plus a batch stating
      * why a query failed, at any age.
      *
-     * Past the TTL a batch that describes a network is stale evidence — {@link getOrFetch} already
-     * refuses to serve it, and a client receiving it here cannot tell how old it is. That covers
-     * the snapshots of a query still in flight ({@link PARTIAL_REASON_KIND}): they carry nodes, and
-     * an old one means a stream that never completed. A terminal partial carries no nodes, only the
-     * reason, and the panel that renders it shows nothing at all when the batch is absent — so
+     * Past the TTL a batch that describes a network is stale evidence, and a client receiving it
+     * cannot tell how old it is. That covers the snapshots of a query still in flight
+     * ({@link PARTIAL_REASON_KIND}): they carry nodes, and an old one means a stream that never
+     * completed. A terminal partial carries no nodes, only the reason a query ended without data,
+     * and the panel that renders that reason shows nothing at all when the batch is absent — so
      * withholding it would replace a stale explanation with none.
      */
     listCached(): ReadonlyArray<ThreadDiagnosticsBatch> {
@@ -232,6 +232,17 @@ export class ThreadDiagnosticsService {
                 batch.partialReason !== undefined && PARTIAL_REASON_KIND[batch.partialReason] === "terminal";
             return terminalPartial || now - batch.collectedAt < this.#cacheTtlMs;
         });
+    }
+
+    /**
+     * How much longer {@link listCached} will serve this batch, in ms. `undefined` for a batch that
+     * never expires — one reporting a query that ended without data.
+     */
+    remainingTtlMs(batch: ThreadDiagnosticsBatch): number | undefined {
+        if (batch.partialReason !== undefined && PARTIAL_REASON_KIND[batch.partialReason] === "terminal") {
+            return undefined;
+        }
+        return Math.max(0, this.#cacheTtlMs - (Date.now() - batch.collectedAt));
     }
 
     /**

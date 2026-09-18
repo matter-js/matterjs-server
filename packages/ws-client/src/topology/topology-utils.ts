@@ -680,9 +680,10 @@ export function isObserverOnline(nodes: Record<string, TopologySourceNode>, node
  *   discovered Border Router, so a lone record matching the address cannot establish that the
  *   device is on that network rather than one nothing reports.
  *
- * Batch age is not judged here. The server withholds a complete batch past its cache TTL, so a
- * batch that arrives is current when it arrives; what a long-open panel keeps afterwards is
- * bounded by its own refresh, not by a rule this function could enforce.
+ * Batch age is not judged here. The server withholds a complete batch past its cache TTL, and a
+ * holder refreshes or drops one when the lifetime the batch states ({@link
+ * ThreadDiagnosticsBatch.expiresInMs}) runs out, so what arrives here is current except for the
+ * gap between a lifetime elapsing and its holder acting on that.
  */
 export function findCorroboratingDiagnostics(
     batches: ReadonlyMap<string, ThreadDiagnosticsBatch>,

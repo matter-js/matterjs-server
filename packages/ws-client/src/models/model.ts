@@ -209,6 +209,18 @@ export interface ThreadDiagnosticsBatch {
     nodes: ThreadDiagnosticsNode[];
     /** Set when the snapshot is partial or the query could not complete; see {@link ThreadDiagnosticsPartialReason}. */
     partialReason?: ThreadDiagnosticsPartialReason;
+    /**
+     * How long this batch stays current, in ms from when the server sent it. Absent when it never
+     * expires, which is the case for a batch reporting a query that ended without data.
+     *
+     * Relative, not a deadline: the receiver measures it against its own clock from arrival, so a
+     * client whose clock disagrees with the server's neither discards a current batch nor keeps an
+     * expired one. Once it elapses, the server no longer serves this batch, and a client holding it
+     * should stop treating it as evidence.
+     *
+     * Added after the schema 13 release — treat as presence-detectable only.
+     */
+    expiresInMs?: number;
 }
 
 /**

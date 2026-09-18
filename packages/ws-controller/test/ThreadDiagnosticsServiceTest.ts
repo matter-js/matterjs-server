@@ -987,6 +987,27 @@ describe("ThreadDiagnosticsService", () => {
         expect(cached).to.have.lengthOf(2);
     });
 
+    it("remainingTtlMs counts down for a batch that expires and is absent for a terminal partial", async () => {
+        const service = new ThreadDiagnosticsService({
+            ...FAST_TIMING,
+            cacheTtlMs: 60_000,
+            borderRouters: brRegistryFrom(brsListing([makeBr()])),
+            credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
+            makeRestSource: () => syncRestSource([]),
+            probeRest: async () => null,
+            makeMeshcopSource: async () => meshcopHandle(syncMeshcopSource([SAMPLE_NODE])),
+        });
+
+        const complete = await service.getOrFetch(EXT_PAN_HEX_LOWER);
+        expect(complete?.partialReason).to.equal(undefined);
+        const remaining = service.remainingTtlMs(complete!);
+        expect(remaining).to.be.greaterThan(0);
+        expect(remaining).to.be.at.most(60_000);
+
+        const terminal = { ...complete!, partialReason: "border_router_unreachable" as const };
+        expect(service.remainingTtlMs(terminal)).to.equal(undefined);
+    });
+
     it("listCached withholds a complete batch once it is past the cache TTL", async () => {
         const service = new ThreadDiagnosticsService({
             ...FAST_TIMING,
