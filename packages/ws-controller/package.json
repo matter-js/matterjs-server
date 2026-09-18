@@ -45,10 +45,12 @@
         "@matter/main": "0.17.9",
         "@matter/thread-br-client": "0.17.9",
         "@project-chip/matter.js": "0.17.9",
+        "sdp-transform": "^3.0.0",
         "ws": "^8.21.3"
     },
     "devDependencies": {
         "@types/node": "^26.5.1",
+        "@types/sdp-transform": "^3.0.0",
         "@types/ws": "^8.18.1"
     },
     "optionalDependencies": {
