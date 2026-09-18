@@ -123,3 +123,107 @@ export function computeVideoEnvelope(args: VideoEnvelopeArgs): VideoEnvelope {
         keyFrameInterval: LIVE_VIEW_KEY_FRAME_INTERVAL_MS,
     };
 }
+
+export interface AllocatedVideoStream {
+    videoStreamId: number;
+    streamUsage: number;
+    videoCodec: number;
+    minResolution: Resolution;
+    maxResolution: Resolution;
+    minFrameRate: number;
+    maxFrameRate: number;
+    referenceCount: number;
+}
+
+function contains(outer: { min: number; max: number }, inner: { min: number; max: number }): boolean {
+    return inner.min >= outer.min && inner.max <= outer.max;
+}
+
+/**
+ * An allocated stream that satisfies the request, or none.
+ *
+ * Containment, not overlap: the request's minimum is a floor on delivered quality, so a stream
+ * allocated [720p..1080p] does not satisfy a request for 1080p even though the ranges intersect.
+ * Covering the request is the device's own dedup rule (spec 15.2.1.2.1), not a client's acceptance
+ * rule.
+ */
+export function findReusableVideoStream(
+    streams: AllocatedVideoStream[],
+    envelope: VideoEnvelope,
+    streamUsage: number,
+    options?: { ignoreStreamUsage?: boolean },
+): AllocatedVideoStream | undefined {
+    const candidates = streams.filter(candidate => {
+        if (candidate.videoCodec !== envelope.codec) return false;
+        if (options?.ignoreStreamUsage !== true && candidate.streamUsage !== streamUsage) return false;
+        if (
+            !contains(
+                { min: pixels(envelope.minResolution), max: pixels(envelope.maxResolution) },
+                { min: pixels(candidate.minResolution), max: pixels(candidate.maxResolution) },
+            )
+        ) {
+            return false;
+        }
+        return contains(
+            { min: envelope.minFrameRate, max: envelope.maxFrameRate },
+            { min: candidate.minFrameRate, max: candidate.maxFrameRate },
+        );
+    });
+
+    // Starting an encoder is the expensive part, so a stream already running wins.
+    return candidates.sort((a, b) => b.referenceCount - a.referenceCount)[0];
+}
+
+/**
+ * A stream to hand out when nothing can be allocated, or none.
+ *
+ * Matches against the bounds the caller actually stated, not the envelope the server computed: a
+ * degraded result may give up a default the server chose, never a constraint the caller set. A fully
+ * pinned caller therefore matches nothing here and receives a typed failure.
+ */
+export function findDegradedVideoStream(
+    streams: AllocatedVideoStream[],
+    codec: number,
+    callerBounds: VideoHints,
+): AllocatedVideoStream | undefined {
+    const candidates = streams.filter(candidate => {
+        if (candidate.videoCodec !== codec) return false;
+        if (
+            callerBounds.minResolution !== undefined &&
+            pixels(candidate.minResolution) < pixels(callerBounds.minResolution)
+        ) {
+            return false;
+        }
+        if (
+            callerBounds.maxResolution !== undefined &&
+            pixels(candidate.maxResolution) > pixels(callerBounds.maxResolution)
+        ) {
+            return false;
+        }
+        if (callerBounds.minFrameRate !== undefined && candidate.minFrameRate < callerBounds.minFrameRate) {
+            return false;
+        }
+        if (callerBounds.maxFrameRate !== undefined && candidate.maxFrameRate > callerBounds.maxFrameRate) {
+            return false;
+        }
+        return true;
+    });
+
+    // Prefer the most capable stream, since this rung is already a compromise.
+    return candidates.sort((a, b) => pixels(b.maxResolution) - pixels(a.maxResolution))[0];
+}
+
+/** The next envelope to attempt after a device rejection, or none when nothing is left to give up. */
+export function narrowEnvelope(envelope: VideoEnvelope): VideoEnvelope | undefined {
+    if (pixels(envelope.maxResolution) > pixels(envelope.minResolution)) {
+        // Quartering the pixel budget halves each linear dimension, matching how encoders step down resolution.
+        const halved = scaleToPixels(envelope.maxResolution, pixels(envelope.maxResolution) / 4);
+        const maxResolution = pixels(halved) < pixels(envelope.minResolution) ? envelope.minResolution : halved;
+        return { ...envelope, maxResolution };
+    }
+    if (envelope.maxFrameRate > envelope.minFrameRate && envelope.maxFrameRate > 1) {
+        const maxFrameRate = Math.max(envelope.minFrameRate, Math.floor(envelope.maxFrameRate / 2), 1);
+        return { ...envelope, maxFrameRate };
+    }
+    return undefined;
+}

@@ -4,11 +4,19 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { computeVideoEnvelope } from "../src/camera/streamPolicy.js";
+import {
+    computeVideoEnvelope,
+    findDegradedVideoStream,
+    findReusableVideoStream,
+    narrowEnvelope,
+} from "../src/camera/streamPolicy.js";
 
 /** H.264 = 0, H.265 = 1 in VideoCodecEnum. */
 const H264 = 0;
 const H265 = 1;
+
+const LIVE_VIEW = 3;
+const RECORDING_USAGE = 1;
 
 const CAPABILITIES = {
     sensor: { width: 2560, height: 1440 },
@@ -170,6 +178,185 @@ describe("streamPolicy", () => {
             });
             expect(envelope.maxResolution).to.deep.equal({ width: 2560, height: 1440 });
             expect(envelope.maxFrameRate).to.equal(30);
+        });
+    });
+
+    describe("findReusableVideoStream", () => {
+        const REQUEST = {
+            codec: H265,
+            minResolution: { width: 1920, height: 1080 },
+            maxResolution: { width: 1920, height: 1080 },
+            minFrameRate: 1,
+            maxFrameRate: 30,
+            minBitRate: 800000,
+            maxBitRate: 4000000,
+            keyFrameInterval: 2000,
+        };
+
+        function stream(
+            overrides: Partial<{
+                videoStreamId: number;
+                streamUsage: number;
+                videoCodec: number;
+                minResolution: { width: number; height: number };
+                maxResolution: { width: number; height: number };
+                minFrameRate: number;
+                maxFrameRate: number;
+                referenceCount: number;
+            }> = {},
+        ) {
+            return {
+                videoStreamId: 1,
+                streamUsage: LIVE_VIEW,
+                videoCodec: H265,
+                minResolution: { width: 1920, height: 1080 },
+                maxResolution: { width: 1920, height: 1080 },
+                minFrameRate: 1,
+                maxFrameRate: 30,
+                referenceCount: 0,
+                ...overrides,
+            };
+        }
+
+        it("reuses a stream whose envelope sits inside the request", () => {
+            expect(findReusableVideoStream([stream()], REQUEST, LIVE_VIEW)?.videoStreamId).to.equal(1);
+        });
+
+        it("refuses a stream whose floor is below the requested floor", () => {
+            // Issue #1056: [720p..1080p] may deliver 720p, so it does not satisfy a 1080p floor.
+            const candidate = stream({ minResolution: { width: 1280, height: 720 } });
+            expect(findReusableVideoStream([candidate], REQUEST, LIVE_VIEW)).to.equal(undefined);
+        });
+
+        it("refuses a stream whose ceiling is above the requested ceiling", () => {
+            const candidate = stream({ maxResolution: { width: 2560, height: 1440 } });
+            expect(findReusableVideoStream([candidate], REQUEST, LIVE_VIEW)).to.equal(undefined);
+        });
+
+        it("refuses a stream using a different codec", () => {
+            expect(findReusableVideoStream([stream({ videoCodec: H264 })], REQUEST, LIVE_VIEW)).to.equal(undefined);
+        });
+
+        it("refuses a stream with a different usage by default", () => {
+            expect(findReusableVideoStream([stream({ streamUsage: RECORDING_USAGE })], REQUEST, LIVE_VIEW)).to.equal(
+                undefined,
+            );
+        });
+
+        it("accepts a different usage when the caller relaxes the requirement", () => {
+            const candidate = stream({ streamUsage: RECORDING_USAGE });
+            expect(
+                findReusableVideoStream([candidate], REQUEST, LIVE_VIEW, { ignoreStreamUsage: true })?.videoStreamId,
+            ).to.equal(1);
+        });
+
+        it("prefers a stream whose encoder is already running", () => {
+            const idle = stream({ videoStreamId: 1, referenceCount: 0 });
+            const running = stream({ videoStreamId: 2, referenceCount: 1 });
+            expect(findReusableVideoStream([idle, running], REQUEST, LIVE_VIEW)?.videoStreamId).to.equal(2);
+        });
+
+        it("refuses a stream whose frame-rate floor is below the requested floor", () => {
+            const request = { ...REQUEST, minFrameRate: 15 };
+            expect(findReusableVideoStream([stream({ minFrameRate: 1 })], request, LIVE_VIEW)).to.equal(undefined);
+        });
+    });
+
+    describe("findDegradedVideoStream", () => {
+        const IN_USE_WIDE = {
+            videoStreamId: 4,
+            streamUsage: LIVE_VIEW,
+            videoCodec: H265,
+            minResolution: { width: 1280, height: 720 },
+            maxResolution: { width: 1920, height: 1080 },
+            minFrameRate: 1,
+            maxFrameRate: 30,
+            referenceCount: 1,
+        };
+
+        it("hands out a wider in-use stream when the caller stated no bounds", () => {
+            expect(findDegradedVideoStream([IN_USE_WIDE], H265, {})?.videoStreamId).to.equal(4);
+        });
+
+        it("refuses a stream below a floor the caller stated", () => {
+            // The caller pinned 1080p, so [720p..1080p] may deliver less than asked — issue #1056.
+            expect(
+                findDegradedVideoStream([IN_USE_WIDE], H265, {
+                    minResolution: { width: 1920, height: 1080 },
+                }),
+            ).to.equal(undefined);
+        });
+
+        it("refuses a stream above a ceiling the caller stated", () => {
+            expect(
+                findDegradedVideoStream([IN_USE_WIDE], H265, {
+                    maxResolution: { width: 1280, height: 720 },
+                }),
+            ).to.equal(undefined);
+        });
+
+        it("refuses a stream below a frame-rate floor the caller stated", () => {
+            expect(findDegradedVideoStream([IN_USE_WIDE], H265, { minFrameRate: 15 })).to.equal(undefined);
+        });
+
+        it("refuses a stream above a frame-rate ceiling the caller stated", () => {
+            expect(findDegradedVideoStream([IN_USE_WIDE], H265, { maxFrameRate: 15 })).to.equal(undefined);
+        });
+
+        it("refuses a stream using a different codec", () => {
+            expect(findDegradedVideoStream([IN_USE_WIDE], H264, {})).to.equal(undefined);
+        });
+
+        it("ignores stream usage, because this rung runs only when nothing else fits", () => {
+            const recording = { ...IN_USE_WIDE, streamUsage: RECORDING_USAGE };
+            expect(findDegradedVideoStream([recording], H265, {})?.videoStreamId).to.equal(4);
+        });
+
+        it("prefers the most capable stream when several degraded candidates qualify", () => {
+            const narrow = { ...IN_USE_WIDE, videoStreamId: 5, maxResolution: { width: 1280, height: 720 } };
+            const wide = { ...IN_USE_WIDE, videoStreamId: 6, maxResolution: { width: 1920, height: 1080 } };
+            expect(findDegradedVideoStream([narrow, wide], H265, {})?.videoStreamId).to.equal(6);
+        });
+    });
+
+    describe("narrowEnvelope", () => {
+        const WIDE = {
+            codec: H265,
+            minResolution: { width: 640, height: 360 },
+            maxResolution: { width: 2560, height: 1440 },
+            minFrameRate: 1,
+            maxFrameRate: 30,
+            minBitRate: 800000,
+            maxBitRate: 4000000,
+            keyFrameInterval: 2000,
+        };
+
+        it("halves the resolution ceiling first, in even dimensions", () => {
+            const narrowed = narrowEnvelope(WIDE);
+            expect(narrowed?.maxResolution).to.deep.equal({ width: 1280, height: 720 });
+            expect(narrowed?.maxFrameRate).to.equal(30);
+        });
+
+        it("halves the frame rate once the resolution floor is reached", () => {
+            const atFloor = { ...WIDE, maxResolution: { width: 640, height: 360 } };
+            const narrowed = narrowEnvelope(atFloor);
+            expect(narrowed?.maxResolution).to.deep.equal({ width: 640, height: 360 });
+            expect(narrowed?.maxFrameRate).to.equal(15);
+        });
+
+        it("reports no further narrowing once resolution and frame rate are both at the floor", () => {
+            const exhausted = { ...WIDE, maxResolution: { width: 640, height: 360 }, maxFrameRate: 1 };
+            expect(narrowEnvelope(exhausted)).to.equal(undefined);
+        });
+
+        it("clamps a halved resolution to the floor rather than overshooting", () => {
+            const nearFloor = {
+                ...WIDE,
+                minResolution: { width: 960, height: 540 },
+                maxResolution: { width: 1280, height: 720 },
+            };
+            const narrowed = narrowEnvelope(nearFloor);
+            expect(narrowed?.maxResolution).to.deep.equal({ width: 960, height: 540 });
         });
     });
 });
