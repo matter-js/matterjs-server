@@ -75,6 +75,7 @@ async def test_send_command_and_receive_response(mock_server, client_session):
 
     result = await client.send_command("diagnostics")
     assert result == {"info": "test"}
+    assert client._result_futures == {}
 
     await client.disconnect()
     listen_task.cancel()

@@ -7,7 +7,7 @@
 import { Minutes, Seconds } from "@matter/main";
 import { InvalidArgumentError } from "commander";
 import { spawnSync } from "node:child_process";
-import { parseCliArgs, parseCustomClusterPollIntervalOption } from "../src/cli.js";
+import { parseCliArgs, parseCustomClusterPollIntervalOption, parseTcpPortOption } from "../src/cli.js";
 import { controllerOptionsFrom } from "../src/controller-options.js";
 
 /** Commander skips the first two entries of a parsed argv. */
@@ -18,13 +18,21 @@ function argv(...args: string[]): string[] {
 describe("cli", () => {
     // parseCliArgs reads the ambient environment, and this repo's documented test command exports env vars.
     let savedEnv: string | undefined;
+    let savedProbePortEnv: string | undefined;
 
     before(() => {
         savedEnv = process.env.CUSTOM_CLUSTER_POLL_INTERVAL;
         delete process.env.CUSTOM_CLUSTER_POLL_INTERVAL;
+        savedProbePortEnv = process.env.THREAD_REST_PROBE_PORT;
+        delete process.env.THREAD_REST_PROBE_PORT;
     });
 
     after(() => {
+        if (savedProbePortEnv === undefined) {
+            delete process.env.THREAD_REST_PROBE_PORT;
+        } else {
+            process.env.THREAD_REST_PROBE_PORT = savedProbePortEnv;
+        }
         if (savedEnv === undefined) {
             delete process.env.CUSTOM_CLUSTER_POLL_INTERVAL;
         } else {
@@ -82,6 +90,44 @@ describe("cli", () => {
         });
     });
 
+    describe("--thread-rest-probe-port", () => {
+        it("is unset by default so the controller default applies", () => {
+            expect(parseCliArgs(argv()).threadRestProbePort).to.equal(null);
+        });
+
+        it("accepts a port", () => {
+            expect(parseCliArgs(argv("--thread-rest-probe-port", "8080")).threadRestProbePort).to.equal(8080);
+        });
+
+        it("reads the port from the environment", () => {
+            process.env.THREAD_REST_PROBE_PORT = "8080";
+            try {
+                expect(parseCliArgs(argv()).threadRestProbePort).to.equal(8080);
+            } finally {
+                delete process.env.THREAD_REST_PROBE_PORT;
+            }
+        });
+
+        it("accepts the bounds of the TCP port range", () => {
+            expect(parseTcpPortOption("1")).to.equal(1);
+            expect(parseTcpPortOption("65535")).to.equal(65535);
+        });
+
+        it("rejects a port outside the TCP port range", () => {
+            expect(() => parseTcpPortOption("0")).to.throw(InvalidArgumentError);
+            expect(() => parseTcpPortOption("65536")).to.throw(InvalidArgumentError);
+        });
+
+        it("rejects a non-numeric value", () => {
+            expect(() => parseTcpPortOption("rest")).to.throw(InvalidArgumentError);
+        });
+
+        it("rejects a value that only starts with digits", () => {
+            expect(() => parseTcpPortOption("8080abc")).to.throw(InvalidArgumentError);
+            expect(() => parseTcpPortOption("1e4")).to.throw(InvalidArgumentError);
+        });
+    });
+
     describe("controllerOptionsFrom", () => {
         function options(overrides: Partial<ReturnType<typeof parseCliArgs>> = {}) {
             return controllerOptionsFrom({ ...parseCliArgs(argv()), ...overrides }, "server", "1.2.3");
@@ -93,6 +139,11 @@ describe("cli", () => {
             expect(options().customClusterPollInterval).to.equal(Minutes(1));
             expect(options({ customClusterPollInterval: 600 }).customClusterPollInterval).to.equal(Minutes(10));
             expect(options({ customClusterPollInterval: 86400 }).customClusterPollInterval).to.equal(Seconds(86400));
+        });
+
+        it("passes the REST probe port through, leaving it undefined when unset", () => {
+            expect(options().threadRestProbePort).to.equal(undefined);
+            expect(options({ threadRestProbePort: 8080 }).threadRestProbePort).to.equal(8080);
         });
 
         it("converts the OTA upload limit from MB to bytes", () => {

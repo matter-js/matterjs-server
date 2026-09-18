@@ -102,6 +102,11 @@ export interface MatterControllerOptions {
      * dataset from config) is unaffected. Defaults to false.
      */
     disableThreadDiagnostics?: boolean;
+    /**
+     * TCP port of the OTBR REST API probed on discovered Border Routers. Defaults to
+     * {@link ThreadDiagnosticsService.DEFAULT_REST_PROBE_PORT}.
+     */
+    threadRestProbePort?: number;
     /** Staging directory and limits for two-step OTA firmware uploads. */
     otaUpload?: OtaUploadOptions;
     /**
@@ -192,13 +197,15 @@ export function topologyAttributeReader(
 /**
  * Split an `OtbrRestCapability.baseUrl` (e.g. `http://[fd00::1]:8081`) into the
  * host + port the {@link OtbrRestClient} constructor expects. Square-bracketed
- * IPv6 hosts are stripped — the client wraps them again itself.
+ * IPv6 hosts are stripped — the client wraps them again itself. `URL` drops a
+ * scheme-default port, so an OTBR probed on 80 must resolve to 80, not to the
+ * probe default.
  */
-function parseRestBaseUrl(baseUrl: string): { host: string; port: number } {
+export function parseRestBaseUrl(baseUrl: string): { host: string; port: number } {
     const url = new URL(baseUrl);
     let host = url.hostname;
     if (host.startsWith("[") && host.endsWith("]")) host = host.slice(1, -1);
-    const port = url.port === "" ? 8081 : Number(url.port);
+    const port = url.port === "" ? (url.protocol === "https:" ? 443 : 80) : Number(url.port);
     return { host, port };
 }
 
@@ -314,6 +321,7 @@ export class MatterController {
         this.#services = this.#env.asDependent();
         this.#threadDiagnostics = new ThreadDiagnosticsService({
             enabled: !this.#threadDiagnosticsDisabled,
+            restProbePort: options.threadRestProbePort,
             borderRouters: this.#borderRouterRegistry,
             credentials: this.#credentials,
             makeRestSource: cap => {

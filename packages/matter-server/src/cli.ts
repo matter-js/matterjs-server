@@ -85,6 +85,7 @@ export interface CliOptions {
 
     // Thread Border Router configuration
     disableThreadDiagnostics: boolean;
+    threadRestProbePort: number | null;
 
     // Custom cluster polling configuration
     customClusterPollInterval: number;
@@ -112,6 +113,14 @@ export function parseCustomClusterPollIntervalOption(value: string): number {
         throw new InvalidArgumentError(
             `Value must be between ${MIN_CUSTOM_CLUSTER_POLL_INTERVAL} and ${MAX_CUSTOM_CLUSTER_POLL_INTERVAL} seconds, got: ${value}`,
         );
+    }
+    return parsed;
+}
+
+export function parseTcpPortOption(value: string): number {
+    const parsed = /^\d+$/.test(value.trim()) ? Number(value.trim()) : NaN;
+    if (isNaN(parsed) || parsed < 1 || parsed > 65535) {
+        throw new InvalidArgumentError(`Value must be a TCP port between 1 and 65535, got: ${value}`);
     }
     return parsed;
 }
@@ -275,6 +284,14 @@ export function parseCliArgs(argv?: string[]): CliOptions {
         )
         .addOption(
             new Option(
+                "--thread-rest-probe-port <port>",
+                "TCP port of the OTBR REST API probed on discovered Thread Border Routers (default: 8081). Set it when the Border Router exposes its REST API elsewhere, e.g. 8080.",
+            )
+                .argParser(parseTcpPortOption)
+                .env("THREAD_REST_PROBE_PORT"),
+        )
+        .addOption(
+            new Option(
                 "--custom-cluster-poll-interval <seconds>",
                 "Interval in seconds for polling custom cluster attributes that do not support subscriptions (legacy Eve Energy devices). Raise it to reduce periodic Thread traffic at the cost of less current energy readings.",
             )
@@ -365,6 +382,7 @@ export function parseCliArgs(argv?: string[]): CliOptions {
         disableDashboard: opts.disableDashboard,
         productionMode: opts.productionMode,
         disableThreadDiagnostics: opts.disableThreadDiagnostics,
+        threadRestProbePort: opts.threadRestProbePort ?? null,
         customClusterPollInterval: opts.customClusterPollInterval,
     };
 }

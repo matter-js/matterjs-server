@@ -774,8 +774,8 @@ class MatterClient:
         message = self._prepare_message(command, require_schema, **kwargs)
         future: asyncio.Future[Any] = self._loop.create_future()
         self._result_futures[message.message_id] = future
-        await self.connection.send_message(message)
         try:
+            await self.connection.send_message(message)
             return await future
         finally:
             self._result_futures.pop(message.message_id)
@@ -850,7 +850,11 @@ class MatterClient:
         if isinstance(msg, ResultMessageBase):
             future = self._result_futures.get(msg.message_id)
 
-            if future is None or future.done():
+            if future is None:
+                self.logger.debug("No listener for result of message id %s", msg.message_id)
+                return
+            if future.done():
+                self.logger.debug("Result arrived for already settled message id %s", msg.message_id)
                 return
 
             if isinstance(msg, SuccessResultMessage):
