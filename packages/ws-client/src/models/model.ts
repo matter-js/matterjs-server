@@ -908,6 +908,17 @@ export interface MatterFabricData {
  */
 export const ICD_MULTI_ADMIN_ERROR_CODE = 100;
 
+/** OHF extension: no codec or resolution range both the camera and the caller can serve. */
+export const CAMERA_STREAM_INCOMPATIBLE_ERROR_CODE = 102;
+/** OHF extension: the camera has no encoder capacity left for the requested stream. */
+export const CAMERA_RESOURCE_EXHAUSTED_ERROR_CODE = 103;
+/** OHF extension: stream release refused because the device still references the stream. */
+export const CAMERA_STREAM_IN_USE_ERROR_CODE = 104;
+/** OHF extension: stream release refused because the server did not allocate the stream. */
+export const CAMERA_STREAM_NOT_OWNED_ERROR_CODE = 105;
+/** OHF extension: endpoint does not expose the clusters camera streaming needs. */
+export const CAMERA_NOT_SUPPORTED_ERROR_CODE = 106;
+
 /** ICD controller-side state for a node. Note: Only available with OHF Matter Server. */
 export interface IcdStateData {
     supported: boolean;

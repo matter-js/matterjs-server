@@ -83,6 +83,35 @@ export enum ServerErrorCode {
     IcdMultiAdmin = 100,
     /** OHF extension (not python-matter-server): OTA firmware image upload failed (corrupt file / store failure). */
     OtaUploadError = 101,
+    /** OHF extension: no codec or resolution range both the camera and the caller can serve. */
+    CameraStreamIncompatible = 102,
+    /** OHF extension: the camera has no encoder capacity left for the requested stream. */
+    CameraResourceExhausted = 103,
+    /** OHF extension: stream release refused because the device still references the stream. */
+    CameraStreamInUse = 104,
+    /** OHF extension: stream release refused because the server did not allocate the stream. */
+    CameraStreamNotOwned = 105,
+    /** OHF extension: endpoint does not expose the clusters camera streaming needs. */
+    CameraNotSupported = 106,
+}
+
+export interface CameraStreamIncompatibleDetail {
+    reason: "codec" | "bounds";
+    device: string[];
+    requested: string[];
+    /** Matter status code the device answered with, when a device rejection produced this. */
+    deviceStatus?: number;
+}
+
+export interface CameraAllocatedStreamDetail {
+    streamId: number;
+    referenceCount: number;
+}
+
+export interface CameraResourceExhaustedDetail {
+    allocated: CameraAllocatedStreamDetail[];
+    maxConcurrentEncoders?: number;
+    maxEncodedPixelRate?: number;
 }
 
 /**
@@ -157,6 +186,68 @@ export class ServerError extends Error {
             JSON.stringify({
                 message: "Peer has administrators from other vendors that may not support LIT",
                 admin_vendor_ids: adminVendorIds,
+            }),
+        );
+    }
+
+    static cameraStreamIncompatible(detail: CameraStreamIncompatibleDetail): ServerError {
+        return new ServerError(
+            ServerErrorCode.CameraStreamIncompatible,
+            JSON.stringify({
+                message:
+                    detail.reason === "codec"
+                        ? "No codec supported by both the camera and the caller"
+                        : "Camera cannot serve the requested stream parameters",
+                reason: detail.reason,
+                device: detail.device,
+                requested: detail.requested,
+                ...(detail.deviceStatus === undefined ? {} : { device_status: detail.deviceStatus }),
+            }),
+        );
+    }
+
+    static cameraResourceExhausted(detail: CameraResourceExhaustedDetail): ServerError {
+        return new ServerError(
+            ServerErrorCode.CameraResourceExhausted,
+            JSON.stringify({
+                message: "Camera has no encoder capacity for this stream",
+                allocated: detail.allocated.map(entry => ({
+                    stream_id: entry.streamId,
+                    reference_count: entry.referenceCount,
+                })),
+                max_concurrent_encoders: detail.maxConcurrentEncoders,
+                max_encoded_pixel_rate: detail.maxEncodedPixelRate,
+            }),
+        );
+    }
+
+    static cameraStreamInUse(detail: CameraAllocatedStreamDetail): ServerError {
+        return new ServerError(
+            ServerErrorCode.CameraStreamInUse,
+            JSON.stringify({
+                message: "Stream is in use and cannot be released",
+                stream_id: detail.streamId,
+                reference_count: detail.referenceCount,
+            }),
+        );
+    }
+
+    static cameraStreamNotOwned(detail: { streamId: number }): ServerError {
+        return new ServerError(
+            ServerErrorCode.CameraStreamNotOwned,
+            JSON.stringify({
+                message: "Stream was not allocated by this server and cannot be released",
+                stream_id: detail.streamId,
+            }),
+        );
+    }
+
+    static cameraNotSupported(detail: { missingClusters: number[] }): ServerError {
+        return new ServerError(
+            ServerErrorCode.CameraNotSupported,
+            JSON.stringify({
+                message: "Endpoint does not support camera streaming",
+                missing_clusters: detail.missingClusters,
             }),
         );
     }
