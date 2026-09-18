@@ -190,8 +190,21 @@ export class ThreadDiagnosticsService {
         return this.#restProbePort;
     }
 
+    /**
+     * Every cached batch a caller may still act on: complete batches within the TTL, plus every
+     * partial regardless of age.
+     *
+     * A complete batch past the TTL is stale evidence — {@link getOrFetch} already refuses to
+     * serve it, and a client that receives it here has no way to tell how old it is. A partial
+     * carries no evidence, only the reason a query failed, and the panel that renders that reason
+     * shows nothing at all when the batch is absent, so withholding it would replace a stale
+     * explanation with none.
+     */
     listCached(): ReadonlyArray<ThreadDiagnosticsBatch> {
-        return Array.from(this.#cache.values());
+        const now = Date.now();
+        return Array.from(this.#cache.values()).filter(
+            batch => batch.partialReason !== undefined || now - batch.collectedAt < this.#cacheTtlMs,
+        );
     }
 
     /**

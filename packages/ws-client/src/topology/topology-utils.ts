@@ -675,36 +675,33 @@ export function isObserverOnline(nodes: Record<string, TopologySourceNode>, node
  *
  * - its batch is complete: a batch with a `partialReason` is an aborted query, so an entry in it
  *   may predate the failure; and
- * - its batch describes the device's own Thread network. When the observing node does not report
- *   an extended PAN ID, the device's network is unknown, so a record qualifies only while no
- *   other network reports the same address — with two candidates there is nothing to decide
- *   between them.
+ * - its batch describes the device's own Thread network. A device whose observer reports no
+ *   extended PAN ID is never corroborated: the batches at hand cover only networks with a
+ *   discovered Border Router, so a lone record matching the address cannot establish that the
+ *   device is on that network rather than one nothing reports.
  *
- * Batch age is deliberately not considered: the server bounds it with the diagnostics cache TTL,
- * and a second freshness rule here would drift from it.
+ * Batch age is not judged here. The server withholds a complete batch past its cache TTL, so a
+ * batch that arrives is current when it arrives; what a long-open panel keeps afterwards is
+ * bounded by its own refresh, not by a rule this function could enforce.
  */
 export function findCorroboratingDiagnostics(
     batches: ReadonlyMap<string, ThreadDiagnosticsBatch>,
     device: ThreadExternalDevice,
 ): ThreadDiagnosticsRecord | undefined {
-    const target = device.extAddressHex.toUpperCase();
     const deviceXp = device.extendedPanIdHex?.toUpperCase();
-    const candidates = new Array<ThreadDiagnosticsRecord>();
+    if (deviceXp === undefined) {
+        return undefined;
+    }
+    const target = device.extAddressHex.toUpperCase();
 
     for (const batch of batches.values()) {
         if (batch.partialReason !== undefined) continue;
+        if (batch.extPanIdHex.toUpperCase() !== deviceXp) continue;
         for (const node of batch.nodes) {
-            if (node.extMacAddress?.toUpperCase() !== target) continue;
-            if (deviceXp !== undefined && batch.extPanIdHex.toUpperCase() !== deviceXp) continue;
-            candidates.push({ node, batch });
+            if (node.extMacAddress?.toUpperCase() === target) return { node, batch };
         }
     }
-
-    if (deviceXp !== undefined) {
-        return candidates[0];
-    }
-    const networks = new Set(candidates.map(candidate => candidate.batch.extPanIdHex.toUpperCase()));
-    return networks.size === 1 ? candidates[0] : undefined;
+    return undefined;
 }
 
 /**

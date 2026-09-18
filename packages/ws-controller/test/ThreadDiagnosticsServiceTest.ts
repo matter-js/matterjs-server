@@ -987,6 +987,37 @@ describe("ThreadDiagnosticsService", () => {
         expect(cached).to.have.lengthOf(2);
     });
 
+    it("listCached withholds a complete batch once it is past the cache TTL", async () => {
+        const service = new ThreadDiagnosticsService({
+            ...FAST_TIMING,
+            cacheTtlMs: 0,
+            borderRouters: brRegistryFrom(brsListing([makeBr()])),
+            credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
+            makeRestSource: () => syncRestSource([]),
+            probeRest: async () => null,
+            makeMeshcopSource: async () => meshcopHandle(syncMeshcopSource([SAMPLE_NODE])),
+        });
+
+        const batch = await service.getOrFetch(EXT_PAN_HEX_LOWER);
+        expect(batch?.partialReason).to.equal(undefined);
+        expect(service.listCached()).to.have.lengthOf(0);
+    });
+
+    it("listCached keeps a partial batch past the cache TTL", async () => {
+        const service = new ThreadDiagnosticsService({
+            ...FAST_TIMING,
+            cacheTtlMs: 0,
+            borderRouters: brRegistryFrom(brsListing([])),
+            credentials: credsRegistryFrom(credsLookup(new Map([[EXT_PAN_HEX_LOWER, makeCreds()]]))),
+            makeRestSource: () => syncRestSource([]),
+            makeMeshcopSource: async () => meshcopHandle(syncMeshcopSource([])),
+        });
+
+        const batch = await service.getOrFetch(EXT_PAN_HEX_LOWER);
+        expect(batch?.partialReason).to.equal("border_router_unreachable");
+        expect(service.listCached()).to.have.lengthOf(1);
+    });
+
     it("registerRestCapability and unregisterRestCapability toggle REST availability", async () => {
         let restCalls = 0;
         const service = new ThreadDiagnosticsService({

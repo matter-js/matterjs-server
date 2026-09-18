@@ -433,26 +433,13 @@ describe("topology-utils", () => {
             expect(hidden).to.equal(false);
         });
 
-        it("corroborates a device of unknown network from the only network reporting it", () => {
+        it("refuses to corroborate a device whose own Thread network is unknown", () => {
             const device = { ...mkExternal(["1"]), extendedPanIdHex: undefined };
             const hidden = shouldHideExternalDevice(
                 device,
                 { "1": observer(true, 3) },
                 {
                     diagnostics: diagnostics(),
-                    hideOfflineNodes: false,
-                },
-            );
-            expect(hidden).to.equal(false);
-        });
-
-        it("refuses to corroborate a device of unknown network reported by two networks", () => {
-            const device = { ...mkExternal(["1"]), extendedPanIdHex: undefined };
-            const hidden = shouldHideExternalDevice(
-                device,
-                { "1": observer(true, 3) },
-                {
-                    diagnostics: diagnostics(mkBatch(), mkBatch({ extPanIdHex: "8877665544332211" })),
                     hideOfflineNodes: false,
                 },
             );
