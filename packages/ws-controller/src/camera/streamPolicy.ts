@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type { Resolution, VideoEnvelope } from "./cameraTypes.js";
+import type { AudioEnvelope, Resolution, VideoEnvelope } from "./cameraTypes.js";
 import type { SdpVideoConstraints } from "./sdpConstraints.js";
 
 /** KeyFrameInterval in milliseconds; LiveView favours fast recovery over bitrate. */
@@ -228,4 +228,75 @@ export function narrowEnvelope(envelope: VideoEnvelope): VideoEnvelope | undefin
         return { ...envelope, maxFrameRate };
     }
     return undefined;
+}
+
+/** AudioCodecEnum values as they appear in MicrophoneCapabilities. */
+const AUDIO_CODEC_NAMES = new Map<number, string>([
+    [0, "OPUS"],
+    [1, "AAC"],
+]);
+
+const DEFAULT_AUDIO_BIT_RATE = 64000;
+
+export interface AudioCapabilities {
+    supportedCodecs: number[];
+    maxNumberOfChannels: number;
+    supportedSampleRates: number[];
+    supportedBitDepths: number[];
+    /** TwoWayTalkSupportTypeEnum: 0 NotSupported, 1 HalfDuplex, 2 FullDuplex. */
+    twoWayTalkSupport: number;
+}
+
+export interface AudioHints {
+    codecs?: number[];
+    channelCount?: number;
+    sampleRate?: number;
+    bitRate?: number;
+}
+
+export interface AudioEnvelopeArgs {
+    capabilities: AudioCapabilities;
+    sdp: SdpVideoConstraints | undefined;
+    hints: AudioHints | undefined;
+    wantsTalkback: boolean;
+}
+
+/**
+ * Parameters for an audio stream, or none when no codec suits both sides.
+ *
+ * Audio is optional in a way video is not: a caller that cannot agree on a codec gets a video-only
+ * session rather than a failed one, so this reports absence instead of throwing.
+ */
+export function computeAudioEnvelope(args: AudioEnvelopeArgs): AudioEnvelope | undefined {
+    const { capabilities, sdp, hints } = args;
+
+    let codecs = capabilities.supportedCodecs;
+    if (sdp !== undefined && sdp.hasAudio) {
+        codecs = codecs.filter(codec => {
+            const name = AUDIO_CODEC_NAMES.get(codec);
+            return name !== undefined && sdp.audioCodecs.includes(name);
+        });
+    }
+    if (hints?.codecs !== undefined) {
+        const preferred = hints.codecs.filter(codec => codecs.includes(codec));
+        codecs = preferred.length > 0 ? preferred : new Array<number>();
+    }
+    const codec = codecs[0];
+    if (codec === undefined) return undefined;
+
+    const sampleRate =
+        hints?.sampleRate !== undefined && capabilities.supportedSampleRates.includes(hints.sampleRate)
+            ? hints.sampleRate
+            : Math.max(...capabilities.supportedSampleRates);
+
+    return {
+        codec,
+        channelCount: Math.min(
+            hints?.channelCount ?? capabilities.maxNumberOfChannels,
+            capabilities.maxNumberOfChannels,
+        ),
+        sampleRate,
+        bitRate: hints?.bitRate ?? DEFAULT_AUDIO_BIT_RATE,
+        bitDepth: Math.max(...capabilities.supportedBitDepths),
+    };
 }
