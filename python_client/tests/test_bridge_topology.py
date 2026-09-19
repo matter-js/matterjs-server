@@ -435,7 +435,7 @@ def test_bridged_node_device_type_alone_marks_a_bridged_device() -> None:
 
 
 def test_device_info_resolution_order() -> None:
-    """Device info comes from the endpoint, else its parts parent, else its bridge parent."""
+    """Device info comes from the endpoint, else from the device its endpoint is a part of."""
     node = _node_with_endpoints(
         {
             0: {

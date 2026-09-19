@@ -4,6 +4,10 @@ The snapshot in `fixtures/bridge_node.json` is the `get_node` payload the server
 `packages/matter-server/test/fixtures/TestBridgeDevice.ts`, captured after commissioning it. It
 carries the endpoint structure a matter.js bridge really reports, including the Full-Family
 PartsList of an aggregator.
+
+It keeps only the Descriptor, Basic Information and Bridged Device Basic Information clusters the
+tests read. The rest of a capture describes the host that ran it - network interfaces, addresses
+and operational credentials - and has no place in the repository.
 """
 
 from __future__ import annotations
