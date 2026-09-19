@@ -40,11 +40,16 @@ export type ThreadDiagnosticsPartialReason =
     | "rest_no_responses_yet";
 
 /**
- * Whether a partial describes a query still running or one that ended without data.
+ * Whether a partial describes a query that was still running when it was taken, or one that ended
+ * without data. This is the single statement of why the two are cached differently.
  *
- * A `streaming` partial carries nodes and is superseded by the next snapshot, so it ages like a
- * complete batch. A `terminal` one carries only the reason the query failed, which stays worth
- * showing however old it is.
+ * A `streaming` partial is a snapshot of a query in flight — with whatever nodes had answered by
+ * then, which for the `*_no_responses_yet` reasons is none. What ages is the status itself: the
+ * query it describes finished or died long ago, so the snapshot stops being a current account of
+ * the network and expires like a complete batch.
+ *
+ * A `terminal` one reports a query that ended without data. It carries only the reason, and that
+ * reason stays worth showing however old it is, so it outlives the TTL.
  *
  * Exhaustive by construction: a reason added to {@link ThreadDiagnosticsPartialReason} without a
  * kind here is a compile error, not a batch that silently outlives its data.
@@ -215,15 +220,13 @@ export class ThreadDiagnosticsService {
     }
 
     /**
-     * Every cached batch a caller may still act on: anything within the TTL, plus a batch stating
-     * why a query failed, at any age.
+     * Every cached batch a caller may still act on: anything within the TTL, plus a terminal
+     * partial at any age. {@link PARTIAL_REASON_KIND} says which is which and why.
      *
      * Past the TTL a batch that describes a network is stale evidence, and a client receiving it
-     * cannot tell how old it is. That covers the snapshots of a query still in flight
-     * ({@link PARTIAL_REASON_KIND}): they carry nodes, and an old one means a stream that never
-     * completed. A terminal partial carries no nodes, only the reason a query ended without data,
-     * and the panel that renders that reason shows nothing at all when the batch is absent — so
-     * withholding it would replace a stale explanation with none.
+     * cannot tell how old it is. A terminal partial is kept because the panel that renders its
+     * reason shows nothing at all when the batch is absent, so withholding it would replace a
+     * stale explanation with none.
      */
     listCached(): ReadonlyArray<ThreadDiagnosticsBatch> {
         const now = Date.now();
