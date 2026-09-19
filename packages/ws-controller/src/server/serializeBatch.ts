@@ -8,7 +8,7 @@ import type {
     ThreadDiagnosticsBatch as ThreadDiagnosticsBatchWire,
     ThreadDiagnosticsNode as ThreadDiagnosticsNodeWire,
 } from "@matter-server/ws-client";
-import { Bytes } from "@matter/main";
+import { Bytes, Duration, Millis } from "@matter/main";
 import type { DiagnosticResponse } from "@matter/thread-br-client";
 import type { ThreadDiagnosticsBatch } from "../controller/ThreadDiagnosticsService.js";
 
@@ -92,7 +92,7 @@ function serializeNode(r: DiagnosticResponse): ThreadDiagnosticsNodeWire {
     return out;
 }
 
-export function serializeBatch(batch: ThreadDiagnosticsBatch): ThreadDiagnosticsBatchWire {
+export function serializeBatch(batch: ThreadDiagnosticsBatch, expiresIn?: Duration): ThreadDiagnosticsBatchWire {
     const wire: ThreadDiagnosticsBatchWire = {
         extPanIdHex: batch.extPanIdHex.toUpperCase(),
         networkName: batch.networkName,
@@ -101,5 +101,6 @@ export function serializeBatch(batch: ThreadDiagnosticsBatch): ThreadDiagnostics
         nodes: batch.nodes.map(serializeNode),
     };
     if (batch.partialReason !== undefined) wire.partialReason = batch.partialReason;
+    if (expiresIn !== undefined) wire.expiresInMs = Millis.of(expiresIn);
     return wire;
 }

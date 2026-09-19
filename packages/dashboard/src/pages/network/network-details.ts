@@ -40,6 +40,7 @@ import {
     DIAGNOSTIC_MESH_NODE_EXPLANATION,
     EXTERNAL_ROUTER_CAPABLE_NOTE,
     EXTERNAL_THREAD_DEVICE_CASES,
+    findDiagnosticRecordByExtAddress,
     getNodeConnectionsFromPairs,
     getRoutableDestinationsCount,
     getSignalColorFromRssi,
@@ -52,6 +53,7 @@ import {
     getWiFiDiagnostics,
     getWiFiSecurityTypeName,
     getWiFiVersionName,
+    isObserverOnline,
     stripMdnsHostname,
 } from "./network-utils.js";
 import "./update-connections-dialog.js";
@@ -941,17 +943,8 @@ export class NetworkDetails extends LitElement {
         `;
     }
 
-    /**
-     * Locate a diagnostic node entry across all known batches by uppercase extMacAddress hex.
-     */
     private _findDiagnosticNode(extAddressHex: string): ThreadDiagnosticsNode | undefined {
-        const target = extAddressHex.toUpperCase();
-        for (const batch of this.threadDiagnostics.values()) {
-            for (const node of batch.nodes) {
-                if (node.extMacAddress?.toUpperCase() === target) return node;
-            }
-        }
-        return undefined;
+        return findDiagnosticRecordByExtAddress(this.threadDiagnostics, extAddressHex)?.node;
     }
 
     private _formatPartialReason(reason: ThreadDiagnosticsPartialReason): string | undefined {
@@ -1319,10 +1312,7 @@ export class NetworkDetails extends LitElement {
         const device = this.unknownDevices.get(this.selectedNodeId);
         if (!device) return [];
 
-        return device.seenBy.filter(nodeId => {
-            const node = this.nodes[nodeId.toString()];
-            return node?.available === true;
-        });
+        return device.seenBy.filter(nodeId => isObserverOnline(this.nodes, nodeId.toString()));
     }
 
     /**
