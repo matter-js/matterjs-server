@@ -62,6 +62,18 @@ function createFakeCommandHandler() {
     };
 }
 
+/** Waits until a condition holds, failing the test on timeout unless `required` is false. */
+async function waitFor(condition: () => boolean, required = true, timeoutMs = 5_000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        if (condition()) return;
+        await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    if (required) {
+        throw new Error("Timed out waiting for the expected frames");
+    }
+}
+
 describe("endpoint event order", () => {
     let httpServer: Server;
     let handler: WebSocketControllerHandler;
@@ -109,7 +121,9 @@ describe("endpoint event order", () => {
             client.once("error", reject);
         });
         client.send(JSON.stringify({ message_id: "1", command: "start_listening", args: {} }));
-        await new Promise(resolve => setTimeout(resolve, 200));
+        // Events are only sent to a connection that finished start_listening, so its response is
+        // what makes the emits below observable.
+        await waitFor(() => frames.some(frame => frame.message_id === "1"));
         frames.length = 0;
 
         // The controller updates the cache, announces the new structure and drains the queued
@@ -118,7 +132,10 @@ describe("endpoint event order", () => {
         fakeCommandHandler.events.nodeStructureChanged.emit(NODE_ID);
         fakeCommandHandler.events.nodeEndpointAdded.emit(NODE_ID, NEW_ENDPOINT);
 
-        await new Promise(resolve => setTimeout(resolve, 300));
+        await waitFor(() => frames.some(frame => frame.event === "endpoint_added"));
+        // node_updated is deferred by one turn of the event loop, so let that turn happen before
+        // reading the order - a snapshot arriving late is the defect under test.
+        await waitFor(() => frames.some(frame => frame.event === "node_updated"), false);
 
         const events = frames.filter(frame => frame.event !== undefined).map(frame => frame.event);
         const updatedAt = events.indexOf("node_updated");
