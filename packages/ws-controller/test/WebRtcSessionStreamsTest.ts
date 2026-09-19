@@ -194,6 +194,22 @@ describe("establishWebRtcProviderSession", () => {
         };
     }
 
+    it("throws when the device response carries no numeric webRtcSessionId", async () => {
+        const io: WebRtcProviderSessionIo = {
+            invoke: async () => ({}),
+            upsertSession: async () => {},
+        };
+
+        let thrown: unknown;
+        try {
+            await establishWebRtcProviderSession(io, baseArgs());
+        } catch (error) {
+            thrown = error;
+        }
+
+        expect((thrown as ServerError).code).to.equal(ServerErrorCode.SDKStackError);
+    });
+
     it("injects originatingEndpointId into the fields sent to the device", async () => {
         const invokedFields = new Array<Record<string, unknown>>();
         const io: WebRtcProviderSessionIo = {

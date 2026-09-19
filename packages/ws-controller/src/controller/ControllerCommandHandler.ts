@@ -441,10 +441,10 @@ export class ControllerCommandHandler {
             endpointId,
             originatingEndpointId,
             fabricIndex,
-            clusterRevision: this.webRtcProviderClusterRevision(nodeId, endpointId),
+            clusterRevision: this.#webRtcProviderClusterRevision(nodeId, endpointId),
             formatNode: id => this.formatNode(id),
         });
-        return response as WebRtcTransportProvider.ProvideOfferResponse | WebRtcTransportProvider.SolicitOfferResponse;
+        return response;
     }
 
     /**
@@ -468,7 +468,7 @@ export class ControllerCommandHandler {
     }
 
     /** WebRtcTransportProvider ClusterRevision from the attribute cache, or undefined if not yet known. */
-    webRtcProviderClusterRevision(nodeId: NodeId, endpointId: EndpointNumber): unknown {
+    #webRtcProviderClusterRevision(nodeId: NodeId, endpointId: EndpointNumber): unknown {
         return this.#nodes.attributeCache.get(nodeId)?.[
             `${endpointId}/${WebRtcTransportProvider.id}/${ClusterRevision.id}`
         ];

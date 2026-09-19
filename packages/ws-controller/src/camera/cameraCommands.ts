@@ -73,6 +73,10 @@ function toOptionalRecordArray(value: unknown, field: string): Array<Record<stri
     return value;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null;
+}
+
 export interface ParsedCameraTarget {
     nodeId: NodeId;
     endpointId: EndpointNumber;
@@ -89,36 +93,23 @@ export function parseCameraTarget(args: { node_id?: unknown; endpoint_id?: unkno
     return { nodeId: NodeId(nodeId), endpointId: EndpointNumber(endpointId) };
 }
 
-interface RawVideoHintsShape {
-    codecs?: unknown;
-    min_resolution?: unknown;
-    max_resolution?: unknown;
-    min_frame_rate?: unknown;
-    max_frame_rate?: unknown;
-    min_bit_rate?: unknown;
-    max_bit_rate?: unknown;
-}
-
 function parseVideoHints(value: unknown): VideoHints {
-    if (typeof value !== "object" || value === null) {
+    if (!isRecord(value)) {
         throw ServerError.invalidArguments("video hints must be an object");
     }
-    // Every field below is probed as unknown and typeof-checked before use; this cast only enables the
-    // property access syntax, the same narrowing idiom toResolution uses for a single field.
-    const hints = value as RawVideoHintsShape;
-    const codecs = toOptionalStringArray(hints.codecs, "video.codecs");
-    const minFrameRate = toOptionalNumber(hints.min_frame_rate, "video.min_frame_rate");
-    const maxFrameRate = toOptionalNumber(hints.max_frame_rate, "video.max_frame_rate");
-    const minBitRate = toOptionalNumber(hints.min_bit_rate, "video.min_bit_rate");
-    const maxBitRate = toOptionalNumber(hints.max_bit_rate, "video.max_bit_rate");
+    const codecs = toOptionalStringArray(value.codecs, "video.codecs");
+    const minFrameRate = toOptionalNumber(value.min_frame_rate, "video.min_frame_rate");
+    const maxFrameRate = toOptionalNumber(value.max_frame_rate, "video.max_frame_rate");
+    const minBitRate = toOptionalNumber(value.min_bit_rate, "video.min_bit_rate");
+    const maxBitRate = toOptionalNumber(value.max_bit_rate, "video.max_bit_rate");
     return {
         ...(codecs === undefined ? {} : { codecs }),
-        ...(hints.min_resolution === undefined
+        ...(value.min_resolution === undefined
             ? {}
-            : { minResolution: toResolution(hints.min_resolution, "video.min_resolution") }),
-        ...(hints.max_resolution === undefined
+            : { minResolution: toResolution(value.min_resolution, "video.min_resolution") }),
+        ...(value.max_resolution === undefined
             ? {}
-            : { maxResolution: toResolution(hints.max_resolution, "video.max_resolution") }),
+            : { maxResolution: toResolution(value.max_resolution, "video.max_resolution") }),
         ...(minFrameRate === undefined ? {} : { minFrameRate }),
         ...(maxFrameRate === undefined ? {} : { maxFrameRate }),
         ...(minBitRate === undefined ? {} : { minBitRate }),
@@ -126,22 +117,14 @@ function parseVideoHints(value: unknown): VideoHints {
     };
 }
 
-interface RawAudioHintsShape {
-    codecs?: unknown;
-    channel_count?: unknown;
-    sample_rate?: unknown;
-    bit_rate?: unknown;
-}
-
 function parseAudioHints(value: unknown): AudioHints {
-    if (typeof value !== "object" || value === null) {
+    if (!isRecord(value)) {
         throw ServerError.invalidArguments("audio hints must be an object");
     }
-    const hints = value as RawAudioHintsShape;
-    const codecs = toOptionalStringArray(hints.codecs, "audio.codecs");
-    const channelCount = toOptionalNumber(hints.channel_count, "audio.channel_count");
-    const sampleRate = toOptionalNumber(hints.sample_rate, "audio.sample_rate");
-    const bitRate = toOptionalNumber(hints.bit_rate, "audio.bit_rate");
+    const codecs = toOptionalStringArray(value.codecs, "audio.codecs");
+    const channelCount = toOptionalNumber(value.channel_count, "audio.channel_count");
+    const sampleRate = toOptionalNumber(value.sample_rate, "audio.sample_rate");
+    const bitRate = toOptionalNumber(value.bit_rate, "audio.bit_rate");
     return {
         ...(codecs === undefined ? {} : { codecs }),
         ...(channelCount === undefined ? {} : { channelCount }),

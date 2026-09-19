@@ -153,7 +153,7 @@ export interface WebRtcProviderSessionArgs {
 export async function establishWebRtcProviderSession(
     io: WebRtcProviderSessionIo,
     args: WebRtcProviderSessionArgs,
-): Promise<unknown> {
+): Promise<{ webRtcSessionId: number } & Record<string, unknown>> {
     const { commandName, nodeId, endpointId, originatingEndpointId, fabricIndex, clusterRevision, formatNode } = args;
     const command = commandName === "ProvideOffer" ? "provideOffer" : "solicitOffer";
 
@@ -161,17 +161,22 @@ export async function establishWebRtcProviderSession(
     selectWebRtcStreamFields(fields, clusterRevision);
 
     const response = await io.invoke(command, fields);
-    const webRtcSessionId = (response as { webRtcSessionId?: unknown } | undefined)?.webRtcSessionId;
-    if (typeof webRtcSessionId !== "number") {
+    if (
+        typeof response !== "object" ||
+        response === null ||
+        !("webRtcSessionId" in response) ||
+        typeof response.webRtcSessionId !== "number"
+    ) {
         throw ServerError.sdkStackError(
             `${commandName} did not return a WebRTCSessionID for node ${formatNode(nodeId)}`,
         );
     }
+    const webRtcSessionId = response.webRtcSessionId;
 
     const streamUsage = fields.streamUsage;
     const metadataEnabled = fields.metadataEnabled === true;
-    const responseVideoStreamId = (response as { videoStreamId?: unknown } | undefined)?.videoStreamId;
-    const responseAudioStreamId = (response as { audioStreamId?: unknown } | undefined)?.audioStreamId;
+    const responseVideoStreamId = "videoStreamId" in response ? response.videoStreamId : undefined;
+    const responseAudioStreamId = "audioStreamId" in response ? response.audioStreamId : undefined;
     const videoStreams = resolveWebRtcSessionStreams(fields.videoStreams, fields.videoStreamId, responseVideoStreamId);
     const audioStreams = resolveWebRtcSessionStreams(fields.audioStreams, fields.audioStreamId, responseAudioStreamId);
 
@@ -215,5 +220,8 @@ export async function establishWebRtcProviderSession(
     );
     await io.upsertSession(session);
 
-    return response;
+    // Verified above: `response` carries a numeric webRtcSessionId. The rest of the assertion is the
+    // residual TS can't express — an object narrowed to specific known keys via `in` has no general
+    // string index signature, even though every real object satisfies one at runtime.
+    return response as { webRtcSessionId: number } & Record<string, unknown>;
 }

@@ -236,14 +236,12 @@ describe("MatterCameraDeviceIo.invoke (webrtcProvider routing)", () => {
     }
 
     function makeHandler(overrides: Partial<HandlerStub> = {}): ControllerCommandHandler {
-        const stub: HandlerStub & { getNode: () => { node: unknown }; webRtcProviderClusterRevision: () => undefined } =
-            {
-                getNode: () => ({ node: {} }),
-                webRtcProviderClusterRevision: () => undefined,
-                invokeCommand: overrides.invokeCommand ?? (async () => undefined),
-                invokeWebRtcProviderCommand: overrides.invokeWebRtcProviderCommand ?? (async () => undefined),
-                removeTrackedWebRtcSession: overrides.removeTrackedWebRtcSession ?? (async () => {}),
-            };
+        const stub: HandlerStub & { getNode: () => { node: unknown } } = {
+            getNode: () => ({ node: {} }),
+            invokeCommand: overrides.invokeCommand ?? (async () => undefined),
+            invokeWebRtcProviderCommand: overrides.invokeWebRtcProviderCommand ?? (async () => undefined),
+            removeTrackedWebRtcSession: overrides.removeTrackedWebRtcSession ?? (async () => {}),
+        };
         return stub as unknown as ControllerCommandHandler;
     }
 
