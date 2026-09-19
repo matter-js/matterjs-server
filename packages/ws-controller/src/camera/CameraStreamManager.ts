@@ -388,146 +388,155 @@ export class CameraStreamManager {
         sdp?: SdpVideoConstraints;
         hints?: VideoHints;
     }): Promise<ResolvedStream> {
-        const { nodeId, endpointId, streamUsage, codec } = args;
-        return this.withEndpointLock(nodeId, endpointId, async () => {
-            const state = await this.requireState(nodeId, endpointId);
-            const deviceCodecs = new Array<number>();
-            for (const point of state.rateDistortionTradeOffPoints) {
-                if (!deviceCodecs.includes(point.codec)) deviceCodecs.push(point.codec);
-            }
-            if (deviceCodecs.length > 0 && !deviceCodecs.includes(codec)) {
-                throw ServerError.cameraStreamIncompatible({
-                    reason: "codec",
-                    device: deviceCodecs.map(String),
-                    requested: [String(codec)],
-                });
-            }
-
-            const capabilities = {
-                sensor:
-                    state.videoSensorParams === undefined
-                        ? { width: 1920, height: 1080 }
-                        : { width: state.videoSensorParams.sensorWidth, height: state.videoSensorParams.sensorHeight },
-                maxFrameRate: state.videoSensorParams?.maxFps ?? 30,
-                minViewport: state.minViewportResolution,
-                rateDistortionPoints: state.rateDistortionTradeOffPoints,
-            };
-
-            let envelope = computeVideoEnvelope({
-                capabilities,
-                codec,
-                sdp: args.sdp,
-                hints: args.hints,
-            });
-
-            // The ladder's own copy: freeing a stream updates this array, never the state object.
-            let liveStreams = state.allocatedVideoStreams;
-
-            const reused = findReusableVideoStream(liveStreams, envelope, streamUsage);
-            if (reused !== undefined) {
-                return {
-                    streamId: reused.videoStreamId,
-                    envelope: envelopeOfVideoStream(reused, envelope.keyFrameInterval),
-                    reused: true,
-                    allocatedByUs: this.ownsStream(nodeId, endpointId, "video", reused.videoStreamId),
-                };
-            }
-
-            let lastStatus: number | undefined;
-            for (let round = 0; round <= MAX_NARROWING_ROUNDS; round++) {
-                try {
-                    const response = await this.io.invoke({
-                        nodeId,
-                        endpointId,
-                        cluster: "avsm",
-                        command: "videoStreamAllocate",
-                        fields: {
-                            streamUsage,
-                            videoCodec: envelope.codec,
-                            minFrameRate: envelope.minFrameRate,
-                            maxFrameRate: envelope.maxFrameRate,
-                            minResolution: envelope.minResolution,
-                            maxResolution: envelope.maxResolution,
-                            minBitRate: envelope.minBitRate,
-                            maxBitRate: envelope.maxBitRate,
-                            keyFrameInterval: envelope.keyFrameInterval,
-                        },
-                    });
-                    const streamId =
-                        typeof response === "object" && response !== null && "videoStreamId" in response
-                            ? response.videoStreamId
-                            : undefined;
-                    if (typeof streamId !== "number") {
-                        throw ServerError.sdkStackError("VideoStreamAllocate returned no VideoStreamID");
-                    }
-                    this.recordLease(nodeId, endpointId, { kind: "video", streamId, allocatedByUs: true });
-                    return { streamId, envelope, reused: false, allocatedByUs: true };
-                } catch (error) {
-                    if (error instanceof ServerError) throw error;
-                    lastStatus = deviceStatusOf(error);
-                    if (lastStatus === RESOURCE_EXHAUSTED) {
-                        const relaxed = findReusableVideoStream(liveStreams, envelope, streamUsage, {
-                            ignoreStreamUsage: true,
-                        });
-                        if (relaxed !== undefined) {
-                            return {
-                                streamId: relaxed.videoStreamId,
-                                envelope: envelopeOfVideoStream(relaxed, envelope.keyFrameInterval),
-                                reused: true,
-                                allocatedByUs: this.ownsStream(nodeId, endpointId, "video", relaxed.videoStreamId),
-                            };
-                        }
-                        const freedId = await this.freeAnUnreferencedVideoStream(nodeId, endpointId, liveStreams);
-                        if (freedId !== undefined) {
-                            liveStreams = liveStreams.filter(stream => stream.videoStreamId !== freedId);
-                            continue;
-                        }
-                    } else if (lastStatus !== DYNAMIC_CONSTRAINT_ERROR) {
-                        throw error;
-                    }
-                    const narrowed = narrowEnvelope(envelope);
-                    if (narrowed === undefined) break;
-                    envelope = narrowed;
-                }
-            }
-
-            // Last rung: hand out a stream that is in use, but only within bounds the caller stated.
-            // A caller who pinned a resolution matches nothing here and gets the typed failure below.
-            const degraded = findDegradedVideoStream(liveStreams, codec, args.hints ?? {});
-            if (degraded !== undefined) {
-                return {
-                    streamId: degraded.videoStreamId,
-                    envelope: envelopeOfVideoStream(degraded, envelope.keyFrameInterval),
-                    reused: true,
-                    degraded: true,
-                    allocatedByUs: this.ownsStream(nodeId, endpointId, "video", degraded.videoStreamId),
-                };
-            }
-
-            if (lastStatus === DYNAMIC_CONSTRAINT_ERROR) {
-                throw ServerError.cameraStreamIncompatible({
-                    reason: "bounds",
-                    device: deviceCodecs.map(String),
-                    requested: [String(codec)],
-                    deviceStatus: lastStatus,
-                });
-            }
-            throw ServerError.cameraResourceExhausted({
-                allocated: liveStreams.map(stream => ({
-                    streamId: stream.videoStreamId,
-                    referenceCount: stream.referenceCount,
-                })),
-                maxConcurrentEncoders: state.maxConcurrentEncoders,
-                maxEncodedPixelRate: state.maxEncodedPixelRate,
-            });
-        });
+        return this.withEndpointLock(args.nodeId, args.endpointId, () => this.resolveVideoStreamLocked(args));
     }
 
     /**
-     * Audio has no narrowing ladder: a camera either supports the codec or it does not. An audio
-     * track is optional in a way a video track is not, so a device rejection yields `undefined` and a
-     * video-only session rather than a failure.
+     * Body of {@link resolveVideoStream}. The caller must already hold the endpoint lock:
+     * `startStream` calls this directly, under its own lock, to resolve video and audio without
+     * releasing the lock between them and the offer round trip that follows.
      */
+    protected async resolveVideoStreamLocked(args: {
+        nodeId: NodeId;
+        endpointId: EndpointNumber;
+        streamUsage: number;
+        codec: number;
+        sdp?: SdpVideoConstraints;
+        hints?: VideoHints;
+    }): Promise<ResolvedStream> {
+        const { nodeId, endpointId, streamUsage, codec } = args;
+        const state = await this.requireState(nodeId, endpointId);
+        const deviceCodecs = new Array<number>();
+        for (const point of state.rateDistortionTradeOffPoints) {
+            if (!deviceCodecs.includes(point.codec)) deviceCodecs.push(point.codec);
+        }
+        if (deviceCodecs.length > 0 && !deviceCodecs.includes(codec)) {
+            throw ServerError.cameraStreamIncompatible({
+                reason: "codec",
+                device: deviceCodecs.map(String),
+                requested: [String(codec)],
+            });
+        }
+
+        const capabilities = {
+            sensor:
+                state.videoSensorParams === undefined
+                    ? { width: 1920, height: 1080 }
+                    : { width: state.videoSensorParams.sensorWidth, height: state.videoSensorParams.sensorHeight },
+            maxFrameRate: state.videoSensorParams?.maxFps ?? 30,
+            minViewport: state.minViewportResolution,
+            rateDistortionPoints: state.rateDistortionTradeOffPoints,
+        };
+
+        let envelope = computeVideoEnvelope({
+            capabilities,
+            codec,
+            sdp: args.sdp,
+            hints: args.hints,
+        });
+
+        // The ladder's own copy: freeing a stream updates this array, never the state object.
+        let liveStreams = state.allocatedVideoStreams;
+
+        const reused = findReusableVideoStream(liveStreams, envelope, streamUsage);
+        if (reused !== undefined) {
+            return {
+                streamId: reused.videoStreamId,
+                envelope: envelopeOfVideoStream(reused, envelope.keyFrameInterval),
+                reused: true,
+                allocatedByUs: this.ownsStream(nodeId, endpointId, "video", reused.videoStreamId),
+            };
+        }
+
+        let lastStatus: number | undefined;
+        for (let round = 0; round <= MAX_NARROWING_ROUNDS; round++) {
+            try {
+                const response = await this.io.invoke({
+                    nodeId,
+                    endpointId,
+                    cluster: "avsm",
+                    command: "videoStreamAllocate",
+                    fields: {
+                        streamUsage,
+                        videoCodec: envelope.codec,
+                        minFrameRate: envelope.minFrameRate,
+                        maxFrameRate: envelope.maxFrameRate,
+                        minResolution: envelope.minResolution,
+                        maxResolution: envelope.maxResolution,
+                        minBitRate: envelope.minBitRate,
+                        maxBitRate: envelope.maxBitRate,
+                        keyFrameInterval: envelope.keyFrameInterval,
+                    },
+                });
+                const streamId =
+                    typeof response === "object" && response !== null && "videoStreamId" in response
+                        ? response.videoStreamId
+                        : undefined;
+                if (typeof streamId !== "number") {
+                    throw ServerError.sdkStackError("VideoStreamAllocate returned no VideoStreamID");
+                }
+                this.recordLease(nodeId, endpointId, { kind: "video", streamId, allocatedByUs: true });
+                return { streamId, envelope, reused: false, allocatedByUs: true };
+            } catch (error) {
+                if (error instanceof ServerError) throw error;
+                lastStatus = deviceStatusOf(error);
+                if (lastStatus === RESOURCE_EXHAUSTED) {
+                    const relaxed = findReusableVideoStream(liveStreams, envelope, streamUsage, {
+                        ignoreStreamUsage: true,
+                    });
+                    if (relaxed !== undefined) {
+                        return {
+                            streamId: relaxed.videoStreamId,
+                            envelope: envelopeOfVideoStream(relaxed, envelope.keyFrameInterval),
+                            reused: true,
+                            allocatedByUs: this.ownsStream(nodeId, endpointId, "video", relaxed.videoStreamId),
+                        };
+                    }
+                    const freedId = await this.freeAnUnreferencedVideoStream(nodeId, endpointId, liveStreams);
+                    if (freedId !== undefined) {
+                        liveStreams = liveStreams.filter(stream => stream.videoStreamId !== freedId);
+                        continue;
+                    }
+                } else if (lastStatus !== DYNAMIC_CONSTRAINT_ERROR) {
+                    throw error;
+                }
+                const narrowed = narrowEnvelope(envelope);
+                if (narrowed === undefined) break;
+                envelope = narrowed;
+            }
+        }
+
+        // Last rung: hand out a stream that is in use, but only within bounds the caller stated.
+        // A caller who pinned a resolution matches nothing here and gets the typed failure below.
+        const degraded = findDegradedVideoStream(liveStreams, codec, args.hints ?? {});
+        if (degraded !== undefined) {
+            return {
+                streamId: degraded.videoStreamId,
+                envelope: envelopeOfVideoStream(degraded, envelope.keyFrameInterval),
+                reused: true,
+                degraded: true,
+                allocatedByUs: this.ownsStream(nodeId, endpointId, "video", degraded.videoStreamId),
+            };
+        }
+
+        if (lastStatus === DYNAMIC_CONSTRAINT_ERROR) {
+            throw ServerError.cameraStreamIncompatible({
+                reason: "bounds",
+                device: deviceCodecs.map(String),
+                requested: [String(codec)],
+                deviceStatus: lastStatus,
+            });
+        }
+        throw ServerError.cameraResourceExhausted({
+            allocated: liveStreams.map(stream => ({
+                streamId: stream.videoStreamId,
+                referenceCount: stream.referenceCount,
+            })),
+            maxConcurrentEncoders: state.maxConcurrentEncoders,
+            maxEncodedPixelRate: state.maxEncodedPixelRate,
+        });
+    }
+
     async resolveAudioStream(args: {
         nodeId: NodeId;
         endpointId: EndpointNumber;
@@ -535,79 +544,95 @@ export class CameraStreamManager {
         sdp?: SdpVideoConstraints;
         hints?: AudioHints;
     }): Promise<ResolvedStream | undefined> {
+        return this.withEndpointLock(args.nodeId, args.endpointId, () => this.resolveAudioStreamLocked(args));
+    }
+
+    /**
+     * Body of {@link resolveAudioStream}. The caller must already hold the endpoint lock; see
+     * {@link resolveVideoStreamLocked}.
+     *
+     * Audio has no narrowing ladder: a camera either supports the codec or it does not. An audio
+     * track is optional in a way a video track is not, so a device rejection yields `undefined` and a
+     * video-only session rather than a failure.
+     */
+    protected async resolveAudioStreamLocked(args: {
+        nodeId: NodeId;
+        endpointId: EndpointNumber;
+        streamUsage: number;
+        sdp?: SdpVideoConstraints;
+        hints?: AudioHints;
+    }): Promise<ResolvedStream | undefined> {
         const { nodeId, endpointId, streamUsage } = args;
-        return this.withEndpointLock(nodeId, endpointId, async () => {
-            const state = await this.requireState(nodeId, endpointId);
-            const microphone = state.microphoneCapabilities;
-            if (
-                microphone === undefined ||
-                microphone.supportedCodecs.length === 0 ||
-                microphone.supportedSampleRates.length === 0 ||
-                microphone.supportedBitDepths.length === 0
-            ) {
-                return undefined;
-            }
+        const state = await this.requireState(nodeId, endpointId);
+        const microphone = state.microphoneCapabilities;
+        if (
+            microphone === undefined ||
+            microphone.supportedCodecs.length === 0 ||
+            microphone.supportedSampleRates.length === 0 ||
+            microphone.supportedBitDepths.length === 0
+        ) {
+            return undefined;
+        }
 
-            const envelope = computeAudioEnvelope({
-                capabilities: {
-                    ...microphone,
-                    twoWayTalkSupport: state.twoWayTalkSupport ?? 0,
-                },
-                sdp: args.sdp,
-                hints: args.hints,
-                wantsTalkback: args.sdp?.wantsTalkback === true,
-            });
-            if (envelope === undefined) return undefined;
-
-            const existing = state.allocatedAudioStreams.find(
-                stream =>
-                    stream.streamUsage === streamUsage &&
-                    stream.audioCodec === envelope.codec &&
-                    stream.channelCount === envelope.channelCount &&
-                    stream.sampleRate === envelope.sampleRate,
-            );
-            if (existing !== undefined) {
-                return {
-                    streamId: existing.audioStreamId,
-                    envelope: envelopeOfAudioStream(existing),
-                    reused: true,
-                    allocatedByUs: this.ownsStream(nodeId, endpointId, "audio", existing.audioStreamId),
-                };
-            }
-
-            try {
-                const response = await this.io.invoke({
-                    nodeId,
-                    endpointId,
-                    cluster: "avsm",
-                    command: "audioStreamAllocate",
-                    fields: {
-                        streamUsage,
-                        audioCodec: envelope.codec,
-                        channelCount: envelope.channelCount,
-                        sampleRate: envelope.sampleRate,
-                        bitRate: envelope.bitRate,
-                        bitDepth: envelope.bitDepth,
-                    },
-                });
-                const streamId =
-                    typeof response === "object" && response !== null && "audioStreamId" in response
-                        ? response.audioStreamId
-                        : undefined;
-                if (typeof streamId !== "number") {
-                    logger.info(
-                        `Audio stream unavailable for node ${nodeId}; continuing without audio: AudioStreamAllocate returned no AudioStreamID`,
-                    );
-                    return undefined;
-                }
-                this.recordLease(nodeId, endpointId, { kind: "audio", streamId, allocatedByUs: true });
-                return { streamId, envelope, reused: false, allocatedByUs: true };
-            } catch (error) {
-                if (error instanceof ServerError) throw error;
-                logger.info(`Audio stream unavailable for node ${nodeId}; continuing without audio:`, error);
-                return undefined;
-            }
+        const envelope = computeAudioEnvelope({
+            capabilities: {
+                ...microphone,
+                twoWayTalkSupport: state.twoWayTalkSupport ?? 0,
+            },
+            sdp: args.sdp,
+            hints: args.hints,
+            wantsTalkback: args.sdp?.wantsTalkback === true,
         });
+        if (envelope === undefined) return undefined;
+
+        const existing = state.allocatedAudioStreams.find(
+            stream =>
+                stream.streamUsage === streamUsage &&
+                stream.audioCodec === envelope.codec &&
+                stream.channelCount === envelope.channelCount &&
+                stream.sampleRate === envelope.sampleRate,
+        );
+        if (existing !== undefined) {
+            return {
+                streamId: existing.audioStreamId,
+                envelope: envelopeOfAudioStream(existing),
+                reused: true,
+                allocatedByUs: this.ownsStream(nodeId, endpointId, "audio", existing.audioStreamId),
+            };
+        }
+
+        try {
+            const response = await this.io.invoke({
+                nodeId,
+                endpointId,
+                cluster: "avsm",
+                command: "audioStreamAllocate",
+                fields: {
+                    streamUsage,
+                    audioCodec: envelope.codec,
+                    channelCount: envelope.channelCount,
+                    sampleRate: envelope.sampleRate,
+                    bitRate: envelope.bitRate,
+                    bitDepth: envelope.bitDepth,
+                },
+            });
+            const streamId =
+                typeof response === "object" && response !== null && "audioStreamId" in response
+                    ? response.audioStreamId
+                    : undefined;
+            if (typeof streamId !== "number") {
+                logger.info(
+                    `Audio stream unavailable for node ${nodeId}; continuing without audio: AudioStreamAllocate returned no AudioStreamID`,
+                );
+                return undefined;
+            }
+            this.recordLease(nodeId, endpointId, { kind: "audio", streamId, allocatedByUs: true });
+            return { streamId, envelope, reused: false, allocatedByUs: true };
+        } catch (error) {
+            if (error instanceof ServerError) throw error;
+            logger.info(`Audio stream unavailable for node ${nodeId}; continuing without audio:`, error);
+            return undefined;
+        }
     }
 
     /**
@@ -665,69 +690,79 @@ export class CameraStreamManager {
     }): Promise<StartStreamResult> {
         const { nodeId, endpointId, streamUsage } = args;
         const sdp = args.sdp === undefined ? undefined : parseSdpVideoConstraints(args.sdp);
-        const state = await this.requireState(nodeId, endpointId);
+        // One lock for resolution through the offer round trip: the device only raises ReferenceCount
+        // at session establishment, so a stream resolved here reads as unreferenced at the device until
+        // the response below lands. Releasing the lock in between would let a concurrent RESOURCE_EXHAUSTED
+        // on this endpoint free or hand out the very stream this call is mid-way through using.
+        return this.withEndpointLock(nodeId, endpointId, async () => {
+            const state = await this.requireState(nodeId, endpointId);
 
-        let video: ResolvedStream | undefined;
-        if (args.video !== false) {
-            const codecs = state.rateDistortionTradeOffPoints.map(point => point.codec);
-            const codec = preferredVideoCodec(codecs, sdp, args.video === undefined ? undefined : args.video.codecs);
-            video = await this.resolveVideoStream({
+            let video: ResolvedStream | undefined;
+            if (args.video !== false) {
+                const codecs = state.rateDistortionTradeOffPoints.map(point => point.codec);
+                const codec = preferredVideoCodec(
+                    codecs,
+                    sdp,
+                    args.video === undefined ? undefined : args.video.codecs,
+                );
+                video = await this.resolveVideoStreamLocked({
+                    nodeId,
+                    endpointId,
+                    streamUsage,
+                    codec,
+                    sdp,
+                    hints: args.video === undefined ? undefined : args.video,
+                });
+            }
+
+            let audio: ResolvedStream | undefined;
+            if (args.audio !== false && state.microphoneCapabilities !== undefined) {
+                audio = await this.resolveAudioStreamLocked({
+                    nodeId,
+                    endpointId,
+                    streamUsage,
+                    sdp,
+                    hints: args.audio === undefined ? undefined : args.audio,
+                });
+            }
+
+            const response = await this.io.invoke({
                 nodeId,
                 endpointId,
-                streamUsage,
-                codec,
-                sdp,
-                hints: args.video === undefined ? undefined : args.video,
+                cluster: "webrtcProvider",
+                command: args.sdp === undefined ? "solicitOffer" : "provideOffer",
+                fields: {
+                    ...(args.sdp === undefined ? {} : { sdp: args.sdp }),
+                    streamUsage,
+                    ...(video === undefined ? {} : { videoStreams: [video.streamId] }),
+                    ...(audio === undefined ? {} : { audioStreams: [audio.streamId] }),
+                    ...(args.iceServers === undefined ? {} : { iceServers: args.iceServers }),
+                    ...(args.iceTransportPolicy === undefined ? {} : { iceTransportPolicy: args.iceTransportPolicy }),
+                    metadataEnabled: args.metadataEnabled === true,
+                },
             });
-        }
 
-        let audio: ResolvedStream | undefined;
-        if (args.audio !== false && state.microphoneCapabilities !== undefined) {
-            audio = await this.resolveAudioStream({
+            const webRtcSessionId = (response as { webRtcSessionId?: unknown } | undefined)?.webRtcSessionId;
+            if (typeof webRtcSessionId !== "number") {
+                throw ServerError.sdkStackError("Provider returned no WebRTCSessionID");
+            }
+
+            this.#sessions.set(webRtcSessionId, {
+                webRtcSessionId,
                 nodeId,
                 endpointId,
-                streamUsage,
-                sdp,
-                hints: args.audio === undefined ? undefined : args.audio,
+                connectionId: args.connectionId,
+                videoStreamIds: video === undefined ? new Array<number>() : [video.streamId],
+                audioStreamIds: audio === undefined ? new Array<number>() : [audio.streamId],
             });
-        }
 
-        const response = await this.io.invoke({
-            nodeId,
-            endpointId,
-            cluster: "webrtcProvider",
-            command: args.sdp === undefined ? "solicitOffer" : "provideOffer",
-            fields: {
-                ...(args.sdp === undefined ? {} : { sdp: args.sdp }),
-                streamUsage,
-                ...(video === undefined ? {} : { videoStreams: [video.streamId] }),
-                ...(audio === undefined ? {} : { audioStreams: [audio.streamId] }),
-                ...(args.iceServers === undefined ? {} : { iceServers: args.iceServers }),
-                ...(args.iceTransportPolicy === undefined ? {} : { iceTransportPolicy: args.iceTransportPolicy }),
-                metadataEnabled: args.metadataEnabled === true,
-            },
+            return {
+                webRtcSessionId,
+                mode: args.sdp === undefined ? "solicit_offer" : "provide_offer",
+                video,
+                audio,
+            };
         });
-
-        const webRtcSessionId = (response as { webRtcSessionId?: unknown } | undefined)?.webRtcSessionId;
-        if (typeof webRtcSessionId !== "number") {
-            throw ServerError.sdkStackError("Provider returned no WebRTCSessionID");
-        }
-
-        this.#sessions.set(webRtcSessionId, {
-            webRtcSessionId,
-            nodeId,
-            endpointId,
-            connectionId: args.connectionId,
-            videoStreamIds: video === undefined ? new Array<number>() : [video.streamId],
-            audioStreamIds: audio === undefined ? new Array<number>() : [audio.streamId],
-        });
-
-        return {
-            webRtcSessionId,
-            mode: args.sdp === undefined ? "solicit_offer" : "provide_offer",
-            video,
-            audio,
-        };
     }
 
     /** Ends the session on the device. The allocation is deliberately kept. */

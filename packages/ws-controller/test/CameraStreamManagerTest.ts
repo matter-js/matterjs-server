@@ -66,6 +66,7 @@ export const STATE: CameraState = {
 export interface RecordedInvoke {
     command: string;
     fields: Record<string, unknown>;
+    endpointId: EndpointNumber;
 }
 
 /**
@@ -82,7 +83,7 @@ export function managerWith(
     const io: CameraDeviceIo = {
         readCameraState: async () => holder.state,
         invoke: async args => {
-            const recorded = { command: args.command, fields: args.fields };
+            const recorded = { command: args.command, fields: args.fields, endpointId: args.endpointId };
             invokes.push(recorded);
             return respond(recorded);
         },
@@ -682,6 +683,27 @@ describe("CameraStreamManager", () => {
     });
 
     describe("sessions", () => {
+        const RESOURCE_EXHAUSTED = 0x89;
+
+        function statusError(status: number): Error & { code: number } {
+            const error = new Error(`Device returned status ${status}`) as Error & { code: number };
+            error.code = status;
+            return error;
+        }
+
+        const CONTAINED_STREAM = {
+            videoStreamId: 7,
+            streamUsage: LIVE_VIEW,
+            videoCodec: H265,
+            minResolution: { width: 1920, height: 1080 },
+            maxResolution: { width: 1920, height: 1080 },
+            minFrameRate: 1,
+            maxFrameRate: 30,
+            minBitRate: 800000,
+            maxBitRate: 4000000,
+            referenceCount: 1,
+        };
+
         function allocatingManager() {
             return managerWith(STATE, async invoke => {
                 if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
@@ -743,6 +765,145 @@ describe("CameraStreamManager", () => {
             expect(invokes.map(invoke => invoke.command)).to.not.include("endSession");
             await manager.releaseConnection("conn-1");
             expect(invokes.map(invoke => invoke.command)).to.include("endSession");
+        });
+
+        it("does not let a concurrent startStream evict a session still being established", async () => {
+            // The device raises ReferenceCount only at session establishment (simulated in the
+            // provideOffer branch below), so call 1's stream reads as unreferenced at the device for
+            // the whole resolve -> offer-response window. If startStream released its lock before that
+            // window closed, call 2's RESOURCE_EXHAUSTED would see an unreferenced, server-owned stream
+            // and evict it out from under call 1.
+            let videoAllocateCount = 0;
+            let sessionCounter = 0;
+            let releaseOffer: () => void = () => {};
+            const offerGate = new Promise<void>(resolve => {
+                releaseOffer = resolve;
+            });
+            let call1ReachedOffer: () => void = () => {};
+            const reachedOffer = new Promise<void>(resolve => {
+                call1ReachedOffer = resolve;
+            });
+
+            const { manager, invokes, holder } = managerWith(STATE, async invoke => {
+                if (invoke.command === "videoStreamAllocate") {
+                    videoAllocateCount += 1;
+                    if (videoAllocateCount === 1) {
+                        holder.state = {
+                            ...(holder.state as CameraState),
+                            allocatedVideoStreams: [
+                                ...(holder.state as CameraState).allocatedVideoStreams,
+                                { ...CONTAINED_STREAM, videoStreamId: 20, referenceCount: 0 },
+                            ],
+                        };
+                        return { videoStreamId: 20 };
+                    }
+                    // Call 2 asks for a resolution stream 20 cannot cover, and the one-encoder camera
+                    // has no room until call 1's stream is confirmed unneeded — fails until attempt 4.
+                    if (videoAllocateCount < 4) throw statusError(RESOURCE_EXHAUSTED);
+                    return { videoStreamId: 30 };
+                }
+                if (invoke.command === "provideOffer") {
+                    call1ReachedOffer();
+                    await offerGate;
+                    sessionCounter += 1;
+                    holder.state = {
+                        ...(holder.state as CameraState),
+                        allocatedVideoStreams: (holder.state as CameraState).allocatedVideoStreams.map(stream =>
+                            stream.videoStreamId === 20
+                                ? { ...stream, referenceCount: stream.referenceCount + 1 }
+                                : stream,
+                        ),
+                    };
+                    return { webRtcSessionId: sessionCounter };
+                }
+                return undefined;
+            });
+
+            const first = manager.startStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                connectionId: "conn-1",
+                streamUsage: LIVE_VIEW,
+                sdp: "v=0",
+                video: {},
+                audio: false,
+            });
+            await reachedOffer; // Call 1 now holds the endpoint lock, blocked inside provideOffer.
+            const second = manager.startStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                connectionId: "conn-2",
+                streamUsage: LIVE_VIEW,
+                sdp: "v=0",
+                video: { minResolution: { width: 2560, height: 1440 }, maxResolution: { width: 2560, height: 1440 } },
+                audio: false,
+            });
+
+            // Give a genuinely unlocked call 2 many chances to run before call 1 is ever released. A
+            // call queued behind the endpoint lock cannot execute any of its own body in this window,
+            // no matter how long — its continuation is not scheduled until the lock resolves.
+            for (let flush = 0; flush < 20; flush++) {
+                await new Promise(resolve => setImmediate(resolve));
+            }
+            expect(videoAllocateCount).to.equal(1);
+            expect(invokes.filter(invoke => invoke.command === "videoStreamDeallocate")).to.have.length(0);
+
+            releaseOffer();
+            const [firstSession, secondSession] = await Promise.all([first, second]);
+            expect(firstSession.webRtcSessionId).to.be.a("number");
+            expect(secondSession.webRtcSessionId).to.be.a("number");
+            expect(invokes.filter(invoke => invoke.command === "videoStreamDeallocate")).to.have.length(0);
+        });
+
+        it("does not block startStream on a different endpoint while one is mid-establishment", async () => {
+            const OTHER_ENDPOINT = EndpointNumber(2);
+            let releaseOffer: () => void = () => {};
+            const offerGate = new Promise<void>(resolve => {
+                releaseOffer = resolve;
+            });
+            let firstReachedOffer: () => void = () => {};
+            const reachedOffer = new Promise<void>(resolve => {
+                firstReachedOffer = resolve;
+            });
+
+            const { manager } = managerWith(STATE, async invoke => {
+                if (invoke.command === "videoStreamAllocate") return { videoStreamId: 20 };
+                if (invoke.command === "provideOffer") {
+                    if (invoke.endpointId === ENDPOINT) {
+                        firstReachedOffer();
+                        await offerGate;
+                        return { webRtcSessionId: 1 };
+                    }
+                    return { webRtcSessionId: 2 };
+                }
+                return undefined;
+            });
+
+            const first = manager.startStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                connectionId: "conn-1",
+                streamUsage: LIVE_VIEW,
+                sdp: "v=0",
+                video: {},
+                audio: false,
+            });
+            await reachedOffer; // Endpoint ENDPOINT's lock is held, blocked inside provideOffer.
+            const second = manager.startStream({
+                nodeId: NODE,
+                endpointId: OTHER_ENDPOINT,
+                connectionId: "conn-2",
+                streamUsage: LIVE_VIEW,
+                sdp: "v=0",
+                video: {},
+                audio: false,
+            });
+            // Must resolve without waiting for releaseOffer(): a different endpoint's lock, not this one.
+            const secondSession = await second;
+            expect(secondSession.webRtcSessionId).to.equal(2);
+            releaseOffer();
+            const firstSession = await first;
+            expect(firstSession.webRtcSessionId).to.equal(1);
         });
     });
 
