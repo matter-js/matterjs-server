@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { CameraAvStreamManagement } from "@matter/main/clusters/camera-av-stream-management";
 import type { AudioEnvelope, Resolution, VideoEnvelope } from "./cameraTypes.js";
 import type { SdpVideoConstraints } from "./sdpConstraints.js";
 
@@ -54,12 +55,29 @@ function scaleToPixels(resolution: Resolution, maxPixels: number): Resolution {
     return { width: even(resolution.width), height: even(resolution.height) };
 }
 
-function smallerOf(a: Resolution, b: Resolution): Resolution {
-    return pixels(a) <= pixels(b) ? a : b;
+/**
+ * Clamp `resolution` under `ceiling` on each dimension.
+ *
+ * `VideoStreamAllocate` validates width and height separately and answers ConstraintError when
+ * `minResolution` exceeds `maxResolution` on either; `resolutionContains` below states why comparing
+ * pixel areas cannot stand in for that.
+ */
+function clampDown(resolution: Resolution, ceiling: Resolution): Resolution {
+    return {
+        width: Math.min(resolution.width, ceiling.width),
+        height: Math.min(resolution.height, ceiling.height),
+    };
 }
 
-function largerOf(a: Resolution, b: Resolution): Resolution {
-    return pixels(a) >= pixels(b) ? a : b;
+function clampUp(resolution: Resolution, floor: Resolution): Resolution {
+    return {
+        width: Math.max(resolution.width, floor.width),
+        height: Math.max(resolution.height, floor.height),
+    };
+}
+
+function fitsUnder(resolution: Resolution, ceiling: Resolution): boolean {
+    return resolution.width <= ceiling.width && resolution.height <= ceiling.height;
 }
 
 /**
@@ -80,7 +98,7 @@ export function computeVideoEnvelope(args: VideoEnvelopeArgs): VideoEnvelope {
         maxResolution = scaleToPixels(maxResolution, sdp.maxPixels);
     }
     if (hints?.maxResolution !== undefined) {
-        maxResolution = smallerOf(maxResolution, hints.maxResolution);
+        maxResolution = clampDown(maxResolution, hints.maxResolution);
     }
     if (sdp?.maxPixelsPerSecond !== undefined) {
         maxFrameRate = Math.max(1, Math.min(maxFrameRate, Math.floor(sdp.maxPixelsPerSecond / pixels(maxResolution))));
@@ -90,22 +108,26 @@ export function computeVideoEnvelope(args: VideoEnvelopeArgs): VideoEnvelope {
     }
 
     const codecPoints = capabilities.rateDistortionPoints.filter(point => point.codec === codec);
+    // A floor derived from the trade-off points must be one the camera actually advertised, so this
+    // picks the smallest point by area rather than composing a per-dimension minimum the camera never
+    // stated. The clamp below then makes it fit the ceiling on each dimension.
     const smallestPoint = codecPoints.reduce<Resolution | undefined>(
-        (smallest, point) => (smallest === undefined ? point.resolution : smallerOf(smallest, point.resolution)),
+        (smallest, point) =>
+            smallest === undefined || pixels(point.resolution) < pixels(smallest) ? point.resolution : smallest,
         undefined,
     );
 
     let minResolution = capabilities.minViewport ?? smallestPoint ?? maxResolution;
-    minResolution = smallerOf(minResolution, maxResolution);
+    minResolution = clampDown(minResolution, maxResolution);
     if (hints?.minResolution !== undefined) {
-        minResolution = smallerOf(largerOf(minResolution, hints.minResolution), maxResolution);
+        minResolution = clampDown(clampUp(minResolution, hints.minResolution), maxResolution);
     }
 
     const minFrameRate = Math.min(hints?.minFrameRate ?? 1, maxFrameRate);
 
     // The trade-off point at or just below the ceiling states the bitrate that resolution needs.
     const applicable = codecPoints
-        .filter(point => pixels(point.resolution) <= pixels(maxResolution))
+        .filter(point => fitsUnder(point.resolution, maxResolution))
         .sort((a, b) => pixels(b.resolution) - pixels(a.resolution))[0];
     // Every stated ceiling binds; the default applies only when the camera, the SDP and the caller
     // all state none. The floor then clamps down to the ceiling, never the ceiling up to the floor.
@@ -241,11 +263,15 @@ export function findDegradedVideoStream(
 
 /** The next envelope to attempt after a device rejection, or none when nothing is left to give up. */
 export function narrowEnvelope(envelope: VideoEnvelope): VideoEnvelope | undefined {
-    if (pixels(envelope.maxResolution) > pixels(envelope.minResolution)) {
+    if (!fitsUnder(envelope.maxResolution, envelope.minResolution)) {
         // Quartering the pixel budget halves each linear dimension, matching how encoders step down resolution.
         const halved = scaleToPixels(envelope.maxResolution, pixels(envelope.maxResolution) / 4);
-        const maxResolution = pixels(halved) < pixels(envelope.minResolution) ? envelope.minResolution : halved;
-        return { ...envelope, maxResolution };
+        // Per dimension, so the ceiling can never drop below the floor on one axis while the areas
+        // still compare the other way — the device rejects that envelope with ConstraintError.
+        const maxResolution = clampUp(halved, envelope.minResolution);
+        if (!fitsUnder(envelope.maxResolution, maxResolution)) {
+            return { ...envelope, maxResolution };
+        }
     }
     if (envelope.maxFrameRate > envelope.minFrameRate && envelope.maxFrameRate > 1) {
         const maxFrameRate = Math.max(envelope.minFrameRate, Math.floor(envelope.maxFrameRate / 2), 1);
@@ -254,10 +280,16 @@ export function narrowEnvelope(envelope: VideoEnvelope): VideoEnvelope | undefin
     return undefined;
 }
 
-/** AudioCodecEnum values as they appear in MicrophoneCapabilities. */
-const AUDIO_CODEC_NAMES = new Map<number, string>([
-    [0, "OPUS"],
-    [1, "AAC"],
+/**
+ * SDP rtpmap names for the AudioCodecEnum values MicrophoneCapabilities reports.
+ *
+ * Only the names are written here: matter.js spells the members `Opus` and `AacLc`, SDP spells them
+ * `OPUS` and `AAC`, so the mapping cannot be derived from the enum, but every numeric value comes
+ * from it.
+ */
+const AUDIO_CODEC_NAMES = new Map<CameraAvStreamManagement.AudioCodec, string>([
+    [CameraAvStreamManagement.AudioCodec.Opus, "OPUS"],
+    [CameraAvStreamManagement.AudioCodec.AacLc, "AAC"],
 ]);
 
 const DEFAULT_AUDIO_BIT_RATE = 64000;
@@ -267,7 +299,7 @@ export interface AudioCapabilities {
     maxNumberOfChannels: number;
     supportedSampleRates: number[];
     supportedBitDepths: number[];
-    /** TwoWayTalkSupportTypeEnum: 0 NotSupported, 1 HalfDuplex, 2 FullDuplex. */
+    /** A {@link CameraAvStreamManagement.TwoWayTalkSupportType} value. */
     twoWayTalkSupport: number;
 }
 

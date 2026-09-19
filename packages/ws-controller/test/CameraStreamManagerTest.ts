@@ -5,6 +5,9 @@
  */
 
 import { EndpointNumber, NodeId } from "@matter/main";
+import { CameraAvStreamManagement } from "@matter/main/clusters/camera-av-stream-management";
+import { WebRtcTransportProvider } from "@matter/main/clusters/web-rtc-transport-provider";
+import { Status } from "@matter/main/types";
 import type { CameraDeviceIo, CameraState } from "../src/camera/CameraStreamManager.js";
 import { CameraStreamManager, preferredVideoCodec } from "../src/camera/CameraStreamManager.js";
 import type { AudioEnvelope, VideoEnvelope } from "../src/camera/cameraTypes.js";
@@ -77,11 +80,17 @@ export interface RecordedInvoke {
 export function managerWith(
     state: CameraState | undefined,
     respond: (invoke: RecordedInvoke) => Promise<unknown> = async () => undefined,
+    missingClusters?: number[],
 ): { manager: CameraStreamManager; invokes: RecordedInvoke[]; holder: { state: CameraState | undefined } } {
     const invokes = new Array<RecordedInvoke>();
     const holder: { state: CameraState | undefined } = { state };
     const io: CameraDeviceIo = {
         readCameraState: async () => holder.state,
+        missingCameraClusters: async () =>
+            missingClusters ??
+            (holder.state === undefined
+                ? [CameraAvStreamManagement.Cluster.id, WebRtcTransportProvider.Cluster.id]
+                : new Array<number>()),
         invoke: async args => {
             const recorded = { command: args.command, fields: args.fields, endpointId: args.endpointId };
             invokes.push(recorded);
@@ -169,9 +178,6 @@ describe("CameraStreamManager", () => {
     });
 
     describe("resolveVideoStream", () => {
-        const DYNAMIC_CONSTRAINT_ERROR = 0x87;
-        const RESOURCE_EXHAUSTED = 0x89;
-
         function statusError(status: number): Error & { code: number } {
             const error = new Error(`Device returned status ${status}`) as Error & { code: number };
             error.code = status;
@@ -262,7 +268,7 @@ describe("CameraStreamManager", () => {
             let attempt = 0;
             const { manager, invokes } = managerWith(STATE, async () => {
                 attempt += 1;
-                if (attempt === 1) throw statusError(DYNAMIC_CONSTRAINT_ERROR);
+                if (attempt === 1) throw statusError(Status.DynamicConstraintError);
                 return { videoStreamId: 9 };
             });
             const resolved = await manager.resolveVideoStream({
@@ -276,6 +282,50 @@ describe("CameraStreamManager", () => {
             const first = invokes[0].fields.maxResolution as { width: number };
             const second = invokes[1].fields.maxResolution as { width: number };
             expect(second.width).to.be.lessThan(first.width);
+        });
+
+        it("fails immediately when the device calls the request structurally invalid", async () => {
+            // ConstraintError (0x87) is min > max, a field out of range or an unknown codec. Narrowing
+            // cannot make any of those valid, so the ladder must not spend its rounds on them.
+            const { manager, invokes } = managerWith(STATE, async () => {
+                throw statusError(Status.ConstraintError);
+            });
+            let thrown: unknown;
+            try {
+                await manager.resolveVideoStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    streamUsage: LIVE_VIEW,
+                    codec: H265,
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamIncompatible);
+            expect(JSON.parse((thrown as ServerError).message).device_status).to.equal(Status.ConstraintError);
+            expect(invokes).to.have.length(1);
+        });
+
+        it("fails typed once narrowing is exhausted and the device still cannot serve the range", async () => {
+            const { manager, invokes } = managerWith(STATE, async () => {
+                throw statusError(Status.DynamicConstraintError);
+            });
+            let thrown: unknown;
+            try {
+                await manager.resolveVideoStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    streamUsage: LIVE_VIEW,
+                    codec: H265,
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamIncompatible);
+            const payload = JSON.parse((thrown as ServerError).message);
+            expect(payload.reason).to.equal("bounds");
+            expect(payload.device_status).to.equal(Status.DynamicConstraintError);
+            expect(invokes.length).to.be.greaterThan(1);
         });
 
         it("propagates a device rejection the ladder does not know how to react to", async () => {
@@ -301,7 +351,7 @@ describe("CameraStreamManager", () => {
         it("retries reuse ignoring stream usage when resources are exhausted", async () => {
             const otherUsage = { ...CONTAINED_STREAM, streamUsage: 1 };
             const { manager, invokes } = managerWith(withStreams([otherUsage]), async () => {
-                throw statusError(RESOURCE_EXHAUSTED);
+                throw statusError(Status.ResourceExhausted);
             });
             const resolved = await manager.resolveVideoStream({
                 nodeId: NODE,
@@ -323,7 +373,7 @@ describe("CameraStreamManager", () => {
             // the relaxed (ignore-usage) rung is fixed at CONTAINED_STREAM's own 1920x1080.
             const otherUsage = { ...CONTAINED_STREAM, streamUsage: 1 };
             const { manager } = managerWith(withStreams([otherUsage]), async () => {
-                throw statusError(RESOURCE_EXHAUSTED);
+                throw statusError(Status.ResourceExhausted);
             });
             const resolved = await manager.resolveVideoStream({
                 nodeId: NODE,
@@ -343,7 +393,7 @@ describe("CameraStreamManager", () => {
             const { manager, invokes } = managerWith(withStreams([idle]), async invoke => {
                 if (invoke.command === "videoStreamAllocate") {
                     allocateAttempts += 1;
-                    if (allocateAttempts === 1) throw statusError(RESOURCE_EXHAUSTED);
+                    if (allocateAttempts === 1) throw statusError(Status.ResourceExhausted);
                     return { videoStreamId: 11 };
                 }
                 return undefined;
@@ -368,7 +418,7 @@ describe("CameraStreamManager", () => {
                 if (invoke.command !== "videoStreamAllocate") return undefined;
                 allocateAttempts += 1;
                 if (allocateAttempts === 1) return { videoStreamId: 20 };
-                if (allocateAttempts === 2) throw statusError(RESOURCE_EXHAUSTED);
+                if (allocateAttempts === 2) throw statusError(Status.ResourceExhausted);
                 return { videoStreamId: 30 };
             });
             const request = { nodeId: NODE, endpointId: ENDPOINT, streamUsage: LIVE_VIEW, codec: H265 };
@@ -392,7 +442,7 @@ describe("CameraStreamManager", () => {
             const first = { ...CONTAINED_STREAM, videoStreamId: 20, videoCodec: H264, referenceCount: 0 };
             const second = { ...CONTAINED_STREAM, videoStreamId: 21, videoCodec: H264, referenceCount: 0 };
             const { manager, invokes, holder } = managerWith(withStreams([first, second]), async invoke => {
-                if (invoke.command === "videoStreamAllocate") throw statusError(RESOURCE_EXHAUSTED);
+                if (invoke.command === "videoStreamAllocate") throw statusError(Status.ResourceExhausted);
                 return undefined;
             });
             let thrown: unknown;
@@ -428,7 +478,7 @@ describe("CameraStreamManager", () => {
                 maxResolution: { width: 3840, height: 2160 },
             };
             const { manager } = managerWith(withStreams([busy]), async () => {
-                throw statusError(RESOURCE_EXHAUSTED);
+                throw statusError(Status.ResourceExhausted);
             });
             const resolved = await manager.resolveVideoStream({
                 nodeId: NODE,
@@ -454,7 +504,7 @@ describe("CameraStreamManager", () => {
                 minResolution: { width: 1280, height: 720 },
             };
             const { manager } = managerWith(withStreams([busy]), async () => {
-                throw statusError(RESOURCE_EXHAUSTED);
+                throw statusError(Status.ResourceExhausted);
             });
             let thrown: unknown;
             try {
@@ -473,7 +523,7 @@ describe("CameraStreamManager", () => {
 
         it("fails typed with the allocated list once the ladder is exhausted", async () => {
             const { manager, invokes } = managerWith(withStreams([CONTAINED_STREAM]), async () => {
-                throw statusError(RESOURCE_EXHAUSTED);
+                throw statusError(Status.ResourceExhausted);
             });
             let thrown: unknown;
             try {
@@ -548,6 +598,7 @@ describe("CameraStreamManager", () => {
         it("clears the per-endpoint lock once the work it guards has settled", async () => {
             const io: CameraDeviceIo = {
                 readCameraState: async () => STATE,
+                missingCameraClusters: async () => new Array<number>(),
                 invoke: async () => ({ videoStreamId: 9 }),
             };
             const manager = new TestableCameraStreamManager(io);
@@ -683,8 +734,6 @@ describe("CameraStreamManager", () => {
     });
 
     describe("sessions", () => {
-        const RESOURCE_EXHAUSTED = 0x89;
-
         function statusError(status: number): Error & { code: number } {
             const error = new Error(`Device returned status ${status}`) as Error & { code: number };
             error.code = status;
@@ -847,7 +896,7 @@ describe("CameraStreamManager", () => {
             // The device raises ReferenceCount only at session establishment (simulated in the
             // provideOffer branch below), so call 1's stream reads as unreferenced at the device for
             // the whole resolve -> offer-response window. If startStream released its lock before that
-            // window closed, call 2's RESOURCE_EXHAUSTED would see an unreferenced, server-owned stream
+            // window closed, call 2's ResourceExhausted would see an unreferenced, server-owned stream
             // and evict it out from under call 1.
             let videoAllocateCount = 0;
             let sessionCounter = 0;
@@ -875,7 +924,7 @@ describe("CameraStreamManager", () => {
                     }
                     // Call 2 asks for a resolution stream 20 cannot cover, and the one-encoder camera
                     // has no room until call 1's stream is confirmed unneeded — fails until attempt 4.
-                    if (videoAllocateCount < 4) throw statusError(RESOURCE_EXHAUSTED);
+                    if (videoAllocateCount < 4) throw statusError(Status.ResourceExhausted);
                     return { videoStreamId: 30 };
                 }
                 if (invoke.command === "provideOffer") {
@@ -1039,6 +1088,174 @@ describe("CameraStreamManager", () => {
             const result = await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
             expect(result.resolution).to.deep.equal({ width: 1920, height: 1080 });
             expect(result.downgraded).to.equal(false);
+        });
+
+        function snapshotStatusError(status: number): Error & { code: number } {
+            const error = new Error(`Device returned status ${status}`) as Error & { code: number };
+            error.code = status;
+            return error;
+        }
+
+        it("tries the next capability when the device matches none against the one it was offered", async () => {
+            const allocates = new Array<unknown>();
+            const { manager } = managerWith(STATE, async invoke => {
+                if (invoke.command === "snapshotStreamAllocate") {
+                    allocates.push(invoke.fields.minResolution);
+                    if (allocates.length === 1) throw snapshotStatusError(Status.DynamicConstraintError);
+                    return { snapshotStreamId: 3 };
+                }
+                if (invoke.command === "captureSnapshot") {
+                    return { data: new Uint8Array([1]), imageCodec: 0, resolution: { width: 640, height: 480 } };
+                }
+                return undefined;
+            });
+            const result = await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
+            expect(result.streamId).to.equal(3);
+            expect(allocates).to.deep.equal([
+                { width: 1920, height: 1080 },
+                { width: 640, height: 480 },
+            ]);
+        });
+
+        it("fails typed without retrying when the device calls the snapshot request invalid", async () => {
+            const allocateAttempts = new Array<unknown>();
+            const { manager } = managerWith(STATE, async invoke => {
+                if (invoke.command !== "snapshotStreamAllocate") return undefined;
+                allocateAttempts.push(invoke.fields);
+                throw snapshotStatusError(Status.ConstraintError);
+            });
+            let thrown: unknown;
+            try {
+                await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamIncompatible);
+            expect(JSON.parse((thrown as ServerError).message).device_status).to.equal(Status.ConstraintError);
+            expect(allocateAttempts).to.have.length(1);
+        });
+
+        it("fails typed rather than raw when no capability survives the device's capacity", async () => {
+            const { manager } = managerWith(STATE, async invoke => {
+                if (invoke.command !== "snapshotStreamAllocate") return undefined;
+                throw snapshotStatusError(Status.ResourceExhausted);
+            });
+            let thrown: unknown;
+            try {
+                await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraResourceExhausted);
+        });
+
+        it("fails typed when the device refuses the capture itself", async () => {
+            const { manager } = managerWith(STATE, async invoke => {
+                if (invoke.command === "snapshotStreamAllocate") return { snapshotStreamId: 3 };
+                if (invoke.command === "captureSnapshot") throw snapshotStatusError(Status.ResourceExhausted);
+                return undefined;
+            });
+            let thrown: unknown;
+            try {
+                await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraResourceExhausted);
+        });
+
+        it("propagates a snapshot rejection the ladder does not know how to react to", async () => {
+            const UNSUPPORTED = 0x81; // INVALID_ACTION, not one the ladder special-cases.
+            const { manager } = managerWith(STATE, async invoke => {
+                if (invoke.command !== "snapshotStreamAllocate") return undefined;
+                throw snapshotStatusError(UNSUPPORTED);
+            });
+            let thrown: unknown;
+            try {
+                await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as { code: number }).code).to.equal(UNSUPPORTED);
+        });
+
+        it("keeps a capability that needs no hardware encoder while a video stream is live", async () => {
+            // requiresEncodedPixels with requiresHardwareEncoder false takes no encoder, so filtering
+            // on requiresEncodedPixels alone would drop the best capability the camera can still serve.
+            const softwareEncoded: CameraState = {
+                ...STATE,
+                allocatedVideoStreams: [
+                    {
+                        videoStreamId: 1,
+                        streamUsage: LIVE_VIEW,
+                        videoCodec: H265,
+                        minResolution: { width: 640, height: 360 },
+                        maxResolution: { width: 1920, height: 1080 },
+                        minFrameRate: 1,
+                        maxFrameRate: 30,
+                        minBitRate: 800000,
+                        maxBitRate: 4000000,
+                        referenceCount: 1,
+                    },
+                ],
+                snapshotCapabilities: [
+                    { ...STATE.snapshotCapabilities[1], requiresHardwareEncoder: false },
+                    STATE.snapshotCapabilities[0],
+                ],
+            };
+            const { manager } = managerWith(softwareEncoded, async invoke => {
+                if (invoke.command === "snapshotStreamAllocate") return { snapshotStreamId: 3 };
+                if (invoke.command === "captureSnapshot") {
+                    return { data: new Uint8Array([1]), imageCodec: 0, resolution: { width: 1920, height: 1080 } };
+                }
+                return undefined;
+            });
+            const result = await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
+            expect(result.resolution).to.deep.equal({ width: 1920, height: 1080 });
+            // Characterization, not a requirement: `downgraded` still means "the encoder is busy and
+            // the pick needs none", which is wrong here — this pick is the best the camera offers.
+            // Reshape task R4 replaces the comparison; this line pins which flag it reads until then.
+            expect(result.downgraded).to.equal(true);
+        });
+    });
+
+    describe("camera_not_supported", () => {
+        it("reports a missing WebRTC provider cluster rather than allocating a stream first", async () => {
+            const { manager, invokes } = managerWith(STATE, async () => ({ videoStreamId: 9 }), [
+                WebRtcTransportProvider.Cluster.id,
+            ]);
+            let thrown: unknown;
+            try {
+                await manager.startStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    connectionId: "conn-1",
+                    streamUsage: LIVE_VIEW,
+                    sdp: "v=0",
+                    video: {},
+                    audio: false,
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraNotSupported);
+            expect(JSON.parse((thrown as ServerError).message).missing_clusters).to.deep.equal([
+                WebRtcTransportProvider.Cluster.id,
+            ]);
+            expect(invokes).to.deep.equal([]);
+        });
+
+        it("reports both clusters when the endpoint exposes neither", async () => {
+            let thrown: unknown;
+            try {
+                await managerWith(undefined).manager.getCapabilities(NODE, ENDPOINT);
+            } catch (error) {
+                thrown = error;
+            }
+            expect(JSON.parse((thrown as ServerError).message).missing_clusters).to.deep.equal([
+                CameraAvStreamManagement.Cluster.id,
+                WebRtcTransportProvider.Cluster.id,
+            ]);
         });
     });
 

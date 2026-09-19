@@ -9,6 +9,7 @@ import { CameraAvStreamManagement } from "@matter/main/clusters/camera-av-stream
 import { WebRtcTransportProvider } from "@matter/main/clusters/web-rtc-transport-provider";
 import type { Specifier } from "@matter/main/protocol";
 import { CameraAvStreamManagementClient } from "@matter/node/behaviors/camera-av-stream-management";
+import { WebRtcTransportProviderClient } from "@matter/node/behaviors/web-rtc-transport-provider";
 import type { ControllerCommandHandler } from "../controller/ControllerCommandHandler.js";
 import type { CameraDeviceIo, CameraState } from "./CameraStreamManager.js";
 import type { Resolution } from "./cameraTypes.js";
@@ -79,6 +80,9 @@ export function toCameraState(state: RawCameraAvStreamManagementState): CameraSt
             maxFrameRate: capability.maxFrameRate,
             imageCodec: capability.imageCodec,
             requiresEncodedPixels: capability.requiresEncodedPixels,
+            // RequiresHardwareEncoder is optional (§11.2.6.9.5). The reference server reads absent as
+            // "no hardware encoder": CameraAVStreamManagementCluster.cpp initialises
+            // snapshotStreamArgs.hardwareEncoder to false and overwrites it only on HasValue().
             requiresHardwareEncoder: capability.requiresHardwareEncoder ?? false,
         })),
         supportedStreamUsages: [...state.supportedStreamUsages],
@@ -145,6 +149,18 @@ export class MatterCameraDeviceIo implements CameraDeviceIo {
             return undefined;
         }
         return toCameraState(endpoint.stateOf(CameraAvStreamManagementClient));
+    }
+
+    async missingCameraClusters(nodeId: NodeId, endpointId: EndpointNumber): Promise<number[]> {
+        const endpoint = this.#handler.getNode(nodeId).node.endpoints.for(endpointId);
+        const missing = new Array<number>();
+        if (endpoint === undefined || !endpoint.behaviors.has(CameraAvStreamManagementClient)) {
+            missing.push(CameraAvStreamManagement.Cluster.id);
+        }
+        if (endpoint === undefined || !endpoint.behaviors.has(WebRtcTransportProviderClient)) {
+            missing.push(WebRtcTransportProvider.Cluster.id);
+        }
+        return missing;
     }
 
     async invoke(args: {

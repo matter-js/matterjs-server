@@ -6,7 +6,9 @@
 
 import { Logger } from "@matter/main";
 import type { EndpointNumber, NodeId } from "@matter/main";
+import { CameraAvStreamManagement } from "@matter/main/clusters/camera-av-stream-management";
 import { WebRtcTransportDefinitions } from "@matter/main/clusters/web-rtc-transport-definitions";
+import { Status } from "@matter/main/types";
 import { ServerError } from "../types/WebSocketMessageTypes.js";
 import type {
     AudioEnvelope,
@@ -19,7 +21,7 @@ import type {
 } from "./cameraTypes.js";
 import { parseSdpVideoConstraints } from "./sdpConstraints.js";
 import type { SdpVideoConstraints } from "./sdpConstraints.js";
-import { selectSnapshotCapability } from "./snapshotPolicy.js";
+import { selectSnapshotCapabilities, usesHardwareEncoder } from "./snapshotPolicy.js";
 import type { SnapshotCapability } from "./snapshotPolicy.js";
 import {
     computeAudioEnvelope,
@@ -32,17 +34,43 @@ import type { AllocatedVideoStream, AudioHints, RateDistortionPoint, VideoHints 
 
 const logger = Logger.get("CameraStreamManager");
 
-/** CameraAVStreamManagement cluster id, reported when an endpoint cannot stream. */
-const CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID = 0x551;
-/** Matter status codes the allocation ladder reacts to. */
-const DYNAMIC_CONSTRAINT_ERROR = 0x87;
-const RESOURCE_EXHAUSTED = 0x89;
 /** Bounded so a device that rejects everything fails fast rather than walking to 1x1. */
 const MAX_NARROWING_ROUNDS = 3;
 
 function deviceStatusOf(error: unknown): number | undefined {
     if (typeof error !== "object" || error === null || !("code" in error)) return undefined;
     return typeof error.code === "number" ? error.code : undefined;
+}
+
+/** What an allocation ladder may do about a device rejection. */
+type LadderReaction =
+    /** The device cannot serve this range. A smaller request may succeed. */
+    | "narrow"
+    /** The device has no capacity. Freeing or sharing a stream may make room. */
+    | "make-room"
+    /** The request is malformed for this device. No retry can fix it. */
+    | "fail-incompatible"
+    | "rethrow";
+
+/**
+ * The single place a Matter status becomes a ladder decision.
+ *
+ * `ConstraintError` and `DynamicConstraintError` are one hex digit apart in meaning and nothing
+ * alike in consequence: `ConstraintError` is `min > max`, a field out of range or an unknown codec
+ * (`CameraAVStreamManagementCluster.cpp`, the ConstraintError returns ahead of the capability
+ * lookup), so narrowing can only spend rounds before failing anyway.
+ */
+function ladderReaction(status: number | undefined): LadderReaction {
+    switch (status) {
+        case Status.DynamicConstraintError:
+            return "narrow";
+        case Status.ResourceExhausted:
+            return "make-room";
+        case Status.ConstraintError:
+            return "fail-incompatible";
+        default:
+            return "rethrow";
+    }
 }
 
 /** The envelope actually delivered by an allocated video stream, as opposed to the one requested. */
@@ -73,12 +101,18 @@ function envelopeOfAudioStream(stream: AllocatedAudioStream): AudioEnvelope {
 /** WebRTCEndReasonEnum has no dedicated field for "the caller stopped watching"; UserHangup is it. */
 const WEBRTC_END_REASON_USER_HANGUP = WebRtcTransportDefinitions.WebRtcEndReason.UserHangup;
 
-/** VideoCodecEnum values, named as SDP rtpmap advertises them (§11.2.6.1). */
-const VIDEO_CODEC_NAMES = new Map<number, string>([
-    [0, "H264"],
-    [1, "H265"],
-    [2, "H266"],
-    [3, "AV1"],
+/**
+ * SDP rtpmap names for the VideoCodecEnum values (§11.2.6.1).
+ *
+ * Only the names are written here: matter.js spells the members `Hevc`, `Vvc` and `Av1`, SDP spells
+ * them `H265`, `H266` and `AV1`, so the mapping cannot be derived from the enum, but every numeric
+ * value comes from it.
+ */
+const VIDEO_CODEC_NAMES = new Map<CameraAvStreamManagement.VideoCodec, string>([
+    [CameraAvStreamManagement.VideoCodec.H264, "H264"],
+    [CameraAvStreamManagement.VideoCodec.Hevc, "H265"],
+    [CameraAvStreamManagement.VideoCodec.Vvc, "H266"],
+    [CameraAvStreamManagement.VideoCodec.Av1, "AV1"],
 ]);
 
 /**
@@ -193,6 +227,11 @@ export interface CameraDeviceIo {
      * the call deadlocks against itself.
      */
     readCameraState(nodeId: NodeId, endpointId: EndpointNumber): Promise<CameraState | undefined>;
+    /**
+     * Cluster ids of the clusters camera streaming needs that this endpoint does not expose, as
+     * `camera_not_supported` reports them. Empty when the endpoint exposes both.
+     */
+    missingCameraClusters(nodeId: NodeId, endpointId: EndpointNumber): Promise<number[]>;
     invoke(args: {
         nodeId: NodeId;
         endpointId: EndpointNumber;
@@ -331,9 +370,24 @@ export class CameraStreamManager {
     protected async requireState(nodeId: NodeId, endpointId: EndpointNumber): Promise<CameraState> {
         const state = await this.#io.readCameraState(nodeId, endpointId);
         if (state === undefined) {
-            throw ServerError.cameraNotSupported({ missingClusters: [CAMERA_AV_STREAM_MANAGEMENT_CLUSTER_ID] });
+            throw ServerError.cameraNotSupported({
+                missingClusters: await this.#io.missingCameraClusters(nodeId, endpointId),
+            });
         }
         return state;
+    }
+
+    /**
+     * Fail typed when the endpoint cannot carry a WebRTC session.
+     *
+     * Without this a provider-less endpoint allocates a stream first and only then fails on the
+     * provider invoke, with an untyped error and an allocation nobody asked for.
+     */
+    protected async requireStreamingClusters(nodeId: NodeId, endpointId: EndpointNumber): Promise<void> {
+        const missingClusters = await this.#io.missingCameraClusters(nodeId, endpointId);
+        if (missingClusters.length > 0) {
+            throw ServerError.cameraNotSupported({ missingClusters });
+        }
     }
 
     async getCapabilities(nodeId: NodeId, endpointId: EndpointNumber): Promise<CameraCapabilities> {
@@ -493,7 +547,17 @@ export class CameraStreamManager {
             } catch (error) {
                 if (error instanceof ServerError) throw error;
                 lastStatus = deviceStatusOf(error);
-                if (lastStatus === RESOURCE_EXHAUSTED) {
+                const reaction = ladderReaction(lastStatus);
+                if (reaction === "rethrow") throw error;
+                if (reaction === "fail-incompatible") {
+                    throw ServerError.cameraStreamIncompatible({
+                        reason: "bounds",
+                        device: deviceCodecs.map(String),
+                        requested: [String(codec)],
+                        deviceStatus: lastStatus,
+                    });
+                }
+                if (reaction === "make-room") {
                     const relaxed = findReusableVideoStream(liveStreams, envelope, streamUsage, {
                         ignoreStreamUsage: true,
                     });
@@ -510,8 +574,6 @@ export class CameraStreamManager {
                         liveStreams = liveStreams.filter(stream => stream.videoStreamId !== freedId);
                         continue;
                     }
-                } else if (lastStatus !== DYNAMIC_CONSTRAINT_ERROR) {
-                    throw error;
                 }
                 const narrowed = narrowEnvelope(envelope);
                 if (narrowed === undefined) break;
@@ -532,7 +594,7 @@ export class CameraStreamManager {
             };
         }
 
-        if (lastStatus === DYNAMIC_CONSTRAINT_ERROR) {
+        if (ladderReaction(lastStatus) === "narrow") {
             throw ServerError.cameraStreamIncompatible({
                 reason: "bounds",
                 device: deviceCodecs.map(String),
@@ -709,6 +771,7 @@ export class CameraStreamManager {
         // on this endpoint free or hand out the very stream this call is mid-way through using.
         return this.withEndpointLock(nodeId, endpointId, async () => {
             const state = await this.requireState(nodeId, endpointId);
+            await this.requireStreamingClusters(nodeId, endpointId);
 
             let video: ResolvedStream | undefined;
             if (args.video !== false) {
@@ -831,6 +894,36 @@ export class CameraStreamManager {
         }
     }
 
+    /**
+     * The typed camera error for a snapshot the device refused.
+     *
+     * Snapshots share the video path's error codes, so a client sees the same 102/103 distinction on
+     * either surface rather than a raw SDK error on one of them.
+     */
+    protected snapshotFailure(
+        state: CameraState,
+        deviceStatus: number | undefined,
+        deviceCodecs: string[],
+        requestedCodecs: string[],
+    ): ServerError {
+        if (ladderReaction(deviceStatus) === "make-room") {
+            return ServerError.cameraResourceExhausted({
+                allocated: state.allocatedVideoStreams.map(stream => ({
+                    streamId: stream.videoStreamId,
+                    referenceCount: stream.referenceCount,
+                })),
+                maxConcurrentEncoders: state.maxConcurrentEncoders,
+                maxEncodedPixelRate: state.maxEncodedPixelRate,
+            });
+        }
+        return ServerError.cameraStreamIncompatible({
+            reason: "bounds",
+            device: deviceCodecs,
+            requested: requestedCodecs,
+            deviceStatus,
+        });
+    }
+
     async snapshot(args: {
         nodeId: NodeId;
         endpointId: EndpointNumber;
@@ -841,48 +934,87 @@ export class CameraStreamManager {
         return this.withEndpointLock(nodeId, endpointId, async () => {
             const state = await this.requireState(nodeId, endpointId);
             const encoderBusy = state.allocatedVideoStreams.some(stream => stream.referenceCount > 0);
-            const capability = selectSnapshotCapability(state.snapshotCapabilities, {
+            const candidates = selectSnapshotCapabilities(state.snapshotCapabilities, {
                 encoderBusy,
                 maxResolution: args.maxResolution,
                 codec: args.codec,
             });
-            if (capability === undefined) {
+            const deviceCodecs = state.snapshotCapabilities.map(entry => String(entry.imageCodec));
+            const requestedCodecs = args.codec === undefined ? new Array<string>() : [String(args.codec)];
+            if (candidates.length === 0) {
                 throw ServerError.cameraStreamIncompatible({
                     reason: args.codec === undefined ? "bounds" : "codec",
-                    device: state.snapshotCapabilities.map(entry => String(entry.imageCodec)),
-                    requested: args.codec === undefined ? new Array<string>() : [String(args.codec)],
+                    device: deviceCodecs,
+                    requested: requestedCodecs,
                 });
             }
 
-            const allocateResponse = await this.io.invoke({
-                nodeId,
-                endpointId,
-                cluster: "avsm",
-                command: "snapshotStreamAllocate",
-                fields: {
-                    imageCodec: capability.imageCodec,
-                    maxFrameRate: capability.maxFrameRate,
-                    minResolution: capability.resolution,
-                    maxResolution: capability.resolution,
-                },
-            });
-            const snapshotStreamId = (allocateResponse as { snapshotStreamId?: unknown } | undefined)?.snapshotStreamId;
-            if (typeof snapshotStreamId !== "number") {
-                throw ServerError.sdkStackError("SnapshotStreamAllocate returned no SnapshotStreamID");
+            // Walking the candidates is the snapshot ladder: the device validates the request against
+            // its own SnapshotCapabilities list and answers DynamicConstraintError when none matches,
+            // so the next-best capability is the only retry that can succeed.
+            let allocated: { capability: SnapshotCapability; snapshotStreamId: number } | undefined;
+            let lastStatus: number | undefined;
+            for (const capability of candidates) {
+                try {
+                    const allocateResponse = await this.io.invoke({
+                        nodeId,
+                        endpointId,
+                        cluster: "avsm",
+                        command: "snapshotStreamAllocate",
+                        fields: {
+                            imageCodec: capability.imageCodec,
+                            maxFrameRate: capability.maxFrameRate,
+                            minResolution: capability.resolution,
+                            maxResolution: capability.resolution,
+                        },
+                    });
+                    const snapshotStreamId = (allocateResponse as { snapshotStreamId?: unknown } | undefined)
+                        ?.snapshotStreamId;
+                    if (typeof snapshotStreamId !== "number") {
+                        throw ServerError.sdkStackError("SnapshotStreamAllocate returned no SnapshotStreamID");
+                    }
+                    allocated = { capability, snapshotStreamId };
+                    break;
+                } catch (error) {
+                    if (error instanceof ServerError) throw error;
+                    lastStatus = deviceStatusOf(error);
+                    const reaction = ladderReaction(lastStatus);
+                    if (reaction === "rethrow") throw error;
+                    if (reaction === "fail-incompatible") {
+                        throw ServerError.cameraStreamIncompatible({
+                            reason: "bounds",
+                            device: deviceCodecs,
+                            requested: requestedCodecs,
+                            deviceStatus: lastStatus,
+                        });
+                    }
+                }
             }
+            if (allocated === undefined) {
+                throw this.snapshotFailure(state, lastStatus, deviceCodecs, requestedCodecs);
+            }
+            const { capability, snapshotStreamId } = allocated;
             this.recordLease(nodeId, endpointId, {
                 kind: "snapshot",
                 streamId: snapshotStreamId,
                 allocatedByUs: true,
             });
 
-            const captureResponse = await this.io.invoke({
-                nodeId,
-                endpointId,
-                cluster: "avsm",
-                command: "captureSnapshot",
-                fields: { snapshotStreamId, requestedResolution: capability.resolution },
-            });
+            let captureResponse: unknown;
+            try {
+                captureResponse = await this.io.invoke({
+                    nodeId,
+                    endpointId,
+                    cluster: "avsm",
+                    command: "captureSnapshot",
+                    fields: { snapshotStreamId, requestedResolution: capability.resolution },
+                });
+            } catch (error) {
+                if (error instanceof ServerError) throw error;
+                const status = deviceStatusOf(error);
+                if (ladderReaction(status) === "rethrow") throw error;
+                throw this.snapshotFailure(state, status, deviceCodecs, requestedCodecs);
+            }
             const parsed = captureResponse as
                 | { data?: unknown; imageCodec?: unknown; resolution?: unknown }
                 | undefined;
@@ -898,7 +1030,7 @@ export class CameraStreamManager {
                 data: parsed.data,
                 imageCodec: parsed.imageCodec,
                 resolution: parsed.resolution,
-                downgraded: encoderBusy && !capability.requiresEncodedPixels,
+                downgraded: encoderBusy && !usesHardwareEncoder(capability),
                 // Every call allocates a fresh snapshot stream (no reuse ladder, unlike video/audio); a
                 // caller needs streamId to release it via camera_release_stream.
                 streamId: snapshotStreamId,

@@ -46,6 +46,26 @@ describe("streamPolicy", () => {
             expect(envelope.maxFrameRate).to.equal(30);
         });
 
+        it("ignores a trade-off point that fits the ceiling by pixel count but not by dimension", () => {
+            // 1440x1440 and 1920x1080 have the same pixel count, so an area test would take the square
+            // point's minBitRate for a stream that can never be that tall.
+            const square = {
+                ...CAPABILITIES,
+                sensor: { width: 1920, height: 1080 },
+                rateDistortionPoints: [
+                    { codec: H265, resolution: { width: 1440, height: 1440 }, minBitRate: 5000000 },
+                    { codec: H265, resolution: { width: 1280, height: 720 }, minBitRate: 400000 },
+                ],
+            };
+            const envelope = computeVideoEnvelope({
+                capabilities: square,
+                codec: H265,
+                sdp: undefined,
+                hints: undefined,
+            });
+            expect(envelope.minBitRate).to.equal(400000);
+        });
+
         it("takes minBitRate from the trade-off point for the chosen codec", () => {
             expect(
                 computeVideoEnvelope({
@@ -226,6 +246,36 @@ describe("streamPolicy", () => {
             expect(envelope.minResolution).to.deep.equal({ width: 1280, height: 720 });
             expect(envelope.maxResolution).to.deep.equal({ width: 1920, height: 1080 });
             expect(envelope.maxFrameRate).to.equal(15);
+        });
+
+        it("keeps the floor under the ceiling on each dimension, not merely on pixel count", () => {
+            // A 1440x1440 floor has fewer pixels than a 1920x1080 ceiling, so an area clamp leaves it
+            // alone and builds an envelope whose min.height exceeds its max.height — VideoStreamAllocate
+            // answers ConstraintError for exactly that, and no narrowing round can repair it.
+            const envelope = computeVideoEnvelope({
+                capabilities: CAPABILITIES,
+                codec: H265,
+                sdp: undefined,
+                hints: {
+                    minResolution: { width: 1440, height: 1440 },
+                    maxResolution: { width: 1920, height: 1080 },
+                },
+            });
+            expect(envelope.minResolution.width).to.be.at.most(envelope.maxResolution.width);
+            expect(envelope.minResolution.height).to.be.at.most(envelope.maxResolution.height);
+            expect(envelope.minResolution).to.deep.equal({ width: 1440, height: 1080 });
+        });
+
+        it("clamps a caller ceiling that binds on one dimension only", () => {
+            // 2560x1440 against a 3840x1080 ceiling: the area comparison keeps the sensor size whole
+            // and leaves a height the caller ruled out.
+            const envelope = computeVideoEnvelope({
+                capabilities: CAPABILITIES,
+                codec: H265,
+                sdp: undefined,
+                hints: { maxResolution: { width: 3840, height: 1080 } },
+            });
+            expect(envelope.maxResolution).to.deep.equal({ width: 2560, height: 1080 });
         });
 
         it("never widens past the camera's own bounds when a hint asks for more", () => {
@@ -434,6 +484,20 @@ describe("streamPolicy", () => {
         it("reports no further narrowing once resolution and frame rate are both at the floor", () => {
             const exhausted = { ...WIDE, maxResolution: { width: 640, height: 360 }, maxFrameRate: 1 };
             expect(narrowEnvelope(exhausted)).to.equal(undefined);
+        });
+
+        it("moves to the frame rate rather than reporting a resolution ceiling it did not lower", () => {
+            // The even-dimension floor can leave the halved ceiling where it already was. Returning
+            // it unchanged would spend a ladder round on an identical request; the contract is that
+            // each call gives something up or reports exhaustion.
+            const degenerate = {
+                ...WIDE,
+                minResolution: { width: 1, height: 2 },
+                maxResolution: { width: 2, height: 2 },
+            };
+            const narrowed = narrowEnvelope(degenerate);
+            expect(narrowed?.maxResolution).to.deep.equal({ width: 2, height: 2 });
+            expect(narrowed?.maxFrameRate).to.equal(15);
         });
 
         it("clamps a halved resolution to the floor rather than overshooting", () => {

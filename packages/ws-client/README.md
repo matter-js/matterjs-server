@@ -289,7 +289,9 @@ const { ended } = await client.sendCommand("camera_stop_stream", 0, {
 
 ### camera_snapshot
 
-Requests a single still frame, always from a freshly allocated snapshot stream — there is no reuse ladder for snapshots the way there is for video and audio. If a video stream on the endpoint is already live, the server prefers a snapshot capability that does not require the hardware encoder and clamps the resolution down to it, reporting `downgraded: true`; otherwise it uses the highest-resolution capability available. `max_resolution` and `codec` narrow which device-declared capability is chosen; leaving them unset picks the best one available under the current encoder state.
+Requests a single still frame, always from a freshly allocated snapshot stream — an existing snapshot stream is never reused the way a video or audio stream is. If a video stream on the endpoint is already live, the server prefers a snapshot capability that does not require the hardware encoder and clamps the resolution down to it, reporting `downgraded: true`; otherwise it uses the highest-resolution capability available. A capability requires the hardware encoder only when the device declares both `requires_encoded_pixels` and `requires_hardware_encoder`: the second field is defined only when the first is true, so `requires_encoded_pixels` on its own does not mean an encoder is taken. `max_resolution` and `codec` narrow which device-declared capability is chosen; leaving them unset picks the best one available under the current encoder state.
+
+When the device refuses the capability it was offered, the server tries the next one down before failing. A refusal that no retry can fix comes back as `CAMERA_STREAM_INCOMPATIBLE_ERROR_CODE` carrying the device's status, and a capacity refusal as `CAMERA_RESOURCE_EXHAUSTED_ERROR_CODE`; snapshots use the same error codes as `camera_start_stream`.
 
 ```typescript
 const snap = await client.sendCommand("camera_snapshot", 0, {
@@ -321,11 +323,11 @@ Fails with `CAMERA_STREAM_IN_USE_ERROR_CODE` if the stream still has an active l
 
 | Code | Constant | When |
 |---|---|---|
-| 102 | `CAMERA_STREAM_INCOMPATIBLE_ERROR_CODE` | No codec both sides support, or the caller's range cannot be met |
+| 102 | `CAMERA_STREAM_INCOMPATIBLE_ERROR_CODE` | No codec both sides support, or the caller's range cannot be met. `device_status` carries the Matter status the device answered with: `ConstraintError` (135) means the request was structurally invalid and was not retried, `DynamicConstraintError` (207) means narrowing was tried and exhausted |
 | 103 | `CAMERA_RESOURCE_EXHAUSTED_ERROR_CODE` | The device has no encoder capacity left once the allocation ladder is exhausted |
 | 104 | `CAMERA_STREAM_IN_USE_ERROR_CODE` | `camera_release_stream` targeted a stream a listener still references |
 | 105 | `CAMERA_STREAM_NOT_OWNED_ERROR_CODE` | `camera_release_stream` targeted a stream the server did not allocate |
-| 106 | `CAMERA_NOT_SUPPORTED_ERROR_CODE` | The endpoint lacks the AV Stream Management or WebRTC Provider cluster |
+| 106 | `CAMERA_NOT_SUPPORTED_ERROR_CODE` | The endpoint lacks the AV Stream Management or WebRTC Provider cluster. `missing_clusters` lists every one that is absent; a missing provider is reported before any stream is allocated |
 
 ## JSON Utilities
 
