@@ -237,6 +237,89 @@ import {
 } from "@matter-server/ws-client";
 ```
 
+## Camera Streaming
+
+Five commands cover a Matter camera's stream lifecycle: capability discovery, envelope-based stream allocation, WebRTC session teardown, snapshots, and manual stream release. The server computes the `VideoStreamAllocate` envelope, matches or allocates streams, and handles encoder exhaustion, so a client no longer has to. They have no dedicated wrapper methods yet; call them through `client.sendCommand(...)`. The raw `send_webrtc_provider_command` / `device_command` paths keep working unchanged for a client doing its own allocation.
+
+### camera_get_capabilities
+
+Read-only. Reports device-stated facts — sensor size, `RateDistortionTradeOffPoints`, snapshot capabilities, encoder limits, and currently allocated streams. There is deliberately no resolution list: the device does not expose one, and inventing one reproduces the defect in issue #1054.
+
+```typescript
+const caps = await client.sendCommand("camera_get_capabilities", 0, {
+    node_id: nodeId,
+    endpoint_id: 1,
+    refresh: false, // true forces a live read instead of serving subscribed state
+});
+```
+
+### camera_start_stream
+
+Starts or reuses a video/audio stream and a WebRTC session: `ProvideOffer` when `sdp` is given, `SolicitOffer` otherwise. `video` / `audio` hints are **ranges** — `codecs`, `min_resolution`, `max_resolution`, `min_frame_rate`, `max_frame_rate`, `min_bit_rate`, `max_bit_rate` — matching `VideoStreamAllocate`'s own shape. Pass `false` for a hint to exclude that track.
+
+```typescript
+const stream = await client.sendCommand("camera_start_stream", 0, {
+    node_id: nodeId,
+    endpoint_id: 1,
+    stream_usage: "LiveView",
+    sdp: offerSdp,
+    video: { max_resolution: { width: 1920, height: 1080 } },
+});
+```
+
+Setting `min_resolution == max_resolution` (or the frame-rate / bit-rate equivalent) pins an exact value and fails hard if the camera cannot serve it. The Matter spec requires a camera to honour an allocated stream's minimum configuration for the life of that stream and to reject a later request it cannot accommodate alongside it (§15.2.1.2.2), so pinning `min == max` takes stream capacity away from every other client sharing the camera. Leave a bound unset unless an exact value is actually required.
+
+Answer SDP and ICE candidates keep arriving on the existing `webrtc_callback` event; this command replaces stream setup, not negotiation. Answering a solicited offer stays on the raw path (`ProvideAnswer` via `device_command`), since the answer carries no stream selection.
+
+### camera_stop_stream
+
+Ends the WebRTC session (`EndSession`) without releasing the underlying stream allocation, so a later `camera_start_stream` on the same endpoint can reuse it.
+
+```typescript
+await client.sendCommand("camera_stop_stream", 0, {
+    node_id: nodeId,
+    endpoint_id: 1,
+    webrtc_session_id: stream.webrtc_session_id,
+});
+```
+
+### camera_snapshot
+
+Requests a single still frame. If a video stream on the endpoint is already live, the server prefers a snapshot capability that does not require the hardware encoder and clamps the resolution down to it, reporting `downgraded: true`; otherwise it uses the highest-resolution capability available.
+
+```typescript
+const snap = await client.sendCommand("camera_snapshot", 0, {
+    node_id: nodeId,
+    endpoint_id: 1,
+});
+// snap.data is base64-encoded image bytes; snap.downgraded is true when a live stream forced a lower capability
+```
+
+### camera_release_stream
+
+Force-deallocates a stream the server owns, so the next request allocates fresh instead of reusing it.
+
+```typescript
+await client.sendCommand("camera_release_stream", 0, {
+    node_id: nodeId,
+    endpoint_id: 1,
+    kind: "video",
+    stream_id: stream.video.stream_id,
+});
+```
+
+Fails with `CAMERA_STREAM_IN_USE_ERROR_CODE` if the stream still has an active listener, and `CAMERA_STREAM_NOT_OWNED_ERROR_CODE` if the server did not allocate it — releasing never breaks a live session.
+
+### Camera error codes
+
+| Code | Constant | When |
+|---|---|---|
+| 102 | `CAMERA_STREAM_INCOMPATIBLE_ERROR_CODE` | No codec both sides support, or the caller's range cannot be met |
+| 103 | `CAMERA_RESOURCE_EXHAUSTED_ERROR_CODE` | The device has no encoder capacity left once the allocation ladder is exhausted |
+| 104 | `CAMERA_STREAM_IN_USE_ERROR_CODE` | `camera_release_stream` targeted a stream a listener still references |
+| 105 | `CAMERA_STREAM_NOT_OWNED_ERROR_CODE` | `camera_release_stream` targeted a stream the server did not allocate |
+| 106 | `CAMERA_NOT_SUPPORTED_ERROR_CODE` | The endpoint lacks the AV Stream Management or WebRTC Provider cluster |
+
 ## JSON Utilities
 
 The package includes utilities for handling JSON serialization with BigInt support (for numbers exceeding JavaScript's MAX_SAFE_INTEGER):
