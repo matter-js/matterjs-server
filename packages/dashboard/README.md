@@ -50,7 +50,7 @@ Orange nodes are inferred from a commissioned node's Thread neighbor table but a
 - A **Border Router** whose Thread radio MAC differs from its MeshCoP border-agent ID, so it can't be matched to a known BR (common with Apple and Aqara).
 - A **stale neighbor entry** for a device that has left. Obvious stale ghosts (all observers offline, or a single-source entry from an otherwise-reachable node) are filtered out automatically.
 
-An **external Mesh Extender** is such a device advertising rx-on-when-idle (mains-powered, so it can act as a Mesh Extender); an **external device** is one that is not. Mesh-Extender-capable is not a confirmed routing role.
+An **external always-on device** is such a device advertising rx-on-when-idle, so it does not sleep between transmissions; an **external device** is one that is not. An always-on device is often a mains-powered Mesh Extender, but a Minimal End Device also keeps its receiver on and cannot route, so the label states receiver behavior, not a routing role or a power source.
 
 A separate **Diagnostic Mesh Node** is inferred from a Border Router's own Route64 / child-table diagnostics rather than a neighbor table; it is likewise not commissioned to this fabric.
 
@@ -73,7 +73,7 @@ Thread Border Routers use the device icon itself to show role:
 Other node icons:
 
 - **WiFi symbol**: WiFi-connected node
-- **Access point (orange)**: external/unknown Mesh-Extender-capable device
+- **Access point (orange)**: external/unknown device with an always-on receiver
 - **Question mark (orange)**: external/unknown end device
 
 ### Understanding Connection Lines
@@ -176,14 +176,14 @@ Devices that appear in neighbor or route tables but are not commissioned to your
 
 - **Devices on a different Matter fabric**: a single Thread network is often shared by several fabrics (e.g. Home Assistant, Apple, Google). Their nodes and Border Routers are RF neighbors of your devices, but we cannot query them.
 - **Non-Matter Thread infrastructure**: Border Routers, range extenders, and other Thread devices (e.g. HomeKit-only Thread devices) that are not Matter devices and can never be commissioned.
-- **A Border Router under an unstable radio MAC**: some vendors (notably Apple and Aqara) randomize their Thread radio MAC at each reboot. The same physical Border Router then shows up twice — once as the known BR (matched via its stable MeshCoP `xa` identifier) and once here as an "External Mesh Extender" carrying its current radio MAC. After such a reboot the old MAC lingers until neighbor tables age out.
+- **A Border Router under an unstable radio MAC**: some vendors (notably Apple and Aqara) randomize their Thread radio MAC at each reboot. The same physical Border Router then shows up twice — once as the known BR (matched via its stable MeshCoP `xa` identifier) and once here as an "External always-on device" carrying its current radio MAC. After such a reboot the old MAC lingers until neighbor tables age out.
 - **Stale entries**: a neighbor may keep listing a node that has left the network or a battery-powered (sleepy) device it has not heard from recently, until the entry ages out. Use the refresh button to re-read current tables; sometimes a device restart is needed before its tables drop the obsolete entry.
 
-Unknown devices show as "Mesh Extender (external)" or "End Device (external)" based on their radio behavior (rxOnWhenIdle). Since they're not commissioned to this fabric, we cannot query their actual Thread role (Leader, Mesh Extender, etc.).
+Unknown devices show as "Always-on device (external)" or "End Device (external)" based on their radio behavior (rxOnWhenIdle). Since they're not commissioned to this fabric, we cannot query their actual Thread role (Leader, Mesh Extender, etc.).
 
 ### Limitations
 
-**Thread roles for external devices**: The Thread role (Leader, Mesh Extender, End Device) can only be determined for devices commissioned to this fabric. External devices like Home Assistant's Thread Border Router will show as "Mesh Extender (external)" even if they are the current Thread Leader. This is a fundamental Matter limitation - we cannot query attributes from devices on other fabrics.
+**Thread roles for external devices**: The Thread role (Leader, Mesh Extender, End Device) can only be determined for devices commissioned to this fabric. External devices like Home Assistant's Thread Border Router will show as "Always-on device (external)" even if they are the current Thread Leader. This is a fundamental Matter limitation - we cannot query attributes from devices on other fabrics.
 
 **Leader role is dynamic**: In Thread networks, the Leader role can change via leader election. Any Mesh Extender can potentially become the Leader, so this status may change over time.
 

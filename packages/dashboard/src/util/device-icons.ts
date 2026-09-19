@@ -522,8 +522,6 @@ export function createNodeIconDataUrl(
     } else {
         color = getDefaultIconColor(); // Theme-aware default
     }
-    // Thread RoutingRole (incl. Leader) applies to any Mesh Extender node, not just BRs. Badge it over the
-    // device icon rather than replacing the icon, preserving device identity.
     const roleBadge = threadRole !== undefined ? THREAD_ROLE_BADGES[threadRole] : undefined;
     const badge =
         roleBadge !== undefined

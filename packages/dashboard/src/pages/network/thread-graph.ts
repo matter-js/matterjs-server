@@ -28,7 +28,7 @@ import {
     buildThreadEdgePairs,
     decodeMeshcopStateBitmap,
     DIAGNOSTIC_MESH_NODE_EXPLANATION,
-    EXTERNAL_MESH_EXTENDER_CAPABLE_NOTE,
+    EXTERNAL_ALWAYS_ON_NOTE,
     EXTERNAL_THREAD_DEVICE_EXPLANATION,
     findDiagnosticMeshNodes,
     findUnknownDevices,
@@ -425,12 +425,12 @@ export class ThreadGraph extends BaseNetworkGraph {
                     hidden: shouldHide,
                 });
             } else {
-                const baseType = device.isRouter ? "External Mesh Extender" : "External Device";
+                const baseType = device.isRouter ? "External always-on device" : "External Device";
                 const typeLabel =
                     diagNode?.vendorName !== undefined ? `${baseType} (${diagNode.vendorName})` : baseType;
                 const suffix = device.networkName !== undefined ? `\n${device.networkName}` : "";
                 const title = device.isRouter
-                    ? `${EXTERNAL_THREAD_DEVICE_EXPLANATION} ${EXTERNAL_MESH_EXTENDER_CAPABLE_NOTE}`
+                    ? `${EXTERNAL_THREAD_DEVICE_EXPLANATION} ${EXTERNAL_ALWAYS_ON_NOTE}`
                     : EXTERNAL_THREAD_DEVICE_EXPLANATION;
                 graphNodes.push({
                     id: device.id,

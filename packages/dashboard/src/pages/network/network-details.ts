@@ -38,7 +38,7 @@ import {
     getDeviceName,
     getNetworkType,
     DIAGNOSTIC_MESH_NODE_EXPLANATION,
-    EXTERNAL_MESH_EXTENDER_CAPABLE_NOTE,
+    EXTERNAL_ALWAYS_ON_NOTE,
     EXTERNAL_THREAD_DEVICE_CASES,
     getNodeConnectionsFromPairs,
     getRoutableDestinationsCount,
@@ -546,14 +546,10 @@ export class NetworkDetails extends LitElement {
                 <div class="info-row">
                     <span class="label">Type:</span>
                     <span class="value"
-                        >${unknown.isRouter ? "Mesh Extender (external)" : "End Device (external)"}</span
+                        >${unknown.isRouter ? "Always-on device (external)" : "End Device (external)"}</span
                     >
                 </div>
-                ${
-                    unknown.isRouter
-                        ? html`<p class="hint-text inline-note">${EXTERNAL_MESH_EXTENDER_CAPABLE_NOTE}</p>`
-                        : nothing
-                }
+                ${unknown.isRouter ? html`<p class="hint-text inline-note">${EXTERNAL_ALWAYS_ON_NOTE}</p>` : nothing}
                 <div class="info-row">
                     <span class="label">Extended address:</span>
                     <span class="value mono">${unknown.extAddressHex}</span>
@@ -1341,7 +1337,7 @@ export class NetworkDetails extends LitElement {
             if (this.selectedNodeId.startsWith("unknown_")) {
                 const device = this.unknownDevices.get(this.selectedNodeId);
                 if (!device || device.kind !== "unknown") return "External Device";
-                const typeLabel = device.isRouter ? "External Mesh Extender" : "External Device";
+                const typeLabel = device.isRouter ? "External always-on device" : "External Device";
                 return `${typeLabel} (${device.extAddressHex.slice(-8)})`;
             }
         }

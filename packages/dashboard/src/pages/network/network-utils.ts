@@ -214,10 +214,10 @@ export const EXTERNAL_THREAD_DEVICE_CASES = [
 export const EXTERNAL_THREAD_DEVICE_EXPLANATION = `Seen in a commissioned node's Thread neighbor table but not part of this fabric. It may be ${EXTERNAL_THREAD_DEVICE_CASES.slice(0, -1).join(", ")}, or ${EXTERNAL_THREAD_DEVICE_CASES[EXTERNAL_THREAD_DEVICE_CASES.length - 1]}.`;
 
 /**
- * `isRouter` for an external neighbor is derived from rx-on-when-idle, so it means
- * Mesh-Extender-capable (mains-powered), not a confirmed routing role.
+ * `isRouter` for an external neighbor is only `rxOnWhenIdle` from the neighbor table, which a
+ * Minimal End Device can also set, so the UI reports receiver state rather than a routing role.
  */
-export const EXTERNAL_MESH_EXTENDER_CAPABLE_NOTE = `"Mesh Extender" here means the neighbor advertised rx-on-when-idle (mains-powered, so it can act as a Mesh Extender), not a confirmed routing role.`;
+export const EXTERNAL_ALWAYS_ON_NOTE = `"Always-on" means the neighbor advertised rx-on-when-idle, so it does not sleep between transmissions. Such a device is often a mains-powered Mesh Extender, but a Minimal End Device also keeps its receiver on and cannot route, so neither the routing role nor the power source is confirmed.`;
 
 export const DIAGNOSTIC_MESH_NODE_EXPLANATION =
     "Inferred from Border Router diagnostics (Route64 / child table) and not commissioned to this fabric, so no device details are available.";
