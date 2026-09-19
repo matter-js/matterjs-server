@@ -39,7 +39,10 @@ import { CommissioningController } from "@project-chip/matter.js";
 import { createReadStream } from "node:fs";
 import { Readable } from "node:stream";
 import { pathToFileURL } from "node:url";
+import { CameraStreamManager } from "../camera/CameraStreamManager.js";
+import { MatterCameraDeviceIo } from "../camera/MatterCameraDeviceIo.js";
 import { ConfigStorage } from "../server/ConfigStorage.js";
+import { ServerError } from "../types/WebSocketMessageTypes.js";
 import { ControllerCommandHandler } from "./ControllerCommandHandler.js";
 import { LegacyDataInjector, LegacyServerData } from "./LegacyDataInjector.js";
 import { NetworkTopologyService } from "./NetworkTopologyService.js";
@@ -233,6 +236,7 @@ export class MatterController {
     readonly #credentials = new ThreadCredentialsRegistry();
     readonly #threadDiagnostics: ThreadDiagnosticsService;
     #networkTopology?: NetworkTopologyService;
+    #cameraStreams?: CameraStreamManager;
     #webRtcRequestor?: Endpoint<typeof CameraControllerDevice>;
     #services: SharedEnvironmentServices;
 
@@ -532,6 +536,20 @@ export class MatterController {
             });
         }
         return this.#networkTopology;
+    }
+
+    /**
+     * Lazily-constructed camera stream manager. Created on first access, wired to the command
+     * handler's device I/O. Reused across connections and endpoints.
+     */
+    get cameraStreams(): CameraStreamManager {
+        if (this.#cameraStreams === undefined) {
+            if (this.#stopped) {
+                throw ServerError.sdkStackError("Controller is stopped");
+            }
+            this.#cameraStreams = new CameraStreamManager(new MatterCameraDeviceIo(this.commandHandler));
+        }
+        return this.#cameraStreams;
     }
 
     #registerStoredThreadCredentials(): void {

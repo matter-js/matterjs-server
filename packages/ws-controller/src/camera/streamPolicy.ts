@@ -272,7 +272,8 @@ export interface AudioCapabilities {
 }
 
 export interface AudioHints {
-    codecs?: number[];
+    /** Codec names as SDP rtpmap advertises them, e.g. "OPUS" (matches VideoHints.codecs). */
+    codecs?: string[];
     channelCount?: number;
     sampleRate?: number;
     bitRate?: number;
@@ -302,7 +303,11 @@ export function computeAudioEnvelope(args: AudioEnvelopeArgs): AudioEnvelope | u
         });
     }
     if (hints?.codecs !== undefined) {
-        const preferred = hints.codecs.filter(codec => codecs.includes(codec));
+        const hintCodecs = hints.codecs;
+        const preferred = codecs.filter(codec => {
+            const name = AUDIO_CODEC_NAMES.get(codec);
+            return name !== undefined && hintCodecs.includes(name);
+        });
         codecs = preferred.length > 0 ? preferred : new Array<number>();
     }
     const codec = codecs[0];

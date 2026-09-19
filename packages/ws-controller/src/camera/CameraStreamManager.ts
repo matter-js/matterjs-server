@@ -181,7 +181,13 @@ export interface CameraState {
 }
 
 export interface CameraDeviceIo {
-    /** Typed AVSM state, or undefined when the endpoint does not expose the behaviour. */
+    /**
+     * Typed AVSM state, or undefined when the endpoint does not expose the behaviour.
+     *
+     * The manager may call this and {@link invoke} while holding its per-endpoint lock; an
+     * implementation must not call back into the manager for the same endpoint from either method, or
+     * the call deadlocks against itself.
+     */
     readCameraState(nodeId: NodeId, endpointId: EndpointNumber): Promise<CameraState | undefined>;
     invoke(args: {
         nodeId: NodeId;

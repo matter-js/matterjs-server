@@ -23,6 +23,16 @@ import { ControllerCommissioningFlowOptions, OperationalDataset } from "@matter/
 import { EndpointNumber, QrPairingCodeCodec } from "@matter/main/types";
 import { NodeStates } from "@project-chip/matter.js/device";
 import { WebSocketServer } from "ws";
+import {
+    parseCameraTarget,
+    parseReleaseStreamArgs,
+    parseSnapshotArgs,
+    parseStartStreamArgs,
+    parseStopStreamArgs,
+    toWireCapabilities,
+    toWireSnapshotResult,
+    toWireStartStreamResult,
+} from "../camera/cameraCommands.js";
 import { ControllerCommandHandler } from "../controller/ControllerCommandHandler.js";
 import { MatterController, registerThreadCredentialsFromHex } from "../controller/MatterController.js";
 import type { TopologyNodeSource } from "../controller/NetworkTopologyService.js";
@@ -99,6 +109,10 @@ const THREAD_DIAGNOSTICS_OPT_IN_COMMANDS = new Set(["get_thread_diagnostics", "g
 // Issuing this (schema 13) opts the connection in to `network_topology_updated`, mirroring the
 // thread-diagnostics opt-in: pre-schema-13 clients never subscribed, so they must not receive it.
 const NETWORK_TOPOLOGY_OPT_IN_COMMANDS = new Set(["get_network_topology"]);
+
+// Both can produce an offer/answer exchange; the answer and ICE candidates arrive on the
+// webrtc_callback event channel regardless of which command started the session.
+const WEBRTC_OPT_IN_COMMANDS = new Set(["send_webrtc_provider_command", "camera_start_stream"]);
 
 // Responses whose payload is large enough that logging it in full just bloats the debug log
 // (the full node/attribute dump, or the whole topology graph — hundreds of nodes/edges).
@@ -570,6 +584,14 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 logger.info(`[${connId}] WebSocket connection closed`);
                 observers.close();
                 this.#connections.delete(connection);
+                try {
+                    this.#controller.cameraStreams
+                        .releaseConnection(connId)
+                        .catch(err => logger.warn(`[${connId}] Failed to release camera sessions on disconnect`, err));
+                } catch (err) {
+                    // The cameraStreams getter throws synchronously once the controller is stopped.
+                    logger.warn(`[${connId}] Failed to release camera sessions on disconnect`, err);
+                }
                 if (this.#fabricLabelOwner === connection) {
                     logger.info(`[${connId}] Releasing fabric label ownership (owning connection closed)`);
                     this.#fabricLabelOwner = undefined;
@@ -739,6 +761,21 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 case "send_webrtc_provider_command":
                     result = await this.#handleSendWebRtcProviderCommand(args);
                     break;
+                case "camera_get_capabilities":
+                    result = await this.#handleCameraGetCapabilities(args);
+                    break;
+                case "camera_start_stream":
+                    result = await this.#handleCameraStartStream(args, connId);
+                    break;
+                case "camera_stop_stream":
+                    result = await this.#handleCameraStopStream(args);
+                    break;
+                case "camera_snapshot":
+                    result = await this.#handleCameraSnapshot(args);
+                    break;
+                case "camera_release_stream":
+                    result = await this.#handleCameraReleaseStream(args);
+                    break;
                 case "write_attribute":
                     result = await this.#handleWriteAttribute(args);
                     break;
@@ -843,7 +880,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 enableListeners,
                 wantsThreadDiagnostics: command !== undefined && THREAD_DIAGNOSTICS_OPT_IN_COMMANDS.has(command),
                 wantsNetworkTopology: command !== undefined && NETWORK_TOPOLOGY_OPT_IN_COMMANDS.has(command),
-                wantsWebRtc: command === "send_webrtc_provider_command",
+                wantsWebRtc: command !== undefined && WEBRTC_OPT_IN_COMMANDS.has(command),
             };
         } catch (err) {
             logger.error(`[${connId}] WebSocket error response (${command})`, messageId, err);
@@ -856,7 +893,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 },
                 wantsThreadDiagnostics: command !== undefined && THREAD_DIAGNOSTICS_OPT_IN_COMMANDS.has(command),
                 wantsNetworkTopology: command !== undefined && NETWORK_TOPOLOGY_OPT_IN_COMMANDS.has(command),
-                wantsWebRtc: command === "send_webrtc_provider_command",
+                wantsWebRtc: command !== undefined && WEBRTC_OPT_IN_COMMANDS.has(command),
             };
         }
     }
@@ -1282,6 +1319,56 @@ export class WebSocketControllerHandler implements WebServerHandler {
         // Convert the matter.js response to WebSocket format the same way #handleDeviceCommand
         // does for generic invokes (bytes, epochs, bitmaps, struct member filtering).
         return this.#convertCommandDataToWebSocket(WebRtcTransportProvider.id, command_name, response);
+    }
+
+    async #handleCameraGetCapabilities(
+        args: ArgsOf<"camera_get_capabilities">,
+    ): Promise<ResponseOf<"camera_get_capabilities">> {
+        const { nodeId, endpointId } = parseCameraTarget(args);
+        const capabilities = await this.#controller.cameraStreams.getCapabilities(nodeId, endpointId);
+        return toWireCapabilities(capabilities);
+    }
+
+    async #handleCameraStartStream(
+        args: ArgsOf<"camera_start_stream">,
+        connId: string,
+    ): Promise<ResponseOf<"camera_start_stream">> {
+        const parsed = parseStartStreamArgs(args);
+        const result = await this.#controller.cameraStreams.startStream({
+            nodeId: parsed.nodeId,
+            endpointId: parsed.endpointId,
+            connectionId: connId,
+            streamUsage: parsed.streamUsage,
+            sdp: parsed.sdp,
+            video: parsed.video,
+            audio: parsed.audio,
+            iceServers: parsed.iceServers,
+            iceTransportPolicy: parsed.iceTransportPolicy,
+            metadataEnabled: parsed.metadataEnabled,
+        });
+        return toWireStartStreamResult(result);
+    }
+
+    async #handleCameraStopStream(args: ArgsOf<"camera_stop_stream">): Promise<ResponseOf<"camera_stop_stream">> {
+        // The manager tracks sessions by webrtc_session_id alone; node_id/endpoint_id are validated
+        // for consistency with the other four commands but are not otherwise used here.
+        const { webRtcSessionId } = parseStopStreamArgs(args);
+        await this.#controller.cameraStreams.stopStream(webRtcSessionId);
+        return { ended: true };
+    }
+
+    async #handleCameraSnapshot(args: ArgsOf<"camera_snapshot">): Promise<ResponseOf<"camera_snapshot">> {
+        const { nodeId, endpointId, maxResolution, codec } = parseSnapshotArgs(args);
+        const result = await this.#controller.cameraStreams.snapshot({ nodeId, endpointId, maxResolution, codec });
+        return toWireSnapshotResult(result);
+    }
+
+    async #handleCameraReleaseStream(
+        args: ArgsOf<"camera_release_stream">,
+    ): Promise<ResponseOf<"camera_release_stream">> {
+        const { nodeId, endpointId, kind, streamId } = parseReleaseStreamArgs(args);
+        await this.#controller.cameraStreams.releaseStream({ nodeId, endpointId, kind, streamId });
+        return { released: true };
     }
 
     async #handleInterviewNode(args: ArgsOf<"interview_node">): Promise<ResponseOf<"interview_node">> {

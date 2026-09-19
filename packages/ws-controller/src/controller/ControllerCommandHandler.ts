@@ -411,11 +411,7 @@ export class ControllerCommandHandler {
             originatingEndpointId,
         };
 
-        const clusterRevision =
-            this.#nodes.attributeCache.get(nodeId)?.[
-                `${endpointId}/${WebRtcTransportProvider.id}/${ClusterRevision.id}`
-            ];
-        selectWebRtcStreamFields(fields, clusterRevision);
+        selectWebRtcStreamFields(fields, this.webRtcProviderClusterRevision(nodeId, endpointId));
 
         const response = (await this.#invokeCommand(node.node, {
             endpoint: endpointId,
@@ -498,6 +494,27 @@ export class ControllerCommandHandler {
         });
 
         return response;
+    }
+
+    /** @throws ServerError if node not found */
+    getNode(nodeId: NodeId): PairedNode {
+        return this.#nodes.get(nodeId);
+    }
+
+    /** WebRtcTransportProvider ClusterRevision from the attribute cache, or undefined if not yet known. */
+    webRtcProviderClusterRevision(nodeId: NodeId, endpointId: EndpointNumber): unknown {
+        return this.#nodes.attributeCache.get(nodeId)?.[
+            `${endpointId}/${WebRtcTransportProvider.id}/${ClusterRevision.id}`
+        ];
+    }
+
+    /** Narrow, typed invoke exposed for device I/O implementations outside this class (e.g. camera streaming). */
+    async invokeCommand<const C extends Specifier.ClusterLike>(
+        node: ClientNode,
+        request: Invoke.ConcreteCommandRequest<C>,
+        options?: Omit<Invoke.Definition, "commands">,
+    ) {
+        return this.#invokeCommand(node, request, options);
     }
 
     /**

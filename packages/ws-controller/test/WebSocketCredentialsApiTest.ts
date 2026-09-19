@@ -21,7 +21,13 @@ function freshEnv(): Environment {
     return env;
 }
 
-function makeStubController(credentials: ThreadCredentialsRegistry) {
+interface StubCameraStreams {
+    releaseConnection(connectionId: string): Promise<void>;
+}
+
+function makeStubController(credentials: ThreadCredentialsRegistry, cameraStreams?: StubCameraStreams) {
+    const stubCameraStreams: StubCameraStreams = cameraStreams ?? { async releaseConnection() {} };
+
     const stubEvents = {
         started: new AsyncObservable(),
         attributeChanged: new Observable(),
@@ -110,6 +116,11 @@ function makeStubController(credentials: ThreadCredentialsRegistry) {
                 typeof import("@matter/thread-br-client").BorderRouterRegistry
             >;
         },
+        get cameraStreams() {
+            return stubCameraStreams as unknown as InstanceType<
+                typeof import("../src/camera/CameraStreamManager.js").CameraStreamManager
+            >;
+        },
     };
 }
 
@@ -124,10 +135,10 @@ interface TestHarness {
     close(): Promise<void>;
 }
 
-async function createHarness(): Promise<TestHarness> {
+async function createHarness(cameraStreams?: StubCameraStreams): Promise<TestHarness> {
     const config = await ConfigStorage.create(freshEnv());
     const credentials = new ThreadCredentialsRegistry();
-    const controller = makeStubController(credentials);
+    const controller = makeStubController(credentials, cameraStreams);
 
     const handler = new WebSocketControllerHandler(
         controller as unknown as InstanceType<typeof import("../src/controller/MatterController.js").MatterController>,
@@ -362,6 +373,44 @@ describe("WebSocket Credentials API", () => {
         ws.close();
     });
 
+    it("camera_start_stream opts a connection in to webrtc_callback the same way", async () => {
+        const ws = await h.openClient();
+        const events = new Array<string>();
+        ws.on("message", raw => {
+            const msg = JSON.parse(raw.toString()) as { event?: string };
+            if (msg.event !== undefined) events.push(msg.event);
+        });
+
+        const cb = { webrtc_session_id: 1, event_type: "end", data: null };
+
+        // Issuing the command opts this connection in (even though the stub controller errors on it).
+        await new Promise<void>((resolve, reject) => {
+            const id = "req-camera-start-stream";
+            const onMsg = (raw: WebSocket.RawData) => {
+                const msg = JSON.parse(raw.toString()) as { message_id?: string };
+                if (msg.message_id === id) {
+                    ws.off("message", onMsg);
+                    resolve();
+                }
+            };
+            ws.on("message", onMsg);
+            ws.once("error", reject);
+            ws.send(
+                JSON.stringify({
+                    message_id: id,
+                    command: "camera_start_stream",
+                    args: { node_id: 1, endpoint_id: 1, stream_usage: "LiveView" },
+                }),
+            );
+        });
+
+        h.emitWebRtcCallback(cb);
+        await new Promise(r => setTimeout(r, 50));
+        expect(events).to.include("webrtc_callback");
+
+        ws.close();
+    });
+
     it("get_network_topology returns the built snapshot", async () => {
         const res = await h.handle<{ nodes: unknown[]; connections: unknown[] }>("get_network_topology", {});
         expect(res.nodes).to.deep.equal([]);
@@ -567,6 +616,37 @@ describe("WebSocket set_default_fabric_label ownership", () => {
             expect(h.config.fabricLabel).to.equal("Pinned");
         } finally {
             ws.close();
+        }
+    });
+});
+
+describe("WebSocket camera session cleanup on disconnect", () => {
+    it("releases camera sessions owned by the connection that closed, and no others", async () => {
+        const released = new Array<string>();
+        const h = await createHarness({
+            async releaseConnection(connectionId: string) {
+                released.push(connectionId);
+            },
+        });
+        try {
+            const closing = await h.openClient();
+            const staysOpen = await h.openClient();
+            try {
+                await new Promise<void>(resolve => {
+                    closing.once("close", () => resolve());
+                    closing.close();
+                });
+
+                // Server-side close handling can lag the client close event.
+                for (let i = 0; i < 40 && released.length === 0; i++) {
+                    await new Promise<void>(resolve => setTimeout(resolve, 25));
+                }
+                expect(released.length).to.equal(1);
+            } finally {
+                staysOpen.close();
+            }
+        } finally {
+            await h.close();
         }
     });
 });

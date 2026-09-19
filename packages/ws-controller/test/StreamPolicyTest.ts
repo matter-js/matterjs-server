@@ -494,7 +494,7 @@ describe("streamPolicy", () => {
             const envelope = computeAudioEnvelope({
                 capabilities: { ...AUDIO_CAPABILITIES, supportedCodecs: [OPUS, AAC] },
                 sdp: undefined,
-                hints: { codecs: [AAC] },
+                hints: { codecs: ["AAC"] },
                 wantsTalkback: false,
             });
             expect(envelope?.codec).to.equal(AAC);
@@ -505,10 +505,20 @@ describe("streamPolicy", () => {
                 computeAudioEnvelope({
                     capabilities: AUDIO_CAPABILITIES,
                     sdp: undefined,
-                    hints: { codecs: [AAC] },
+                    hints: { codecs: ["AAC"] },
                     wantsTalkback: false,
                 }),
             ).to.equal(undefined);
+        });
+
+        it("ignores a hint codec name the device does not report a matching number for", () => {
+            const envelope = computeAudioEnvelope({
+                capabilities: { ...AUDIO_CAPABILITIES, supportedCodecs: [OPUS, AAC] },
+                sdp: undefined,
+                hints: { codecs: ["UNKNOWN_CODEC"] },
+                wantsTalkback: false,
+            });
+            expect(envelope).to.equal(undefined);
         });
 
         it("does not filter by codec on an SDP audio m-line marked absent", () => {

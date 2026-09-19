@@ -372,6 +372,158 @@ export type WebRtcCallbackData =
     | (WebRtcCallbackBase & { event_type: "ice_candidates"; data: WebRtcIceCandidatesData | null })
     | (WebRtcCallbackBase & { event_type: "end"; data: WebRtcEndData | null });
 
+export interface CameraResolution {
+    width: number;
+    height: number;
+}
+
+/**
+ * A range to allocate a camera video stream in. Setting `min_resolution == max_resolution` (or the
+ * frame-rate/bit-rate equivalents) pins a value and accepts a hard failure if the camera cannot serve
+ * exactly that; a caller who pins bounds narrower than it needs takes that capacity from every other
+ * client sharing the camera (spec §15.2.1.2.2), so leaving a field unset is the sharing-friendly
+ * default.
+ */
+export interface CameraVideoHints {
+    /** Codec names in preference order, e.g. ["H265", "H264"]. */
+    codecs?: string[];
+    min_resolution?: CameraResolution;
+    max_resolution?: CameraResolution;
+    min_frame_rate?: number;
+    max_frame_rate?: number;
+    min_bit_rate?: number;
+    max_bit_rate?: number;
+}
+
+export interface CameraAudioHints {
+    /** Codec names, e.g. ["OPUS"]. */
+    codecs?: string[];
+    channel_count?: number;
+    sample_rate?: number;
+    bit_rate?: number;
+}
+
+export interface CameraRateDistortionPoint {
+    codec: number;
+    resolution: CameraResolution;
+    min_bit_rate: number;
+}
+
+export interface CameraSnapshotCapability {
+    resolution: CameraResolution;
+    max_frame_rate: number;
+    image_codec: number;
+    requires_encoded_pixels: boolean;
+    requires_hardware_encoder: boolean;
+}
+
+export interface CameraAllocatedVideoStream {
+    video_stream_id: number;
+    stream_usage: number;
+    video_codec: number;
+    min_resolution: CameraResolution;
+    max_resolution: CameraResolution;
+    min_frame_rate: number;
+    max_frame_rate: number;
+    min_bit_rate: number;
+    max_bit_rate: number;
+    reference_count: number;
+    owned_by_server: boolean;
+}
+
+export interface CameraAllocatedAudioStream {
+    audio_stream_id: number;
+    stream_usage: number;
+    audio_codec: number;
+    channel_count: number;
+    sample_rate: number;
+    bit_rate: number;
+    bit_depth: number;
+    reference_count: number;
+    owned_by_server: boolean;
+}
+
+export interface CameraAllocatedSnapshotStream {
+    snapshot_stream_id: number;
+    image_codec: number;
+    resolution: CameraResolution;
+    reference_count: number;
+    owned_by_server: boolean;
+}
+
+export interface CameraCapabilitiesResult {
+    video: {
+        sensor?: CameraResolution;
+        min_viewport?: CameraResolution;
+        max_fps?: number;
+        max_hdr_fps?: number;
+        hdr_capable?: boolean;
+        rate_distortion_points: CameraRateDistortionPoint[];
+        /** Distinct codecs found across rate_distortion_points. There is deliberately no resolutions list. */
+        codecs: number[];
+    };
+    audio: {
+        codecs: number[];
+        channels?: number;
+        sample_rates: number[];
+        bit_depths: number[];
+        two_way_talk_support?: number;
+    };
+    snapshot: {
+        capabilities: CameraSnapshotCapability[];
+    };
+    limits: {
+        max_encoded_pixel_rate?: number;
+        max_concurrent_encoders?: number;
+        supported_stream_usages: number[];
+        stream_usage_priorities: number[];
+    };
+    allocated: {
+        video: CameraAllocatedVideoStream[];
+        audio: CameraAllocatedAudioStream[];
+        snapshot: CameraAllocatedSnapshotStream[];
+    };
+}
+
+export interface CameraStartStreamVideoResult {
+    stream_id: number;
+    codec: number;
+    resolution: { min: CameraResolution; max: CameraResolution };
+    frame_rate: { min: number; max: number };
+    bit_rate: { min: number; max: number };
+    reused: boolean;
+    allocated_by_server: boolean;
+    /** True when this stream does not fit the envelope the server would otherwise have allocated. */
+    degraded?: boolean;
+}
+
+export interface CameraStartStreamAudioResult {
+    stream_id: number;
+    codec: number;
+    channel_count: number;
+    sample_rate: number;
+    bit_rate: number;
+    bit_depth: number;
+    reused: boolean;
+    allocated_by_server: boolean;
+}
+
+export interface CameraStartStreamResult {
+    webrtc_session_id: number;
+    mode: "solicit_offer" | "provide_offer";
+    video: CameraStartStreamVideoResult | null;
+    audio: CameraStartStreamAudioResult | null;
+}
+
+export interface CameraSnapshotResult {
+    /** Base64-encoded image bytes. */
+    data: string;
+    codec: number;
+    resolution: CameraResolution;
+    /** True when a live video stream's encoder use forced this below the camera's best capability. */
+    downgraded: boolean;
+}
+
 export interface APICommands {
     start_listening: {
         requestArgs: Record<string, never>;
@@ -524,6 +676,50 @@ export interface APICommands {
             payload: Record<string, unknown>;
         };
         response: unknown;
+    };
+    /** Read-only; reports device-stated facts and current allocations. Allocates nothing. */
+    camera_get_capabilities: {
+        requestArgs: { node_id: number | bigint; endpoint_id: number; refresh?: boolean };
+        response: CameraCapabilitiesResult;
+    };
+    /** `ProvideOffer` when `sdp` is set, `SolicitOffer` otherwise. `video`/`audio: false` excludes the track. */
+    camera_start_stream: {
+        requestArgs: {
+            node_id: number | bigint;
+            endpoint_id: number;
+            stream_usage: "LiveView" | "Recording" | "Analysis";
+            sdp?: string;
+            video?: CameraVideoHints | false;
+            audio?: CameraAudioHints | false;
+            ice_servers?: Array<Record<string, unknown>>;
+            ice_transport_policy?: string;
+            metadata_enabled?: boolean;
+        };
+        response: CameraStartStreamResult;
+    };
+    /** Ends the WebRTC session; the underlying stream allocation is kept. */
+    camera_stop_stream: {
+        requestArgs: { node_id: number | bigint; endpoint_id: number; webrtc_session_id: number };
+        response: { ended: boolean };
+    };
+    camera_snapshot: {
+        requestArgs: {
+            node_id: number | bigint;
+            endpoint_id: number;
+            max_resolution?: { width: number; height: number };
+            codec?: number;
+        };
+        response: CameraSnapshotResult;
+    };
+    /** Force-deallocates a server-owned stream with no listeners, so the next request allocates fresh. */
+    camera_release_stream: {
+        requestArgs: {
+            node_id: number | bigint;
+            endpoint_id: number;
+            kind: "video" | "audio" | "snapshot";
+            stream_id: number;
+        };
+        response: { released: boolean };
     };
     remove_node: {
         requestArgs: { node_id: number | bigint };
