@@ -11,11 +11,14 @@
  * the full commissioning and control flow via WebSocket.
  */
 
+import type { MatterNode } from "@matter-server/ws-client";
 import { ServerErrorCode } from "@matter-server/ws-controller";
 import { ChildProcess } from "child_process";
-import { stat } from "node:fs/promises";
+import { mkdir, stat, writeFile } from "node:fs/promises";
 import { request as httpRequest, type IncomingMessage } from "node:http";
+import { join } from "node:path";
 import {
+    BRIDGE_MANUAL_PAIRING_CODE,
     cleanupTempStorage,
     createTempStoragePaths,
     DEVICE_DISCRIMINATOR,
@@ -25,12 +28,71 @@ import {
     MatterTestClient,
     SERVER_PORT,
     SERVER_WS_URL,
+    startTestBridgeDevice,
     startTestDevice,
     waitForDeviceReady,
 } from "./helpers/index.js";
 import { createServerController, type ServerController } from "./helpers/ServerController.js";
 
 const TEST_TIMEOUT = 120_000; // 2 minutes for Matter commissioning
+
+const AGGREGATOR_DEVICE_TYPE = 14;
+const BRIDGED_NODE_DEVICE_TYPE = 19;
+const ON_OFF_LIGHT_DEVICE_TYPE = 256;
+const TEMPERATURE_SENSOR_DEVICE_TYPE = 770;
+
+/**
+ * Device type ids an endpoint reports in its Descriptor DeviceTypeList.
+ */
+function deviceTypesOf(node: MatterNode, endpointId: number): number[] {
+    return numbersOf(node.attributes[`${endpointId}/29/0`], entry => (isRecord(entry) ? entry["0"] : undefined));
+}
+
+/** Endpoint numbers an endpoint reports in its Descriptor PartsList, in ascending order. */
+function partsListOf(node: MatterNode, endpointId: number): number[] {
+    return numbersOf(node.attributes[`${endpointId}/29/3`], entry => entry).sort((a, b) => a - b);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function numbersOf(value: unknown, pick: (entry: unknown) => unknown): number[] {
+    expect(value).to.be.an("array");
+    const picked = (Array.isArray(value) ? value : []).map(pick);
+    picked.forEach(entry => expect(entry).to.be.a("number"));
+    return picked.filter((entry): entry is number => typeof entry === "number");
+}
+
+/**
+ * Ask the running bridge fixture to add or remove an endpoint.
+ */
+async function sendBridgeCommand(storagePath: string, command: "add-endpoint" | "remove-endpoint"): Promise<void> {
+    const commandDirectory = join(storagePath, "commands");
+    await mkdir(commandDirectory, { recursive: true });
+    await writeFile(join(commandDirectory, command), "");
+}
+
+/**
+ * Wait for the OnOff attribute update of one endpoint behind a bridge.
+ */
+async function waitForBridgedOnOffUpdate(
+    client: MatterTestClient,
+    nodeId: number | bigint,
+    endpointId: number,
+    expectedValue: boolean,
+): Promise<void> {
+    const event = await client.waitForEvent(
+        "attribute_updated",
+        data => {
+            const [eventNodeId, path] = data as [number | bigint, string, unknown];
+            return BigInt(eventNodeId) === BigInt(nodeId) && path === `${endpointId}/6/0`;
+        },
+        10_000,
+    );
+    const [, , value] = event.data as [number | bigint, string, boolean];
+    expect(value).to.equal(expectedValue);
+}
 
 /**
  * Helper to wait for OnOff attribute update event.
@@ -1311,6 +1373,154 @@ describe("Integration Test", function () {
                 data => BigInt(data as number | bigint) === BigInt(networkNodeId),
                 10_000,
             );
+        });
+    });
+
+    // =========================================================================
+    // Bridge Topology (own device: aggregators, nesting, composed bridged device)
+    // =========================================================================
+
+    describe("Bridge Topology", function () {
+        let bridgeProcess: ChildProcess;
+        let bridgeStoragePath: string;
+        let bridgeNode: MatterNode;
+        const BRIDGED_LIGHT_ENDPOINT = 3;
+        const UNTAGGED_LIGHT_ENDPOINT = 10;
+        const UNTAGGED_LIGHT_2_ENDPOINT = 11;
+        const RUNTIME_LIGHT_ENDPOINT = 20;
+
+        before(async function () {
+            bridgeStoragePath = `${deviceStoragePath}-bridge`;
+            bridgeProcess = startTestBridgeDevice(bridgeStoragePath);
+            await waitForDeviceReady(bridgeProcess);
+            const commissioned = await client.commissionWithCode(BRIDGE_MANUAL_PAIRING_CODE);
+            console.log("Bridge commissioned:", commissioned.node_id);
+            bridgeNode = await client.getNode(commissioned.node_id);
+            expect(Object.keys(bridgeNode.attributes).length).to.be.greaterThan(0);
+        });
+
+        after(async function () {
+            try {
+                if (bridgeNode) {
+                    client.clearEvents();
+                    await client.removeNode(bridgeNode.node_id);
+                    await client.waitForEvent(
+                        "node_removed",
+                        data => BigInt(data as number | bigint) === BigInt(bridgeNode.node_id),
+                        10_000,
+                    );
+                }
+            } finally {
+                await killProcess(bridgeProcess);
+                await cleanupTempStorage(bridgeStoragePath, bridgeStoragePath);
+            }
+        });
+
+        it("reports a node as a bridge when no aggregator sits on endpoint 1", function () {
+            expect(deviceTypesOf(bridgeNode, 1)).to.deep.equal([ON_OFF_LIGHT_DEVICE_TYPE]);
+            expect(bridgeNode.is_bridge).to.be.true;
+        });
+
+        it("reports the device types of both aggregators of the device", function () {
+            expect(deviceTypesOf(bridgeNode, 2)).to.deep.equal([AGGREGATOR_DEVICE_TYPE]);
+            expect(deviceTypesOf(bridgeNode, 12)).to.deep.equal([AGGREGATOR_DEVICE_TYPE]);
+        });
+
+        it("reports a nested aggregator with both the Aggregator and the Bridged Node device type", function () {
+            expect(deviceTypesOf(bridgeNode, 7)).to.deep.equal([AGGREGATOR_DEVICE_TYPE, BRIDGED_NODE_DEVICE_TYPE]);
+            expect(partsListOf(bridgeNode, 7)).to.deep.equal([8, 9, 10, 11]);
+            expect(deviceTypesOf(bridgeNode, 8)).to.deep.equal([ON_OFF_LIGHT_DEVICE_TYPE, BRIDGED_NODE_DEVICE_TYPE]);
+        });
+
+        it("reports bridged devices that carry no Bridged Node device type", function () {
+            expect(deviceTypesOf(bridgeNode, 10)).to.deep.equal([ON_OFF_LIGHT_DEVICE_TYPE]);
+            expect(deviceTypesOf(bridgeNode, 11)).to.deep.equal([ON_OFF_LIGHT_DEVICE_TYPE]);
+        });
+
+        it("reports the whole family below an aggregator and the direct parts below a composed device", function () {
+            // An aggregator reports the Full-Family Pattern: the parts of its bridged devices are
+            // listed again below the aggregator itself.
+            expect(partsListOf(bridgeNode, 2)).to.deep.equal([3, 4, 5, 6, 7, 8, 9, 10, 11]);
+            expect(partsListOf(bridgeNode, 4)).to.deep.equal([5, 6]);
+            expect(deviceTypesOf(bridgeNode, 5)).to.deep.equal([TEMPERATURE_SENSOR_DEVICE_TYPE]);
+        });
+
+        it("controls a device behind the bridge and reports its attribute update", async function () {
+            client.clearEvents();
+            await client.deviceCommand(bridgeNode.node_id, BRIDGED_LIGHT_ENDPOINT, 6, "on", {});
+            await waitForBridgedOnOffUpdate(client, bridgeNode.node_id, BRIDGED_LIGHT_ENDPOINT, true);
+
+            client.clearEvents();
+            await client.deviceCommand(bridgeNode.node_id, BRIDGED_LIGHT_ENDPOINT, 6, "off", {});
+            await waitForBridgedOnOffUpdate(client, bridgeNode.node_id, BRIDGED_LIGHT_ENDPOINT, false);
+        });
+
+        it("controls a device the bridge does not describe", async function () {
+            client.clearEvents();
+            await client.deviceCommand(bridgeNode.node_id, UNTAGGED_LIGHT_ENDPOINT, 6, "on", {});
+            await waitForBridgedOnOffUpdate(client, bridgeNode.node_id, UNTAGGED_LIGHT_ENDPOINT, true);
+
+            const attrs = await client.readAttribute(bridgeNode.node_id, `${UNTAGGED_LIGHT_ENDPOINT}/6/0`);
+            expect(attrs[`${UNTAGGED_LIGHT_ENDPOINT}/6/0`]).to.equal(true);
+
+            client.clearEvents();
+            await client.deviceCommand(bridgeNode.node_id, UNTAGGED_LIGHT_ENDPOINT, 6, "off", {});
+            await waitForBridgedOnOffUpdate(client, bridgeNode.node_id, UNTAGGED_LIGHT_ENDPOINT, false);
+        });
+
+        it("reports an endpoint the bridge adds while the node is commissioned", async function () {
+            client.clearEvents();
+            await sendBridgeCommand(bridgeStoragePath, "add-endpoint");
+
+            const event = await client.waitForEvent(
+                "endpoint_added",
+                data => (data as { endpoint_id: number }).endpoint_id === RUNTIME_LIGHT_ENDPOINT,
+                20_000,
+            );
+            expect((event.data as { node_id: number | bigint }).node_id).to.exist;
+
+            // The snapshot carrying the endpoint has to reach a client before the endpoint is
+            // announced, or a client resolving the endpoint against its own node model does not
+            // know it yet (issue reported for Home Assistant).
+            const events = client.getEvents();
+            const snapshotIndex = events.findIndex(
+                candidate =>
+                    candidate.event === "node_updated" &&
+                    (candidate.data as { attributes: Record<string, unknown> }).attributes[
+                        `${RUNTIME_LIGHT_ENDPOINT}/29/0`
+                    ] !== undefined,
+            );
+            const announcementIndex = events.findIndex(candidate => candidate.event === "endpoint_added");
+            expect(snapshotIndex).to.be.greaterThan(-1);
+            expect(snapshotIndex).to.be.lessThan(announcementIndex);
+
+            const updated = await client.getNode(bridgeNode.node_id);
+            expect(updated.attributes[`${RUNTIME_LIGHT_ENDPOINT}/57/5`]).to.equal("Runtime Light");
+            expect(deviceTypesOf(updated, RUNTIME_LIGHT_ENDPOINT)).to.deep.equal([
+                ON_OFF_LIGHT_DEVICE_TYPE,
+                BRIDGED_NODE_DEVICE_TYPE,
+            ]);
+        });
+
+        it("reports an endpoint the bridge removes while the node is commissioned", async function () {
+            client.clearEvents();
+            await sendBridgeCommand(bridgeStoragePath, "remove-endpoint");
+
+            await client.waitForEvent(
+                "endpoint_removed",
+                data => (data as { endpoint_id: number }).endpoint_id === UNTAGGED_LIGHT_2_ENDPOINT,
+                20_000,
+            );
+
+            const updated = await client.getNode(bridgeNode.node_id);
+            expect(updated.attributes[`${UNTAGGED_LIGHT_2_ENDPOINT}/29/0`]).to.be.undefined;
+        });
+
+        it("reports the bridged device info of each bridged endpoint", function () {
+            expect(bridgeNode.attributes["3/57/5"]).to.equal("Bridged Light");
+            expect(bridgeNode.attributes["7/57/5"]).to.equal("Nested Aggregator");
+            expect(bridgeNode.attributes["8/57/5"]).to.equal("Nested Light");
+            expect(bridgeNode.attributes["13/57/5"]).to.equal("Secondary Light");
         });
     });
 });
