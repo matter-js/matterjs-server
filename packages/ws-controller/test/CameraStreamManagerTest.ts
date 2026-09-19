@@ -557,4 +557,183 @@ describe("CameraStreamManager", () => {
             expect(resolved).to.equal(undefined);
         });
     });
+
+    describe("sessions", () => {
+        function allocatingManager() {
+            return managerWith(STATE, async invoke => {
+                if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                if (invoke.command === "provideOffer") return { webRtcSessionId: 42 };
+                return undefined;
+            });
+        }
+
+        it("references the resolved stream ids in the provider offer", async () => {
+            const { manager, invokes } = allocatingManager();
+            const session = await manager.startStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                connectionId: "conn-1",
+                streamUsage: LIVE_VIEW,
+                sdp: "v=0",
+                video: {},
+                audio: false,
+            });
+            expect(session.webRtcSessionId).to.equal(42);
+            const offer = invokes.find(invoke => invoke.command === "provideOffer");
+            expect(offer?.fields.videoStreams).to.deep.equal([9]);
+        });
+
+        it("ends the session without deallocating the stream", async () => {
+            const { manager, invokes } = allocatingManager();
+            await manager.startStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                connectionId: "conn-1",
+                streamUsage: LIVE_VIEW,
+                sdp: "v=0",
+                video: {},
+                audio: false,
+            });
+            await manager.stopStream(42);
+            expect(invokes.map(invoke => invoke.command)).to.include("endSession");
+            expect(invokes.map(invoke => invoke.command)).to.not.include("videoStreamDeallocate");
+        });
+
+        it("ends only the sessions of the connection that closed", async () => {
+            const { manager, invokes } = managerWith(STATE, async invoke => {
+                if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                if (invoke.command === "provideOffer") {
+                    return { webRtcSessionId: invoke.fields.__testSessionId ?? 42 };
+                }
+                return undefined;
+            });
+            await manager.startStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                connectionId: "conn-1",
+                streamUsage: LIVE_VIEW,
+                sdp: "v=0",
+                video: {},
+                audio: false,
+            });
+            await manager.releaseConnection("conn-2");
+            expect(invokes.map(invoke => invoke.command)).to.not.include("endSession");
+            await manager.releaseConnection("conn-1");
+            expect(invokes.map(invoke => invoke.command)).to.include("endSession");
+        });
+    });
+
+    describe("snapshot", () => {
+        it("uses an encoder-free capability while a video stream is referenced", async () => {
+            const streaming: CameraState = {
+                ...STATE,
+                allocatedVideoStreams: [
+                    {
+                        videoStreamId: 1,
+                        streamUsage: LIVE_VIEW,
+                        videoCodec: H265,
+                        minResolution: { width: 640, height: 360 },
+                        maxResolution: { width: 1920, height: 1080 },
+                        minFrameRate: 1,
+                        maxFrameRate: 30,
+                        minBitRate: 800000,
+                        maxBitRate: 4000000,
+                        referenceCount: 1,
+                    },
+                ],
+            };
+            const { manager, invokes } = managerWith(streaming, async invoke => {
+                if (invoke.command === "snapshotStreamAllocate") return { snapshotStreamId: 3 };
+                if (invoke.command === "captureSnapshot") {
+                    return { data: new Uint8Array([1, 2, 3]), imageCodec: 0, resolution: { width: 640, height: 480 } };
+                }
+                return undefined;
+            });
+            const result = await manager.snapshot({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                maxResolution: { width: 1920, height: 1080 },
+            });
+            expect(result.resolution).to.deep.equal({ width: 640, height: 480 });
+            expect(result.downgraded).to.equal(true);
+            const allocate = invokes.find(invoke => invoke.command === "snapshotStreamAllocate");
+            expect(allocate?.fields.minResolution).to.deep.equal({ width: 640, height: 480 });
+            expect(allocate?.fields.maxResolution).to.deep.equal({ width: 640, height: 480 });
+        });
+
+        it("uses the highest capability when nothing holds the encoder", async () => {
+            const { manager } = managerWith(STATE, async invoke => {
+                if (invoke.command === "snapshotStreamAllocate") return { snapshotStreamId: 3 };
+                if (invoke.command === "captureSnapshot") {
+                    return {
+                        data: new Uint8Array([1]),
+                        imageCodec: 0,
+                        resolution: { width: 1920, height: 1080 },
+                    };
+                }
+                return undefined;
+            });
+            const result = await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
+            expect(result.resolution).to.deep.equal({ width: 1920, height: 1080 });
+            expect(result.downgraded).to.equal(false);
+        });
+    });
+
+    describe("releaseStream", () => {
+        it("refuses to release a stream the device still references", async () => {
+            const referenced: CameraState = {
+                ...STATE,
+                allocatedVideoStreams: [
+                    {
+                        videoStreamId: 1,
+                        streamUsage: LIVE_VIEW,
+                        videoCodec: H265,
+                        minResolution: { width: 640, height: 360 },
+                        maxResolution: { width: 1920, height: 1080 },
+                        minFrameRate: 1,
+                        maxFrameRate: 30,
+                        minBitRate: 800000,
+                        maxBitRate: 4000000,
+                        referenceCount: 1,
+                    },
+                ],
+            };
+            const { manager } = managerWith(referenced);
+            let thrown: unknown;
+            try {
+                await manager.releaseStream({ nodeId: NODE, endpointId: ENDPOINT, kind: "video", streamId: 1 });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamInUse);
+        });
+
+        it("refuses to release a stream the server did not allocate", async () => {
+            const foreign: CameraState = {
+                ...STATE,
+                allocatedVideoStreams: [
+                    {
+                        videoStreamId: 1,
+                        streamUsage: LIVE_VIEW,
+                        videoCodec: H265,
+                        minResolution: { width: 640, height: 360 },
+                        maxResolution: { width: 1920, height: 1080 },
+                        minFrameRate: 1,
+                        maxFrameRate: 30,
+                        minBitRate: 800000,
+                        maxBitRate: 4000000,
+                        referenceCount: 0,
+                    },
+                ],
+            };
+            const { manager } = managerWith(foreign);
+            let thrown: unknown;
+            try {
+                await manager.releaseStream({ nodeId: NODE, endpointId: ENDPOINT, kind: "video", streamId: 1 });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamNotOwned);
+        });
+    });
 });

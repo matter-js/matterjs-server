@@ -6,9 +6,12 @@
 
 import { Logger } from "@matter/main";
 import type { EndpointNumber, NodeId } from "@matter/main";
+import { WebRtcTransportDefinitions } from "@matter/main/clusters/web-rtc-transport-definitions";
 import { ServerError } from "../types/WebSocketMessageTypes.js";
-import type { Resolution, ResolvedStream, StreamKind, StreamLease } from "./cameraTypes.js";
+import type { ManagedSession, Resolution, ResolvedStream, StreamKind, StreamLease } from "./cameraTypes.js";
+import { parseSdpVideoConstraints } from "./sdpConstraints.js";
 import type { SdpVideoConstraints } from "./sdpConstraints.js";
+import { selectSnapshotCapability } from "./snapshotPolicy.js";
 import type { SnapshotCapability } from "./snapshotPolicy.js";
 import {
     computeAudioEnvelope,
@@ -33,6 +36,71 @@ function deviceStatusOf(error: unknown): number | undefined {
     if (typeof error !== "object" || error === null) return undefined;
     const code = (error as { code?: unknown }).code;
     return typeof code === "number" ? code : undefined;
+}
+
+/** WebRTCEndReasonEnum has no dedicated field for "the caller stopped watching"; UserHangup is it. */
+const WEBRTC_END_REASON_USER_HANGUP = WebRtcTransportDefinitions.WebRtcEndReason.UserHangup;
+
+/** VideoCodecEnum values, named as SDP rtpmap advertises them (§11.2.6.1). */
+const VIDEO_CODEC_NAMES = new Map<number, string>([
+    [0, "H264"],
+    [1, "H265"],
+    [2, "H266"],
+    [3, "AV1"],
+]);
+
+/**
+ * The codec to request, narrowed from the device's rate-distortion codecs by what the offer states
+ * it can decode and what the caller prefers. Neither narrowing widens past the device list, and an
+ * empty result at either stage falls back to the wider set: resolveVideoStream is what rejects a
+ * codec the device does not support.
+ */
+export function preferredVideoCodec(
+    deviceCodecs: number[],
+    sdp: SdpVideoConstraints | undefined,
+    hintCodecs: string[] | undefined,
+): number {
+    let candidates = deviceCodecs;
+    if (sdp?.hasVideo === true) {
+        const offered = candidates.filter(codec => sdp.codecs.includes(VIDEO_CODEC_NAMES.get(codec) ?? ""));
+        if (offered.length > 0) candidates = offered;
+    }
+    if (hintCodecs !== undefined) {
+        const preferred = candidates.filter(codec => hintCodecs.includes(VIDEO_CODEC_NAMES.get(codec) ?? ""));
+        if (preferred.length > 0) candidates = preferred;
+    }
+    return candidates[0] ?? deviceCodecs[0] ?? 0;
+}
+
+function isResolution(value: unknown): value is Resolution {
+    if (typeof value !== "object" || value === null) return false;
+    const candidate = value as { width?: unknown; height?: unknown };
+    return typeof candidate.width === "number" && typeof candidate.height === "number";
+}
+
+function referenceCountOf(state: CameraState, kind: StreamKind, streamId: number): number {
+    switch (kind) {
+        case "video":
+            return state.allocatedVideoStreams.find(stream => stream.videoStreamId === streamId)?.referenceCount ?? 0;
+        case "audio":
+            return state.allocatedAudioStreams.find(stream => stream.audioStreamId === streamId)?.referenceCount ?? 0;
+        case "snapshot":
+            return (
+                state.allocatedSnapshotStreams.find(stream => stream.snapshotStreamId === streamId)?.referenceCount ?? 0
+            );
+    }
+}
+
+/** The device command and field name that deallocates a stream of this kind. */
+function deallocateCall(kind: StreamKind, streamId: number): { command: string; fields: Record<string, unknown> } {
+    switch (kind) {
+        case "video":
+            return { command: "videoStreamDeallocate", fields: { videoStreamId: streamId } };
+        case "audio":
+            return { command: "audioStreamDeallocate", fields: { audioStreamId: streamId } };
+        case "snapshot":
+            return { command: "snapshotStreamDeallocate", fields: { snapshotStreamId: streamId } };
+    }
 }
 
 export interface AllocatedAudioStream {
@@ -124,10 +192,26 @@ export interface CameraCapabilities {
     };
 }
 
+export interface StartStreamResult {
+    webRtcSessionId: number;
+    mode: "solicit_offer" | "provide_offer";
+    video?: ResolvedStream;
+    audio?: ResolvedStream;
+}
+
+export interface SnapshotResult {
+    data: Uint8Array;
+    imageCodec: number;
+    resolution: Resolution;
+    /** True when a live video stream's encoder use forced this below the camera's best capability. */
+    downgraded: boolean;
+}
+
 export class CameraStreamManager {
     readonly #io: CameraDeviceIo;
     readonly #leases = new Map<string, StreamLease[]>();
     readonly #locks = new Map<string, Promise<unknown>>();
+    readonly #sessions = new Map<number, ManagedSession>();
 
     constructor(io: CameraDeviceIo) {
         this.#io = io;
@@ -518,5 +602,207 @@ export class CameraStreamManager {
             stream => stream.videoStreamId !== victim.videoStreamId,
         );
         return true;
+    }
+
+    async startStream(args: {
+        nodeId: NodeId;
+        endpointId: EndpointNumber;
+        connectionId: string;
+        streamUsage: number;
+        sdp?: string;
+        video?: VideoHints | false;
+        audio?: AudioHints | false;
+        iceServers?: unknown;
+        iceTransportPolicy?: unknown;
+        metadataEnabled?: boolean;
+    }): Promise<StartStreamResult> {
+        const { nodeId, endpointId, streamUsage } = args;
+        const sdp = args.sdp === undefined ? undefined : parseSdpVideoConstraints(args.sdp);
+        const state = await this.requireState(nodeId, endpointId);
+
+        let video: ResolvedStream | undefined;
+        if (args.video !== false) {
+            const codecs = state.rateDistortionTradeOffPoints.map(point => point.codec);
+            const codec = preferredVideoCodec(codecs, sdp, args.video === undefined ? undefined : args.video.codecs);
+            video = await this.resolveVideoStream({
+                nodeId,
+                endpointId,
+                streamUsage,
+                codec,
+                sdp,
+                hints: args.video === undefined ? undefined : args.video,
+            });
+        }
+
+        let audio: ResolvedStream | undefined;
+        if (args.audio !== false && state.microphoneCapabilities !== undefined) {
+            audio = await this.resolveAudioStream({
+                nodeId,
+                endpointId,
+                streamUsage,
+                sdp,
+                hints: args.audio === undefined ? undefined : args.audio,
+            });
+        }
+
+        const response = await this.io.invoke({
+            nodeId,
+            endpointId,
+            cluster: "webrtcProvider",
+            command: args.sdp === undefined ? "solicitOffer" : "provideOffer",
+            fields: {
+                ...(args.sdp === undefined ? {} : { sdp: args.sdp }),
+                streamUsage,
+                ...(video === undefined ? {} : { videoStreams: [video.streamId] }),
+                ...(audio === undefined ? {} : { audioStreams: [audio.streamId] }),
+                ...(args.iceServers === undefined ? {} : { iceServers: args.iceServers }),
+                ...(args.iceTransportPolicy === undefined ? {} : { iceTransportPolicy: args.iceTransportPolicy }),
+                metadataEnabled: args.metadataEnabled === true,
+            },
+        });
+
+        const webRtcSessionId = (response as { webRtcSessionId?: unknown } | undefined)?.webRtcSessionId;
+        if (typeof webRtcSessionId !== "number") {
+            throw ServerError.sdkStackError("Provider returned no WebRTCSessionID");
+        }
+
+        this.#sessions.set(webRtcSessionId, {
+            webRtcSessionId,
+            nodeId,
+            endpointId,
+            connectionId: args.connectionId,
+            videoStreamIds: video === undefined ? new Array<number>() : [video.streamId],
+            audioStreamIds: audio === undefined ? new Array<number>() : [audio.streamId],
+        });
+
+        return {
+            webRtcSessionId,
+            mode: args.sdp === undefined ? "solicit_offer" : "provide_offer",
+            video,
+            audio,
+        };
+    }
+
+    /** Ends the session on the device. The allocation is deliberately kept. */
+    async stopStream(webRtcSessionId: number): Promise<void> {
+        const session = this.#sessions.get(webRtcSessionId);
+        if (session === undefined) return;
+        this.#sessions.delete(webRtcSessionId);
+        await this.io.invoke({
+            nodeId: session.nodeId,
+            endpointId: session.endpointId,
+            cluster: "webrtcProvider",
+            command: "endSession",
+            fields: { webRtcSessionId, reason: WEBRTC_END_REASON_USER_HANGUP },
+        });
+    }
+
+    /**
+     * End every session a closing connection owned.
+     *
+     * The device only decrements ReferenceCount on EndSession, so a session left open pins its
+     * streams permanently — VideoStreamDeallocate then answers INVALID_IN_STATE for good.
+     */
+    async releaseConnection(connectionId: string): Promise<void> {
+        const owned = [...this.#sessions.values()].filter(session => session.connectionId === connectionId);
+        for (const session of owned) {
+            await this.stopStream(session.webRtcSessionId).catch(error =>
+                logger.warn(`Failed to end session ${session.webRtcSessionId} on disconnect:`, error),
+            );
+        }
+    }
+
+    async snapshot(args: {
+        nodeId: NodeId;
+        endpointId: EndpointNumber;
+        maxResolution?: Resolution;
+        codec?: number;
+    }): Promise<SnapshotResult> {
+        const { nodeId, endpointId } = args;
+        return this.withEndpointLock(nodeId, endpointId, async () => {
+            const state = await this.requireState(nodeId, endpointId);
+            const encoderBusy = state.allocatedVideoStreams.some(stream => stream.referenceCount > 0);
+            const capability = selectSnapshotCapability(state.snapshotCapabilities, {
+                encoderBusy,
+                maxResolution: args.maxResolution,
+                codec: args.codec,
+            });
+            if (capability === undefined) {
+                throw ServerError.cameraStreamIncompatible({
+                    reason: args.codec === undefined ? "bounds" : "codec",
+                    device: state.snapshotCapabilities.map(entry => String(entry.imageCodec)),
+                    requested: args.codec === undefined ? new Array<string>() : [String(args.codec)],
+                });
+            }
+
+            const allocateResponse = await this.io.invoke({
+                nodeId,
+                endpointId,
+                cluster: "avsm",
+                command: "snapshotStreamAllocate",
+                fields: {
+                    imageCodec: capability.imageCodec,
+                    maxFrameRate: capability.maxFrameRate,
+                    minResolution: capability.resolution,
+                    maxResolution: capability.resolution,
+                },
+            });
+            const snapshotStreamId = (allocateResponse as { snapshotStreamId?: unknown } | undefined)?.snapshotStreamId;
+            if (typeof snapshotStreamId !== "number") {
+                throw ServerError.sdkStackError("SnapshotStreamAllocate returned no SnapshotStreamID");
+            }
+            this.recordLease(nodeId, endpointId, {
+                kind: "snapshot",
+                streamId: snapshotStreamId,
+                allocatedByUs: true,
+            });
+
+            const captureResponse = await this.io.invoke({
+                nodeId,
+                endpointId,
+                cluster: "avsm",
+                command: "captureSnapshot",
+                fields: { snapshotStreamId, requestedResolution: capability.resolution },
+            });
+            const parsed = captureResponse as
+                | { data?: unknown; imageCodec?: unknown; resolution?: unknown }
+                | undefined;
+            if (
+                !(parsed?.data instanceof Uint8Array) ||
+                typeof parsed.imageCodec !== "number" ||
+                !isResolution(parsed.resolution)
+            ) {
+                throw ServerError.sdkStackError("CaptureSnapshot returned an incomplete response");
+            }
+
+            return {
+                data: parsed.data,
+                imageCodec: parsed.imageCodec,
+                resolution: parsed.resolution,
+                downgraded: encoderBusy && !capability.requiresEncodedPixels,
+            };
+        });
+    }
+
+    async releaseStream(args: {
+        nodeId: NodeId;
+        endpointId: EndpointNumber;
+        kind: StreamKind;
+        streamId: number;
+    }): Promise<void> {
+        const { nodeId, endpointId, kind, streamId } = args;
+        return this.withEndpointLock(nodeId, endpointId, async () => {
+            const state = await this.requireState(nodeId, endpointId);
+            const referenceCount = referenceCountOf(state, kind, streamId);
+            if (referenceCount > 0) {
+                throw ServerError.cameraStreamInUse({ streamId, referenceCount });
+            }
+            if (!this.ownsStream(nodeId, endpointId, kind, streamId)) {
+                throw ServerError.cameraStreamNotOwned({ streamId });
+            }
+            const { command, fields } = deallocateCall(kind, streamId);
+            await this.io.invoke({ nodeId, endpointId, cluster: "avsm", command, fields });
+            this.dropLease(nodeId, endpointId, kind, streamId);
+        });
     }
 }

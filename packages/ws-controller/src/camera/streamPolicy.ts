@@ -32,6 +32,7 @@ export interface VideoHints {
     maxFrameRate?: number;
     minBitRate?: number;
     maxBitRate?: number;
+    codecs?: string[];
 }
 
 export interface VideoEnvelopeArgs {
