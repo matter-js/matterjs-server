@@ -283,7 +283,8 @@ describe("topology-utils", () => {
     });
 
     describe("shouldHideExternalDevice", () => {
-        const XP_HEX = "1122334455667788";
+        // Hex letters, so the case-insensitive comparisons below cannot pass by being identical.
+        const XP_HEX = "1122334455667AAB";
         const observer = (available: boolean, neighborCount: number): TopologySourceNode => ({
             node_id: 1,
             available,

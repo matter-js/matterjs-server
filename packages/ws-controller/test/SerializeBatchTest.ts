@@ -10,7 +10,7 @@ import { serializeBatch } from "../src/server/serializeBatch.js";
 
 function batch(overrides: Partial<ThreadDiagnosticsBatch> = {}): ThreadDiagnosticsBatch {
     return {
-        extPanIdHex: "1122334455667788",
+        extPanIdHex: "aabbccddeeff0011",
         networkName: "TestNet",
         collectedAt: 1_000,
         source: "meshcop",
@@ -21,7 +21,7 @@ function batch(overrides: Partial<ThreadDiagnosticsBatch> = {}): ThreadDiagnosti
 
 describe("serializeBatch", () => {
     it("uppercases the extPanId for the wire", () => {
-        expect(serializeBatch(batch()).extPanIdHex).to.equal("1122334455667788".toUpperCase());
+        expect(serializeBatch(batch()).extPanIdHex).to.equal("AABBCCDDEEFF0011");
     });
 
     it("carries the remaining lifetime when one is given", () => {
