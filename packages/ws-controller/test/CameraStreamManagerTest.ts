@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { EndpointNumber, NodeId } from "@matter/main";
+import { EndpointNumber, Logger, NodeId } from "@matter/main";
 import { CameraAvStreamManagement } from "@matter/main/clusters/camera-av-stream-management";
 import { WebRtcTransportProvider } from "@matter/main/clusters/web-rtc-transport-provider";
 import { Status } from "@matter/main/types";
@@ -66,6 +66,24 @@ export const STATE: CameraState = {
     twoWayTalkSupport: 0,
 };
 
+/** A device rejection carrying a Matter status, as matter.js surfaces one. */
+function statusError(status: number): Error & { code: number } {
+    const error = new Error(`Device returned status ${status}`) as Error & { code: number };
+    error.code = status;
+    return error;
+}
+
+/** An offer whose audio m-line sends as well as receives, i.e. the caller wants talkback. */
+export const TALKBACK_OFFER = [
+    "v=0",
+    "o=- 0 0 IN IP4 127.0.0.1",
+    "s=-",
+    "t=0 0",
+    "m=audio 9 UDP/TLS/RTP/SAVPF 111",
+    "a=rtpmap:111 opus/48000/2",
+    "a=sendrecv",
+].join("\r\n");
+
 export interface RecordedInvoke {
     command: string;
     fields: Record<string, unknown>;
@@ -116,10 +134,11 @@ class LeaseProbe extends CameraStreamManager {
 function probeWith(
     state: CameraState,
     respond: (invoke: RecordedInvoke) => Promise<unknown>,
-): { manager: LeaseProbe; invokes: RecordedInvoke[] } {
+): { manager: LeaseProbe; invokes: RecordedInvoke[]; holder: { state: CameraState } } {
     const invokes = new Array<RecordedInvoke>();
+    const holder = { state };
     const io: CameraDeviceIo = {
-        readCameraState: async () => state,
+        readCameraState: async () => holder.state,
         missingCameraClusters: async () => new Array<number>(),
         invoke: async args => {
             const recorded = {
@@ -132,7 +151,7 @@ function probeWith(
             return respond(recorded);
         },
     };
-    return { manager: new LeaseProbe(io), invokes };
+    return { manager: new LeaseProbe(io), invokes, holder };
 }
 
 describe("CameraStreamManager", () => {
@@ -213,12 +232,6 @@ describe("CameraStreamManager", () => {
     });
 
     describe("resolveVideoStream", () => {
-        function statusError(status: number): Error & { code: number } {
-            const error = new Error(`Device returned status ${status}`) as Error & { code: number };
-            error.code = status;
-            return error;
-        }
-
         function withStreams(streams: CameraState["allocatedVideoStreams"]): CameraState {
             return { ...STATE, allocatedVideoStreams: streams };
         }
@@ -297,6 +310,49 @@ describe("CameraStreamManager", () => {
                 codec: H265,
             });
             expect(resolved.allocatedByUs).to.equal(true);
+        });
+
+        it("fails typed when the caller's resolution floor exceeds what the camera can deliver", async () => {
+            // Clamping the floor down to the sensor reports success while delivering less than the
+            // caller stated it needs, which is the same silent substitution reuse containment forbids.
+            const { manager, invokes } = managerWith(STATE, async () => ({ videoStreamId: 9 }));
+            let thrown: unknown;
+            try {
+                await manager.resolveVideoStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    streamUsage: LIVE_VIEW,
+                    codec: H265,
+                    hints: { minResolution: { width: 3840, height: 2160 } },
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamIncompatible);
+            const payload = JSON.parse((thrown as ServerError).message);
+            expect(payload.reason).to.equal("bounds");
+            // Which bound failed, and against what: `device`/`requested` stay the codec vocabulary
+            // every other 102 uses, so a client can read both without guessing which one it got.
+            expect(payload.bound).to.deep.equal({
+                field: "minResolution",
+                requested: "3840x2160",
+                limit: "2560x1440",
+            });
+            expect(payload.device).to.deep.equal([String(H265)]);
+            expect(invokes).to.deep.equal([]);
+        });
+
+        it("takes the bit-rate ceiling from the camera's MaxNetworkBandwidth", async () => {
+            const throttled: CameraState = { ...STATE, maxNetworkBandwidth: 2000000 };
+            const { manager, invokes } = managerWith(throttled, async () => ({ videoStreamId: 9 }));
+            await manager.resolveVideoStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+                codec: H265,
+            });
+            const allocate = invokes.find(invoke => invoke.command === "videoStreamAllocate");
+            expect(allocate?.fields.maxBitRate).to.equal(2000000);
         });
 
         it("narrows the envelope and retries when the device rejects the parameters", async () => {
@@ -810,6 +866,126 @@ describe("CameraStreamManager", () => {
             expect(session.webRtcSessionId).to.equal(42);
             const offer = invokes.find(invoke => invoke.command === "provideOffer");
             expect(offer?.fields.videoStreams).to.deep.equal([9]);
+        });
+
+        /** Messages the camera manager logged while `work` ran. */
+        async function logged(work: () => Promise<unknown>): Promise<string[]> {
+            const captured = new Array<string>();
+            const destination = Logger.destinations.default;
+            const original = destination.add;
+            destination.add = message => {
+                if (message.facility === "CameraStreamManager") {
+                    captured.push(message.values.map(value => String(value)).join(" "));
+                }
+                original.call(destination, message);
+            };
+            try {
+                await work();
+            } finally {
+                destination.add = original;
+            }
+            return captured;
+        }
+
+        it("reports an offer asking for talkback on a camera that does not support it", async () => {
+            // The camera never receives that audio and nothing in the response says so, so the log is
+            // the only place the mismatch is visible.
+            const { manager } = allocatingManager();
+            const messages = await logged(() =>
+                manager.startStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    connectionId: "conn-1",
+                    streamUsage: LIVE_VIEW,
+                    sdp: TALKBACK_OFFER,
+                    video: {},
+                    audio: false,
+                }),
+            );
+            expect(messages.some(message => message.includes("TwoWayTalkSupport"))).to.equal(true);
+        });
+
+        it("reports the talkback mismatch on a session that does negotiate audio", async () => {
+            const { manager } = managerWith(STATE, async invoke => {
+                if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                if (invoke.command === "audioStreamAllocate") return { audioStreamId: 4 };
+                if (invoke.command === "provideOffer") return { webRtcSessionId: 42 };
+                return undefined;
+            });
+            const messages = await logged(() =>
+                manager.startStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    connectionId: "conn-1",
+                    streamUsage: LIVE_VIEW,
+                    sdp: TALKBACK_OFFER,
+                    video: {},
+                }),
+            );
+            expect(messages.some(message => message.includes("TwoWayTalkSupport"))).to.equal(true);
+        });
+
+        it("says nothing about talkback when the offer does not ask for it", async () => {
+            const { manager } = allocatingManager();
+            const messages = await logged(() =>
+                manager.startStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    connectionId: "conn-1",
+                    streamUsage: LIVE_VIEW,
+                    sdp: "v=0",
+                    video: {},
+                    audio: false,
+                }),
+            );
+            expect(messages.some(message => message.includes("TwoWayTalkSupport"))).to.equal(false);
+        });
+
+        it("says nothing about talkback when the camera supports one direction at a time", async () => {
+            // HalfDuplex is talkback support, so an offer asking for it is served, not reported.
+            const { manager } = managerWith(
+                { ...STATE, twoWayTalkSupport: CameraAvStreamManagement.TwoWayTalkSupportType.HalfDuplex },
+                async invoke => {
+                    if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                    if (invoke.command === "provideOffer") return { webRtcSessionId: 42 };
+                    return undefined;
+                },
+            );
+            const messages = await logged(() =>
+                manager.startStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    connectionId: "conn-1",
+                    streamUsage: LIVE_VIEW,
+                    sdp: TALKBACK_OFFER,
+                    video: {},
+                    audio: false,
+                }),
+            );
+            expect(messages.some(message => message.includes("TwoWayTalkSupport"))).to.equal(false);
+        });
+
+        it("says nothing about talkback when the camera supports it", async () => {
+            const { manager } = managerWith(
+                { ...STATE, twoWayTalkSupport: CameraAvStreamManagement.TwoWayTalkSupportType.FullDuplex },
+                async invoke => {
+                    if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                    if (invoke.command === "provideOffer") return { webRtcSessionId: 42 };
+                    return undefined;
+                },
+            );
+            const messages = await logged(() =>
+                manager.startStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    connectionId: "conn-1",
+                    streamUsage: LIVE_VIEW,
+                    sdp: TALKBACK_OFFER,
+                    video: {},
+                    audio: false,
+                }),
+            );
+            expect(messages.some(message => message.includes("TwoWayTalkSupport"))).to.equal(false);
         });
 
         it("ends the session without deallocating the stream", async () => {
@@ -1651,9 +1827,28 @@ describe("CameraStreamManager", () => {
             });
             const result = await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
             expect(result.resolution).to.deep.equal({ width: 1920, height: 1080 });
-            // Characterization, not a requirement: `downgraded` still means "the encoder is busy and
-            // the pick needs none", which is wrong here — this pick is the best the camera offers.
-            // Reshape task R4 replaces the comparison; this line pins which flag it reads until then.
+            // The live stream cost this caller nothing: 1920x1080 is the largest the camera offers and
+            // it needs no encoder, so reporting a downgrade would be a false alarm.
+            expect(result.downgraded).to.equal(false);
+        });
+
+        it("reports a downgrade when the device refuses the best capability and the next one is smaller", async () => {
+            // Nothing holds the encoder here: the caller still received a 640x480 frame in place of
+            // the 1920x1080 its bounds allowed.
+            let allocateAttempts = 0;
+            const { manager } = managerWith(STATE, async invoke => {
+                if (invoke.command === "snapshotStreamAllocate") {
+                    allocateAttempts += 1;
+                    if (allocateAttempts === 1) throw statusError(Status.DynamicConstraintError);
+                    return { snapshotStreamId: 3 };
+                }
+                if (invoke.command === "captureSnapshot") {
+                    return { data: new Uint8Array([1]), imageCodec: 0, resolution: { width: 640, height: 480 } };
+                }
+                return undefined;
+            });
+            const result = await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
+            expect(result.resolution).to.deep.equal({ width: 640, height: 480 });
             expect(result.downgraded).to.equal(true);
         });
 
@@ -1817,6 +2012,16 @@ describe("CameraStreamManager", () => {
             referenceCount: 0,
         };
 
+        /** The bounds that make FOREIGN_STREAM reusable for an unhinted LiveView request. */
+        const CONTAINED_FOREIGN = {
+            streamUsage: LIVE_VIEW,
+            videoCodec: H265,
+            minResolution: { width: 1920, height: 1080 },
+            maxResolution: { width: 1920, height: 1080 },
+            minFrameRate: 1,
+            maxFrameRate: 30,
+        };
+
         it("holds no entry for an endpoint whose last lease is gone", async () => {
             const { manager } = probeWith({ ...STATE, allocatedSnapshotStreams: [] }, async invoke => {
                 if (invoke.command === "snapshotStreamAllocate") return { snapshotStreamId: 3 };
@@ -1829,6 +2034,135 @@ describe("CameraStreamManager", () => {
             expect(manager.endpointsWithLeases).to.equal(1);
 
             await manager.releaseStream({ nodeId: NODE, endpointId: ENDPOINT, kind: "snapshot", streamId: 3 });
+            expect(manager.endpointsWithLeases).to.equal(0);
+        });
+
+        it("leases a foreign stream it hands out, without claiming to own it", async () => {
+            // The lease map records every stream this server handed out, so a reuse decision can be
+            // made from it rather than from device state that lags the allocation.
+            const reusable = { ...FOREIGN_STREAM, ...CONTAINED_FOREIGN };
+            const { manager, invokes } = probeWith(
+                { ...STATE, allocatedVideoStreams: [reusable] },
+                async () => undefined,
+            );
+            const resolved = await manager.resolveVideoStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+                codec: H265,
+            });
+            expect(resolved.reused).to.equal(true);
+            expect(resolved.allocatedByUs).to.equal(false);
+            expect(manager.endpointsWithLeases).to.equal(1);
+            expect(invokes).to.deep.equal([]);
+        });
+
+        it("refuses to release a foreign stream it leased for reuse", async () => {
+            const reusable = { ...FOREIGN_STREAM, ...CONTAINED_FOREIGN };
+            const { manager, invokes } = probeWith(
+                { ...STATE, allocatedVideoStreams: [reusable] },
+                async () => undefined,
+            );
+            await manager.resolveVideoStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+                codec: H265,
+            });
+
+            let thrown: unknown;
+            try {
+                await manager.releaseStream({ nodeId: NODE, endpointId: ENDPOINT, kind: "video", streamId: 7 });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamNotOwned);
+            expect(invokes.map(invoke => invoke.command)).to.not.include("videoStreamDeallocate");
+        });
+
+        it("leases a foreign audio stream it hands out", async () => {
+            const foreignAudio = {
+                audioStreamId: 4,
+                streamUsage: LIVE_VIEW,
+                audioCodec: 0,
+                channelCount: 1,
+                sampleRate: 48000,
+                bitRate: 64000,
+                bitDepth: 16,
+                referenceCount: 1,
+            };
+            const { manager } = probeWith({ ...STATE, allocatedAudioStreams: [foreignAudio] }, async () => undefined);
+            const resolved = await manager.resolveAudioStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+            });
+            expect(resolved?.allocatedByUs).to.equal(false);
+            expect(manager.endpointsWithLeases).to.equal(1);
+        });
+
+        it("leases a foreign stream the capacity rung hands out", async () => {
+            const otherUsage = { ...FOREIGN_STREAM, ...CONTAINED_FOREIGN, streamUsage: 1 };
+            const { manager } = probeWith({ ...STATE, allocatedVideoStreams: [otherUsage] }, async () => {
+                throw statusError(Status.ResourceExhausted);
+            });
+            const resolved = await manager.resolveVideoStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+                codec: H265,
+            });
+            expect(resolved.streamId).to.equal(7);
+            expect(resolved.allocatedByUs).to.equal(false);
+            expect(manager.endpointsWithLeases).to.equal(1);
+        });
+
+        it("leases a foreign stream the degraded rung hands out", async () => {
+            const busy = {
+                ...FOREIGN_STREAM,
+                ...CONTAINED_FOREIGN,
+                referenceCount: 1,
+                maxResolution: { width: 3840, height: 2160 },
+            };
+            const { manager } = probeWith({ ...STATE, allocatedVideoStreams: [busy] }, async () => {
+                throw statusError(Status.ResourceExhausted);
+            });
+            const resolved = await manager.resolveVideoStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+                codec: H265,
+            });
+            expect(resolved.degraded).to.equal(true);
+            expect(resolved.allocatedByUs).to.equal(false);
+            expect(manager.endpointsWithLeases).to.equal(1);
+        });
+
+        it("treats a stream id reissued to a fresh allocation as its own", async () => {
+            // The device reuses an id once the stream it named is deallocated. A lease still saying the
+            // id is foreign would make the stream this server just allocated unreleasable.
+            const reusable = { ...FOREIGN_STREAM, ...CONTAINED_FOREIGN };
+            const { manager, holder } = probeWith({ ...STATE, allocatedVideoStreams: [reusable] }, async invoke =>
+                invoke.command === "videoStreamAllocate" ? { videoStreamId: 7 } : undefined,
+            );
+            await manager.resolveVideoStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+                codec: H265,
+            });
+
+            holder.state = { ...STATE, allocatedVideoStreams: [] };
+            const fresh = await manager.resolveVideoStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+                codec: H265,
+            });
+            expect(fresh.streamId).to.equal(7);
+            expect(fresh.allocatedByUs).to.equal(true);
+
+            await manager.releaseStream({ nodeId: NODE, endpointId: ENDPOINT, kind: "video", streamId: 7 });
             expect(manager.endpointsWithLeases).to.equal(0);
         });
 

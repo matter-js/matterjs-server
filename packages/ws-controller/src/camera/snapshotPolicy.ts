@@ -33,10 +33,24 @@ export function usesHardwareEncoder(capability: SnapshotCapability): boolean {
     return capability.requiresEncodedPixels && capability.requiresHardwareEncoder;
 }
 
-/** Which narrowing step left no capability, for the typed failure the caller raises. */
+/**
+ * The capabilities to try, best first, or which narrowing step left none.
+ *
+ * `bestWithFreeEncoder` is the capability the caller's own bounds allow at its largest, before the
+ * encoder preference narrows anything, so a caller can be told whether a live stream cost it picture
+ * size. It is undefined only when the camera advertises no snapshot capability at all.
+ */
 export type SnapshotSelection =
-    | { readonly capabilities: SnapshotCapability[] }
+    | { readonly capabilities: SnapshotCapability[]; readonly bestWithFreeEncoder: SnapshotCapability | undefined }
     | { readonly unsatisfiable: "codec" | "bounds" };
+
+/** Whether `chosen` delivers a smaller image than the best capability the caller's bounds allowed. */
+export function isDowngradeFrom(
+    chosen: SnapshotCapability,
+    bestWithFreeEncoder: SnapshotCapability | undefined,
+): boolean {
+    return bestWithFreeEncoder !== undefined && pixels(chosen.resolution) < pixels(bestWithFreeEncoder.resolution);
+}
 
 /**
  * The capabilities to attempt a snapshot stream against, best first.
@@ -71,10 +85,14 @@ export function selectSnapshotCapabilities(
         );
         if (eligible.length === 0 && before.length > 0) return { unsatisfiable: "bounds" };
     }
+    // Array.prototype.sort mutates in place; eligible can still be the caller's own array here.
+    const largestFirst = (list: SnapshotCapability[]): SnapshotCapability[] =>
+        [...list].sort((a, b) => pixels(b.resolution) - pixels(a.resolution));
+    const preferred = largestFirst(eligible);
+    const bestWithFreeEncoder = preferred[0];
     if (options.encoderBusy) {
         const encoderFree = eligible.filter(capability => !usesHardwareEncoder(capability));
-        if (encoderFree.length > 0) eligible = encoderFree;
+        if (encoderFree.length > 0) return { capabilities: largestFirst(encoderFree), bestWithFreeEncoder };
     }
-    // Array.prototype.sort mutates in place; eligible can still be the caller's own array here.
-    return { capabilities: [...eligible].sort((a, b) => pixels(b.resolution) - pixels(a.resolution)) };
+    return { capabilities: preferred, bestWithFreeEncoder };
 }

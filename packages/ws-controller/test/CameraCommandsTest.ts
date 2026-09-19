@@ -415,6 +415,16 @@ describe("cameraCommands", () => {
             expect(wire.video).to.not.have.property("sensor");
             expect(wire.video).to.have.property("rate_distortion_points");
             expect(wire.limits).to.have.property("supported_stream_usages");
+            expect(wire.limits).to.not.have.property("max_network_bandwidth");
+        });
+
+        it("publishes the bandwidth ceiling the server caps a stream's bit rate at", () => {
+            // A caller whose min_bit_rate now fails against this bound has to be able to read it first.
+            const wire = toWireCapabilities({
+                ...EMPTY_CAPABILITIES,
+                limits: { ...EMPTY_CAPABILITIES.limits, maxNetworkBandwidth: 2000000 },
+            });
+            expect(wire.limits.max_network_bandwidth).to.equal(2000000);
         });
 
         it("includes a stated sensor and viewport rather than omitting them", () => {

@@ -165,7 +165,10 @@ describe("snapshotPolicy", () => {
         });
 
         it("reports nothing when the camera advertises no capabilities", () => {
-            expect(selectSnapshotCapabilities([], { encoderBusy: false })).to.deep.equal({ capabilities: [] });
+            expect(selectSnapshotCapabilities([], { encoderBusy: false })).to.deep.equal({
+                capabilities: [],
+                bestWithFreeEncoder: undefined,
+            });
         });
     });
 });

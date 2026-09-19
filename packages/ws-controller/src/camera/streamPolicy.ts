@@ -81,30 +81,73 @@ function fitsUnder(resolution: Resolution, ceiling: Resolution): boolean {
 }
 
 /**
+ * The envelope to allocate in, or the caller floor that nothing available reaches.
+ *
+ * `limit` is the ceiling in force after every narrowing, whoever stated it — the sensor, the offer or
+ * the caller's own ceiling — so it is reported as a limit rather than as something the camera said.
+ */
+export type VideoSelection =
+    | { readonly envelope: VideoEnvelope }
+    | {
+          readonly unsatisfiable: "bounds";
+          readonly field: "minResolution" | "minFrameRate" | "minBitRate";
+          readonly requested: string;
+          readonly limit: string;
+      };
+
+function resolutionText(resolution: Resolution): string {
+    return `${resolution.width}x${resolution.height}`;
+}
+
+/**
  * The range to allocate a video stream in.
  *
  * Wide by default: the camera is required to use the highest resolution and bitrate the network
  * supports and to adapt for concurrent viewers (spec 15.2.1.2.2), so the server's job is to leave it
  * room rather than pick a point inside the range. Each step narrows only; nothing here widens past
  * what the camera reports.
+ *
+ * A floor the caller stated is as hard as a ceiling: when the sensor, the offer or the caller's own
+ * ceiling puts it out of reach, the request fails instead of silently returning less than was asked
+ * for. Floors the server derived — the viewport minimum, a trade-off point's bit rate, frame rate 1 —
+ * still clamp down, since giving those up gives up nothing the caller stated.
  */
-export function computeVideoEnvelope(args: VideoEnvelopeArgs): VideoEnvelope {
+export function computeVideoEnvelope(args: VideoEnvelopeArgs): VideoSelection {
     const { capabilities, codec, sdp, hints } = args;
 
     let maxResolution = capabilities.sensor;
     let maxFrameRate = capabilities.maxFrameRate;
 
-    if (sdp?.maxPixels !== undefined) {
-        maxResolution = scaleToPixels(maxResolution, sdp.maxPixels);
-    }
+    // Order matters: spending the offer's pixel budget on the sensor's aspect ratio first lands on
+    // dimensions the caller's ceiling then cuts again, failing a request the peer can decode.
     if (hints?.maxResolution !== undefined) {
         maxResolution = clampDown(maxResolution, hints.maxResolution);
+    }
+    if (sdp?.maxPixels !== undefined) {
+        maxResolution = scaleToPixels(maxResolution, sdp.maxPixels);
     }
     if (sdp?.maxPixelsPerSecond !== undefined) {
         maxFrameRate = Math.max(1, Math.min(maxFrameRate, Math.floor(sdp.maxPixelsPerSecond / pixels(maxResolution))));
     }
     if (hints?.maxFrameRate !== undefined) {
         maxFrameRate = Math.min(maxFrameRate, hints.maxFrameRate);
+    }
+
+    if (hints?.minResolution !== undefined && !fitsUnder(hints.minResolution, maxResolution)) {
+        return {
+            unsatisfiable: "bounds",
+            field: "minResolution",
+            requested: resolutionText(hints.minResolution),
+            limit: resolutionText(maxResolution),
+        };
+    }
+    if (hints?.minFrameRate !== undefined && hints.minFrameRate > maxFrameRate) {
+        return {
+            unsatisfiable: "bounds",
+            field: "minFrameRate",
+            requested: String(hints.minFrameRate),
+            limit: String(maxFrameRate),
+        };
     }
 
     const codecPoints = capabilities.rateDistortionPoints.filter(point => point.codec === codec);
@@ -117,35 +160,46 @@ export function computeVideoEnvelope(args: VideoEnvelopeArgs): VideoEnvelope {
         undefined,
     );
 
-    let minResolution = capabilities.minViewport ?? smallestPoint ?? maxResolution;
-    minResolution = clampDown(minResolution, maxResolution);
-    if (hints?.minResolution !== undefined) {
-        minResolution = clampDown(clampUp(minResolution, hints.minResolution), maxResolution);
-    }
+    const derivedFloor = clampDown(capabilities.minViewport ?? smallestPoint ?? maxResolution, maxResolution);
+    const minResolution =
+        hints?.minResolution === undefined ? derivedFloor : clampUp(derivedFloor, hints.minResolution);
 
-    const minFrameRate = Math.min(hints?.minFrameRate ?? 1, maxFrameRate);
+    const minFrameRate = hints?.minFrameRate ?? Math.min(1, maxFrameRate);
 
     // The trade-off point at or just below the ceiling states the bitrate that resolution needs.
     const applicable = codecPoints
         .filter(point => fitsUnder(point.resolution, maxResolution))
         .sort((a, b) => pixels(b.resolution) - pixels(a.resolution))[0];
     // Every stated ceiling binds; the default applies only when the camera, the SDP and the caller
-    // all state none. The floor then clamps down to the ceiling, never the ceiling up to the floor.
+    // all state none.
     const ceilings = [hints?.maxBitRate, sdp?.maxBitRate, capabilities.maxNetworkBandwidth].filter(
         (value): value is number => value !== undefined,
     );
     const maxBitRate = ceilings.length > 0 ? Math.min(...ceilings) : DEFAULT_MAX_BIT_RATE;
-    const minBitRate = Math.min(hints?.minBitRate ?? applicable?.minBitRate ?? 1, maxBitRate);
+    if (hints?.minBitRate !== undefined && hints.minBitRate > maxBitRate) {
+        return {
+            unsatisfiable: "bounds",
+            field: "minBitRate",
+            requested: String(hints.minBitRate),
+            limit: String(maxBitRate),
+        };
+    }
+    // A trade-off point's floor can exceed the bandwidth the same camera states. Pinning min to max
+    // there takes capacity from every other viewer (spec 15.2.1.2.2) for a bound nobody asked for.
+    const derivedBitRateFloor = applicable?.minBitRate ?? 1;
+    const minBitRate = hints?.minBitRate ?? (derivedBitRateFloor <= maxBitRate ? derivedBitRateFloor : 1);
 
     return {
-        codec,
-        minResolution,
-        maxResolution,
-        minFrameRate,
-        maxFrameRate,
-        minBitRate,
-        maxBitRate,
-        keyFrameInterval: LIVE_VIEW_KEY_FRAME_INTERVAL_MS,
+        envelope: {
+            codec,
+            minResolution,
+            maxResolution,
+            minFrameRate,
+            maxFrameRate,
+            minBitRate,
+            maxBitRate,
+            keyFrameInterval: LIVE_VIEW_KEY_FRAME_INTERVAL_MS,
+        },
     };
 }
 
@@ -305,8 +359,6 @@ export interface AudioCapabilities {
     maxNumberOfChannels: number;
     supportedSampleRates: number[];
     supportedBitDepths: number[];
-    /** A {@link CameraAvStreamManagement.TwoWayTalkSupportType} value. */
-    twoWayTalkSupport: number;
 }
 
 export interface AudioHints {
@@ -321,7 +373,6 @@ export interface AudioEnvelopeArgs {
     capabilities: AudioCapabilities;
     sdp: SdpVideoConstraints | undefined;
     hints: AudioHints | undefined;
-    wantsTalkback: boolean;
 }
 
 /**

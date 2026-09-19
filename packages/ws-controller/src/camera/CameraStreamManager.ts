@@ -23,7 +23,7 @@ import { parseSdpVideoConstraints } from "./sdpConstraints.js";
 import type { SdpVideoConstraints } from "./sdpConstraints.js";
 import { CameraSessionRegistry } from "./sessionRegistry.js";
 import type { PendingSession, SessionScope } from "./sessionRegistry.js";
-import { selectSnapshotCapabilities, usesHardwareEncoder } from "./snapshotPolicy.js";
+import { isDowngradeFrom, selectSnapshotCapabilities } from "./snapshotPolicy.js";
 import type { SnapshotCapability } from "./snapshotPolicy.js";
 import {
     computeAudioEnvelope,
@@ -215,6 +215,8 @@ export interface AllocatedSnapshotStream {
 export interface CameraState {
     maxConcurrentEncoders?: number;
     maxEncodedPixelRate?: number;
+    /** MaxNetworkBandwidth (§11.2.7.12), bits per second; the bit-rate ceiling the camera states. */
+    maxNetworkBandwidth?: number;
     videoSensorParams?: {
         sensorWidth: number;
         sensorHeight: number;
@@ -283,6 +285,7 @@ export interface CameraCapabilities {
     limits: {
         maxEncodedPixelRate?: number;
         maxConcurrentEncoders?: number;
+        maxNetworkBandwidth?: number;
         supportedStreamUsages: number[];
         streamUsagePriorities: number[];
     };
@@ -317,7 +320,7 @@ export interface SnapshotResult {
     data: Uint8Array;
     imageCodec: number;
     resolution: Resolution;
-    /** True when a live video stream's encoder use forced this below the camera's best capability. */
+    /** True when the frame is smaller than the best capability the caller's own bounds allowed. */
     downgraded: boolean;
     streamId: number;
     reused: boolean;
@@ -382,13 +385,19 @@ export class CameraStreamManager {
         return this.#leases.get(this.endpointKey(nodeId, endpointId)) ?? new Array<StreamLease>();
     }
 
+    /**
+     * Record what this server knows about a stream, replacing what it knew before.
+     *
+     * The device reissues a stream id once the stream it named is deallocated, so an entry that still
+     * said `allocatedByUs: false` from an earlier foreign stream would make the id we just allocated
+     * unreleasable. The last statement about an id is the true one.
+     */
     protected recordLease(nodeId: NodeId, endpointId: EndpointNumber, lease: StreamLease): void {
         const key = this.endpointKey(nodeId, endpointId);
         const existing = this.#leases.get(key) ?? new Array<StreamLease>();
-        if (!existing.some(entry => entry.kind === lease.kind && entry.streamId === lease.streamId)) {
-            existing.push(lease);
-        }
-        this.#leases.set(key, existing);
+        const others = existing.filter(entry => !(entry.kind === lease.kind && entry.streamId === lease.streamId));
+        others.push(lease);
+        this.#leases.set(key, others);
     }
 
     protected dropLease(nodeId: NodeId, endpointId: EndpointNumber, kind: StreamKind, streamId: number): void {
@@ -401,6 +410,24 @@ export class CameraStreamManager {
         } else {
             this.#leases.set(key, remaining);
         }
+    }
+
+    /**
+     * Record a stream this call reuses, and report whether this server allocated it.
+     *
+     * A stream this server did not allocate is leased with `allocatedByUs: false`: reusable, never
+     * released by us. Leasing it anyway is what lets a later request see every stream this server has
+     * handed out, rather than only what the subscription has reported back.
+     */
+    protected leaseReusedStream(
+        nodeId: NodeId,
+        endpointId: EndpointNumber,
+        kind: StreamKind,
+        streamId: number,
+    ): boolean {
+        const allocatedByUs = this.ownsStream(nodeId, endpointId, kind, streamId);
+        this.recordLease(nodeId, endpointId, { kind, streamId, allocatedByUs });
+        return allocatedByUs;
     }
 
     protected ownsStream(nodeId: NodeId, endpointId: EndpointNumber, kind: StreamKind, streamId: number): boolean {
@@ -472,6 +499,7 @@ export class CameraStreamManager {
             limits: {
                 maxEncodedPixelRate: state.maxEncodedPixelRate,
                 maxConcurrentEncoders: state.maxConcurrentEncoders,
+                maxNetworkBandwidth: state.maxNetworkBandwidth,
                 supportedStreamUsages: state.supportedStreamUsages,
                 streamUsagePriorities: state.streamUsagePriorities,
             },
@@ -538,14 +566,24 @@ export class CameraStreamManager {
             maxFrameRate: state.videoSensorParams?.maxFps ?? 30,
             minViewport: state.minViewportResolution,
             rateDistortionPoints: state.rateDistortionTradeOffPoints,
+            maxNetworkBandwidth: state.maxNetworkBandwidth,
         };
 
-        let envelope = computeVideoEnvelope({
+        const selection = computeVideoEnvelope({
             capabilities,
             codec,
             sdp: args.sdp,
             hints: args.hints,
         });
+        if ("unsatisfiable" in selection) {
+            throw ServerError.cameraStreamIncompatible({
+                reason: selection.unsatisfiable,
+                device: deviceCodecs.map(String),
+                requested: [String(codec)],
+                bound: { field: selection.field, requested: selection.requested, limit: selection.limit },
+            });
+        }
+        let envelope = selection.envelope;
 
         // The ladder's own copy: freeing a stream updates this array, never the state object.
         let liveStreams = state.allocatedVideoStreams;
@@ -556,7 +594,7 @@ export class CameraStreamManager {
                 streamId: reused.videoStreamId,
                 envelope: envelopeOfVideoStream(reused, envelope.keyFrameInterval),
                 reused: true,
-                allocatedByUs: this.ownsStream(nodeId, endpointId, "video", reused.videoStreamId),
+                allocatedByUs: this.leaseReusedStream(nodeId, endpointId, "video", reused.videoStreamId),
             };
         }
 
@@ -611,7 +649,7 @@ export class CameraStreamManager {
                             streamId: relaxed.videoStreamId,
                             envelope: envelopeOfVideoStream(relaxed, envelope.keyFrameInterval),
                             reused: true,
-                            allocatedByUs: this.ownsStream(nodeId, endpointId, "video", relaxed.videoStreamId),
+                            allocatedByUs: this.leaseReusedStream(nodeId, endpointId, "video", relaxed.videoStreamId),
                         };
                     }
                     const freedId = await this.freeAnUnreferencedVideoStream(nodeId, endpointId, liveStreams);
@@ -635,7 +673,7 @@ export class CameraStreamManager {
                 envelope: envelopeOfVideoStream(degraded, envelope.keyFrameInterval),
                 reused: true,
                 degraded: true,
-                allocatedByUs: this.ownsStream(nodeId, endpointId, "video", degraded.videoStreamId),
+                allocatedByUs: this.leaseReusedStream(nodeId, endpointId, "video", degraded.videoStreamId),
             };
         }
 
@@ -695,13 +733,9 @@ export class CameraStreamManager {
         }
 
         const selection = computeAudioEnvelope({
-            capabilities: {
-                ...microphone,
-                twoWayTalkSupport: state.twoWayTalkSupport ?? 0,
-            },
+            capabilities: microphone,
             sdp: args.sdp,
             hints: args.hints,
-            wantsTalkback: args.sdp?.wantsTalkback === true,
         });
         if ("unsatisfiable" in selection) {
             throw ServerError.cameraStreamIncompatible({
@@ -725,7 +759,7 @@ export class CameraStreamManager {
                 streamId: existing.audioStreamId,
                 envelope: envelopeOfAudioStream(existing),
                 reused: true,
-                allocatedByUs: this.ownsStream(nodeId, endpointId, "audio", existing.audioStreamId),
+                allocatedByUs: this.leaseReusedStream(nodeId, endpointId, "audio", existing.audioStreamId),
             };
         }
 
@@ -838,6 +872,15 @@ export class CameraStreamManager {
         sdp: SdpVideoConstraints | undefined,
     ): Promise<StartStreamResult> {
         const { nodeId, endpointId, streamUsage } = args;
+        if (
+            sdp?.wantsTalkback === true &&
+            (state.twoWayTalkSupport ?? CameraAvStreamManagement.TwoWayTalkSupportType.NotSupported) ===
+                CameraAvStreamManagement.TwoWayTalkSupportType.NotSupported
+        ) {
+            logger.notice(
+                `Node ${nodeId} endpoint ${endpointId} states no TwoWayTalkSupport; the audio the offer asks to send will not reach the camera`,
+            );
+        }
         let video: ResolvedStream | undefined;
         let audio: ResolvedStream | undefined;
         let webRtcSessionId: number;
@@ -1113,6 +1156,7 @@ export class CameraStreamManager {
                 });
             }
             const candidates = selection.capabilities;
+            const bestWithFreeEncoder = selection.bestWithFreeEncoder;
             if (candidates.length === 0) {
                 throw ServerError.cameraStreamIncompatible({
                     reason: "bounds",
@@ -1216,7 +1260,7 @@ export class CameraStreamManager {
                 data: captured.data,
                 imageCodec: captured.imageCodec,
                 resolution: captured.resolution,
-                downgraded: encoderBusy && !usesHardwareEncoder(capability),
+                downgraded: isDowngradeFrom(capability, bestWithFreeEncoder),
                 // Every call allocates a fresh snapshot stream (no reuse ladder, unlike video/audio); a
                 // caller needs streamId to release it via camera_release_stream.
                 streamId: snapshotStreamId,

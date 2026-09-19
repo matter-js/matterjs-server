@@ -36,7 +36,12 @@ export interface AudioEnvelope {
 export interface StreamLease {
     kind: StreamKind;
     streamId: number;
-    /** False for anything found already allocated; such a stream is reusable but never released by us. */
+    /**
+     * False for a stream found already allocated: reusable, never released by us.
+     *
+     * Such a stream is leased anyway, so the reuse decision sees every stream this server has handed
+     * out rather than only the ones it allocated.
+     */
     allocatedByUs: boolean;
 }
 

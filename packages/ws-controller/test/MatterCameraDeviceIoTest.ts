@@ -12,6 +12,7 @@ import type { ControllerCommandHandler } from "../src/controller/ControllerComma
 const MINIMAL_STATE: RawCameraAvStreamManagementState = {
     supportedStreamUsages: [3],
     streamUsagePriorities: [3],
+    maxNetworkBandwidth: 8000000,
 };
 
 describe("toCameraState", () => {
@@ -217,10 +218,12 @@ describe("toCameraState", () => {
             ...MINIMAL_STATE,
             maxConcurrentEncoders: 1,
             maxEncodedPixelRate: 248832000,
+            maxNetworkBandwidth: 4000000,
             twoWayTalkSupport: 2,
         });
         expect(state.maxConcurrentEncoders).to.equal(1);
         expect(state.maxEncodedPixelRate).to.equal(248832000);
+        expect(state.maxNetworkBandwidth).to.equal(4000000);
         expect(state.twoWayTalkSupport).to.equal(2);
     });
 });

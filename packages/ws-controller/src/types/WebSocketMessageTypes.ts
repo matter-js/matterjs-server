@@ -99,6 +99,11 @@ export interface CameraStreamIncompatibleDetail {
     reason: "codec" | "bounds";
     device: string[];
     requested: string[];
+    /**
+     * The single caller bound that could not be met, when the server decided that before asking the
+     * device. `limit` is the ceiling in force after every narrowing, whoever stated it.
+     */
+    bound?: { field: string; requested: string; limit: string };
     /** Matter status code the device answered with, when a device rejection produced this. */
     deviceStatus?: number;
 }
@@ -201,6 +206,7 @@ export class ServerError extends Error {
                 reason: detail.reason,
                 device: detail.device,
                 requested: detail.requested,
+                ...(detail.bound === undefined ? {} : { bound: detail.bound }),
                 ...(detail.deviceStatus === undefined ? {} : { device_status: detail.deviceStatus }),
             }),
         );

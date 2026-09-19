@@ -284,6 +284,10 @@ export function toWireCapabilities(capabilities: CameraCapabilities): CameraCapa
             ...(capabilities.limits.maxConcurrentEncoders === undefined
                 ? {}
                 : { max_concurrent_encoders: capabilities.limits.maxConcurrentEncoders }),
+            ...(capabilities.limits.maxNetworkBandwidth === undefined
+                ? {}
+                : { max_network_bandwidth: capabilities.limits.maxNetworkBandwidth }),
+
             supported_stream_usages: capabilities.limits.supportedStreamUsages,
             stream_usage_priorities: capabilities.limits.streamUsagePriorities,
         },

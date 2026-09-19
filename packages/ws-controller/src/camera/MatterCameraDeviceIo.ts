@@ -33,6 +33,7 @@ export type RawCameraAvStreamManagementState = Pick<
     CameraAvStreamManagementClientState,
     | "maxConcurrentEncoders"
     | "maxEncodedPixelRate"
+    | "maxNetworkBandwidth"
     | "videoSensorParams"
     | "hdrModeEnabled"
     | "minViewportResolution"
@@ -58,6 +59,7 @@ export function toCameraState(state: RawCameraAvStreamManagementState): CameraSt
     return {
         maxConcurrentEncoders: state.maxConcurrentEncoders,
         maxEncodedPixelRate: state.maxEncodedPixelRate,
+        maxNetworkBandwidth: state.maxNetworkBandwidth,
         videoSensorParams:
             state.videoSensorParams === undefined
                 ? undefined

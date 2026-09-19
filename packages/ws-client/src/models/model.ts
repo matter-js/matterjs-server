@@ -481,6 +481,8 @@ export interface CameraCapabilitiesResult {
     limits: {
         max_encoded_pixel_rate?: number;
         max_concurrent_encoders?: number;
+        /** MaxNetworkBandwidth in bits per second; the server caps a stream's max_bit_rate at it. */
+        max_network_bandwidth?: number;
         supported_stream_usages: number[];
         stream_usage_priorities: number[];
     };
@@ -526,7 +528,7 @@ export interface CameraSnapshotResult {
     data: string;
     codec: number;
     resolution: CameraResolution;
-    /** True when a live video stream's encoder use forced this below the camera's best capability. */
+    /** True when the frame is smaller than the best capability the request's own bounds allowed. */
     downgraded: boolean;
     /** The allocated snapshot stream id; pass to camera_release_stream to force-deallocate it. */
     stream_id: number;
