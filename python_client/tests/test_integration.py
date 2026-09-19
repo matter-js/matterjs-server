@@ -15,6 +15,7 @@ import asyncio
 import contextlib
 import json
 import logging
+from pathlib import Path
 import tempfile
 from typing import TYPE_CHECKING
 
@@ -66,6 +67,13 @@ def _require_state(env: dict, *keys: str) -> None:
 
 
 AGGREGATOR_DEVICE_TYPE = 14
+
+
+def _send_bridge_command(storage_path: str, command: str) -> None:
+    """Ask the running bridge fixture to add or remove an endpoint."""
+    command_directory = Path(storage_path) / "commands"
+    command_directory.mkdir(parents=True, exist_ok=True)
+    (command_directory / command).touch()
 
 
 # ---------------------------------------------------------------------------
@@ -1285,6 +1293,7 @@ class TestBridgeTopology:
     NESTED_UNTAGGED_LIGHT_2 = 11
     SECONDARY_AGGREGATOR = 12
     SECONDARY_LIGHT = 13
+    RUNTIME_LIGHT = 20
 
     async def test_64_commission_bridge(self, env):
         """Commission the bridge device; the node is reported as a bridge."""
@@ -1395,7 +1404,61 @@ class TestBridgeTopology:
                 timeout=10.0,
             )
 
-    async def test_68_remove_bridge(self, env):
+    async def test_68_endpoint_added_at_runtime(self, env):
+        """An endpoint the bridge adds reaches the node model with its parent."""
+        _require_state(env, "bridge_node_id")
+        client: MatterTestClient = env["client"]
+        node_id = env["bridge_node_id"]
+
+        client.clear_events()
+        _send_bridge_command(env["bridge_path"], "add-endpoint")
+
+        await client.wait_for_event(
+            EventType.ENDPOINT_ADDED.value,
+            matcher=lambda data: data["endpoint_id"] == self.RUNTIME_LIGHT,
+            timeout=20.0,
+        )
+
+        # The node snapshot carrying the endpoint has to arrive before the endpoint is announced,
+        # otherwise a client that resolves the endpoint against its node model does not know it yet
+        events = [event.event for event in client.get_events()]
+        assert EventType.NODE_UPDATED.value in events
+        assert events.index(EventType.NODE_UPDATED.value) < events.index(
+            EventType.ENDPOINT_ADDED.value
+        )
+
+        node = client.get_node(node_id)
+        assert self.RUNTIME_LIGHT in node.endpoints
+        assert node.get_bridge_parent(self.RUNTIME_LIGHT) is node.endpoints[self.PRIMARY_AGGREGATOR]
+        info = node.endpoints[self.RUNTIME_LIGHT].device_info
+        assert info is not None
+        assert info.nodeLabel == "Runtime Light"
+
+    async def test_69_endpoint_removed_at_runtime(self, env):
+        """An endpoint the bridge removes leaves the node model and its bridge relation."""
+        _require_state(env, "bridge_node_id")
+        client: MatterTestClient = env["client"]
+        node_id = env["bridge_node_id"]
+
+        client.clear_events()
+        _send_bridge_command(env["bridge_path"], "remove-endpoint")
+
+        await client.wait_for_event(
+            EventType.ENDPOINT_REMOVED.value,
+            matcher=lambda data: data["endpoint_id"] == self.NESTED_UNTAGGED_LIGHT_2,
+            timeout=20.0,
+        )
+
+        node = client.get_node(node_id)
+        assert self.NESTED_UNTAGGED_LIGHT_2 not in node.endpoints
+        assert self.NESTED_UNTAGGED_LIGHT_2 not in node.get_bridge_child_ids(
+            self.NESTED_AGGREGATOR
+        )
+        assert node.get_bridge_parent(self.NESTED_UNTAGGED_LIGHT) is node.endpoints[
+            self.NESTED_AGGREGATOR
+        ]
+
+    async def test_70_remove_bridge(self, env):
         """Remove the bridge node again so the suite leaves no node behind."""
         _require_state(env, "bridge_node_id")
         client: MatterTestClient = env["client"]

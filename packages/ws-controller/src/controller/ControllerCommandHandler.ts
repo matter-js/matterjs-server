@@ -642,9 +642,13 @@ export class ControllerCommandHandler {
         nodeObservers.on(node.events.nodeEndpointAdded, endpointId =>
             this.#nodes.queueEndpointAdded(nodeId, endpointId),
         );
-        nodeObservers.on(node.events.nodeEndpointRemoved, endpointId =>
-            this.events.nodeEndpointRemoved.emit(nodeId, endpointId),
-        );
+        nodeObservers.on(node.events.nodeEndpointRemoved, endpointId => {
+            // Drop the endpoint before announcing it, so a read that follows the event never serves
+            // attributes of an endpoint the node no longer has. The full rebuild follows on the
+            // structure change.
+            this.#nodes.attributeCache.deleteEndpoint(nodeId, endpointId);
+            this.events.nodeEndpointRemoved.emit(nodeId, endpointId);
+        });
 
         this.#nodes.set(nodeId, node);
 
@@ -835,12 +839,17 @@ export class ControllerCommandHandler {
     /**
      * Await the node's attribute cache being populated so a direct read returns a complete snapshot
      * rather than the empty-then-node_updated sequence the lazy fallback in getNodeDetails produces.
+     * A rebuild that is already running is awaited too, so a read after a structure change serves the
+     * new structure instead of the one the node reported before it.
      */
     async ensureNodePopulated(nodeId: NodeId): Promise<void> {
         const node = this.#nodes.get(nodeId);
-        if (node.initialized && !this.#nodes.attributeCache.has(nodeId)) {
-            await this.#nodes.attributeCache.add(node);
+        const attributeCache = this.#nodes.attributeCache;
+        if (node.initialized && !attributeCache.has(nodeId)) {
+            await attributeCache.add(node);
+            return;
         }
+        await attributeCache.settled(nodeId);
     }
 
     /**

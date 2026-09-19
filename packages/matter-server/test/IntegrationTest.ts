@@ -14,8 +14,9 @@
 import type { MatterNode } from "@matter-server/ws-client";
 import { ServerErrorCode } from "@matter-server/ws-controller";
 import { ChildProcess } from "child_process";
-import { stat } from "node:fs/promises";
+import { mkdir, stat, writeFile } from "node:fs/promises";
 import { request as httpRequest, type IncomingMessage } from "node:http";
+import { join } from "node:path";
 import {
     BRIDGE_MANUAL_PAIRING_CODE,
     cleanupTempStorage,
@@ -61,6 +62,15 @@ function numbersOf(value: unknown, pick: (entry: unknown) => unknown): number[] 
     const picked = (Array.isArray(value) ? value : []).map(pick);
     picked.forEach(entry => expect(entry).to.be.a("number"));
     return picked.filter((entry): entry is number => typeof entry === "number");
+}
+
+/**
+ * Ask the running bridge fixture to add or remove an endpoint.
+ */
+async function sendBridgeCommand(storagePath: string, command: "add-endpoint" | "remove-endpoint"): Promise<void> {
+    const commandDirectory = join(storagePath, "commands");
+    await mkdir(commandDirectory, { recursive: true });
+    await writeFile(join(commandDirectory, command), "");
 }
 
 /**
@@ -1376,6 +1386,8 @@ describe("Integration Test", function () {
         let bridgeNode: MatterNode;
         const BRIDGED_LIGHT_ENDPOINT = 3;
         const UNTAGGED_LIGHT_ENDPOINT = 10;
+        const UNTAGGED_LIGHT_2_ENDPOINT = 11;
+        const RUNTIME_LIGHT_ENDPOINT = 20;
 
         before(async function () {
             bridgeStoragePath = `${deviceStoragePath}-bridge`;
@@ -1454,6 +1466,54 @@ describe("Integration Test", function () {
             client.clearEvents();
             await client.deviceCommand(bridgeNode.node_id, UNTAGGED_LIGHT_ENDPOINT, 6, "off", {});
             await waitForBridgedOnOffUpdate(client, bridgeNode.node_id, UNTAGGED_LIGHT_ENDPOINT, false);
+        });
+
+        it("reports an endpoint the bridge adds while the node is commissioned", async function () {
+            client.clearEvents();
+            await sendBridgeCommand(bridgeStoragePath, "add-endpoint");
+
+            const event = await client.waitForEvent(
+                "endpoint_added",
+                data => (data as { endpoint_id: number }).endpoint_id === RUNTIME_LIGHT_ENDPOINT,
+                20_000,
+            );
+            expect((event.data as { node_id: number | bigint }).node_id).to.exist;
+
+            // The snapshot carrying the endpoint has to reach a client before the endpoint is
+            // announced, or a client resolving the endpoint against its own node model does not
+            // know it yet (issue reported for Home Assistant).
+            const events = client.getEvents();
+            const snapshotIndex = events.findIndex(
+                candidate =>
+                    candidate.event === "node_updated" &&
+                    (candidate.data as { attributes: Record<string, unknown> }).attributes[
+                        `${RUNTIME_LIGHT_ENDPOINT}/29/0`
+                    ] !== undefined,
+            );
+            const announcementIndex = events.findIndex(candidate => candidate.event === "endpoint_added");
+            expect(snapshotIndex).to.be.greaterThan(-1);
+            expect(snapshotIndex).to.be.lessThan(announcementIndex);
+
+            const updated = await client.getNode(bridgeNode.node_id);
+            expect(updated.attributes[`${RUNTIME_LIGHT_ENDPOINT}/57/5`]).to.equal("Runtime Light");
+            expect(deviceTypesOf(updated, RUNTIME_LIGHT_ENDPOINT)).to.deep.equal([
+                ON_OFF_LIGHT_DEVICE_TYPE,
+                BRIDGED_NODE_DEVICE_TYPE,
+            ]);
+        });
+
+        it("reports an endpoint the bridge removes while the node is commissioned", async function () {
+            client.clearEvents();
+            await sendBridgeCommand(bridgeStoragePath, "remove-endpoint");
+
+            await client.waitForEvent(
+                "endpoint_removed",
+                data => (data as { endpoint_id: number }).endpoint_id === UNTAGGED_LIGHT_2_ENDPOINT,
+                20_000,
+            );
+
+            const updated = await client.getNode(bridgeNode.node_id);
+            expect(updated.attributes[`${UNTAGGED_LIGHT_2_ENDPOINT}/29/0`]).to.be.undefined;
         });
 
         it("reports the bridged device info of each bridged endpoint", function () {

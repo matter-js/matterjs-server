@@ -9,6 +9,10 @@
  * have to tell apart - an aggregator that is not endpoint 1, a second aggregator, an aggregator
  * nested below another one, and a bridged device composed of further endpoints.
  *
+ * The bridge also adds and removes an endpoint while it runs, so the tests can drive the
+ * endpoint_added and endpoint_removed paths: dropping a file named `add-endpoint` or
+ * `remove-endpoint` into <storage-path>/commands triggers it.
+ *
  * Usage: npx tsx packages/matter-server/test/fixtures/TestBridgeDevice.ts --storage-path=<path> --port=<port>
  */
 
@@ -20,6 +24,8 @@ import { OnOffLightDevice } from "@matter/main/devices/on-off-light";
 import { TemperatureSensorDevice } from "@matter/main/devices/temperature-sensor";
 import { AggregatorEndpoint } from "@matter/main/endpoints/aggregator";
 import { VendorId } from "@matter/main/types";
+import { mkdir, readdir, rm } from "node:fs/promises";
+import { join } from "node:path";
 
 const args = process.argv.slice(2);
 
@@ -156,6 +162,59 @@ await secondaryAggregator.add(BridgedLight, {
 function describeEndpoint(endpoint: Endpoint): string {
     return `${endpoint.id}=${endpoint.number}`;
 }
+
+const RUNTIME_LIGHT_ENDPOINT = 20;
+const REMOVABLE_ENDPOINT = "nested-untagged-light-2";
+const commandDirectory = join(storagePath, "commands");
+
+async function addRuntimeLight() {
+    await primaryAggregator.add(BridgedLight, {
+        id: "runtime-light",
+        number: RUNTIME_LIGHT_ENDPOINT,
+        bridgedDeviceBasicInformation: {
+            nodeLabel: "Runtime Light",
+            serialNumber: "RUNTIME-LIGHT-1",
+            uniqueId: "runtime-light-1",
+            reachable: true,
+        },
+    });
+    console.log(`Added endpoint ${RUNTIME_LIGHT_ENDPOINT}`);
+}
+
+async function removeUntaggedLight() {
+    const endpoint = nestedAggregator.parts.get(REMOVABLE_ENDPOINT);
+    if (endpoint === undefined) {
+        console.log(`Endpoint ${REMOVABLE_ENDPOINT} is already gone`);
+        return;
+    }
+    const number = endpoint.number;
+    await endpoint.delete();
+    console.log(`Removed endpoint ${number}`);
+}
+
+async function pollCommands() {
+    await mkdir(commandDirectory, { recursive: true });
+    const handlers: Record<string, () => Promise<void>> = {
+        "add-endpoint": addRuntimeLight,
+        "remove-endpoint": removeUntaggedLight,
+    };
+    setInterval(() => {
+        readdir(commandDirectory)
+            .then(async entries => {
+                for (const entry of entries) {
+                    const handler = handlers[entry];
+                    if (handler === undefined) {
+                        continue;
+                    }
+                    await rm(join(commandDirectory, entry), { force: true });
+                    await handler();
+                }
+            })
+            .catch(error => console.error("Command polling failed:", error));
+    }, 250).unref();
+}
+
+await pollCommands();
 
 console.log("Test Bridge Device starting...");
 console.log(`Storage path: ${storagePath}`);

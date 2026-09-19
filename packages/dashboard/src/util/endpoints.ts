@@ -22,35 +22,62 @@ export interface EndpointTreeNode {
 }
 
 /**
- * Orders endpoints into parent-first tree order using each endpoint's Descriptor PartsList
- * (attribute 29/3). PartsList on an ancestor also lists indirect descendants, so for each
- * endpoint we keep only the closest parent (the one whose own PartsList doesn't contain
- * another candidate parent that also lists the endpoint).
+ * Orders endpoints into parent-first tree order, resolving each endpoint to its closest parent.
+ *
+ * An endpoint's PartsList may enumerate its whole family - every descendant, not just the direct
+ * children - which is the pattern a bridge uses. Of the endpoints listing a given endpoint, the
+ * closest one is therefore the endpoint that lists none of the others; on contradictory lists the
+ * smaller family wins, then the lower endpoint number, and a parent is only accepted while the
+ * relations stay a tree. The Python client resolves the structure of a node by the same rule
+ * (`MatterNode._map_endpoint_parents`), so both show the same hierarchy for the same node.
  */
 export function getEndpointTree(node: MatterNode, endpointIds: number[]): EndpointTreeNode[] {
     const idSet = new Set(endpointIds);
-    const partsList = new Map<number, number[]>(
+    const families = new Map<number, Set<number>>(
         endpointIds.map(id => {
             const raw = node.attributes[`${id}/29/3`];
             const list = Array.isArray(raw) ? (raw as number[]) : [];
-            return [id, list.filter(childId => idSet.has(childId) && childId !== id)];
+            return [id, new Set(list.filter(childId => idSet.has(childId) && childId !== id))];
         }),
     );
-    const partsSet = new Map<number, Set<number>>([...partsList].map(([id, list]) => [id, new Set(list)]));
 
-    const children = new Map<number, number[]>();
-    const hasParent = new Set<number>();
-    for (const id of endpointIds) {
-        const descendants = partsList.get(id)!;
-        const directChildren = descendants
-            .filter(child => !descendants.some(other => other !== child && partsSet.get(other)!.has(child)))
-            .sort((a, b) => a - b);
-        children.set(id, directChildren);
-        for (const child of directChildren) hasParent.add(child);
+    const candidates = new Map<number, number[]>();
+    for (const [parentId, family] of families) {
+        for (const childId of family) {
+            const parents = candidates.get(childId);
+            if (parents === undefined) {
+                candidates.set(childId, [parentId]);
+            } else {
+                parents.push(parentId);
+            }
+        }
     }
 
-    const roots = endpointIds.filter(id => !hasParent.has(id)).sort((a, b) => a - b);
-    const ordered: EndpointTreeNode[] = [];
+    const parents = new Map<number, number>();
+    for (const childId of [...candidates.keys()].sort((a, b) => a - b)) {
+        const parentIds = candidates.get(childId)!;
+        const ranked = [...parentIds].sort((a, b) => {
+            const depthA = parentIds.filter(other => other !== a && families.get(a)!.has(other)).length;
+            const depthB = parentIds.filter(other => other !== b && families.get(b)!.has(other)).length;
+            return depthA - depthB || families.get(a)!.size - families.get(b)!.size || a - b;
+        });
+        for (const parentId of ranked) {
+            if (!reaches(parentId, childId, parents)) {
+                parents.set(childId, parentId);
+                break;
+            }
+        }
+    }
+
+    const children = new Map<number, number[]>(endpointIds.map(id => [id, []]));
+    for (const [childId, parentId] of parents) {
+        children.get(parentId)!.push(childId);
+    }
+    for (const list of children.values()) {
+        list.sort((a, b) => a - b);
+    }
+
+    const ordered = new Array<EndpointTreeNode>();
     const visited = new Set<number>();
     const visit = (id: number, depth: number) => {
         if (visited.has(id)) return;
@@ -58,10 +85,21 @@ export function getEndpointTree(node: MatterNode, endpointIds: number[]): Endpoi
         ordered.push({ endpointId: id, depth });
         for (const child of children.get(id)!) visit(child, depth + 1);
     };
-    for (const root of roots) visit(root, 0);
-    // PartsList cycles can leave every endpoint marked as someone's child (no roots) or
-    // strand nodes unreached; fall back to emitting anything still unvisited as a root
-    // so malformed device data never makes endpoints disappear from the list.
+    for (const id of [...endpointIds].sort((a, b) => a - b)) {
+        if (!parents.has(id)) visit(id, 0);
+    }
     for (const id of [...endpointIds].sort((a, b) => a - b)) visit(id, 0);
     return ordered;
+}
+
+/** Whether walking up the parent chain from an endpoint arrives at another. */
+function reaches(startId: number, targetId: number, parents: Map<number, number>): boolean {
+    const seen = new Set<number>();
+    let current: number | undefined = startId;
+    while (current !== undefined && !seen.has(current)) {
+        if (current === targetId) return true;
+        seen.add(current);
+        current = parents.get(current);
+    }
+    return false;
 }
