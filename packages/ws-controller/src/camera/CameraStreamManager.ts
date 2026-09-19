@@ -91,7 +91,6 @@ function referenceCountOf(state: CameraState, kind: StreamKind, streamId: number
     }
 }
 
-/** The device command and field name that deallocates a stream of this kind. */
 function deallocateCall(kind: StreamKind, streamId: number): { command: string; fields: Record<string, unknown> } {
     switch (kind) {
         case "video":
