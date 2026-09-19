@@ -4,13 +4,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type { EndpointNumber, NodeId } from "@matter/main";
+import type { Behavior, EndpointNumber, Immutable, NodeId } from "@matter/main";
 import { CameraAvStreamManagement } from "@matter/main/clusters/camera-av-stream-management";
 import { WebRtcTransportProvider } from "@matter/main/clusters/web-rtc-transport-provider";
 import type { Specifier } from "@matter/main/protocol";
 import { CameraAvStreamManagementClient } from "@matter/node/behaviors/camera-av-stream-management";
 import type { ControllerCommandHandler } from "../controller/ControllerCommandHandler.js";
-import { selectWebRtcStreamFields } from "../controller/webRtcSessionStreams.js";
 import type { CameraDeviceIo, CameraState } from "./CameraStreamManager.js";
 import type { Resolution } from "./cameraTypes.js";
 
@@ -18,82 +17,41 @@ function toResolution(resolution: { width: number; height: number }): Resolution
     return { width: resolution.width, height: resolution.height };
 }
 
+/** The real client behaviour state type, as `endpoint.stateOf(CameraAvStreamManagementClient)` returns it. */
+type CameraAvStreamManagementClientState = Immutable<Behavior.StateOf<typeof CameraAvStreamManagementClient>>;
+
 /**
- * The subset of `CameraAvStreamManagementClient`'s state this subsystem reads, spelled out explicitly
- * (rather than inferred from `stateOf`) so the translation in {@link toCameraState} is unit-testable
- * without a live matter.js node. List attributes are `readonly` and feature-gated attributes are
- * optional on the real client state; both are modelled here the same way.
+ * The subset of `CameraAvStreamManagementClient`'s state this subsystem reads, `Pick`ed from the real
+ * client state type rather than hand-mirrored: a hand-written type with every field optional does not
+ * fail to compile when matter.js renames a field (it just reads `undefined` at runtime, silently), and
+ * that is the exact class of bug this subsystem exists to prevent. Deriving the type instead means a
+ * rename anywhere in the picked fields — top-level or nested — is a compile error in
+ * {@link toCameraState}, since the field types are references to the real ones, not copies.
  */
-export interface RawCameraAvStreamManagementState {
-    maxConcurrentEncoders?: number;
-    maxEncodedPixelRate?: number;
-    videoSensorParams?: {
-        sensorWidth: number;
-        sensorHeight: number;
-        maxFps: number;
-        // Real attribute name; CameraState spells it maxHdrFps.
-        maxHdrfps?: number;
-    };
-    minViewportResolution?: { width: number; height: number };
-    rateDistortionTradeOffPoints?: readonly {
-        codec: number;
-        resolution: { width: number; height: number };
-        minBitRate: number;
-    }[];
-    snapshotCapabilities?: readonly {
-        resolution: { width: number; height: number };
-        maxFrameRate: number;
-        imageCodec: number;
-        requiresEncodedPixels: boolean;
-        requiresHardwareEncoder?: boolean;
-    }[];
-    supportedStreamUsages: readonly number[];
-    streamUsagePriorities: readonly number[];
-    allocatedVideoStreams?: readonly {
-        videoStreamId: number;
-        streamUsage: number;
-        videoCodec: number;
-        minResolution: { width: number; height: number };
-        maxResolution: { width: number; height: number };
-        minFrameRate: number;
-        maxFrameRate: number;
-        minBitRate: number;
-        maxBitRate: number;
-        referenceCount: number;
-    }[];
-    allocatedAudioStreams?: readonly {
-        audioStreamId: number;
-        streamUsage: number;
-        audioCodec: number;
-        channelCount: number;
-        sampleRate: number;
-        bitRate: number;
-        bitDepth: number;
-        referenceCount: number;
-    }[];
-    // The real SnapshotStream struct has independent min/max resolution; AllocatedSnapshotStream
-    // carries one resolution (this server always allocates them equal — see CameraStreamManager.snapshot).
-    allocatedSnapshotStreams?: readonly {
-        snapshotStreamId: number;
-        imageCodec: number;
-        maxResolution: { width: number; height: number };
-        referenceCount: number;
-    }[];
-    microphoneCapabilities?: {
-        supportedCodecs: readonly number[];
-        maxNumberOfChannels: number;
-        supportedSampleRates: readonly number[];
-        supportedBitDepths: readonly number[];
-    };
-    twoWayTalkSupport?: number;
-}
+export type RawCameraAvStreamManagementState = Pick<
+    CameraAvStreamManagementClientState,
+    | "maxConcurrentEncoders"
+    | "maxEncodedPixelRate"
+    | "videoSensorParams"
+    | "hdrModeEnabled"
+    | "minViewportResolution"
+    | "rateDistortionTradeOffPoints"
+    | "snapshotCapabilities"
+    | "supportedStreamUsages"
+    | "streamUsagePriorities"
+    | "allocatedVideoStreams"
+    | "allocatedAudioStreams"
+    | "allocatedSnapshotStreams"
+    | "microphoneCapabilities"
+    | "twoWayTalkSupport"
+>;
 
 /**
  * Translate matter.js's typed client state into {@link CameraState}.
  *
- * VideoSensorParams carries no HDR-capability flag at all — HighDynamicRange support is a feature bit,
- * not a struct field — so `hdrCapable` is reported absent rather than guessed from an unrelated
- * attribute.
+ * VideoSensorParams carries no HDR-capability flag itself; `hdrModeEnabled` is a HighDynamicRange
+ * feature-gated attribute, present only when the endpoint supports that feature, so its presence is
+ * `hdrCapable`.
  */
 export function toCameraState(state: RawCameraAvStreamManagementState): CameraState {
     return {
@@ -107,7 +65,7 @@ export function toCameraState(state: RawCameraAvStreamManagementState): CameraSt
                       sensorHeight: state.videoSensorParams.sensorHeight,
                       maxFps: state.videoSensorParams.maxFps,
                       maxHdrFps: state.videoSensorParams.maxHdrfps,
-                      hdrCapable: undefined,
+                      hdrCapable: state.hdrModeEnabled !== undefined,
                   },
         minViewportResolution:
             state.minViewportResolution === undefined ? undefined : toResolution(state.minViewportResolution),
@@ -196,8 +154,8 @@ export class MatterCameraDeviceIo implements CameraDeviceIo {
         command: string;
         fields: Record<string, unknown>;
     }): Promise<unknown> {
-        const node = this.#handler.getNode(args.nodeId).node;
         if (args.cluster === "avsm") {
+            const node = this.#handler.getNode(args.nodeId).node;
             // Widened to the generic cluster shape: the command name is validated by the manager, not
             // known at compile time, so it cannot be one of the concrete cluster's literal command keys.
             const cluster: Specifier.ClusterLike = CameraAvStreamManagement.Cluster;
@@ -209,16 +167,33 @@ export class MatterCameraDeviceIo implements CameraDeviceIo {
             });
         }
 
-        const fields = { ...args.fields };
-        // A provider fails ProvideOffer with InvalidCommand when the singular stream ids and the
-        // revision-2 lists are both present; this narrows to the set the provider's revision expects.
-        selectWebRtcStreamFields(fields, this.#handler.webRtcProviderClusterRevision(args.nodeId, args.endpointId));
+        if (args.command === "provideOffer" || args.command === "solicitOffer") {
+            // Establishing a session (originatingEndpointId + local requestor upsertSession), not a
+            // plain invoke: WebRtcTransportRequestorServer rejects Answer/ICECandidates NotFound for a
+            // session it never stored, so a plain invoke here would return a session id whose signaling
+            // can never be routed.
+            return this.#handler.invokeWebRtcProviderCommand({
+                nodeId: args.nodeId,
+                endpointId: args.endpointId,
+                commandName: args.command === "provideOffer" ? "ProvideOffer" : "SolicitOffer",
+                fields: args.fields,
+            });
+        }
+
+        const node = this.#handler.getNode(args.nodeId).node;
         const cluster: Specifier.ClusterLike = WebRtcTransportProvider.Cluster;
-        return this.#handler.invokeCommand(node, {
+        const response = await this.#handler.invokeCommand(node, {
             endpoint: args.endpointId,
             cluster,
             command: args.command,
-            fields,
+            fields: args.fields,
         });
+        if (args.command === "endSession") {
+            const sessionId = args.fields.webRtcSessionId;
+            if (typeof sessionId === "number") {
+                await this.#handler.removeTrackedWebRtcSession(sessionId);
+            }
+        }
+        return response;
     }
 }

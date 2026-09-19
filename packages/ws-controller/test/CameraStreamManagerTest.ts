@@ -6,7 +6,7 @@
 
 import { EndpointNumber, NodeId } from "@matter/main";
 import type { CameraDeviceIo, CameraState } from "../src/camera/CameraStreamManager.js";
-import { CameraStreamManager } from "../src/camera/CameraStreamManager.js";
+import { CameraStreamManager, preferredVideoCodec } from "../src/camera/CameraStreamManager.js";
 import type { AudioEnvelope, VideoEnvelope } from "../src/camera/cameraTypes.js";
 import { ServerError, ServerErrorCode } from "../src/types/WebSocketMessageTypes.js";
 
@@ -739,9 +739,51 @@ describe("CameraStreamManager", () => {
                 video: {},
                 audio: false,
             });
-            await manager.stopStream(42);
+            const ended = await manager.stopStream(NODE, ENDPOINT, 42);
+            expect(ended).to.equal(true);
             expect(invokes.map(invoke => invoke.command)).to.include("endSession");
             expect(invokes.map(invoke => invoke.command)).to.not.include("videoStreamDeallocate");
+        });
+
+        it("reports false and does nothing for a session id that is not tracked", async () => {
+            const { manager, invokes } = allocatingManager();
+            const ended = await manager.stopStream(NODE, ENDPOINT, 999);
+            expect(ended).to.equal(false);
+            expect(invokes.map(invoke => invoke.command)).to.not.include("endSession");
+        });
+
+        it("reports false and does not end a session tracked for a different node", async () => {
+            const { manager, invokes } = allocatingManager();
+            await manager.startStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                connectionId: "conn-1",
+                streamUsage: LIVE_VIEW,
+                sdp: "v=0",
+                video: {},
+                audio: false,
+            });
+            const otherNode = NodeId(999);
+            const ended = await manager.stopStream(otherNode, ENDPOINT, 42);
+            expect(ended).to.equal(false);
+            expect(invokes.map(invoke => invoke.command)).to.not.include("endSession");
+        });
+
+        it("reports false and does not end a session tracked for a different endpoint", async () => {
+            const { manager, invokes } = allocatingManager();
+            await manager.startStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                connectionId: "conn-1",
+                streamUsage: LIVE_VIEW,
+                sdp: "v=0",
+                video: {},
+                audio: false,
+            });
+            const otherEndpoint = EndpointNumber(99);
+            const ended = await manager.stopStream(NODE, otherEndpoint, 42);
+            expect(ended).to.equal(false);
+            expect(invokes.map(invoke => invoke.command)).to.not.include("endSession");
         });
 
         it("ends only the sessions of the connection that closed", async () => {
@@ -765,6 +807,40 @@ describe("CameraStreamManager", () => {
             expect(invokes.map(invoke => invoke.command)).to.not.include("endSession");
             await manager.releaseConnection("conn-1");
             expect(invokes.map(invoke => invoke.command)).to.include("endSession");
+        });
+
+        it("stopAll ends every tracked session regardless of owning connection", async () => {
+            let nextSessionId = 42;
+            const { manager, invokes } = managerWith(STATE, async invoke => {
+                if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                if (invoke.command === "provideOffer") return { webRtcSessionId: nextSessionId++ };
+                return undefined;
+            });
+            await manager.startStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                connectionId: "conn-1",
+                streamUsage: LIVE_VIEW,
+                sdp: "v=0",
+                video: {},
+                audio: false,
+            });
+            await manager.startStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                connectionId: "conn-2",
+                streamUsage: LIVE_VIEW,
+                sdp: "v=1",
+                video: {},
+                audio: false,
+            });
+
+            await manager.stopAll();
+
+            const endedSessionIds = invokes
+                .filter(invoke => invoke.command === "endSession")
+                .map(invoke => invoke.fields.webRtcSessionId);
+            expect(endedSessionIds.sort()).to.deep.equal([42, 43]);
         });
 
         it("does not let a concurrent startStream evict a session still being established", async () => {
@@ -940,6 +1016,9 @@ describe("CameraStreamManager", () => {
             });
             expect(result.resolution).to.deep.equal({ width: 640, height: 480 });
             expect(result.downgraded).to.equal(true);
+            expect(result.streamId).to.equal(3);
+            expect(result.reused).to.equal(false);
+            expect(result.allocatedByUs).to.equal(true);
             const allocate = invokes.find(invoke => invoke.command === "snapshotStreamAllocate");
             expect(allocate?.fields.minResolution).to.deep.equal({ width: 640, height: 480 });
             expect(allocate?.fields.maxResolution).to.deep.equal({ width: 640, height: 480 });
@@ -1019,5 +1098,28 @@ describe("CameraStreamManager", () => {
             }
             expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamNotOwned);
         });
+    });
+});
+
+describe("preferredVideoCodec", () => {
+    /** VideoCodecEnum: H.264 = 0, H.265 = 1. */
+    const H264 = 0;
+    const H265 = 1;
+
+    it("honors the caller's stated preference order over the device's own ordering", () => {
+        // Device lists H.264 before H.265; the caller prefers H.265 first.
+        expect(preferredVideoCodec([H264, H265], undefined, ["H265", "H264"])).to.equal(H265);
+    });
+
+    it("falls back to the device's order when the caller states no preference", () => {
+        expect(preferredVideoCodec([H264, H265], undefined, undefined)).to.equal(H264);
+    });
+
+    it("ignores a hint codec the device does not support", () => {
+        expect(preferredVideoCodec([H264], undefined, ["H265", "H264"])).to.equal(H264);
+    });
+
+    it("falls back to the SDP-filtered set when no hint codec matches", () => {
+        expect(preferredVideoCodec([H264, H265], undefined, ["AV1"])).to.equal(H264);
     });
 });

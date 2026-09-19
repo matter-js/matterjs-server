@@ -552,6 +552,17 @@ export class MatterController {
         return this.#cameraStreams;
     }
 
+    /**
+     * The camera stream manager if a command has already constructed it, without triggering lazy
+     * construction or the stopped-controller throw. For cleanup paths (a closing WS connection) that
+     * run for every connection regardless of whether it ever used the camera subsystem: touching the
+     * `cameraStreams` getter there would construct the manager on every disconnect, and throw on every
+     * one of them once the controller is stopped.
+     */
+    get cameraStreamsIfCreated(): CameraStreamManager | undefined {
+        return this.#cameraStreams;
+    }
+
     #registerStoredThreadCredentials(): void {
         for (const entry of this.#config.listThreadCredentials()) {
             registerThreadCredentialsFromHex(this.#credentials, entry.dataset, `stored:${entry.id}`);
@@ -678,6 +689,11 @@ export class MatterController {
             await this.#threadDiagnostics.stop();
             await this.#borderRouterRegistry.stop();
         }
+        // Before the command handler closes the underlying connections: a session still open at
+        // shutdown otherwise pins its streams at a non-zero reference count forever.
+        await this.#cameraStreams
+            ?.stopAll()
+            .catch(err => logger.warn("Failed to release camera sessions on stop", err));
         await this.#commandHandler?.close(); // This closes also the controller instance if started
         await this.#services.close();
     }

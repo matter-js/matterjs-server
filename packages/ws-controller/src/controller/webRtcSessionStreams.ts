@@ -5,6 +5,9 @@
  */
 
 import { Logger } from "@matter/main";
+import type { EndpointNumber, FabricIndex, NodeId } from "@matter/main";
+import { WebRtcTransportDefinitions } from "@matter/main/clusters/web-rtc-transport-definitions";
+import { ServerError } from "../types/WebSocketMessageTypes.js";
 
 const logger = Logger.get("webRtcSessionStreams");
 
@@ -116,4 +119,101 @@ export function isTrackableWebRtcSession(
         streamUsage >= 0 &&
         (videoStreams !== undefined || audioStreams !== undefined)
     );
+}
+
+export interface WebRtcProviderSessionIo {
+    /** Invoke ProvideOffer/SolicitOffer or EndSession on the device's provider cluster. */
+    invoke(command: "provideOffer" | "solicitOffer" | "endSession", fields: Record<string, unknown>): Promise<unknown>;
+    /** Store the session in the local requestor so its Answer/ICECandidates are accepted, not NotFound. */
+    upsertSession(session: WebRtcTransportDefinitions.WebRtcSession): Promise<void>;
+}
+
+export interface WebRtcProviderSessionArgs {
+    commandName: "ProvideOffer" | "SolicitOffer";
+    /** Already in matter.js's own field-name convention; `originatingEndpointId` is injected here. */
+    fields: Record<string, unknown>;
+    nodeId: NodeId;
+    endpointId: EndpointNumber;
+    originatingEndpointId: EndpointNumber;
+    fabricIndex: FabricIndex;
+    clusterRevision: unknown;
+    formatNode: (nodeId: NodeId) => string;
+}
+
+/**
+ * Invoke ProvideOffer/SolicitOffer and track the resulting session in the local requestor.
+ *
+ * WebRtcTransportRequestorServer rejects Answer/ICECandidates with NotFound for a session it never
+ * stored, so a caller that skips `io.upsertSession` gets back a session id whose signaling can never be
+ * routed — the peer's response is silently dropped, not just delayed. An untrackable session (no stream
+ * usage, or no video/audio stream — e.g. an auto-select/deferred SolicitOffer whose provider reports no
+ * stream id yet) is torn down on the device and the command fails instead, rather than handing back an
+ * id that will silently never deliver media. Deferred/auto-select is thus unsupported for now.
+ */
+export async function establishWebRtcProviderSession(
+    io: WebRtcProviderSessionIo,
+    args: WebRtcProviderSessionArgs,
+): Promise<unknown> {
+    const { commandName, nodeId, endpointId, originatingEndpointId, fabricIndex, clusterRevision, formatNode } = args;
+    const command = commandName === "ProvideOffer" ? "provideOffer" : "solicitOffer";
+
+    const fields: Record<string, unknown> = { ...args.fields, originatingEndpointId };
+    selectWebRtcStreamFields(fields, clusterRevision);
+
+    const response = await io.invoke(command, fields);
+    const webRtcSessionId = (response as { webRtcSessionId?: unknown } | undefined)?.webRtcSessionId;
+    if (typeof webRtcSessionId !== "number") {
+        throw ServerError.sdkStackError(
+            `${commandName} did not return a WebRTCSessionID for node ${formatNode(nodeId)}`,
+        );
+    }
+
+    const streamUsage = fields.streamUsage;
+    const metadataEnabled = fields.metadataEnabled === true;
+    const responseVideoStreamId = (response as { videoStreamId?: unknown } | undefined)?.videoStreamId;
+    const responseAudioStreamId = (response as { audioStreamId?: unknown } | undefined)?.audioStreamId;
+    const videoStreams = resolveWebRtcSessionStreams(fields.videoStreams, fields.videoStreamId, responseVideoStreamId);
+    const audioStreams = resolveWebRtcSessionStreams(fields.audioStreams, fields.audioStreamId, responseAudioStreamId);
+
+    if (!isTrackableWebRtcSession(streamUsage, videoStreams, audioStreams)) {
+        logger.warn(
+            `Tearing down untrackable WebRTC session id=${webRtcSessionId} for node ${formatNode(
+                nodeId,
+            )}: request lacks a stream usage or any video/audio stream, so signaling cannot be routed for it`,
+        );
+        try {
+            await io.invoke("endSession", {
+                webRtcSessionId,
+                reason: WebRtcTransportDefinitions.WebRtcEndReason.OutOfResources,
+            });
+        } catch (err) {
+            logger.warn(
+                `EndSession cleanup for untrackable WebRTC session id=${webRtcSessionId} failed: ${
+                    err instanceof Error ? err.message : String(err)
+                }`,
+            );
+        }
+        throw ServerError.sdkStackError(
+            `${commandName} for node ${formatNode(nodeId)} produced a session with no stream usage or ` +
+                `video/audio stream; deferred/auto-select streaming is not supported`,
+        );
+    }
+
+    const session: WebRtcTransportDefinitions.WebRtcSession = {
+        id: webRtcSessionId,
+        peerNodeId: nodeId,
+        peerEndpointId: endpointId,
+        streamUsage: streamUsage as WebRtcTransportDefinitions.WebRtcSession["streamUsage"],
+        metadataEnabled,
+        videoStreams,
+        audioStreams,
+        fabricIndex,
+    };
+
+    logger.info(
+        `upserting WebRTC session id=${session.id} peerNodeId=${nodeId} peerEndpointId=${endpointId} fabricIndex=${fabricIndex} streamUsage=${streamUsage} originatingEndpointId=${originatingEndpointId}`,
+    );
+    await io.upsertSession(session);
+
+    return response;
 }

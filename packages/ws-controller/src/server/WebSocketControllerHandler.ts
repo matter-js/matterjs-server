@@ -584,14 +584,12 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 logger.info(`[${connId}] WebSocket connection closed`);
                 observers.close();
                 this.#connections.delete(connection);
-                try {
-                    this.#controller.cameraStreams
-                        .releaseConnection(connId)
-                        .catch(err => logger.warn(`[${connId}] Failed to release camera sessions on disconnect`, err));
-                } catch (err) {
-                    // The cameraStreams getter throws synchronously once the controller is stopped.
-                    logger.warn(`[${connId}] Failed to release camera sessions on disconnect`, err);
-                }
+                // cameraStreamsIfCreated, not the cameraStreams getter: a connection that never used the
+                // camera subsystem must not construct the manager here, and must not hit the
+                // stopped-controller throw on every disconnect during shutdown.
+                this.#controller.cameraStreamsIfCreated
+                    ?.releaseConnection(connId)
+                    .catch(err => logger.warn(`[${connId}] Failed to release camera sessions on disconnect`, err));
                 if (this.#fabricLabelOwner === connection) {
                     logger.info(`[${connId}] Releasing fabric label ownership (owning connection closed)`);
                     this.#fabricLabelOwner = undefined;
@@ -1350,11 +1348,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
     }
 
     async #handleCameraStopStream(args: ArgsOf<"camera_stop_stream">): Promise<ResponseOf<"camera_stop_stream">> {
-        // The manager tracks sessions by webrtc_session_id alone; node_id/endpoint_id are validated
-        // for consistency with the other four commands but are not otherwise used here.
-        const { webRtcSessionId } = parseStopStreamArgs(args);
-        await this.#controller.cameraStreams.stopStream(webRtcSessionId);
-        return { ended: true };
+        const { nodeId, endpointId, webRtcSessionId } = parseStopStreamArgs(args);
+        const ended = await this.#controller.cameraStreams.stopStream(nodeId, endpointId, webRtcSessionId);
+        return { ended };
     }
 
     async #handleCameraSnapshot(args: ArgsOf<"camera_snapshot">): Promise<ResponseOf<"camera_snapshot">> {

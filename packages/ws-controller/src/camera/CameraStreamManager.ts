@@ -98,7 +98,11 @@ export function preferredVideoCodec(
         if (offered.length > 0) candidates = offered;
     }
     if (hintCodecs !== undefined) {
-        const preferred = candidates.filter(codec => hintCodecs.includes(VIDEO_CODEC_NAMES.get(codec) ?? ""));
+        // Walk the caller's stated order, not the device's: `candidates.filter(...)` would keep the
+        // device's ordering and silently discard the caller's preference between two codecs it both offers.
+        const preferred = hintCodecs
+            .map(name => candidates.find(codec => VIDEO_CODEC_NAMES.get(codec) === name))
+            .filter((codec): codec is number => codec !== undefined);
         if (preferred.length > 0) candidates = preferred;
     }
     return candidates[0] ?? deviceCodecs[0] ?? 0;
@@ -242,6 +246,9 @@ export interface SnapshotResult {
     resolution: Resolution;
     /** True when a live video stream's encoder use forced this below the camera's best capability. */
     downgraded: boolean;
+    streamId: number;
+    reused: boolean;
+    allocatedByUs: boolean;
 }
 
 export class CameraStreamManager {
@@ -771,10 +778,18 @@ export class CameraStreamManager {
         });
     }
 
-    /** Ends the session on the device. The allocation is deliberately kept. */
-    async stopStream(webRtcSessionId: number): Promise<void> {
+    /**
+     * Ends the session on the device. The allocation is deliberately kept.
+     *
+     * Returns whether a session was actually ended: `webRtcSessionId` is caller-supplied, so a session
+     * tracked for a different node/endpoint is reported not found rather than ended — otherwise any
+     * connection could end any tracked session by guessing an id, regardless of which device it targets.
+     */
+    async stopStream(nodeId: NodeId, endpointId: EndpointNumber, webRtcSessionId: number): Promise<boolean> {
         const session = this.#sessions.get(webRtcSessionId);
-        if (session === undefined) return;
+        if (session === undefined || session.nodeId !== nodeId || session.endpointId !== endpointId) {
+            return false;
+        }
         this.#sessions.delete(webRtcSessionId);
         await this.io.invoke({
             nodeId: session.nodeId,
@@ -783,6 +798,7 @@ export class CameraStreamManager {
             command: "endSession",
             fields: { webRtcSessionId, reason: WEBRTC_END_REASON_USER_HANGUP },
         });
+        return true;
     }
 
     /**
@@ -793,9 +809,24 @@ export class CameraStreamManager {
      */
     async releaseConnection(connectionId: string): Promise<void> {
         const owned = [...this.#sessions.values()].filter(session => session.connectionId === connectionId);
-        for (const session of owned) {
-            await this.stopStream(session.webRtcSessionId).catch(error =>
-                logger.warn(`Failed to end session ${session.webRtcSessionId} on disconnect:`, error),
+        await this.#endSessions(owned);
+    }
+
+    /**
+     * Ends every session this server currently tracks, regardless of owning connection.
+     *
+     * Used at shutdown: a session still open when the process stops otherwise pins its streams at a
+     * non-zero reference count forever, since `ReferenceCount` is device-maintained and only `EndSession`
+     * decrements it — the same failure `releaseConnection` exists to prevent, by a different exit.
+     */
+    async stopAll(): Promise<void> {
+        await this.#endSessions([...this.#sessions.values()]);
+    }
+
+    async #endSessions(sessions: ManagedSession[]): Promise<void> {
+        for (const session of sessions) {
+            await this.stopStream(session.nodeId, session.endpointId, session.webRtcSessionId).catch(error =>
+                logger.warn(`Failed to end session ${session.webRtcSessionId}:`, error),
             );
         }
     }
@@ -868,6 +899,11 @@ export class CameraStreamManager {
                 imageCodec: parsed.imageCodec,
                 resolution: parsed.resolution,
                 downgraded: encoderBusy && !capability.requiresEncodedPixels,
+                // Every call allocates a fresh snapshot stream (no reuse ladder, unlike video/audio); a
+                // caller needs streamId to release it via camera_release_stream.
+                streamId: snapshotStreamId,
+                reused: false,
+                allocatedByUs: true,
             };
         });
     }

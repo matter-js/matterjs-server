@@ -4,11 +4,15 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { EndpointNumber, FabricIndex, NodeId } from "@matter/main";
 import {
+    establishWebRtcProviderSession,
     isTrackableWebRtcSession,
     resolveWebRtcSessionStreams,
     selectWebRtcStreamFields,
 } from "../src/controller/webRtcSessionStreams.js";
+import type { WebRtcProviderSessionArgs, WebRtcProviderSessionIo } from "../src/controller/webRtcSessionStreams.js";
+import { ServerError, ServerErrorCode } from "../src/types/WebSocketMessageTypes.js";
 
 describe("resolveWebRtcSessionStreams", () => {
     it("uses the requested rev-2 list verbatim", () => {
@@ -167,5 +171,125 @@ describe("isTrackableWebRtcSession", () => {
 
     it("accepts stream usage 0", () => {
         expect(isTrackableWebRtcSession(0, [3], undefined)).to.equal(true);
+    });
+});
+
+describe("establishWebRtcProviderSession", () => {
+    const NODE_ID = NodeId(5n);
+    const ENDPOINT_ID = EndpointNumber(1);
+    const ORIGINATING_ENDPOINT_ID = EndpointNumber(2);
+    const FABRIC_INDEX = FabricIndex(1);
+
+    function baseArgs(overrides: Partial<WebRtcProviderSessionArgs> = {}): WebRtcProviderSessionArgs {
+        return {
+            commandName: "ProvideOffer",
+            fields: { streamUsage: 3, videoStreams: [1] },
+            nodeId: NODE_ID,
+            endpointId: ENDPOINT_ID,
+            originatingEndpointId: ORIGINATING_ENDPOINT_ID,
+            fabricIndex: FABRIC_INDEX,
+            clusterRevision: 2,
+            formatNode: id => `node-${id}`,
+            ...overrides,
+        };
+    }
+
+    it("injects originatingEndpointId into the fields sent to the device", async () => {
+        const invokedFields = new Array<Record<string, unknown>>();
+        const io: WebRtcProviderSessionIo = {
+            invoke: async (_command, fields) => {
+                invokedFields.push(fields);
+                return { webRtcSessionId: 9 };
+            },
+            upsertSession: async () => {},
+        };
+
+        await establishWebRtcProviderSession(io, baseArgs());
+
+        expect(invokedFields[0]?.originatingEndpointId).to.equal(ORIGINATING_ENDPOINT_ID);
+    });
+
+    it("tracks a trackable ProvideOffer session in the local requestor", async () => {
+        const upserted = new Array<unknown>();
+        const io: WebRtcProviderSessionIo = {
+            invoke: async () => ({ webRtcSessionId: 9 }),
+            upsertSession: async session => {
+                upserted.push(session);
+            },
+        };
+
+        await establishWebRtcProviderSession(io, baseArgs({ commandName: "ProvideOffer" }));
+
+        expect(upserted).to.deep.equal([
+            {
+                id: 9,
+                peerNodeId: NODE_ID,
+                peerEndpointId: ENDPOINT_ID,
+                streamUsage: 3,
+                metadataEnabled: false,
+                videoStreams: [1],
+                audioStreams: undefined,
+                fabricIndex: FABRIC_INDEX,
+            },
+        ]);
+    });
+
+    it("tracks a trackable SolicitOffer session in the local requestor", async () => {
+        const upserted = new Array<unknown>();
+        const invokedCommands = new Array<string>();
+        const io: WebRtcProviderSessionIo = {
+            invoke: async command => {
+                invokedCommands.push(command);
+                return { webRtcSessionId: 11 };
+            },
+            upsertSession: async session => {
+                upserted.push(session);
+            },
+        };
+
+        await establishWebRtcProviderSession(
+            io,
+            baseArgs({ commandName: "SolicitOffer", fields: { streamUsage: 3, audioStreams: [2] } }),
+        );
+
+        expect(invokedCommands).to.deep.equal(["solicitOffer"]);
+        expect(upserted).to.deep.equal([
+            {
+                id: 11,
+                peerNodeId: NODE_ID,
+                peerEndpointId: ENDPOINT_ID,
+                streamUsage: 3,
+                metadataEnabled: false,
+                videoStreams: undefined,
+                audioStreams: [2],
+                fabricIndex: FABRIC_INDEX,
+            },
+        ]);
+    });
+
+    it("tears down the device session and throws when it cannot be tracked, without upserting it", async () => {
+        const invokedCommands = new Array<string>();
+        let upserted = false;
+        const io: WebRtcProviderSessionIo = {
+            invoke: async command => {
+                invokedCommands.push(command);
+                return { webRtcSessionId: 9 };
+            },
+            upsertSession: async () => {
+                upserted = true;
+            },
+        };
+
+        let thrown: unknown;
+        try {
+            // No streamUsage and no stream: nothing for the requestor to key signaling routing on.
+            await establishWebRtcProviderSession(io, baseArgs({ fields: {} }));
+        } catch (error) {
+            thrown = error;
+        }
+
+        expect((thrown as ServerError).code).to.equal(ServerErrorCode.SDKStackError);
+        expect(invokedCommands).to.deep.equal(["provideOffer", "endSession"]);
+        expect(upserted).to.equal(false);
     });
 });

@@ -249,7 +249,6 @@ Read-only. Reports device-stated facts — sensor size, `RateDistortionTradeOffP
 const caps = await client.sendCommand("camera_get_capabilities", 0, {
     node_id: nodeId,
     endpoint_id: 1,
-    refresh: false, // true forces a live read instead of serving subscribed state
 });
 ```
 

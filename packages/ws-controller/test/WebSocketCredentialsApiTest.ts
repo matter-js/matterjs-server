@@ -23,6 +23,7 @@ function freshEnv(): Environment {
 
 interface StubCameraStreams {
     releaseConnection(connectionId: string): Promise<void>;
+    startStream?(args: { connectionId: string }): Promise<unknown>;
 }
 
 function makeStubController(credentials: ThreadCredentialsRegistry, cameraStreams?: StubCameraStreams) {
@@ -117,6 +118,11 @@ function makeStubController(credentials: ThreadCredentialsRegistry, cameraStream
             >;
         },
         get cameraStreams() {
+            return stubCameraStreams as unknown as InstanceType<
+                typeof import("../src/camera/CameraStreamManager.js").CameraStreamManager
+            >;
+        },
+        get cameraStreamsIfCreated() {
             return stubCameraStreams as unknown as InstanceType<
                 typeof import("../src/camera/CameraStreamManager.js").CameraStreamManager
             >;
@@ -623,15 +629,30 @@ describe("WebSocket set_default_fabric_label ownership", () => {
 describe("WebSocket camera session cleanup on disconnect", () => {
     it("releases camera sessions owned by the connection that closed, and no others", async () => {
         const released = new Array<string>();
+        let closingConnectionId: string | undefined;
         const h = await createHarness({
             async releaseConnection(connectionId: string) {
                 released.push(connectionId);
+            },
+            async startStream(args: { connectionId: string }) {
+                closingConnectionId = args.connectionId;
+                return { webRtcSessionId: 1, mode: "solicit_offer" };
             },
         });
         try {
             const closing = await h.openClient();
             const staysOpen = await h.openClient();
             try {
+                // Exercise a camera command on `closing` first so its real, server-generated
+                // connection id is known — proving which connection actually gets released, not just
+                // that some connection did.
+                await h.sendOn(closing, "camera_start_stream", {
+                    node_id: 1,
+                    endpoint_id: 1,
+                    stream_usage: "LiveView",
+                });
+                expect(closingConnectionId).to.not.equal(undefined);
+
                 await new Promise<void>(resolve => {
                     closing.once("close", () => resolve());
                     closing.close();
@@ -641,7 +662,7 @@ describe("WebSocket camera session cleanup on disconnect", () => {
                 for (let i = 0; i < 40 && released.length === 0; i++) {
                     await new Promise<void>(resolve => setTimeout(resolve, 25));
                 }
-                expect(released.length).to.equal(1);
+                expect(released).to.deep.equal([closingConnectionId]);
             } finally {
                 staysOpen.close();
             }

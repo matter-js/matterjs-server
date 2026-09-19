@@ -522,6 +522,10 @@ export interface CameraSnapshotResult {
     resolution: CameraResolution;
     /** True when a live video stream's encoder use forced this below the camera's best capability. */
     downgraded: boolean;
+    /** The allocated snapshot stream id; pass to camera_release_stream to force-deallocate it. */
+    stream_id: number;
+    reused: boolean;
+    allocated_by_server: boolean;
 }
 
 export interface APICommands {
@@ -679,7 +683,7 @@ export interface APICommands {
     };
     /** Read-only; reports device-stated facts and current allocations. Allocates nothing. */
     camera_get_capabilities: {
-        requestArgs: { node_id: number | bigint; endpoint_id: number; refresh?: boolean };
+        requestArgs: { node_id: number | bigint; endpoint_id: number };
         response: CameraCapabilitiesResult;
     };
     /** `ProvideOffer` when `sdp` is set, `SolicitOffer` otherwise. `video`/`audio: false` excludes the track. */

@@ -5,13 +5,11 @@
  */
 
 import type {
-    CameraAudioHints,
     CameraCapabilitiesResult,
     CameraSnapshotResult,
     CameraStartStreamAudioResult,
     CameraStartStreamResult,
     CameraStartStreamVideoResult,
-    CameraVideoHints,
 } from "@matter-server/ws-client";
 import { Bytes, EndpointNumber, NodeId } from "@matter/main";
 import { ServerError } from "../types/WebSocketMessageTypes.js";
@@ -41,6 +39,40 @@ function toResolution(value: unknown, field: string): Resolution {
     return { width, height };
 }
 
+function toOptionalString(value: unknown, field: string): string | undefined {
+    if (value === undefined) return undefined;
+    if (typeof value !== "string") throw ServerError.invalidArguments(`${field} must be a string`);
+    return value;
+}
+
+function toOptionalNumber(value: unknown, field: string): number | undefined {
+    if (value === undefined) return undefined;
+    if (typeof value !== "number") throw ServerError.invalidArguments(`${field} must be a number`);
+    return value;
+}
+
+function toOptionalBoolean(value: unknown, field: string): boolean | undefined {
+    if (value === undefined) return undefined;
+    if (typeof value !== "boolean") throw ServerError.invalidArguments(`${field} must be a boolean`);
+    return value;
+}
+
+function toOptionalStringArray(value: unknown, field: string): string[] | undefined {
+    if (value === undefined) return undefined;
+    if (!Array.isArray(value) || value.some(entry => typeof entry !== "string")) {
+        throw ServerError.invalidArguments(`${field} must be an array of strings`);
+    }
+    return value;
+}
+
+function toOptionalRecordArray(value: unknown, field: string): Array<Record<string, unknown>> | undefined {
+    if (value === undefined) return undefined;
+    if (!Array.isArray(value) || value.some(entry => typeof entry !== "object" || entry === null)) {
+        throw ServerError.invalidArguments(`${field} must be an array of objects`);
+    }
+    return value;
+}
+
 export interface ParsedCameraTarget {
     nodeId: NodeId;
     endpointId: EndpointNumber;
@@ -57,28 +89,64 @@ export function parseCameraTarget(args: { node_id?: unknown; endpoint_id?: unkno
     return { nodeId: NodeId(nodeId), endpointId: EndpointNumber(endpointId) };
 }
 
-function parseVideoHints(hints: CameraVideoHints): VideoHints {
+interface RawVideoHintsShape {
+    codecs?: unknown;
+    min_resolution?: unknown;
+    max_resolution?: unknown;
+    min_frame_rate?: unknown;
+    max_frame_rate?: unknown;
+    min_bit_rate?: unknown;
+    max_bit_rate?: unknown;
+}
+
+function parseVideoHints(value: unknown): VideoHints {
+    if (typeof value !== "object" || value === null) {
+        throw ServerError.invalidArguments("video hints must be an object");
+    }
+    // Every field below is probed as unknown and typeof-checked before use; this cast only enables the
+    // property access syntax, the same narrowing idiom toResolution uses for a single field.
+    const hints = value as RawVideoHintsShape;
+    const codecs = toOptionalStringArray(hints.codecs, "video.codecs");
+    const minFrameRate = toOptionalNumber(hints.min_frame_rate, "video.min_frame_rate");
+    const maxFrameRate = toOptionalNumber(hints.max_frame_rate, "video.max_frame_rate");
+    const minBitRate = toOptionalNumber(hints.min_bit_rate, "video.min_bit_rate");
+    const maxBitRate = toOptionalNumber(hints.max_bit_rate, "video.max_bit_rate");
     return {
-        ...(hints.codecs === undefined ? {} : { codecs: hints.codecs }),
+        ...(codecs === undefined ? {} : { codecs }),
         ...(hints.min_resolution === undefined
             ? {}
             : { minResolution: toResolution(hints.min_resolution, "video.min_resolution") }),
         ...(hints.max_resolution === undefined
             ? {}
             : { maxResolution: toResolution(hints.max_resolution, "video.max_resolution") }),
-        ...(hints.min_frame_rate === undefined ? {} : { minFrameRate: hints.min_frame_rate }),
-        ...(hints.max_frame_rate === undefined ? {} : { maxFrameRate: hints.max_frame_rate }),
-        ...(hints.min_bit_rate === undefined ? {} : { minBitRate: hints.min_bit_rate }),
-        ...(hints.max_bit_rate === undefined ? {} : { maxBitRate: hints.max_bit_rate }),
+        ...(minFrameRate === undefined ? {} : { minFrameRate }),
+        ...(maxFrameRate === undefined ? {} : { maxFrameRate }),
+        ...(minBitRate === undefined ? {} : { minBitRate }),
+        ...(maxBitRate === undefined ? {} : { maxBitRate }),
     };
 }
 
-function parseAudioHints(hints: CameraAudioHints): AudioHints {
+interface RawAudioHintsShape {
+    codecs?: unknown;
+    channel_count?: unknown;
+    sample_rate?: unknown;
+    bit_rate?: unknown;
+}
+
+function parseAudioHints(value: unknown): AudioHints {
+    if (typeof value !== "object" || value === null) {
+        throw ServerError.invalidArguments("audio hints must be an object");
+    }
+    const hints = value as RawAudioHintsShape;
+    const codecs = toOptionalStringArray(hints.codecs, "audio.codecs");
+    const channelCount = toOptionalNumber(hints.channel_count, "audio.channel_count");
+    const sampleRate = toOptionalNumber(hints.sample_rate, "audio.sample_rate");
+    const bitRate = toOptionalNumber(hints.bit_rate, "audio.bit_rate");
     return {
-        ...(hints.codecs === undefined ? {} : { codecs: hints.codecs }),
-        ...(hints.channel_count === undefined ? {} : { channelCount: hints.channel_count }),
-        ...(hints.sample_rate === undefined ? {} : { sampleRate: hints.sample_rate }),
-        ...(hints.bit_rate === undefined ? {} : { bitRate: hints.bit_rate }),
+        ...(codecs === undefined ? {} : { codecs }),
+        ...(channelCount === undefined ? {} : { channelCount }),
+        ...(sampleRate === undefined ? {} : { sampleRate }),
+        ...(bitRate === undefined ? {} : { bitRate }),
     };
 }
 
@@ -96,27 +164,33 @@ export function parseStartStreamArgs(args: {
     node_id?: unknown;
     endpoint_id?: unknown;
     stream_usage?: unknown;
-    sdp?: string;
-    video?: CameraVideoHints | false;
-    audio?: CameraAudioHints | false;
-    ice_servers?: Array<Record<string, unknown>>;
-    ice_transport_policy?: string;
-    metadata_enabled?: boolean;
+    sdp?: unknown;
+    video?: unknown;
+    audio?: unknown;
+    ice_servers?: unknown;
+    ice_transport_policy?: unknown;
+    metadata_enabled?: unknown;
 }): ParsedStartStreamArgs {
     const target = parseCameraTarget(args);
     const streamUsage = typeof args.stream_usage === "string" ? STREAM_USAGE_BY_NAME.get(args.stream_usage) : undefined;
     if (streamUsage === undefined) {
         throw ServerError.invalidArguments(`Unknown stream_usage "${String(args.stream_usage)}"`);
     }
+    const sdp = toOptionalString(args.sdp, "sdp");
+    const iceServers = toOptionalRecordArray(args.ice_servers, "ice_servers");
+    const iceTransportPolicy = toOptionalString(args.ice_transport_policy, "ice_transport_policy");
+    const metadataEnabled = toOptionalBoolean(args.metadata_enabled, "metadata_enabled");
+    const video = args.video === undefined ? undefined : args.video === false ? false : parseVideoHints(args.video);
+    const audio = args.audio === undefined ? undefined : args.audio === false ? false : parseAudioHints(args.audio);
     return {
         ...target,
         streamUsage,
-        ...(args.sdp === undefined ? {} : { sdp: args.sdp }),
-        ...(args.video === undefined ? {} : { video: args.video === false ? false : parseVideoHints(args.video) }),
-        ...(args.audio === undefined ? {} : { audio: args.audio === false ? false : parseAudioHints(args.audio) }),
-        ...(args.ice_servers === undefined ? {} : { iceServers: args.ice_servers }),
-        ...(args.ice_transport_policy === undefined ? {} : { iceTransportPolicy: args.ice_transport_policy }),
-        ...(args.metadata_enabled === undefined ? {} : { metadataEnabled: args.metadata_enabled }),
+        ...(sdp === undefined ? {} : { sdp }),
+        ...(video === undefined ? {} : { video }),
+        ...(audio === undefined ? {} : { audio }),
+        ...(iceServers === undefined ? {} : { iceServers }),
+        ...(iceTransportPolicy === undefined ? {} : { iceTransportPolicy }),
+        ...(metadataEnabled === undefined ? {} : { metadataEnabled }),
     };
 }
 
@@ -315,5 +389,8 @@ export function toWireSnapshotResult(result: SnapshotResult): CameraSnapshotResu
         codec: result.imageCodec,
         resolution: result.resolution,
         downgraded: result.downgraded,
+        stream_id: result.streamId,
+        reused: result.reused,
+        allocated_by_server: result.allocatedByUs,
     };
 }

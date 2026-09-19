@@ -44,7 +44,6 @@ import {
     OperationalCredentials,
     TimeSynchronization,
 } from "@matter/main/clusters";
-import { WebRtcTransportDefinitions } from "@matter/main/clusters/web-rtc-transport-definitions";
 import { WebRtcTransportProvider } from "@matter/main/clusters/web-rtc-transport-provider";
 import { ClusterRevision } from "@matter/main/model";
 import { DeviceAttestationCheck, Invoke, PeerAddress, Read, Specifier, PeerSet } from "@matter/main/protocol";
@@ -111,11 +110,7 @@ import { ThreadDetailsPoller } from "./ThreadDetailsPoller.js";
 import { pushNodeTime, TimeSyncInvokers } from "./timeSyncCommands.js";
 import { SyncTrigger, TIME_FAILURE_EVENT_ID, TIME_SYNC_CLUSTER_ID, TimeSyncManager } from "./TimeSyncManager.js";
 import { attachWebRtcCallbackBridge } from "./WebRtcCallbackBridge.js";
-import {
-    isTrackableWebRtcSession,
-    resolveWebRtcSessionStreams,
-    selectWebRtcStreamFields,
-} from "./webRtcSessionStreams.js";
+import { establishWebRtcProviderSession, type WebRtcProviderSessionIo } from "./webRtcSessionStreams.js";
 
 const logger = Logger.get("ControllerCommandHandler");
 
@@ -383,12 +378,6 @@ export class ControllerCommandHandler {
             );
         }
 
-        const requestorEndpoint = this.#cameraControllerEndpoint();
-        const originatingEndpointId = EndpointNumber(requestorEndpoint.number);
-        const fabricIndex = this.#controller.fabric.fabricIndex;
-
-        const node = this.#nodes.get(nodeId);
-
         const command = commandName === "ProvideOffer" ? "provideOffer" : "solicitOffer";
 
         // `payload` arrives using the Python Matter Server wire convention (e.g. `webRtcSessionID`,
@@ -406,94 +395,71 @@ export class ControllerCommandHandler {
                   >)
                 : payload;
 
-        const fields: Record<string, unknown> = {
-            ...convertedPayload,
-            originatingEndpointId,
-        };
+        return this.#establishWebRtcProviderSession({ nodeId, endpointId, commandName, fields: convertedPayload });
+    }
 
-        selectWebRtcStreamFields(fields, this.webRtcProviderClusterRevision(nodeId, endpointId));
+    /**
+     * Invoke ProvideOffer/SolicitOffer and track the resulting session in the local requestor.
+     *
+     * `fields` must already be in matter.js's own field-name convention (the injected
+     * `originatingEndpointId` overwrites any value already present). The decision logic — what makes a
+     * session trackable, when to tear one down — lives in {@link establishWebRtcProviderSession} so it
+     * can be unit-tested without a live node; this method supplies the real device I/O.
+     */
+    async #establishWebRtcProviderSession(args: {
+        nodeId: NodeId;
+        endpointId: EndpointNumber;
+        commandName: "ProvideOffer" | "SolicitOffer";
+        fields: Record<string, unknown>;
+    }): Promise<WebRtcTransportProvider.ProvideOfferResponse | WebRtcTransportProvider.SolicitOfferResponse> {
+        const { nodeId, endpointId, commandName, fields } = args;
 
-        const response = (await this.#invokeCommand(node.node, {
-            endpoint: endpointId,
-            cluster: WebRtcTransportProvider,
-            command,
-            fields,
-        })) as WebRtcTransportProvider.ProvideOfferResponse | WebRtcTransportProvider.SolicitOfferResponse | undefined;
+        const requestorEndpoint = this.#cameraControllerEndpoint();
+        const originatingEndpointId = EndpointNumber(requestorEndpoint.number);
+        const fabricIndex = this.#controller.fabric.fabricIndex;
+        const node = this.#nodes.get(nodeId);
 
-        if (response === undefined || typeof response.webRtcSessionId !== "number") {
-            throw ServerError.sdkStackError(
-                `${commandName} did not return a WebRTCSessionID for node ${this.formatNode(nodeId)}`,
-            );
-        }
-
-        const streamUsage = convertedPayload.streamUsage;
-        const metadataEnabled = convertedPayload.metadataEnabled === true;
-
-        const videoStreams = resolveWebRtcSessionStreams(
-            fields.videoStreams,
-            fields.videoStreamId,
-            response.videoStreamId,
-        );
-        const audioStreams = resolveWebRtcSessionStreams(
-            fields.audioStreams,
-            fields.audioStreamId,
-            response.audioStreamId,
-        );
-
-        // An untrackable session (no stream usage, or no stream — e.g. an auto-select/deferred
-        // SolicitOffer whose provider reports no stream id yet) cannot be stored in the requestor's
-        // CurrentSessions, so we could never route the peer's follow-up signaling for it. Rather than
-        // return a session id that will silently never deliver media, tear the just-created device
-        // session down and fail the command. Deferred/auto-select is thus unsupported for now; the
-        // dashboard never hits this (it always requests a concrete stream usage + id).
-        if (!isTrackableWebRtcSession(streamUsage, videoStreams, audioStreams)) {
-            logger.warn(
-                `Tearing down untrackable WebRTC session id=${response.webRtcSessionId} for node ${this.formatNode(
-                    nodeId,
-                )}: request lacks a stream usage or any video/audio stream, so signaling cannot be routed for it`,
-            );
-            try {
-                await this.#invokeCommand(node.node, {
+        const io: WebRtcProviderSessionIo = {
+            invoke: (command, invokeFields) =>
+                this.#invokeCommand(node.node, {
                     endpoint: endpointId,
                     cluster: WebRtcTransportProvider,
-                    command: "endSession",
-                    fields: {
-                        webRtcSessionId: response.webRtcSessionId,
-                        reason: WebRtcTransportDefinitions.WebRtcEndReason.OutOfResources,
-                    },
+                    command,
+                    fields: invokeFields,
+                }),
+            upsertSession: async session => {
+                await requestorEndpoint.act(agent => {
+                    agent.get(WebRtcTransportRequestorServer).upsertSession(session);
                 });
-            } catch (err) {
-                logger.warn(
-                    `EndSession cleanup for untrackable WebRTC session id=${response.webRtcSessionId} failed: ${
-                        err instanceof Error ? err.message : String(err)
-                    }`,
-                );
-            }
-            throw ServerError.sdkStackError(
-                `${commandName} for node ${this.formatNode(nodeId)} produced a session with no stream usage or ` +
-                    `video/audio stream; deferred/auto-select streaming is not supported`,
-            );
-        }
-
-        const session: WebRtcTransportDefinitions.WebRtcSession = {
-            id: response.webRtcSessionId,
-            peerNodeId: nodeId,
-            peerEndpointId: endpointId,
-            streamUsage: streamUsage as WebRtcTransportDefinitions.WebRtcSession["streamUsage"],
-            metadataEnabled,
-            videoStreams,
-            audioStreams,
-            fabricIndex,
+            },
         };
 
-        logger.info(
-            `upserting WebRTC session id=${session.id} peerNodeId=${nodeId} peerEndpointId=${endpointId} fabricIndex=${fabricIndex} streamUsage=${streamUsage} originatingEndpointId=${originatingEndpointId}`,
-        );
-        await requestorEndpoint.act(agent => {
-            agent.get(WebRtcTransportRequestorServer).upsertSession(session);
+        const response = await establishWebRtcProviderSession(io, {
+            commandName,
+            fields,
+            nodeId,
+            endpointId,
+            originatingEndpointId,
+            fabricIndex,
+            clusterRevision: this.webRtcProviderClusterRevision(nodeId, endpointId),
+            formatNode: id => this.formatNode(id),
         });
+        return response as WebRtcTransportProvider.ProvideOfferResponse | WebRtcTransportProvider.SolicitOfferResponse;
+    }
 
-        return response;
+    /**
+     * Establishes a WebRTC provider session for device I/O implementations outside this class (camera
+     * streaming). Identical contract to {@link sendWebRtcProviderCommand}'s underlying invoke — session
+     * establishment has exactly one implementation — except `fields` skips the Python-wire-to-matter.js
+     * conversion because the camera subsystem already builds fields in matter.js's own convention.
+     */
+    async invokeWebRtcProviderCommand(args: {
+        nodeId: NodeId;
+        endpointId: EndpointNumber;
+        commandName: "ProvideOffer" | "SolicitOffer";
+        fields: Record<string, unknown>;
+    }): Promise<WebRtcTransportProvider.ProvideOfferResponse | WebRtcTransportProvider.SolicitOfferResponse> {
+        return this.#establishWebRtcProviderSession(args);
     }
 
     /** @throws ServerError if node not found */

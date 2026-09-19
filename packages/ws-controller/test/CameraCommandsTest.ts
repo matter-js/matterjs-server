@@ -176,6 +176,122 @@ describe("cameraCommands", () => {
             expect(parsed.iceTransportPolicy).to.equal("relay");
             expect(parsed.metadataEnabled).to.equal(true);
         });
+
+        function expectInvalidArguments(build: () => unknown): void {
+            let thrown: unknown;
+            try {
+                build();
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.InvalidArguments);
+        }
+
+        it("rejects a non-string sdp", () => {
+            expectInvalidArguments(() =>
+                parseStartStreamArgs({ node_id: 5, endpoint_id: 1, stream_usage: "LiveView", sdp: 123 }),
+            );
+        });
+
+        it("rejects a non-array ice_servers", () => {
+            expectInvalidArguments(() =>
+                parseStartStreamArgs({ node_id: 5, endpoint_id: 1, stream_usage: "LiveView", ice_servers: "stun:x" }),
+            );
+        });
+
+        it("rejects an ice_servers entry that is not an object", () => {
+            expectInvalidArguments(() =>
+                parseStartStreamArgs({
+                    node_id: 5,
+                    endpoint_id: 1,
+                    stream_usage: "LiveView",
+                    ice_servers: ["stun:x"],
+                }),
+            );
+        });
+
+        it("rejects a non-string ice_transport_policy", () => {
+            expectInvalidArguments(() =>
+                parseStartStreamArgs({
+                    node_id: 5,
+                    endpoint_id: 1,
+                    stream_usage: "LiveView",
+                    ice_transport_policy: 1,
+                }),
+            );
+        });
+
+        it("rejects a non-boolean metadata_enabled", () => {
+            expectInvalidArguments(() =>
+                parseStartStreamArgs({
+                    node_id: 5,
+                    endpoint_id: 1,
+                    stream_usage: "LiveView",
+                    metadata_enabled: "yes",
+                }),
+            );
+        });
+
+        it("rejects a non-numeric max_frame_rate hint", () => {
+            expectInvalidArguments(() =>
+                parseStartStreamArgs({
+                    node_id: 5,
+                    endpoint_id: 1,
+                    stream_usage: "LiveView",
+                    video: { max_frame_rate: "30" },
+                }),
+            );
+        });
+
+        it("rejects a non-numeric min_bit_rate hint", () => {
+            expectInvalidArguments(() =>
+                parseStartStreamArgs({
+                    node_id: 5,
+                    endpoint_id: 1,
+                    stream_usage: "LiveView",
+                    video: { min_bit_rate: "1000" },
+                }),
+            );
+        });
+
+        it("rejects a video codecs hint that is not an array of strings", () => {
+            expectInvalidArguments(() =>
+                parseStartStreamArgs({
+                    node_id: 5,
+                    endpoint_id: 1,
+                    stream_usage: "LiveView",
+                    video: { codecs: [1, 2] },
+                }),
+            );
+        });
+
+        it("rejects a non-object video hints value", () => {
+            expectInvalidArguments(() =>
+                parseStartStreamArgs({ node_id: 5, endpoint_id: 1, stream_usage: "LiveView", video: "H265" }),
+            );
+        });
+
+        it("rejects a non-numeric channel_count audio hint", () => {
+            expectInvalidArguments(() =>
+                parseStartStreamArgs({
+                    node_id: 5,
+                    endpoint_id: 1,
+                    stream_usage: "LiveView",
+                    audio: { channel_count: "2" },
+                }),
+            );
+        });
+
+        it("rejects an audio codecs hint that is not an array of strings", () => {
+            expectInvalidArguments(() =>
+                parseStartStreamArgs({
+                    node_id: 5,
+                    endpoint_id: 1,
+                    stream_usage: "LiveView",
+                    audio: { codecs: [0] },
+                }),
+            );
+        });
     });
 
     describe("parseStopStreamArgs", () => {
@@ -457,18 +573,24 @@ describe("cameraCommands", () => {
     });
 
     describe("toWireSnapshotResult", () => {
-        it("base64-encodes the image data", () => {
+        it("base64-encodes the image data and carries the stream identity through", () => {
             const result: SnapshotResult = {
                 data: new Uint8Array([1, 2, 3]),
                 imageCodec: 0,
                 resolution: { width: 640, height: 480 },
                 downgraded: true,
+                streamId: 4,
+                reused: false,
+                allocatedByUs: true,
             };
             const wire = toWireSnapshotResult(result);
             expect(wire.data).to.equal(Buffer.from([1, 2, 3]).toString("base64"));
             expect(wire.codec).to.equal(0);
             expect(wire.resolution).to.deep.equal({ width: 640, height: 480 });
             expect(wire.downgraded).to.equal(true);
+            expect(wire.stream_id).to.equal(4);
+            expect(wire.reused).to.equal(false);
+            expect(wire.allocated_by_server).to.equal(true);
         });
     });
 
