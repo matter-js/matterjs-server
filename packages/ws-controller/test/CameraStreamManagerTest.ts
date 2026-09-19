@@ -134,6 +134,8 @@ describe("CameraStreamManager", () => {
                         maxResolution: { width: 1920, height: 1080 },
                         minFrameRate: 1,
                         maxFrameRate: 30,
+                        minBitRate: 800000,
+                        maxBitRate: 4000000,
                         referenceCount: 2,
                     },
                 ],
@@ -141,12 +143,418 @@ describe("CameraStreamManager", () => {
             const capabilities = await managerWith(allocated).manager.getCapabilities(NODE, ENDPOINT);
             expect(capabilities.allocated.video[0].referenceCount).to.equal(2);
             expect(capabilities.allocated.video[0].ownedByServer).to.equal(false);
+            expect(capabilities.allocated.video[0].minBitRate).to.equal(800000);
+            expect(capabilities.allocated.video[0].maxBitRate).to.equal(4000000);
         });
 
         it("reads state without invoking anything on the device", async () => {
             const { manager, invokes } = managerWith(STATE);
             await manager.getCapabilities(NODE, ENDPOINT);
             expect(invokes).to.deep.equal([]);
+        });
+    });
+
+    describe("resolveVideoStream", () => {
+        const DYNAMIC_CONSTRAINT_ERROR = 0x87;
+        const RESOURCE_EXHAUSTED = 0x89;
+
+        function statusError(status: number): Error & { code: number } {
+            const error = new Error(`Device returned status ${status}`) as Error & { code: number };
+            error.code = status;
+            return error;
+        }
+
+        function withStreams(streams: CameraState["allocatedVideoStreams"]): CameraState {
+            return { ...STATE, allocatedVideoStreams: streams };
+        }
+
+        const CONTAINED_STREAM = {
+            videoStreamId: 7,
+            streamUsage: LIVE_VIEW,
+            videoCodec: H265,
+            minResolution: { width: 1920, height: 1080 },
+            maxResolution: { width: 1920, height: 1080 },
+            minFrameRate: 1,
+            maxFrameRate: 30,
+            minBitRate: 800000,
+            maxBitRate: 4000000,
+            referenceCount: 1,
+        };
+
+        const PINNED_1080P = {
+            minResolution: { width: 1920, height: 1080 },
+            maxResolution: { width: 1920, height: 1080 },
+        };
+
+        it("reuses a contained stream without invoking anything", async () => {
+            const { manager, invokes } = managerWith(withStreams([CONTAINED_STREAM]));
+            const resolved = await manager.resolveVideoStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+                codec: H265,
+                hints: PINNED_1080P,
+            });
+            expect(resolved.streamId).to.equal(7);
+            expect(resolved.reused).to.equal(true);
+            expect(resolved.allocatedByUs).to.equal(false);
+            expect(invokes).to.deep.equal([]);
+        });
+
+        it("does not reuse a stream whose floor is below the requested floor", async () => {
+            // Issue #1056: [720p..1080p] may deliver 720p, so a 1080p floor is not satisfied.
+            const wider = { ...CONTAINED_STREAM, minResolution: { width: 1280, height: 720 } };
+            const { manager, invokes } = managerWith(withStreams([wider]), async () => ({ videoStreamId: 9 }));
+            const resolved = await manager.resolveVideoStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+                codec: H265,
+                hints: PINNED_1080P,
+            });
+            expect(resolved.streamId).to.equal(9);
+            expect(resolved.reused).to.equal(false);
+            expect(invokes.map(invoke => invoke.command)).to.deep.equal(["videoStreamAllocate"]);
+        });
+
+        it("records a newly allocated stream as owned by the server", async () => {
+            const { manager } = managerWith(STATE, async () => ({ videoStreamId: 9 }));
+            const resolved = await manager.resolveVideoStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+                codec: H265,
+            });
+            expect(resolved.allocatedByUs).to.equal(true);
+        });
+
+        it("narrows the envelope and retries when the device rejects the parameters", async () => {
+            let attempt = 0;
+            const { manager, invokes } = managerWith(STATE, async () => {
+                attempt += 1;
+                if (attempt === 1) throw statusError(DYNAMIC_CONSTRAINT_ERROR);
+                return { videoStreamId: 9 };
+            });
+            const resolved = await manager.resolveVideoStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+                codec: H265,
+            });
+            expect(resolved.streamId).to.equal(9);
+            expect(invokes).to.have.length(2);
+            const first = invokes[0].fields.maxResolution as { width: number };
+            const second = invokes[1].fields.maxResolution as { width: number };
+            expect(second.width).to.be.lessThan(first.width);
+        });
+
+        it("propagates a device rejection the ladder does not know how to react to", async () => {
+            const UNSUPPORTED = 0x81; // INVALID_ACTION, arbitrary and not one the ladder special-cases.
+            const { manager, invokes } = managerWith(STATE, async () => {
+                throw statusError(UNSUPPORTED);
+            });
+            let thrown: unknown;
+            try {
+                await manager.resolveVideoStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    streamUsage: LIVE_VIEW,
+                    codec: H265,
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as { code: number }).code).to.equal(UNSUPPORTED);
+            expect(invokes).to.have.length(1);
+        });
+
+        it("retries reuse ignoring stream usage when resources are exhausted", async () => {
+            const otherUsage = { ...CONTAINED_STREAM, streamUsage: 1 };
+            const { manager, invokes } = managerWith(withStreams([otherUsage]), async () => {
+                throw statusError(RESOURCE_EXHAUSTED);
+            });
+            const resolved = await manager.resolveVideoStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+                codec: H265,
+                hints: PINNED_1080P,
+            });
+            expect(resolved.streamId).to.equal(7);
+            expect(resolved.reused).to.equal(true);
+            // Distinguishes this rung from the later degraded fallback, which would also accept this
+            // stream (same caller bounds) but only after exhausting the narrowing loop first.
+            expect(resolved.degraded).to.equal(undefined);
+            expect(invokes).to.have.length(1);
+        });
+
+        it("deallocates an unreferenced stream and retries rather than failing", async () => {
+            const idle = { ...CONTAINED_STREAM, videoStreamId: 7, referenceCount: 0 };
+            let allocateAttempts = 0;
+            const { manager, invokes } = managerWith(withStreams([idle]), async invoke => {
+                if (invoke.command === "videoStreamAllocate") {
+                    allocateAttempts += 1;
+                    if (allocateAttempts === 1) throw statusError(RESOURCE_EXHAUSTED);
+                    return { videoStreamId: 11 };
+                }
+                return undefined;
+            });
+            const resolved = await manager.resolveVideoStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+                codec: H265,
+                hints: { maxResolution: { width: 1280, height: 720 } },
+            });
+            expect(resolved.streamId).to.equal(11);
+            expect(invokes.map(invoke => invoke.command)).to.include("videoStreamDeallocate");
+        });
+
+        it("frees its own unreferenced stream before touching a foreign one", async () => {
+            // A different codec keeps both candidates out of the reuse/relaxed-reuse checks, so the
+            // ladder reaches freeAnUnreferencedVideoStream regardless of which one it would pick.
+            const H264 = 2;
+            let allocateAttempts = 0;
+            const { manager, invokes, holder } = managerWith(STATE, async invoke => {
+                if (invoke.command !== "videoStreamAllocate") return undefined;
+                allocateAttempts += 1;
+                if (allocateAttempts === 1) return { videoStreamId: 20 };
+                if (allocateAttempts === 2) throw statusError(RESOURCE_EXHAUSTED);
+                return { videoStreamId: 30 };
+            });
+            const request = { nodeId: NODE, endpointId: ENDPOINT, streamUsage: LIVE_VIEW, codec: H265 };
+            await manager.resolveVideoStream(request); // allocates and owns stream 20
+
+            const foreign = { ...CONTAINED_STREAM, videoStreamId: 21, videoCodec: H264, referenceCount: 0 };
+            const ours = { ...CONTAINED_STREAM, videoStreamId: 20, videoCodec: H264, referenceCount: 0 };
+            holder.state = { ...STATE, allocatedVideoStreams: [foreign, ours] };
+
+            const resolved = await manager.resolveVideoStream(request);
+            expect(resolved.streamId).to.equal(30);
+            const deallocated = invokes.find(invoke => invoke.command === "videoStreamDeallocate");
+            expect(deallocated?.fields.videoStreamId).to.equal(20);
+            expect(holder.state?.allocatedVideoStreams.map(stream => stream.videoStreamId)).to.deep.equal([21]);
+        });
+
+        it("hands out an in-use stream as degraded when the caller stated no bounds", async () => {
+            // Wider than the sensor so it fails plain AND relaxed reuse (both contain-in-envelope
+            // checks); only the degraded rung, which checks caller-stated bounds instead, accepts it.
+            const busy = {
+                ...CONTAINED_STREAM,
+                videoStreamId: 7,
+                referenceCount: 1,
+                maxResolution: { width: 3840, height: 2160 },
+            };
+            const { manager } = managerWith(withStreams([busy]), async () => {
+                throw statusError(RESOURCE_EXHAUSTED);
+            });
+            const resolved = await manager.resolveVideoStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+                codec: H265,
+            });
+            expect(resolved.streamId).to.equal(7);
+            expect(resolved.degraded).to.equal(true);
+        });
+
+        it("fails rather than degrading when the caller pinned a resolution the stream cannot guarantee", async () => {
+            // Issue #1056 on the degraded path: a pinned caller must never be silently given less.
+            const busy = {
+                ...CONTAINED_STREAM,
+                videoStreamId: 7,
+                referenceCount: 1,
+                minResolution: { width: 1280, height: 720 },
+            };
+            const { manager } = managerWith(withStreams([busy]), async () => {
+                throw statusError(RESOURCE_EXHAUSTED);
+            });
+            let thrown: unknown;
+            try {
+                await manager.resolveVideoStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    streamUsage: LIVE_VIEW,
+                    codec: H265,
+                    hints: PINNED_1080P,
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraResourceExhausted);
+        });
+
+        it("fails typed with the allocated list once the ladder is exhausted", async () => {
+            const { manager, invokes } = managerWith(withStreams([CONTAINED_STREAM]), async () => {
+                throw statusError(RESOURCE_EXHAUSTED);
+            });
+            let thrown: unknown;
+            try {
+                await manager.resolveVideoStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    streamUsage: LIVE_VIEW,
+                    codec: H265,
+                    hints: { maxResolution: { width: 1280, height: 720 } },
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraResourceExhausted);
+            expect(JSON.parse((thrown as ServerError).message).allocated).to.deep.equal([
+                { stream_id: 7, reference_count: 1 },
+            ]);
+            expect(invokes.length).to.be.at.most(4);
+        });
+
+        it("fails typed when no codec suits both the camera and the offer", async () => {
+            const { manager } = managerWith(STATE);
+            let thrown: unknown;
+            try {
+                await manager.resolveVideoStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    streamUsage: LIVE_VIEW,
+                    codec: 99,
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamIncompatible);
+        });
+
+        it("allocates once when two callers race for the same endpoint", async () => {
+            const { manager, invokes, holder } = managerWith(STATE, async invoke => {
+                if (invoke.command !== "videoStreamAllocate") return undefined;
+                // The mock stands in for the device: the second caller only sees the allocation as a
+                // matter of re-reading state, so the response must land in the state it reads back.
+                if (holder.state !== undefined) {
+                    holder.state = {
+                        ...holder.state,
+                        allocatedVideoStreams: [
+                            ...holder.state.allocatedVideoStreams,
+                            { ...CONTAINED_STREAM, videoStreamId: 9 },
+                        ],
+                    };
+                }
+                return { videoStreamId: 9 };
+            });
+            const request = {
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+                codec: H265,
+            };
+            // The second caller must see the first one's lease, not race past it into a twin stream.
+            await Promise.all([manager.resolveVideoStream(request), manager.resolveVideoStream(request)]);
+            expect(invokes.filter(invoke => invoke.command === "videoStreamAllocate")).to.have.length(1);
+        });
+    });
+
+    describe("withEndpointLock", () => {
+        class TestableCameraStreamManager extends CameraStreamManager {
+            get lockCount(): number {
+                return this.pendingLockCount;
+            }
+        }
+
+        it("clears the per-endpoint lock once the work it guards has settled", async () => {
+            const io: CameraDeviceIo = {
+                readCameraState: async () => STATE,
+                invoke: async () => ({ videoStreamId: 9 }),
+            };
+            const manager = new TestableCameraStreamManager(io);
+            const request = { nodeId: NODE, endpointId: ENDPOINT, streamUsage: LIVE_VIEW, codec: H265 };
+            await manager.resolveVideoStream(request);
+            await manager.resolveVideoStream(request);
+            expect(manager.lockCount).to.equal(0);
+        });
+    });
+
+    describe("resolveAudioStream", () => {
+        function withAudioStreams(streams: CameraState["allocatedAudioStreams"]): CameraState {
+            return { ...STATE, allocatedAudioStreams: streams };
+        }
+
+        const EXISTING_AUDIO_STREAM = {
+            audioStreamId: 4,
+            streamUsage: LIVE_VIEW,
+            audioCodec: 0,
+            channelCount: 1,
+            sampleRate: 48000,
+            bitRate: 64000,
+            bitDepth: 16,
+            referenceCount: 1,
+        };
+
+        it("reuses a matching audio stream without invoking anything", async () => {
+            const { manager, invokes } = managerWith(withAudioStreams([EXISTING_AUDIO_STREAM]));
+            const resolved = await manager.resolveAudioStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+            });
+            expect(resolved?.streamId).to.equal(4);
+            expect(resolved?.reused).to.equal(true);
+            expect(resolved?.allocatedByUs).to.equal(false);
+            expect(invokes).to.deep.equal([]);
+        });
+
+        it("allocates a new audio stream and records it as owned by the server", async () => {
+            const { manager, invokes } = managerWith(STATE, async () => ({ audioStreamId: 9 }));
+            const resolved = await manager.resolveAudioStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+            });
+            expect(resolved?.streamId).to.equal(9);
+            expect(resolved?.reused).to.equal(false);
+            expect(resolved?.allocatedByUs).to.equal(true);
+            expect(invokes.map(invoke => invoke.command)).to.deep.equal(["audioStreamAllocate"]);
+        });
+
+        it("returns undefined rather than failing when the device has no microphone", async () => {
+            const bare: CameraState = { ...STATE, microphoneCapabilities: undefined };
+            const { manager } = managerWith(bare);
+            const resolved = await manager.resolveAudioStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+            });
+            expect(resolved).to.equal(undefined);
+        });
+
+        it("returns undefined rather than computing -Infinity when a capability list is empty", async () => {
+            // An empty supportedSampleRates/supportedBitDepths would otherwise put Math.max(...[]) = -Infinity on the wire.
+            const noUsableAudio: CameraState = {
+                ...STATE,
+                microphoneCapabilities: {
+                    supportedCodecs: [0],
+                    maxNumberOfChannels: 1,
+                    supportedSampleRates: [],
+                    supportedBitDepths: [16],
+                },
+            };
+            const { manager, invokes } = managerWith(noUsableAudio);
+            const resolved = await manager.resolveAudioStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+            });
+            expect(resolved).to.equal(undefined);
+            expect(invokes).to.deep.equal([]);
+        });
+
+        it("returns undefined rather than failing when the device rejects audio allocation", async () => {
+            const { manager } = managerWith(STATE, async () => {
+                throw new Error("device refused audio allocation");
+            });
+            const resolved = await manager.resolveAudioStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+            });
+            expect(resolved).to.equal(undefined);
         });
     });
 });

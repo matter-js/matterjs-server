@@ -272,6 +272,8 @@ describe("streamPolicy", () => {
                 maxResolution: { width: 1920, height: 1080 },
                 minFrameRate: 1,
                 maxFrameRate: 30,
+                minBitRate: 800000,
+                maxBitRate: 4000000,
                 referenceCount: 0,
                 ...overrides,
             };
@@ -330,6 +332,8 @@ describe("streamPolicy", () => {
             maxResolution: { width: 1920, height: 1080 },
             minFrameRate: 1,
             maxFrameRate: 30,
+            minBitRate: 800000,
+            maxBitRate: 4000000,
             referenceCount: 1,
         };
 

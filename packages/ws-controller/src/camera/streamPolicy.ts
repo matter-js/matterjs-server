@@ -134,6 +134,8 @@ export interface AllocatedVideoStream {
     maxResolution: Resolution;
     minFrameRate: number;
     maxFrameRate: number;
+    minBitRate: number;
+    maxBitRate: number;
     referenceCount: number;
 }
 
