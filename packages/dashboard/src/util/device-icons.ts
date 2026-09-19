@@ -304,20 +304,20 @@ const deviceTypeToIcon: Record<number, string> = {
  * Maps Thread routing roles to MDI icon paths.
  */
 const threadRoleToIcon: Record<number, string> = {
-    5: mdiRouter, // Router
+    5: mdiRouter, // Mesh Extender
     6: mdiAccessPoint, // Leader
 };
 
 /**
  * Corner badge marking a node's Thread RoutingRole (attr 0/53/1) — a role-rank indicator overlaid on
- * the device icon. The Leader is the rare, high-signal exception (amber crown); routers and end
+ * the device icon. The Leader is the rare, high-signal exception (amber crown); Mesh Extenders and end
  * devices use progressively lower-key glyphs. Unassigned/Unspecified and unknown roles get no badge.
  */
 const THREAD_ROLE_BADGES: Record<number, { iconPath: string; colorVar: string; colorFallback: string }> = {
     2: { iconPath: mdiSleep, colorVar: "--node-color-thread-enddevice", colorFallback: "#90a4ae" }, // Sleepy End Device
     3: { iconPath: mdiCircleMedium, colorVar: "--node-color-thread-enddevice", colorFallback: "#90a4ae" }, // End Device
-    4: { iconPath: mdiCircleMedium, colorVar: "--node-color-thread-enddevice", colorFallback: "#90a4ae" }, // REED
-    5: { iconPath: mdiSwapHorizontal, colorVar: "--node-color-thread-router", colorFallback: "#1e88e5" }, // Router
+    4: { iconPath: mdiCircleMedium, colorVar: "--node-color-thread-enddevice", colorFallback: "#90a4ae" }, // Standby Mesh Extender (REED)
+    5: { iconPath: mdiSwapHorizontal, colorVar: "--node-color-thread-router", colorFallback: "#1e88e5" }, // Mesh Extender
     6: { iconPath: mdiCrown, colorVar: "--node-color-thread-leader", colorFallback: "#f9a825" }, // Leader
 };
 
@@ -522,7 +522,7 @@ export function createNodeIconDataUrl(
     } else {
         color = getDefaultIconColor(); // Theme-aware default
     }
-    // Thread RoutingRole (incl. Leader) applies to any router node, not just BRs. Badge it over the
+    // Thread RoutingRole (incl. Leader) applies to any Mesh Extender node, not just BRs. Badge it over the
     // device icon rather than replacing the icon, preserving device identity.
     const roleBadge = threadRole !== undefined ? THREAD_ROLE_BADGES[threadRole] : undefined;
     const badge =

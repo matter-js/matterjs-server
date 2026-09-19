@@ -167,9 +167,9 @@ export function getThreadRoleName(role: number | undefined): string {
         case 3:
             return "End Device";
         case 4:
-            return "REED";
+            return "Standby Mesh Extender";
         case 5:
-            return "Router";
+            return "Mesh Extender";
         case 6:
             return "Leader";
         default:
@@ -181,15 +181,15 @@ export function getThreadRoleName(role: number | undefined): string {
 export function getThreadRoleDescription(role: number | undefined): string {
     switch (role) {
         case 2:
-            return "Sleepy End Device: keeps its radio off while idle to save battery and reaches the mesh only through a parent router. The links shown for it can include stale router-table entries for Thread addresses it no longer uses.";
+            return "Sleepy End Device: keeps its radio off while idle to save battery and reaches the mesh only through a parent Mesh Extender. The links shown for it can include stale route-table entries for Thread addresses it no longer uses.";
         case 3:
-            return "End Device: a leaf node that reaches the mesh through a parent router and does not route for other nodes. The links shown for it can include stale router-table entries for old or unused Thread addresses.";
+            return "End Device: a leaf node that reaches the mesh through a parent Mesh Extender and does not route for other nodes. The links shown for it can include stale route-table entries for old or unused Thread addresses.";
         case 4:
-            return "REED (Router-Eligible End Device): currently acts as an end device but can be promoted to a full Router when the mesh needs more routing capacity.";
+            return "Standby Mesh Extender (formerly REED): currently acts as an end device but the Leader can promote it to an active Mesh Extender when the mesh needs more routing capacity.";
         case 5:
-            return "Router: forwards traffic for other nodes in the Thread mesh.";
+            return "Mesh Extender (formerly Router): forwards traffic for other nodes and takes part in the Thread mesh routing topology.";
         case 6:
-            return "Leader: the elected node that manages router assignments for the Thread network.";
+            return "Leader: the elected node that manages Mesh Extender assignments for the Thread network.";
         case 0:
         case 1:
             return "Thread routing role is unassigned or unspecified.";
@@ -215,9 +215,9 @@ export const EXTERNAL_THREAD_DEVICE_EXPLANATION = `Seen in a commissioned node's
 
 /**
  * `isRouter` for an external neighbor is derived from rx-on-when-idle, so it means
- * router-capable (mains-powered), not a confirmed routing role.
+ * Mesh-Extender-capable (mains-powered), not a confirmed routing role.
  */
-export const EXTERNAL_ROUTER_CAPABLE_NOTE = `"Router" here means the neighbor advertised rx-on-when-idle (mains-powered / router-capable), not a confirmed routing role.`;
+export const EXTERNAL_MESH_EXTENDER_CAPABLE_NOTE = `"Mesh Extender" here means the neighbor advertised rx-on-when-idle (mains-powered, so it can act as a Mesh Extender), not a confirmed routing role.`;
 
 export const DIAGNOSTIC_MESH_NODE_EXPLANATION =
     "Inferred from Border Router diagnostics (Route64 / child table) and not commissioned to this fabric, so no device details are available.";

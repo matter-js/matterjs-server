@@ -38,7 +38,7 @@ import {
     getDeviceName,
     getNetworkType,
     DIAGNOSTIC_MESH_NODE_EXPLANATION,
-    EXTERNAL_ROUTER_CAPABLE_NOTE,
+    EXTERNAL_MESH_EXTENDER_CAPABLE_NOTE,
     EXTERNAL_THREAD_DEVICE_CASES,
     getNodeConnectionsFromPairs,
     getRoutableDestinationsCount,
@@ -492,7 +492,7 @@ export class NetworkDetails extends LitElement {
                 <h4>Diagnostic Mesh Node</h4>
                 <div class="info-row">
                     <span class="label">Role:</span>
-                    <span class="value">${isRouter ? "Router" : "End Device"}</span>
+                    <span class="value">${isRouter ? "Mesh Extender" : "End Device"}</span>
                 </div>
                 ${
                     extMac !== undefined
@@ -545,11 +545,13 @@ export class NetworkDetails extends LitElement {
                 <h4>Unknown Device</h4>
                 <div class="info-row">
                     <span class="label">Type:</span>
-                    <span class="value">${unknown.isRouter ? "Router (external)" : "End Device (external)"}</span>
+                    <span class="value"
+                        >${unknown.isRouter ? "Mesh Extender (external)" : "End Device (external)"}</span
+                    >
                 </div>
                 ${
                     unknown.isRouter
-                        ? html`<p class="hint-text inline-note">${EXTERNAL_ROUTER_CAPABLE_NOTE}</p>`
+                        ? html`<p class="hint-text inline-note">${EXTERNAL_MESH_EXTENDER_CAPABLE_NOTE}</p>`
                         : nothing
                 }
                 <div class="info-row">
@@ -1031,7 +1033,7 @@ export class NetworkDetails extends LitElement {
                     routerCount > 0
                         ? html`
                               <div class="info-row">
-                                  <span class="label">Routers:</span>
+                                  <span class="label">Mesh Extenders:</span>
                                   <span class="value">${routerCount}</span>
                               </div>
                           `
@@ -1339,7 +1341,7 @@ export class NetworkDetails extends LitElement {
             if (this.selectedNodeId.startsWith("unknown_")) {
                 const device = this.unknownDevices.get(this.selectedNodeId);
                 if (!device || device.kind !== "unknown") return "External Device";
-                const typeLabel = device.isRouter ? "External Router" : "External Device";
+                const typeLabel = device.isRouter ? "External Mesh Extender" : "External Device";
                 return `${typeLabel} (${device.extAddressHex.slice(-8)})`;
             }
         }
