@@ -21,6 +21,8 @@ import type {
 } from "./cameraTypes.js";
 import { parseSdpVideoConstraints } from "./sdpConstraints.js";
 import type { SdpVideoConstraints } from "./sdpConstraints.js";
+import { CameraSessionRegistry } from "./sessionRegistry.js";
+import type { PendingSession, SessionScope } from "./sessionRegistry.js";
 import { selectSnapshotCapabilities, usesHardwareEncoder } from "./snapshotPolicy.js";
 import type { SnapshotCapability } from "./snapshotPolicy.js";
 import {
@@ -272,6 +274,19 @@ export interface CameraCapabilities {
     };
 }
 
+export interface StartStreamArgs {
+    nodeId: NodeId;
+    endpointId: EndpointNumber;
+    connectionId: string;
+    streamUsage: number;
+    sdp?: string;
+    video?: VideoHints | false;
+    audio?: AudioHints | false;
+    iceServers?: unknown;
+    iceTransportPolicy?: unknown;
+    metadataEnabled?: boolean;
+}
+
 export interface StartStreamResult {
     webRtcSessionId: number;
     mode: "solicit_offer" | "provide_offer";
@@ -294,7 +309,7 @@ export class CameraStreamManager {
     readonly #io: CameraDeviceIo;
     readonly #leases = new Map<string, StreamLease[]>();
     readonly #locks = new Map<string, Promise<unknown>>();
-    readonly #sessions = new Map<number, ManagedSession>();
+    readonly #sessions = new CameraSessionRegistry();
 
     constructor(io: CameraDeviceIo) {
         this.#io = io;
@@ -335,6 +350,11 @@ export class CameraStreamManager {
         return this.#locks.size;
     }
 
+    /** Test hook: the lease map holds one entry per endpoint with leases outstanding, and none otherwise. */
+    protected get leasedEndpointCount(): number {
+        return this.#leases.size;
+    }
+
     protected get io(): CameraDeviceIo {
         return this.#io;
     }
@@ -354,10 +374,14 @@ export class CameraStreamManager {
 
     protected dropLease(nodeId: NodeId, endpointId: EndpointNumber, kind: StreamKind, streamId: number): void {
         const key = this.endpointKey(nodeId, endpointId);
-        const remaining = this.leasesOf(nodeId, endpointId).filter(
-            entry => !(entry.kind === kind && entry.streamId === streamId),
-        );
-        this.#leases.set(key, remaining);
+        const existing = this.#leases.get(key);
+        if (existing === undefined) return;
+        const remaining = existing.filter(entry => !(entry.kind === kind && entry.streamId === streamId));
+        if (remaining.length === 0) {
+            this.#leases.delete(key);
+        } else {
+            this.#leases.set(key, remaining);
+        }
     }
 
     protected ownsStream(nodeId: NodeId, endpointId: EndpointNumber, kind: StreamKind, streamId: number): boolean {
@@ -378,16 +402,18 @@ export class CameraStreamManager {
     }
 
     /**
-     * Fail typed when the endpoint cannot carry a WebRTC session.
+     * Device state for a call that will establish a WebRTC session, or a typed failure when the
+     * endpoint cannot carry one.
      *
-     * Without this a provider-less endpoint allocates a stream first and only then fails on the
-     * provider invoke, with an untyped error and an allocation nobody asked for.
+     * The cluster check comes first: a provider-less endpoint otherwise allocates a stream and only
+     * then fails on the provider invoke, with an untyped error and an allocation nobody asked for.
      */
-    protected async requireStreamingClusters(nodeId: NodeId, endpointId: EndpointNumber): Promise<void> {
+    protected async requireStreamingState(nodeId: NodeId, endpointId: EndpointNumber): Promise<CameraState> {
         const missingClusters = await this.#io.missingCameraClusters(nodeId, endpointId);
         if (missingClusters.length > 0) {
             throw ServerError.cameraNotSupported({ missingClusters });
         }
+        return this.requireState(nodeId, endpointId);
     }
 
     async getCapabilities(nodeId: NodeId, endpointId: EndpointNumber): Promise<CameraCapabilities> {
@@ -751,29 +777,47 @@ export class CameraStreamManager {
         return victim.videoStreamId;
     }
 
-    async startStream(args: {
-        nodeId: NodeId;
-        endpointId: EndpointNumber;
-        connectionId: string;
-        streamUsage: number;
-        sdp?: string;
-        video?: VideoHints | false;
-        audio?: AudioHints | false;
-        iceServers?: unknown;
-        iceTransportPolicy?: unknown;
-        metadataEnabled?: boolean;
-    }): Promise<StartStreamResult> {
-        const { nodeId, endpointId, streamUsage } = args;
+    async startStream(args: StartStreamArgs): Promise<StartStreamResult> {
+        const { nodeId, endpointId } = args;
         const sdp = args.sdp === undefined ? undefined : parseSdpVideoConstraints(args.sdp);
         // One lock for resolution through the offer round trip: the device only raises ReferenceCount
         // at session establishment, so a stream resolved here reads as unreferenced at the device until
         // the response below lands. Releasing the lock in between would let a concurrent RESOURCE_EXHAUSTED
         // on this endpoint free or hand out the very stream this call is mid-way through using.
-        return this.withEndpointLock(nodeId, endpointId, async () => {
-            const state = await this.requireState(nodeId, endpointId);
-            await this.requireStreamingClusters(nodeId, endpointId);
+        // Registered before the first await, so a connection closing at any point from here on claims
+        // this registration instead of finding nothing, and the session ends itself rather than
+        // registering for a connection that is gone.
+        const pending = this.#sessions.begin(nodeId, endpointId, args.connectionId);
+        try {
+            return await this.withEndpointLock(nodeId, endpointId, async () => {
+                const state = await this.requireStreamingState(nodeId, endpointId);
+                return this.#establishSession(pending, args, state, sdp);
+            });
+        } finally {
+            // Only once the session has been dealt with: a release path waiting on this registration
+            // is waiting for the EndSession, not for the offer response.
+            this.#sessions.finish(pending);
+        }
+    }
 
-            let video: ResolvedStream | undefined;
+    /**
+     * Body of {@link startStream}, inside the endpoint lock and inside the registration.
+     *
+     * Every exit either hands back a tracked session or leaves the device holding nothing: the
+     * streams this call allocated are given back, and a session established for a connection that
+     * closed meanwhile is ended here.
+     */
+    async #establishSession(
+        pending: PendingSession,
+        args: StartStreamArgs,
+        state: CameraState,
+        sdp: SdpVideoConstraints | undefined,
+    ): Promise<StartStreamResult> {
+        const { nodeId, endpointId, streamUsage } = args;
+        let video: ResolvedStream | undefined;
+        let audio: ResolvedStream | undefined;
+        let webRtcSessionId: number;
+        try {
             if (args.video !== false) {
                 const codecs = state.rateDistortionTradeOffPoints.map(point => point.codec);
                 const codec = preferredVideoCodec(
@@ -791,7 +835,6 @@ export class CameraStreamManager {
                 });
             }
 
-            let audio: ResolvedStream | undefined;
             if (args.audio !== false && state.microphoneCapabilities !== undefined) {
                 audio = await this.resolveAudioStreamLocked({
                     nodeId,
@@ -818,50 +861,142 @@ export class CameraStreamManager {
                 },
             });
 
-            const webRtcSessionId = (response as { webRtcSessionId?: unknown } | undefined)?.webRtcSessionId;
-            if (typeof webRtcSessionId !== "number") {
+            const sessionId =
+                typeof response === "object" && response !== null && "webRtcSessionId" in response
+                    ? response.webRtcSessionId
+                    : undefined;
+            if (typeof sessionId !== "number") {
                 throw ServerError.sdkStackError("Provider returned no WebRTCSessionID");
             }
+            webRtcSessionId = sessionId;
+        } catch (error) {
+            // No session exists to end — the provider call is what would have created one — but the
+            // streams allocated for it are the caller's only claim on them, and the caller is about
+            // to get an error instead of their ids.
+            await this.#releaseAllocatedFor(nodeId, endpointId, [
+                { kind: "video", stream: video },
+                { kind: "audio", stream: audio },
+            ]);
+            throw error;
+        }
 
-            this.#sessions.set(webRtcSessionId, {
-                webRtcSessionId,
+        const session: ManagedSession = {
+            webRtcSessionId,
+            nodeId,
+            endpointId,
+            connectionId: args.connectionId,
+            videoStreamIds: video === undefined ? new Array<number>() : [video.streamId],
+            audioStreamIds: audio === undefined ? new Array<number>() : [audio.streamId],
+        };
+        if (!this.#sessions.track(pending, session)) {
+            await this.#endSession(session);
+            throw ServerError.sdkStackError(
+                `WebRTC session ${webRtcSessionId} was ended: the requesting connection closed while the camera was establishing it`,
+            );
+        }
+
+        return {
+            webRtcSessionId,
+            mode: args.sdp === undefined ? "solicit_offer" : "provide_offer",
+            video,
+            audio,
+        };
+    }
+
+    /**
+     * Give back streams allocated for a session that never came to exist.
+     *
+     * Only what this call allocated: a reused stream belongs to whoever allocated it, and a foreign
+     * one was never ours to release.
+     */
+    async #releaseAllocatedFor(
+        nodeId: NodeId,
+        endpointId: EndpointNumber,
+        resolved: Array<{ kind: StreamKind; stream: ResolvedStream | undefined }>,
+    ): Promise<void> {
+        for (const { kind, stream } of resolved) {
+            if (stream === undefined || stream.reused || !stream.allocatedByUs) continue;
+            await this.#releaseAllocation(nodeId, endpointId, kind, stream.streamId);
+        }
+    }
+
+    /**
+     * Deallocate a stream on an error path that is about to rethrow.
+     *
+     * A failure here is logged and swallowed: the lease survives it, so `camera_release_stream` and the
+     * allocation ladder can still reach the stream, and the caller sees the error that started this.
+     */
+    async #releaseAllocation(
+        nodeId: NodeId,
+        endpointId: EndpointNumber,
+        kind: StreamKind,
+        streamId: number,
+    ): Promise<void> {
+        const { command, fields } = deallocateCall(kind, streamId);
+        try {
+            await this.io.invoke({ nodeId, endpointId, cluster: "avsm", command, fields });
+        } catch (error) {
+            logger.warn(
+                `Could not deallocate ${kind} stream ${streamId} on node ${nodeId} after a failed request:`,
+                error,
+            );
+            return;
+        }
+        this.dropLease(nodeId, endpointId, kind, streamId);
+    }
+
+    /**
+     * The one path that ends a session: `EndSession` on the device, then the registry entry.
+     *
+     * The order is what keeps the two in step. A failed invoke keeps the entry, so a later stop,
+     * disconnect or shutdown still reaches the session; dropping first would leave the device holding
+     * a session nothing can name, pinning its streams at `ReferenceCount > 0` for good.
+     *
+     * `NotFound` is the exception: the device answers it when it has no such session
+     * (`WebRTCTransportProviderCluster.cpp`, `HandleEndSession` ahead of the delegate call), so the
+     * entry is stale and keeping it would only re-send a dead id.
+     */
+    async #endSession(session: ManagedSession): Promise<void> {
+        const { nodeId, endpointId, webRtcSessionId } = session;
+        try {
+            await this.io.invoke({
                 nodeId,
                 endpointId,
-                connectionId: args.connectionId,
-                videoStreamIds: video === undefined ? new Array<number>() : [video.streamId],
-                audioStreamIds: audio === undefined ? new Array<number>() : [audio.streamId],
+                cluster: "webrtcProvider",
+                command: "endSession",
+                fields: { webRtcSessionId, reason: WEBRTC_END_REASON_USER_HANGUP },
             });
-
-            return {
-                webRtcSessionId,
-                mode: args.sdp === undefined ? "solicit_offer" : "provide_offer",
-                video,
-                audio,
-            };
-        });
+        } catch (error) {
+            if (deviceStatusOf(error) !== Status.NotFound) throw error;
+            logger.info(
+                `Node ${nodeId} no longer has WebRTC session ${webRtcSessionId}; dropping the server's tracking of it`,
+            );
+        }
+        this.#sessions.forget(nodeId, endpointId, webRtcSessionId);
     }
 
     /**
      * Ends the session on the device. The allocation is deliberately kept.
      *
-     * Returns whether a session was actually ended: `webRtcSessionId` is caller-supplied, so a session
-     * tracked for a different node/endpoint is reported not found rather than ended — otherwise any
-     * connection could end any tracked session by guessing an id, regardless of which device it targets.
+     * Returns whether a session was actually ended: `webRtcSessionId` is caller-supplied and allocated
+     * per provider, so it names a session only together with the node and endpoint it was issued on.
      */
     async stopStream(nodeId: NodeId, endpointId: EndpointNumber, webRtcSessionId: number): Promise<boolean> {
-        const session = this.#sessions.get(webRtcSessionId);
-        if (session === undefined || session.nodeId !== nodeId || session.endpointId !== endpointId) {
-            return false;
-        }
-        this.#sessions.delete(webRtcSessionId);
-        await this.io.invoke({
-            nodeId: session.nodeId,
-            endpointId: session.endpointId,
-            cluster: "webrtcProvider",
-            command: "endSession",
-            fields: { webRtcSessionId, reason: WEBRTC_END_REASON_USER_HANGUP },
-        });
+        const session = this.#sessions.get(nodeId, endpointId, webRtcSessionId);
+        if (session === undefined) return false;
+        await this.#endSession(session);
         return true;
+    }
+
+    /**
+     * Stop tracking a session the device has already ended, without invoking `EndSession` for it.
+     *
+     * The peer's `End` notification and a client's own `EndSession` on the raw path both leave the
+     * device with no session. Keeping the entry would make `camera_stop_stream` report `ended: true`
+     * for a session that ended minutes earlier, and shutdown send `EndSession` for a dead id.
+     */
+    forgetSession(nodeId: NodeId, endpointId: EndpointNumber, webRtcSessionId: number): boolean {
+        return this.#sessions.forget(nodeId, endpointId, webRtcSessionId);
     }
 
     /**
@@ -871,8 +1006,7 @@ export class CameraStreamManager {
      * streams permanently — VideoStreamDeallocate then answers INVALID_IN_STATE for good.
      */
     async releaseConnection(connectionId: string): Promise<void> {
-        const owned = [...this.#sessions.values()].filter(session => session.connectionId === connectionId);
-        await this.#endSessions(owned);
+        await this.#releaseSessions(scope => scope.connectionId === connectionId);
     }
 
     /**
@@ -883,15 +1017,23 @@ export class CameraStreamManager {
      * decrements it — the same failure `releaseConnection` exists to prevent, by a different exit.
      */
     async stopAll(): Promise<void> {
-        await this.#endSessions([...this.#sessions.values()]);
+        await this.#releaseSessions(() => true);
     }
 
-    async #endSessions(sessions: ManagedSession[]): Promise<void> {
+    /**
+     * End every session in scope, including the ones still being established.
+     *
+     * A claimed registration ends itself inside `startStream`; this waits for that to happen, so
+     * shutdown does not close the device connections out from under an `EndSession` it caused.
+     */
+    async #releaseSessions(matches: (scope: SessionScope) => boolean): Promise<void> {
+        const { sessions, inFlight } = this.#sessions.claim(matches);
         for (const session of sessions) {
-            await this.stopStream(session.nodeId, session.endpointId, session.webRtcSessionId).catch(error =>
-                logger.warn(`Failed to end session ${session.webRtcSessionId}:`, error),
+            await this.#endSession(session).catch(error =>
+                logger.warn(`Failed to end session ${session.webRtcSessionId} on node ${session.nodeId}:`, error),
             );
         }
+        await Promise.allSettled(inFlight);
     }
 
     /**
@@ -1000,36 +1142,47 @@ export class CameraStreamManager {
                 allocatedByUs: true,
             });
 
-            let captureResponse: unknown;
+            // The caller only ever learns snapshotStreamId from a successful return, so any failure
+            // from here on is the last chance to give the stream back: camera_release_stream cannot
+            // reach an id nobody was told.
+            let captured: { data: Uint8Array; imageCodec: number; resolution: Resolution };
             try {
-                captureResponse = await this.io.invoke({
+                const captureResponse = await this.io.invoke({
                     nodeId,
                     endpointId,
                     cluster: "avsm",
                     command: "captureSnapshot",
                     fields: { snapshotStreamId, requestedResolution: capability.resolution },
                 });
+                if (
+                    typeof captureResponse !== "object" ||
+                    captureResponse === null ||
+                    !("data" in captureResponse) ||
+                    !("imageCodec" in captureResponse) ||
+                    !("resolution" in captureResponse) ||
+                    !(captureResponse.data instanceof Uint8Array) ||
+                    typeof captureResponse.imageCodec !== "number" ||
+                    !isResolution(captureResponse.resolution)
+                ) {
+                    throw ServerError.sdkStackError("CaptureSnapshot returned an incomplete response");
+                }
+                captured = {
+                    data: captureResponse.data,
+                    imageCodec: captureResponse.imageCodec,
+                    resolution: captureResponse.resolution,
+                };
             } catch (error) {
+                await this.#releaseAllocation(nodeId, endpointId, "snapshot", snapshotStreamId);
                 if (error instanceof ServerError) throw error;
                 const status = deviceStatusOf(error);
                 if (ladderReaction(status) === "rethrow") throw error;
                 throw this.snapshotFailure(state, status, deviceCodecs, requestedCodecs);
             }
-            const parsed = captureResponse as
-                | { data?: unknown; imageCodec?: unknown; resolution?: unknown }
-                | undefined;
-            if (
-                !(parsed?.data instanceof Uint8Array) ||
-                typeof parsed.imageCodec !== "number" ||
-                !isResolution(parsed.resolution)
-            ) {
-                throw ServerError.sdkStackError("CaptureSnapshot returned an incomplete response");
-            }
 
             return {
-                data: parsed.data,
-                imageCodec: parsed.imageCodec,
-                resolution: parsed.resolution,
+                data: captured.data,
+                imageCodec: captured.imageCodec,
+                resolution: captured.resolution,
                 downgraded: encoderBusy && !usesHardwareEncoder(capability),
                 // Every call allocates a fresh snapshot stream (no reuse ladder, unlike video/audio); a
                 // caller needs streamId to release it via camera_release_stream.

@@ -69,6 +69,7 @@ export const STATE: CameraState = {
 export interface RecordedInvoke {
     command: string;
     fields: Record<string, unknown>;
+    nodeId: NodeId;
     endpointId: EndpointNumber;
 }
 
@@ -92,12 +93,46 @@ export function managerWith(
                 ? [CameraAvStreamManagement.Cluster.id, WebRtcTransportProvider.Cluster.id]
                 : new Array<number>()),
         invoke: async args => {
-            const recorded = { command: args.command, fields: args.fields, endpointId: args.endpointId };
+            const recorded = {
+                command: args.command,
+                fields: args.fields,
+                nodeId: args.nodeId,
+                endpointId: args.endpointId,
+            };
             invokes.push(recorded);
             return respond(recorded);
         },
     };
     return { manager: new CameraStreamManager(io), invokes, holder };
+}
+
+/** `leasedEndpointCount` is a protected test hook; this exposes it. */
+class LeaseProbe extends CameraStreamManager {
+    get endpointsWithLeases(): number {
+        return this.leasedEndpointCount;
+    }
+}
+
+function probeWith(
+    state: CameraState,
+    respond: (invoke: RecordedInvoke) => Promise<unknown>,
+): { manager: LeaseProbe; invokes: RecordedInvoke[] } {
+    const invokes = new Array<RecordedInvoke>();
+    const io: CameraDeviceIo = {
+        readCameraState: async () => state,
+        missingCameraClusters: async () => new Array<number>(),
+        invoke: async args => {
+            const recorded = {
+                command: args.command,
+                fields: args.fields,
+                nodeId: args.nodeId,
+                endpointId: args.endpointId,
+            };
+            invokes.push(recorded);
+            return respond(recorded);
+        },
+    };
+    return { manager: new LeaseProbe(io), invokes };
 }
 
 describe("CameraStreamManager", () => {
@@ -1030,6 +1065,314 @@ describe("CameraStreamManager", () => {
             const firstSession = await first;
             expect(firstSession.webRtcSessionId).to.equal(1);
         });
+
+        async function start(
+            manager: CameraStreamManager,
+            connectionId = "conn-1",
+            nodeId = NODE,
+            endpointId = ENDPOINT,
+        ) {
+            return manager.startStream({
+                nodeId,
+                endpointId,
+                connectionId,
+                streamUsage: LIVE_VIEW,
+                sdp: "v=0",
+                video: {},
+                audio: false,
+            });
+        }
+
+        function endedSessions(invokes: RecordedInvoke[]): Array<{ nodeId: NodeId; webRtcSessionId: unknown }> {
+            return invokes
+                .filter(invoke => invoke.command === "endSession")
+                .map(invoke => ({ nodeId: invoke.nodeId, webRtcSessionId: invoke.fields.webRtcSessionId }));
+        }
+
+        it("tracks two cameras that both issue session id 1 as two sessions", async () => {
+            const OTHER_NODE = NodeId(6);
+            const { manager, invokes } = managerWith(STATE, async invoke => {
+                if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                if (invoke.command === "provideOffer") return { webRtcSessionId: 1 };
+                return undefined;
+            });
+            await start(manager, "conn-1", NODE);
+            await start(manager, "conn-2", OTHER_NODE);
+
+            expect(await manager.stopStream(OTHER_NODE, ENDPOINT, 1)).to.equal(true);
+            expect(endedSessions(invokes)).to.deep.equal([{ nodeId: OTHER_NODE, webRtcSessionId: 1 }]);
+
+            // The first camera's session is still reachable: the second did not take its place.
+            expect(await manager.stopStream(NODE, ENDPOINT, 1)).to.equal(true);
+            expect(endedSessions(invokes)).to.deep.equal([
+                { nodeId: OTHER_NODE, webRtcSessionId: 1 },
+                { nodeId: NODE, webRtcSessionId: 1 },
+            ]);
+        });
+
+        it("keeps the session tracked when EndSession fails, so a later attempt still reaches it", async () => {
+            let endSessionAttempts = 0;
+            const { manager } = managerWith(STATE, async invoke => {
+                if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                if (invoke.command === "provideOffer") return { webRtcSessionId: 42 };
+                if (invoke.command === "endSession") {
+                    endSessionAttempts += 1;
+                    if (endSessionAttempts === 1) throw new Error("device unreachable");
+                }
+                return undefined;
+            });
+            await start(manager);
+
+            let thrown: unknown;
+            try {
+                await manager.stopStream(NODE, ENDPOINT, 42);
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as Error).message).to.equal("device unreachable");
+
+            expect(await manager.stopStream(NODE, ENDPOINT, 42)).to.equal(true);
+            expect(endSessionAttempts).to.equal(2);
+        });
+
+        it("drops tracking when the device answers NotFound for EndSession", async () => {
+            const { manager, invokes } = managerWith(STATE, async invoke => {
+                if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                if (invoke.command === "provideOffer") return { webRtcSessionId: 42 };
+                if (invoke.command === "endSession") throw statusError(Status.NotFound);
+                return undefined;
+            });
+            await start(manager);
+
+            expect(await manager.stopStream(NODE, ENDPOINT, 42)).to.equal(true);
+            await manager.stopAll();
+            expect(endedSessions(invokes)).to.have.length(1);
+        });
+
+        it("forgets a session the peer ended, so shutdown sends no EndSession for it", async () => {
+            const { manager, invokes } = allocatingManager();
+            await start(manager);
+
+            expect(manager.forgetSession(NODE, ENDPOINT, 42)).to.equal(true);
+            expect(await manager.stopStream(NODE, ENDPOINT, 42)).to.equal(false);
+            await manager.stopAll();
+            expect(endedSessions(invokes)).to.deep.equal([]);
+        });
+
+        it("gives back the streams it allocated when the provider call fails", async () => {
+            const { manager, invokes } = managerWith(STATE, async invoke => {
+                if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                if (invoke.command === "audioStreamAllocate") return { audioStreamId: 4 };
+                if (invoke.command === "provideOffer") throw new Error("provider refused");
+                return undefined;
+            });
+
+            let thrown: unknown;
+            try {
+                await manager.startStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    connectionId: "conn-1",
+                    streamUsage: LIVE_VIEW,
+                    sdp: "v=0",
+                    video: {},
+                    audio: {},
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as Error).message).to.equal("provider refused");
+            expect(invokes.filter(invoke => invoke.command === "videoStreamDeallocate")).to.have.length(1);
+            expect(invokes.filter(invoke => invoke.command === "audioStreamDeallocate")).to.have.length(1);
+        });
+
+        it("gives back the stream it allocated when the provider returns no session id", async () => {
+            const { manager, invokes } = managerWith(STATE, async invoke => {
+                if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                return undefined;
+            });
+
+            let thrown: unknown;
+            try {
+                await start(manager);
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.SDKStackError);
+            expect(
+                invokes
+                    .filter(invoke => invoke.command === "videoStreamDeallocate")
+                    .map(invoke => invoke.fields.videoStreamId),
+            ).to.deep.equal([9]);
+        });
+
+        it("leaves a reused stream alone when the provider call fails", async () => {
+            const reusable = { ...CONTAINED_STREAM, referenceCount: 0 };
+            const { manager, invokes } = managerWith({ ...STATE, allocatedVideoStreams: [reusable] }, async invoke => {
+                if (invoke.command === "provideOffer") throw new Error("provider refused");
+                return undefined;
+            });
+
+            let thrown: unknown;
+            try {
+                await manager.startStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    connectionId: "conn-1",
+                    streamUsage: LIVE_VIEW,
+                    sdp: "v=0",
+                    video: {
+                        minResolution: { width: 1920, height: 1080 },
+                        maxResolution: { width: 1920, height: 1080 },
+                    },
+                    audio: false,
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as Error).message).to.equal("provider refused");
+            expect(invokes.map(invoke => invoke.command)).to.not.include("videoStreamDeallocate");
+        });
+
+        it("reports the provider failure even when giving the stream back fails too", async () => {
+            const { manager } = managerWith(STATE, async invoke => {
+                if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                if (invoke.command === "provideOffer") throw new Error("provider refused");
+                if (invoke.command === "videoStreamDeallocate") throw new Error("deallocate refused");
+                return undefined;
+            });
+
+            let thrown: unknown;
+            try {
+                await start(manager);
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as Error).message).to.equal("provider refused");
+
+            // The lease outlived the failed deallocate, so the caller can still release the stream;
+            // dropping it there would have left an allocation nobody is allowed to touch.
+            let released: unknown;
+            try {
+                await manager.releaseStream({ nodeId: NODE, endpointId: ENDPOINT, kind: "video", streamId: 9 });
+            } catch (error) {
+                released = error;
+            }
+            expect((released as Error).message).to.equal("deallocate refused");
+        });
+
+        it("ends a session that finished establishing after its connection had closed", async () => {
+            let releaseOffer: () => void = () => {};
+            const offerGate = new Promise<void>(resolve => {
+                releaseOffer = resolve;
+            });
+            let reachedOffer: () => void = () => {};
+            const atOffer = new Promise<void>(resolve => {
+                reachedOffer = resolve;
+            });
+            let releaseEnd: () => void = () => {};
+            const endGate = new Promise<void>(resolve => {
+                releaseEnd = resolve;
+            });
+            const { manager, invokes } = managerWith(STATE, async invoke => {
+                if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                if (invoke.command === "provideOffer") {
+                    reachedOffer();
+                    await offerGate;
+                    return { webRtcSessionId: 42 };
+                }
+                if (invoke.command === "endSession") await endGate;
+                return undefined;
+            });
+
+            const starting = start(manager, "conn-1");
+            await atOffer; // The session is registered as in flight and the provider has the request.
+            let releaseReturned = false;
+            const releasing = manager.releaseConnection("conn-1").then(() => {
+                releaseReturned = true;
+            });
+            releaseOffer();
+
+            for (let flush = 0; flush < 20; flush++) {
+                await new Promise(resolve => setImmediate(resolve));
+            }
+            expect(endedSessions(invokes)).to.deep.equal([{ nodeId: NODE, webRtcSessionId: 42 }]);
+            // releaseConnection is what the disconnect path awaits, so it must not report done while
+            // the EndSession it is responsible for is still in flight.
+            expect(releaseReturned).to.equal(false);
+
+            releaseEnd();
+            let thrown: unknown;
+            try {
+                await starting;
+            } catch (error) {
+                thrown = error;
+            }
+            await releasing;
+            expect(releaseReturned).to.equal(true);
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.SDKStackError);
+        });
+
+        it("ends a session whose connection closed while the call was still queued for the endpoint", async () => {
+            let releaseFirstOffer: () => void = () => {};
+            const offerGate = new Promise<void>(resolve => {
+                releaseFirstOffer = resolve;
+            });
+            let firstReachedOffer: () => void = () => {};
+            const atOffer = new Promise<void>(resolve => {
+                firstReachedOffer = resolve;
+            });
+            let nextSessionId = 42;
+            const { manager, invokes } = managerWith(STATE, async invoke => {
+                if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                if (invoke.command === "provideOffer") {
+                    if (nextSessionId === 42) {
+                        firstReachedOffer();
+                        await offerGate;
+                    }
+                    return { webRtcSessionId: nextSessionId++ };
+                }
+                return undefined;
+            });
+
+            const first = start(manager, "conn-1");
+            await atOffer; // conn-1 holds the endpoint lock.
+            // startStream registers before it queues for the lock, so the release below sees this call
+            // even though none of its body has run.
+            const queued = start(manager, "conn-2");
+            const releasing = manager.releaseConnection("conn-2");
+
+            releaseFirstOffer();
+            await first;
+            let thrown: unknown;
+            try {
+                await queued;
+            } catch (error) {
+                thrown = error;
+            }
+            await releasing;
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.SDKStackError);
+            expect(endedSessions(invokes)).to.deep.equal([{ nodeId: NODE, webRtcSessionId: 43 }]);
+        });
+
+        it("ends the remaining sessions at shutdown when one camera refuses EndSession", async () => {
+            const OTHER_NODE = NodeId(6);
+            const { manager, invokes } = managerWith(STATE, async invoke => {
+                if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                if (invoke.command === "provideOffer") return { webRtcSessionId: 42 };
+                if (invoke.command === "endSession" && invoke.nodeId === NODE) throw new Error("device unreachable");
+                return undefined;
+            });
+            await start(manager, "conn-1", NODE);
+            await start(manager, "conn-2", OTHER_NODE);
+
+            await manager.stopAll();
+
+            expect(endedSessions(invokes)).to.deep.equal([
+                { nodeId: NODE, webRtcSessionId: 42 },
+                { nodeId: OTHER_NODE, webRtcSessionId: 42 },
+            ]);
+        });
     });
 
     describe("snapshot", () => {
@@ -1217,6 +1560,53 @@ describe("CameraStreamManager", () => {
             // Reshape task R4 replaces the comparison; this line pins which flag it reads until then.
             expect(result.downgraded).to.equal(true);
         });
+
+        it("gives the snapshot stream back when the capture fails", async () => {
+            const { manager, invokes } = managerWith(STATE, async invoke => {
+                if (invoke.command === "snapshotStreamAllocate") return { snapshotStreamId: 3 };
+                if (invoke.command === "captureSnapshot") {
+                    const error = new Error("no capacity") as Error & { code: number };
+                    error.code = Status.ResourceExhausted;
+                    throw error;
+                }
+                return undefined;
+            });
+
+            let thrown: unknown;
+            try {
+                await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraResourceExhausted);
+            // The caller never learned the id, so this is the only chance to release it.
+            expect(
+                invokes
+                    .filter(invoke => invoke.command === "snapshotStreamDeallocate")
+                    .map(invoke => invoke.fields.snapshotStreamId),
+            ).to.deep.equal([3]);
+        });
+
+        it("gives the snapshot stream back when the capture response is unusable", async () => {
+            const { manager, invokes } = managerWith(STATE, async invoke => {
+                if (invoke.command === "snapshotStreamAllocate") return { snapshotStreamId: 3 };
+                if (invoke.command === "captureSnapshot") return { imageCodec: 0 };
+                return undefined;
+            });
+
+            let thrown: unknown;
+            try {
+                await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.SDKStackError);
+            expect(
+                invokes
+                    .filter(invoke => invoke.command === "snapshotStreamDeallocate")
+                    .map(invoke => invoke.fields.snapshotStreamId),
+            ).to.deep.equal([3]);
+        });
     });
 
     describe("camera_not_supported", () => {
@@ -1314,6 +1704,67 @@ describe("CameraStreamManager", () => {
                 thrown = error;
             }
             expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamNotOwned);
+        });
+    });
+
+    describe("leases", () => {
+        const FOREIGN_STREAM = {
+            videoStreamId: 7,
+            streamUsage: 1,
+            videoCodec: 0,
+            minResolution: { width: 320, height: 240 },
+            maxResolution: { width: 320, height: 240 },
+            minFrameRate: 1,
+            maxFrameRate: 5,
+            minBitRate: 100000,
+            maxBitRate: 200000,
+            referenceCount: 0,
+        };
+
+        it("holds no entry for an endpoint whose last lease is gone", async () => {
+            const { manager } = probeWith({ ...STATE, allocatedSnapshotStreams: [] }, async invoke => {
+                if (invoke.command === "snapshotStreamAllocate") return { snapshotStreamId: 3 };
+                if (invoke.command === "captureSnapshot") {
+                    return { data: new Uint8Array([1]), imageCodec: 0, resolution: { width: 640, height: 480 } };
+                }
+                return undefined;
+            });
+            await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
+            expect(manager.endpointsWithLeases).to.equal(1);
+
+            await manager.releaseStream({ nodeId: NODE, endpointId: ENDPOINT, kind: "snapshot", streamId: 3 });
+            expect(manager.endpointsWithLeases).to.equal(0);
+        });
+
+        it("holds no entry for an endpoint that only ever gave up a foreign stream", async () => {
+            // The ladder deallocates the foreign stream to make room and drops a lease that never
+            // existed; every allocate fails, so nothing of ours is ever leased on this endpoint.
+            const { manager, invokes } = probeWith(
+                { ...STATE, allocatedVideoStreams: [FOREIGN_STREAM] },
+                async invoke => {
+                    if (invoke.command === "videoStreamAllocate") {
+                        const error = new Error("no capacity") as Error & { code: number };
+                        error.code = Status.ResourceExhausted;
+                        throw error;
+                    }
+                    return undefined;
+                },
+            );
+
+            let thrown: unknown;
+            try {
+                await manager.resolveVideoStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    streamUsage: LIVE_VIEW,
+                    codec: H265,
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraResourceExhausted);
+            expect(invokes.map(invoke => invoke.command)).to.include("videoStreamDeallocate");
+            expect(manager.endpointsWithLeases).to.equal(0);
         });
     });
 });

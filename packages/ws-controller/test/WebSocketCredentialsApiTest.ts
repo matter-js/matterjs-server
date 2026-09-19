@@ -5,6 +5,7 @@
  */
 
 import { AsyncObservable, Environment, MockStorageService, Observable } from "@matter/general";
+import { WebRtcTransportProvider } from "@matter/main/clusters/web-rtc-transport-provider";
 import { ThreadCredentialsRegistry } from "@matter/thread-br-client";
 import { createServer } from "node:http";
 import WebSocket from "ws";
@@ -24,6 +25,7 @@ function freshEnv(): Environment {
 interface StubCameraStreams {
     releaseConnection(connectionId: string): Promise<void>;
     startStream?(args: { connectionId: string }): Promise<unknown>;
+    forgetSession?(nodeId: bigint, endpointId: number, webRtcSessionId: number): boolean;
 }
 
 function makeStubController(credentials: ThreadCredentialsRegistry, cameraStreams?: StubCameraStreams) {
@@ -45,6 +47,10 @@ function makeStubController(credentials: ThreadCredentialsRegistry, cameraStream
 
     const stubCommandHandler = {
         events: stubEvents,
+        async handleInvoke() {
+            return {};
+        },
+        async removeTrackedWebRtcSession() {},
         bleEnabled: false,
         bleProxyEnabled: false,
         async start() {},
@@ -622,6 +628,31 @@ describe("WebSocket set_default_fabric_label ownership", () => {
             expect(h.config.fabricLabel).to.equal("Pinned");
         } finally {
             ws.close();
+        }
+    });
+});
+
+describe("WebSocket camera session tracking on the raw path", () => {
+    it("drops the camera registry entry when a client ends the session itself", async () => {
+        const forgotten = new Array<{ nodeId: bigint; endpointId: number; webRtcSessionId: number }>();
+        const h = await createHarness({
+            async releaseConnection() {},
+            forgetSession(nodeId, endpointId, webRtcSessionId) {
+                forgotten.push({ nodeId, endpointId, webRtcSessionId });
+                return true;
+            },
+        });
+        try {
+            await h.handle("device_command", {
+                node_id: 1,
+                endpoint_id: 1,
+                cluster_id: WebRtcTransportProvider.id,
+                command_name: "EndSession",
+                payload: { webRtcSessionId: 7 },
+            });
+            expect(forgotten).to.deep.equal([{ nodeId: 1n, endpointId: 1, webRtcSessionId: 7 }]);
+        } finally {
+            await h.close();
         }
     });
 });

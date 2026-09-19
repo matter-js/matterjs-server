@@ -271,6 +271,8 @@ Setting `min_resolution == max_resolution` (or the frame-rate / bit-rate equival
 
 When every video stream is already in use and none can be freed, the response may still succeed with a stream that does not fit the server's own default range — only within any bounds the caller stated — and reports that as `video.degraded: true`. A caller who pinned an exact bound gets a typed failure instead of a degraded result, never a stream outside what it asked for. Audio has no equivalent fallback: if no audio stream can be resolved, `audio` in the response is simply `null` and the video track proceeds alone.
 
+When the call fails, any stream it allocated for the session is deallocated before the error returns: the caller never receives those `stream_id`s, so `camera_release_stream` could not reach them. A stream the call reused is left in place.
+
 Answer SDP and ICE candidates keep arriving on the existing `webrtc_callback` event; this command replaces stream setup, not negotiation. Answering a solicited offer stays on the raw path (`ProvideAnswer` via `device_command`), since the answer carries no stream selection.
 
 ### camera_stop_stream
@@ -291,7 +293,7 @@ const { ended } = await client.sendCommand("camera_stop_stream", 0, {
 
 Requests a single still frame, always from a freshly allocated snapshot stream — an existing snapshot stream is never reused the way a video or audio stream is. If a video stream on the endpoint is already live, the server prefers a snapshot capability that does not require the hardware encoder and clamps the resolution down to it, reporting `downgraded: true`; otherwise it uses the highest-resolution capability available. A capability requires the hardware encoder only when the device declares both `requires_encoded_pixels` and `requires_hardware_encoder`: the second field is defined only when the first is true, so `requires_encoded_pixels` on its own does not mean an encoder is taken. `max_resolution` and `codec` narrow which device-declared capability is chosen; leaving them unset picks the best one available under the current encoder state.
 
-When the device refuses the capability it was offered, the server tries the next one down before failing. A refusal that no retry can fix comes back as `CAMERA_STREAM_INCOMPATIBLE_ERROR_CODE` carrying the device's status, and a capacity refusal as `CAMERA_RESOURCE_EXHAUSTED_ERROR_CODE`; snapshots use the same error codes as `camera_start_stream`.
+A snapshot stream whose capture then fails is deallocated before the error returns, for the same reason: its `stream_id` only ever reaches the caller on success. When the device refuses the capability it was offered, the server tries the next one down before failing. A refusal that no retry can fix comes back as `CAMERA_STREAM_INCOMPATIBLE_ERROR_CODE` carrying the device's status, and a capacity refusal as `CAMERA_RESOURCE_EXHAUSTED_ERROR_CODE`; snapshots use the same error codes as `camera_start_stream`.
 
 ```typescript
 const snap = await client.sendCommand("camera_snapshot", 0, {

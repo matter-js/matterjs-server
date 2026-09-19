@@ -41,6 +41,38 @@ describe("MatterController.cameraStreamsIfCreated", () => {
         expect(() => controller.cameraStreams).to.throw();
     });
 
+    it("drops the camera registry entry when the peer ends a session", async () => {
+        const controller = await MatterController.create(freshEnv(), config, {});
+        const manager = controller.cameraStreams;
+        const forgotten = new Array<string>();
+        manager.forgetSession = (nodeId, endpointId, webRtcSessionId) => {
+            forgotten.push(`${nodeId}/${endpointId}/${webRtcSessionId}`);
+            return true;
+        };
+
+        controller.commandHandler.events.webRtcCallback.emit({
+            event_type: "answer",
+            webrtc_session_id: 7,
+            node_id: 5n,
+            endpoint_id: 1,
+            fabric_index: 1,
+            data: { sdp: "v=0" },
+        });
+        expect(forgotten).to.deep.equal([]);
+
+        controller.commandHandler.events.webRtcCallback.emit({
+            event_type: "end",
+            webrtc_session_id: 7,
+            node_id: 5n,
+            endpoint_id: 1,
+            fabric_index: 1,
+            data: { reason: 0 },
+        });
+        expect(forgotten).to.deep.equal(["5/1/7"]);
+
+        await controller.stop();
+    });
+
     it("stop() releases every open camera session before closing connections", async () => {
         const controller = await MatterController.create(freshEnv(), config, {});
         const manager = controller.cameraStreams; // force construction

@@ -1291,6 +1291,13 @@ export class WebSocketControllerHandler implements WebServerHandler {
             const sessionId = extractWebRtcSessionId(payload);
             if (sessionId !== undefined) {
                 await this.#commandHandler.removeTrackedWebRtcSession(sessionId);
+                // The camera registry too, or its entry outlives the session it names: shutdown would
+                // send EndSession for a dead id and camera_stop_stream report a stale ended: true.
+                this.#controller.cameraStreamsIfCreated?.forgetSession(
+                    NodeId(nodeId),
+                    EndpointNumber(endpointId),
+                    sessionId,
+                );
             } else {
                 logger.debug(
                     "EndSession invoked without a recognizable webRtcSessionId; local session tracking left unchanged",
