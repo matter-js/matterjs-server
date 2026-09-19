@@ -784,9 +784,8 @@ export class CameraStreamManager {
         // at session establishment, so a stream resolved here reads as unreferenced at the device until
         // the response below lands. Releasing the lock in between would let a concurrent RESOURCE_EXHAUSTED
         // on this endpoint free or hand out the very stream this call is mid-way through using.
-        // Registered before the first await, so a connection closing at any point from here on claims
-        // this registration instead of finding nothing, and the session ends itself rather than
-        // registering for a connection that is gone.
+        // Before the first await: a connection closing from here on must claim this registration
+        // rather than find nothing and leave the session it is about to create unowned.
         const pending = this.#sessions.begin(nodeId, endpointId, args.connectionId);
         try {
             return await this.withEndpointLock(nodeId, endpointId, async () => {
@@ -794,8 +793,6 @@ export class CameraStreamManager {
                 return this.#establishSession(pending, args, state, sdp);
             });
         } finally {
-            // Only once the session has been dealt with: a release path waiting on this registration
-            // is waiting for the EndSession, not for the offer response.
             this.#sessions.finish(pending);
         }
     }
@@ -870,9 +867,7 @@ export class CameraStreamManager {
             }
             webRtcSessionId = sessionId;
         } catch (error) {
-            // No session exists to end — the provider call is what would have created one — but the
-            // streams allocated for it are the caller's only claim on them, and the caller is about
-            // to get an error instead of their ids.
+            // The caller gets an error instead of these stream ids, so nothing else can release them.
             await this.#releaseAllocatedFor(nodeId, endpointId, [
                 { kind: "video", stream: video },
                 { kind: "audio", stream: audio },
@@ -1142,9 +1137,8 @@ export class CameraStreamManager {
                 allocatedByUs: true,
             });
 
-            // The caller only ever learns snapshotStreamId from a successful return, so any failure
-            // from here on is the last chance to give the stream back: camera_release_stream cannot
-            // reach an id nobody was told.
+            // snapshotStreamId reaches the caller only on success, so any failure from here on is the
+            // last chance to give the stream back.
             let captured: { data: Uint8Array; imageCodec: number; resolution: Resolution };
             try {
                 const captureResponse = await this.io.invoke({
