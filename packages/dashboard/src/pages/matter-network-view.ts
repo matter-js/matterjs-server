@@ -125,23 +125,24 @@ class MatterNetworkView extends LitElement {
     }
 
     /**
-     * Refetch when the next held batch runs out of lifetime.
+     * Drop and refetch when the next held batch runs out of lifetime.
      *
-     * A batch that stops being current produces no event, so nothing else would notice. Refetching
-     * rather than discarding is what keeps the graph honest in both directions: the server answers
-     * with a current batch for a network that still reports, and omits one that no longer does.
-     * Dropping the batch on its own would make every device it vouches for vanish from a view left
-     * open past the TTL, with nothing to bring it back.
+     * A batch that stops being current produces no event, so nothing else would notice. The drop
+     * stops spent evidence vouching for anything; the refetch is what keeps the graph honest in
+     * both directions, since the server answers with a current batch for a network that still
+     * reports and omits one that no longer does. Dropping alone would empty a view left open past
+     * the TTL with nothing to refill it.
      *
-     * The store is pruned only when that refresh fails, so failing to reach the server degrades to
-     * "stop trusting the old evidence" rather than to "keep it forever".
+     * Thread-only: the connection stays opted in to diagnostics events after the user switches to
+     * the Wi-Fi view, so without this gate a late batch would start Thread mesh collections for a
+     * graph that is not on screen.
      */
     private _scheduleDiagnosticsExpiry(): void {
         if (this._diagnosticsExpiryTimer !== undefined) {
             clearTimeout(this._diagnosticsExpiryTimer);
             this._diagnosticsExpiryTimer = undefined;
         }
-        if (!this.isConnected) return;
+        if (!this.isConnected || this.networkType !== "thread") return;
 
         const nextAt = this._borderRouterStore.nextExpiryAt;
         if (nextAt === undefined) return;
@@ -150,6 +151,7 @@ class MatterNetworkView extends LitElement {
         const delay = Math.min(Math.max(0, nextAt - monotonicNow()), MAX_TIMEOUT_MS);
         this._diagnosticsExpiryTimer = setTimeout(() => {
             this._diagnosticsExpiryTimer = undefined;
+            if (this.networkType !== "thread") return;
             this._refreshExpiredDiagnostics().catch(err =>
                 console.warn("Failed to refresh expired thread diagnostics:", err),
             );
@@ -157,16 +159,17 @@ class MatterNetworkView extends LitElement {
     }
 
     private async _refreshExpiredDiagnostics(): Promise<void> {
+        // Drop first, ask second: the deadline has passed, so this evidence is spent whatever the
+        // refresh returns, and a command that stalls would otherwise let it go on vouching for
+        // external devices until the command times out minutes later.
+        if (this._borderRouterStore.pruneExpired()) this.requestUpdate();
+
         try {
             await this._borderRouterStore.refresh(this.client);
+            this.requestUpdate();
         } catch (err) {
             console.warn("Thread diagnostics refresh on expiry failed:", err);
-            if (this._borderRouterStore.pruneExpired()) this.requestUpdate();
-            this._scheduleDiagnosticsExpiry();
-            return;
         }
-        if (this._borderRouterStore.pruneExpired()) this.requestUpdate();
-        this.requestUpdate();
         this._scheduleDiagnosticsExpiry();
     }
 
