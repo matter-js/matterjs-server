@@ -243,7 +243,7 @@ Five commands cover a Matter camera's stream lifecycle: capability discovery, en
 
 ### camera_get_capabilities
 
-Read-only. Reports device-stated facts — sensor size, `RateDistortionTradeOffPoints`, snapshot capabilities, encoder limits, and currently allocated streams. There is deliberately no resolution list: the device does not expose one, and inventing one reproduces the defect in issue #1054.
+Read-only. Reports device-stated facts: `video` (sensor size, `RateDistortionTradeOffPoints`, codecs), `audio` (codecs, channel count, sample rates, bit depths, two-way talk support), `snapshot.capabilities`, `limits` (`max_encoded_pixel_rate`, `max_concurrent_encoders`, `supported_stream_usages`, `stream_usage_priorities`), and `allocated` streams per kind with their reference counts. There is deliberately no resolution list: the device does not expose one, and inventing one reproduces the defect in issue #1054.
 
 ```typescript
 const caps = await client.sendCommand("camera_get_capabilities", 0, {
@@ -254,7 +254,7 @@ const caps = await client.sendCommand("camera_get_capabilities", 0, {
 
 ### camera_start_stream
 
-Starts or reuses a video/audio stream and a WebRTC session: `ProvideOffer` when `sdp` is given, `SolicitOffer` otherwise. `video` / `audio` hints are **ranges** — `codecs`, `min_resolution`, `max_resolution`, `min_frame_rate`, `max_frame_rate`, `min_bit_rate`, `max_bit_rate` — matching `VideoStreamAllocate`'s own shape. Pass `false` for a hint to exclude that track.
+Starts or reuses a video/audio stream and a WebRTC session: `ProvideOffer` when `sdp` is given, `SolicitOffer` otherwise. `video` / `audio` hints are **ranges** — `codecs`, `min_resolution`, `max_resolution`, `min_frame_rate`, `max_frame_rate`, `min_bit_rate`, `max_bit_rate` — matching `VideoStreamAllocate`'s own shape. Pass `false` for a hint to exclude that track. `ice_servers`, `ice_transport_policy` and `metadata_enabled` pass through to the WebRTC session setup.
 
 ```typescript
 const stream = await client.sendCommand("camera_start_stream", 0, {
@@ -263,10 +263,13 @@ const stream = await client.sendCommand("camera_start_stream", 0, {
     stream_usage: "LiveView",
     sdp: offerSdp,
     video: { max_resolution: { width: 1920, height: 1080 } },
+    ice_servers: [{ urls: "stun:stun.example.org:3478" }],
 });
 ```
 
 Setting `min_resolution == max_resolution` (or the frame-rate / bit-rate equivalent) pins an exact value and fails hard if the camera cannot serve it. The Matter spec requires a camera to honour an allocated stream's minimum configuration for the life of that stream and to reject a later request it cannot accommodate alongside it (§15.2.1.2.2), so pinning `min == max` takes stream capacity away from every other client sharing the camera. Leave a bound unset unless an exact value is actually required.
+
+When every video stream is already in use and none can be freed, the response may still succeed with a stream that does not fit the server's own default range — only within any bounds the caller stated — and reports that as `video.degraded: true`. A caller who pinned an exact bound gets a typed failure instead of a degraded result, never a stream outside what it asked for. Audio has no equivalent fallback: if no audio stream can be resolved, `audio` in the response is simply `null` and the video track proceeds alone.
 
 Answer SDP and ICE candidates keep arriving on the existing `webrtc_callback` event; this command replaces stream setup, not negotiation. Answering a solicited offer stays on the raw path (`ProvideAnswer` via `device_command`), since the answer carries no stream selection.
 
@@ -275,23 +278,28 @@ Answer SDP and ICE candidates keep arriving on the existing `webrtc_callback` ev
 Ends the WebRTC session (`EndSession`) without releasing the underlying stream allocation, so a later `camera_start_stream` on the same endpoint can reuse it.
 
 ```typescript
-await client.sendCommand("camera_stop_stream", 0, {
+const { ended } = await client.sendCommand("camera_stop_stream", 0, {
     node_id: nodeId,
     endpoint_id: 1,
     webrtc_session_id: stream.webrtc_session_id,
 });
 ```
 
+`ended` is `false` when `webrtc_session_id` is not a session tracked for this `node_id`/`endpoint_id` — an unknown id, an already-ended session, or one that belongs to a different node or endpoint — rather than ending an arbitrary session by guessing its id.
+
 ### camera_snapshot
 
-Requests a single still frame. If a video stream on the endpoint is already live, the server prefers a snapshot capability that does not require the hardware encoder and clamps the resolution down to it, reporting `downgraded: true`; otherwise it uses the highest-resolution capability available.
+Requests a single still frame, always from a freshly allocated snapshot stream — there is no reuse ladder for snapshots the way there is for video and audio. If a video stream on the endpoint is already live, the server prefers a snapshot capability that does not require the hardware encoder and clamps the resolution down to it, reporting `downgraded: true`; otherwise it uses the highest-resolution capability available. `max_resolution` and `codec` narrow which device-declared capability is chosen; leaving them unset picks the best one available under the current encoder state.
 
 ```typescript
 const snap = await client.sendCommand("camera_snapshot", 0, {
     node_id: nodeId,
     endpoint_id: 1,
+    max_resolution: { width: 1280, height: 720 },
 });
 // snap.data is base64-encoded image bytes; snap.downgraded is true when a live stream forced a lower capability
+// snap.stream_id identifies the snapshot stream this call allocated; pass it to camera_release_stream to free it
+// snap.reused is always false and snap.allocated_by_server always true, since every call allocates fresh
 ```
 
 ### camera_release_stream
