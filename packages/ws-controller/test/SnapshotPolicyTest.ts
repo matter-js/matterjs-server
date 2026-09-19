@@ -4,7 +4,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import type { SnapshotCapability, SnapshotSelection } from "../src/camera/snapshotPolicy.js";
 import { selectSnapshotCapabilities, usesHardwareEncoder } from "../src/camera/snapshotPolicy.js";
+
+/** The ordered candidates, failing the test when the selection was unsatisfiable instead. */
+function chosen(selection: SnapshotSelection): SnapshotCapability[] {
+    if ("unsatisfiable" in selection) throw new Error(`unsatisfiable on ${selection.unsatisfiable}`);
+    return selection.capabilities;
+}
 
 /** Aqara G350, verified from live attributes: entry 0 is encoder-free, entry 1 needs the encoder. */
 const G350 = [
@@ -45,7 +52,7 @@ describe("snapshotPolicy", () => {
 
     describe("selectSnapshotCapabilities", () => {
         it("orders the highest resolution first when no stream holds the encoder", () => {
-            expect(selectSnapshotCapabilities(G350, { encoderBusy: false })[0]?.resolution).to.deep.equal({
+            expect(chosen(selectSnapshotCapabilities(G350, { encoderBusy: false }))[0]?.resolution).to.deep.equal({
                 width: 1920,
                 height: 1080,
             });
@@ -53,7 +60,7 @@ describe("snapshotPolicy", () => {
 
         it("offers every eligible capability, so a rejected one has a fallback", () => {
             expect(
-                selectSnapshotCapabilities(G350, { encoderBusy: false }).map(entry => entry.resolution),
+                chosen(selectSnapshotCapabilities(G350, { encoderBusy: false })).map(entry => entry.resolution),
             ).to.deep.equal([
                 { width: 1920, height: 1080 },
                 { width: 640, height: 480 },
@@ -61,7 +68,7 @@ describe("snapshotPolicy", () => {
         });
 
         it("picks an encoder-free capability while a video stream is live", () => {
-            expect(selectSnapshotCapabilities(G350, { encoderBusy: true })[0]?.resolution).to.deep.equal({
+            expect(chosen(selectSnapshotCapabilities(G350, { encoderBusy: true }))[0]?.resolution).to.deep.equal({
                 width: 640,
                 height: 480,
             });
@@ -71,50 +78,77 @@ describe("snapshotPolicy", () => {
             // requiresEncodedPixels alone does not take an encoder: filtering on it would rule out a
             // capability the camera can serve concurrently.
             const softwareEncoded = [{ ...G350[1], requiresHardwareEncoder: false }, G350[0]];
-            expect(selectSnapshotCapabilities(softwareEncoded, { encoderBusy: true })[0]?.resolution).to.deep.equal({
+            expect(
+                chosen(selectSnapshotCapabilities(softwareEncoded, { encoderBusy: true }))[0]?.resolution,
+            ).to.deep.equal({
                 width: 1920,
                 height: 1080,
             });
         });
 
         it("clamps a caller ceiling down to a capability the camera offers", () => {
-            const chosen = selectSnapshotCapabilities(G350, {
-                encoderBusy: false,
-                maxResolution: { width: 1280, height: 720 },
-            });
-            expect(chosen[0]?.resolution).to.deep.equal({ width: 640, height: 480 });
+            const selected = chosen(
+                selectSnapshotCapabilities(G350, { encoderBusy: false, maxResolution: { width: 1280, height: 720 } }),
+            );
+            expect(selected[0]?.resolution).to.deep.equal({ width: 640, height: 480 });
         });
 
         it("excludes a capability that exceeds the ceiling on one dimension only", () => {
             // 1920x1080 and 1440x1440 have comparable pixel counts; only a per-dimension test keeps
             // the taller one out of a 1920x1080 ceiling, and the device validates per dimension.
             const tall = { ...G350[0], resolution: { width: 1440, height: 1440 } };
-            const chosen = selectSnapshotCapabilities([tall, G350[0]], {
-                encoderBusy: false,
-                maxResolution: { width: 1920, height: 1080 },
-            });
-            expect(chosen.map(entry => entry.resolution)).to.deep.equal([{ width: 640, height: 480 }]);
+            const selected = chosen(
+                selectSnapshotCapabilities([tall, G350[0]], {
+                    encoderBusy: false,
+                    maxResolution: { width: 1920, height: 1080 },
+                }),
+            );
+            expect(selected.map(entry => entry.resolution)).to.deep.equal([{ width: 640, height: 480 }]);
         });
 
-        it("ignores a caller ceiling that would reach an encoder capability while streaming", () => {
-            const chosen = selectSnapshotCapabilities(G350, {
-                encoderBusy: true,
-                maxResolution: { width: 1920, height: 1080 },
-            });
-            expect(chosen[0]?.resolution).to.deep.equal({ width: 640, height: 480 });
+        it("keeps the encoder-free capability under a ceiling that would also admit an encoder one", () => {
+            const selected = chosen(
+                selectSnapshotCapabilities(G350, {
+                    encoderBusy: true,
+                    maxResolution: { width: 1920, height: 1080 },
+                }),
+            );
+            expect(selected[0]?.resolution).to.deep.equal({ width: 640, height: 480 });
         });
 
-        it("keeps every capability when a caller ceiling excludes all of them", () => {
-            const chosen = selectSnapshotCapabilities(G350, {
-                encoderBusy: false,
-                maxResolution: { width: 100, height: 100 },
+        it("keeps a capability inside the caller's ceiling even when it takes the busy encoder", () => {
+            // The encoder preference is the server's own; giving it up is what keeps a request the
+            // caller's stated bounds allow from failing.
+            const encoderFreeLarge = { ...G350[0], resolution: { width: 2560, height: 1440 } };
+            const encoderSmall = { ...G350[1], resolution: { width: 1280, height: 720 } };
+            const selected = chosen(
+                selectSnapshotCapabilities([encoderFreeLarge, encoderSmall], {
+                    encoderBusy: true,
+                    maxResolution: { width: 1280, height: 720 },
+                }),
+            );
+            expect(selected.map(entry => entry.resolution)).to.deep.equal([{ width: 1280, height: 720 }]);
+        });
+
+        it("reports a bounds failure when a caller ceiling excludes every capability", () => {
+            // Dropping the ceiling here would hand back a 1920x1080 snapshot to a caller that stated
+            // it can handle 100x100.
+            expect(
+                selectSnapshotCapabilities(G350, { encoderBusy: false, maxResolution: { width: 100, height: 100 } }),
+            ).to.deep.equal({ unsatisfiable: "bounds" });
+        });
+
+        it("reports a codec failure when no capability uses the requested codec", () => {
+            expect(selectSnapshotCapabilities(G350, { encoderBusy: false, codec: 7 })).to.deep.equal({
+                unsatisfiable: "codec",
             });
-            expect(chosen[0]?.resolution).to.deep.equal({ width: 1920, height: 1080 });
         });
 
         it("filters to a requested codec", () => {
             const mixed = [...G350, { ...G350[0], imageCodec: 1, resolution: { width: 320, height: 240 } }];
-            expect(selectSnapshotCapabilities(mixed, { encoderBusy: false, codec: 1 })[0]?.resolution).to.deep.equal({
+            expect(
+                chosen(selectSnapshotCapabilities(mixed, { encoderBusy: false, codec: 1 }))[0]?.resolution,
+            ).to.deep.equal({
                 width: 320,
                 height: 240,
             });
@@ -122,14 +156,16 @@ describe("snapshotPolicy", () => {
 
         it("falls back to an encoder capability when the camera offers no encoder-free one", () => {
             const encoderOnly = [G350[1]];
-            expect(selectSnapshotCapabilities(encoderOnly, { encoderBusy: true })[0]?.resolution).to.deep.equal({
-                width: 1920,
-                height: 1080,
-            });
+            expect(chosen(selectSnapshotCapabilities(encoderOnly, { encoderBusy: true }))[0]?.resolution).to.deep.equal(
+                {
+                    width: 1920,
+                    height: 1080,
+                },
+            );
         });
 
         it("reports nothing when the camera advertises no capabilities", () => {
-            expect(selectSnapshotCapabilities([], { encoderBusy: false })).to.deep.equal([]);
+            expect(selectSnapshotCapabilities([], { encoderBusy: false })).to.deep.equal({ capabilities: [] });
         });
     });
 });

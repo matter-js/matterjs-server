@@ -1186,6 +1186,57 @@ describe("CameraStreamManager", () => {
             expect(invokes.filter(invoke => invoke.command === "audioStreamDeallocate")).to.have.length(1);
         });
 
+        it("gives the video stream back when an audio codec the caller stated cannot be served", async () => {
+            // The audio failure arrives after the video stream is allocated, so the release path is
+            // the only thing keeping the device's ReferenceCount from staying up for good.
+            const { manager, invokes } = managerWith(STATE, async invoke => {
+                if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                return undefined;
+            });
+
+            let thrown: unknown;
+            try {
+                await manager.startStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    connectionId: "conn-1",
+                    streamUsage: LIVE_VIEW,
+                    sdp: "v=0",
+                    video: {},
+                    audio: { codecs: ["AAC"] },
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamIncompatible);
+            expect(JSON.parse((thrown as ServerError).message).reason).to.equal("codec");
+            expect(invokes.filter(invoke => invoke.command === "videoStreamDeallocate")).to.have.length(1);
+        });
+
+        it("fails the whole call when the offer names no video codec the camera supports", async () => {
+            const { manager, invokes } = managerWith(STATE, async () => undefined);
+
+            let thrown: unknown;
+            try {
+                await manager.startStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    connectionId: "conn-1",
+                    streamUsage: LIVE_VIEW,
+                    sdp: "v=0\r\nm=video 9 UDP/TLS/RTP/SAVPF 96\r\na=rtpmap:96 H264/90000\r\n",
+                    video: {},
+                    audio: false,
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamIncompatible);
+            const payload = JSON.parse((thrown as ServerError).message);
+            expect(payload.reason).to.equal("codec");
+            expect(payload.requested).to.deep.equal(["H264"]);
+            expect(invokes.filter(invoke => invoke.command === "videoStreamAllocate")).to.have.length(0);
+        });
+
         it("gives back the stream it allocated when the provider returns no session id", async () => {
             const { manager, invokes } = managerWith(STATE, async invoke => {
                 if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
@@ -1431,6 +1482,51 @@ describe("CameraStreamManager", () => {
             const result = await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
             expect(result.resolution).to.deep.equal({ width: 1920, height: 1080 });
             expect(result.downgraded).to.equal(false);
+        });
+
+        it("fails typed when the caller's resolution ceiling excludes every capability", async () => {
+            // Dropping the ceiling returns an image larger than the caller said it can handle.
+            const { manager, invokes } = managerWith(STATE, async () => undefined);
+            let thrown: unknown;
+            try {
+                await manager.snapshot({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    maxResolution: { width: 100, height: 100 },
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamIncompatible);
+            expect(JSON.parse((thrown as ServerError).message).reason).to.equal("bounds");
+            expect(invokes).to.have.length(0);
+        });
+
+        it("reports a codec failure when no capability uses the requested codec", async () => {
+            const { manager } = managerWith(STATE, async () => undefined);
+            let thrown: unknown;
+            try {
+                await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT, codec: 7 });
+            } catch (error) {
+                thrown = error;
+            }
+            expect(JSON.parse((thrown as ServerError).message).reason).to.equal("codec");
+        });
+
+        it("reports a bounds failure when a ceiling excludes every capability of the requested codec", async () => {
+            const { manager } = managerWith(STATE, async () => undefined);
+            let thrown: unknown;
+            try {
+                await manager.snapshot({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    codec: 0,
+                    maxResolution: { width: 100, height: 100 },
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            expect(JSON.parse((thrown as ServerError).message).reason).to.equal("bounds");
         });
 
         function snapshotStatusError(status: number): Error & { code: number } {
@@ -1774,6 +1870,20 @@ describe("preferredVideoCodec", () => {
     const H264 = 0;
     const H265 = 1;
 
+    /** The typed failure a call raised, or a test failure when it raised nothing. */
+    function incompatible(call: () => unknown): {
+        code: number;
+        payload: { reason: string; device: string[]; requested: string[] };
+    } {
+        try {
+            call();
+        } catch (error) {
+            if (error instanceof ServerError) return { code: error.code, payload: JSON.parse(error.message) };
+            throw error;
+        }
+        throw new Error("expected a typed camera failure");
+    }
+
     it("honors the caller's stated preference order over the device's own ordering", () => {
         // Device lists H.264 before H.265; the caller prefers H.265 first.
         expect(preferredVideoCodec([H264, H265], undefined, ["H265", "H264"])).to.equal(H265);
@@ -1787,7 +1897,73 @@ describe("preferredVideoCodec", () => {
         expect(preferredVideoCodec([H264], undefined, ["H265", "H264"])).to.equal(H264);
     });
 
-    it("falls back to the SDP-filtered set when no hint codec matches", () => {
-        expect(preferredVideoCodec([H264, H265], undefined, ["AV1"])).to.equal(H264);
+    it("fails typed when no hint codec matches, instead of handing back another one", () => {
+        const failure = incompatible(() => preferredVideoCodec([H264, H265], undefined, ["AV1"]));
+        expect(failure.code).to.equal(ServerErrorCode.CameraStreamIncompatible);
+        expect(failure.payload.reason).to.equal("codec");
+        expect(failure.payload.requested).to.deep.equal(["AV1"]);
+    });
+
+    it("fails typed when the offer names no codec the camera supports", () => {
+        // An H.264-only peer handed an H.265 stream sees a session it cannot decode and no error.
+        const offer = {
+            codecs: ["H264"],
+            audioCodecs: new Array<string>(),
+            hasVideo: true,
+            hasAudio: false,
+            wantsTalkback: false,
+        };
+        const failure = incompatible(() => preferredVideoCodec([H265], offer, undefined));
+        expect(failure.code).to.equal(ServerErrorCode.CameraStreamIncompatible);
+        expect(failure.payload.reason).to.equal("codec");
+        expect(failure.payload.requested).to.deep.equal(["H264"]);
+    });
+
+    it("reports the set the failing step narrowed, not the camera's full list", () => {
+        // After the offer has ruled H.265 out, "the camera supports H.265" is not the answer the
+        // client needs to act on.
+        const offer = {
+            codecs: ["H264"],
+            audioCodecs: new Array<string>(),
+            hasVideo: true,
+            hasAudio: false,
+            wantsTalkback: false,
+        };
+        const failure = incompatible(() => preferredVideoCodec([H264, H265], offer, ["H265"]));
+        expect(failure.payload.device).to.deep.equal(["0"]);
+    });
+
+    it("keeps the offer's narrowing when a later hint agrees with it", () => {
+        const offer = {
+            codecs: ["H264"],
+            audioCodecs: new Array<string>(),
+            hasVideo: true,
+            hasAudio: false,
+            wantsTalkback: false,
+        };
+        expect(preferredVideoCodec([H264, H265], offer, ["H264"])).to.equal(H264);
+    });
+
+    it("honours the caller's codec when the camera advertises no trade-off point", () => {
+        // Nothing was narrowed away, so the caller's choice is the only statement there is; the
+        // allocate call is what a camera that cannot serve it rejects.
+        expect(preferredVideoCodec(new Array<number>(), undefined, ["H265"])).to.equal(H265);
+    });
+
+    it("defaults to H.264 when neither the camera, the offer nor the caller names a codec", () => {
+        expect(preferredVideoCodec(new Array<number>(), undefined, undefined)).to.equal(H264);
+    });
+
+    it("keeps a video m-line with no rtpmap from failing the request", () => {
+        // An m-line carrying only static payload types parses to hasVideo with an empty codec list;
+        // that states nothing about what the peer can decode.
+        const offer = {
+            codecs: new Array<string>(),
+            audioCodecs: new Array<string>(),
+            hasVideo: true,
+            hasAudio: false,
+            wantsTalkback: false,
+        };
+        expect(preferredVideoCodec([H265], offer, undefined)).to.equal(H265);
     });
 });

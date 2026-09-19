@@ -65,6 +65,11 @@ function toOptionalStringArray(value: unknown, field: string): string[] | undefi
     return value;
 }
 
+/** Codec names are matched against the SDP rtpmap spelling, which is upper case. */
+function toOptionalCodecNames(value: unknown, field: string): string[] | undefined {
+    return toOptionalStringArray(value, field)?.map(name => name.toUpperCase());
+}
+
 function toOptionalRecordArray(value: unknown, field: string): Array<Record<string, unknown>> | undefined {
     if (value === undefined) return undefined;
     if (!Array.isArray(value) || value.some(entry => typeof entry !== "object" || entry === null)) {
@@ -97,7 +102,7 @@ function parseVideoHints(value: unknown): VideoHints {
     if (!isRecord(value)) {
         throw ServerError.invalidArguments("video hints must be an object");
     }
-    const codecs = toOptionalStringArray(value.codecs, "video.codecs");
+    const codecs = toOptionalCodecNames(value.codecs, "video.codecs");
     const minFrameRate = toOptionalNumber(value.min_frame_rate, "video.min_frame_rate");
     const maxFrameRate = toOptionalNumber(value.max_frame_rate, "video.max_frame_rate");
     const minBitRate = toOptionalNumber(value.min_bit_rate, "video.min_bit_rate");
@@ -121,7 +126,7 @@ function parseAudioHints(value: unknown): AudioHints {
     if (!isRecord(value)) {
         throw ServerError.invalidArguments("audio hints must be an object");
     }
-    const codecs = toOptionalStringArray(value.codecs, "audio.codecs");
+    const codecs = toOptionalCodecNames(value.codecs, "audio.codecs");
     const channelCount = toOptionalNumber(value.channel_count, "audio.channel_count");
     const sampleRate = toOptionalNumber(value.sample_rate, "audio.sample_rate");
     const bitRate = toOptionalNumber(value.bit_rate, "audio.bit_rate");

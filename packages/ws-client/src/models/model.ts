@@ -385,7 +385,10 @@ export interface CameraResolution {
  * default.
  */
 export interface CameraVideoHints {
-    /** Codec names in preference order, e.g. ["H265", "H264"]. */
+    /**
+     * Codec names in preference order, e.g. ["H265", "H264"], matched case-insensitively. A hard
+     * requirement: when the camera supports none of them the call fails with error 102.
+     */
     codecs?: string[];
     min_resolution?: CameraResolution;
     max_resolution?: CameraResolution;
@@ -396,7 +399,10 @@ export interface CameraVideoHints {
 }
 
 export interface CameraAudioHints {
-    /** Codec names, e.g. ["OPUS"]. */
+    /**
+     * Codec names, e.g. ["OPUS"], matched case-insensitively. A hard requirement: when the camera
+     * supports none of them the call fails with error 102, rather than the session going video-only.
+     */
     codecs?: string[];
     channel_count?: number;
     sample_rate?: number;

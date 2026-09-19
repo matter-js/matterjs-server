@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import type { AudioEnvelope } from "../src/camera/cameraTypes.js";
 import {
     computeAudioEnvelope,
     computeVideoEnvelope,
@@ -11,6 +12,13 @@ import {
     findReusableVideoStream,
     narrowEnvelope,
 } from "../src/camera/streamPolicy.js";
+import type { AudioSelection } from "../src/camera/streamPolicy.js";
+
+/** The envelope a selection carries, failing the test when the selection was unsatisfiable instead. */
+function audioEnvelope(selection: AudioSelection): AudioEnvelope | undefined {
+    if ("unsatisfiable" in selection) throw new Error(`unsatisfiable on ${selection.unsatisfiable}`);
+    return selection.envelope;
+}
 
 /** H.264 = 0, H.265 = 1 in VideoCodecEnum. */
 const H264 = 0;
@@ -429,6 +437,22 @@ describe("streamPolicy", () => {
             expect(findDegradedVideoStream([IN_USE_WIDE], H264, {})).to.equal(undefined);
         });
 
+        it("refuses a stream below a bit-rate floor the caller stated", () => {
+            expect(findDegradedVideoStream([IN_USE_WIDE], H265, { minBitRate: 1000000 })).to.equal(undefined);
+        });
+
+        it("refuses a stream above a bit-rate ceiling the caller stated", () => {
+            // The caller's ceiling is what its link can carry; a 4 Mbit/s stream overruns it.
+            expect(findDegradedVideoStream([IN_USE_WIDE], H265, { maxBitRate: 2000000 })).to.equal(undefined);
+        });
+
+        it("accepts a stream inside the bit-rate bounds the caller stated", () => {
+            expect(
+                findDegradedVideoStream([IN_USE_WIDE], H265, { minBitRate: 500000, maxBitRate: 4000000 })
+                    ?.videoStreamId,
+            ).to.equal(4);
+        });
+
         it("ignores stream usage, because this rung runs only when nothing else fits", () => {
             const recording = { ...IN_USE_WIDE, streamUsage: RECORDING_USAGE };
             expect(findDegradedVideoStream([recording], H265, {})?.videoStreamId).to.equal(4);
@@ -525,12 +549,14 @@ describe("streamPolicy", () => {
         };
 
         it("picks the camera's codec when the caller offers no SDP", () => {
-            const envelope = computeAudioEnvelope({
-                capabilities: AUDIO_CAPABILITIES,
-                sdp: undefined,
-                hints: undefined,
-                wantsTalkback: false,
-            });
+            const envelope = audioEnvelope(
+                computeAudioEnvelope({
+                    capabilities: AUDIO_CAPABILITIES,
+                    sdp: undefined,
+                    hints: undefined,
+                    wantsTalkback: false,
+                }),
+            );
             expect(envelope?.codec).to.equal(OPUS);
             expect(envelope?.sampleRate).to.equal(48000);
             expect(envelope?.channelCount).to.equal(2);
@@ -551,20 +577,24 @@ describe("streamPolicy", () => {
                     hints: undefined,
                     wantsTalkback: false,
                 }),
-            ).to.equal(undefined);
+            ).to.deep.equal({ envelope: undefined });
         });
 
         it("narrows to a caller codec preference", () => {
-            const envelope = computeAudioEnvelope({
-                capabilities: { ...AUDIO_CAPABILITIES, supportedCodecs: [OPUS, AAC] },
-                sdp: undefined,
-                hints: { codecs: ["AAC"] },
-                wantsTalkback: false,
-            });
+            const envelope = audioEnvelope(
+                computeAudioEnvelope({
+                    capabilities: { ...AUDIO_CAPABILITIES, supportedCodecs: [OPUS, AAC] },
+                    sdp: undefined,
+                    hints: { codecs: ["AAC"] },
+                    wantsTalkback: false,
+                }),
+            );
             expect(envelope?.codec).to.equal(AAC);
         });
 
-        it("reports nothing when the caller's codec preference is not one the camera supports", () => {
+        it("reports the caller's codec preference as unsatisfiable when the camera lacks it", () => {
+            // The video path fails here too; a caller that stated a codec gets the same answer on
+            // either track rather than a silently audio-less session.
             expect(
                 computeAudioEnvelope({
                     capabilities: AUDIO_CAPABILITIES,
@@ -572,72 +602,101 @@ describe("streamPolicy", () => {
                     hints: { codecs: ["AAC"] },
                     wantsTalkback: false,
                 }),
-            ).to.equal(undefined);
+            ).to.deep.equal({ unsatisfiable: "codec", device: [OPUS], requested: ["AAC"] });
         });
 
-        it("ignores a hint codec name the device does not report a matching number for", () => {
-            const envelope = computeAudioEnvelope({
+        it("reports a hint codec name the device has no matching number for as unsatisfiable", () => {
+            const selection = computeAudioEnvelope({
                 capabilities: { ...AUDIO_CAPABILITIES, supportedCodecs: [OPUS, AAC] },
                 sdp: undefined,
                 hints: { codecs: ["UNKNOWN_CODEC"] },
                 wantsTalkback: false,
             });
-            expect(envelope).to.equal(undefined);
+            expect("unsatisfiable" in selection && selection.unsatisfiable).to.equal("codec");
+        });
+
+        it("reports nothing, without failing, when the offer shares no codec with the camera", () => {
+            // The offer states what the peer can decode; an audio-less session is the honest outcome
+            // and it is not a caller bound being dropped.
+            expect(
+                computeAudioEnvelope({
+                    capabilities: AUDIO_CAPABILITIES,
+                    sdp: {
+                        codecs: [],
+                        audioCodecs: ["AAC"],
+                        hasVideo: false,
+                        hasAudio: true,
+                        wantsTalkback: false,
+                    },
+                    hints: { codecs: ["OPUS"] },
+                    wantsTalkback: false,
+                }),
+            ).to.deep.equal({ envelope: undefined });
         });
 
         it("does not filter by codec on an SDP audio m-line marked absent", () => {
-            const envelope = computeAudioEnvelope({
-                capabilities: AUDIO_CAPABILITIES,
-                sdp: {
-                    codecs: [],
-                    audioCodecs: ["AAC"],
-                    hasVideo: true,
-                    hasAudio: false,
+            const envelope = audioEnvelope(
+                computeAudioEnvelope({
+                    capabilities: AUDIO_CAPABILITIES,
+                    sdp: {
+                        codecs: [],
+                        audioCodecs: ["AAC"],
+                        hasVideo: true,
+                        hasAudio: false,
+                        wantsTalkback: false,
+                    },
+                    hints: undefined,
                     wantsTalkback: false,
-                },
-                hints: undefined,
-                wantsTalkback: false,
-            });
+                }),
+            );
             expect(envelope?.codec).to.equal(OPUS);
         });
 
         it("never exceeds the camera's channel count", () => {
-            const envelope = computeAudioEnvelope({
-                capabilities: AUDIO_CAPABILITIES,
-                sdp: undefined,
-                hints: { channelCount: 8 },
-                wantsTalkback: false,
-            });
+            const envelope = audioEnvelope(
+                computeAudioEnvelope({
+                    capabilities: AUDIO_CAPABILITIES,
+                    sdp: undefined,
+                    hints: { channelCount: 8 },
+                    wantsTalkback: false,
+                }),
+            );
             expect(envelope?.channelCount).to.equal(2);
         });
 
         it("uses a requested sample rate the camera supports", () => {
-            const envelope = computeAudioEnvelope({
-                capabilities: AUDIO_CAPABILITIES,
-                sdp: undefined,
-                hints: { sampleRate: 16000 },
-                wantsTalkback: false,
-            });
+            const envelope = audioEnvelope(
+                computeAudioEnvelope({
+                    capabilities: AUDIO_CAPABILITIES,
+                    sdp: undefined,
+                    hints: { sampleRate: 16000 },
+                    wantsTalkback: false,
+                }),
+            );
             expect(envelope?.sampleRate).to.equal(16000);
         });
 
         it("ignores a sample rate the camera does not support", () => {
-            const envelope = computeAudioEnvelope({
-                capabilities: AUDIO_CAPABILITIES,
-                sdp: undefined,
-                hints: { sampleRate: 44100 },
-                wantsTalkback: false,
-            });
+            const envelope = audioEnvelope(
+                computeAudioEnvelope({
+                    capabilities: AUDIO_CAPABILITIES,
+                    sdp: undefined,
+                    hints: { sampleRate: 44100 },
+                    wantsTalkback: false,
+                }),
+            );
             expect(envelope?.sampleRate).to.equal(48000);
         });
 
         it("still produces a receive-only envelope when talkback is asked of a camera without it", () => {
-            const envelope = computeAudioEnvelope({
-                capabilities: AUDIO_CAPABILITIES,
-                sdp: undefined,
-                hints: undefined,
-                wantsTalkback: true,
-            });
+            const envelope = audioEnvelope(
+                computeAudioEnvelope({
+                    capabilities: AUDIO_CAPABILITIES,
+                    sdp: undefined,
+                    hints: undefined,
+                    wantsTalkback: true,
+                }),
+            );
             expect(envelope?.codec).to.equal(OPUS);
         });
     });

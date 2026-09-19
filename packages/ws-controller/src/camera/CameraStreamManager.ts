@@ -118,20 +118,39 @@ const VIDEO_CODEC_NAMES = new Map<CameraAvStreamManagement.VideoCodec, string>([
 ]);
 
 /**
+ * `narrowed`, or a typed codec failure when narrowing emptied the set it was given.
+ *
+ * `device` reports the set that was narrowed, not the camera's full list: after the offer has already
+ * ruled codecs out, "the camera supports it" is no longer the answer the client needs.
+ */
+function requireCodecCandidates(narrowed: number[], before: number[], requested: string[]): number[] {
+    if (narrowed.length === 0) {
+        throw ServerError.cameraStreamIncompatible({
+            reason: "codec",
+            device: before.map(String),
+            requested,
+        });
+    }
+    return narrowed;
+}
+
+/**
  * The codec to request, narrowed from the device's rate-distortion codecs by what the offer states
- * it can decode and what the caller prefers. Neither narrowing widens past the device list, and an
- * empty result at either stage falls back to the wider set: resolveVideoStream is what rejects a
- * codec the device does not support.
+ * it can decode and then by what the caller prefers.
+ *
+ * Both narrowings are hard; `resolveVideoStreamLocked` then rejects a codec outside the device's own
+ * list. A camera that advertises no trade-off point states nothing to narrow, so the enum's own
+ * vocabulary stands in and the caller's or the offer's choice decides.
  */
 export function preferredVideoCodec(
     deviceCodecs: number[],
     sdp: SdpVideoConstraints | undefined,
     hintCodecs: string[] | undefined,
 ): number {
-    let candidates = deviceCodecs;
-    if (sdp?.hasVideo === true) {
+    let candidates = deviceCodecs.length > 0 ? deviceCodecs : [...VIDEO_CODEC_NAMES.keys()];
+    if (sdp?.hasVideo === true && sdp.codecs.length > 0) {
         const offered = candidates.filter(codec => sdp.codecs.includes(VIDEO_CODEC_NAMES.get(codec) ?? ""));
-        if (offered.length > 0) candidates = offered;
+        candidates = requireCodecCandidates(offered, candidates, sdp.codecs);
     }
     if (hintCodecs !== undefined) {
         // Walk the caller's stated order, not the device's: `candidates.filter(...)` would keep the
@@ -139,9 +158,9 @@ export function preferredVideoCodec(
         const preferred = hintCodecs
             .map(name => candidates.find(codec => VIDEO_CODEC_NAMES.get(codec) === name))
             .filter((codec): codec is number => codec !== undefined);
-        if (preferred.length > 0) candidates = preferred;
+        candidates = requireCodecCandidates(preferred, candidates, hintCodecs);
     }
-    return candidates[0] ?? deviceCodecs[0] ?? 0;
+    return candidates[0] ?? CameraAvStreamManagement.VideoCodec.H264;
 }
 
 function isResolution(value: unknown): value is Resolution {
@@ -652,9 +671,9 @@ export class CameraStreamManager {
      * Body of {@link resolveAudioStream}. The caller must already hold the endpoint lock; see
      * {@link resolveVideoStreamLocked}.
      *
-     * Audio has no narrowing ladder: a camera either supports the codec or it does not. An audio
-     * track is optional in a way a video track is not, so a device rejection yields `undefined` and a
-     * video-only session rather than a failure.
+     * Audio has no narrowing ladder: a camera either supports the codec or it does not. A device
+     * rejection, and an offer sharing no codec with the camera, yield `undefined` and a video-only
+     * session rather than a failure. A codec the caller itself stated is hard, as it is for video.
      */
     protected async resolveAudioStreamLocked(args: {
         nodeId: NodeId;
@@ -675,7 +694,7 @@ export class CameraStreamManager {
             return undefined;
         }
 
-        const envelope = computeAudioEnvelope({
+        const selection = computeAudioEnvelope({
             capabilities: {
                 ...microphone,
                 twoWayTalkSupport: state.twoWayTalkSupport ?? 0,
@@ -684,6 +703,14 @@ export class CameraStreamManager {
             hints: args.hints,
             wantsTalkback: args.sdp?.wantsTalkback === true,
         });
+        if ("unsatisfiable" in selection) {
+            throw ServerError.cameraStreamIncompatible({
+                reason: selection.unsatisfiable,
+                device: selection.device.map(String),
+                requested: selection.requested,
+            });
+        }
+        const envelope = selection.envelope;
         if (envelope === undefined) return undefined;
 
         const existing = state.allocatedAudioStreams.find(
@@ -1071,16 +1098,24 @@ export class CameraStreamManager {
         return this.withEndpointLock(nodeId, endpointId, async () => {
             const state = await this.requireState(nodeId, endpointId);
             const encoderBusy = state.allocatedVideoStreams.some(stream => stream.referenceCount > 0);
-            const candidates = selectSnapshotCapabilities(state.snapshotCapabilities, {
+            const selection = selectSnapshotCapabilities(state.snapshotCapabilities, {
                 encoderBusy,
                 maxResolution: args.maxResolution,
                 codec: args.codec,
             });
             const deviceCodecs = state.snapshotCapabilities.map(entry => String(entry.imageCodec));
             const requestedCodecs = args.codec === undefined ? new Array<string>() : [String(args.codec)];
+            if ("unsatisfiable" in selection) {
+                throw ServerError.cameraStreamIncompatible({
+                    reason: selection.unsatisfiable,
+                    device: deviceCodecs,
+                    requested: requestedCodecs,
+                });
+            }
+            const candidates = selection.capabilities;
             if (candidates.length === 0) {
                 throw ServerError.cameraStreamIncompatible({
-                    reason: args.codec === undefined ? "bounds" : "codec",
+                    reason: "bounds",
                     device: deviceCodecs,
                     requested: requestedCodecs,
                 });
@@ -1105,8 +1140,12 @@ export class CameraStreamManager {
                             maxResolution: capability.resolution,
                         },
                     });
-                    const snapshotStreamId = (allocateResponse as { snapshotStreamId?: unknown } | undefined)
-                        ?.snapshotStreamId;
+                    const snapshotStreamId =
+                        typeof allocateResponse === "object" &&
+                        allocateResponse !== null &&
+                        "snapshotStreamId" in allocateResponse
+                            ? allocateResponse.snapshotStreamId
+                            : undefined;
                     if (typeof snapshotStreamId !== "number") {
                         throw ServerError.sdkStackError("SnapshotStreamAllocate returned no SnapshotStreamID");
                     }

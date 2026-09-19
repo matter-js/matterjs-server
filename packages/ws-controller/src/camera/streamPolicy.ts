@@ -254,6 +254,12 @@ export function findDegradedVideoStream(
         if (callerBounds.maxFrameRate !== undefined && candidate.maxFrameRate > callerBounds.maxFrameRate) {
             return false;
         }
+        if (callerBounds.minBitRate !== undefined && candidate.minBitRate < callerBounds.minBitRate) {
+            return false;
+        }
+        if (callerBounds.maxBitRate !== undefined && candidate.maxBitRate > callerBounds.maxBitRate) {
+            return false;
+        }
         return true;
     });
 
@@ -319,12 +325,22 @@ export interface AudioEnvelopeArgs {
 }
 
 /**
- * Parameters for an audio stream, or none when no codec suits both sides.
+ * An audio envelope, no envelope, or the caller bound that left no codec.
  *
- * Audio is optional in a way video is not: a caller that cannot agree on a codec gets a video-only
- * session rather than a failed one, so this reports absence instead of throwing.
+ * `envelope: undefined` is a video-only session, which audio allows and video does not;
+ * `unsatisfiable` is a caller bound and always a failure.
  */
-export function computeAudioEnvelope(args: AudioEnvelopeArgs): AudioEnvelope | undefined {
+export type AudioSelection =
+    | { readonly envelope: AudioEnvelope | undefined }
+    | { readonly unsatisfiable: "codec"; readonly device: number[]; readonly requested: string[] };
+
+/**
+ * Parameters for an audio stream.
+ *
+ * A codec the caller stated is hard, as it is for video. An offer naming no codec the camera has is
+ * not: the peer stated what it can decode, and the session proceeds video-only.
+ */
+export function computeAudioEnvelope(args: AudioEnvelopeArgs): AudioSelection {
     const { capabilities, sdp, hints } = args;
 
     let codecs = capabilities.supportedCodecs;
@@ -340,10 +356,13 @@ export function computeAudioEnvelope(args: AudioEnvelopeArgs): AudioEnvelope | u
             const name = AUDIO_CODEC_NAMES.get(codec);
             return name !== undefined && hintCodecs.includes(name);
         });
-        codecs = preferred.length > 0 ? preferred : new Array<number>();
+        if (preferred.length === 0 && codecs.length > 0) {
+            return { unsatisfiable: "codec", device: codecs, requested: hintCodecs };
+        }
+        codecs = preferred;
     }
     const codec = codecs[0];
-    if (codec === undefined) return undefined;
+    if (codec === undefined) return { envelope: undefined };
 
     const sampleRate =
         hints?.sampleRate !== undefined && capabilities.supportedSampleRates.includes(hints.sampleRate)
@@ -351,13 +370,15 @@ export function computeAudioEnvelope(args: AudioEnvelopeArgs): AudioEnvelope | u
             : Math.max(...capabilities.supportedSampleRates);
 
     return {
-        codec,
-        channelCount: Math.min(
-            hints?.channelCount ?? capabilities.maxNumberOfChannels,
-            capabilities.maxNumberOfChannels,
-        ),
-        sampleRate,
-        bitRate: hints?.bitRate ?? DEFAULT_AUDIO_BIT_RATE,
-        bitDepth: Math.max(...capabilities.supportedBitDepths),
+        envelope: {
+            codec,
+            channelCount: Math.min(
+                hints?.channelCount ?? capabilities.maxNumberOfChannels,
+                capabilities.maxNumberOfChannels,
+            ),
+            sampleRate,
+            bitRate: hints?.bitRate ?? DEFAULT_AUDIO_BIT_RATE,
+            bitDepth: Math.max(...capabilities.supportedBitDepths),
+        },
     };
 }

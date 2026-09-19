@@ -33,6 +33,11 @@ export function usesHardwareEncoder(capability: SnapshotCapability): boolean {
     return capability.requiresEncodedPixels && capability.requiresHardwareEncoder;
 }
 
+/** Which narrowing step left no capability, for the typed failure the caller raises. */
+export type SnapshotSelection =
+    | { readonly capabilities: SnapshotCapability[] }
+    | { readonly unsatisfiable: "codec" | "bounds" };
+
 /**
  * The capabilities to attempt a snapshot stream against, best first.
  *
@@ -40,27 +45,36 @@ export function usesHardwareEncoder(capability: SnapshotCapability): boolean {
  * concurrent snapshot must use a capability that needs none — on the Aqara G350 that is 640x480, and
  * requesting 1080p there fails with ResourceExhausted rather than degrading. Several are returned so
  * the caller can walk down after a device rejection instead of failing on the first choice.
+ *
+ * The caller's codec and resolution ceiling are hard and are applied first: a ceiling that excludes
+ * every capability reports `unsatisfiable` rather than handing back a snapshot larger than the caller
+ * declared it can handle. The encoder preference runs last and is the one step that may be given up,
+ * so wanting an encoder-free capability can never turn a request the caller's own bounds allow into a
+ * failure.
  */
 export function selectSnapshotCapabilities(
     capabilities: SnapshotCapability[],
     options: { encoderBusy: boolean; maxResolution?: Resolution; codec?: number },
-): SnapshotCapability[] {
+): SnapshotSelection {
     let eligible = capabilities;
     if (options.codec !== undefined) {
+        const before = eligible;
         eligible = eligible.filter(capability => capability.imageCodec === options.codec);
+        if (eligible.length === 0 && before.length > 0) return { unsatisfiable: "codec" };
+    }
+    if (options.maxResolution !== undefined) {
+        const ceiling = options.maxResolution;
+        const before = eligible;
+        eligible = eligible.filter(
+            capability =>
+                capability.resolution.width <= ceiling.width && capability.resolution.height <= ceiling.height,
+        );
+        if (eligible.length === 0 && before.length > 0) return { unsatisfiable: "bounds" };
     }
     if (options.encoderBusy) {
         const encoderFree = eligible.filter(capability => !usesHardwareEncoder(capability));
         if (encoderFree.length > 0) eligible = encoderFree;
     }
-    if (options.maxResolution !== undefined) {
-        const ceiling = options.maxResolution;
-        const withinCeiling = eligible.filter(
-            capability =>
-                capability.resolution.width <= ceiling.width && capability.resolution.height <= ceiling.height,
-        );
-        if (withinCeiling.length > 0) eligible = withinCeiling;
-    }
     // Array.prototype.sort mutates in place; eligible can still be the caller's own array here.
-    return [...eligible].sort((a, b) => pixels(b.resolution) - pixels(a.resolution));
+    return { capabilities: [...eligible].sort((a, b) => pixels(b.resolution) - pixels(a.resolution)) };
 }

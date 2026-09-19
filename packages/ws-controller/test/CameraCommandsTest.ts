@@ -265,6 +265,18 @@ describe("cameraCommands", () => {
             );
         });
 
+        it("upper-cases codec hints, so a lower-case name is not a hard codec failure", () => {
+            const args = parseStartStreamArgs({
+                node_id: 5,
+                endpoint_id: 1,
+                stream_usage: "LiveView",
+                video: { codecs: ["h265"] },
+                audio: { codecs: ["opus"] },
+            });
+            expect(args.video === false ? undefined : args.video?.codecs).to.deep.equal(["H265"]);
+            expect(args.audio === false ? undefined : args.audio?.codecs).to.deep.equal(["OPUS"]);
+        });
+
         it("rejects a non-object video hints value", () => {
             expectInvalidArguments(() =>
                 parseStartStreamArgs({ node_id: 5, endpoint_id: 1, stream_usage: "LiveView", video: "H265" }),
