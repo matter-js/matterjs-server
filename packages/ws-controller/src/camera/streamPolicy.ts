@@ -145,6 +145,25 @@ function contains(outer: { min: number; max: number }, inner: { min: number; max
 }
 
 /**
+ * Whether `inner` fits inside `outer` on both dimensions independently.
+ *
+ * Pixel-count containment is not enough: a 1920x1080 request and an allocated 1440x1440 stream have
+ * the same pixel count but different aspect ratios, so comparing areas would silently hand out square
+ * video for a widescreen request.
+ */
+function resolutionContains(
+    outer: { min: Resolution; max: Resolution },
+    inner: { min: Resolution; max: Resolution },
+): boolean {
+    return (
+        inner.min.width >= outer.min.width &&
+        inner.min.height >= outer.min.height &&
+        inner.max.width <= outer.max.width &&
+        inner.max.height <= outer.max.height
+    );
+}
+
+/**
  * An allocated stream that satisfies the request, or none.
  *
  * Containment, not overlap: the request's minimum is a floor on delivered quality, so a stream
@@ -162,9 +181,9 @@ export function findReusableVideoStream(
         if (candidate.videoCodec !== envelope.codec) return false;
         if (options?.ignoreStreamUsage !== true && candidate.streamUsage !== streamUsage) return false;
         if (
-            !contains(
-                { min: pixels(envelope.minResolution), max: pixels(envelope.maxResolution) },
-                { min: pixels(candidate.minResolution), max: pixels(candidate.maxResolution) },
+            !resolutionContains(
+                { min: envelope.minResolution, max: envelope.maxResolution },
+                { min: candidate.minResolution, max: candidate.maxResolution },
             )
         ) {
             return false;
@@ -195,13 +214,15 @@ export function findDegradedVideoStream(
         if (candidate.videoCodec !== codec) return false;
         if (
             callerBounds.minResolution !== undefined &&
-            pixels(candidate.minResolution) < pixels(callerBounds.minResolution)
+            (candidate.minResolution.width < callerBounds.minResolution.width ||
+                candidate.minResolution.height < callerBounds.minResolution.height)
         ) {
             return false;
         }
         if (
             callerBounds.maxResolution !== undefined &&
-            pixels(candidate.maxResolution) > pixels(callerBounds.maxResolution)
+            (candidate.maxResolution.width > callerBounds.maxResolution.width ||
+                candidate.maxResolution.height > callerBounds.maxResolution.height)
         ) {
             return false;
         }

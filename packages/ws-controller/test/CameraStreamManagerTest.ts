@@ -7,7 +7,20 @@
 import { EndpointNumber, NodeId } from "@matter/main";
 import type { CameraDeviceIo, CameraState } from "../src/camera/CameraStreamManager.js";
 import { CameraStreamManager } from "../src/camera/CameraStreamManager.js";
+import type { AudioEnvelope, VideoEnvelope } from "../src/camera/cameraTypes.js";
 import { ServerError, ServerErrorCode } from "../src/types/WebSocketMessageTypes.js";
+
+/** ResolvedStream.envelope is a union; a result from resolveVideoStream is always the video shape. */
+function requireVideoEnvelope(envelope: VideoEnvelope | AudioEnvelope): VideoEnvelope {
+    if (!("minResolution" in envelope)) throw new Error("expected a video envelope");
+    return envelope;
+}
+
+/** ResolvedStream.envelope is a union; a result from resolveAudioStream is always the audio shape. */
+function requireAudioEnvelope(envelope: VideoEnvelope | AudioEnvelope): AudioEnvelope {
+    if ("minResolution" in envelope) throw new Error("expected an audio envelope");
+    return envelope;
+}
 
 export const NODE = NodeId(5);
 export const ENDPOINT = EndpointNumber(1);
@@ -201,6 +214,22 @@ describe("CameraStreamManager", () => {
             expect(invokes).to.deep.equal([]);
         });
 
+        it("reports the reused stream's own bounds, not the wider envelope the request computed", async () => {
+            // No hints: the computed envelope spans the device's full range (640x360..2560x1440),
+            // but CONTAINED_STREAM's own range is the fixed 1920x1080 the client actually gets.
+            const { manager } = managerWith(withStreams([CONTAINED_STREAM]));
+            const resolved = await manager.resolveVideoStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+                codec: H265,
+            });
+            expect(resolved.reused).to.equal(true);
+            const envelope = requireVideoEnvelope(resolved.envelope);
+            expect(envelope.minResolution).to.deep.equal(CONTAINED_STREAM.minResolution);
+            expect(envelope.maxResolution).to.deep.equal(CONTAINED_STREAM.maxResolution);
+        });
+
         it("does not reuse a stream whose floor is below the requested floor", async () => {
             // Issue #1056: [720p..1080p] may deliver 720p, so a 1080p floor is not satisfied.
             const wider = { ...CONTAINED_STREAM, minResolution: { width: 1280, height: 720 } };
@@ -288,6 +317,25 @@ describe("CameraStreamManager", () => {
             expect(invokes).to.have.length(1);
         });
 
+        it("reports the relaxed-reuse stream's own bounds, not the request's wider envelope", async () => {
+            // No hints: the computed envelope spans the device's full range, but the stream reused via
+            // the relaxed (ignore-usage) rung is fixed at CONTAINED_STREAM's own 1920x1080.
+            const otherUsage = { ...CONTAINED_STREAM, streamUsage: 1 };
+            const { manager } = managerWith(withStreams([otherUsage]), async () => {
+                throw statusError(RESOURCE_EXHAUSTED);
+            });
+            const resolved = await manager.resolveVideoStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+                codec: H265,
+            });
+            expect(resolved.reused).to.equal(true);
+            const envelope = requireVideoEnvelope(resolved.envelope);
+            expect(envelope.minResolution).to.deep.equal(otherUsage.minResolution);
+            expect(envelope.maxResolution).to.deep.equal(otherUsage.maxResolution);
+        });
+
         it("deallocates an unreferenced stream and retries rather than failing", async () => {
             const idle = { ...CONTAINED_STREAM, videoStreamId: 7, referenceCount: 0 };
             let allocateAttempts = 0;
@@ -331,9 +379,42 @@ describe("CameraStreamManager", () => {
 
             const resolved = await manager.resolveVideoStream(request);
             expect(resolved.streamId).to.equal(30);
-            const deallocated = invokes.find(invoke => invoke.command === "videoStreamDeallocate");
-            expect(deallocated?.fields.videoStreamId).to.equal(20);
-            expect(holder.state?.allocatedVideoStreams.map(stream => stream.videoStreamId)).to.deep.equal([21]);
+            const deallocates = invokes.filter(invoke => invoke.command === "videoStreamDeallocate");
+            expect(deallocates.map(invoke => invoke.fields.videoStreamId)).to.deep.equal([20]);
+            // freeAnUnreferencedVideoStream must not write back into the CameraState the mock returned:
+            // a real implementation may hand back a cached/subscription-backed object.
+            expect(holder.state?.allocatedVideoStreams.map(stream => stream.videoStreamId)).to.deep.equal([21, 20]);
+        });
+
+        it("does not retry deallocating a stream it already freed", async () => {
+            const H264 = 2;
+            const first = { ...CONTAINED_STREAM, videoStreamId: 20, videoCodec: H264, referenceCount: 0 };
+            const second = { ...CONTAINED_STREAM, videoStreamId: 21, videoCodec: H264, referenceCount: 0 };
+            const { manager, invokes, holder } = managerWith(withStreams([first, second]), async invoke => {
+                if (invoke.command === "videoStreamAllocate") throw statusError(RESOURCE_EXHAUSTED);
+                return undefined;
+            });
+            let thrown: unknown;
+            try {
+                await manager.resolveVideoStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    streamUsage: LIVE_VIEW,
+                    codec: H265,
+                    hints: { maxResolution: { width: 1280, height: 720 } },
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraResourceExhausted);
+            const deallocated = invokes
+                .filter(invoke => invoke.command === "videoStreamDeallocate")
+                .map(invoke => invoke.fields.videoStreamId);
+            // Each idle stream is a candidate exactly once: no repeat attempt on one already freed.
+            expect(deallocated).to.deep.equal([20, 21]);
+            // "allocated" comes from the ladder's local copy, so it reflects both streams freed this call.
+            expect(JSON.parse((thrown as ServerError).message).allocated).to.deep.equal([]);
+            expect(holder.state?.allocatedVideoStreams.map(stream => stream.videoStreamId)).to.deep.equal([20, 21]);
         });
 
         it("hands out an in-use stream as degraded when the caller stated no bounds", async () => {
@@ -356,6 +437,11 @@ describe("CameraStreamManager", () => {
             });
             expect(resolved.streamId).to.equal(7);
             expect(resolved.degraded).to.equal(true);
+            // busy.maxResolution (3840x2160) is well outside the device's own sensor ceiling, so this
+            // only matches if degraded reports the stream's own bounds.
+            const envelope = requireVideoEnvelope(resolved.envelope);
+            expect(envelope.minResolution).to.deep.equal(busy.minResolution);
+            expect(envelope.maxResolution).to.deep.equal(busy.maxResolution);
         });
 
         it("fails rather than degrading when the caller pinned a resolution the stream cannot guarantee", async () => {
@@ -500,6 +586,20 @@ describe("CameraStreamManager", () => {
             expect(invokes).to.deep.equal([]);
         });
 
+        it("reports the reused audio stream's own bitRate, not the freshly computed default", async () => {
+            // bitRate/bitDepth are not part of the reuse match, so a stream allocated with a different
+            // bitRate than today's default must still be reported as what it actually is.
+            const customBitRate = { ...EXISTING_AUDIO_STREAM, bitRate: 32000 };
+            const { manager } = managerWith(withAudioStreams([customBitRate]));
+            const resolved = await manager.resolveAudioStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+            });
+            expect(resolved?.reused).to.equal(true);
+            expect(requireAudioEnvelope(resolved!.envelope).bitRate).to.equal(32000);
+        });
+
         it("allocates a new audio stream and records it as owned by the server", async () => {
             const { manager, invokes } = managerWith(STATE, async () => ({ audioStreamId: 9 }));
             const resolved = await manager.resolveAudioStream({
@@ -555,6 +655,29 @@ describe("CameraStreamManager", () => {
                 streamUsage: LIVE_VIEW,
             });
             expect(resolved).to.equal(undefined);
+        });
+
+        it("returns undefined rather than failing when the response carries no AudioStreamID", async () => {
+            const { manager } = managerWith(STATE, async () => ({}));
+            const resolved = await manager.resolveAudioStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+            });
+            expect(resolved).to.equal(undefined);
+        });
+
+        it("rethrows a ServerError from the device rather than treating it as a missing microphone", async () => {
+            const { manager } = managerWith(STATE, async () => {
+                throw ServerError.cameraNotSupported({ missingClusters: [] });
+            });
+            let thrown: unknown;
+            try {
+                await manager.resolveAudioStream({ nodeId: NODE, endpointId: ENDPOINT, streamUsage: LIVE_VIEW });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraNotSupported);
         });
     });
 

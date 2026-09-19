@@ -8,7 +8,15 @@ import { Logger } from "@matter/main";
 import type { EndpointNumber, NodeId } from "@matter/main";
 import { WebRtcTransportDefinitions } from "@matter/main/clusters/web-rtc-transport-definitions";
 import { ServerError } from "../types/WebSocketMessageTypes.js";
-import type { ManagedSession, Resolution, ResolvedStream, StreamKind, StreamLease } from "./cameraTypes.js";
+import type {
+    AudioEnvelope,
+    ManagedSession,
+    Resolution,
+    ResolvedStream,
+    StreamKind,
+    StreamLease,
+    VideoEnvelope,
+} from "./cameraTypes.js";
 import { parseSdpVideoConstraints } from "./sdpConstraints.js";
 import type { SdpVideoConstraints } from "./sdpConstraints.js";
 import { selectSnapshotCapability } from "./snapshotPolicy.js";
@@ -33,9 +41,33 @@ const RESOURCE_EXHAUSTED = 0x89;
 const MAX_NARROWING_ROUNDS = 3;
 
 function deviceStatusOf(error: unknown): number | undefined {
-    if (typeof error !== "object" || error === null) return undefined;
-    const code = (error as { code?: unknown }).code;
-    return typeof code === "number" ? code : undefined;
+    if (typeof error !== "object" || error === null || !("code" in error)) return undefined;
+    return typeof error.code === "number" ? error.code : undefined;
+}
+
+/** The envelope actually delivered by an allocated video stream, as opposed to the one requested. */
+function envelopeOfVideoStream(stream: AllocatedVideoStream, keyFrameInterval: number): VideoEnvelope {
+    return {
+        codec: stream.videoCodec,
+        minResolution: stream.minResolution,
+        maxResolution: stream.maxResolution,
+        minFrameRate: stream.minFrameRate,
+        maxFrameRate: stream.maxFrameRate,
+        minBitRate: stream.minBitRate,
+        maxBitRate: stream.maxBitRate,
+        keyFrameInterval,
+    };
+}
+
+/** The envelope actually delivered by an allocated audio stream, as opposed to the one requested. */
+function envelopeOfAudioStream(stream: AllocatedAudioStream): AudioEnvelope {
+    return {
+        codec: stream.audioCodec,
+        channelCount: stream.channelCount,
+        sampleRate: stream.sampleRate,
+        bitRate: stream.bitRate,
+        bitDepth: stream.bitDepth,
+    };
 }
 
 /** WebRTCEndReasonEnum has no dedicated field for "the caller stopped watching"; UserHangup is it. */
@@ -388,11 +420,14 @@ export class CameraStreamManager {
                 hints: args.hints,
             });
 
-            const reused = findReusableVideoStream(state.allocatedVideoStreams, envelope, streamUsage);
+            // The ladder's own copy: freeing a stream updates this array, never the state object.
+            let liveStreams = state.allocatedVideoStreams;
+
+            const reused = findReusableVideoStream(liveStreams, envelope, streamUsage);
             if (reused !== undefined) {
                 return {
                     streamId: reused.videoStreamId,
-                    envelope,
+                    envelope: envelopeOfVideoStream(reused, envelope.keyFrameInterval),
                     reused: true,
                     allocatedByUs: this.ownsStream(nodeId, endpointId, "video", reused.videoStreamId),
                 };
@@ -418,7 +453,10 @@ export class CameraStreamManager {
                             keyFrameInterval: envelope.keyFrameInterval,
                         },
                     });
-                    const streamId = (response as { videoStreamId?: unknown } | undefined)?.videoStreamId;
+                    const streamId =
+                        typeof response === "object" && response !== null && "videoStreamId" in response
+                            ? response.videoStreamId
+                            : undefined;
                     if (typeof streamId !== "number") {
                         throw ServerError.sdkStackError("VideoStreamAllocate returned no VideoStreamID");
                     }
@@ -428,18 +466,20 @@ export class CameraStreamManager {
                     if (error instanceof ServerError) throw error;
                     lastStatus = deviceStatusOf(error);
                     if (lastStatus === RESOURCE_EXHAUSTED) {
-                        const relaxed = findReusableVideoStream(state.allocatedVideoStreams, envelope, streamUsage, {
+                        const relaxed = findReusableVideoStream(liveStreams, envelope, streamUsage, {
                             ignoreStreamUsage: true,
                         });
                         if (relaxed !== undefined) {
                             return {
                                 streamId: relaxed.videoStreamId,
-                                envelope,
+                                envelope: envelopeOfVideoStream(relaxed, envelope.keyFrameInterval),
                                 reused: true,
                                 allocatedByUs: this.ownsStream(nodeId, endpointId, "video", relaxed.videoStreamId),
                             };
                         }
-                        if (await this.freeAnUnreferencedVideoStream(nodeId, endpointId, state)) {
+                        const freedId = await this.freeAnUnreferencedVideoStream(nodeId, endpointId, liveStreams);
+                        if (freedId !== undefined) {
+                            liveStreams = liveStreams.filter(stream => stream.videoStreamId !== freedId);
                             continue;
                         }
                     } else if (lastStatus !== DYNAMIC_CONSTRAINT_ERROR) {
@@ -453,11 +493,11 @@ export class CameraStreamManager {
 
             // Last rung: hand out a stream that is in use, but only within bounds the caller stated.
             // A caller who pinned a resolution matches nothing here and gets the typed failure below.
-            const degraded = findDegradedVideoStream(state.allocatedVideoStreams, codec, args.hints ?? {});
+            const degraded = findDegradedVideoStream(liveStreams, codec, args.hints ?? {});
             if (degraded !== undefined) {
                 return {
                     streamId: degraded.videoStreamId,
-                    envelope,
+                    envelope: envelopeOfVideoStream(degraded, envelope.keyFrameInterval),
                     reused: true,
                     degraded: true,
                     allocatedByUs: this.ownsStream(nodeId, endpointId, "video", degraded.videoStreamId),
@@ -473,7 +513,7 @@ export class CameraStreamManager {
                 });
             }
             throw ServerError.cameraResourceExhausted({
-                allocated: state.allocatedVideoStreams.map(stream => ({
+                allocated: liveStreams.map(stream => ({
                     streamId: stream.videoStreamId,
                     referenceCount: stream.referenceCount,
                 })),
@@ -529,7 +569,7 @@ export class CameraStreamManager {
             if (existing !== undefined) {
                 return {
                     streamId: existing.audioStreamId,
-                    envelope,
+                    envelope: envelopeOfAudioStream(existing),
                     reused: true,
                     allocatedByUs: this.ownsStream(nodeId, endpointId, "audio", existing.audioStreamId),
                 };
@@ -550,11 +590,20 @@ export class CameraStreamManager {
                         bitDepth: envelope.bitDepth,
                     },
                 });
-                const streamId = (response as { audioStreamId?: unknown } | undefined)?.audioStreamId;
-                if (typeof streamId !== "number") return undefined;
+                const streamId =
+                    typeof response === "object" && response !== null && "audioStreamId" in response
+                        ? response.audioStreamId
+                        : undefined;
+                if (typeof streamId !== "number") {
+                    logger.info(
+                        `Audio stream unavailable for node ${nodeId}; continuing without audio: AudioStreamAllocate returned no AudioStreamID`,
+                    );
+                    return undefined;
+                }
                 this.recordLease(nodeId, endpointId, { kind: "audio", streamId, allocatedByUs: true });
                 return { streamId, envelope, reused: false, allocatedByUs: true };
             } catch (error) {
+                if (error instanceof ServerError) throw error;
                 logger.info(`Audio stream unavailable for node ${nodeId}; continuing without audio:`, error);
                 return undefined;
             }
@@ -562,7 +611,9 @@ export class CameraStreamManager {
     }
 
     /**
-     * Deallocate one unreferenced video stream and report whether it freed anything.
+     * Deallocate one unreferenced video stream from `streams` and report its id, or `undefined` if
+     * nothing was freed. `streams` is a plain array and the caller's `CameraState` (which may be a
+     * cached or subscription-backed snapshot) is never written to.
      *
      * Server-owned streams go first; a foreign one is touched only when nothing of ours is free, and
      * is logged, since the spec recommends commissioners pre-allocate (§15.2.1.1) and such a stream may
@@ -572,12 +623,12 @@ export class CameraStreamManager {
     protected async freeAnUnreferencedVideoStream(
         nodeId: NodeId,
         endpointId: EndpointNumber,
-        state: CameraState,
-    ): Promise<boolean> {
-        const unreferenced = state.allocatedVideoStreams.filter(stream => stream.referenceCount === 0);
+        streams: AllocatedVideoStream[],
+    ): Promise<number | undefined> {
+        const unreferenced = streams.filter(stream => stream.referenceCount === 0);
         const ours = unreferenced.filter(stream => this.ownsStream(nodeId, endpointId, "video", stream.videoStreamId));
         const victim = ours[0] ?? unreferenced[0];
-        if (victim === undefined) return false;
+        if (victim === undefined) return undefined;
 
         if (ours[0] === undefined) {
             logger.notice(
@@ -594,13 +645,10 @@ export class CameraStreamManager {
             });
         } catch (error) {
             logger.info(`Could not deallocate video stream ${victim.videoStreamId}:`, error);
-            return false;
+            return undefined;
         }
         this.dropLease(nodeId, endpointId, "video", victim.videoStreamId);
-        state.allocatedVideoStreams = state.allocatedVideoStreams.filter(
-            stream => stream.videoStreamId !== victim.videoStreamId,
-        );
-        return true;
+        return victim.videoStreamId;
     }
 
     async startStream(args: {

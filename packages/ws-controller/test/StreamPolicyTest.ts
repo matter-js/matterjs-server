@@ -321,6 +321,15 @@ describe("streamPolicy", () => {
             const request = { ...REQUEST, minFrameRate: 15 };
             expect(findReusableVideoStream([stream({ minFrameRate: 1 })], request, LIVE_VIEW)).to.equal(undefined);
         });
+
+        it("refuses a stream with the same pixel count but a different aspect ratio", () => {
+            // 1440x1440 has the same area as 1920x1080 (2,073,600px) but is square, not widescreen.
+            const square = stream({
+                minResolution: { width: 1440, height: 1440 },
+                maxResolution: { width: 1440, height: 1440 },
+            });
+            expect(findReusableVideoStream([square], REQUEST, LIVE_VIEW)).to.equal(undefined);
+        });
     });
 
     describe("findDegradedVideoStream", () => {
@@ -379,6 +388,21 @@ describe("streamPolicy", () => {
             const narrow = { ...IN_USE_WIDE, videoStreamId: 5, maxResolution: { width: 1280, height: 720 } };
             const wide = { ...IN_USE_WIDE, videoStreamId: 6, maxResolution: { width: 1920, height: 1080 } };
             expect(findDegradedVideoStream([narrow, wide], H265, {})?.videoStreamId).to.equal(6);
+        });
+
+        it("refuses a stream with the same pixel count but a different aspect ratio than the pinned bounds", () => {
+            // 1440x1440 has the same area as 1920x1080 (2,073,600px) but is square, not widescreen.
+            const square = {
+                ...IN_USE_WIDE,
+                minResolution: { width: 1440, height: 1440 },
+                maxResolution: { width: 1440, height: 1440 },
+            };
+            expect(
+                findDegradedVideoStream([square], H265, {
+                    minResolution: { width: 1920, height: 1080 },
+                    maxResolution: { width: 1920, height: 1080 },
+                }),
+            ).to.equal(undefined);
         });
     });
 
