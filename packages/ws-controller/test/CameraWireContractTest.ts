@@ -380,6 +380,13 @@ describe("camera wire contract", () => {
             ).to.throw(/unknown audio hint key: min_bit_rate/);
         });
 
+        it("refuses a hint sent at the wrong nesting level", () => {
+            const args = { node_id: 1, endpoint_id: 1, stream_usage: "LiveView", max_frame_rate: 15 };
+            expect(() => parseStartStreamArgs(args)).to.throw(
+                /unknown camera_start_stream argument key: max_frame_rate/,
+            );
+        });
+
         it("refuses an unknown camera_snapshot argument", () => {
             const args = { node_id: 1, endpoint_id: 1, image_codec: "JPEG" };
             expect(() => parseSnapshotArgs(args)).to.throw(/unknown camera_snapshot argument key: image_codec/);

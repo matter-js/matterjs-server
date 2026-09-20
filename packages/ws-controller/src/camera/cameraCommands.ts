@@ -171,9 +171,6 @@ const START_STREAM_ARG_KEY_SET: Record<keyof Required<ArgsOf<"camera_start_strea
     metadata_enabled: true,
 };
 
-// Unlike VIDEO_HINT_KEYS/AUDIO_HINT_KEYS/SNAPSHOT_ARG_KEYS, nothing calls rejectUnknownKeys with
-// this list: parseStartStreamArgs does not reject an unknown top-level key today. It exists so the
-// wire-contract test can name "stream_usage" as a real argument rather than an invented string.
 export const START_STREAM_ARG_KEYS: readonly string[] = Object.keys(START_STREAM_ARG_KEY_SET);
 
 function parseVideoHints(value: unknown): VideoHints {
@@ -239,6 +236,7 @@ export function parseStartStreamArgs(args: {
     ice_transport_policy?: unknown;
     metadata_enabled?: unknown;
 }): ParsedStartStreamArgs {
+    rejectUnknownKeys(args, START_STREAM_ARG_KEYS, "camera_start_stream argument");
     const target = parseCameraTarget(args);
     // Internal is device-only: a stream carrying it must not be modified, so it is never requested here.
     const streamUsage = typeof args.stream_usage === "string" ? streamUsageByName(args.stream_usage) : undefined;
