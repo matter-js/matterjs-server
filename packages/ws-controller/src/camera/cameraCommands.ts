@@ -393,8 +393,5 @@ export function toWireSnapshotResult(result: SnapshotResult): CameraSnapshotResu
         codec: imageCodecName(result.imageCodec),
         resolution: result.resolution,
         downgraded: result.downgraded,
-        stream_id: result.streamId,
-        reused: result.reused,
-        allocated_by_server: result.allocatedByUs,
     };
 }

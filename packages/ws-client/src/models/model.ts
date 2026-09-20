@@ -547,10 +547,6 @@ export interface CameraSnapshotResult {
     resolution: CameraResolution;
     /** True when the frame is smaller than the best capability the request's own bounds allowed. */
     downgraded: boolean;
-    /** The allocated snapshot stream id; pass to camera_release_stream to force-deallocate it. */
-    stream_id: number;
-    reused: boolean;
-    allocated_by_server: boolean;
 }
 
 export interface APICommands {

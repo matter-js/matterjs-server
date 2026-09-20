@@ -861,7 +861,7 @@ Response: `{ "ended": true }`. `ended` is `false` when the id is not a session t
 }
 ```
 
-Response: `{ data, codec, resolution, downgraded, stream_id, reused, allocated_by_server }`. `data` is base64-encoded image bytes. While a video stream is live the server prefers a capability that needs no hardware encoder; `downgraded: true` says the frame is smaller than the best capability the request's own bounds allowed. Every call allocates a fresh snapshot stream — release it with `camera_release_stream` when a caller wants the device's capacity back.
+Response: `{ data, codec, resolution, downgraded }`. `data` is base64-encoded image bytes. While a video stream is live the server prefers a capability that needs no hardware encoder; `downgraded: true` says the frame is smaller than the best capability the request's own bounds allowed. The snapshot stream this call allocates is deallocated again before the response is sent, which is why the response names no stream: a capability that needs the hardware encoder holds it for as long as the stream is allocated, so a kept stream would make the next call fail with error 103 on a camera with one encoder. If the device refuses to take the stream back, it stays allocated and server-owned — `camera_get_capabilities` reports it under `allocated.snapshot` with `owned_by_server: true`, and `camera_release_stream` can then free it.
 
 **camera_release_stream** - Force-deallocate a stream the server owns
 

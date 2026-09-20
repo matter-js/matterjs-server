@@ -728,24 +728,18 @@ describe("cameraCommands", () => {
     });
 
     describe("toWireSnapshotResult", () => {
-        it("base64-encodes the image data and carries the stream identity through", () => {
+        it("base64-encodes the image data and names the codec and size of the frame", () => {
             const result: SnapshotResult = {
                 data: new Uint8Array([1, 2, 3]),
                 imageCodec: 0,
                 resolution: { width: 640, height: 480 },
                 downgraded: true,
-                streamId: 4,
-                reused: false,
-                allocatedByUs: true,
             };
             const wire = toWireSnapshotResult(result);
             expect(wire.data).to.equal(Buffer.from([1, 2, 3]).toString("base64"));
             expect(wire.codec).to.equal("JPEG");
             expect(wire.resolution).to.deep.equal({ width: 640, height: 480 });
             expect(wire.downgraded).to.equal(true);
-            expect(wire.stream_id).to.equal(4);
-            expect(wire.reused).to.equal(false);
-            expect(wire.allocated_by_server).to.equal(true);
         });
     });
 
