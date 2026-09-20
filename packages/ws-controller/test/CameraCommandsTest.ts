@@ -5,6 +5,8 @@
  */
 
 import { EndpointNumber, NodeId } from "@matter/main";
+import { CameraAvStreamManagement } from "@matter/main/clusters/camera-av-stream-management";
+import { StreamUsage } from "@matter/main/types";
 import {
     parseCameraTarget,
     parseReleaseStreamArgs,
@@ -109,6 +111,22 @@ describe("cameraCommands", () => {
             expect(parseStartStreamArgs({ node_id: 5, endpoint_id: 1, stream_usage: "Analysis" }).streamUsage).to.equal(
                 2,
             );
+        });
+
+        it("accepts a stream usage name in any case, as the codec names are", () => {
+            expect(parseStartStreamArgs({ node_id: 5, endpoint_id: 1, stream_usage: "liveview" }).streamUsage).to.equal(
+                StreamUsage.LiveView,
+            );
+        });
+
+        it("rejects the decimal spelling of a stream usage, which the device cannot be asked for", () => {
+            let thrown: unknown;
+            try {
+                parseStartStreamArgs({ node_id: 5, endpoint_id: 1, stream_usage: "3" });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.InvalidArguments);
         });
 
         it("rejects an unknown stream usage", () => {
@@ -335,15 +353,25 @@ describe("cameraCommands", () => {
     });
 
     describe("parseSnapshotArgs", () => {
-        it("parses an optional max_resolution and codec", () => {
+        it("parses an optional max_resolution and codec name", () => {
             const parsed = parseSnapshotArgs({
                 node_id: 5,
                 endpoint_id: 1,
                 max_resolution: { width: 640, height: 480 },
-                codec: 0,
+                codec: "JPEG",
             });
             expect(parsed.maxResolution).to.deep.equal({ width: 640, height: 480 });
-            expect(parsed.codec).to.equal(0);
+            expect(parsed.codec).to.equal(CameraAvStreamManagement.ImageCodec.Jpeg);
+        });
+
+        it("accepts a codec name in any case, as the video and audio hints do", () => {
+            const parsed = parseSnapshotArgs({ node_id: 5, endpoint_id: 1, codec: "heic" });
+            expect(parsed.codec).to.equal(CameraAvStreamManagement.ImageCodec.Heic);
+        });
+
+        it("accepts the decimal spelling capabilities report for a codec the enum does not name", () => {
+            const parsed = parseSnapshotArgs({ node_id: 5, endpoint_id: 1, codec: "7" });
+            expect(parsed.codec).to.equal(7);
         });
 
         it("leaves max_resolution and codec undefined when omitted", () => {
@@ -352,10 +380,20 @@ describe("cameraCommands", () => {
             expect(parsed.codec).to.equal(undefined);
         });
 
-        it("rejects a negative codec", () => {
+        it("rejects a codec that is neither a known name nor a number", () => {
             let thrown: unknown;
             try {
-                parseSnapshotArgs({ node_id: 5, endpoint_id: 1, codec: -1 });
+                parseSnapshotArgs({ node_id: 5, endpoint_id: 1, codec: "PNG" });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.InvalidArguments);
+        });
+
+        it("rejects a numeric codec, which is the pre-schema-14 spelling", () => {
+            let thrown: unknown;
+            try {
+                parseSnapshotArgs({ node_id: 5, endpoint_id: 1, codec: 0 });
             } catch (error) {
                 thrown = error;
             }
@@ -416,6 +454,107 @@ describe("cameraCommands", () => {
             expect(wire.video).to.have.property("rate_distortion_points");
             expect(wire.limits).to.have.property("supported_stream_usages");
             expect(wire.limits).to.not.have.property("max_network_bandwidth");
+        });
+
+        it("names every codec it reports, so the output can be sent back as a request", () => {
+            const wire = toWireCapabilities({
+                ...EMPTY_CAPABILITIES,
+                video: {
+                    ...EMPTY_CAPABILITIES.video,
+                    codecs: [CameraAvStreamManagement.VideoCodec.Hevc],
+                    rateDistortionPoints: [
+                        {
+                            codec: CameraAvStreamManagement.VideoCodec.H264,
+                            resolution: { width: 1920, height: 1080 },
+                            minBitRate: 100000,
+                        },
+                    ],
+                },
+                audio: { ...EMPTY_CAPABILITIES.audio, codecs: [CameraAvStreamManagement.AudioCodec.AacLc] },
+                snapshot: {
+                    capabilities: [
+                        {
+                            resolution: { width: 640, height: 480 },
+                            maxFrameRate: 30,
+                            imageCodec: CameraAvStreamManagement.ImageCodec.Heic,
+                            requiresEncodedPixels: false,
+                            requiresHardwareEncoder: false,
+                        },
+                    ],
+                },
+            });
+            expect(wire.video.codecs).to.deep.equal(["H265"]);
+            expect(wire.video.rate_distortion_points[0]?.codec).to.equal("H264");
+            expect(wire.audio.codecs).to.deep.equal(["AAC"]);
+            expect(wire.snapshot.capabilities[0]?.image_codec).to.equal("HEIC");
+
+            const fedBack = parseSnapshotArgs({
+                node_id: 5,
+                endpoint_id: 1,
+                codec: wire.snapshot.capabilities[0]?.image_codec,
+            });
+            expect(fedBack.codec).to.equal(CameraAvStreamManagement.ImageCodec.Heic);
+        });
+
+        it("names every stream usage it reports, so the output can be sent back as a request", () => {
+            const wire = toWireCapabilities({
+                ...EMPTY_CAPABILITIES,
+                limits: {
+                    supportedStreamUsages: [StreamUsage.LiveView, StreamUsage.Recording, StreamUsage.Internal],
+                    streamUsagePriorities: [StreamUsage.Recording],
+                },
+            });
+            expect(wire.limits.supported_stream_usages).to.deep.equal(["LiveView", "Recording", "Internal"]);
+            expect(wire.limits.stream_usage_priorities).to.deep.equal(["Recording"]);
+
+            const fedBack = parseStartStreamArgs({
+                node_id: 5,
+                endpoint_id: 1,
+                stream_usage: wire.limits.supported_stream_usages[0],
+            });
+            expect(fedBack.streamUsage).to.equal(StreamUsage.LiveView);
+        });
+
+        it("names the camera's talkback support, as the README tells a client to read it", () => {
+            const wire = toWireCapabilities({
+                ...EMPTY_CAPABILITIES,
+                audio: {
+                    ...EMPTY_CAPABILITIES.audio,
+                    twoWayTalkSupport: CameraAvStreamManagement.TwoWayTalkSupportType.HalfDuplex,
+                },
+            });
+            expect(wire.audio.two_way_talk_support).to.equal("HalfDuplex");
+
+            const none = toWireCapabilities({
+                ...EMPTY_CAPABILITIES,
+                audio: {
+                    ...EMPTY_CAPABILITIES.audio,
+                    twoWayTalkSupport: CameraAvStreamManagement.TwoWayTalkSupportType.NotSupported,
+                },
+            });
+            expect(none.audio.two_way_talk_support).to.equal("NotSupported");
+
+            const unnamed = toWireCapabilities({
+                ...EMPTY_CAPABILITIES,
+                audio: { ...EMPTY_CAPABILITIES.audio, twoWayTalkSupport: 7 },
+            });
+            expect(unnamed.audio.two_way_talk_support).to.equal("7");
+        });
+
+        it("reports a stream usage the cluster enum does not name by its number", () => {
+            const wire = toWireCapabilities({
+                ...EMPTY_CAPABILITIES,
+                limits: { supportedStreamUsages: [7], streamUsagePriorities: [] },
+            });
+            expect(wire.limits.supported_stream_usages).to.deep.equal(["7"]);
+        });
+
+        it("reports a codec the cluster enum does not name by its number", () => {
+            const wire = toWireCapabilities({
+                ...EMPTY_CAPABILITIES,
+                video: { ...EMPTY_CAPABILITIES.video, codecs: [7] },
+            });
+            expect(wire.video.codecs).to.deep.equal(["7"]);
         });
 
         it("publishes the bandwidth ceiling the server caps a stream's bit rate at", () => {
@@ -484,8 +623,8 @@ describe("cameraCommands", () => {
             });
             expect(wire.allocated.video[0]).to.deep.equal({
                 video_stream_id: 1,
-                stream_usage: 3,
-                video_codec: 1,
+                stream_usage: "LiveView",
+                video_codec: "H265",
                 min_resolution: { width: 640, height: 360 },
                 max_resolution: { width: 1920, height: 1080 },
                 min_frame_rate: 1,
@@ -497,8 +636,8 @@ describe("cameraCommands", () => {
             });
             expect(wire.allocated.audio[0]).to.deep.equal({
                 audio_stream_id: 2,
-                stream_usage: 3,
-                audio_codec: 0,
+                stream_usage: "LiveView",
+                audio_codec: "OPUS",
                 channel_count: 1,
                 sample_rate: 48000,
                 bit_rate: 64000,
@@ -508,7 +647,7 @@ describe("cameraCommands", () => {
             });
             expect(wire.allocated.snapshot[0]).to.deep.equal({
                 snapshot_stream_id: 3,
-                image_codec: 0,
+                image_codec: "JPEG",
                 resolution: { width: 640, height: 480 },
                 reference_count: 0,
                 owned_by_server: true,
@@ -543,7 +682,7 @@ describe("cameraCommands", () => {
             expect(wire.audio).to.equal(null);
             expect(wire.video).to.deep.equal({
                 stream_id: 1,
-                codec: 1,
+                codec: "H265",
                 resolution: { min: { width: 640, height: 360 }, max: { width: 1920, height: 1080 } },
                 frame_rate: { min: 1, max: 30 },
                 bit_rate: { min: 100000, max: 8000000 },
@@ -583,7 +722,7 @@ describe("cameraCommands", () => {
             expect(wire.video?.degraded).to.equal(true);
             expect(wire.audio).to.deep.equal({
                 stream_id: 2,
-                codec: 0,
+                codec: "OPUS",
                 channel_count: 1,
                 sample_rate: 48000,
                 bit_rate: 64000,
@@ -607,7 +746,7 @@ describe("cameraCommands", () => {
             };
             const wire = toWireSnapshotResult(result);
             expect(wire.data).to.equal(Buffer.from([1, 2, 3]).toString("base64"));
-            expect(wire.codec).to.equal(0);
+            expect(wire.codec).to.equal("JPEG");
             expect(wire.resolution).to.deep.equal({ width: 640, height: 480 });
             expect(wire.downgraded).to.equal(true);
             expect(wire.stream_id).to.equal(4);

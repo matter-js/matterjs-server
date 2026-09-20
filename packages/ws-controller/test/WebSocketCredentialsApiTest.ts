@@ -521,12 +521,12 @@ describe("WebSocket Credentials API", () => {
         expect(def?.extPanId).to.equal(def?.extPanId?.toUpperCase());
     });
 
-    it("server_info reports schema 13 / min 11", async () => {
+    it("server_info reports schema 14 / min 11", async () => {
         const info = await h.handle<{ schema_version: number; min_supported_schema_version: number }>(
             "server_info",
             {},
         );
-        expect(info.schema_version).to.equal(13);
+        expect(info.schema_version).to.equal(14);
         expect(info.min_supported_schema_version).to.equal(11);
     });
 

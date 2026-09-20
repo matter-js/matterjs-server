@@ -426,7 +426,7 @@ export class MatterController {
 
     get commandHandler() {
         if (this.#controllerInstance === undefined) {
-            throw new Error("Controller not initialized");
+            throw ServerError.sdkStackError("Controller is not initialized");
         }
         if (this.#commandHandler === undefined) {
             this.#commandHandler = new ControllerCommandHandler(this.#controllerInstance, {
@@ -603,7 +603,7 @@ export class MatterController {
      */
     async vendorInfoService() {
         if (this.#controllerInstance === undefined) {
-            throw new Error("Controller not initialized");
+            throw ServerError.sdkStackError("Controller is not initialized");
         }
         const service = await this.#controllerInstance.node.act(agent => agent.get(DclBehavior).vendorInfoService);
         await service.construction;
@@ -616,7 +616,7 @@ export class MatterController {
      */
     async certificateService() {
         if (this.#controllerInstance === undefined) {
-            throw new Error("Controller not initialized");
+            throw ServerError.sdkStackError("Controller is not initialized");
         }
         const service = await this.#controllerInstance.node.act(agent => agent.get(DclBehavior).certificateService);
         await service.construction;
@@ -629,7 +629,7 @@ export class MatterController {
      */
     async otaUpdateService() {
         if (this.#controllerInstance === undefined) {
-            throw new Error("Controller not initialized");
+            throw ServerError.sdkStackError("Controller is not initialized");
         }
         const service = await this.#controllerInstance.node.act(agent => agent.get(DclBehavior).otaUpdateService);
         await service.construction;
@@ -711,7 +711,7 @@ export class MatterController {
      */
     async #enableTestOtaImages() {
         if (this.#controllerInstance === undefined) {
-            throw new Error("Controller not initialized");
+            throw ServerError.sdkStackError("Controller is not initialized");
         }
         await this.#controllerInstance.otaProvider.setStateOf(SoftwareUpdateManager, {
             allowTestOtaImages: true,

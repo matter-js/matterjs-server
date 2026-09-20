@@ -338,7 +338,7 @@ describe("CameraStreamManager", () => {
                 requested: "3840x2160",
                 limit: "2560x1440",
             });
-            expect(payload.device).to.deep.equal([String(H265)]);
+            expect(payload.device).to.deep.equal(["H265"]);
             expect(invokes).to.deep.equal([]);
         });
 
@@ -393,7 +393,9 @@ describe("CameraStreamManager", () => {
                 thrown = error;
             }
             expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamIncompatible);
-            expect(JSON.parse((thrown as ServerError).message).device_status).to.equal(Status.ConstraintError);
+            const payload = JSON.parse((thrown as ServerError).message);
+            expect(payload.device_status).to.equal(Status.ConstraintError);
+            expect(payload.device).to.deep.equal(["H265"]);
             expect(invokes).to.have.length(1);
         });
 
@@ -416,6 +418,7 @@ describe("CameraStreamManager", () => {
             const payload = JSON.parse((thrown as ServerError).message);
             expect(payload.reason).to.equal("bounds");
             expect(payload.device_status).to.equal(Status.DynamicConstraintError);
+            expect(payload.device).to.deep.equal(["H265"]);
             expect(invokes.length).to.be.greaterThan(1);
         });
 
@@ -649,6 +652,27 @@ describe("CameraStreamManager", () => {
                 thrown = error;
             }
             expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamIncompatible);
+            const payload = JSON.parse((thrown as ServerError).message);
+            expect(payload.device).to.deep.equal(["H265"]);
+            expect(payload.requested).to.deep.equal(["99"]);
+        });
+
+        it("names a codec the enum knows when the camera does not support it", async () => {
+            const { manager } = managerWith(STATE);
+            let thrown: unknown;
+            try {
+                await manager.resolveVideoStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    streamUsage: LIVE_VIEW,
+                    codec: CameraAvStreamManagement.VideoCodec.H264,
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            const payload = JSON.parse((thrown as ServerError).message);
+            expect(payload.requested).to.deep.equal(["H264"]);
+            expect(payload.device).to.deep.equal(["H265"]);
         });
 
         it("allocates once when two callers race for the same endpoint", async () => {
@@ -1385,7 +1409,9 @@ describe("CameraStreamManager", () => {
                 thrown = error;
             }
             expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamIncompatible);
-            expect(JSON.parse((thrown as ServerError).message).reason).to.equal("codec");
+            const payload = JSON.parse((thrown as ServerError).message);
+            expect(payload.reason).to.equal("codec");
+            expect(payload.device).to.deep.equal(["OPUS"]);
             expect(invokes.filter(invoke => invoke.command === "videoStreamDeallocate")).to.have.length(1);
         });
 
@@ -1676,6 +1702,38 @@ describe("CameraStreamManager", () => {
             expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamIncompatible);
             expect(JSON.parse((thrown as ServerError).message).reason).to.equal("bounds");
             expect(invokes).to.have.length(0);
+        });
+
+        it("says the camera has no snapshot capability rather than blaming the caller's bounds", async () => {
+            // "bounds" tells a client to relax what it asked for; there is nothing to relax here, so
+            // it would retry forever against a camera that can never answer.
+            const { manager, invokes } = managerWith({ ...STATE, snapshotCapabilities: [] }, async () => undefined);
+            let thrown: unknown;
+            try {
+                await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamIncompatible);
+            expect(JSON.parse((thrown as ServerError).message).reason).to.equal("capability");
+            expect(invokes).to.have.length(0);
+        });
+
+        it("names the image codecs it reports in a snapshot failure, once each", async () => {
+            const { manager } = managerWith(STATE, async () => undefined);
+            let thrown: unknown;
+            try {
+                await manager.snapshot({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    codec: CameraAvStreamManagement.ImageCodec.Heic,
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            const payload = JSON.parse((thrown as ServerError).message);
+            expect(payload.device).to.deep.equal(["JPEG"]);
+            expect(payload.requested).to.deep.equal(["HEIC"]);
         });
 
         it("reports a codec failure when no capability uses the requested codec", async () => {
@@ -2264,7 +2322,7 @@ describe("preferredVideoCodec", () => {
             wantsTalkback: false,
         };
         const failure = incompatible(() => preferredVideoCodec([H264, H265], offer, ["H265"]));
-        expect(failure.payload.device).to.deep.equal(["0"]);
+        expect(failure.payload.device).to.deep.equal(["H264"]);
     });
 
     it("keeps the offer's narrowing when a later hint agrees with it", () => {

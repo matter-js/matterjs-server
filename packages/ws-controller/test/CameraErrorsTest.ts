@@ -22,6 +22,20 @@ describe("camera server errors", () => {
         });
     });
 
+    it("distinguishes a missing capability from a bound the caller can change", () => {
+        const error = ServerError.cameraStreamIncompatible({
+            reason: "capability",
+            device: [],
+            requested: [],
+        });
+        expect(JSON.parse(error.message)).to.deep.equal({
+            message: "Camera states no capability for this request",
+            reason: "capability",
+            device: [],
+            requested: [],
+        });
+    });
+
     it("reports the device status that produced a bounds failure", () => {
         const error = ServerError.cameraStreamIncompatible({
             reason: "bounds",

@@ -33,6 +33,7 @@ import {
     narrowEnvelope,
 } from "./streamPolicy.js";
 import type { AllocatedVideoStream, AudioHints, RateDistortionPoint, VideoHints } from "./streamPolicy.js";
+import { audioCodecName, imageCodecName, knownVideoCodecs, videoCodecName } from "./wireNames.js";
 
 const logger = Logger.get("CameraStreamManager");
 
@@ -104,20 +105,6 @@ function envelopeOfAudioStream(stream: AllocatedAudioStream): AudioEnvelope {
 const WEBRTC_END_REASON_USER_HANGUP = WebRtcTransportDefinitions.WebRtcEndReason.UserHangup;
 
 /**
- * SDP rtpmap names for the VideoCodecEnum values (§11.2.6.1).
- *
- * Only the names are written here: matter.js spells the members `Hevc`, `Vvc` and `Av1`, SDP spells
- * them `H265`, `H266` and `AV1`, so the mapping cannot be derived from the enum, but every numeric
- * value comes from it.
- */
-const VIDEO_CODEC_NAMES = new Map<CameraAvStreamManagement.VideoCodec, string>([
-    [CameraAvStreamManagement.VideoCodec.H264, "H264"],
-    [CameraAvStreamManagement.VideoCodec.Hevc, "H265"],
-    [CameraAvStreamManagement.VideoCodec.Vvc, "H266"],
-    [CameraAvStreamManagement.VideoCodec.Av1, "AV1"],
-]);
-
-/**
  * `narrowed`, or a typed codec failure when narrowing emptied the set it was given.
  *
  * `device` reports the set that was narrowed, not the camera's full list: after the offer has already
@@ -127,7 +114,7 @@ function requireCodecCandidates(narrowed: number[], before: number[], requested:
     if (narrowed.length === 0) {
         throw ServerError.cameraStreamIncompatible({
             reason: "codec",
-            device: before.map(String),
+            device: before.map(videoCodecName),
             requested,
         });
     }
@@ -147,16 +134,16 @@ export function preferredVideoCodec(
     sdp: SdpVideoConstraints | undefined,
     hintCodecs: string[] | undefined,
 ): number {
-    let candidates = deviceCodecs.length > 0 ? deviceCodecs : [...VIDEO_CODEC_NAMES.keys()];
+    let candidates = deviceCodecs.length > 0 ? deviceCodecs : knownVideoCodecs();
     if (sdp?.hasVideo === true && sdp.codecs.length > 0) {
-        const offered = candidates.filter(codec => sdp.codecs.includes(VIDEO_CODEC_NAMES.get(codec) ?? ""));
+        const offered = candidates.filter(codec => sdp.codecs.includes(videoCodecName(codec)));
         candidates = requireCodecCandidates(offered, candidates, sdp.codecs);
     }
     if (hintCodecs !== undefined) {
         // Walk the caller's stated order, not the device's: `candidates.filter(...)` would keep the
         // device's ordering and silently discard the caller's preference between two codecs it both offers.
         const preferred = hintCodecs
-            .map(name => candidates.find(codec => VIDEO_CODEC_NAMES.get(codec) === name))
+            .map(name => candidates.find(codec => videoCodecName(codec) === name))
             .filter((codec): codec is number => codec !== undefined);
         candidates = requireCodecCandidates(preferred, candidates, hintCodecs);
     }
@@ -553,8 +540,8 @@ export class CameraStreamManager {
         if (deviceCodecs.length > 0 && !deviceCodecs.includes(codec)) {
             throw ServerError.cameraStreamIncompatible({
                 reason: "codec",
-                device: deviceCodecs.map(String),
-                requested: [String(codec)],
+                device: deviceCodecs.map(videoCodecName),
+                requested: [videoCodecName(codec)],
             });
         }
 
@@ -578,8 +565,8 @@ export class CameraStreamManager {
         if ("unsatisfiable" in selection) {
             throw ServerError.cameraStreamIncompatible({
                 reason: selection.unsatisfiable,
-                device: deviceCodecs.map(String),
-                requested: [String(codec)],
+                device: deviceCodecs.map(videoCodecName),
+                requested: [videoCodecName(codec)],
                 bound: { field: selection.field, requested: selection.requested, limit: selection.limit },
             });
         }
@@ -635,8 +622,8 @@ export class CameraStreamManager {
                 if (reaction === "fail-incompatible") {
                     throw ServerError.cameraStreamIncompatible({
                         reason: "bounds",
-                        device: deviceCodecs.map(String),
-                        requested: [String(codec)],
+                        device: deviceCodecs.map(videoCodecName),
+                        requested: [videoCodecName(codec)],
                         deviceStatus: lastStatus,
                     });
                 }
@@ -680,8 +667,8 @@ export class CameraStreamManager {
         if (ladderReaction(lastStatus) === "narrow") {
             throw ServerError.cameraStreamIncompatible({
                 reason: "bounds",
-                device: deviceCodecs.map(String),
-                requested: [String(codec)],
+                device: deviceCodecs.map(videoCodecName),
+                requested: [videoCodecName(codec)],
                 deviceStatus: lastStatus,
             });
         }
@@ -740,7 +727,7 @@ export class CameraStreamManager {
         if ("unsatisfiable" in selection) {
             throw ServerError.cameraStreamIncompatible({
                 reason: selection.unsatisfiable,
-                device: selection.device.map(String),
+                device: selection.device.map(audioCodecName),
                 requested: selection.requested,
             });
         }
@@ -1146,8 +1133,12 @@ export class CameraStreamManager {
                 maxResolution: args.maxResolution,
                 codec: args.codec,
             });
-            const deviceCodecs = state.snapshotCapabilities.map(entry => String(entry.imageCodec));
-            const requestedCodecs = args.codec === undefined ? new Array<string>() : [String(args.codec)];
+            const deviceCodecs = new Array<string>();
+            for (const entry of state.snapshotCapabilities) {
+                const name = imageCodecName(entry.imageCodec);
+                if (!deviceCodecs.includes(name)) deviceCodecs.push(name);
+            }
+            const requestedCodecs = args.codec === undefined ? new Array<string>() : [imageCodecName(args.codec)];
             if ("unsatisfiable" in selection) {
                 throw ServerError.cameraStreamIncompatible({
                     reason: selection.unsatisfiable,
@@ -1158,8 +1149,11 @@ export class CameraStreamManager {
             const candidates = selection.capabilities;
             const bestWithFreeEncoder = selection.bestWithFreeEncoder;
             if (candidates.length === 0) {
+                // Every narrowing step reports its own dimension above, so the list can only be empty
+                // when the camera advertises no snapshot capability at all. No bound the caller could
+                // change makes this request work.
                 throw ServerError.cameraStreamIncompatible({
-                    reason: "bounds",
+                    reason: "capability",
                     device: deviceCodecs,
                     requested: requestedCodecs,
                 });

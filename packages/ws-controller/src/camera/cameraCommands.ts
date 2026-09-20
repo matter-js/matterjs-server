@@ -12,17 +12,20 @@ import type {
     CameraStartStreamVideoResult,
 } from "@matter-server/ws-client";
 import { Bytes, EndpointNumber, NodeId } from "@matter/main";
+import { StreamUsage } from "@matter/main/types";
 import { ServerError } from "../types/WebSocketMessageTypes.js";
 import type { CameraCapabilities, SnapshotResult, StartStreamResult } from "./CameraStreamManager.js";
 import type { AudioEnvelope, Resolution, ResolvedStream, StreamKind, VideoEnvelope } from "./cameraTypes.js";
 import type { AudioHints, VideoHints } from "./streamPolicy.js";
-
-/** StreamUsageEnum values accepted from the wire; Internal (0) is device-only and never requested here. */
-const STREAM_USAGE_BY_NAME = new Map<string, number>([
-    ["Recording", 1],
-    ["Analysis", 2],
-    ["LiveView", 3],
-]);
+import {
+    audioCodecName,
+    imageCodecByName,
+    imageCodecName,
+    streamUsageByName,
+    streamUsageName,
+    twoWayTalkSupportName,
+    videoCodecName,
+} from "./wireNames.js";
 
 function isStreamKind(value: string): value is StreamKind {
     return value === "video" || value === "audio" || value === "snapshot";
@@ -160,9 +163,10 @@ export function parseStartStreamArgs(args: {
     metadata_enabled?: unknown;
 }): ParsedStartStreamArgs {
     const target = parseCameraTarget(args);
-    const streamUsage = typeof args.stream_usage === "string" ? STREAM_USAGE_BY_NAME.get(args.stream_usage) : undefined;
-    if (streamUsage === undefined) {
-        throw ServerError.invalidArguments(`Unknown stream_usage "${String(args.stream_usage)}"`);
+    // Internal is device-only: a stream carrying it must not be modified, so it is never requested here.
+    const streamUsage = typeof args.stream_usage === "string" ? streamUsageByName(args.stream_usage) : undefined;
+    if (streamUsage === undefined || streamUsage === StreamUsage.Internal) {
+        throw ServerError.invalidArguments(`Unknown or device-only stream_usage "${String(args.stream_usage)}"`);
     }
     const sdp = toOptionalString(args.sdp, "sdp");
     const iceServers = toOptionalRecordArray(args.ice_servers, "ice_servers");
@@ -199,6 +203,16 @@ export function parseStopStreamArgs(args: {
     return { ...target, webRtcSessionId };
 }
 
+function toImageCodec(value: unknown): number {
+    const codec = typeof value === "string" ? imageCodecByName(value) : undefined;
+    if (codec === undefined) {
+        throw ServerError.invalidArguments(
+            `camera_snapshot codec must be an image codec name such as "JPEG" or "HEIC", not ${JSON.stringify(value)}`,
+        );
+    }
+    return codec;
+}
+
 export interface ParsedSnapshotArgs extends ParsedCameraTarget {
     maxResolution?: Resolution;
     codec?: number;
@@ -212,13 +226,11 @@ export function parseSnapshotArgs(args: {
 }): ParsedSnapshotArgs {
     const target = parseCameraTarget(args);
     const { max_resolution: maxResolution, codec } = args;
-    if (codec !== undefined && (typeof codec !== "number" || !Number.isInteger(codec) || codec < 0)) {
-        throw ServerError.invalidArguments("camera_snapshot codec must be a non-negative integer");
-    }
+    const imageCodec = codec === undefined ? undefined : toImageCodec(codec);
     return {
         ...target,
         ...(maxResolution === undefined ? {} : { maxResolution: toResolution(maxResolution, "max_resolution") }),
-        ...(codec === undefined ? {} : { codec }),
+        ...(imageCodec === undefined ? {} : { codec: imageCodec }),
     };
 }
 
@@ -253,26 +265,26 @@ export function toWireCapabilities(capabilities: CameraCapabilities): CameraCapa
             ...(capabilities.video.maxHdrFps === undefined ? {} : { max_hdr_fps: capabilities.video.maxHdrFps }),
             ...(capabilities.video.hdrCapable === undefined ? {} : { hdr_capable: capabilities.video.hdrCapable }),
             rate_distortion_points: capabilities.video.rateDistortionPoints.map(point => ({
-                codec: point.codec,
+                codec: videoCodecName(point.codec),
                 resolution: point.resolution,
                 min_bit_rate: point.minBitRate,
             })),
-            codecs: capabilities.video.codecs,
+            codecs: capabilities.video.codecs.map(videoCodecName),
         },
         audio: {
-            codecs: capabilities.audio.codecs,
+            codecs: capabilities.audio.codecs.map(audioCodecName),
             ...(capabilities.audio.channels === undefined ? {} : { channels: capabilities.audio.channels }),
             sample_rates: capabilities.audio.sampleRates,
             bit_depths: capabilities.audio.bitDepths,
             ...(capabilities.audio.twoWayTalkSupport === undefined
                 ? {}
-                : { two_way_talk_support: capabilities.audio.twoWayTalkSupport }),
+                : { two_way_talk_support: twoWayTalkSupportName(capabilities.audio.twoWayTalkSupport) }),
         },
         snapshot: {
             capabilities: capabilities.snapshot.capabilities.map(entry => ({
                 resolution: entry.resolution,
                 max_frame_rate: entry.maxFrameRate,
-                image_codec: entry.imageCodec,
+                image_codec: imageCodecName(entry.imageCodec),
                 requires_encoded_pixels: entry.requiresEncodedPixels,
                 requires_hardware_encoder: entry.requiresHardwareEncoder,
             })),
@@ -288,14 +300,14 @@ export function toWireCapabilities(capabilities: CameraCapabilities): CameraCapa
                 ? {}
                 : { max_network_bandwidth: capabilities.limits.maxNetworkBandwidth }),
 
-            supported_stream_usages: capabilities.limits.supportedStreamUsages,
-            stream_usage_priorities: capabilities.limits.streamUsagePriorities,
+            supported_stream_usages: capabilities.limits.supportedStreamUsages.map(streamUsageName),
+            stream_usage_priorities: capabilities.limits.streamUsagePriorities.map(streamUsageName),
         },
         allocated: {
             video: capabilities.allocated.video.map(stream => ({
                 video_stream_id: stream.videoStreamId,
-                stream_usage: stream.streamUsage,
-                video_codec: stream.videoCodec,
+                stream_usage: streamUsageName(stream.streamUsage),
+                video_codec: videoCodecName(stream.videoCodec),
                 min_resolution: stream.minResolution,
                 max_resolution: stream.maxResolution,
                 min_frame_rate: stream.minFrameRate,
@@ -307,8 +319,8 @@ export function toWireCapabilities(capabilities: CameraCapabilities): CameraCapa
             })),
             audio: capabilities.allocated.audio.map(stream => ({
                 audio_stream_id: stream.audioStreamId,
-                stream_usage: stream.streamUsage,
-                audio_codec: stream.audioCodec,
+                stream_usage: streamUsageName(stream.streamUsage),
+                audio_codec: audioCodecName(stream.audioCodec),
                 channel_count: stream.channelCount,
                 sample_rate: stream.sampleRate,
                 bit_rate: stream.bitRate,
@@ -318,7 +330,7 @@ export function toWireCapabilities(capabilities: CameraCapabilities): CameraCapa
             })),
             snapshot: capabilities.allocated.snapshot.map(stream => ({
                 snapshot_stream_id: stream.snapshotStreamId,
-                image_codec: stream.imageCodec,
+                image_codec: imageCodecName(stream.imageCodec),
                 resolution: stream.resolution,
                 reference_count: stream.referenceCount,
                 owned_by_server: stream.ownedByServer,
@@ -339,7 +351,7 @@ function toWireStartStreamVideo(stream: ResolvedStream): CameraStartStreamVideoR
     }
     return {
         stream_id: stream.streamId,
-        codec: envelope.codec,
+        codec: videoCodecName(envelope.codec),
         resolution: { min: envelope.minResolution, max: envelope.maxResolution },
         frame_rate: { min: envelope.minFrameRate, max: envelope.maxFrameRate },
         bit_rate: { min: envelope.minBitRate, max: envelope.maxBitRate },
@@ -356,7 +368,7 @@ function toWireStartStreamAudio(stream: ResolvedStream): CameraStartStreamAudioR
     }
     return {
         stream_id: stream.streamId,
-        codec: envelope.codec,
+        codec: audioCodecName(envelope.codec),
         channel_count: envelope.channelCount,
         sample_rate: envelope.sampleRate,
         bit_rate: envelope.bitRate,
@@ -378,7 +390,7 @@ export function toWireStartStreamResult(result: StartStreamResult): CameraStartS
 export function toWireSnapshotResult(result: SnapshotResult): CameraSnapshotResult {
     return {
         data: Bytes.toBase64(result.data),
-        codec: result.imageCodec,
+        codec: imageCodecName(result.imageCodec),
         resolution: result.resolution,
         downgraded: result.downgraded,
         stream_id: result.streamId,

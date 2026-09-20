@@ -99,7 +99,7 @@ function generateConnectionId(): string {
     return id.toString(16);
 }
 
-const SCHEMA_VERSION = 13;
+const SCHEMA_VERSION = 14;
 const MIN_SUPPORTED_SCHEMA_VERSION = 11;
 
 // Issuing any of these (schema 12) proves the connection is Thread-aware, so it opts the connection

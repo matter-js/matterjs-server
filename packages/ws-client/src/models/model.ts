@@ -386,8 +386,9 @@ export interface CameraResolution {
  */
 export interface CameraVideoHints {
     /**
-     * Codec names in preference order, e.g. ["H265", "H264"], matched case-insensitively. A hard
-     * requirement: when the camera supports none of them the call fails with error 102.
+     * Codec names in preference order, e.g. ["H265", "H264"], matched case-insensitively and spelled
+     * as `camera_get_capabilities` reports them. A hard requirement: when the camera supports none of
+     * them the call fails with error 102.
      */
     codecs?: string[];
     min_resolution?: CameraResolution;
@@ -410,7 +411,8 @@ export interface CameraAudioHints {
 }
 
 export interface CameraRateDistortionPoint {
-    codec: number;
+    /** Video codec name, e.g. "H264". */
+    codec: string;
     resolution: CameraResolution;
     min_bit_rate: number;
 }
@@ -418,15 +420,18 @@ export interface CameraRateDistortionPoint {
 export interface CameraSnapshotCapability {
     resolution: CameraResolution;
     max_frame_rate: number;
-    image_codec: number;
+    /** Image codec name, e.g. "JPEG"; pass it back as camera_snapshot's `codec`. */
+    image_codec: string;
     requires_encoded_pixels: boolean;
     requires_hardware_encoder: boolean;
 }
 
 export interface CameraAllocatedVideoStream {
     video_stream_id: number;
-    stream_usage: number;
-    video_codec: number;
+    /** Stream usage name, e.g. "LiveView". */
+    stream_usage: string;
+    /** Video codec name, e.g. "H264". */
+    video_codec: string;
     min_resolution: CameraResolution;
     max_resolution: CameraResolution;
     min_frame_rate: number;
@@ -439,8 +444,10 @@ export interface CameraAllocatedVideoStream {
 
 export interface CameraAllocatedAudioStream {
     audio_stream_id: number;
-    stream_usage: number;
-    audio_codec: number;
+    /** Stream usage name, e.g. "LiveView". */
+    stream_usage: string;
+    /** Audio codec name, e.g. "OPUS". */
+    audio_codec: string;
     channel_count: number;
     sample_rate: number;
     bit_rate: number;
@@ -451,7 +458,8 @@ export interface CameraAllocatedAudioStream {
 
 export interface CameraAllocatedSnapshotStream {
     snapshot_stream_id: number;
-    image_codec: number;
+    /** Image codec name, e.g. "JPEG". */
+    image_codec: string;
     resolution: CameraResolution;
     reference_count: number;
     owned_by_server: boolean;
@@ -465,15 +473,20 @@ export interface CameraCapabilitiesResult {
         max_hdr_fps?: number;
         hdr_capable?: boolean;
         rate_distortion_points: CameraRateDistortionPoint[];
-        /** Distinct codecs found across rate_distortion_points. There is deliberately no resolutions list. */
-        codecs: number[];
+        /**
+         * Distinct codec names found across rate_distortion_points, ready to be used as a
+         * `camera_start_stream` video hint. There is deliberately no resolutions list.
+         */
+        codecs: string[];
     };
     audio: {
-        codecs: number[];
+        /** Codec names, ready to be used as a `camera_start_stream` audio hint. */
+        codecs: string[];
         channels?: number;
         sample_rates: number[];
         bit_depths: number[];
-        two_way_talk_support?: number;
+        /** Talkback support name: "NotSupported", "HalfDuplex" or "FullDuplex". */
+        two_way_talk_support?: string;
     };
     snapshot: {
         capabilities: CameraSnapshotCapability[];
@@ -483,8 +496,9 @@ export interface CameraCapabilitiesResult {
         max_concurrent_encoders?: number;
         /** MaxNetworkBandwidth in bits per second; the server caps a stream's max_bit_rate at it. */
         max_network_bandwidth?: number;
-        supported_stream_usages: number[];
-        stream_usage_priorities: number[];
+        /** Stream usage names, ready to be used as `camera_start_stream`'s `stream_usage`. */
+        supported_stream_usages: string[];
+        stream_usage_priorities: string[];
     };
     allocated: {
         video: CameraAllocatedVideoStream[];
@@ -495,7 +509,8 @@ export interface CameraCapabilitiesResult {
 
 export interface CameraStartStreamVideoResult {
     stream_id: number;
-    codec: number;
+    /** Video codec name, e.g. "H264". */
+    codec: string;
     resolution: { min: CameraResolution; max: CameraResolution };
     frame_rate: { min: number; max: number };
     bit_rate: { min: number; max: number };
@@ -507,7 +522,8 @@ export interface CameraStartStreamVideoResult {
 
 export interface CameraStartStreamAudioResult {
     stream_id: number;
-    codec: number;
+    /** Audio codec name, e.g. "OPUS". */
+    codec: string;
     channel_count: number;
     sample_rate: number;
     bit_rate: number;
@@ -526,7 +542,8 @@ export interface CameraStartStreamResult {
 export interface CameraSnapshotResult {
     /** Base64-encoded image bytes. */
     data: string;
-    codec: number;
+    /** Image codec name, e.g. "JPEG". */
+    codec: string;
     resolution: CameraResolution;
     /** True when the frame is smaller than the best capability the request's own bounds allowed. */
     downgraded: boolean;
@@ -699,7 +716,12 @@ export interface APICommands {
         requestArgs: {
             node_id: number | bigint;
             endpoint_id: number;
-            stream_usage: "LiveView" | "Recording" | "Analysis";
+            /**
+             * A name from `camera_get_capabilities`' `supported_stream_usages`, matched
+             * case-insensitively: `LiveView`, `Recording` or `Analysis`. `Internal` is device-only
+             * and refused.
+             */
+            stream_usage: string;
             sdp?: string;
             video?: CameraVideoHints | false;
             audio?: CameraAudioHints | false;
@@ -719,7 +741,8 @@ export interface APICommands {
             node_id: number | bigint;
             endpoint_id: number;
             max_resolution?: { width: number; height: number };
-            codec?: number;
+            /** Image codec name from `camera_get_capabilities`, e.g. "JPEG". */
+            codec?: string;
         };
         response: CameraSnapshotResult;
     };

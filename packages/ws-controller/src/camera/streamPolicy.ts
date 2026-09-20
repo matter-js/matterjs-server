@@ -4,9 +4,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { CameraAvStreamManagement } from "@matter/main/clusters/camera-av-stream-management";
 import type { AudioEnvelope, Resolution, VideoEnvelope } from "./cameraTypes.js";
 import type { SdpVideoConstraints } from "./sdpConstraints.js";
+import { audioCodecName } from "./wireNames.js";
 
 /** KeyFrameInterval in milliseconds; LiveView favours fast recovery over bitrate. */
 const LIVE_VIEW_KEY_FRAME_INTERVAL_MS = 2000;
@@ -340,18 +340,6 @@ export function narrowEnvelope(envelope: VideoEnvelope): VideoEnvelope | undefin
     return undefined;
 }
 
-/**
- * SDP rtpmap names for the AudioCodecEnum values MicrophoneCapabilities reports.
- *
- * Only the names are written here: matter.js spells the members `Opus` and `AacLc`, SDP spells them
- * `OPUS` and `AAC`, so the mapping cannot be derived from the enum, but every numeric value comes
- * from it.
- */
-const AUDIO_CODEC_NAMES = new Map<CameraAvStreamManagement.AudioCodec, string>([
-    [CameraAvStreamManagement.AudioCodec.Opus, "OPUS"],
-    [CameraAvStreamManagement.AudioCodec.AacLc, "AAC"],
-]);
-
 const DEFAULT_AUDIO_BIT_RATE = 64000;
 
 export interface AudioCapabilities {
@@ -396,17 +384,11 @@ export function computeAudioEnvelope(args: AudioEnvelopeArgs): AudioSelection {
 
     let codecs = capabilities.supportedCodecs;
     if (sdp !== undefined && sdp.hasAudio) {
-        codecs = codecs.filter(codec => {
-            const name = AUDIO_CODEC_NAMES.get(codec);
-            return name !== undefined && sdp.audioCodecs.includes(name);
-        });
+        codecs = codecs.filter(codec => sdp.audioCodecs.includes(audioCodecName(codec)));
     }
     if (hints?.codecs !== undefined) {
         const hintCodecs = hints.codecs;
-        const preferred = codecs.filter(codec => {
-            const name = AUDIO_CODEC_NAMES.get(codec);
-            return name !== undefined && hintCodecs.includes(name);
-        });
+        const preferred = codecs.filter(codec => hintCodecs.includes(audioCodecName(codec)));
         if (preferred.length === 0 && codecs.length > 0) {
             return { unsatisfiable: "codec", device: codecs, requested: hintCodecs };
         }

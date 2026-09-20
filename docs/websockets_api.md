@@ -788,6 +788,98 @@ This should be the last resort to try to get an ICD device in LIT mode connected
 
 A LIT peer re-registers automatically once subscribed.
 
+### Camera Streaming (schema 14+)
+
+Five commands cover a Matter camera's stream lifecycle. The server computes the `VideoStreamAllocate` envelope, reuses or allocates streams, walks the device's rejections and tracks the WebRTC session, so a client does not have to. The raw `send_webrtc_provider_command` / `device_command` path keeps working for a client doing its own allocation.
+
+Every codec on these commands is a **name**, not a number: `H264`, `H265`, `H266`, `AV1` (video), `OPUS`, `AAC` (audio), `JPEG`, `HEIC` (snapshot). Stream usages are names too: `Recording`, `Analysis`, `LiveView` (`Internal` is device-only and refused), and so is `two_way_talk_support` (`NotSupported`, `HalfDuplex`, `FullDuplex`). All these names are matched case-insensitively, so what `camera_get_capabilities` reports can be sent straight back as a hint or a `stream_usage`. The codec set is open: a codec the cluster enum does not define is reported as its decimal digits and accepted back in that spelling. The stream usages are closed: only the three names above are accepted.
+
+**camera_get_capabilities** - Report what the camera states, and what is allocated on it
+
+```json
+{
+  "message_id": "1",
+  "command": "camera_get_capabilities",
+  "args": {
+    "node_id": 1,
+    "endpoint_id": 1
+  }
+}
+```
+
+Response: `video` (`sensor`, `min_viewport`, `max_fps`, `max_hdr_fps`, `hdr_capable`, `rate_distortion_points`, `codecs`), `audio` (`codecs`, `channels`, `sample_rates`, `bit_depths`, `two_way_talk_support`), `snapshot.capabilities`, `limits` (`max_encoded_pixel_rate`, `max_concurrent_encoders`, `max_network_bandwidth`, `supported_stream_usages`, `stream_usage_priorities`) and `allocated` streams per kind with their `reference_count` and `owned_by_server`. There is deliberately no resolution list: the camera does not state one. Allocates nothing.
+
+**camera_start_stream** - Allocate or reuse a stream and open a WebRTC session
+
+`ProvideOffer` when `sdp` is given, `SolicitOffer` otherwise. `video` and `audio` take range hints; pass `false` instead to leave that track out.
+
+```json
+{
+  "message_id": "1",
+  "command": "camera_start_stream",
+  "args": {
+    "node_id": 1,
+    "endpoint_id": 1,
+    "stream_usage": "LiveView",
+    "sdp": "v=0\r\n...",
+    "video": { "codecs": ["H264"], "max_resolution": { "width": 1920, "height": 1080 } },
+    "audio": false
+  }
+}
+```
+
+Response: `{ webrtc_session_id, mode, video, audio }`. `video` reports `codec`, `resolution.min/max`, `frame_rate.min/max` and `bit_rate.min/max`; `audio` reports `codec`, `channel_count`, `sample_rate`, `bit_rate` and `bit_depth`. Both also report whether the stream was `reused` and whether the server allocated it, and both are `null` when the track was left out. Every bound the caller states is hard in both directions: a codec list, floor or ceiling that nothing satisfies fails with error 102 rather than returning something else. Answer SDP and ICE candidates keep arriving on the `webrtc_callback` event.
+
+**camera_stop_stream** - End the WebRTC session, keep the allocation
+
+```json
+{
+  "message_id": "1",
+  "command": "camera_stop_stream",
+  "args": {
+    "node_id": 1,
+    "endpoint_id": 1,
+    "webrtc_session_id": 3
+  }
+}
+```
+
+Response: `{ "ended": true }`. `ended` is `false` when the id is not a session tracked for this node and endpoint.
+
+**camera_snapshot** - Capture one still frame
+
+```json
+{
+  "message_id": "1",
+  "command": "camera_snapshot",
+  "args": {
+    "node_id": 1,
+    "endpoint_id": 1,
+    "max_resolution": { "width": 1280, "height": 720 },
+    "codec": "JPEG"
+  }
+}
+```
+
+Response: `{ data, codec, resolution, downgraded, stream_id, reused, allocated_by_server }`. `data` is base64-encoded image bytes. While a video stream is live the server prefers a capability that needs no hardware encoder; `downgraded: true` says the frame is smaller than the best capability the request's own bounds allowed. Every call allocates a fresh snapshot stream — release it with `camera_release_stream` when a caller wants the device's capacity back.
+
+**camera_release_stream** - Force-deallocate a stream the server owns
+
+```json
+{
+  "message_id": "1",
+  "command": "camera_release_stream",
+  "args": {
+    "node_id": 1,
+    "endpoint_id": 1,
+    "kind": "video",
+    "stream_id": 1
+  }
+}
+```
+
+Response: `{ "released": true }`. Fails with 104 while a listener still references the stream, and with 105 for a stream the server did not allocate.
+
 ### Vendor Information
 
 **get_vendor_names** - Get vendor names by ID
@@ -1053,7 +1145,7 @@ Attribute paths use the format: `endpoint/cluster/attribute`
 
 ## Schema Version
 
-The current schema version is **13** (minimum supported **11**). Commands and events added in the current schema are marked **(schema 13+)** below; see [the schema changelog](websocket-api-schema-changelog.md) for what each version added. The server reports `schema_version` and `min_supported_schema_version` in the initial connection message and via `server_info`. Clients should verify that the server's `schema_version` is within their supported range.
+The current schema version is **14** (minimum supported **11**). Commands and events added in the current schema are marked **(schema 14+)** below; see [the schema changelog](websocket-api-schema-changelog.md) for what each version added. The server reports `schema_version` and `min_supported_schema_version` in the initial connection message and via `server_info`. Clients should verify that the server's `schema_version` is within their supported range.
 
 ## BigInt Handling
 
@@ -1085,6 +1177,11 @@ Error codes match the [Python Matter Server](https://github.com/home-assistant-l
 | 11 | UpdateError | OTA update failed |
 | 100 | IcdMultiAdmin | OHF extension (not in Python Matter Server). ICD registration rejected because other-vendor administrator fabrics may not support LIT. `details` is a JSON string: `{"message": string, "admin_vendor_ids": number[]}` |
 | 101 | OtaUploadError | OHF extension (not in Python Matter Server). `initiate_ota_upload` or `POST /ota-upload/<upload_id>` failed: corrupt image, unknown/expired/already-used upload id, disabled OTA support, or store failure |
+| 102 | CameraStreamIncompatible | OHF extension. No codec or stream range suits both the camera and the caller. `details` is a JSON string: `{"message": string, "reason": "codec" \| "bounds" \| "capability", "device": string[], "requested": string[], "bound"?: {"field": string, "requested": string, "limit": string}, "device_status"?: number}`. `codec` means the codec lists do not overlap, `bounds` that the requested range cannot be served, `capability` that the camera states no capability of that kind at all — only the first two can be fixed by asking for something else. `device`/`requested` are codec names — `requested` is the codec the request resolved to, which is the caller's own choice when it stated one. `bound` names the single caller bound the server ruled out before asking the device, and only `camera_start_stream` reports it; a `camera_snapshot` ceiling that excludes every capability answers `reason: "bounds"` without it. `device_status` is the Matter status a device rejection answered with |
+| 103 | CameraResourceExhausted | OHF extension. The camera has no encoder capacity left for the requested stream. `details` is a JSON string: `{"message": string, "allocated": [{"stream_id": number, "reference_count": number}], "max_concurrent_encoders"?: number, "max_encoded_pixel_rate"?: number}`; the two limits are present only when the camera states them |
+| 104 | CameraStreamInUse | OHF extension. `camera_release_stream` targeted a stream a listener still references. `details` is a JSON string: `{"message": string, "stream_id": number, "reference_count": number}` |
+| 105 | CameraStreamNotOwned | OHF extension. `camera_release_stream` targeted a stream this server did not allocate. `details` is a JSON string: `{"message": string, "stream_id": number}` |
+| 106 | CameraNotSupported | OHF extension. The endpoint exposes neither the AV Stream Management nor the WebRTC Provider cluster the camera commands need. `details` is a JSON string: `{"message": string, "missing_clusters": number[]}` |
 
 ## Python Matter Server Compatibility
 
@@ -1110,6 +1207,11 @@ These commands are available only in the Matter.js server and not in the Python 
 | `resync_icd` | Drop the local ICD registration and reconnect |
 | `get_network_topology` | Return the Thread/Wi-Fi network as a graph (schema 13+) |
 | `initiate_ota_upload` | Reserve an id for the `POST /ota-upload/<upload_id>` HTTP endpoint (schema 13+) |
+| `camera_get_capabilities` | Report a camera endpoint's stated capabilities and current stream allocations (schema 14+) |
+| `camera_start_stream` | Allocate or reuse a video/audio stream and open a WebRTC session on it (schema 14+) |
+| `camera_stop_stream` | End a WebRTC session started that way, keeping the stream allocation (schema 14+) |
+| `camera_snapshot` | Capture one still frame from a camera endpoint (schema 14+) |
+| `camera_release_stream` | Force-deallocate a server-owned stream nothing references (schema 14+) |
 
 ### Data Differences
 

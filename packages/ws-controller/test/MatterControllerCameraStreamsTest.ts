@@ -7,6 +7,7 @@
 import { Crypto, Environment, MockStorageService } from "@matter/general";
 import { MatterController } from "../src/controller/MatterController.js";
 import { ConfigStorage } from "../src/server/ConfigStorage.js";
+import { ServerError, ServerErrorCode } from "../src/types/WebSocketMessageTypes.js";
 
 function freshEnv(): Environment {
     const env = new Environment("test");
@@ -35,10 +36,43 @@ describe("MatterController.cameraStreamsIfCreated", () => {
         expect(controller.cameraStreamsIfCreated).to.equal(undefined);
     });
 
-    it("the cameraStreams getter itself still throws once stopped", async () => {
+    it("the cameraStreams getter itself still fails typed once stopped", async () => {
         const controller = new MatterController(freshEnv(), config, {}, "server");
         await controller.stop();
-        expect(() => controller.cameraStreams).to.throw();
+        const readCameraStreams = () => controller.cameraStreams;
+        let thrown: unknown;
+        try {
+            readCameraStreams();
+        } catch (error) {
+            thrown = error;
+        }
+        expect(thrown).to.be.instanceOf(ServerError);
+        expect((thrown as ServerError).code).to.equal(ServerErrorCode.SDKStackError);
+    });
+
+    it("the cameraStreams getter fails typed on a controller that was never started", () => {
+        const controller = new MatterController(freshEnv(), config, {}, "server");
+        const readCameraStreams = () => controller.cameraStreams;
+        let thrown: unknown;
+        try {
+            readCameraStreams();
+        } catch (error) {
+            thrown = error;
+        }
+        expect(thrown).to.be.instanceOf(ServerError);
+        expect((thrown as ServerError).code).to.equal(ServerErrorCode.SDKStackError);
+    });
+
+    it("fails typed on every getter that needs a started controller", async () => {
+        const controller = new MatterController(freshEnv(), config, {}, "server");
+        let thrown: unknown;
+        try {
+            await controller.vendorInfoService();
+        } catch (error) {
+            thrown = error;
+        }
+        expect(thrown).to.be.instanceOf(ServerError);
+        expect((thrown as ServerError).code).to.equal(ServerErrorCode.SDKStackError);
     });
 
     it("drops the camera registry entry when the peer ends a session", async () => {

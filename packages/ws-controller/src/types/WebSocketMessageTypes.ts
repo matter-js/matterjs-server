@@ -83,7 +83,7 @@ export enum ServerErrorCode {
     IcdMultiAdmin = 100,
     /** OHF extension (not python-matter-server): OTA firmware image upload failed (corrupt file / store failure). */
     OtaUploadError = 101,
-    /** OHF extension: no codec or resolution range both the camera and the caller can serve. */
+    /** OHF extension: no codec or range both sides can serve, or the camera states no such capability. */
     CameraStreamIncompatible = 102,
     /** OHF extension: the camera has no encoder capacity left for the requested stream. */
     CameraResourceExhausted = 103,
@@ -96,7 +96,12 @@ export enum ServerErrorCode {
 }
 
 export interface CameraStreamIncompatibleDetail {
-    reason: "codec" | "bounds";
+    /**
+     * Which dimension could not be met, so a client knows what to change: `codec` a codec list,
+     * `bounds` a resolution / frame-rate / bit-rate bound, `capability` nothing — the device states
+     * no capability of the kind the command needs and no different request can succeed.
+     */
+    reason: "codec" | "bounds" | "capability";
     device: string[];
     requested: string[];
     /**
@@ -107,6 +112,12 @@ export interface CameraStreamIncompatibleDetail {
     /** Matter status code the device answered with, when a device rejection produced this. */
     deviceStatus?: number;
 }
+
+const INCOMPATIBLE_MESSAGES: Record<CameraStreamIncompatibleDetail["reason"], string> = {
+    codec: "No codec supported by both the camera and the caller",
+    bounds: "Camera cannot serve the requested stream parameters",
+    capability: "Camera states no capability for this request",
+};
 
 export interface CameraAllocatedStreamDetail {
     streamId: number;
@@ -199,10 +210,7 @@ export class ServerError extends Error {
         return new ServerError(
             ServerErrorCode.CameraStreamIncompatible,
             JSON.stringify({
-                message:
-                    detail.reason === "codec"
-                        ? "No codec supported by both the camera and the caller"
-                        : "Camera cannot serve the requested stream parameters",
+                message: INCOMPATIBLE_MESSAGES[detail.reason],
                 reason: detail.reason,
                 device: detail.device,
                 requested: detail.requested,
