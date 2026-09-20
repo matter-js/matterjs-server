@@ -4,7 +4,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type { AllocatedVideoStream, AudioEnvelope, Resolution, VideoEnvelope } from "./cameraTypes.js";
+import type {
+    AllocatedAudioStream,
+    AllocatedVideoStream,
+    AudioEnvelope,
+    Resolution,
+    VideoEnvelope,
+} from "./cameraTypes.js";
 import type { SdpVideoConstraints } from "./sdpConstraints.js";
 import { audioCodecName } from "./wireNames.js";
 
@@ -26,14 +32,51 @@ export interface VideoCapabilities {
     maxNetworkBandwidth?: number;
 }
 
-export interface VideoHints {
+/**
+ * The video ranges a caller may state.
+ *
+ * Every field here is a bound on what the caller is willing to be given, so none of them may be
+ * given up on its behalf. An absent field is the opposite: a choice the caller left to the server.
+ */
+export interface VideoRangeBounds {
     minResolution?: Resolution;
     maxResolution?: Resolution;
     minFrameRate?: number;
     maxFrameRate?: number;
     minBitRate?: number;
     maxBitRate?: number;
+}
+
+export interface VideoHints extends VideoRangeBounds {
     codecs?: string[];
+}
+
+/**
+ * Everything the caller stated about the video stream it asked for.
+ *
+ * `codec` is what the caller's `codecs` and the offer already resolved to, and `streamUsage` is
+ * mandatory on the wire, so both are always stated and both are checked unconditionally.
+ */
+export interface VideoCallerBounds extends VideoRangeBounds {
+    codec: number;
+    streamUsage: number;
+}
+
+export function videoCallerBounds(
+    codec: number,
+    streamUsage: number,
+    hints: VideoHints | undefined,
+): VideoCallerBounds {
+    return {
+        codec,
+        streamUsage,
+        minResolution: hints?.minResolution,
+        maxResolution: hints?.maxResolution,
+        minFrameRate: hints?.minFrameRate,
+        maxFrameRate: hints?.maxFrameRate,
+        minBitRate: hints?.minBitRate,
+        maxBitRate: hints?.maxBitRate,
+    };
 }
 
 export interface VideoEnvelopeArgs {
@@ -227,35 +270,63 @@ function resolutionContains(
 }
 
 /**
- * An allocated stream that satisfies the request, or none.
+ * Whether `candidate` satisfies every bound the caller stated.
+ *
+ * The one gate every rung passes before it may hand a stream out. Which rung found a candidate is
+ * not something the caller stated, so it cannot change what the caller is willing to accept: a rung
+ * may give up the envelope the server computed and the defaults the server filled in, and nothing
+ * here. A bound the caller left unstated is not a bound — that choice was the server's to make.
+ */
+export function satisfiesVideoCallerBounds(candidate: AllocatedVideoStream, bounds: VideoCallerBounds): boolean {
+    if (candidate.videoCodec !== bounds.codec) return false;
+    // stream_usage is the only mandatory argument of camera_start_stream. Handing a Recording stream
+    // to a LiveView caller substitutes the one thing every caller states.
+    if (candidate.streamUsage !== bounds.streamUsage) return false;
+    if (bounds.minResolution !== undefined && !fitsUnder(bounds.minResolution, candidate.minResolution)) return false;
+    if (bounds.maxResolution !== undefined && !fitsUnder(candidate.maxResolution, bounds.maxResolution)) return false;
+    if (bounds.minFrameRate !== undefined && candidate.minFrameRate < bounds.minFrameRate) return false;
+    if (bounds.maxFrameRate !== undefined && candidate.maxFrameRate > bounds.maxFrameRate) return false;
+    if (bounds.minBitRate !== undefined && candidate.minBitRate < bounds.minBitRate) return false;
+    if (bounds.maxBitRate !== undefined && candidate.maxBitRate > bounds.maxBitRate) return false;
+    return true;
+}
+
+/** Whether `candidate` also fits the envelope the server computed, on every dimension the envelope states. */
+function fitsComputedEnvelope(candidate: AllocatedVideoStream, envelope: VideoEnvelope): boolean {
+    return (
+        resolutionContains(
+            { min: envelope.minResolution, max: envelope.maxResolution },
+            { min: candidate.minResolution, max: candidate.maxResolution },
+        ) &&
+        contains(
+            { min: envelope.minFrameRate, max: envelope.maxFrameRate },
+            { min: candidate.minFrameRate, max: candidate.maxFrameRate },
+        ) &&
+        contains(
+            { min: envelope.minBitRate, max: envelope.maxBitRate },
+            { min: candidate.minBitRate, max: candidate.maxBitRate },
+        )
+    );
+}
+
+/**
+ * An allocated stream as good as the one the server would have allocated, or none.
  *
  * Containment, not overlap: the request's minimum is a floor on delivered quality, so a stream
  * allocated [720p..1080p] does not satisfy a request for 1080p even though the ranges intersect.
  * Covering the request is the device's own dedup rule (spec 15.2.1.2.1), not a client's acceptance
- * rule.
+ * rule. A candidate outside the computed envelope but inside the caller's own bounds is not refused
+ * outright — it is what {@link findDegradedVideoStream} hands out, flagged, once allocation has
+ * failed.
  */
 export function findReusableVideoStream(
     streams: AllocatedVideoStream[],
     envelope: VideoEnvelope,
-    streamUsage: number,
-    options?: { ignoreStreamUsage?: boolean },
+    bounds: VideoCallerBounds,
 ): AllocatedVideoStream | undefined {
-    const candidates = streams.filter(candidate => {
-        if (candidate.videoCodec !== envelope.codec) return false;
-        if (options?.ignoreStreamUsage !== true && candidate.streamUsage !== streamUsage) return false;
-        if (
-            !resolutionContains(
-                { min: envelope.minResolution, max: envelope.maxResolution },
-                { min: candidate.minResolution, max: candidate.maxResolution },
-            )
-        ) {
-            return false;
-        }
-        return contains(
-            { min: envelope.minFrameRate, max: envelope.maxFrameRate },
-            { min: candidate.minFrameRate, max: candidate.maxFrameRate },
-        );
-    });
+    const candidates = streams.filter(
+        candidate => satisfiesVideoCallerBounds(candidate, bounds) && fitsComputedEnvelope(candidate, envelope),
+    );
 
     // Starting an encoder is the expensive part, so a stream already running wins.
     return candidates.sort((a, b) => b.referenceCount - a.referenceCount)[0];
@@ -264,45 +335,16 @@ export function findReusableVideoStream(
 /**
  * A stream to hand out when nothing can be allocated, or none.
  *
- * Matches against the bounds the caller actually stated, not the envelope the server computed: a
- * degraded result may give up a default the server chose, never a constraint the caller set. A fully
- * pinned caller therefore matches nothing here and receives a typed failure.
+ * The rung that gives up the computed envelope and keeps the caller's bounds, which is what
+ * `degraded: true` reports. The more the caller stated, the less this rung has left to give up: with
+ * everything pinned it accepts only what the sensor and the offer narrowed the envelope by, and a
+ * caller that stated nothing is the one that can be handed a stream far outside the request.
  */
 export function findDegradedVideoStream(
     streams: AllocatedVideoStream[],
-    codec: number,
-    callerBounds: VideoHints,
+    bounds: VideoCallerBounds,
 ): AllocatedVideoStream | undefined {
-    const candidates = streams.filter(candidate => {
-        if (candidate.videoCodec !== codec) return false;
-        if (
-            callerBounds.minResolution !== undefined &&
-            (candidate.minResolution.width < callerBounds.minResolution.width ||
-                candidate.minResolution.height < callerBounds.minResolution.height)
-        ) {
-            return false;
-        }
-        if (
-            callerBounds.maxResolution !== undefined &&
-            (candidate.maxResolution.width > callerBounds.maxResolution.width ||
-                candidate.maxResolution.height > callerBounds.maxResolution.height)
-        ) {
-            return false;
-        }
-        if (callerBounds.minFrameRate !== undefined && candidate.minFrameRate < callerBounds.minFrameRate) {
-            return false;
-        }
-        if (callerBounds.maxFrameRate !== undefined && candidate.maxFrameRate > callerBounds.maxFrameRate) {
-            return false;
-        }
-        if (callerBounds.minBitRate !== undefined && candidate.minBitRate < callerBounds.minBitRate) {
-            return false;
-        }
-        if (callerBounds.maxBitRate !== undefined && candidate.maxBitRate > callerBounds.maxBitRate) {
-            return false;
-        }
-        return true;
-    });
+    const candidates = streams.filter(candidate => satisfiesVideoCallerBounds(candidate, bounds));
 
     // Prefer the most capable stream, since this rung is already a compromise.
     return candidates.sort((a, b) => pixels(b.maxResolution) - pixels(a.maxResolution))[0];
@@ -336,12 +378,37 @@ export interface AudioCapabilities {
     supportedBitDepths: number[];
 }
 
+/**
+ * The audio values a caller may state.
+ *
+ * Audio has no ranges: the device states a set of sample rates and a channel maximum, so a caller
+ * states one exact value. Each is as hard as a video bound — a value the device cannot meet fails
+ * rather than being replaced by one the caller did not ask for.
+ */
 export interface AudioHints {
     /** Codec names as SDP rtpmap advertises them, e.g. "OPUS" (matches VideoHints.codecs). */
     codecs?: string[];
     channelCount?: number;
     sampleRate?: number;
     bitRate?: number;
+}
+
+/** {@link AudioHints} plus the mandatory `stream_usage`, in the shape a candidate is compared against. */
+export interface AudioCallerBounds extends AudioHints {
+    streamUsage: number;
+}
+
+/**
+ * Whether `candidate` satisfies every bound the caller stated. The audio counterpart of
+ * {@link satisfiesVideoCallerBounds}, and equally the only gate the reuse rung may not skip.
+ */
+export function satisfiesAudioCallerBounds(candidate: AllocatedAudioStream, bounds: AudioCallerBounds): boolean {
+    if (candidate.streamUsage !== bounds.streamUsage) return false;
+    if (bounds.codecs !== undefined && !bounds.codecs.includes(audioCodecName(candidate.audioCodec))) return false;
+    if (bounds.channelCount !== undefined && candidate.channelCount !== bounds.channelCount) return false;
+    if (bounds.sampleRate !== undefined && candidate.sampleRate !== bounds.sampleRate) return false;
+    if (bounds.bitRate !== undefined && candidate.bitRate !== bounds.bitRate) return false;
+    return true;
 }
 
 export interface AudioEnvelopeArgs {
@@ -351,23 +418,63 @@ export interface AudioEnvelopeArgs {
 }
 
 /**
- * An audio envelope, no envelope, or the caller bound that left no codec.
+ * An audio envelope, no envelope, or the caller value the device cannot meet.
  *
- * `envelope: undefined` is a video-only session, which audio allows and video does not;
- * `unsatisfiable` is a caller bound and always a failure.
+ * `envelope: undefined` means no audio stream can be described — the camera, the offer or the
+ * caller's own codec list left no codec. Whether that is a video-only session or a failure is not
+ * decided here: it depends on whether the caller asked for audio at all, which
+ * {@link CameraStreamManager} knows and this function does not.
  */
 export type AudioSelection =
     | { readonly envelope: AudioEnvelope | undefined }
-    | { readonly unsatisfiable: "codec"; readonly device: number[]; readonly requested: string[] };
+    | {
+          readonly unsatisfiable: "bounds";
+          readonly field: "sampleRate" | "channelCount";
+          readonly requested: string;
+          /** What the device states for the field: its ceiling, or the set of values it accepts. */
+          readonly limit: string;
+      };
+
+/** Whether the caller stated anything about audio, as opposed to leaving the track to the server. */
+export function statesAudioValue(hints: AudioHints | undefined): boolean {
+    if (hints === undefined) return false;
+    return (
+        hints.codecs !== undefined ||
+        hints.channelCount !== undefined ||
+        hints.sampleRate !== undefined ||
+        hints.bitRate !== undefined
+    );
+}
 
 /**
  * Parameters for an audio stream.
  *
- * A codec the caller stated is hard, as it is for video. An offer naming no codec the camera has is
- * not: the peer stated what it can decode, and the session proceeds video-only.
+ * Every value the caller stated is hard, as every video bound is: a sample rate the device does not
+ * list and a channel count above its maximum fail rather than being replaced by a value the caller
+ * did not ask for. Those two are checked before any codec narrowing, so a caller learns about the
+ * value it can change rather than about a codec list the offer happened to empty first.
  */
 export function computeAudioEnvelope(args: AudioEnvelopeArgs): AudioSelection {
     const { capabilities, sdp, hints } = args;
+
+    // Ahead of the codec narrowing: a value the camera cannot serve is the caller's to correct
+    // whatever the offer then leaves, and naming the codec instead would send it after the wrong one.
+    if (hints?.sampleRate !== undefined && !capabilities.supportedSampleRates.includes(hints.sampleRate)) {
+        return {
+            unsatisfiable: "bounds",
+            field: "sampleRate",
+            requested: String(hints.sampleRate),
+            limit: capabilities.supportedSampleRates.join(", "),
+        };
+    }
+    if (hints?.channelCount !== undefined && hints.channelCount > capabilities.maxNumberOfChannels) {
+        return {
+            unsatisfiable: "bounds",
+            field: "channelCount",
+            requested: String(hints.channelCount),
+            limit: String(capabilities.maxNumberOfChannels),
+        };
+    }
 
     let codecs = capabilities.supportedCodecs;
     if (sdp !== undefined && sdp.hasAudio) {
@@ -375,28 +482,16 @@ export function computeAudioEnvelope(args: AudioEnvelopeArgs): AudioSelection {
     }
     if (hints?.codecs !== undefined) {
         const hintCodecs = hints.codecs;
-        const preferred = codecs.filter(codec => hintCodecs.includes(audioCodecName(codec)));
-        if (preferred.length === 0 && codecs.length > 0) {
-            return { unsatisfiable: "codec", device: codecs, requested: hintCodecs };
-        }
-        codecs = preferred;
+        codecs = codecs.filter(codec => hintCodecs.includes(audioCodecName(codec)));
     }
     const codec = codecs[0];
     if (codec === undefined) return { envelope: undefined };
 
-    const sampleRate =
-        hints?.sampleRate !== undefined && capabilities.supportedSampleRates.includes(hints.sampleRate)
-            ? hints.sampleRate
-            : Math.max(...capabilities.supportedSampleRates);
-
     return {
         envelope: {
             codec,
-            channelCount: Math.min(
-                hints?.channelCount ?? capabilities.maxNumberOfChannels,
-                capabilities.maxNumberOfChannels,
-            ),
-            sampleRate,
+            channelCount: hints?.channelCount ?? capabilities.maxNumberOfChannels,
+            sampleRate: hints?.sampleRate ?? Math.max(...capabilities.supportedSampleRates),
             bitRate: hints?.bitRate ?? DEFAULT_AUDIO_BIT_RATE,
             bitDepth: Math.max(...capabilities.supportedBitDepths),
         },

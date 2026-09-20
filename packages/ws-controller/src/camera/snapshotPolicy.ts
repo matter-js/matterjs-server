@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type { Resolution } from "./cameraTypes.js";
+import type { AllocatedVideoStream, Resolution } from "./cameraTypes.js";
 
 /** SnapshotCapabilitiesStruct (§11.2.6.9) as `CameraAvStreamManagementClient` reports it. */
 export interface SnapshotCapability {
@@ -31,6 +31,33 @@ function pixels(resolution: Resolution): number {
  */
 export function usesHardwareEncoder(capability: SnapshotCapability): boolean {
     return capability.requiresEncodedPixels && capability.requiresHardwareEncoder;
+}
+
+/**
+ * Whether every one of the camera's encoders is taken.
+ *
+ * `MaxConcurrentEncoders` is how many streams the camera can encode at once, so one live stream on a
+ * camera that states four leaves three encoders free. Treating any live stream as "no encoder left"
+ * costs picture size on every multi-encoder camera and reports the loss as a downgrade that did not
+ * happen. With `MaxConcurrentEncoders` absent the camera states no budget, and any live stream is
+ * taken as the last one.
+ *
+ * Only referenced video streams are counted, although an allocated snapshot stream from a
+ * capability that requires the hardware encoder holds one too. `AllocatedSnapshotStreams` comes from
+ * a cached view that lags a deallocate, so counting it would make two `camera_snapshot` calls in a
+ * row see the first call's own stream, already given back, and clamp the second to a smaller
+ * capability it would report as `downgraded` — the exact false report this function exists to
+ * remove. Under-counting costs one refused allocate that the snapshot ladder already walks down
+ * from; over-counting costs picture size and lies about why.
+ */
+export function encodersExhausted(args: {
+    maxConcurrentEncoders: number | undefined;
+    videoStreams: AllocatedVideoStream[];
+}): boolean {
+    const { maxConcurrentEncoders, videoStreams } = args;
+    const taken = videoStreams.filter(stream => stream.referenceCount > 0).length;
+    if (maxConcurrentEncoders === undefined) return taken > 0;
+    return taken >= maxConcurrentEncoders;
 }
 
 /**
@@ -68,7 +95,7 @@ export function isDowngradeFrom(
  */
 export function selectSnapshotCapabilities(
     capabilities: SnapshotCapability[],
-    options: { encoderBusy: boolean; maxResolution?: Resolution; codec?: number },
+    options: { encodersExhausted: boolean; maxResolution?: Resolution; codec?: number },
 ): SnapshotSelection {
     let eligible = capabilities;
     if (options.codec !== undefined) {
@@ -90,7 +117,7 @@ export function selectSnapshotCapabilities(
         [...list].sort((a, b) => pixels(b.resolution) - pixels(a.resolution));
     const preferred = largestFirst(eligible);
     const bestWithFreeEncoder = preferred[0];
-    if (options.encoderBusy) {
+    if (options.encodersExhausted) {
         const encoderFree = eligible.filter(capability => !usesHardwareEncoder(capability));
         if (encoderFree.length > 0) return { capabilities: largestFirst(encoderFree), bestWithFreeEncoder };
     }

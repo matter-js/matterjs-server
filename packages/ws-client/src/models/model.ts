@@ -399,14 +399,22 @@ export interface CameraVideoHints {
     max_bit_rate?: number;
 }
 
+/**
+ * Exact values, not ranges, and each one is a hard requirement.
+ *
+ * Stating any of them asks for audio: the call then fails with error 102 rather than going
+ * video-only, whether the camera has no microphone, the codec narrowing leaves nothing, or the
+ * device refuses the allocation. Stating none of them leaves the track to the server, and `audio`
+ * in the response is `null` when no stream can be resolved.
+ */
 export interface CameraAudioHints {
-    /**
-     * Codec names, e.g. ["OPUS"], matched case-insensitively. A hard requirement: when the camera
-     * supports none of them the call fails with error 102, rather than the session going video-only.
-     */
+    /** Codec names, e.g. ["OPUS"], matched case-insensitively. */
     codecs?: string[];
+    /** Fails with error 102 above the `audio.channels` camera_get_capabilities reports. */
     channel_count?: number;
+    /** Fails with error 102 unless `audio.sample_rates` from camera_get_capabilities lists it. */
     sample_rate?: number;
+    /** Carried into the allocation; a stream already allocated at another bit rate is not reused for it. */
     bit_rate?: number;
 }
 

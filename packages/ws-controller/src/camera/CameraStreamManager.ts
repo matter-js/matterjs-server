@@ -27,7 +27,7 @@ import { parseSdpVideoConstraints } from "./sdpConstraints.js";
 import type { SdpVideoConstraints } from "./sdpConstraints.js";
 import { CameraSessionRegistry } from "./sessionRegistry.js";
 import type { PendingSession, SessionScope } from "./sessionRegistry.js";
-import { isDowngradeFrom, selectSnapshotCapabilities } from "./snapshotPolicy.js";
+import { encodersExhausted, isDowngradeFrom, selectSnapshotCapabilities } from "./snapshotPolicy.js";
 import type { SnapshotCapability } from "./snapshotPolicy.js";
 import {
     computeAudioEnvelope,
@@ -35,8 +35,11 @@ import {
     findDegradedVideoStream,
     findReusableVideoStream,
     narrowEnvelope,
+    satisfiesAudioCallerBounds,
+    statesAudioValue,
+    videoCallerBounds,
 } from "./streamPolicy.js";
-import type { AudioHints, RateDistortionPoint, VideoHints } from "./streamPolicy.js";
+import type { AudioCallerBounds, AudioHints, RateDistortionPoint, VideoHints } from "./streamPolicy.js";
 import { audioCodecName, imageCodecName, knownVideoCodecs, videoCodecName } from "./wireNames.js";
 
 const logger = Logger.get("CameraStreamManager");
@@ -855,7 +858,8 @@ export class CameraStreamManager {
         // allocated has no reference count anyone but the device can state.
         const unreported = this.unreportedVideoStreams(nodeId, endpointId, liveStreams);
 
-        const reused = findReusableVideoStream([...liveStreams, ...unreported], envelope, streamUsage);
+        const bounds = videoCallerBounds(codec, streamUsage, args.hints);
+        const reused = findReusableVideoStream([...liveStreams, ...unreported], envelope, bounds);
         if (reused !== undefined) {
             return {
                 streamId: reused.videoStreamId,
@@ -918,17 +922,6 @@ export class CameraStreamManager {
                     });
                 }
                 if (reaction === "make-room") {
-                    const relaxed = findReusableVideoStream([...liveStreams, ...unreported], envelope, streamUsage, {
-                        ignoreStreamUsage: true,
-                    });
-                    if (relaxed !== undefined) {
-                        return {
-                            streamId: relaxed.videoStreamId,
-                            envelope: envelopeOfVideoStream(relaxed, envelope.keyFrameInterval),
-                            reused: true,
-                            allocatedByUs: this.leaseReusedVideoStream(nodeId, endpointId, relaxed),
-                        };
-                    }
                     const madeRoom = await this.freeAnUnreferencedVideoStream(
                         nodeId,
                         endpointId,
@@ -948,9 +941,9 @@ export class CameraStreamManager {
             }
         }
 
-        // Last rung: hand out a stream that is in use, but only within bounds the caller stated.
-        // A caller who pinned a resolution matches nothing here and gets the typed failure below.
-        const degraded = findDegradedVideoStream([...liveStreams, ...unreported], codec, args.hints ?? {});
+        // Last rung: hand out a stream that is in use, giving up the computed envelope and nothing
+        // the caller stated.
+        const degraded = findDegradedVideoStream([...liveStreams, ...unreported], bounds);
         if (degraded !== undefined) {
             return {
                 streamId: degraded.videoStreamId,
@@ -995,9 +988,16 @@ export class CameraStreamManager {
      * Body of {@link resolveAudioStream}. The caller must already hold the endpoint lock and own the
      * scope; see {@link resolveVideoStreamLocked}.
      *
-     * Audio has no narrowing ladder: a camera either supports the codec or it does not. A device
-     * rejection, and an offer sharing no codec with the camera, yield `undefined` and a video-only
-     * session rather than a failure. A codec the caller itself stated is hard, as it is for video.
+     * Audio has no narrowing ladder: a camera either supports the codec or it does not.
+     *
+     * Whether no audio stream is a video-only session or a failure is decided here, and by one
+     * question: did the caller ask for audio? A caller that stated nothing under `audio` left the
+     * track to the server, so absence is a result and `undefined` is returned — the response's
+     * `audio: null` says so plainly. A caller that stated any value asked for audio, so every way
+     * this can end without a stream is a typed failure naming what blocked it. The value itself is
+     * never substituted either way: a sample rate or channel count the camera cannot serve fails
+     * before anything is asked of the device, and a reused stream must already carry the bit rate,
+     * channel count, sample rate and codec the caller asked for.
      */
     protected async resolveAudioStreamLocked(
         args: {
@@ -1011,6 +1011,8 @@ export class CameraStreamManager {
     ): Promise<ResolvedStream | undefined> {
         const { nodeId, endpointId, streamUsage } = args;
         const state = await this.requireState(nodeId, endpointId);
+        const demanded = statesAudioValue(args.hints);
+        const requestedCodecs = args.hints?.codecs ?? new Array<string>();
         const microphone = state.microphoneCapabilities;
         if (
             microphone === undefined ||
@@ -1018,8 +1020,16 @@ export class CameraStreamManager {
             microphone.supportedSampleRates.length === 0 ||
             microphone.supportedBitDepths.length === 0
         ) {
+            if (demanded) {
+                throw ServerError.cameraStreamIncompatible({
+                    reason: "capability",
+                    device: new Array<string>(),
+                    requested: requestedCodecs,
+                });
+            }
             return undefined;
         }
+        const deviceCodecs = microphone.supportedCodecs.map(audioCodecName);
 
         const selection = computeAudioEnvelope({
             capabilities: microphone,
@@ -1028,20 +1038,34 @@ export class CameraStreamManager {
         });
         if ("unsatisfiable" in selection) {
             throw ServerError.cameraStreamIncompatible({
-                reason: selection.unsatisfiable,
-                device: selection.device.map(audioCodecName),
-                requested: selection.requested,
+                reason: "bounds",
+                device: deviceCodecs,
+                requested: requestedCodecs,
+                bound: { field: selection.field, requested: selection.requested, limit: selection.limit },
             });
         }
         const envelope = selection.envelope;
-        if (envelope === undefined) return undefined;
+        if (envelope === undefined) {
+            // `device` is the camera's own list rather than what the narrowing left, which is empty
+            // here by definition: a client told the camera supports nothing would go looking at the
+            // camera, when what ruled the codecs out is its own offer or its own codec list.
+            if (demanded) {
+                throw ServerError.cameraStreamIncompatible({
+                    reason: "codec",
+                    device: deviceCodecs,
+                    requested: requestedCodecs,
+                });
+            }
+            return undefined;
+        }
 
+        const bounds: AudioCallerBounds = { ...args.hints, streamUsage };
         const existing = [
             ...state.allocatedAudioStreams,
             ...this.unreportedAudioStreams(nodeId, endpointId, state.allocatedAudioStreams),
         ].find(
             stream =>
-                stream.streamUsage === streamUsage &&
+                satisfiesAudioCallerBounds(stream, bounds) &&
                 stream.audioCodec === envelope.codec &&
                 stream.channelCount === envelope.channelCount &&
                 stream.sampleRate === envelope.sampleRate,
@@ -1075,6 +1099,9 @@ export class CameraStreamManager {
                     ? response.audioStreamId
                     : undefined;
             if (typeof streamId !== "number") {
+                if (demanded) {
+                    throw ServerError.sdkStackError("AudioStreamAllocate returned no AudioStreamID");
+                }
                 logger.info(
                     `Audio stream unavailable for node ${nodeId}; continuing without audio: AudioStreamAllocate returned no AudioStreamID`,
                 );
@@ -1090,6 +1117,26 @@ export class CameraStreamManager {
             return { streamId, envelope, reused: false, allocatedByUs: true };
         } catch (error) {
             if (error instanceof ServerError) throw error;
+            if (demanded) {
+                const status = deviceStatusOf(error);
+                if (ladderReaction(status) === "rethrow") throw error;
+                if (ladderReaction(status) === "make-room") {
+                    throw ServerError.cameraResourceExhausted({
+                        allocated: state.allocatedAudioStreams.map(stream => ({
+                            streamId: stream.audioStreamId,
+                            referenceCount: stream.referenceCount,
+                        })),
+                        maxConcurrentEncoders: state.maxConcurrentEncoders,
+                        maxEncodedPixelRate: state.maxEncodedPixelRate,
+                    });
+                }
+                throw ServerError.cameraStreamIncompatible({
+                    reason: "bounds",
+                    device: deviceCodecs,
+                    requested: requestedCodecs,
+                    deviceStatus: status,
+                });
+            }
             logger.info(`Audio stream unavailable for node ${nodeId}; continuing without audio:`, error);
             return undefined;
         }
@@ -1482,9 +1529,11 @@ export class CameraStreamManager {
         return this.withEndpointLock(nodeId, endpointId, () =>
             this.withAllocationScope(async scope => {
                 const state = await this.requireState(nodeId, endpointId);
-                const encoderBusy = state.allocatedVideoStreams.some(stream => stream.referenceCount > 0);
                 const selection = selectSnapshotCapabilities(state.snapshotCapabilities, {
-                    encoderBusy,
+                    encodersExhausted: encodersExhausted({
+                        maxConcurrentEncoders: state.maxConcurrentEncoders,
+                        videoStreams: state.allocatedVideoStreams,
+                    }),
                     maxResolution: args.maxResolution,
                     codec: args.codec,
                 });

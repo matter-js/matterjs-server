@@ -11,6 +11,7 @@ import {
     findDegradedVideoStream,
     findReusableVideoStream,
     narrowEnvelope,
+    videoCallerBounds,
 } from "../src/camera/streamPolicy.js";
 import type { AudioSelection, VideoEnvelopeArgs } from "../src/camera/streamPolicy.js";
 
@@ -418,6 +419,8 @@ describe("streamPolicy", () => {
     });
 
     describe("findReusableVideoStream", () => {
+        const LIVE_VIEW_H265 = videoCallerBounds(H265, LIVE_VIEW, undefined);
+
         const REQUEST = {
             codec: H265,
             minResolution: { width: 1920, height: 1080 },
@@ -438,6 +441,8 @@ describe("streamPolicy", () => {
                 maxResolution: { width: number; height: number };
                 minFrameRate: number;
                 maxFrameRate: number;
+                minBitRate: number;
+                maxBitRate: number;
                 referenceCount: number;
             }> = {},
         ) {
@@ -457,46 +462,60 @@ describe("streamPolicy", () => {
         }
 
         it("reuses a stream whose envelope sits inside the request", () => {
-            expect(findReusableVideoStream([stream()], REQUEST, LIVE_VIEW)?.videoStreamId).to.equal(1);
+            expect(findReusableVideoStream([stream()], REQUEST, LIVE_VIEW_H265)?.videoStreamId).to.equal(1);
         });
 
         it("refuses a stream whose floor is below the requested floor", () => {
             // Issue #1056: [720p..1080p] may deliver 720p, so it does not satisfy a 1080p floor.
             const candidate = stream({ minResolution: { width: 1280, height: 720 } });
-            expect(findReusableVideoStream([candidate], REQUEST, LIVE_VIEW)).to.equal(undefined);
+            expect(findReusableVideoStream([candidate], REQUEST, LIVE_VIEW_H265)).to.equal(undefined);
         });
 
         it("refuses a stream whose ceiling is above the requested ceiling", () => {
             const candidate = stream({ maxResolution: { width: 2560, height: 1440 } });
-            expect(findReusableVideoStream([candidate], REQUEST, LIVE_VIEW)).to.equal(undefined);
+            expect(findReusableVideoStream([candidate], REQUEST, LIVE_VIEW_H265)).to.equal(undefined);
         });
 
         it("refuses a stream using a different codec", () => {
-            expect(findReusableVideoStream([stream({ videoCodec: H264 })], REQUEST, LIVE_VIEW)).to.equal(undefined);
-        });
-
-        it("refuses a stream with a different usage by default", () => {
-            expect(findReusableVideoStream([stream({ streamUsage: RECORDING_USAGE })], REQUEST, LIVE_VIEW)).to.equal(
+            expect(findReusableVideoStream([stream({ videoCodec: H264 })], REQUEST, LIVE_VIEW_H265)).to.equal(
                 undefined,
             );
         });
 
-        it("accepts a different usage when the caller relaxes the requirement", () => {
-            const candidate = stream({ streamUsage: RECORDING_USAGE });
+        it("refuses a stream with a different usage", () => {
             expect(
-                findReusableVideoStream([candidate], REQUEST, LIVE_VIEW, { ignoreStreamUsage: true })?.videoStreamId,
-            ).to.equal(1);
+                findReusableVideoStream([stream({ streamUsage: RECORDING_USAGE })], REQUEST, LIVE_VIEW_H265),
+            ).to.equal(undefined);
+        });
+
+        it("refuses a stream whose bit-rate ceiling is above the one the caller stated", () => {
+            // The caller's ceiling is what its link can carry. The envelope here is deliberately wide
+            // enough to admit the stream, so the caller's own bound is the only thing refusing it.
+            const wide = { ...REQUEST, maxBitRate: 8000000 };
+            const bounds = videoCallerBounds(H265, LIVE_VIEW, { maxBitRate: 500000 });
+            expect(findReusableVideoStream([stream({ maxBitRate: 8000000 })], wide, bounds)).to.equal(undefined);
+        });
+
+        it("refuses a stream below the bit-rate floor the caller stated", () => {
+            const bounds = videoCallerBounds(H265, LIVE_VIEW, { minBitRate: 1000000 });
+            expect(findReusableVideoStream([stream()], REQUEST, bounds)).to.equal(undefined);
+        });
+
+        it("refuses a stream outside the bit-rate range the server computed", () => {
+            // Not a caller bound, so this stream is still available to the degraded rung — flagged.
+            const request = { ...REQUEST, maxBitRate: 2000000 };
+            expect(findReusableVideoStream([stream()], request, LIVE_VIEW_H265)).to.equal(undefined);
         });
 
         it("prefers a stream whose encoder is already running", () => {
             const idle = stream({ videoStreamId: 1, referenceCount: 0 });
             const running = stream({ videoStreamId: 2, referenceCount: 1 });
-            expect(findReusableVideoStream([idle, running], REQUEST, LIVE_VIEW)?.videoStreamId).to.equal(2);
+            expect(findReusableVideoStream([idle, running], REQUEST, LIVE_VIEW_H265)?.videoStreamId).to.equal(2);
         });
 
         it("refuses a stream whose frame-rate floor is below the requested floor", () => {
             const request = { ...REQUEST, minFrameRate: 15 };
-            expect(findReusableVideoStream([stream({ minFrameRate: 1 })], request, LIVE_VIEW)).to.equal(undefined);
+            expect(findReusableVideoStream([stream({ minFrameRate: 1 })], request, LIVE_VIEW_H265)).to.equal(undefined);
         });
 
         it("refuses a stream with the same pixel count but a different aspect ratio", () => {
@@ -505,11 +524,16 @@ describe("streamPolicy", () => {
                 minResolution: { width: 1440, height: 1440 },
                 maxResolution: { width: 1440, height: 1440 },
             });
-            expect(findReusableVideoStream([square], REQUEST, LIVE_VIEW)).to.equal(undefined);
+            expect(findReusableVideoStream([square], REQUEST, LIVE_VIEW_H265)).to.equal(undefined);
         });
     });
 
     describe("findDegradedVideoStream", () => {
+        /** The bounds of a caller that stated nothing beyond the two arguments every caller states. */
+        function bounds(hints?: Parameters<typeof videoCallerBounds>[2], codec = H265) {
+            return videoCallerBounds(codec, LIVE_VIEW, hints);
+        }
+
         const IN_USE_WIDE = {
             videoStreamId: 4,
             streamUsage: LIVE_VIEW,
@@ -524,87 +548,123 @@ describe("streamPolicy", () => {
         };
 
         it("hands out a wider in-use stream when the caller stated no bounds", () => {
-            expect(findDegradedVideoStream([IN_USE_WIDE], H265, {})?.videoStreamId).to.equal(4);
+            expect(findDegradedVideoStream([IN_USE_WIDE], bounds())?.videoStreamId).to.equal(4);
         });
 
         it("refuses a stream below a floor the caller stated", () => {
             // The caller pinned 1080p, so [720p..1080p] may deliver less than asked — issue #1056.
             expect(
-                findDegradedVideoStream([IN_USE_WIDE], H265, {
-                    minResolution: { width: 1920, height: 1080 },
-                }),
+                findDegradedVideoStream(
+                    [IN_USE_WIDE],
+                    bounds({
+                        minResolution: { width: 1920, height: 1080 },
+                    }),
+                ),
             ).to.equal(undefined);
         });
 
         it("refuses a stream whose width alone is below the floor the caller stated", () => {
             expect(
-                findDegradedVideoStream([IN_USE_WIDE], H265, {
-                    minResolution: { width: 1400, height: 700 },
-                }),
+                findDegradedVideoStream(
+                    [IN_USE_WIDE],
+                    bounds({
+                        minResolution: { width: 1400, height: 700 },
+                    }),
+                ),
             ).to.equal(undefined);
         });
 
         it("refuses a stream whose height alone is below the floor the caller stated", () => {
             expect(
-                findDegradedVideoStream([IN_USE_WIDE], H265, {
-                    minResolution: { width: 1200, height: 900 },
-                }),
+                findDegradedVideoStream(
+                    [IN_USE_WIDE],
+                    bounds({
+                        minResolution: { width: 1200, height: 900 },
+                    }),
+                ),
             ).to.equal(undefined);
         });
 
         it("refuses a stream above a ceiling the caller stated", () => {
             expect(
-                findDegradedVideoStream([IN_USE_WIDE], H265, {
-                    maxResolution: { width: 1280, height: 720 },
-                }),
+                findDegradedVideoStream(
+                    [IN_USE_WIDE],
+                    bounds({
+                        maxResolution: { width: 1280, height: 720 },
+                    }),
+                ),
             ).to.equal(undefined);
         });
 
         it("refuses a stream whose width alone is above the ceiling the caller stated", () => {
             expect(
-                findDegradedVideoStream([IN_USE_WIDE], H265, {
-                    maxResolution: { width: 1800, height: 1200 },
-                }),
+                findDegradedVideoStream(
+                    [IN_USE_WIDE],
+                    bounds({
+                        maxResolution: { width: 1800, height: 1200 },
+                    }),
+                ),
             ).to.equal(undefined);
         });
 
         it("refuses a stream below a frame-rate floor the caller stated", () => {
-            expect(findDegradedVideoStream([IN_USE_WIDE], H265, { minFrameRate: 15 })).to.equal(undefined);
+            expect(findDegradedVideoStream([IN_USE_WIDE], bounds({ minFrameRate: 15 }))).to.equal(undefined);
         });
 
         it("refuses a stream above a frame-rate ceiling the caller stated", () => {
-            expect(findDegradedVideoStream([IN_USE_WIDE], H265, { maxFrameRate: 15 })).to.equal(undefined);
+            expect(findDegradedVideoStream([IN_USE_WIDE], bounds({ maxFrameRate: 15 }))).to.equal(undefined);
         });
 
         it("refuses a stream using a different codec", () => {
-            expect(findDegradedVideoStream([IN_USE_WIDE], H264, {})).to.equal(undefined);
+            expect(findDegradedVideoStream([IN_USE_WIDE], bounds(undefined, H264))).to.equal(undefined);
         });
 
         it("refuses a stream below a bit-rate floor the caller stated", () => {
-            expect(findDegradedVideoStream([IN_USE_WIDE], H265, { minBitRate: 1000000 })).to.equal(undefined);
+            expect(findDegradedVideoStream([IN_USE_WIDE], bounds({ minBitRate: 1000000 }))).to.equal(undefined);
         });
 
         it("refuses a stream above a bit-rate ceiling the caller stated", () => {
             // The caller's ceiling is what its link can carry; a 4 Mbit/s stream overruns it.
-            expect(findDegradedVideoStream([IN_USE_WIDE], H265, { maxBitRate: 2000000 })).to.equal(undefined);
+            expect(findDegradedVideoStream([IN_USE_WIDE], bounds({ maxBitRate: 2000000 }))).to.equal(undefined);
         });
 
         it("accepts a stream inside the bit-rate bounds the caller stated", () => {
             expect(
-                findDegradedVideoStream([IN_USE_WIDE], H265, { minBitRate: 500000, maxBitRate: 4000000 })
+                findDegradedVideoStream([IN_USE_WIDE], bounds({ minBitRate: 500000, maxBitRate: 4000000 }))
                     ?.videoStreamId,
             ).to.equal(4);
         });
 
-        it("ignores stream usage, because this rung runs only when nothing else fits", () => {
+        it("refuses a stream whose usage is not the one the caller asked for", () => {
+            // stream_usage is the only mandatory argument, so no rung may substitute it: a LiveView
+            // caller handed a Recording stream got something it never asked for.
             const recording = { ...IN_USE_WIDE, streamUsage: RECORDING_USAGE };
-            expect(findDegradedVideoStream([recording], H265, {})?.videoStreamId).to.equal(4);
+            expect(findDegradedVideoStream([recording], bounds())).to.equal(undefined);
+        });
+
+        it("accepts a stream that matches pinned bounds exactly", () => {
+            // Pinning leaves nothing for this rung to give up, so the one stream it can hand out is
+            // the one that meets the pins — which is not a downgrade of anything the caller stated.
+            const pinned = {
+                ...IN_USE_WIDE,
+                minResolution: { width: 1920, height: 1080 },
+                maxResolution: { width: 1920, height: 1080 },
+            };
+            expect(
+                findDegradedVideoStream(
+                    [pinned],
+                    bounds({
+                        minResolution: { width: 1920, height: 1080 },
+                        maxResolution: { width: 1920, height: 1080 },
+                    }),
+                )?.videoStreamId,
+            ).to.equal(4);
         });
 
         it("prefers the most capable stream when several degraded candidates qualify", () => {
             const narrow = { ...IN_USE_WIDE, videoStreamId: 5, maxResolution: { width: 1280, height: 720 } };
             const wide = { ...IN_USE_WIDE, videoStreamId: 6, maxResolution: { width: 1920, height: 1080 } };
-            expect(findDegradedVideoStream([narrow, wide], H265, {})?.videoStreamId).to.equal(6);
+            expect(findDegradedVideoStream([narrow, wide], bounds())?.videoStreamId).to.equal(6);
         });
 
         it("refuses a stream with the same pixel count but a different aspect ratio than the pinned bounds", () => {
@@ -615,10 +675,13 @@ describe("streamPolicy", () => {
                 maxResolution: { width: 1440, height: 1440 },
             };
             expect(
-                findDegradedVideoStream([square], H265, {
-                    minResolution: { width: 1920, height: 1080 },
-                    maxResolution: { width: 1920, height: 1080 },
-                }),
+                findDegradedVideoStream(
+                    [square],
+                    bounds({
+                        minResolution: { width: 1920, height: 1080 },
+                        maxResolution: { width: 1920, height: 1080 },
+                    }),
+                ),
             ).to.equal(undefined);
         });
     });
@@ -731,30 +794,31 @@ describe("streamPolicy", () => {
             expect(envelope?.codec).to.equal(AAC);
         });
 
-        it("reports the caller's codec preference as unsatisfiable when the camera lacks it", () => {
-            // The video path fails here too; a caller that stated a codec gets the same answer on
-            // either track rather than a silently audio-less session.
+        it("describes no envelope when the caller's codec preference leaves the camera nothing", () => {
+            // Whether that is a failure or a video-only session is the manager's to decide: it knows
+            // whether the caller asked for audio at all, and this function does not.
             expect(
                 computeAudioEnvelope({
                     capabilities: AUDIO_CAPABILITIES,
                     sdp: undefined,
                     hints: { codecs: ["AAC"] },
                 }),
-            ).to.deep.equal({ unsatisfiable: "codec", device: [OPUS], requested: ["AAC"] });
+            ).to.deep.equal({ envelope: undefined });
         });
 
-        it("reports a hint codec name the device has no matching number for as unsatisfiable", () => {
-            const selection = computeAudioEnvelope({
-                capabilities: { ...AUDIO_CAPABILITIES, supportedCodecs: [OPUS, AAC] },
-                sdp: undefined,
-                hints: { codecs: ["UNKNOWN_CODEC"] },
-            });
-            expect("unsatisfiable" in selection && selection.unsatisfiable).to.equal("codec");
+        it("describes no envelope for a hint codec name the device has no matching number for", () => {
+            expect(
+                computeAudioEnvelope({
+                    capabilities: { ...AUDIO_CAPABILITIES, supportedCodecs: [OPUS, AAC] },
+                    sdp: undefined,
+                    hints: { codecs: ["UNKNOWN_CODEC"] },
+                }),
+            ).to.deep.equal({ envelope: undefined });
         });
 
         it("reports nothing, without failing, when the offer shares no codec with the camera", () => {
-            // The offer states what the peer can decode; an audio-less session is the honest outcome
-            // and it is not a caller bound being dropped.
+            // The offer states what the peer can decode; with no codec stated by the caller, an
+            // audio-less session drops nothing the caller asked for.
             expect(
                 computeAudioEnvelope({
                     capabilities: AUDIO_CAPABILITIES,
@@ -765,9 +829,32 @@ describe("streamPolicy", () => {
                         hasAudio: true,
                         wantsTalkback: false,
                     },
-                    hints: { codecs: ["OPUS"] },
+                    hints: undefined,
                 }),
             ).to.deep.equal({ envelope: undefined });
+        });
+
+        it("reports a sample rate the camera cannot serve ahead of a codec the offer ruled out", () => {
+            // Both are unmet. Naming the codec would send the caller after its offer when the value
+            // it can actually change is the sample rate.
+            expect(
+                computeAudioEnvelope({
+                    capabilities: AUDIO_CAPABILITIES,
+                    sdp: {
+                        codecs: [],
+                        audioCodecs: ["AAC"],
+                        hasVideo: false,
+                        hasAudio: true,
+                        wantsTalkback: false,
+                    },
+                    hints: { codecs: ["OPUS"], sampleRate: 44100 },
+                }),
+            ).to.deep.equal({
+                unsatisfiable: "bounds",
+                field: "sampleRate",
+                requested: "44100",
+                limit: "48000, 16000",
+            });
         });
 
         it("does not filter by codec on an SDP audio m-line marked absent", () => {
@@ -787,15 +874,26 @@ describe("streamPolicy", () => {
             expect(envelope?.codec).to.equal(OPUS);
         });
 
-        it("never exceeds the camera's channel count", () => {
-            const envelope = audioEnvelope(
+        it("fails a channel count above what the camera states, rather than clamping it", () => {
+            // Clamping reports success while delivering mono to a caller that asked for 8 channels.
+            expect(
                 computeAudioEnvelope({
                     capabilities: AUDIO_CAPABILITIES,
                     sdp: undefined,
                     hints: { channelCount: 8 },
                 }),
+            ).to.deep.equal({ unsatisfiable: "bounds", field: "channelCount", requested: "8", limit: "2" });
+        });
+
+        it("uses a channel count the camera can serve", () => {
+            const envelope = audioEnvelope(
+                computeAudioEnvelope({
+                    capabilities: AUDIO_CAPABILITIES,
+                    sdp: undefined,
+                    hints: { channelCount: 1 },
+                }),
             );
-            expect(envelope?.channelCount).to.equal(2);
+            expect(envelope?.channelCount).to.equal(1);
         });
 
         it("uses a requested sample rate the camera supports", () => {
@@ -809,15 +907,30 @@ describe("streamPolicy", () => {
             expect(envelope?.sampleRate).to.equal(16000);
         });
 
-        it("ignores a sample rate the camera does not support", () => {
-            const envelope = audioEnvelope(
+        it("fails a sample rate the camera does not list, rather than substituting its own", () => {
+            expect(
                 computeAudioEnvelope({
                     capabilities: AUDIO_CAPABILITIES,
                     sdp: undefined,
                     hints: { sampleRate: 44100 },
                 }),
+            ).to.deep.equal({
+                unsatisfiable: "bounds",
+                field: "sampleRate",
+                requested: "44100",
+                limit: "48000, 16000",
+            });
+        });
+
+        it("keeps the caller's bit rate rather than the default", () => {
+            const envelope = audioEnvelope(
+                computeAudioEnvelope({
+                    capabilities: AUDIO_CAPABILITIES,
+                    sdp: undefined,
+                    hints: { bitRate: 32000 },
+                }),
             );
-            expect(envelope?.sampleRate).to.equal(48000);
+            expect(envelope?.bitRate).to.equal(32000);
         });
     });
 });

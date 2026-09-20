@@ -106,7 +106,11 @@ export interface CameraStreamIncompatibleDetail {
     requested: string[];
     /**
      * The single caller bound that could not be met, when the server decided that before asking the
-     * device. `limit` is the ceiling in force after every narrowing, whoever stated it.
+     * device.
+     *
+     * `limit` is what the bound ran into, as text rather than a number because it is not always one:
+     * the ceiling in force after every narrowing for a range bound, whoever stated it, and the set
+     * of values the device lists for a bound it answers with a set, such as `sampleRate`.
      */
     bound?: { field: string; requested: string; limit: string };
     /** Matter status code the device answered with, when a device rejection produced this. */
