@@ -1662,6 +1662,90 @@ describe("CameraStreamManager", () => {
             expect(invokes.filter(invoke => invoke.command === "videoStreamAllocate")).to.have.length(0);
         });
 
+        it("fails typed rather than invoking the provider with no tracks, when video is declined and the camera has no microphone", async () => {
+            const bare: CameraState = { ...STATE, microphoneCapabilities: undefined };
+            const { manager, invokes } = managerWith(bare, async () => undefined);
+
+            let thrown: unknown;
+            try {
+                await manager.startStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    connectionId: "conn-1",
+                    streamUsage: LIVE_VIEW,
+                    video: false,
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamIncompatible);
+            expect(JSON.parse((thrown as ServerError).message).reason).to.equal("capability");
+            expect(invokes.map(invoke => invoke.command)).to.not.include("solicitOffer");
+        });
+
+        it("fails typed rather than invoking the provider with no tracks, when both video and audio are declined", async () => {
+            const { manager, invokes } = managerWith(STATE, async () => undefined);
+
+            let thrown: unknown;
+            try {
+                await manager.startStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    connectionId: "conn-1",
+                    streamUsage: LIVE_VIEW,
+                    video: false,
+                    audio: false,
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamIncompatible);
+            expect(invokes.map(invoke => invoke.command)).to.not.include("solicitOffer");
+        });
+
+        it("fails typed for an audio hint a mic-less camera cannot serve, rather than treating it as no audio", async () => {
+            // Video succeeding must not hide this behind a silent `audio: null`.
+            const bare: CameraState = { ...STATE, microphoneCapabilities: undefined };
+            const { manager } = managerWith(bare, async invoke => {
+                if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                return undefined;
+            });
+
+            let thrown: unknown;
+            try {
+                await manager.startStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    connectionId: "conn-1",
+                    streamUsage: LIVE_VIEW,
+                    video: {},
+                    audio: { bitRate: 32000 },
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamIncompatible);
+            expect(JSON.parse((thrown as ServerError).message).reason).to.equal("capability");
+        });
+
+        it("succeeds audio-only when video is declined and the camera has a microphone", async () => {
+            const { manager } = managerWith(STATE, async invoke => {
+                if (invoke.command === "audioStreamAllocate") return { audioStreamId: 4 };
+                if (invoke.command === "solicitOffer") return { webRtcSessionId: 42 };
+                return undefined;
+            });
+
+            const session = await manager.startStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                connectionId: "conn-1",
+                streamUsage: LIVE_VIEW,
+                video: false,
+            });
+            expect(session.video).to.equal(undefined);
+            expect(session.audio?.streamId).to.equal(4);
+        });
+
         it("gives back the stream it allocated when the provider returns no session id", async () => {
             const { manager, invokes } = managerWith(STATE, async invoke => {
                 if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };

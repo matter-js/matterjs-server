@@ -5,7 +5,11 @@
  */
 
 import { EndpointNumber, NodeId } from "@matter/main";
+import { CameraAvStreamManagement } from "@matter/main/clusters/camera-av-stream-management";
+import { WebRtcTransportProvider } from "@matter/main/clusters/web-rtc-transport-provider";
 import { Status } from "@matter/main/types";
+import { CameraAvStreamManagementClient } from "@matter/node/behaviors/camera-av-stream-management";
+import { WebRtcTransportProviderClient } from "@matter/node/behaviors/web-rtc-transport-provider";
 import { deviceStatusOf } from "../src/camera/deviceStatus.js";
 import type { RawCameraAvStreamManagementState } from "../src/camera/MatterCameraDeviceIo.js";
 import { MatterCameraDeviceIo, toCameraState } from "../src/camera/MatterCameraDeviceIo.js";
@@ -442,5 +446,49 @@ describe("MatterCameraDeviceIo.invoke (webrtcProvider routing)", () => {
         });
 
         expect(untracked).to.deep.equal([]);
+    });
+});
+
+describe("MatterCameraDeviceIo.missingCameraClusters", () => {
+    const NODE_ID = NodeId(5n);
+    const ENDPOINT_ID = EndpointNumber(1);
+
+    interface FakeEndpoint {
+        behaviors: { has: (behavior: unknown) => boolean };
+    }
+
+    function makeHandler(endpoint: FakeEndpoint | undefined): ControllerCommandHandler {
+        const stub = {
+            getNode: () => ({ node: { endpoints: { for: () => endpoint } } }),
+        };
+        return stub as unknown as ControllerCommandHandler;
+    }
+
+    it("reports both clusters missing when the endpoint does not exist", async () => {
+        const io = new MatterCameraDeviceIo(makeHandler(undefined));
+        const missing = await io.missingCameraClusters(NODE_ID, ENDPOINT_ID);
+        expect(missing).to.deep.equal([CameraAvStreamManagement.Cluster.id, WebRtcTransportProvider.Cluster.id]);
+    });
+
+    it("reports only the transport provider missing when the endpoint carries just AV stream management", async () => {
+        const io = new MatterCameraDeviceIo(
+            makeHandler({ behaviors: { has: behavior => behavior === CameraAvStreamManagementClient } }),
+        );
+        const missing = await io.missingCameraClusters(NODE_ID, ENDPOINT_ID);
+        expect(missing).to.deep.equal([WebRtcTransportProvider.Cluster.id]);
+    });
+
+    it("reports only AV stream management missing when the endpoint carries just the transport provider", async () => {
+        const io = new MatterCameraDeviceIo(
+            makeHandler({ behaviors: { has: behavior => behavior === WebRtcTransportProviderClient } }),
+        );
+        const missing = await io.missingCameraClusters(NODE_ID, ENDPOINT_ID);
+        expect(missing).to.deep.equal([CameraAvStreamManagement.Cluster.id]);
+    });
+
+    it("reports nothing missing when the endpoint carries both clusters", async () => {
+        const io = new MatterCameraDeviceIo(makeHandler({ behaviors: { has: () => true } }));
+        const missing = await io.missingCameraClusters(NODE_ID, ENDPOINT_ID);
+        expect(missing).to.deep.equal([]);
     });
 });

@@ -1331,7 +1331,7 @@ export class CameraStreamManager {
             );
         }
 
-        if (args.audio !== false && state.microphoneCapabilities !== undefined) {
+        if (args.audio !== false) {
             audio = await this.resolveAudioStreamLocked(
                 {
                     nodeId,
@@ -1342,6 +1342,16 @@ export class CameraStreamManager {
                 },
                 scope,
             );
+        }
+
+        // Both tracks absent means nothing for the offer to carry: `video: false` combined with a
+        // caller that left audio to a camera with no microphone, or both explicitly declined.
+        if (video === undefined && audio === undefined) {
+            throw ServerError.cameraStreamIncompatible({
+                reason: "capability",
+                device: new Array<string>(),
+                requested: new Array<string>(),
+            });
         }
 
         const response = await this.io.invoke({
