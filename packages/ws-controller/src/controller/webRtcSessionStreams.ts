@@ -239,7 +239,30 @@ export async function establishWebRtcProviderSession(
     logger.info(
         `upserting WebRTC session id=${session.id} peerNodeId=${nodeId} peerEndpointId=${endpointId} fabricIndex=${fabricIndex} streamUsage=${streamUsage} originatingEndpointId=${originatingEndpointId}`,
     );
-    await io.upsertSession(session);
+    try {
+        await io.upsertSession(session);
+    } catch (error) {
+        // The device has the session and only this scope knows its id, so raising without ending it
+        // leaves a session nothing can name again and its streams pinned at ReferenceCount > 0.
+        logger.warn(
+            `Tearing down WebRTC session id=${webRtcSessionId} for node ${formatNode(
+                nodeId,
+            )}: the local requestor did not take it, so signaling cannot be routed for it`,
+        );
+        try {
+            await io.invoke("endSession", {
+                webRtcSessionId,
+                reason: WebRtcTransportDefinitions.WebRtcEndReason.OutOfResources,
+            });
+        } catch (err) {
+            logger.warn(
+                `EndSession cleanup for untracked WebRTC session id=${webRtcSessionId} failed: ${
+                    err instanceof Error ? err.message : String(err)
+                }`,
+            );
+        }
+        throw error;
+    }
 
     // Verified above: `response` carries a numeric webRtcSessionId. The rest of the assertion is the
     // residual TS can't express — an object narrowed to specific known keys via `in` has no general

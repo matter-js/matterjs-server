@@ -232,8 +232,12 @@ export const DEVICE_CLEANUP_BUDGET_MS = 10000;
 /**
  * Await `work` for at most {@link DEVICE_CLEANUP_BUDGET_MS}, then stop waiting for it.
  *
- * The invokes underneath cannot be cancelled and run on unattended, so what they still change when
- * they land must be safe to apply late — see {@link CameraSessionRegistry.forgetEstablished}.
+ * The invokes underneath cannot be cancelled and run on unattended, so what they still change on
+ * this side must be safe to apply late: see {@link CameraSessionRegistry.forgetEstablished} and the
+ * lease generation on {@link StreamLease}. What they change on the DEVICE cannot be guarded from
+ * here — an abandoned deallocate still reaches the camera, after the endpoint lock is gone, and the
+ * id it names may by then be a stream a later request allocated. Closing that needs an invoke this
+ * server can abort, and `Invoke` carries no abort signal.
  */
 async function withCleanupBudget(what: string, work: () => Promise<void>): Promise<void> {
     try {
@@ -246,10 +250,8 @@ async function withCleanupBudget(what: string, work: () => Promise<void>): Promi
 /** One device-side effect of a request, with the lifetime it was registered under. */
 interface ScopedReturn {
     readonly give: () => Promise<void>;
-    /** True for an effect the request gives back even when it succeeds. */
-    readonly onSuccessToo: boolean;
-    /** Set once the request has made the effect good, so there is nothing left to give back. */
-    discharged: boolean;
+    /** Whether the request's outcome leaves this effect to be given back. */
+    readonly due: (succeeded: boolean) => boolean;
 }
 
 /**
@@ -271,27 +273,29 @@ class AllocationScope {
      * release them; a failed one does not, so this is their only way back.
      */
     returnOnFailure(give: () => Promise<void>): void {
-        this.#returns.push({ give, onSuccessToo: false, discharged: false });
+        this.#returns.push({ give, due: succeeded => !succeeded });
     }
 
     /**
-     * Give this back unless the request discharges it, whether or not the request succeeds.
+     * Give this back unless the request both spends it and succeeds.
      *
-     * For an effect whose "was it worth it" question the request's own outcome does not answer: a
-     * stream freed to make room is worth it exactly when an allocate then succeeded, which can be
-     * false on a path that succeeds by other means.
+     * Capacity freed to make room is worth it exactly when the request ends up using it. That is the
+     * request's outcome, not the outcome of the one call that spent it: an allocate can succeed and
+     * the request still fail afterwards, on the audio track, on the offer, or on a registration a
+     * closing connection claimed. The returned callback records the spending; whether the spending
+     * was worth anything is decided in {@link settle}.
      */
-    returnUntilDischarged(give: () => Promise<void>): () => void {
-        const entry: ScopedReturn = { give, onSuccessToo: true, discharged: false };
-        this.#returns.push(entry);
+    returnUnlessSpent(give: () => Promise<void>): () => void {
+        let spent = false;
+        this.#returns.push({ give, due: succeeded => !(spent && succeeded) });
         return () => {
-            entry.discharged = true;
+            spent = true;
         };
     }
 
     /** Give this back when the request ends, however it ends. */
     returnAlways(give: () => Promise<void>): void {
-        this.#returns.push({ give, onSuccessToo: true, discharged: false });
+        this.#returns.push({ give, due: () => true });
     }
 
     /**
@@ -305,8 +309,7 @@ class AllocationScope {
         if (this.#returns.length === 0) return;
         await withCleanupBudget("giving back what a request caused", async () => {
             for (const entry of [...this.#returns].reverse()) {
-                if (entry.discharged) continue;
-                if (succeeded && !entry.onSuccessToo) continue;
+                if (!entry.due(succeeded)) continue;
                 try {
                     await entry.give();
                 } catch (error) {
@@ -470,6 +473,7 @@ export class CameraStreamManager {
     readonly #leases = new Map<string, StreamLease[]>();
     readonly #locks = new Map<string, Promise<unknown>>();
     readonly #sessions = new CameraSessionRegistry();
+    #nextLeaseGeneration = 0;
 
     constructor(io: CameraDeviceIo) {
         this.#io = io;
@@ -547,14 +551,17 @@ export class CameraStreamManager {
      * said `allocatedByUs: false` from an earlier foreign stream would make the id we just allocated
      * unreleasable. The last statement about an id is the true one.
      */
-    protected recordAllocation(nodeId: NodeId, endpointId: EndpointNumber, statement: LeaseStatement): void {
+    protected recordAllocation(nodeId: NodeId, endpointId: EndpointNumber, statement: LeaseStatement): StreamLease {
         const now = Time.nowUs;
-        this.#putLease(nodeId, endpointId, {
+        const lease: StreamLease = {
             ...statement,
             shadowUntil: now + UNREPORTED_LEASE_GRACE_MS,
             retainUntil: now + UNREPORTED_LEASE_RETENTION_MS,
             reportedByDevice: false,
-        });
+            generation: ++this.#nextLeaseGeneration,
+        };
+        this.#putLease(nodeId, endpointId, lease);
+        return lease;
     }
 
     /**
@@ -571,6 +578,7 @@ export class CameraStreamManager {
             shadowUntil: previous?.shadowUntil ?? 0,
             retainUntil: previous?.retainUntil ?? 0,
             reportedByDevice: previous?.reportedByDevice ?? true,
+            generation: previous?.generation ?? ++this.#nextLeaseGeneration,
         });
         return statement.allocatedByUs;
     }
@@ -650,6 +658,20 @@ export class CameraStreamManager {
             streams.push(lease.allocation);
         }
         return streams;
+    }
+
+    /**
+     * Drop this lease unless the id has been restated since.
+     *
+     * A give-back whose wait {@link DEVICE_CLEANUP_BUDGET_MS} abandoned still lands, and by then the
+     * endpoint lock is gone. The device reissues an id it has freed, so the lease under that id may
+     * belong to a stream a later request allocated; dropping it would leave a stream this server owns
+     * with nothing recording that it may release it.
+     */
+    #dropLeaseIfCurrent(nodeId: NodeId, endpointId: EndpointNumber, lease: StreamLease): void {
+        const current = this.leaseFor(nodeId, endpointId, lease.kind, lease.streamId);
+        if (current?.generation !== lease.generation) return;
+        this.dropLease(nodeId, endpointId, lease.kind, lease.streamId);
     }
 
     protected dropLease(nodeId: NodeId, endpointId: EndpointNumber, kind: StreamKind, streamId: number): void {
@@ -899,8 +921,6 @@ export class CameraStreamManager {
         }
 
         let lastStatus: number | undefined;
-        // Only an allocate that then succeeds makes a freeing worth it. Every other way out of this
-        // ladder, success included, leaves the camera a stream poorer for nothing.
         const freed = new Array<() => void>();
         for (let round = 0; round <= MAX_NARROWING_ROUNDS; round++) {
             try {
@@ -926,16 +946,18 @@ export class CameraStreamManager {
                         ? response.videoStreamId
                         : undefined;
                 if (typeof streamId !== "number") {
+                    // A stream allocated but answered without its id cannot be named, so nothing
+                    // here can give it back. Shared by the audio and snapshot allocates.
                     throw ServerError.sdkStackError("VideoStreamAllocate returned no VideoStreamID");
                 }
-                this.recordAllocation(nodeId, endpointId, {
+                const lease = this.recordAllocation(nodeId, endpointId, {
                     kind: "video",
                     streamId,
                     allocatedByUs: true,
                     allocation: allocatedVideoStream(streamId, streamUsage, envelope),
                 });
-                scope.returnOnFailure(() => this.#deallocate(nodeId, endpointId, "video", streamId));
-                for (const discharge of freed) discharge();
+                scope.returnOnFailure(() => this.#deallocate(nodeId, endpointId, lease));
+                for (const spend of freed) spend();
                 return { streamId, envelope, reused: false, allocatedByUs: true };
             } catch (error) {
                 if (error instanceof ServerError) throw error;
@@ -960,7 +982,7 @@ export class CameraStreamManager {
                     );
                     if (madeRoom !== undefined) {
                         liveStreams = liveStreams.filter(stream => stream.videoStreamId !== madeRoom.streamId);
-                        freed.push(madeRoom.discharge);
+                        freed.push(madeRoom.spend);
                         continue;
                     }
                 }
@@ -1133,13 +1155,13 @@ export class CameraStreamManager {
                 );
                 return undefined;
             }
-            this.recordAllocation(nodeId, endpointId, {
+            const lease = this.recordAllocation(nodeId, endpointId, {
                 kind: "audio",
                 streamId,
                 allocatedByUs: true,
                 allocation: allocatedAudioStream(streamId, streamUsage, envelope),
             });
-            scope.returnOnFailure(() => this.#deallocate(nodeId, endpointId, "audio", streamId));
+            scope.returnOnFailure(() => this.#deallocate(nodeId, endpointId, lease));
             return { streamId, envelope, reused: false, allocatedByUs: true };
         } catch (error) {
             if (error instanceof ServerError) throw error;
@@ -1179,10 +1201,10 @@ export class CameraStreamManager {
      *
      * The freeing is registered with `scope` so a request that never uses the capacity it bought puts
      * an equivalent stream back rather than leaving the camera one stream poorer for nothing. The
-     * caller discharges that registration once an allocate has succeeded; a request that ends any
-     * other way — a throw, or a success reached by reusing a stream that was already there — restores.
-     * The device issues a new id, so what comes back is the range and usage the freed stream stated,
-     * not the stream itself.
+     * caller reports the spending through `spend` once an allocate has consumed the capacity, and the
+     * scope restores unless that request then also succeeded — a throw after the allocate, or a
+     * success reached by reusing a stream that was already there, both restore. The device issues a
+     * new id, so what comes back is the range and usage the freed stream stated, not the stream itself.
      */
     protected async freeAnUnreferencedVideoStream(
         nodeId: NodeId,
@@ -1190,7 +1212,7 @@ export class CameraStreamManager {
         streams: AllocatedVideoStream[],
         scope: AllocationScope,
         keyFrameInterval: number,
-    ): Promise<{ streamId: number; discharge: () => void } | undefined> {
+    ): Promise<{ streamId: number; spend: () => void } | undefined> {
         const unreferenced = streams.filter(stream => stream.referenceCount === 0);
         const ours = unreferenced.filter(stream => this.ownsStream(nodeId, endpointId, "video", stream.videoStreamId));
         const victim = ours[0] ?? unreferenced[0];
@@ -1214,14 +1236,15 @@ export class CameraStreamManager {
             return undefined;
         }
         this.dropLease(nodeId, endpointId, "video", victim.videoStreamId);
-        const discharge = scope.returnUntilDischarged(() =>
+        const spend = scope.returnUnlessSpent(() =>
             this.#restoreFreedVideoStream(nodeId, endpointId, victim, keyFrameInterval),
         );
-        return { streamId: victim.videoStreamId, discharge };
+        return { streamId: victim.videoStreamId, spend };
     }
 
     /**
-     * Allocate a stream matching one the make-room rung freed, for a request that failed regardless.
+     * Allocate a stream matching one the make-room rung freed, for a request that did not end up
+     * using the capacity that freeing bought.
      *
      * The replacement is this server's to release, whoever allocated the original: this server
      * allocated it, and a stream nothing records as releasable is the leak the lease map prevents. `keyFrameInterval` is not among the fields the device reports back, so the
@@ -1265,7 +1288,7 @@ export class CameraStreamManager {
             allocation: allocatedVideoStream(streamId, freed.streamUsage, envelope),
         });
         logger.notice(
-            `Allocated video stream ${streamId} on node ${nodeId} in place of stream ${freed.videoStreamId}, which was deallocated to make room for a request that then failed`,
+            `Allocated video stream ${streamId} on node ${nodeId} in place of stream ${freed.videoStreamId}, which was deallocated to make room that the request did not end up using`,
         );
     }
 
@@ -1375,6 +1398,8 @@ export class CameraStreamManager {
                 ? response.webRtcSessionId
                 : undefined;
         if (typeof webRtcSessionId !== "number") {
+            // A session whose id never reaches here can never be ended, so its streams stay at
+            // ReferenceCount > 0 and the deallocates registered above are refused.
             throw ServerError.sdkStackError("Provider returned no WebRTCSessionID");
         }
 
@@ -1407,7 +1432,8 @@ export class CameraStreamManager {
      * A failure here is logged and swallowed: the lease survives it, so `camera_release_stream` and the
      * allocation ladder can still reach the stream, and the caller sees the error that started this.
      */
-    async #deallocate(nodeId: NodeId, endpointId: EndpointNumber, kind: StreamKind, streamId: number): Promise<void> {
+    async #deallocate(nodeId: NodeId, endpointId: EndpointNumber, lease: StreamLease): Promise<void> {
+        const { kind, streamId } = lease;
         const { command, fields } = deallocateCall(kind, streamId);
         try {
             await this.io.invoke({ nodeId, endpointId, cluster: "avsm", command, fields });
@@ -1418,7 +1444,7 @@ export class CameraStreamManager {
             );
             return;
         }
-        this.dropLease(nodeId, endpointId, kind, streamId);
+        this.#dropLeaseIfCurrent(nodeId, endpointId, lease);
     }
 
     /**
@@ -1460,7 +1486,7 @@ export class CameraStreamManager {
     async stopStream(nodeId: NodeId, endpointId: EndpointNumber, webRtcSessionId: number): Promise<boolean> {
         const session = this.#sessions.get(nodeId, endpointId, webRtcSessionId);
         if (session === undefined) return false;
-        await this.#endSession(session);
+        await this.#sessions.releaseOnce(session, held => this.#endSession(held));
         return true;
     }
 
@@ -1504,24 +1530,18 @@ export class CameraStreamManager {
      * at most {@link DEVICE_CLEANUP_BUDGET_MS}, since a camera that has stopped answering is a common
      * reason to be shutting down. The sessions are ended concurrently: they name different cameras
      * and different streams, so one silent camera must not spend the budget the others need. A
-     * session whose `EndSession` the budget abandoned keeps its entry and is tried again by the next
-     * release pass.
+     * session whose `EndSession` the budget abandoned keeps its entry; a later pass waits on that
+     * same `EndSession` rather than sending a second one, and retries only once it has failed.
      */
     async #releaseSessions(matches: (scope: SessionScope) => boolean): Promise<void> {
-        const { sessions, inFlight } = this.#sessions.claim(matches);
-        if (sessions.length === 0 && inFlight.length === 0) return;
+        const inFlight = this.#sessions.claim(matches, session =>
+            this.#endSession(session).catch(error =>
+                logger.warn(`Failed to end session ${session.webRtcSessionId} on node ${session.nodeId}:`, error),
+            ),
+        );
+        if (inFlight.length === 0) return;
         await withCleanupBudget("ending the sessions a connection or the server owned", async () => {
-            await Promise.allSettled([
-                ...sessions.map(session =>
-                    this.#endSession(session).catch(error =>
-                        logger.warn(
-                            `Failed to end session ${session.webRtcSessionId} on node ${session.nodeId}:`,
-                            error,
-                        ),
-                    ),
-                ),
-                ...inFlight,
-            ]);
+            await Promise.allSettled(inFlight);
         });
     }
 
@@ -1663,12 +1683,12 @@ export class CameraStreamManager {
                 const { capability, snapshotStreamId } = allocated;
                 // A deallocate the device refuses leaves this lease standing, which is the only record
                 // that `camera_release_stream` may still free the stream.
-                this.recordAllocation(nodeId, endpointId, {
+                const lease = this.recordAllocation(nodeId, endpointId, {
                     kind: "snapshot",
                     streamId: snapshotStreamId,
                     allocatedByUs: true,
                 });
-                scope.returnAlways(() => this.#deallocate(nodeId, endpointId, "snapshot", snapshotStreamId));
+                scope.returnAlways(() => this.#deallocate(nodeId, endpointId, lease));
 
                 let captured: { data: Uint8Array; imageCodec: number; resolution: Resolution };
                 try {

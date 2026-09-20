@@ -11,6 +11,7 @@ import {
     findDegradedVideoStream,
     findReusableVideoStream,
     narrowEnvelope,
+    satisfiesAudioCallerBounds,
     videoCallerBounds,
 } from "../src/camera/streamPolicy.js";
 import type { AudioSelection, VideoEnvelopeArgs } from "../src/camera/streamPolicy.js";
@@ -738,6 +739,31 @@ describe("streamPolicy", () => {
             };
             const narrowed = narrowEnvelope(nearFloor);
             expect(narrowed?.maxResolution).to.deep.equal({ width: 960, height: 540 });
+        });
+    });
+
+    describe("satisfiesAudioCallerBounds", () => {
+        const LIVE_VIEW_AUDIO = {
+            audioStreamId: 4,
+            streamUsage: LIVE_VIEW,
+            audioCodec: 0,
+            channelCount: 1,
+            sampleRate: 48000,
+            bitRate: 64000,
+            bitDepth: 16,
+            referenceCount: 1,
+        };
+
+        it("accepts a stream carrying the usage the caller asked for", () => {
+            expect(satisfiesAudioCallerBounds(LIVE_VIEW_AUDIO, { streamUsage: LIVE_VIEW })).to.equal(true);
+        });
+
+        it("refuses a stream whose usage is not the one the caller asked for", () => {
+            // stream_usage is the only mandatory argument of camera_start_stream, so the audio rung
+            // may no more substitute it than the video one: a LiveView caller handed the microphone
+            // track of a Recording session got something it never asked for.
+            const recording = { ...LIVE_VIEW_AUDIO, streamUsage: RECORDING_USAGE };
+            expect(satisfiesAudioCallerBounds(recording, { streamUsage: LIVE_VIEW })).to.equal(false);
         });
     });
 

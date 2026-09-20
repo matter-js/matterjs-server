@@ -214,24 +214,23 @@ export class MatterCameraDeviceIo implements CameraDeviceIo {
         if (args.command !== "endSession") return invoke;
 
         const sessionId = args.fields.webRtcSessionId;
-        const untrack = async (): Promise<void> => {
+        // What the requestor keeps once the device has no such session, nothing can name again. The
+        // failure only logs: the manager forgets its own entry when this resolves, so raising here
+        // would leave it holding a session the device has already ended.
+        const dropTracking = async (): Promise<void> => {
             if (typeof sessionId !== "number") return;
-            await this.#handler.removeTrackedWebRtcSession(sessionId, args.nodeId, args.endpointId);
+            try {
+                await this.#handler.removeTrackedWebRtcSession(sessionId, args.nodeId, args.endpointId);
+            } catch (error) {
+                logger.warn(`Could not drop local tracking of WebRTC session ${sessionId}:`, error);
+            }
         };
         try {
             const response = await invoke;
-            await untrack();
+            await dropTracking();
             return response;
         } catch (error) {
-            // The manager drops its own entry on NotFound, since the device has no such session. The
-            // requestor's tracking has to go with it: what it keeps past this point, nothing can name
-            // again. The device's status is what the caller must see, so a failure here only logs —
-            // the manager decides what to drop from that status.
-            if (deviceStatusOf(error) === Status.NotFound) {
-                await untrack().catch(untrackError =>
-                    logger.warn(`Could not drop local tracking of WebRTC session ${sessionId}:`, untrackError),
-                );
-            }
+            if (deviceStatusOf(error) === Status.NotFound) await dropTracking();
             throw error;
         }
     }

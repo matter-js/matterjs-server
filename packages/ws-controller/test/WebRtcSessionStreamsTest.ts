@@ -312,6 +312,31 @@ describe("establishWebRtcProviderSession", () => {
         expect(upserted).to.equal(false);
     });
 
+    it("ends the device session when the local requestor refuses to track it", async () => {
+        // The device has the session and only this call knows its id. Returning without ending it
+        // leaves the streams it references pinned at ReferenceCount > 0, with nothing able to name it.
+        const invokedCommands = new Array<string>();
+        const io: WebRtcProviderSessionIo = {
+            invoke: async command => {
+                invokedCommands.push(command);
+                return { webRtcSessionId: 9 };
+            },
+            upsertSession: async () => {
+                throw new Error("requestor endpoint is gone");
+            },
+        };
+
+        let thrown: unknown;
+        try {
+            await establishWebRtcProviderSession(io, baseArgs());
+        } catch (error) {
+            thrown = error;
+        }
+
+        expect((thrown as Error).message).to.equal("requestor endpoint is gone");
+        expect(invokedCommands).to.deep.equal(["provideOffer", "endSession"]);
+    });
+
     it("surfaces the untrackable-session error even when the EndSession cleanup itself fails", async () => {
         const invokedCommands = new Array<string>();
         const io: WebRtcProviderSessionIo = {

@@ -367,6 +367,29 @@ describe("MatterCameraDeviceIo.invoke (webrtcProvider routing)", () => {
         expect(deviceStatusOf(thrown)).to.equal(Status.NotFound);
     });
 
+    it("reports a successful EndSession even when dropping the local tracking fails", async () => {
+        // The manager forgets its own entry only once this resolves. Raising the tracking failure here
+        // would make a session the device has already ended stay in the manager's registry for good.
+        const io = new MatterCameraDeviceIo(
+            makeHandler({
+                invokeCommand: async () => ({ ok: true }),
+                removeTrackedWebRtcSession: async () => {
+                    throw new Error("requestor endpoint is gone");
+                },
+            }),
+        );
+
+        const response = await io.invoke({
+            nodeId: NODE_ID,
+            endpointId: ENDPOINT_ID,
+            cluster: "webrtcProvider",
+            command: "endSession",
+            fields: { webRtcSessionId: 7, reason: 0 },
+        });
+
+        expect(response).to.deep.equal({ ok: true });
+    });
+
     it("reports the device's status even when dropping the local tracking fails", async () => {
         // The manager decides what to drop from the device's status, so that status is what has to
         // reach it.

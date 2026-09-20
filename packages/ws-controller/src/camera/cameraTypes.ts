@@ -125,6 +125,14 @@ export type StreamLease = LeaseStatement & {
      * all; before that, absence is a report that has not arrived.
      */
     reportedByDevice: boolean;
+    /**
+     * Identifies this exact statement about the stream id.
+     *
+     * A give-back whose wait was abandoned still lands, and the device reissues an id it has freed,
+     * so by then the lease under that id may be a later request's. Reconciliation carries the value
+     * over; only a new statement about the id gets a new one.
+     */
+    generation: number;
 };
 
 export interface ManagedSession {
