@@ -33,8 +33,41 @@ export interface AudioEnvelope {
     bitDepth: number;
 }
 
-export interface StreamLease {
-    kind: StreamKind;
+/** An allocated video stream as `AllocatedVideoStreams` reports it. */
+export interface AllocatedVideoStream {
+    videoStreamId: number;
+    streamUsage: number;
+    videoCodec: number;
+    minResolution: Resolution;
+    maxResolution: Resolution;
+    minFrameRate: number;
+    maxFrameRate: number;
+    minBitRate: number;
+    maxBitRate: number;
+    referenceCount: number;
+}
+
+/** An allocated audio stream as `AllocatedAudioStreams` reports it. */
+export interface AllocatedAudioStream {
+    audioStreamId: number;
+    streamUsage: number;
+    audioCodec: number;
+    channelCount: number;
+    sampleRate: number;
+    bitRate: number;
+    bitDepth: number;
+    referenceCount: number;
+}
+
+/** An allocated snapshot stream as `AllocatedSnapshotStreams` reports it. */
+export interface AllocatedSnapshotStream {
+    snapshotStreamId: number;
+    imageCodec: number;
+    resolution: Resolution;
+    referenceCount: number;
+}
+
+interface LeaseSubject {
     streamId: number;
     /**
      * False for a stream found already allocated: reusable, never released by us.
@@ -44,6 +77,37 @@ export interface StreamLease {
      */
     allocatedByUs: boolean;
 }
+
+/** What this server states about one stream it has handed out. */
+export type LeaseStatement =
+    | (LeaseSubject & { kind: "video"; allocation: AllocatedVideoStream })
+    | (LeaseSubject & { kind: "audio"; allocation: AllocatedAudioStream })
+    | (LeaseSubject & { kind: "snapshot" });
+
+/**
+ * A {@link LeaseStatement} plus the two independent facts reconciliation needs.
+ *
+ * The lease answers two questions with different lifetimes, and each has its own field. "May this
+ * stream stand in for a device report?" expires — see {@link shadowUntil}. "Is this stream ours to
+ * release?" does not, and must not: a lease dropped for want of a device report leaves a stream
+ * nothing can deallocate.
+ */
+export type StreamLease = LeaseStatement & {
+    /**
+     * `Time.nowUs` (millisecond-valued) until which this lease may stand in for a device report.
+     *
+     * Set once, when the stream is allocated, and never extended: handing the stream out again is
+     * not evidence that it still exists. 0 for a stream this server did not allocate.
+     */
+    shadowUntil: number;
+    /**
+     * True once a device state read has named this stream.
+     *
+     * Absence only means the stream is gone once the device has shown that it reports this stream at
+     * all; before that, absence is a report that has not arrived.
+     */
+    reportedByDevice: boolean;
+};
 
 export interface ManagedSession {
     webRtcSessionId: number;

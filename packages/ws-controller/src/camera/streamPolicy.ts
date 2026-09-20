@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type { AudioEnvelope, Resolution, VideoEnvelope } from "./cameraTypes.js";
+import type { AllocatedVideoStream, AudioEnvelope, Resolution, VideoEnvelope } from "./cameraTypes.js";
 import type { SdpVideoConstraints } from "./sdpConstraints.js";
 import { audioCodecName } from "./wireNames.js";
 
@@ -201,19 +201,6 @@ export function computeVideoEnvelope(args: VideoEnvelopeArgs): VideoSelection {
             keyFrameInterval: LIVE_VIEW_KEY_FRAME_INTERVAL_MS,
         },
     };
-}
-
-export interface AllocatedVideoStream {
-    videoStreamId: number;
-    streamUsage: number;
-    videoCodec: number;
-    minResolution: Resolution;
-    maxResolution: Resolution;
-    minFrameRate: number;
-    maxFrameRate: number;
-    minBitRate: number;
-    maxBitRate: number;
-    referenceCount: number;
 }
 
 function contains(outer: { min: number; max: number }, inner: { min: number; max: number }): boolean {

@@ -4,14 +4,18 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Logger } from "@matter/main";
+import { Logger, Time } from "@matter/main";
 import type { EndpointNumber, NodeId } from "@matter/main";
 import { CameraAvStreamManagement } from "@matter/main/clusters/camera-av-stream-management";
 import { WebRtcTransportDefinitions } from "@matter/main/clusters/web-rtc-transport-definitions";
 import { Status } from "@matter/main/types";
 import { ServerError } from "../types/WebSocketMessageTypes.js";
 import type {
+    AllocatedAudioStream,
+    AllocatedSnapshotStream,
+    AllocatedVideoStream,
     AudioEnvelope,
+    LeaseStatement,
     ManagedSession,
     Resolution,
     ResolvedStream,
@@ -32,7 +36,7 @@ import {
     findReusableVideoStream,
     narrowEnvelope,
 } from "./streamPolicy.js";
-import type { AllocatedVideoStream, AudioHints, RateDistortionPoint, VideoHints } from "./streamPolicy.js";
+import type { AudioHints, RateDistortionPoint, VideoHints } from "./streamPolicy.js";
 import { audioCodecName, imageCodecName, knownVideoCodecs, videoCodecName } from "./wireNames.js";
 
 const logger = Logger.get("CameraStreamManager");
@@ -87,6 +91,42 @@ function envelopeOfVideoStream(stream: AllocatedVideoStream, keyFrameInterval: n
         minBitRate: stream.minBitRate,
         maxBitRate: stream.maxBitRate,
         keyFrameInterval,
+    };
+}
+
+/**
+ * The range `VideoStreamAllocate` was asked for, in the shape the device reports allocations in.
+ *
+ * It is what this server requested, not what the device stated: the allocate response carries only
+ * the id. Device state replaces it for every decision as soon as the device names the stream, and
+ * `referenceCount` is 0 because nothing can reference a stream whose id has only just come back.
+ */
+function allocatedVideoStream(streamId: number, streamUsage: number, envelope: VideoEnvelope): AllocatedVideoStream {
+    return {
+        videoStreamId: streamId,
+        streamUsage,
+        videoCodec: envelope.codec,
+        minResolution: envelope.minResolution,
+        maxResolution: envelope.maxResolution,
+        minFrameRate: envelope.minFrameRate,
+        maxFrameRate: envelope.maxFrameRate,
+        minBitRate: envelope.minBitRate,
+        maxBitRate: envelope.maxBitRate,
+        referenceCount: 0,
+    };
+}
+
+/** The audio counterpart of {@link allocatedVideoStream}. */
+function allocatedAudioStream(streamId: number, streamUsage: number, envelope: AudioEnvelope): AllocatedAudioStream {
+    return {
+        audioStreamId: streamId,
+        streamUsage,
+        audioCodec: envelope.codec,
+        channelCount: envelope.channelCount,
+        sampleRate: envelope.sampleRate,
+        bitRate: envelope.bitRate,
+        bitDepth: envelope.bitDepth,
+        referenceCount: 0,
     };
 }
 
@@ -156,6 +196,25 @@ function isResolution(value: unknown): value is Resolution {
     return typeof candidate.width === "number" && typeof candidate.height === "number";
 }
 
+/**
+ * How long a stream this server allocated may be reused before the device has ever named it.
+ *
+ * It spans the gap between an allocate command returning an id and the matching `Allocated*Streams`
+ * report arriving, which is the window a second request would otherwise allocate a twin in.
+ */
+export const UNREPORTED_LEASE_GRACE_MS = 10000;
+
+function deviceReportsStream(state: CameraState, kind: StreamKind, streamId: number): boolean {
+    switch (kind) {
+        case "video":
+            return state.allocatedVideoStreams.some(stream => stream.videoStreamId === streamId);
+        case "audio":
+            return state.allocatedAudioStreams.some(stream => stream.audioStreamId === streamId);
+        case "snapshot":
+            return state.allocatedSnapshotStreams.some(stream => stream.snapshotStreamId === streamId);
+    }
+}
+
 function referenceCountOf(state: CameraState, kind: StreamKind, streamId: number): number {
     switch (kind) {
         case "video":
@@ -178,24 +237,6 @@ function deallocateCall(kind: StreamKind, streamId: number): { command: string; 
         case "snapshot":
             return { command: "snapshotStreamDeallocate", fields: { snapshotStreamId: streamId } };
     }
-}
-
-export interface AllocatedAudioStream {
-    audioStreamId: number;
-    streamUsage: number;
-    audioCodec: number;
-    channelCount: number;
-    sampleRate: number;
-    bitRate: number;
-    bitDepth: number;
-    referenceCount: number;
-}
-
-export interface AllocatedSnapshotStream {
-    snapshotStreamId: number;
-    imageCodec: number;
-    resolution: Resolution;
-    referenceCount: number;
 }
 
 /** The AVSM attributes the policy needs, as matter.js reports them through `stateOf`. */
@@ -372,19 +413,120 @@ export class CameraStreamManager {
         return this.#leases.get(this.endpointKey(nodeId, endpointId)) ?? new Array<StreamLease>();
     }
 
-    /**
-     * Record what this server knows about a stream, replacing what it knew before.
-     *
-     * The device reissues a stream id once the stream it named is deallocated, so an entry that still
-     * said `allocatedByUs: false` from an earlier foreign stream would make the id we just allocated
-     * unreleasable. The last statement about an id is the true one.
-     */
-    protected recordLease(nodeId: NodeId, endpointId: EndpointNumber, lease: StreamLease): void {
+    #putLease(nodeId: NodeId, endpointId: EndpointNumber, lease: StreamLease): void {
         const key = this.endpointKey(nodeId, endpointId);
         const existing = this.#leases.get(key) ?? new Array<StreamLease>();
         const others = existing.filter(entry => !(entry.kind === lease.kind && entry.streamId === lease.streamId));
         others.push(lease);
         this.#leases.set(key, others);
+    }
+
+    protected leaseFor(
+        nodeId: NodeId,
+        endpointId: EndpointNumber,
+        kind: StreamKind,
+        streamId: number,
+    ): StreamLease | undefined {
+        return this.leasesOf(nodeId, endpointId).find(lease => lease.kind === kind && lease.streamId === streamId);
+    }
+
+    /**
+     * Record a stream this server has just allocated, replacing what it knew about the id before.
+     *
+     * The device reissues a stream id once the stream it named is deallocated, so an entry that still
+     * said `allocatedByUs: false` from an earlier foreign stream would make the id we just allocated
+     * unreleasable. The last statement about an id is the true one.
+     */
+    protected recordAllocation(nodeId: NodeId, endpointId: EndpointNumber, statement: LeaseStatement): void {
+        this.#putLease(nodeId, endpointId, {
+            ...statement,
+            shadowUntil: Time.nowUs + UNREPORTED_LEASE_GRACE_MS,
+            reportedByDevice: false,
+        });
+    }
+
+    /**
+     * Record a stream this call hands out without having allocated it here and now.
+     *
+     * With no entry yet the stream came out of device state, which is both its only evidence and
+     * proof that the device reports it. With an entry, that entry's own evidence carries over:
+     * handing a stream out again says nothing new about whether it still exists.
+     */
+    #recordReuse(nodeId: NodeId, endpointId: EndpointNumber, statement: LeaseStatement): boolean {
+        const previous = this.leaseFor(nodeId, endpointId, statement.kind, statement.streamId);
+        this.#putLease(nodeId, endpointId, {
+            ...statement,
+            shadowUntil: previous?.shadowUntil ?? 0,
+            reportedByDevice: previous?.reportedByDevice ?? true,
+        });
+        return statement.allocatedByUs;
+    }
+
+    /**
+     * Line the leases up with what the device reports.
+     *
+     * A stream the device has named and then stops naming is gone, so its lease goes with it. Before
+     * the first such report absence says nothing, and dropping the lease there would leave a stream
+     * this server allocated with nothing recording that it may release it.
+     */
+    protected reconcileLeases(nodeId: NodeId, endpointId: EndpointNumber, state: CameraState): void {
+        const key = this.endpointKey(nodeId, endpointId);
+        const existing = this.#leases.get(key);
+        if (existing === undefined) return;
+
+        const kept = new Array<StreamLease>();
+        for (const lease of existing) {
+            if (deviceReportsStream(state, lease.kind, lease.streamId)) {
+                kept.push(lease.reportedByDevice ? lease : { ...lease, reportedByDevice: true });
+            } else if (!lease.reportedByDevice) {
+                kept.push(lease);
+            }
+        }
+        if (kept.length === 0) {
+            this.#leases.delete(key);
+        } else {
+            this.#leases.set(key, kept);
+        }
+    }
+
+    /**
+     * The video streams this server has allocated that `reported` does not name yet.
+     *
+     * The reuse decision consults these alongside device state, so a request arriving before the
+     * device has reported an allocation sees it rather than allocating a twin of it. Past
+     * {@link UNREPORTED_LEASE_GRACE_MS} a stream the device has never named is no longer offered: at
+     * that point the missing report is more likely a stream the camera dropped than one it has yet
+     * to mention, and reusing it would put a session on an id that no longer exists.
+     */
+    protected unreportedVideoStreams(
+        nodeId: NodeId,
+        endpointId: EndpointNumber,
+        reported: AllocatedVideoStream[],
+    ): AllocatedVideoStream[] {
+        const now = Time.nowUs;
+        const streams = new Array<AllocatedVideoStream>();
+        for (const lease of this.leasesOf(nodeId, endpointId)) {
+            if (lease.kind !== "video" || now >= lease.shadowUntil) continue;
+            if (reported.some(stream => stream.videoStreamId === lease.streamId)) continue;
+            streams.push(lease.allocation);
+        }
+        return streams;
+    }
+
+    /** The audio counterpart of {@link unreportedVideoStreams}. */
+    protected unreportedAudioStreams(
+        nodeId: NodeId,
+        endpointId: EndpointNumber,
+        reported: AllocatedAudioStream[],
+    ): AllocatedAudioStream[] {
+        const now = Time.nowUs;
+        const streams = new Array<AllocatedAudioStream>();
+        for (const lease of this.leasesOf(nodeId, endpointId)) {
+            if (lease.kind !== "audio" || now >= lease.shadowUntil) continue;
+            if (reported.some(stream => stream.audioStreamId === lease.streamId)) continue;
+            streams.push(lease.allocation);
+        }
+        return streams;
     }
 
     protected dropLease(nodeId: NodeId, endpointId: EndpointNumber, kind: StreamKind, streamId: number): void {
@@ -400,21 +542,37 @@ export class CameraStreamManager {
     }
 
     /**
-     * Record a stream this call reuses, and report whether this server allocated it.
+     * Record a video stream this call reuses, and report whether this server allocated it.
      *
      * A stream this server did not allocate is leased with `allocatedByUs: false`: reusable, never
      * released by us. Leasing it anyway is what lets a later request see every stream this server has
      * handed out, rather than only what the subscription has reported back.
      */
-    protected leaseReusedStream(
+    protected leaseReusedVideoStream(
         nodeId: NodeId,
         endpointId: EndpointNumber,
-        kind: StreamKind,
-        streamId: number,
+        stream: AllocatedVideoStream,
     ): boolean {
-        const allocatedByUs = this.ownsStream(nodeId, endpointId, kind, streamId);
-        this.recordLease(nodeId, endpointId, { kind, streamId, allocatedByUs });
-        return allocatedByUs;
+        return this.#recordReuse(nodeId, endpointId, {
+            kind: "video",
+            streamId: stream.videoStreamId,
+            allocatedByUs: this.ownsStream(nodeId, endpointId, "video", stream.videoStreamId),
+            allocation: stream,
+        });
+    }
+
+    /** The audio counterpart of {@link leaseReusedVideoStream}. */
+    protected leaseReusedAudioStream(
+        nodeId: NodeId,
+        endpointId: EndpointNumber,
+        stream: AllocatedAudioStream,
+    ): boolean {
+        return this.#recordReuse(nodeId, endpointId, {
+            kind: "audio",
+            streamId: stream.audioStreamId,
+            allocatedByUs: this.ownsStream(nodeId, endpointId, "audio", stream.audioStreamId),
+            allocation: stream,
+        });
     }
 
     protected ownsStream(nodeId: NodeId, endpointId: EndpointNumber, kind: StreamKind, streamId: number): boolean {
@@ -423,7 +581,11 @@ export class CameraStreamManager {
         );
     }
 
-    /** Device state, or a typed failure when the endpoint cannot stream. */
+    /**
+     * Device state, or a typed failure when the endpoint cannot stream.
+     *
+     * Reading state is also what reconciles the leases against it; see {@link reconcileLeases}.
+     */
     protected async requireState(nodeId: NodeId, endpointId: EndpointNumber): Promise<CameraState> {
         const state = await this.#io.readCameraState(nodeId, endpointId);
         if (state === undefined) {
@@ -431,6 +593,7 @@ export class CameraStreamManager {
                 missingClusters: await this.#io.missingCameraClusters(nodeId, endpointId),
             });
         }
+        this.reconcileLeases(nodeId, endpointId, state);
         return state;
     }
 
@@ -574,14 +737,17 @@ export class CameraStreamManager {
 
         // The ladder's own copy: freeing a stream updates this array, never the state object.
         let liveStreams = state.allocatedVideoStreams;
+        // Freeing and the exhaustion report stay on device state: a stream this server has only just
+        // allocated has no reference count anyone but the device can state.
+        const unreported = this.unreportedVideoStreams(nodeId, endpointId, liveStreams);
 
-        const reused = findReusableVideoStream(liveStreams, envelope, streamUsage);
+        const reused = findReusableVideoStream([...liveStreams, ...unreported], envelope, streamUsage);
         if (reused !== undefined) {
             return {
                 streamId: reused.videoStreamId,
                 envelope: envelopeOfVideoStream(reused, envelope.keyFrameInterval),
                 reused: true,
-                allocatedByUs: this.leaseReusedStream(nodeId, endpointId, "video", reused.videoStreamId),
+                allocatedByUs: this.leaseReusedVideoStream(nodeId, endpointId, reused),
             };
         }
 
@@ -612,7 +778,12 @@ export class CameraStreamManager {
                 if (typeof streamId !== "number") {
                     throw ServerError.sdkStackError("VideoStreamAllocate returned no VideoStreamID");
                 }
-                this.recordLease(nodeId, endpointId, { kind: "video", streamId, allocatedByUs: true });
+                this.recordAllocation(nodeId, endpointId, {
+                    kind: "video",
+                    streamId,
+                    allocatedByUs: true,
+                    allocation: allocatedVideoStream(streamId, streamUsage, envelope),
+                });
                 return { streamId, envelope, reused: false, allocatedByUs: true };
             } catch (error) {
                 if (error instanceof ServerError) throw error;
@@ -628,7 +799,7 @@ export class CameraStreamManager {
                     });
                 }
                 if (reaction === "make-room") {
-                    const relaxed = findReusableVideoStream(liveStreams, envelope, streamUsage, {
+                    const relaxed = findReusableVideoStream([...liveStreams, ...unreported], envelope, streamUsage, {
                         ignoreStreamUsage: true,
                     });
                     if (relaxed !== undefined) {
@@ -636,7 +807,7 @@ export class CameraStreamManager {
                             streamId: relaxed.videoStreamId,
                             envelope: envelopeOfVideoStream(relaxed, envelope.keyFrameInterval),
                             reused: true,
-                            allocatedByUs: this.leaseReusedStream(nodeId, endpointId, "video", relaxed.videoStreamId),
+                            allocatedByUs: this.leaseReusedVideoStream(nodeId, endpointId, relaxed),
                         };
                     }
                     const freedId = await this.freeAnUnreferencedVideoStream(nodeId, endpointId, liveStreams);
@@ -653,14 +824,14 @@ export class CameraStreamManager {
 
         // Last rung: hand out a stream that is in use, but only within bounds the caller stated.
         // A caller who pinned a resolution matches nothing here and gets the typed failure below.
-        const degraded = findDegradedVideoStream(liveStreams, codec, args.hints ?? {});
+        const degraded = findDegradedVideoStream([...liveStreams, ...unreported], codec, args.hints ?? {});
         if (degraded !== undefined) {
             return {
                 streamId: degraded.videoStreamId,
                 envelope: envelopeOfVideoStream(degraded, envelope.keyFrameInterval),
                 reused: true,
                 degraded: true,
-                allocatedByUs: this.leaseReusedStream(nodeId, endpointId, "video", degraded.videoStreamId),
+                allocatedByUs: this.leaseReusedVideoStream(nodeId, endpointId, degraded),
             };
         }
 
@@ -734,7 +905,10 @@ export class CameraStreamManager {
         const envelope = selection.envelope;
         if (envelope === undefined) return undefined;
 
-        const existing = state.allocatedAudioStreams.find(
+        const existing = [
+            ...state.allocatedAudioStreams,
+            ...this.unreportedAudioStreams(nodeId, endpointId, state.allocatedAudioStreams),
+        ].find(
             stream =>
                 stream.streamUsage === streamUsage &&
                 stream.audioCodec === envelope.codec &&
@@ -746,7 +920,7 @@ export class CameraStreamManager {
                 streamId: existing.audioStreamId,
                 envelope: envelopeOfAudioStream(existing),
                 reused: true,
-                allocatedByUs: this.leaseReusedStream(nodeId, endpointId, "audio", existing.audioStreamId),
+                allocatedByUs: this.leaseReusedAudioStream(nodeId, endpointId, existing),
             };
         }
 
@@ -775,7 +949,12 @@ export class CameraStreamManager {
                 );
                 return undefined;
             }
-            this.recordLease(nodeId, endpointId, { kind: "audio", streamId, allocatedByUs: true });
+            this.recordAllocation(nodeId, endpointId, {
+                kind: "audio",
+                streamId,
+                allocatedByUs: true,
+                allocation: allocatedAudioStream(streamId, streamUsage, envelope),
+            });
             return { streamId, envelope, reused: false, allocatedByUs: true };
         } catch (error) {
             if (error instanceof ServerError) throw error;
@@ -1208,7 +1387,7 @@ export class CameraStreamManager {
                 throw this.snapshotFailure(state, lastStatus, deviceCodecs, requestedCodecs);
             }
             const { capability, snapshotStreamId } = allocated;
-            this.recordLease(nodeId, endpointId, {
+            this.recordAllocation(nodeId, endpointId, {
                 kind: "snapshot",
                 streamId: snapshotStreamId,
                 allocatedByUs: true,

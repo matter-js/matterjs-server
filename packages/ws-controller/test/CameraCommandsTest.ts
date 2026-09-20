@@ -17,14 +17,8 @@ import {
     toWireSnapshotResult,
     toWireStartStreamResult,
 } from "../src/camera/cameraCommands.js";
-import type {
-    AllocatedAudioStream,
-    AllocatedSnapshotStream,
-    CameraCapabilities,
-    SnapshotResult,
-    StartStreamResult,
-} from "../src/camera/CameraStreamManager.js";
-import type { AllocatedVideoStream } from "../src/camera/streamPolicy.js";
+import type { CameraCapabilities, SnapshotResult, StartStreamResult } from "../src/camera/CameraStreamManager.js";
+import type { AllocatedAudioStream, AllocatedSnapshotStream, AllocatedVideoStream } from "../src/camera/cameraTypes.js";
 import { ServerError, ServerErrorCode } from "../src/types/WebSocketMessageTypes.js";
 
 describe("cameraCommands", () => {

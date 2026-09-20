@@ -9,8 +9,13 @@ import { CameraAvStreamManagement } from "@matter/main/clusters/camera-av-stream
 import { WebRtcTransportProvider } from "@matter/main/clusters/web-rtc-transport-provider";
 import { Status } from "@matter/main/types";
 import type { CameraDeviceIo, CameraState } from "../src/camera/CameraStreamManager.js";
-import { CameraStreamManager, preferredVideoCodec } from "../src/camera/CameraStreamManager.js";
-import type { AudioEnvelope, VideoEnvelope } from "../src/camera/cameraTypes.js";
+import {
+    CameraStreamManager,
+    preferredVideoCodec,
+    UNREPORTED_LEASE_GRACE_MS,
+} from "../src/camera/CameraStreamManager.js";
+import type { AudioEnvelope, StreamKind, VideoEnvelope } from "../src/camera/cameraTypes.js";
+import type { SdpVideoConstraints } from "../src/camera/sdpConstraints.js";
 import { ServerError, ServerErrorCode } from "../src/types/WebSocketMessageTypes.js";
 
 /** ResolvedStream.envelope is a union; a result from resolveVideoStream is always the video shape. */
@@ -2080,6 +2085,17 @@ describe("CameraStreamManager", () => {
             maxFrameRate: 30,
         };
 
+        /** A release the manager must refuse because the stream is no longer recorded as its own. */
+        async function expectNotOwned(manager: LeaseProbe, kind: StreamKind, streamId: number): Promise<void> {
+            let thrown: unknown;
+            try {
+                await manager.releaseStream({ nodeId: NODE, endpointId: ENDPOINT, kind, streamId });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamNotOwned);
+        }
+
         it("holds no entry for an endpoint whose last lease is gone", async () => {
             const { manager } = probeWith({ ...STATE, allocatedSnapshotStreams: [] }, async invoke => {
                 if (invoke.command === "snapshotStreamAllocate") return { snapshotStreamId: 3 };
@@ -2224,6 +2240,151 @@ describe("CameraStreamManager", () => {
             expect(manager.endpointsWithLeases).to.equal(0);
         });
 
+        it("does not stand in for a device report of a stream it only reused", async () => {
+            // A foreign stream was read out of device state, so device state is the only evidence it
+            // ever had. Shadowing it would hand the next request a stream the camera has dropped.
+            const reusable = { ...FOREIGN_STREAM, ...CONTAINED_FOREIGN };
+            const { manager, holder } = probeWith({ ...STATE, allocatedVideoStreams: [reusable] }, async invoke =>
+                invoke.command === "videoStreamAllocate" ? { videoStreamId: 11 } : undefined,
+            );
+            const first = await manager.resolveVideoStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+                codec: H265,
+            });
+            expect(first.streamId).to.equal(7);
+
+            holder.state = { ...STATE, allocatedVideoStreams: [] };
+            const second = await manager.resolveVideoStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+                codec: H265,
+            });
+            expect(second.streamId).to.equal(11);
+            expect(second.reused).to.equal(false);
+        });
+
+        it("drops the lease for a foreign stream once the device stops naming it", async () => {
+            // A stream read out of device state is reported by definition, so its disappearance is the
+            // camera having dropped it and the lease has nothing left to describe.
+            const reusable = { ...FOREIGN_STREAM, ...CONTAINED_FOREIGN };
+            const { manager, holder } = probeWith(
+                { ...STATE, allocatedVideoStreams: [reusable] },
+                async () => undefined,
+            );
+            await manager.resolveVideoStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+                codec: H265,
+            });
+            expect(manager.endpointsWithLeases).to.equal(1);
+
+            holder.state = { ...STATE, allocatedVideoStreams: [] };
+            await manager.getCapabilities(NODE, ENDPOINT);
+            expect(manager.endpointsWithLeases).to.equal(0);
+        });
+
+        it("drops a video lease once the device has named the stream and then stops", async () => {
+            const { manager, holder } = probeWith({ ...STATE, allocatedVideoStreams: [] }, async invoke =>
+                invoke.command === "videoStreamAllocate" ? { videoStreamId: 9 } : undefined,
+            );
+            const allocated = await manager.resolveVideoStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+                codec: H265,
+            });
+            const envelope = requireVideoEnvelope(allocated.envelope);
+            holder.state = {
+                ...STATE,
+                allocatedVideoStreams: [
+                    {
+                        videoStreamId: 9,
+                        streamUsage: LIVE_VIEW,
+                        videoCodec: envelope.codec,
+                        minResolution: envelope.minResolution,
+                        maxResolution: envelope.maxResolution,
+                        minFrameRate: envelope.minFrameRate,
+                        maxFrameRate: envelope.maxFrameRate,
+                        minBitRate: envelope.minBitRate,
+                        maxBitRate: envelope.maxBitRate,
+                        referenceCount: 0,
+                    },
+                ],
+            };
+            await manager.getCapabilities(NODE, ENDPOINT);
+            expect(manager.endpointsWithLeases).to.equal(1);
+
+            holder.state = { ...STATE, allocatedVideoStreams: [] };
+            await expectNotOwned(manager, "video", 9);
+            expect(manager.endpointsWithLeases).to.equal(0);
+        });
+
+        it("drops an audio lease once the device has named the stream and then stops", async () => {
+            const { manager, holder } = probeWith({ ...STATE, allocatedAudioStreams: [] }, async invoke =>
+                invoke.command === "audioStreamAllocate" ? { audioStreamId: 4 } : undefined,
+            );
+            const allocated = await manager.resolveAudioStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+            });
+            if (allocated === undefined) throw new Error("expected an allocated audio stream");
+            const envelope = requireAudioEnvelope(allocated.envelope);
+            holder.state = {
+                ...STATE,
+                allocatedAudioStreams: [
+                    {
+                        audioStreamId: 4,
+                        streamUsage: LIVE_VIEW,
+                        audioCodec: envelope.codec,
+                        channelCount: envelope.channelCount,
+                        sampleRate: envelope.sampleRate,
+                        bitRate: envelope.bitRate,
+                        bitDepth: envelope.bitDepth,
+                        referenceCount: 0,
+                    },
+                ],
+            };
+            await manager.getCapabilities(NODE, ENDPOINT);
+            expect(manager.endpointsWithLeases).to.equal(1);
+
+            holder.state = { ...STATE, allocatedAudioStreams: [] };
+            await expectNotOwned(manager, "audio", 4);
+            expect(manager.endpointsWithLeases).to.equal(0);
+        });
+
+        it("drops a snapshot lease once the device has named the stream and then stops", async () => {
+            const { manager, holder } = probeWith({ ...STATE, allocatedSnapshotStreams: [] }, async invoke => {
+                if (invoke.command === "snapshotStreamAllocate") return { snapshotStreamId: 3 };
+                if (invoke.command === "captureSnapshot") {
+                    return { data: new Uint8Array([1]), imageCodec: 0, resolution: { width: 640, height: 480 } };
+                }
+                return undefined;
+            });
+            await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
+            holder.state = {
+                ...STATE,
+                allocatedSnapshotStreams: [
+                    {
+                        snapshotStreamId: 3,
+                        imageCodec: 0,
+                        resolution: { width: 640, height: 480 },
+                        referenceCount: 0,
+                    },
+                ],
+            };
+            await manager.getCapabilities(NODE, ENDPOINT);
+            expect(manager.endpointsWithLeases).to.equal(1);
+
+            holder.state = { ...STATE, allocatedSnapshotStreams: [] };
+            await expectNotOwned(manager, "snapshot", 3);
+            expect(manager.endpointsWithLeases).to.equal(0);
+        });
+
         it("holds no entry for an endpoint that only ever gave up a foreign stream", async () => {
             // The ladder deallocates the foreign stream to make room and drops a lease that never
             // existed; every allocate fails, so nothing of ours is ever leased on this endpoint.
@@ -2254,6 +2415,312 @@ describe("CameraStreamManager", () => {
             expect(invokes.map(invoke => invoke.command)).to.include("videoStreamDeallocate");
             expect(manager.endpointsWithLeases).to.equal(0);
         });
+    });
+});
+
+describe("CameraStreamManager reuse before the device has reported", () => {
+    /** Allocation ids handed out in order, so a second allocate is visible as a second id. */
+    function allocatingManager(
+        state: CameraState,
+        videoIds: number[],
+    ): { manager: CameraStreamManager; invokes: RecordedInvoke[]; holder: { state: CameraState | undefined } } {
+        const remaining = [...videoIds];
+        return managerWith(state, async invoke => {
+            if (invoke.command === "videoStreamAllocate") {
+                const next = remaining.shift();
+                if (next === undefined) throw statusError(Status.ResourceExhausted);
+                return { videoStreamId: next };
+            }
+            return undefined;
+        });
+    }
+
+    function liveView(manager: CameraStreamManager, overrides?: { streamUsage?: number; sdp?: SdpVideoConstraints }) {
+        return manager.resolveVideoStream({
+            nodeId: NODE,
+            endpointId: ENDPOINT,
+            streamUsage: overrides?.streamUsage ?? LIVE_VIEW,
+            codec: H265,
+            sdp: overrides?.sdp,
+        });
+    }
+
+    it("reuses the stream it has just allocated instead of allocating a twin", async () => {
+        // The endpoint lock serialises the two calls but does not wait for AllocatedVideoStreams to
+        // report the first allocation, which is the window this reuse closes.
+        const { manager, invokes } = allocatingManager({ ...STATE, allocatedVideoStreams: [] }, [9, 10]);
+        const first = await liveView(manager);
+        const second = await liveView(manager);
+
+        expect(second.streamId).to.equal(9);
+        expect(second.reused).to.equal(true);
+        expect(invokes.filter(invoke => invoke.command === "videoStreamAllocate")).to.have.length(1);
+        // The reuse is reported from the lease's own description of the allocation, so it has to be
+        // the range that was allocated rather than a default.
+        expect(second.envelope).to.deep.equal(first.envelope);
+    });
+
+    it("reuses an audio stream it has just allocated instead of allocating a twin", async () => {
+        const { manager, invokes } = managerWith({ ...STATE, allocatedAudioStreams: [] }, async invoke =>
+            invoke.command === "audioStreamAllocate" ? { audioStreamId: 4 } : undefined,
+        );
+        const first = await manager.resolveAudioStream({
+            nodeId: NODE,
+            endpointId: ENDPOINT,
+            streamUsage: LIVE_VIEW,
+        });
+        const second = await manager.resolveAudioStream({
+            nodeId: NODE,
+            endpointId: ENDPOINT,
+            streamUsage: LIVE_VIEW,
+        });
+
+        expect(second?.streamId).to.equal(4);
+        expect(second?.reused).to.equal(true);
+        expect(invokes.filter(invoke => invoke.command === "audioStreamAllocate")).to.have.length(1);
+        expect(second?.envelope).to.deep.equal(first?.envelope);
+    });
+
+    it("hands out an unreported stream on the capacity rung when the camera has no room left", async () => {
+        const { manager, invokes } = allocatingManager({ ...STATE, allocatedVideoStreams: [] }, [9]);
+        await liveView(manager);
+
+        // A different stream usage never matches plain reuse, so this reaches the allocate call, which
+        // the camera refuses for want of capacity.
+        const second = await liveView(manager, { streamUsage: 1 });
+        expect(second.streamId).to.equal(9);
+        expect(second.reused).to.equal(true);
+        // The rung below this one would reach the same stream after spending every narrowing round on
+        // a camera that has no room, and would report it as degraded.
+        expect(second.degraded).to.equal(undefined);
+        expect(invokes.filter(invoke => invoke.command === "videoStreamAllocate")).to.have.length(2);
+    });
+
+    it("hands out an unreported stream on the degraded rung when nothing else is left", async () => {
+        const { manager } = allocatingManager({ ...STATE, allocatedVideoStreams: [] }, [9]);
+        await liveView(manager);
+
+        // The offer's pixel budget puts the allocated stream's ceiling outside the envelope, so no rung
+        // above the degraded one matches it; the caller stated no bounds of its own to violate.
+        const second = await liveView(manager, {
+            sdp: {
+                codecs: new Array<string>(),
+                audioCodecs: new Array<string>(),
+                hasVideo: true,
+                hasAudio: false,
+                wantsTalkback: false,
+                maxPixels: 1280 * 720,
+            },
+        });
+        expect(second.streamId).to.equal(9);
+        expect(second.degraded).to.equal(true);
+    });
+
+    it("lets the device's own report replace its record of a stream it allocated", async () => {
+        // The lease describes what was asked for. Once the device names the stream it is the device
+        // that says what was allocated, and a request the device's version does not satisfy must not
+        // be answered from the older description.
+        const { manager, holder } = allocatingManager({ ...STATE, allocatedVideoStreams: [] }, [9]);
+        const first = await liveView(manager);
+        const envelope = requireVideoEnvelope(first.envelope);
+        holder.state = {
+            ...STATE,
+            allocatedVideoStreams: [
+                {
+                    videoStreamId: 9,
+                    streamUsage: LIVE_VIEW,
+                    videoCodec: envelope.codec,
+                    minResolution: envelope.minResolution,
+                    // Wider than this server asked for, so it no longer fits the envelope it requested.
+                    maxResolution: { width: 3840, height: 2160 },
+                    minFrameRate: envelope.minFrameRate,
+                    maxFrameRate: envelope.maxFrameRate,
+                    minBitRate: envelope.minBitRate,
+                    maxBitRate: envelope.maxBitRate,
+                    referenceCount: 1,
+                },
+            ],
+        };
+
+        const second = await liveView(manager);
+        expect(second.streamId).to.equal(9);
+        expect(second.degraded).to.equal(true);
+        expect(requireVideoEnvelope(second.envelope).maxResolution).to.deep.equal({ width: 3840, height: 2160 });
+    });
+
+    it("lets the device's own report replace its record of an audio stream it allocated", async () => {
+        const allocated = new Array<number>(4, 5);
+        const { manager, holder } = managerWith({ ...STATE, allocatedAudioStreams: [] }, async invoke =>
+            invoke.command === "audioStreamAllocate" ? { audioStreamId: allocated.shift() } : undefined,
+        );
+        const first = await manager.resolveAudioStream({
+            nodeId: NODE,
+            endpointId: ENDPOINT,
+            streamUsage: LIVE_VIEW,
+        });
+        if (first === undefined) throw new Error("expected an allocated audio stream");
+        const envelope = requireAudioEnvelope(first.envelope);
+        holder.state = {
+            ...STATE,
+            allocatedAudioStreams: [
+                {
+                    audioStreamId: 4,
+                    streamUsage: LIVE_VIEW,
+                    audioCodec: envelope.codec,
+                    channelCount: envelope.channelCount,
+                    // The camera settled on a rate this server did not ask for.
+                    sampleRate: envelope.sampleRate / 2,
+                    bitRate: envelope.bitRate,
+                    bitDepth: envelope.bitDepth,
+                    referenceCount: 1,
+                },
+            ],
+        };
+
+        const second = await manager.resolveAudioStream({
+            nodeId: NODE,
+            endpointId: ENDPOINT,
+            streamUsage: LIVE_VIEW,
+        });
+        expect(second?.streamId).to.equal(5);
+        expect(second?.reused).to.equal(false);
+    });
+
+    it("keeps reusing an unreported stream up to the last millisecond of the grace window", async () => {
+        MockTime.reset();
+        try {
+            const { manager, invokes } = allocatingManager({ ...STATE, allocatedVideoStreams: [] }, [9, 10]);
+            await liveView(manager);
+            // A reuse in between must carry the window over rather than open or close one.
+            await MockTime.advance(1);
+            await liveView(manager);
+            await MockTime.advance(UNREPORTED_LEASE_GRACE_MS - 2);
+
+            const third = await liveView(manager);
+            expect(third.streamId).to.equal(9);
+            expect(invokes.filter(invoke => invoke.command === "videoStreamAllocate")).to.have.length(1);
+        } finally {
+            MockTime.disable();
+        }
+    });
+
+    it("allocates again once the grace window passes and the device still names no stream", async () => {
+        MockTime.reset();
+        try {
+            const { manager, invokes } = allocatingManager({ ...STATE, allocatedVideoStreams: [] }, [9, 10]);
+            await liveView(manager);
+            await MockTime.advance(UNREPORTED_LEASE_GRACE_MS);
+
+            const second = await liveView(manager);
+            expect(second.streamId).to.equal(10);
+            expect(second.reused).to.equal(false);
+            expect(invokes.filter(invoke => invoke.command === "videoStreamAllocate")).to.have.length(2);
+        } finally {
+            MockTime.disable();
+        }
+    });
+
+    it("keeps a stream it allocated releasable although the device never names it", async () => {
+        // Ownership is not evidence that the stream exists, and it must not expire with that evidence:
+        // the lease is the only record that says this server may deallocate the stream.
+        MockTime.reset();
+        try {
+            const invokes = new Array<RecordedInvoke>();
+            const probe = new LeaseProbe({
+                readCameraState: async () => ({ ...STATE, allocatedVideoStreams: [] }),
+                missingCameraClusters: async () => new Array<number>(),
+                invoke: async args => {
+                    invokes.push({
+                        command: args.command,
+                        fields: args.fields,
+                        nodeId: args.nodeId,
+                        endpointId: args.endpointId,
+                    });
+                    return args.command === "videoStreamAllocate" ? { videoStreamId: 9 } : undefined;
+                },
+            });
+            await liveView(probe);
+            await MockTime.advance(UNREPORTED_LEASE_GRACE_MS * 6);
+            await probe.getCapabilities(NODE, ENDPOINT);
+            expect(probe.endpointsWithLeases).to.equal(1);
+
+            await probe.releaseStream({ nodeId: NODE, endpointId: ENDPOINT, kind: "video", streamId: 9 });
+            expect(invokes.map(invoke => invoke.command)).to.include("videoStreamDeallocate");
+            expect(probe.endpointsWithLeases).to.equal(0);
+        } finally {
+            MockTime.disable();
+        }
+    });
+
+    it("allocates a second audio stream once the grace window passes", async () => {
+        MockTime.reset();
+        try {
+            const allocated = new Array<number>(4, 5);
+            const { manager } = managerWith({ ...STATE, allocatedAudioStreams: [] }, async invoke =>
+                invoke.command === "audioStreamAllocate" ? { audioStreamId: allocated.shift() } : undefined,
+            );
+            await manager.resolveAudioStream({ nodeId: NODE, endpointId: ENDPOINT, streamUsage: LIVE_VIEW });
+            await MockTime.advance(UNREPORTED_LEASE_GRACE_MS);
+
+            const second = await manager.resolveAudioStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+            });
+            expect(second?.streamId).to.equal(5);
+            expect(second?.reused).to.equal(false);
+        } finally {
+            MockTime.disable();
+        }
+    });
+
+    it("keeps ownership of an unreported stream it has handed out again", async () => {
+        MockTime.reset();
+        try {
+            const invokes = new Array<RecordedInvoke>();
+            const probe = new LeaseProbe({
+                readCameraState: async () => ({ ...STATE, allocatedVideoStreams: [] }),
+                missingCameraClusters: async () => new Array<number>(),
+                invoke: async args => {
+                    invokes.push({
+                        command: args.command,
+                        fields: args.fields,
+                        nodeId: args.nodeId,
+                        endpointId: args.endpointId,
+                    });
+                    return args.command === "videoStreamAllocate" ? { videoStreamId: 9 } : undefined;
+                },
+            });
+            await liveView(probe);
+            await liveView(probe);
+            await MockTime.advance(UNREPORTED_LEASE_GRACE_MS * 6);
+            await probe.getCapabilities(NODE, ENDPOINT);
+
+            await probe.releaseStream({ nodeId: NODE, endpointId: ENDPOINT, kind: "video", streamId: 9 });
+            expect(invokes.map(invoke => invoke.command)).to.include("videoStreamDeallocate");
+            expect(probe.endpointsWithLeases).to.equal(0);
+        } finally {
+            MockTime.disable();
+        }
+    });
+
+    it("does not extend the window of a stream it hands out again", async () => {
+        // Handing a stream out is not a report from the camera, so it says nothing about whether the
+        // stream still exists. A window that renewed itself here could never close.
+        MockTime.reset();
+        try {
+            const { manager, invokes } = allocatingManager({ ...STATE, allocatedVideoStreams: [] }, [9, 10]);
+            await liveView(manager);
+            await MockTime.advance(UNREPORTED_LEASE_GRACE_MS - 1);
+            expect((await liveView(manager)).streamId).to.equal(9);
+
+            await MockTime.advance(1);
+            const third = await liveView(manager);
+            expect(third.streamId).to.equal(10);
+            expect(invokes.filter(invoke => invoke.command === "videoStreamAllocate")).to.have.length(2);
+        } finally {
+            MockTime.disable();
+        }
     });
 });
 
