@@ -192,8 +192,10 @@ class ServiceAreaClusterCommands extends BaseClusterCommands {
                     ></md-checkbox>
                     <span
                         >${areaLabel(area)}${
-                            area.floorNumber !== undefined
-                                ? html` <span class="area-detail">floor ${area.floorNumber}</span>`
+                            // The map header already conveys the floor once maps group the list; a
+                            // per-row number is only informative in the flat, ungrouped fallback.
+                            area.floorNumber !== undefined && !info.features.maps
+                                ? html` <span>floor ${area.floorNumber}</span>`
                                 : nothing
                         }${isCurrent ? html` <strong>(current)</strong>` : nothing}</span
                     >
@@ -276,7 +278,12 @@ class ServiceAreaClusterCommands extends BaseClusterCommands {
                     }
                     <div class="command-row">
                         <md-outlined-button
-                            ?disabled=${this._busy || !this.node.available || !info.commands.selectAreas}
+                            ?disabled=${
+                                this._busy ||
+                                !this.node.available ||
+                                !info.commands.selectAreas ||
+                                (running && !info.features.selectWhileRunning)
+                            }
                             @click=${handleAsync(() => this._selectAreas())}
                             >Select Areas (${this._selectedAreaIds.size})</md-outlined-button
                         >
@@ -320,7 +327,7 @@ class ServiceAreaClusterCommands extends BaseClusterCommands {
             }
             .area-list {
                 list-style: none;
-                margin: 0;
+                margin: 0 0 12px 0;
                 padding: 0;
                 display: flex;
                 flex-direction: column;
@@ -331,12 +338,12 @@ class ServiceAreaClusterCommands extends BaseClusterCommands {
                 align-items: center;
                 gap: 12px;
                 padding: 4px 0;
+                font-size: 14px;
             }
             .area-row label {
                 display: flex;
                 align-items: center;
                 gap: 8px;
-                flex: 1;
                 cursor: pointer;
             }
             .area-row-current {
