@@ -218,10 +218,27 @@ describe("isSkippable", () => {
         expect([1, 2, 3, 4].map(areaId => isSkippable(skippable, areaId))).to.deep.equal([true, true, false, false]);
     });
 
-    it("falls back to the selected areas when the device reports no progress", () => {
-        const withoutProgress = info({ "1/336/65529": [0, 2], "1/336/2": [5] });
+    it("falls back to the current area when the device reports no progress", () => {
+        // Confirmed against real hardware: being merely selected is not enough — the device rejects
+        // SkipArea with InvalidInMode ("the skipped area does not match the current area") for a
+        // selected-but-not-current area when it reports no Progress entry for it.
+        const withoutProgress = info({ "1/336/65529": [0, 2], "1/336/2": [5, 6], "1/336/3": 5 });
         expect(isSkippable(withoutProgress, 5)).to.equal(true);
         expect(isSkippable(withoutProgress, 6)).to.equal(false);
+    });
+
+    it("does not offer Skip for a Pending area while nothing is Operating", () => {
+        // Confirmed against real hardware: SkipArea on a Pending area is rejected with InvalidInMode
+        // until the device has actually started operating.
+        const idle = info({
+            "1/336/65529": [0, 2],
+            "1/336/5": [
+                { "0": 1, "1": 0 },
+                { "0": 2, "1": 0 },
+            ],
+        });
+        expect(isSkippable(idle, 1)).to.equal(false);
+        expect(isSkippable(idle, 2)).to.equal(false);
     });
 });
 

@@ -253,15 +253,21 @@ export function describeOperationalStatus(status: number | undefined): Operation
 }
 
 /**
- * Whether SkipArea can be invoked for an area. A device without the PROG feature reports no Progress
- * list but still accepts SkipArea when it has CurrentArea, and the spec then constrains SkippedArea
- * to the selected set.
+ * Whether SkipArea can be invoked for an area. Confirmed against real hardware:
+ * - InvalidInMode ("not allowed, given the current mode of the device") rejects a Pending area
+ *   while nothing is actually Operating yet, so Pending only counts once some area is Operating.
+ * - When the device reports no Progress entry at all (e.g. selected but not yet started), the
+ *   device answers InvalidInMode with "the skipped area does not match the current area" for any
+ *   area that isn't CurrentArea — being merely selected is not enough.
  */
 export function isSkippable(info: ServiceAreaInfo, areaId: number): boolean {
     if (!info.commands.skipArea) return false;
     const progress = info.progress.find(entry => entry.areaId === areaId);
-    if (progress === undefined) return info.selectedAreas.includes(areaId);
-    return progress.status === OperationalStatus.Pending || progress.status === OperationalStatus.Operating;
+    if (progress === undefined) return info.currentArea === areaId;
+    if (progress.status !== OperationalStatus.Pending && progress.status !== OperationalStatus.Operating) {
+        return false;
+    }
+    return info.progress.some(entry => entry.status === OperationalStatus.Operating);
 }
 
 /** Seconds left until a Matter epoch-s instant; zero or negative once it has passed. */

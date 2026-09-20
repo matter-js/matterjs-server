@@ -373,12 +373,14 @@ class ServiceAreaClusterCommands extends BaseClusterCommands {
                 margin-top: 8px;
                 padding: 8px 10px;
                 border-radius: 6px;
-                background: var(--md-sys-color-tertiary-container);
-                color: var(--md-sys-color-on-tertiary-container);
+                background: color-mix(in srgb, var(--success-color) 18%, transparent);
+                color: var(--success-color);
+                border: 1px solid color-mix(in srgb, var(--success-color) 40%, transparent);
             }
             .result-error {
                 background: var(--md-sys-color-error-container);
                 color: var(--md-sys-color-on-error-container);
+                border: none;
             }
         `,
     ];
