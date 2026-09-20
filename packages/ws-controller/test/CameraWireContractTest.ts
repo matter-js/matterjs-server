@@ -11,12 +11,15 @@ import {
     AUDIO_HINT_KEYS,
     parseSnapshotArgs,
     parseStartStreamArgs,
+    SNAPSHOT_ARG_KEYS,
+    START_STREAM_ARG_KEYS,
     toWireCapabilities,
     toWireSnapshotResult,
     toWireStartStreamResult,
     VIDEO_HINT_KEYS,
 } from "../src/camera/cameraCommands.js";
 import type { CameraCapabilities, SnapshotResult, StartStreamResult } from "../src/camera/CameraStreamManager.js";
+import type { AudioSelection, VideoSelection } from "../src/camera/streamPolicy.js";
 import { ServerError } from "../src/types/WebSocketMessageTypes.js";
 
 function repoRoot(): string {
@@ -222,6 +225,23 @@ const CAPABILITY_WITHOUT_HINT: Record<string, string> = {
     "allocated.snapshot": "as allocated.video",
 };
 
+/**
+ * Every value `bound.field` (error 102) can take, tied to {@link VideoSelection} and
+ * {@link AudioSelection} so a field added to either union without being listed here does not compile.
+ */
+type VideoBoundField = Extract<VideoSelection, { unsatisfiable: "bounds" }>["field"];
+type AudioBoundField = Extract<AudioSelection, { unsatisfiable: "bounds" }>["field"];
+
+const BOUND_FIELD_SET: Record<VideoBoundField | AudioBoundField, true> = {
+    min_resolution: true,
+    min_frame_rate: true,
+    min_bit_rate: true,
+    sample_rate: true,
+    channel_count: true,
+};
+
+const BOUND_FIELDS: readonly string[] = Object.keys(BOUND_FIELD_SET);
+
 describe("camera wire contract", () => {
     const wireDoc = section("docs/websockets_api.md", "### Camera Streaming");
     const errorDoc = section("docs/websockets_api.md", "## Error Codes");
@@ -259,6 +279,14 @@ describe("camera wire contract", () => {
             const inReadme = tokens(readme);
             expect(hints.filter(key => !inWireDoc.has(key))).to.deep.equal([]);
             expect(hints.filter(key => !inReadme.has(key))).to.deep.equal([]);
+        });
+
+        // README coverage is not asserted here: every one of these values is also a VIDEO_HINT_KEYS or
+        // AUDIO_HINT_KEYS entry, and "both references name every hint key the parser accepts" above
+        // already covers the README, so a second README check on the same strings would always pass.
+        it("the error-code table names every value bound.field can take", () => {
+            const inErrorDoc = tokens(errorDoc);
+            expect(BOUND_FIELDS.filter(field => !inErrorDoc.has(field))).to.deep.equal([]);
         });
     });
 
@@ -318,8 +346,13 @@ describe("camera wire contract", () => {
         it("names a hint key the parser takes for every mapped capability", () => {
             for (const { hint } of CAPABILITY_TO_HINT) {
                 const [object, key] = hint.split(".");
-                if (object === "video") expect(VIDEO_HINT_KEYS).to.contain(key);
+                // A hint with no dot (e.g. "stream_usage") names a top-level camera_start_stream
+                // argument rather than a key under a video/audio hint object.
+                if (key === undefined) expect(START_STREAM_ARG_KEYS).to.contain(object);
+                else if (object === "video") expect(VIDEO_HINT_KEYS).to.contain(key);
                 else if (object === "audio") expect(AUDIO_HINT_KEYS).to.contain(key);
+                else if (object === "camera_snapshot") expect(SNAPSHOT_ARG_KEYS).to.contain(key);
+                else throw new Error(`CAPABILITY_TO_HINT hint "${hint}" names an object this test does not check`);
             }
         });
     });

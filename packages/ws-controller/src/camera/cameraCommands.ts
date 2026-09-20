@@ -158,6 +158,24 @@ const SNAPSHOT_ARG_KEY_SET: Record<keyof Required<ArgsOf<"camera_snapshot">>, tr
 
 export const SNAPSHOT_ARG_KEYS: readonly string[] = Object.keys(SNAPSHOT_ARG_KEY_SET);
 
+/** The top-level keys `camera_start_stream` takes. @see VIDEO_HINT_KEY_SET */
+const START_STREAM_ARG_KEY_SET: Record<keyof Required<ArgsOf<"camera_start_stream">>, true> = {
+    node_id: true,
+    endpoint_id: true,
+    stream_usage: true,
+    sdp: true,
+    video: true,
+    audio: true,
+    ice_servers: true,
+    ice_transport_policy: true,
+    metadata_enabled: true,
+};
+
+// Unlike VIDEO_HINT_KEYS/AUDIO_HINT_KEYS/SNAPSHOT_ARG_KEYS, nothing calls rejectUnknownKeys with
+// this list: parseStartStreamArgs does not reject an unknown top-level key today. It exists so the
+// wire-contract test can name "stream_usage" as a real argument rather than an invented string.
+export const START_STREAM_ARG_KEYS: readonly string[] = Object.keys(START_STREAM_ARG_KEY_SET);
+
 function parseVideoHints(value: unknown): VideoHints {
     if (!isRecord(value)) {
         throw ServerError.invalidArguments("video hints must be an object");

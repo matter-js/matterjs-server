@@ -307,13 +307,13 @@ class AllocationScope {
      */
     async settle(succeeded: boolean): Promise<void> {
         if (this.#returns.length === 0) return;
-        await withCleanupBudget("giving back what a request caused", async () => {
+        await withCleanupBudget("undoing what a request caused", async () => {
             for (const entry of [...this.#returns].reverse()) {
                 if (!entry.due(succeeded)) continue;
                 try {
                     await entry.give();
                 } catch (error) {
-                    logger.warn("A camera request could not give back what it caused on the device:", error);
+                    logger.warn("A camera request could not undo what it caused on the device:", error);
                 }
             }
         });
@@ -1367,8 +1367,9 @@ export class CameraStreamManager {
             );
         }
 
-        // Both tracks absent means nothing for the offer to carry: `video: false` combined with a
-        // caller that left audio to a camera with no microphone, or both explicitly declined.
+        // Both tracks absent means nothing for the offer to carry: `video: false` combined with no
+        // audio stream resolved for a caller that left `audio` to the server (no microphone, no codec
+        // match, or a refused allocate all land here), or both explicitly declined.
         if (video === undefined && audio === undefined) {
             throw ServerError.cameraStreamIncompatible({
                 reason: "capability",
@@ -1438,10 +1439,7 @@ export class CameraStreamManager {
         try {
             await this.io.invoke({ nodeId, endpointId, cluster: "avsm", command, fields });
         } catch (error) {
-            logger.warn(
-                `Could not deallocate ${kind} stream ${streamId} on node ${nodeId} after a failed request:`,
-                error,
-            );
+            logger.warn(`Could not give back ${kind} stream ${streamId} on node ${nodeId}:`, error);
             return;
         }
         this.#dropLeaseIfCurrent(nodeId, endpointId, lease);
