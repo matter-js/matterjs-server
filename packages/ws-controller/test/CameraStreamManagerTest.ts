@@ -11,11 +11,13 @@ import { Status } from "@matter/main/types";
 import type { CameraDeviceIo, CameraState } from "../src/camera/CameraStreamManager.js";
 import {
     CameraStreamManager,
+    DEVICE_CLEANUP_BUDGET_MS,
     preferredVideoCodec,
     UNREPORTED_LEASE_GRACE_MS,
     UNREPORTED_LEASE_RETENTION_MS,
 } from "../src/camera/CameraStreamManager.js";
 import type { AudioEnvelope, StreamKind, VideoEnvelope } from "../src/camera/cameraTypes.js";
+import { deviceStatusOf } from "../src/camera/deviceStatus.js";
 import type { SdpVideoConstraints } from "../src/camera/sdpConstraints.js";
 import { ServerError, ServerErrorCode } from "../src/types/WebSocketMessageTypes.js";
 
@@ -3411,5 +3413,169 @@ describe("preferredVideoCodec", () => {
             wantsTalkback: false,
         };
         expect(preferredVideoCodec([H265], offer, undefined)).to.equal(H265);
+    });
+});
+
+describe("CameraStreamManager device cleanup budget", () => {
+    const START: Parameters<CameraStreamManager["startStream"]>[0] = {
+        nodeId: NODE,
+        endpointId: ENDPOINT,
+        connectionId: "conn-1",
+        streamUsage: LIVE_VIEW,
+        sdp: "v=0",
+        video: {},
+        audio: false,
+    };
+
+    /** A promise that never settles, as a camera that has stopped answering leaves an invoke. */
+    function silent(): Promise<never> {
+        return new Promise<never>(() => {});
+    }
+
+    it("stops waiting for an EndSession the camera never answers, and keeps the session tracked", async () => {
+        MockTime.reset();
+        try {
+            let entered = (): void => {};
+            const endSessionEntered = new Promise<void>(resolve => {
+                entered = resolve;
+            });
+            const { manager } = managerWith(STATE, async invoke => {
+                if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                if (invoke.command === "provideOffer") return { webRtcSessionId: 42 };
+                if (invoke.command === "endSession") {
+                    entered();
+                    return silent();
+                }
+                return undefined;
+            });
+            await manager.startStream(START);
+
+            const stopping = manager.stopAll();
+            await endSessionEntered;
+            await MockTime.advance(DEVICE_CLEANUP_BUDGET_MS);
+
+            await stopping;
+            // The session the budget gave up on is still this server's to end, so the next release
+            // pass must still find it. Probed with forgetSession, which reports the entry without
+            // invoking the camera that is not answering.
+            expect(manager.forgetSession(NODE, ENDPOINT, 42)).to.equal(true);
+        } finally {
+            MockTime.disable();
+        }
+    });
+
+    it("ends the other cameras' sessions although one camera never answers", async () => {
+        MockTime.reset();
+        try {
+            const OTHER = NodeId(6);
+            let entered = (): void => {};
+            const silentEndSessionEntered = new Promise<void>(resolve => {
+                entered = resolve;
+            });
+            let nextSessionId = 42;
+            const { manager, invokes } = managerWith(STATE, async invoke => {
+                if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                if (invoke.command === "provideOffer") return { webRtcSessionId: nextSessionId++ };
+                if (invoke.command === "endSession") {
+                    if (invoke.nodeId === NODE) {
+                        entered();
+                        return silent();
+                    }
+                    return undefined;
+                }
+                return undefined;
+            });
+            await manager.startStream(START);
+            await manager.startStream({ ...START, nodeId: OTHER, connectionId: "conn-2" });
+
+            const stopping = manager.stopAll();
+            await silentEndSessionEntered;
+            await MockTime.advance(DEVICE_CLEANUP_BUDGET_MS);
+            await stopping;
+
+            const ended = invokes.filter(invoke => invoke.command === "endSession").map(invoke => invoke.nodeId);
+            expect(ended).to.have.length(2);
+            expect(manager.forgetSession(OTHER, ENDPOINT, 43)).to.equal(false);
+        } finally {
+            MockTime.disable();
+        }
+    });
+
+    it("lets an abandoned EndSession that lands late keep its hands off a session established since", async () => {
+        MockTime.reset();
+        try {
+            let answerSilentEndSession = (): void => {};
+            let entered = (): void => {};
+            const endSessionEntered = new Promise<void>(resolve => {
+                entered = resolve;
+            });
+            let endSessionCount = 0;
+            const { manager } = managerWith(STATE, async invoke => {
+                if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                // The camera reissues the id it freed, which is what makes the late give-back able to
+                // name the wrong session.
+                if (invoke.command === "provideOffer") return { webRtcSessionId: 42 };
+                if (invoke.command === "endSession" && ++endSessionCount === 1) {
+                    entered();
+                    return new Promise<void>(resolve => {
+                        answerSilentEndSession = resolve;
+                    });
+                }
+                return undefined;
+            });
+            await manager.startStream(START);
+
+            const stopping = manager.stopAll();
+            await endSessionEntered;
+            await MockTime.advance(DEVICE_CLEANUP_BUDGET_MS);
+            await stopping;
+
+            await manager.startStream({ ...START, connectionId: "conn-2" });
+            answerSilentEndSession();
+            // A macrotask boundary: every microtask the answered invoke queued, including the
+            // give-back's own continuation, has run by the time this resolves.
+            await new Promise<void>(resolve => setImmediate(resolve));
+
+            expect(manager.forgetSession(NODE, ENDPOINT, 42)).to.equal(true);
+        } finally {
+            MockTime.disable();
+        }
+    });
+
+    it("fails a request rather than waiting for a give-back the camera never answers", async () => {
+        MockTime.reset();
+        try {
+            let entered = (): void => {};
+            const deallocateEntered = new Promise<void>(resolve => {
+                entered = resolve;
+            });
+            const { manager } = managerWith(STATE, async invoke => {
+                if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                if (invoke.command === "provideOffer") throw statusError(Status.Failure);
+                if (invoke.command === "videoStreamDeallocate") {
+                    entered();
+                    return silent();
+                }
+                return undefined;
+            });
+
+            let outcome: unknown;
+            const starting = manager.startStream(START).then(
+                () => {
+                    outcome = "resolved";
+                },
+                error => {
+                    outcome = error;
+                },
+            );
+            await deallocateEntered;
+            await MockTime.advance(DEVICE_CLEANUP_BUDGET_MS);
+            await starting;
+
+            expect(outcome).to.be.instanceOf(Error);
+            expect(deviceStatusOf(outcome)).to.equal(Status.Failure);
+        } finally {
+            MockTime.disable();
+        }
     });
 });

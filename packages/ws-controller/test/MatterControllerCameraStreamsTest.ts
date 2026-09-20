@@ -107,6 +107,36 @@ describe("MatterController.cameraStreamsIfCreated", () => {
         await controller.stop();
     });
 
+    it("keeps the shared callback emitting when one carries an endpoint id out of range", async () => {
+        // The emit is shared with every WebSocket connection's signaling observer, and matter.js
+        // rethrows an observer error, which aborts the rest of the emit.
+        const controller = await MatterController.create(freshEnv(), config, {});
+        const manager = controller.cameraStreams;
+        const forgotten = new Array<number>();
+        manager.forgetSession = (_nodeId, _endpointId, webRtcSessionId) => {
+            forgotten.push(webRtcSessionId);
+            return true;
+        };
+        const reached = new Array<string>();
+        controller.commandHandler.events.webRtcCallback.on(data => {
+            reached.push(data.event_type);
+        });
+
+        controller.commandHandler.events.webRtcCallback.emit({
+            event_type: "end",
+            webrtc_session_id: 7,
+            node_id: 5n,
+            endpoint_id: 70000,
+            fabric_index: 1,
+            data: { reason: 0 },
+        });
+
+        expect(reached).to.deep.equal(["end"]);
+        expect(forgotten).to.deep.equal([]);
+
+        await controller.stop();
+    });
+
     it("stop() releases every open camera session before closing connections", async () => {
         const controller = await MatterController.create(freshEnv(), config, {});
         const manager = controller.cameraStreams; // force construction

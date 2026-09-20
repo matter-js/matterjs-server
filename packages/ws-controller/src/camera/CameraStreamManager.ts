@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Logger, Time } from "@matter/main";
+import { Logger, Millis, Time, withTimeout } from "@matter/main";
 import type { EndpointNumber, NodeId } from "@matter/main";
 import { CameraAvStreamManagement } from "@matter/main/clusters/camera-av-stream-management";
 import { WebRtcTransportDefinitions } from "@matter/main/clusters/web-rtc-transport-definitions";
@@ -23,6 +23,7 @@ import type {
     StreamLease,
     VideoEnvelope,
 } from "./cameraTypes.js";
+import { deviceStatusOf } from "./deviceStatus.js";
 import { parseSdpVideoConstraints } from "./sdpConstraints.js";
 import type { SdpVideoConstraints } from "./sdpConstraints.js";
 import { CameraSessionRegistry } from "./sessionRegistry.js";
@@ -46,11 +47,6 @@ const logger = Logger.get("CameraStreamManager");
 
 /** Bounded so a device that rejects everything fails fast rather than walking to 1x1. */
 const MAX_NARROWING_ROUNDS = 3;
-
-function deviceStatusOf(error: unknown): number | undefined {
-    if (typeof error !== "object" || error === null || !("code" in error)) return undefined;
-    return typeof error.code === "number" ? error.code : undefined;
-}
 
 /** What an allocation ladder may do about a device rejection. */
 type LadderReaction =
@@ -224,6 +220,29 @@ export const UNREPORTED_LEASE_GRACE_MS = 10000;
  */
 export const UNREPORTED_LEASE_RETENTION_MS = 300000;
 
+/**
+ * How long one request's give-backs, or one release pass, may wait on the device in total.
+ *
+ * The usual reason anything is being given back is that the camera stopped answering, and the
+ * callers cannot wait for that: a request holds the endpoint lock while it gives back, and shutdown
+ * runs a release pass before the connections close.
+ */
+export const DEVICE_CLEANUP_BUDGET_MS = 10000;
+
+/**
+ * Await `work` for at most {@link DEVICE_CLEANUP_BUDGET_MS}, then stop waiting for it.
+ *
+ * The invokes underneath cannot be cancelled and run on unattended, so what they still change when
+ * they land must be safe to apply late — see {@link CameraSessionRegistry.forgetEstablished}.
+ */
+async function withCleanupBudget(what: string, work: () => Promise<void>): Promise<void> {
+    try {
+        await withTimeout(Millis(DEVICE_CLEANUP_BUDGET_MS), work());
+    } catch (error) {
+        logger.warn(`Camera cleanup (${what}) was abandoned after ${DEVICE_CLEANUP_BUDGET_MS} ms:`, error);
+    }
+}
+
 /** One device-side effect of a request, with the lifetime it was registered under. */
 interface ScopedReturn {
     readonly give: () => Promise<void>;
@@ -277,18 +296,24 @@ class AllocationScope {
 
     /**
      * Run what is due, newest first, so a session is ended before the streams it referenced are
-     * deallocated — the device refuses to deallocate a stream at `ReferenceCount > 0`.
+     * deallocated — the device refuses to deallocate a stream at `ReferenceCount > 0`. That order is
+     * also why the whole chain shares one {@link DEVICE_CLEANUP_BUDGET_MS} budget rather than one per
+     * step: a camera that did not answer the session end would refuse the deallocates behind it
+     * anyway, and the leases keep those streams reachable for `camera_release_stream`.
      */
     async settle(succeeded: boolean): Promise<void> {
-        for (const entry of [...this.#returns].reverse()) {
-            if (entry.discharged) continue;
-            if (succeeded && !entry.onSuccessToo) continue;
-            try {
-                await entry.give();
-            } catch (error) {
-                logger.warn("A camera request could not give back what it caused on the device:", error);
+        if (this.#returns.length === 0) return;
+        await withCleanupBudget("giving back what a request caused", async () => {
+            for (const entry of [...this.#returns].reverse()) {
+                if (entry.discharged) continue;
+                if (succeeded && !entry.onSuccessToo) continue;
+                try {
+                    await entry.give();
+                } catch (error) {
+                    logger.warn("A camera request could not give back what it caused on the device:", error);
+                }
             }
-        }
+        });
     }
 }
 
@@ -1413,7 +1438,7 @@ export class CameraStreamManager {
                 `Node ${nodeId} no longer has WebRTC session ${webRtcSessionId}; dropping the server's tracking of it`,
             );
         }
-        this.#sessions.forget(nodeId, endpointId, webRtcSessionId);
+        this.#sessions.forgetEstablished(session);
     }
 
     /**
@@ -1465,16 +1490,29 @@ export class CameraStreamManager {
      * End every session in scope, including the ones still being established.
      *
      * A claimed registration ends itself inside `startStream`; this waits for that to happen, so
-     * shutdown does not close the device connections out from under an `EndSession` it caused.
+     * shutdown does not close the device connections out from under an `EndSession` it caused — for
+     * at most {@link DEVICE_CLEANUP_BUDGET_MS}, since a camera that has stopped answering is a common
+     * reason to be shutting down. The sessions are ended concurrently: they name different cameras
+     * and different streams, so one silent camera must not spend the budget the others need. A
+     * session whose `EndSession` the budget abandoned keeps its entry and is tried again by the next
+     * release pass.
      */
     async #releaseSessions(matches: (scope: SessionScope) => boolean): Promise<void> {
         const { sessions, inFlight } = this.#sessions.claim(matches);
-        for (const session of sessions) {
-            await this.#endSession(session).catch(error =>
-                logger.warn(`Failed to end session ${session.webRtcSessionId} on node ${session.nodeId}:`, error),
-            );
-        }
-        await Promise.allSettled(inFlight);
+        if (sessions.length === 0 && inFlight.length === 0) return;
+        await withCleanupBudget("ending the sessions a connection or the server owned", async () => {
+            await Promise.allSettled([
+                ...sessions.map(session =>
+                    this.#endSession(session).catch(error =>
+                        logger.warn(
+                            `Failed to end session ${session.webRtcSessionId} on node ${session.nodeId}:`,
+                            error,
+                        ),
+                    ),
+                ),
+                ...inFlight,
+            ]);
+        });
     }
 
     /**

@@ -121,6 +121,27 @@ export function isTrackableWebRtcSession(
     );
 }
 
+/**
+ * Whether the requestor's entry for `webRtcSessionId` is the session established with this node and
+ * endpoint.
+ *
+ * `WebRTCSessionID` is allocated per provider, so two cameras both issuing id 1 is ordinary, while
+ * matter.js's requestor keys `CurrentSessions` by that id alone: `upsertSession` replaces on a
+ * collision and `removeSession` takes nothing but the id. Only one of the two can be tracked at a
+ * time — that much is upstream — but a removal keyed on the id alone would additionally drop
+ * whichever camera's entry currently holds it, ending one camera's session and answering the other
+ * camera's Answer and ICECandidates with NotFound.
+ */
+export function tracksSessionOf(
+    sessions: readonly WebRtcTransportDefinitions.WebRtcSession[],
+    webRtcSessionId: number,
+    nodeId: NodeId,
+    endpointId: EndpointNumber,
+): boolean {
+    const tracked = sessions.find(session => session.id === webRtcSessionId);
+    return tracked !== undefined && tracked.peerNodeId === nodeId && tracked.peerEndpointId === endpointId;
+}
+
 export interface WebRtcProviderSessionIo {
     /** Invoke ProvideOffer/SolicitOffer or EndSession on the device's provider cluster. */
     invoke(command: "provideOffer" | "solicitOffer" | "endSession", fields: Record<string, unknown>): Promise<unknown>;

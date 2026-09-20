@@ -4,15 +4,20 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { Logger } from "@matter/main";
 import type { Behavior, EndpointNumber, Immutable, NodeId } from "@matter/main";
 import { CameraAvStreamManagement } from "@matter/main/clusters/camera-av-stream-management";
 import { WebRtcTransportProvider } from "@matter/main/clusters/web-rtc-transport-provider";
 import type { Specifier } from "@matter/main/protocol";
+import { Status } from "@matter/main/types";
 import { CameraAvStreamManagementClient } from "@matter/node/behaviors/camera-av-stream-management";
 import { WebRtcTransportProviderClient } from "@matter/node/behaviors/web-rtc-transport-provider";
 import type { ControllerCommandHandler } from "../controller/ControllerCommandHandler.js";
 import type { CameraDeviceIo, CameraState } from "./CameraStreamManager.js";
 import type { Resolution } from "./cameraTypes.js";
+import { deviceStatusOf } from "./deviceStatus.js";
+
+const logger = Logger.get("MatterCameraDeviceIo");
 
 function toResolution(resolution: { width: number; height: number }): Resolution {
     return { width: resolution.width, height: resolution.height };
@@ -200,18 +205,34 @@ export class MatterCameraDeviceIo implements CameraDeviceIo {
 
         const node = this.#handler.getNode(args.nodeId).node;
         const cluster: Specifier.ClusterLike = WebRtcTransportProvider.Cluster;
-        const response = await this.#handler.invokeCommand(node, {
+        const invoke = this.#handler.invokeCommand(node, {
             endpoint: args.endpointId,
             cluster,
             command: args.command,
             fields: args.fields,
         });
-        if (args.command === "endSession") {
-            const sessionId = args.fields.webRtcSessionId;
-            if (typeof sessionId === "number") {
-                await this.#handler.removeTrackedWebRtcSession(sessionId);
+        if (args.command !== "endSession") return invoke;
+
+        const sessionId = args.fields.webRtcSessionId;
+        const untrack = async (): Promise<void> => {
+            if (typeof sessionId !== "number") return;
+            await this.#handler.removeTrackedWebRtcSession(sessionId, args.nodeId, args.endpointId);
+        };
+        try {
+            const response = await invoke;
+            await untrack();
+            return response;
+        } catch (error) {
+            // The manager drops its own entry on NotFound, since the device has no such session. The
+            // requestor's tracking has to go with it: what it keeps past this point, nothing can name
+            // again. The device's status is what the caller must see, so a failure here only logs —
+            // the manager decides what to drop from that status.
+            if (deviceStatusOf(error) === Status.NotFound) {
+                await untrack().catch(untrackError =>
+                    logger.warn(`Could not drop local tracking of WebRTC session ${sessionId}:`, untrackError),
+                );
             }
+            throw error;
         }
-        return response;
     }
 }

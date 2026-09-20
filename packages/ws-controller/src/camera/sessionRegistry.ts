@@ -88,6 +88,19 @@ export class CameraSessionRegistry {
     }
 
     /**
+     * Stop tracking this exact session, leaving a later one under the same key alone.
+     *
+     * An `EndSession` whose wait was abandoned still completes, and a camera reissues a
+     * `WebRTCSessionID` it has freed, so a give-back that lands late must not be able to drop the
+     * session established since.
+     */
+    forgetEstablished(session: ManagedSession): boolean {
+        const key = this.#key(session.nodeId, session.endpointId, session.webRtcSessionId);
+        if (this.#sessions.get(key) !== session) return false;
+        return this.#sessions.delete(key);
+    }
+
+    /**
      * Take responsibility for every session in scope, established or being established.
      *
      * Claiming a registration that is still in flight makes it end itself instead of registering

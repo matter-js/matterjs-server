@@ -5,6 +5,8 @@
  */
 
 import { EndpointNumber, NodeId } from "@matter/main";
+import { Status } from "@matter/main/types";
+import { deviceStatusOf } from "../src/camera/deviceStatus.js";
 import type { RawCameraAvStreamManagementState } from "../src/camera/MatterCameraDeviceIo.js";
 import { MatterCameraDeviceIo, toCameraState } from "../src/camera/MatterCameraDeviceIo.js";
 import type { ControllerCommandHandler } from "../src/controller/ControllerCommandHandler.js";
@@ -235,7 +237,18 @@ describe("MatterCameraDeviceIo.invoke (webrtcProvider routing)", () => {
     interface HandlerStub {
         invokeCommand: () => Promise<unknown>;
         invokeWebRtcProviderCommand: (args: unknown) => Promise<unknown>;
-        removeTrackedWebRtcSession: (webRtcSessionId: number) => Promise<void>;
+        removeTrackedWebRtcSession: (
+            webRtcSessionId: number,
+            nodeId: NodeId,
+            endpointId: EndpointNumber,
+        ) => Promise<void>;
+    }
+
+    /** A device rejection carrying a Matter status, as matter.js surfaces one. */
+    function statusError(status: number): Error & { code: number } {
+        const error = new Error(`Device returned status ${status}`) as Error & { code: number };
+        error.code = status;
+        return error;
     }
 
     function makeHandler(overrides: Partial<HandlerStub> = {}): ControllerCommandHandler {
@@ -296,13 +309,13 @@ describe("MatterCameraDeviceIo.invoke (webrtcProvider routing)", () => {
         ]);
     });
 
-    it("untracks the session after a successful endSession invoke", async () => {
-        const untracked = new Array<number>();
+    it("untracks the session after a successful endSession invoke, naming the camera it was issued by", async () => {
+        const untracked = new Array<string>();
         const io = new MatterCameraDeviceIo(
             makeHandler({
                 invokeCommand: async () => undefined,
-                removeTrackedWebRtcSession: async webRtcSessionId => {
-                    untracked.push(webRtcSessionId);
+                removeTrackedWebRtcSession: async (webRtcSessionId, nodeId, endpointId) => {
+                    untracked.push(`${nodeId}/${endpointId}/${webRtcSessionId}`);
                 },
             }),
         );
@@ -315,7 +328,99 @@ describe("MatterCameraDeviceIo.invoke (webrtcProvider routing)", () => {
             fields: { webRtcSessionId: 7, reason: 0 },
         });
 
+        expect(untracked).to.deep.equal(["5/1/7"]);
+    });
+
+    it("untracks the session when the device answers NotFound, as the manager does", async () => {
+        // Both registries have to reach the same verdict: the manager drops its entry on NotFound, so
+        // an entry kept here would name a session nothing can ever reach again.
+        const untracked = new Array<number>();
+        const io = new MatterCameraDeviceIo(
+            makeHandler({
+                invokeCommand: async () => {
+                    throw statusError(Status.NotFound);
+                },
+                removeTrackedWebRtcSession: async webRtcSessionId => {
+                    untracked.push(webRtcSessionId);
+                },
+            }),
+        );
+
+        let thrown: unknown;
+        try {
+            await io.invoke({
+                nodeId: NODE_ID,
+                endpointId: ENDPOINT_ID,
+                cluster: "webrtcProvider",
+                command: "endSession",
+                fields: { webRtcSessionId: 7, reason: 0 },
+            });
+        } catch (error) {
+            thrown = error;
+        }
+
         expect(untracked).to.deep.equal([7]);
+        expect(deviceStatusOf(thrown)).to.equal(Status.NotFound);
+    });
+
+    it("reports the device's status even when dropping the local tracking fails", async () => {
+        // The manager decides what to drop from the device's status, so that status is what has to
+        // reach it.
+        const io = new MatterCameraDeviceIo(
+            makeHandler({
+                invokeCommand: async () => {
+                    throw statusError(Status.NotFound);
+                },
+                removeTrackedWebRtcSession: async () => {
+                    throw new Error("requestor endpoint is gone");
+                },
+            }),
+        );
+
+        let thrown: unknown;
+        try {
+            await io.invoke({
+                nodeId: NODE_ID,
+                endpointId: ENDPOINT_ID,
+                cluster: "webrtcProvider",
+                command: "endSession",
+                fields: { webRtcSessionId: 7, reason: 0 },
+            });
+        } catch (error) {
+            thrown = error;
+        }
+
+        expect(deviceStatusOf(thrown)).to.equal(Status.NotFound);
+    });
+
+    it("keeps tracking the session when endSession fails with any other status", async () => {
+        const untracked = new Array<number>();
+        const io = new MatterCameraDeviceIo(
+            makeHandler({
+                invokeCommand: async () => {
+                    throw statusError(Status.Busy);
+                },
+                removeTrackedWebRtcSession: async webRtcSessionId => {
+                    untracked.push(webRtcSessionId);
+                },
+            }),
+        );
+
+        let thrown: unknown;
+        try {
+            await io.invoke({
+                nodeId: NODE_ID,
+                endpointId: ENDPOINT_ID,
+                cluster: "webrtcProvider",
+                command: "endSession",
+                fields: { webRtcSessionId: 7, reason: 0 },
+            });
+        } catch (error) {
+            thrown = error;
+        }
+
+        expect(untracked).to.deep.equal([]);
+        expect(deviceStatusOf(thrown)).to.equal(Status.Busy);
     });
 
     it("does not untrack when endSession's webRtcSessionId is missing or non-numeric", async () => {

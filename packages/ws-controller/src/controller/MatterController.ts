@@ -552,7 +552,18 @@ export class MatterController {
             // A peer-initiated End leaves the device with no session and us with an entry naming it.
             this.commandHandler.events.webRtcCallback.on(data => {
                 if (data.event_type !== "end") return;
-                manager.forgetSession(NodeId(data.node_id), EndpointNumber(data.endpoint_id), data.webrtc_session_id);
+                try {
+                    manager.forgetSession(
+                        NodeId(data.node_id),
+                        EndpointNumber(data.endpoint_id),
+                        data.webrtc_session_id,
+                    );
+                } catch (error) {
+                    // No observer on this shared Observable may throw: matter.js rethrows an observer
+                    // error out of emit, which denies the event to every observer behind this one and
+                    // fails the camera's own End invoke.
+                    logger.warn("Failed to drop the camera session a peer ended:", error);
+                }
             });
             this.#cameraStreams = manager;
         }

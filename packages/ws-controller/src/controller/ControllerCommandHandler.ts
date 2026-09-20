@@ -110,7 +110,11 @@ import { ThreadDetailsPoller } from "./ThreadDetailsPoller.js";
 import { pushNodeTime, TimeSyncInvokers } from "./timeSyncCommands.js";
 import { SyncTrigger, TIME_FAILURE_EVENT_ID, TIME_SYNC_CLUSTER_ID, TimeSyncManager } from "./TimeSyncManager.js";
 import { attachWebRtcCallbackBridge } from "./WebRtcCallbackBridge.js";
-import { establishWebRtcProviderSession, type WebRtcProviderSessionIo } from "./webRtcSessionStreams.js";
+import {
+    establishWebRtcProviderSession,
+    tracksSessionOf,
+    type WebRtcProviderSessionIo,
+} from "./webRtcSessionStreams.js";
 
 const logger = Logger.get("ControllerCommandHandler");
 
@@ -486,11 +490,26 @@ export class ControllerCommandHandler {
     /**
      * Drop a WebRTC session from the local requestor's CurrentSessions tracking. Call when the session
      * is ended locally (e.g. the client invokes EndSession on the provider); peer-initiated ends are
-     * already removed by the requestor's own End handler. No-op if the id is not tracked.
+     * already removed by the requestor's own End handler.
+     *
+     * `nodeId` and `endpointId` are what the id was issued by: the entry is dropped only when it is
+     * that camera's, so ending a session on one camera cannot untrack another camera's session
+     * carrying the same id. No-op if the id is untracked or held by a different peer.
      */
-    async removeTrackedWebRtcSession(webRtcSessionId: number): Promise<void> {
+    async removeTrackedWebRtcSession(
+        webRtcSessionId: number,
+        nodeId: NodeId,
+        endpointId: EndpointNumber,
+    ): Promise<void> {
         await this.#cameraControllerEndpoint().act(agent => {
-            agent.get(WebRtcTransportRequestorServer).removeSession(webRtcSessionId);
+            const requestor = agent.get(WebRtcTransportRequestorServer);
+            if (!tracksSessionOf(requestor.state.currentSessions, webRtcSessionId, nodeId, endpointId)) {
+                logger.debug(
+                    `WebRTC session ${webRtcSessionId} is not tracked for node ${this.formatNode(nodeId)} endpoint ${endpointId}; local tracking left unchanged`,
+                );
+                return;
+            }
+            requestor.removeSession(webRtcSessionId);
         });
     }
 

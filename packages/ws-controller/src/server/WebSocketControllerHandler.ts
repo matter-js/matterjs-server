@@ -1290,7 +1290,11 @@ export class WebSocketControllerHandler implements WebServerHandler {
         if (clusterId === WebRtcTransportProvider.id && camelizedCommand === "endSession") {
             const sessionId = extractWebRtcSessionId(payload);
             if (sessionId !== undefined) {
-                await this.#commandHandler.removeTrackedWebRtcSession(sessionId);
+                await this.#commandHandler.removeTrackedWebRtcSession(
+                    sessionId,
+                    NodeId(nodeId),
+                    EndpointNumber(endpointId),
+                );
                 // The camera registry too, or its entry outlives the session it names.
                 this.#controller.cameraStreamsIfCreated?.forgetSession(
                     NodeId(nodeId),
