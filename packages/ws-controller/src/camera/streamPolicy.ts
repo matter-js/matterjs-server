@@ -133,7 +133,7 @@ export type VideoSelection =
     | { readonly envelope: VideoEnvelope }
     | {
           readonly unsatisfiable: "bounds";
-          readonly field: "minResolution" | "minFrameRate" | "minBitRate";
+          readonly field: "min_resolution" | "min_frame_rate" | "min_bit_rate";
           readonly requested: string;
           readonly limit: string;
       };
@@ -179,7 +179,7 @@ export function computeVideoEnvelope(args: VideoEnvelopeArgs): VideoSelection {
     if (hints?.minResolution !== undefined && !fitsUnder(hints.minResolution, maxResolution)) {
         return {
             unsatisfiable: "bounds",
-            field: "minResolution",
+            field: "min_resolution",
             requested: resolutionText(hints.minResolution),
             limit: resolutionText(maxResolution),
         };
@@ -187,7 +187,7 @@ export function computeVideoEnvelope(args: VideoEnvelopeArgs): VideoSelection {
     if (hints?.minFrameRate !== undefined && hints.minFrameRate > maxFrameRate) {
         return {
             unsatisfiable: "bounds",
-            field: "minFrameRate",
+            field: "min_frame_rate",
             requested: String(hints.minFrameRate),
             limit: String(maxFrameRate),
         };
@@ -222,7 +222,7 @@ export function computeVideoEnvelope(args: VideoEnvelopeArgs): VideoSelection {
     if (hints?.minBitRate !== undefined && hints.minBitRate > maxBitRate) {
         return {
             unsatisfiable: "bounds",
-            field: "minBitRate",
+            field: "min_bit_rate",
             requested: String(hints.minBitRate),
             limit: String(maxBitRate),
         };
@@ -429,7 +429,7 @@ export type AudioSelection =
     | { readonly envelope: AudioEnvelope | undefined }
     | {
           readonly unsatisfiable: "bounds";
-          readonly field: "sampleRate" | "channelCount";
+          readonly field: "sample_rate" | "channel_count";
           readonly requested: string;
           /** What the device states for the field: its ceiling, or the set of values it accepts. */
           readonly limit: string;
@@ -462,7 +462,7 @@ export function computeAudioEnvelope(args: AudioEnvelopeArgs): AudioSelection {
     if (hints?.sampleRate !== undefined && !capabilities.supportedSampleRates.includes(hints.sampleRate)) {
         return {
             unsatisfiable: "bounds",
-            field: "sampleRate",
+            field: "sample_rate",
             requested: String(hints.sampleRate),
             limit: capabilities.supportedSampleRates.join(", "),
         };
@@ -470,7 +470,7 @@ export function computeAudioEnvelope(args: AudioEnvelopeArgs): AudioSelection {
     if (hints?.channelCount !== undefined && hints.channelCount > capabilities.maxNumberOfChannels) {
         return {
             unsatisfiable: "bounds",
-            field: "channelCount",
+            field: "channel_count",
             requested: String(hints.channelCount),
             limit: String(capabilities.maxNumberOfChannels),
         };

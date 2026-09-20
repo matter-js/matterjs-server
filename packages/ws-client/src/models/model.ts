@@ -484,14 +484,21 @@ export interface CameraCapabilitiesResult {
         /**
          * Distinct codec names found across rate_distortion_points, ready to be used as a
          * `camera_start_stream` video hint. There is deliberately no resolutions list.
+         *
+         * Empty when the camera states no trade-off point. That is what the camera says, not a
+         * statement that it can encode nothing: `camera_start_stream` then accepts any codec name
+         * the cluster enum defines and lets the device answer.
          */
         codecs: string[];
     };
     audio: {
         /** Codec names, ready to be used as a `camera_start_stream` audio hint. */
         codecs: string[];
+        /** Largest channel count the camera accepts: the ceiling for the `audio.channel_count` hint. */
         channels?: number;
+        /** Sample rates the camera accepts; the `audio.sample_rate` hint must name one of them. */
         sample_rates: number[];
+        /** Bit depths the camera accepts. There is no hint for this: the server picks one from the list. */
         bit_depths: number[];
         /** Talkback support name: "NotSupported", "HalfDuplex" or "FullDuplex". */
         two_way_talk_support?: string;
@@ -516,6 +523,7 @@ export interface CameraCapabilitiesResult {
 }
 
 export interface CameraStartStreamVideoResult {
+    /** The id `camera_release_stream` takes with `kind: "video"`. */
     stream_id: number;
     /** Video codec name, e.g. "H264". */
     codec: string;
@@ -524,11 +532,15 @@ export interface CameraStartStreamVideoResult {
     bit_rate: { min: number; max: number };
     reused: boolean;
     allocated_by_server: boolean;
-    /** True when this stream does not fit the envelope the server would otherwise have allocated. */
+    /**
+     * True when this stream does not fit the envelope the server would otherwise have allocated. It
+     * still meets every bound the caller stated. Absent when the stream fits.
+     */
     degraded?: boolean;
 }
 
 export interface CameraStartStreamAudioResult {
+    /** The id `camera_release_stream` takes with `kind: "audio"`. */
     stream_id: number;
     /** Audio codec name, e.g. "OPUS". */
     codec: string;
@@ -545,6 +557,48 @@ export interface CameraStartStreamResult {
     mode: "solicit_offer" | "provide_offer";
     video: CameraStartStreamVideoResult | null;
     audio: CameraStartStreamAudioResult | null;
+}
+
+/**
+ * Every hint key an error-102 `bound` can name, spelled as `camera_start_stream` takes it.
+ *
+ * `min_resolution`, `min_frame_rate` and `min_bit_rate` live under `video`; `sample_rate` and
+ * `channel_count` live under `audio`. The type is derived from this list, so the reference and the
+ * emitter cannot name different sets.
+ */
+export const CAMERA_BOUND_FIELDS = [
+    "min_resolution",
+    "min_frame_rate",
+    "min_bit_rate",
+    "sample_rate",
+    "channel_count",
+] as const;
+
+/** The hint key an error-102 `bound` names. @see CAMERA_BOUND_FIELDS */
+export type CameraBoundField = (typeof CAMERA_BOUND_FIELDS)[number];
+
+/** Which track a stream belongs to, as `camera_release_stream` and error 103 spell it. */
+export type CameraStreamKind = "video" | "audio" | "snapshot";
+
+/** One entry of error 103's `allocated`: a stream holding capacity the refused request needed. */
+export interface CameraOccupyingStream {
+    /** Not always the kind that was asked for: a refused snapshot reports the video streams. */
+    kind: CameraStreamKind;
+    stream_id: number;
+    reference_count: number;
+}
+
+/** The single caller bound the server ruled out before asking the device. */
+export interface CameraStreamIncompatibleBound {
+    field: CameraBoundField;
+    /** The value the caller stated, as text: `"1920x1080"` for a resolution, digits otherwise. */
+    requested: string;
+    /**
+     * What the bound ran into, as text because it is not always one number: the ceiling in force
+     * after every narrowing for a range bound, and the set of values the device lists for a bound it
+     * answers with a set, such as `sample_rate`.
+     */
+    limit: string;
 }
 
 export interface CameraSnapshotResult {

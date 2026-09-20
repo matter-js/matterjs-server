@@ -5,11 +5,14 @@
  */
 
 import type {
+    ArgsOf,
+    CameraAudioHints,
     CameraCapabilitiesResult,
     CameraSnapshotResult,
     CameraStartStreamAudioResult,
     CameraStartStreamResult,
     CameraStartStreamVideoResult,
+    CameraVideoHints,
 } from "@matter-server/ws-client";
 import { Bytes, EndpointNumber, NodeId } from "@matter/main";
 import { StreamUsage } from "@matter/main/types";
@@ -81,8 +84,9 @@ function toOptionalRecordArray(value: unknown, field: string): Array<Record<stri
     return value;
 }
 
+/** Arrays are excluded: a hint object's keys are named, and an array's are its indices. */
 function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null;
+    return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 export interface ParsedCameraTarget {
@@ -101,10 +105,64 @@ export function parseCameraTarget(args: { node_id?: unknown; endpoint_id?: unkno
     return { nodeId: NodeId(nodeId), endpointId: EndpointNumber(endpointId) };
 }
 
+/**
+ * Every key under a hint object is a bound on what the caller accepts, so a key the server does not
+ * know is refused rather than dropped. Dropping it would answer a request nobody made, which is the
+ * one thing these commands never do.
+ */
+function rejectUnknownKeys(value: object, known: readonly string[], subject: string): void {
+    const unknown = Object.keys(value).filter(key => !known.includes(key));
+    if (unknown.length > 0) {
+        throw ServerError.invalidArguments(
+            `unknown ${subject} key: ${unknown.join(", ")}. Accepted: ${known.join(", ")}`,
+        );
+    }
+}
+
+/**
+ * The keys `camera_start_stream` takes under `video`, in the spelling the wire uses.
+ *
+ * Built from a `Record` over the wire model's own key set, so a hint added to `CameraVideoHints`
+ * without being listed here does not compile. Without that tie the list is a third copy of the hint
+ * shape, and a hint missing from it would be refused although the reference documents it.
+ */
+const VIDEO_HINT_KEY_SET: Record<keyof CameraVideoHints, true> = {
+    codecs: true,
+    min_resolution: true,
+    max_resolution: true,
+    min_frame_rate: true,
+    max_frame_rate: true,
+    min_bit_rate: true,
+    max_bit_rate: true,
+};
+
+export const VIDEO_HINT_KEYS: readonly string[] = Object.keys(VIDEO_HINT_KEY_SET);
+
+/** The keys `camera_start_stream` takes under `audio`. @see VIDEO_HINT_KEY_SET */
+const AUDIO_HINT_KEY_SET: Record<keyof CameraAudioHints, true> = {
+    codecs: true,
+    channel_count: true,
+    sample_rate: true,
+    bit_rate: true,
+};
+
+export const AUDIO_HINT_KEYS: readonly string[] = Object.keys(AUDIO_HINT_KEY_SET);
+
+/** The keys `camera_snapshot` takes. @see VIDEO_HINT_KEY_SET */
+const SNAPSHOT_ARG_KEY_SET: Record<keyof Required<ArgsOf<"camera_snapshot">>, true> = {
+    node_id: true,
+    endpoint_id: true,
+    max_resolution: true,
+    codec: true,
+};
+
+export const SNAPSHOT_ARG_KEYS: readonly string[] = Object.keys(SNAPSHOT_ARG_KEY_SET);
+
 function parseVideoHints(value: unknown): VideoHints {
     if (!isRecord(value)) {
         throw ServerError.invalidArguments("video hints must be an object");
     }
+    rejectUnknownKeys(value, VIDEO_HINT_KEYS, "video hint");
     const codecs = toOptionalCodecNames(value.codecs, "video.codecs");
     const minFrameRate = toOptionalNumber(value.min_frame_rate, "video.min_frame_rate");
     const maxFrameRate = toOptionalNumber(value.max_frame_rate, "video.max_frame_rate");
@@ -129,6 +187,7 @@ function parseAudioHints(value: unknown): AudioHints {
     if (!isRecord(value)) {
         throw ServerError.invalidArguments("audio hints must be an object");
     }
+    rejectUnknownKeys(value, AUDIO_HINT_KEYS, "audio hint");
     const codecs = toOptionalCodecNames(value.codecs, "audio.codecs");
     const channelCount = toOptionalNumber(value.channel_count, "audio.channel_count");
     const sampleRate = toOptionalNumber(value.sample_rate, "audio.sample_rate");
@@ -224,6 +283,7 @@ export function parseSnapshotArgs(args: {
     max_resolution?: unknown;
     codec?: unknown;
 }): ParsedSnapshotArgs {
+    rejectUnknownKeys(args, SNAPSHOT_ARG_KEYS, "camera_snapshot argument");
     const target = parseCameraTarget(args);
     const { max_resolution: maxResolution, codec } = args;
     const imageCodec = codec === undefined ? undefined : toImageCodec(codec);

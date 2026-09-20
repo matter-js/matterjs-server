@@ -10,7 +10,7 @@ On connection, the server immediately sends a `server_info` message with fabric 
 {
   "fabric_id": 1234567890,
   "compressed_fabric_id": 9876543210,
-  "schema_version": 13,
+  "schema_version": 14,
   "min_supported_schema_version": 11,
   "sdk_version": "matter-server/1.1.7 (matter.js/0.17.5-alpha)",
   "wifi_credentials_set": true,
@@ -792,7 +792,22 @@ A LIT peer re-registers automatically once subscribed.
 
 Five commands cover a Matter camera's stream lifecycle. The server computes the `VideoStreamAllocate` envelope, reuses or allocates streams, walks the device's rejections and tracks the WebRTC session, so a client does not have to. The raw `send_webrtc_provider_command` / `device_command` path keeps working for a client doing its own allocation.
 
-Every codec on these commands is a **name**, not a number: `H264`, `H265`, `H266`, `AV1` (video), `OPUS`, `AAC` (audio), `JPEG`, `HEIC` (snapshot). Stream usages are names too: `Recording`, `Analysis`, `LiveView` (`Internal` is device-only and refused), and so is `two_way_talk_support` (`NotSupported`, `HalfDuplex`, `FullDuplex`). All these names are matched case-insensitively, so what `camera_get_capabilities` reports can be sent straight back as a hint or a `stream_usage`. The codec set is open: a codec the cluster enum does not define is reported as its decimal digits and accepted back in that spelling. The stream usages are closed: only the three names above are accepted.
+Every codec on these commands is a **name**, not a number: `H264`, `H265`, `H266`, `AV1` (video), `OPUS`, `AAC` (audio), `JPEG`, `HEIC` (snapshot). Stream usages are names too: `Internal`, `Recording`, `Analysis`, `LiveView`, and so is `two_way_talk_support` (`NotSupported`, `HalfDuplex`, `FullDuplex`). All these names are matched case-insensitively. The codec set is open: a codec the cluster enum does not define is reported as its decimal digits and accepted back in that spelling. The stream usages are closed: only the four names above are reported, and `camera_start_stream` refuses `Internal`, which marks a stream the device keeps for itself.
+
+A name is the same string in both directions, but a reported key is not always a hint key. These are the values `camera_get_capabilities` reports that a later command takes back:
+
+| Reported by `camera_get_capabilities` | Send back as |
+|---|---|
+| `video.codecs` | `camera_start_stream`'s `video.codecs` |
+| `audio.codecs` | `camera_start_stream`'s `audio.codecs` |
+| `audio.channels` | `camera_start_stream`'s `audio.channel_count`; the reported value is the ceiling |
+| `audio.sample_rates` | `camera_start_stream`'s `audio.sample_rate`; one of the reported values |
+| `limits.supported_stream_usages` | `camera_start_stream`'s `stream_usage`, any name but `Internal` |
+| `snapshot.capabilities[].image_codec` | `camera_snapshot`'s `codec` |
+
+Everything else the command reports is a fact about the camera rather than a value to send back. `audio.bit_depths` has no hint: `AudioStreamAllocate` takes one bit depth and the server picks it from that list. A key a hint object does not take is refused with error 8 instead of being ignored, so a bound can never be dropped without the caller hearing about it.
+
+Every `resolution`, `min_resolution`, `max_resolution` and `sensor` on these commands is an object `{ "width": number, "height": number }`.
 
 **camera_get_capabilities** - Report what the camera states, and what is allocated on it
 
@@ -807,11 +822,55 @@ Every codec on these commands is a **name**, not a number: `H264`, `H265`, `H266
 }
 ```
 
-Response: `video` (`sensor`, `min_viewport`, `max_fps`, `max_hdr_fps`, `hdr_capable`, `rate_distortion_points`, `codecs`), `audio` (`codecs`, `channels`, `sample_rates`, `bit_depths`, `two_way_talk_support`), `snapshot.capabilities`, `limits` (`max_encoded_pixel_rate`, `max_concurrent_encoders`, `max_network_bandwidth`, `supported_stream_usages`, `stream_usage_priorities`) and `allocated` streams per kind with their `reference_count` and `owned_by_server`. There is deliberately no resolution list: the camera does not state one. Allocates nothing.
+Allocates nothing. The response has four groups plus `allocated`. Optional fields are absent when the camera states nothing for them.
+
+`video`:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `sensor` | resolution, optional | Sensor size |
+| `min_viewport` | resolution, optional | Smallest viewport the camera states |
+| `max_fps` | number, optional | Frame-rate ceiling |
+| `max_hdr_fps` | number, optional | Frame-rate ceiling in HDR |
+| `hdr_capable` | boolean, optional | Whether the camera can encode HDR |
+| `rate_distortion_points` | array | `{ codec, resolution, min_bit_rate }` per entry: the bit rate a codec needs at a resolution |
+| `codecs` | array of names | The distinct codecs found in `rate_distortion_points` |
+
+There is deliberately no resolution list: the camera does not state one. `codecs` is derived from `rate_distortion_points`, so a camera that states no trade-off point reports an **empty** list. That is what the camera says, not a statement that it can encode nothing — `camera_start_stream` then accepts any of `H264`, `H265`, `H266` and `AV1` and lets the device answer.
+
+`audio`:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `codecs` | array of names | Microphone codecs |
+| `channels` | number, optional | Largest channel count the camera accepts |
+| `sample_rates` | array of numbers | Sample rates the camera accepts |
+| `bit_depths` | array of numbers | Bit depths the camera accepts |
+| `two_way_talk_support` | name, optional | `NotSupported`, `HalfDuplex` or `FullDuplex` |
+
+`snapshot.capabilities` is an array of `{ resolution, max_frame_rate, image_codec, requires_encoded_pixels, requires_hardware_encoder }`. A capability takes one of the camera's encoders only when both flags are true; `requires_hardware_encoder` is defined only when `requires_encoded_pixels` is.
+
+`limits`:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `max_encoded_pixel_rate` | number, optional | Pixel-rate budget across all streams |
+| `max_concurrent_encoders` | number, optional | How many encoders the camera has |
+| `max_network_bandwidth` | number, optional | Bits per second; the server caps a stream's `max_bit_rate` at it |
+| `supported_stream_usages` | array of names | Usages the camera accepts |
+| `stream_usage_priorities` | array of names | The camera's own ordering of them |
+
+`allocated` lists what is on the camera now, per kind. `reference_count` is the device's own count of listeners, and `owned_by_server` says this server allocated the stream, which is what `camera_release_stream` requires.
+
+| Group | Fields |
+|---|---|
+| `allocated.video[]` | `video_stream_id`, `stream_usage`, `video_codec`, `min_resolution`, `max_resolution`, `min_frame_rate`, `max_frame_rate`, `min_bit_rate`, `max_bit_rate`, `reference_count`, `owned_by_server` |
+| `allocated.audio[]` | `audio_stream_id`, `stream_usage`, `audio_codec`, `channel_count`, `sample_rate`, `bit_rate`, `bit_depth`, `reference_count`, `owned_by_server` |
+| `allocated.snapshot[]` | `snapshot_stream_id`, `image_codec`, `resolution`, `reference_count`, `owned_by_server` |
 
 **camera_start_stream** - Allocate or reuse a stream and open a WebRTC session
 
-`ProvideOffer` when `sdp` is given, `SolicitOffer` otherwise. `video` and `audio` take range hints; pass `false` instead to leave that track out.
+`ProvideOffer` when `sdp` is given, `SolicitOffer` otherwise.
 
 ```json
 {
@@ -823,12 +882,43 @@ Response: `video` (`sensor`, `min_viewport`, `max_fps`, `max_hdr_fps`, `hdr_capa
     "stream_usage": "LiveView",
     "sdp": "v=0\r\n...",
     "video": { "codecs": ["H264"], "max_resolution": { "width": 1920, "height": 1080 } },
-    "audio": false
+    "audio": false,
+    "ice_servers": [{ "urls": "stun:stun.example.org:3478" }],
+    "ice_transport_policy": "all",
+    "metadata_enabled": false
   }
 }
 ```
 
-Response: `{ webrtc_session_id, mode, video, audio }`. `video` reports `codec`, `resolution.min/max`, `frame_rate.min/max` and `bit_rate.min/max`; `audio` reports `codec`, `channel_count`, `sample_rate`, `bit_rate` and `bit_depth`. Both also report whether the stream was `reused` and whether the server allocated it, and both are `null` when the track was left out. Every bound the caller states is hard in both directions: a codec list, floor or ceiling that nothing satisfies fails with error 102 rather than returning something else. Answer SDP and ICE candidates keep arriving on the `webrtc_callback` event.
+| Argument | Type | Meaning |
+|---|---|---|
+| `stream_usage` | name, required | Any reported usage but `Internal` |
+| `sdp` | string, optional | The offer; absent means `SolicitOffer` |
+| `video` | object or `false` | Range hints, or `false` to leave the track out |
+| `audio` | object or `false` | Exact-value hints, or `false` to leave the track out |
+| `ice_servers` | array of objects, optional | Passed to the WebRTC session setup unchanged |
+| `ice_transport_policy` | string, optional | Passed to the WebRTC session setup unchanged |
+| `metadata_enabled` | boolean, optional | Passed to the WebRTC session setup; absent is `false` |
+
+`video` takes **ranges**: `codecs`, `min_resolution`, `max_resolution`, `min_frame_rate`, `max_frame_rate`, `min_bit_rate`, `max_bit_rate`. `audio` takes **exact values**, not ranges: `codecs`, `channel_count`, `sample_rate`, `bit_rate`. Any other key under either object is refused with error 8.
+
+Every bound the caller states is hard in both directions: a codec list, floor or ceiling that nothing satisfies fails with error 102 rather than returning something else. Setting `min_resolution == max_resolution` pins an exact value, and takes that capacity from every other client sharing the camera (spec §15.2.1.2.2), so leave a bound unset unless an exact value is required. Stating any value under `audio` asks for audio: the call then fails with error 102 rather than going video-only. Stating none leaves the track to the server, and `audio` in the response is `null` when no audio stream can be resolved.
+
+Response: `{ webrtc_session_id, mode, video, audio }`. `mode` is `"provide_offer"` or `"solicit_offer"`. `video` and `audio` are `null` when the track was left out or, for `audio`, when no stream was resolved for a caller that asked for none.
+
+| Field | On | Meaning |
+|---|---|---|
+| `stream_id` | both | The id `camera_release_stream` takes for this track's `kind`. The only way to reach that command |
+| `codec` | both | Codec name |
+| `resolution` | video | `{ min, max }`, each a resolution |
+| `frame_rate` | video | `{ min, max }` |
+| `bit_rate` | video | `{ min, max }` |
+| `channel_count`, `sample_rate`, `bit_rate`, `bit_depth` | audio | The allocated values |
+| `reused` | both | The stream was already on the camera |
+| `allocated_by_server` | both | This server allocated the stream, so `camera_release_stream` can free it |
+| `degraded` | video, optional | Present and `true` when the stream does not fit the range the server computed, though it stays inside every bound the caller stated. Absent otherwise |
+
+Answer SDP and ICE candidates keep arriving on the `webrtc_callback` event.
 
 **camera_stop_stream** - End the WebRTC session, keep the allocation
 
@@ -861,7 +951,7 @@ Response: `{ "ended": true }`. `ended` is `false` when the id is not a session t
 }
 ```
 
-Response: `{ data, codec, resolution, downgraded }`. `data` is base64-encoded image bytes. While a video stream is live the server prefers a capability that needs no hardware encoder; `downgraded: true` says the frame is smaller than the best capability the request's own bounds allowed. The snapshot stream this call allocates is deallocated again before the response is sent, which is why the response names no stream: a capability that needs the hardware encoder holds it for as long as the stream is allocated, so a kept stream would make the next call fail with error 103 on a camera with one encoder. If the device refuses to take the stream back, it stays allocated and server-owned — `camera_get_capabilities` reports it under `allocated.snapshot` with `owned_by_server: true`, and `camera_release_stream` can then free it.
+Response: `{ data, codec, resolution, downgraded }`. `data` is base64-encoded image bytes. When the camera's encoders are all taken, the server prefers a capability that needs no hardware encoder; how many are taken is counted from the referenced video streams against `max_concurrent_encoders`, so one viewer on a camera that states four encoders costs nothing. `downgraded: true` says the frame is smaller than the best capability the request's own bounds allowed. The snapshot stream this call allocates is deallocated again before the response is sent, which is why the response names no stream: a capability that needs the hardware encoder holds it for as long as the stream is allocated, so a kept stream would make the next call fail with error 103 on a camera with one encoder. If the device refuses to take the stream back, it stays allocated and server-owned — `camera_get_capabilities` reports it under `allocated.snapshot` with `owned_by_server: true`, and `camera_release_stream` can then free it.
 
 **camera_release_stream** - Force-deallocate a stream the server owns
 
@@ -877,6 +967,8 @@ Response: `{ data, codec, resolution, downgraded }`. `data` is base64-encoded im
   }
 }
 ```
+
+`kind` is `"video"`, `"audio"` or `"snapshot"`. `stream_id` is the `stream_id` a `camera_start_stream` response carried for that track, or a `video_stream_id` / `audio_stream_id` / `snapshot_stream_id` from `camera_get_capabilities` with `owned_by_server: true`.
 
 Response: `{ "released": true }`. Fails with 104 while a listener still references the stream, and with 105 for a stream the server did not allocate.
 
@@ -1071,7 +1163,7 @@ Format: `[node_id, "endpoint/cluster/attribute", value]`
   "data": {
     "fabric_id": 1234567890,
     "compressed_fabric_id": 9876543210,
-    "schema_version": 13,
+    "schema_version": 14,
     "min_supported_schema_version": 11,
     "sdk_version": "matter-server/1.1.7 (matter.js/0.17.5-alpha)",
     "wifi_credentials_set": true,
@@ -1177,11 +1269,11 @@ Error codes match the [Python Matter Server](https://github.com/home-assistant-l
 | 11 | UpdateError | OTA update failed |
 | 100 | IcdMultiAdmin | OHF extension (not in Python Matter Server). ICD registration rejected because other-vendor administrator fabrics may not support LIT. `details` is a JSON string: `{"message": string, "admin_vendor_ids": number[]}` |
 | 101 | OtaUploadError | OHF extension (not in Python Matter Server). `initiate_ota_upload` or `POST /ota-upload/<upload_id>` failed: corrupt image, unknown/expired/already-used upload id, disabled OTA support, or store failure |
-| 102 | CameraStreamIncompatible | OHF extension. No codec or stream range suits both the camera and the caller. `details` is a JSON string: `{"message": string, "reason": "codec" \| "bounds" \| "capability", "device": string[], "requested": string[], "bound"?: {"field": string, "requested": string, "limit": string}, "device_status"?: number}`. `codec` means the codec lists do not overlap, `bounds` that the requested range cannot be served, `capability` that the camera states no capability of that kind at all — only the first two can be fixed by asking for something else. `device`/`requested` are codec names — `requested` is the codec the request resolved to, which is the caller's own choice when it stated one. `bound` names the single caller bound the server ruled out before asking the device, and only `camera_start_stream` reports it; a `camera_snapshot` ceiling that excludes every capability answers `reason: "bounds"` without it. `device_status` is the Matter status a device rejection answered with |
-| 103 | CameraResourceExhausted | OHF extension. The camera has no encoder capacity left for the requested stream. `details` is a JSON string: `{"message": string, "allocated": [{"stream_id": number, "reference_count": number}], "max_concurrent_encoders"?: number, "max_encoded_pixel_rate"?: number}`; the two limits are present only when the camera states them |
+| 102 | CameraStreamIncompatible | OHF extension. No codec or stream range suits both the camera and the caller. `details` is a JSON string: `{"message": string, "reason": "codec" \| "bounds" \| "capability", "device": string[], "requested": string[], "bound"?: {"field": string, "requested": string, "limit": string}, "device_status"?: number}`. `codec` means the codec lists do not overlap, `bounds` that the requested range cannot be served, `capability` that the camera states no capability of that kind at all — only the first two can be fixed by asking for something else. `device`/`requested` are codec names — `requested` is the codec the request resolved to, which is the caller's own choice when it stated one. `bound` names the single caller bound the server ruled out before asking the device, and only `camera_start_stream` reports it; a `camera_snapshot` ceiling that excludes every capability answers `reason: "bounds"` without it. `bound.field` is the hint key in the spelling `camera_start_stream` takes it back in: `min_resolution`, `min_frame_rate` or `min_bit_rate` under `video`, `sample_rate` or `channel_count` under `audio`. `bound.requested` is the value the caller stated and `bound.limit` what it ran into — the ceiling in force after every narrowing, or the set of values the device lists when it answers with a set, such as for `sample_rate`. `device_status` is the Matter status a device rejection answered with |
+| 103 | CameraResourceExhausted | OHF extension. The camera has no encoder capacity left for the requested stream. `details` is a JSON string: `{"message": string, "allocated": [{"kind": "video" \| "audio" \| "snapshot", "stream_id": number, "reference_count": number}], "max_concurrent_encoders"?: number, "max_encoded_pixel_rate"?: number}`; the two limits are present only when the camera states them. `allocated` lists the streams that hold the capacity, which is not always the kind that was asked for: a refused snapshot reports the video streams, because a referenced video stream is what holds an encoder |
 | 104 | CameraStreamInUse | OHF extension. `camera_release_stream` targeted a stream a listener still references. `details` is a JSON string: `{"message": string, "stream_id": number, "reference_count": number}` |
 | 105 | CameraStreamNotOwned | OHF extension. `camera_release_stream` targeted a stream this server did not allocate. `details` is a JSON string: `{"message": string, "stream_id": number}` |
-| 106 | CameraNotSupported | OHF extension. The endpoint exposes neither the AV Stream Management nor the WebRTC Provider cluster the camera commands need. `details` is a JSON string: `{"message": string, "missing_clusters": number[]}` |
+| 106 | CameraNotSupported | OHF extension. The endpoint does not expose both clusters the camera commands need, the AV Stream Management cluster and the WebRTC Provider cluster. `details` is a JSON string: `{"message": string, "missing_clusters": number[]}`; `missing_clusters` names the cluster ids that are absent, so one entry means the other cluster is there |
 
 ## Python Matter Server Compatibility
 

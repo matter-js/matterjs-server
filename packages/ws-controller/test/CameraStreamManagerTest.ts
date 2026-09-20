@@ -340,7 +340,7 @@ describe("CameraStreamManager", () => {
             // Which bound failed, and against what: `device`/`requested` stay the codec vocabulary
             // every other 102 uses, so a client can read both without guessing which one it got.
             expect(payload.bound).to.deep.equal({
-                field: "minResolution",
+                field: "min_resolution",
                 requested: "3840x2160",
                 limit: "2560x1440",
             });
@@ -684,7 +684,7 @@ describe("CameraStreamManager", () => {
             }
             expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraResourceExhausted);
             expect(JSON.parse((thrown as ServerError).message).allocated).to.deep.equal([
-                { stream_id: 7, reference_count: 1 },
+                { kind: "video", stream_id: 7, reference_count: 1 },
             ]);
             // MAX_NARROWING_ROUNDS = 3, rounds 0..3 inclusive: exactly 4 allocate attempts.
             expect(invokes.length).to.equal(4);
@@ -862,7 +862,7 @@ describe("CameraStreamManager", () => {
             }
             expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamIncompatible);
             expect(JSON.parse((thrown as ServerError).message).bound).to.deep.equal({
-                field: "sampleRate",
+                field: "sample_rate",
                 requested: "44100",
                 limit: "48000",
             });
@@ -884,7 +884,7 @@ describe("CameraStreamManager", () => {
             }
             expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamIncompatible);
             expect(JSON.parse((thrown as ServerError).message).bound).to.deep.equal({
-                field: "channelCount",
+                field: "channel_count",
                 requested: "2",
                 limit: "1",
             });

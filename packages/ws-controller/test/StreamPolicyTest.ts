@@ -134,7 +134,7 @@ describe("streamPolicy", () => {
                 }),
             ).to.deep.equal({
                 unsatisfiable: "bounds",
-                field: "minBitRate",
+                field: "min_bit_rate",
                 requested: "50000000",
                 limit: "8000000",
             });
@@ -150,7 +150,7 @@ describe("streamPolicy", () => {
                 }),
             ).to.deep.equal({
                 unsatisfiable: "bounds",
-                field: "minResolution",
+                field: "min_resolution",
                 requested: "1920x1080",
                 limit: "1280x720",
             });
@@ -166,7 +166,7 @@ describe("streamPolicy", () => {
                 }),
             ).to.deep.equal({
                 unsatisfiable: "bounds",
-                field: "minFrameRate",
+                field: "min_frame_rate",
                 requested: "60",
                 limit: "30",
             });
@@ -388,7 +388,7 @@ describe("streamPolicy", () => {
                 }),
             ).to.deep.equal({
                 unsatisfiable: "bounds",
-                field: "minResolution",
+                field: "min_resolution",
                 requested: "1440x1440",
                 limit: "1920x1080",
             });
@@ -851,7 +851,7 @@ describe("streamPolicy", () => {
                 }),
             ).to.deep.equal({
                 unsatisfiable: "bounds",
-                field: "sampleRate",
+                field: "sample_rate",
                 requested: "44100",
                 limit: "48000, 16000",
             });
@@ -882,7 +882,7 @@ describe("streamPolicy", () => {
                     sdp: undefined,
                     hints: { channelCount: 8 },
                 }),
-            ).to.deep.equal({ unsatisfiable: "bounds", field: "channelCount", requested: "8", limit: "2" });
+            ).to.deep.equal({ unsatisfiable: "bounds", field: "channel_count", requested: "8", limit: "2" });
         });
 
         it("uses a channel count the camera can serve", () => {
@@ -916,7 +916,7 @@ describe("streamPolicy", () => {
                 }),
             ).to.deep.equal({
                 unsatisfiable: "bounds",
-                field: "sampleRate",
+                field: "sample_rate",
                 requested: "44100",
                 limit: "48000, 16000",
             });

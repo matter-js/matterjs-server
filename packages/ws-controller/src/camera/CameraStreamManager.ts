@@ -9,7 +9,7 @@ import type { EndpointNumber, NodeId } from "@matter/main";
 import { CameraAvStreamManagement } from "@matter/main/clusters/camera-av-stream-management";
 import { WebRtcTransportDefinitions } from "@matter/main/clusters/web-rtc-transport-definitions";
 import { Status } from "@matter/main/types";
-import { ServerError } from "../types/WebSocketMessageTypes.js";
+import { ServerError, type CameraOccupyingStreamDetail } from "../types/WebSocketMessageTypes.js";
 import type {
     AllocatedAudioStream,
     AllocatedSnapshotStream,
@@ -191,6 +191,10 @@ export function preferredVideoCodec(
         candidates = requireCodecCandidates(preferred, candidates, hintCodecs);
     }
     return candidates[0] ?? CameraAvStreamManagement.VideoCodec.H264;
+}
+
+function occupyingStream(kind: StreamKind, streamId: number, referenceCount: number): CameraOccupyingStreamDetail {
+    return { kind, streamId, referenceCount };
 }
 
 function isResolution(value: unknown): value is Resolution {
@@ -963,10 +967,7 @@ export class CameraStreamManager {
             });
         }
         throw ServerError.cameraResourceExhausted({
-            allocated: liveStreams.map(stream => ({
-                streamId: stream.videoStreamId,
-                referenceCount: stream.referenceCount,
-            })),
+            allocated: liveStreams.map(stream => occupyingStream("video", stream.videoStreamId, stream.referenceCount)),
             maxConcurrentEncoders: state.maxConcurrentEncoders,
             maxEncodedPixelRate: state.maxEncodedPixelRate,
         });
@@ -1122,10 +1123,9 @@ export class CameraStreamManager {
                 if (ladderReaction(status) === "rethrow") throw error;
                 if (ladderReaction(status) === "make-room") {
                     throw ServerError.cameraResourceExhausted({
-                        allocated: state.allocatedAudioStreams.map(stream => ({
-                            streamId: stream.audioStreamId,
-                            referenceCount: stream.referenceCount,
-                        })),
+                        allocated: state.allocatedAudioStreams.map(stream =>
+                            occupyingStream("audio", stream.audioStreamId, stream.referenceCount),
+                        ),
                         maxConcurrentEncoders: state.maxConcurrentEncoders,
                         maxEncodedPixelRate: state.maxEncodedPixelRate,
                     });
@@ -1481,7 +1481,9 @@ export class CameraStreamManager {
      * The typed camera error for a snapshot the device refused.
      *
      * Snapshots share the video path's error codes, so a client sees the same 102/103 distinction on
-     * either surface rather than a raw SDK error on one of them.
+     * either surface rather than a raw SDK error on one of them. A capacity refusal reports the video
+     * streams rather than the snapshot ones: a snapshot competes for the camera's encoders, and a
+     * referenced video stream is what holds them.
      */
     protected snapshotFailure(
         state: CameraState,
@@ -1491,10 +1493,9 @@ export class CameraStreamManager {
     ): ServerError {
         if (ladderReaction(deviceStatus) === "make-room") {
             return ServerError.cameraResourceExhausted({
-                allocated: state.allocatedVideoStreams.map(stream => ({
-                    streamId: stream.videoStreamId,
-                    referenceCount: stream.referenceCount,
-                })),
+                allocated: state.allocatedVideoStreams.map(stream =>
+                    occupyingStream("video", stream.videoStreamId, stream.referenceCount),
+                ),
                 maxConcurrentEncoders: state.maxConcurrentEncoders,
                 maxEncodedPixelRate: state.maxEncodedPixelRate,
             });

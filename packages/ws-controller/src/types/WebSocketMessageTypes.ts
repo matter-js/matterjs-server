@@ -22,6 +22,9 @@ export {
     type AttributesData,
     type AttributeWriteResult,
     type BindingTarget,
+    type CameraBoundField,
+    type CameraStreamIncompatibleBound,
+    type CameraStreamKind,
     type CommandMessage,
     type CommissionableNodeData,
     type CommissioningParameters,
@@ -49,6 +52,8 @@ export {
 
 // Re-export MatterNodeData as MatterNode for backward compatibility within ws-controller
 export type { MatterNodeData as MatterNode } from "@matter-server/ws-client";
+
+import type { CameraStreamIncompatibleBound, CameraStreamKind } from "@matter-server/ws-client";
 
 /**
  * Error codes matching Python Matter Server for API compatibility.
@@ -106,13 +111,10 @@ export interface CameraStreamIncompatibleDetail {
     requested: string[];
     /**
      * The single caller bound that could not be met, when the server decided that before asking the
-     * device.
-     *
-     * `limit` is what the bound ran into, as text rather than a number because it is not always one:
-     * the ceiling in force after every narrowing for a range bound, whoever stated it, and the set
-     * of values the device lists for a bound it answers with a set, such as `sampleRate`.
+     * device. `field` is typed to the wire vocabulary so a hint key can only be reported in the
+     * spelling `camera_start_stream` accepts it back in.
      */
-    bound?: { field: string; requested: string; limit: string };
+    bound?: CameraStreamIncompatibleBound;
     /** Matter status code the device answered with, when a device rejection produced this. */
     deviceStatus?: number;
 }
@@ -128,8 +130,18 @@ export interface CameraAllocatedStreamDetail {
     referenceCount: number;
 }
 
+/**
+ * A stream that holds capacity the refused request needed.
+ *
+ * `kind` is on the entry because the list is not always the kind the request asked for: a refused
+ * snapshot allocation reports the video streams, which are what hold the camera's encoders.
+ */
+export interface CameraOccupyingStreamDetail extends CameraAllocatedStreamDetail {
+    kind: CameraStreamKind;
+}
+
 export interface CameraResourceExhaustedDetail {
-    allocated: CameraAllocatedStreamDetail[];
+    allocated: CameraOccupyingStreamDetail[];
     maxConcurrentEncoders?: number;
     maxEncodedPixelRate?: number;
 }
@@ -230,6 +242,7 @@ export class ServerError extends Error {
             JSON.stringify({
                 message: "Camera has no encoder capacity for this stream",
                 allocated: detail.allocated.map(entry => ({
+                    kind: entry.kind,
                     stream_id: entry.streamId,
                     reference_count: entry.referenceCount,
                 })),
