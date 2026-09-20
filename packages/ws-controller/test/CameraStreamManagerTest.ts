@@ -640,7 +640,8 @@ describe("CameraStreamManager", () => {
             expect(JSON.parse((thrown as ServerError).message).allocated).to.deep.equal([
                 { stream_id: 7, reference_count: 1 },
             ]);
-            expect(invokes.length).to.be.at.most(4);
+            // MAX_NARROWING_ROUNDS = 3, rounds 0..3 inclusive: exactly 4 allocate attempts.
+            expect(invokes.length).to.equal(4);
         });
 
         it("fails typed when no codec suits both the camera and the offer", async () => {

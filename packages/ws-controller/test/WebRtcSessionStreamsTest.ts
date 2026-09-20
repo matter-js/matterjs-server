@@ -308,4 +308,28 @@ describe("establishWebRtcProviderSession", () => {
         expect(invokedCommands).to.deep.equal(["provideOffer", "endSession"]);
         expect(upserted).to.equal(false);
     });
+
+    it("surfaces the untrackable-session error even when the EndSession cleanup itself fails", async () => {
+        const invokedCommands = new Array<string>();
+        const io: WebRtcProviderSessionIo = {
+            invoke: async command => {
+                invokedCommands.push(command);
+                if (command === "provideOffer") return { webRtcSessionId: 9 };
+                throw new Error("device unreachable");
+            },
+            upsertSession: async () => {},
+        };
+
+        let thrown: unknown;
+        try {
+            // No streamUsage and no stream: nothing for the requestor to key signaling routing on.
+            await establishWebRtcProviderSession(io, baseArgs({ fields: {} }));
+        } catch (error) {
+            thrown = error;
+        }
+
+        expect(invokedCommands).to.deep.equal(["provideOffer", "endSession"]);
+        expect((thrown as ServerError).code).to.equal(ServerErrorCode.SDKStackError);
+        expect((thrown as ServerError).message).to.include("produced a session with no stream usage");
+    });
 });

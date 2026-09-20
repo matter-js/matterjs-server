@@ -536,10 +536,34 @@ describe("streamPolicy", () => {
             ).to.equal(undefined);
         });
 
+        it("refuses a stream whose width alone is below the floor the caller stated", () => {
+            expect(
+                findDegradedVideoStream([IN_USE_WIDE], H265, {
+                    minResolution: { width: 1400, height: 700 },
+                }),
+            ).to.equal(undefined);
+        });
+
+        it("refuses a stream whose height alone is below the floor the caller stated", () => {
+            expect(
+                findDegradedVideoStream([IN_USE_WIDE], H265, {
+                    minResolution: { width: 1200, height: 900 },
+                }),
+            ).to.equal(undefined);
+        });
+
         it("refuses a stream above a ceiling the caller stated", () => {
             expect(
                 findDegradedVideoStream([IN_USE_WIDE], H265, {
                     maxResolution: { width: 1280, height: 720 },
+                }),
+            ).to.equal(undefined);
+        });
+
+        it("refuses a stream whose width alone is above the ceiling the caller stated", () => {
+            expect(
+                findDegradedVideoStream([IN_USE_WIDE], H265, {
+                    maxResolution: { width: 1800, height: 1200 },
                 }),
             ).to.equal(undefined);
         });
