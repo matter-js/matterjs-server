@@ -24,7 +24,7 @@ class DraftElectricalMeasurementCluster(Cluster):
             Fields=[
                 ClusterObjectFieldDescriptor(Label="rmsVoltage", Tag=0x00000505, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="rmsCurrent", Tag=0x00000508, Type=typing.Optional[uint]),
-                ClusterObjectFieldDescriptor(Label="activePower", Tag=0x0000050B, Type=typing.Optional[uint]),
+                ClusterObjectFieldDescriptor(Label="activePower", Tag=0x0000050B, Type=typing.Optional[int]),
                 ClusterObjectFieldDescriptor(Label="acVoltageMultiplier", Tag=0x00000600, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="acVoltageDivisor", Tag=0x00000601, Type=typing.Optional[uint]),
                 ClusterObjectFieldDescriptor(Label="acCurrentMultiplier", Tag=0x00000602, Type=typing.Optional[uint]),
@@ -40,7 +40,7 @@ class DraftElectricalMeasurementCluster(Cluster):
 
     rmsVoltage: typing.Optional[uint] = None
     rmsCurrent: typing.Optional[uint] = None
-    activePower: typing.Optional[uint] = None
+    activePower: typing.Optional[int] = None
     acVoltageMultiplier: typing.Optional[uint] = None
     acVoltageDivisor: typing.Optional[uint] = None
     acCurrentMultiplier: typing.Optional[uint] = None
@@ -98,9 +98,9 @@ class DraftElectricalMeasurementCluster(Cluster):
 
             @ChipUtility.classproperty
             def attribute_type(cls) -> ClusterObjectFieldDescriptor:
-                return ClusterObjectFieldDescriptor(Type=typing.Optional[uint])
+                return ClusterObjectFieldDescriptor(Type=typing.Optional[int])
 
-            value: typing.Optional[uint] = None
+            value: typing.Optional[int] = None
 
         @dataclass
         class AcVoltageMultiplier(ClusterAttributeDescriptor):

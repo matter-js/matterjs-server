@@ -18253,6 +18253,393 @@ export const clusters: Record<number, ClusterDescription> = {
         "commands": {},
         "features": {}
     },
+    "291503114": {
+        "id": 291503114,
+        "label": "AqaraAmbientSensingConfigurationCluster",
+        "attributes": {
+            "0": {
+                "id": 0,
+                "cluster_id": 291503114,
+                "label": "InstallMode",
+                "type": "Optional[unknown]",
+                "writable": true
+            },
+            "1": {
+                "id": 1,
+                "cluster_id": 291503114,
+                "label": "SupportedInstallModes",
+                "type": "Optional[unknown]",
+                "writable": false
+            },
+            "2": {
+                "id": 2,
+                "cluster_id": 291503114,
+                "label": "SideInstall",
+                "type": "Optional[unknown]",
+                "writable": true
+            },
+            "3": {
+                "id": 3,
+                "cluster_id": 291503114,
+                "label": "SupportedSideInstalls",
+                "type": "Optional[unknown]",
+                "writable": false
+            },
+            "4": {
+                "id": 4,
+                "cluster_id": 291503114,
+                "label": "InstallHeight",
+                "type": "Optional[unknown]",
+                "writable": true
+            },
+            "5": {
+                "id": 5,
+                "cluster_id": 291503114,
+                "label": "InstallHeightMin",
+                "type": "Optional[unknown]",
+                "writable": false
+            },
+            "6": {
+                "id": 6,
+                "cluster_id": 291503114,
+                "label": "InstallHeightMax",
+                "type": "Optional[unknown]",
+                "writable": false
+            },
+            "7": {
+                "id": 7,
+                "cluster_id": 291503114,
+                "label": "InstallStatus",
+                "type": "Optional[unknown]",
+                "writable": false
+            },
+            "8": {
+                "id": 8,
+                "cluster_id": 291503114,
+                "label": "InstallAngle",
+                "type": "Optional[unknown]",
+                "writable": false
+            },
+            "16": {
+                "id": 16,
+                "cluster_id": 291503114,
+                "label": "Zones",
+                "type": "Optional[unknown]",
+                "writable": false
+            },
+            "17": {
+                "id": 17,
+                "cluster_id": 291503114,
+                "label": "MaxZones",
+                "type": "Optional[unknown]",
+                "writable": false
+            },
+            "18": {
+                "id": 18,
+                "cluster_id": 291503114,
+                "label": "EntryExitRegionBitmask",
+                "type": "Optional[bytes]",
+                "writable": true
+            },
+            "19": {
+                "id": 19,
+                "cluster_id": 291503114,
+                "label": "InterferenceRegionBitmask",
+                "type": "Optional[bytes]",
+                "writable": true
+            },
+            "20": {
+                "id": 20,
+                "cluster_id": 291503114,
+                "label": "EdgeRegionBitmask",
+                "type": "Optional[bytes]",
+                "writable": true
+            },
+            "22": {
+                "id": 22,
+                "cluster_id": 291503114,
+                "label": "LearningReportingTimeout",
+                "type": "Optional[unknown]",
+                "writable": false
+            },
+            "35": {
+                "id": 35,
+                "cluster_id": 291503114,
+                "label": "EnableHumanCountDetection",
+                "type": "Optional[bool]",
+                "writable": true
+            },
+            "41": {
+                "id": 41,
+                "cluster_id": 291503114,
+                "label": "EnableAiHighPrecisionRecognition",
+                "type": "Optional[bool]",
+                "writable": true
+            },
+            "42": {
+                "id": 42,
+                "cluster_id": 291503114,
+                "label": "EnableAiAdaptiveSensitivity",
+                "type": "Optional[bool]",
+                "writable": true
+            },
+            "43": {
+                "id": 43,
+                "cluster_id": 291503114,
+                "label": "EnableAiEntryExitRegionRecognition",
+                "type": "Optional[bool]",
+                "writable": true
+            },
+            "44": {
+                "id": 44,
+                "cluster_id": 291503114,
+                "label": "EnableAiInterferenceSourceRecognition",
+                "type": "Optional[bool]",
+                "writable": true
+            },
+            "45": {
+                "id": 45,
+                "cluster_id": 291503114,
+                "label": "CoordinateReverse",
+                "type": "Optional[unknown]",
+                "writable": true
+            },
+            "46": {
+                "id": 46,
+                "cluster_id": 291503114,
+                "label": "DetectionDirection",
+                "type": "Optional[unknown]",
+                "writable": true
+            },
+            "47": {
+                "id": 47,
+                "cluster_id": 291503114,
+                "label": "ProximityDistanceLevel",
+                "type": "Optional[unknown]",
+                "writable": true
+            },
+            "65528": {
+                "id": 65528,
+                "cluster_id": 291503114,
+                "label": "GeneratedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65529": {
+                "id": 65529,
+                "cluster_id": 291503114,
+                "label": "AcceptedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65531": {
+                "id": 65531,
+                "cluster_id": 291503114,
+                "label": "AttributeList",
+                "type": "List[attrib-id]",
+                "writable": false
+            },
+            "65532": {
+                "id": 65532,
+                "cluster_id": 291503114,
+                "label": "FeatureMap",
+                "type": "map32",
+                "writable": false
+            },
+            "65533": {
+                "id": 65533,
+                "cluster_id": 291503114,
+                "label": "ClusterRevision",
+                "type": "uint16",
+                "writable": false
+            }
+        },
+        "commands": {
+            "0": {
+                "id": 0,
+                "cluster_id": 291503114,
+                "name": "subscribeAutoInterferenceSourceRecognitionData",
+                "label": "Subscribe Auto Interference Source Recognition Data"
+            },
+            "1": {
+                "id": 1,
+                "cluster_id": 291503114,
+                "name": "subscribeAutoEdgeRecognitionData",
+                "label": "Subscribe Auto Edge Recognition Data"
+            },
+            "2": {
+                "id": 2,
+                "cluster_id": 291503114,
+                "name": "subscribeAiEntryExitRegionRecognitionData",
+                "label": "Subscribe Ai Entry Exit Region Recognition Data"
+            },
+            "3": {
+                "id": 3,
+                "cluster_id": 291503114,
+                "name": "enableAiSpaceBackgroundLearning",
+                "label": "Enable Ai Space Background Learning"
+            },
+            "4": {
+                "id": 4,
+                "cluster_id": 291503114,
+                "name": "appendZone",
+                "label": "Append Zone"
+            },
+            "6": {
+                "id": 6,
+                "cluster_id": 291503114,
+                "name": "updateZone",
+                "label": "Update Zone"
+            },
+            "8": {
+                "id": 8,
+                "cluster_id": 291503114,
+                "name": "removeZone",
+                "label": "Remove Zone"
+            },
+            "10": {
+                "id": 10,
+                "cluster_id": 291503114,
+                "name": "setZones",
+                "label": "Set Zones"
+            }
+        },
+        "features": {}
+    },
+    "291503115": {
+        "id": 291503115,
+        "label": "AqaraRadarSensingUnionCluster",
+        "attributes": {
+            "0": {
+                "id": 0,
+                "cluster_id": 291503115,
+                "label": "ChildEndpointList",
+                "type": "Optional[unknown]",
+                "writable": false
+            },
+            "1": {
+                "id": 1,
+                "cluster_id": 291503115,
+                "label": "ZoneId",
+                "type": "Optional[unknown]",
+                "writable": false
+            },
+            "2": {
+                "id": 2,
+                "cluster_id": 291503115,
+                "label": "CurrentHumanCount",
+                "type": "Optional[unknown]",
+                "writable": false
+            },
+            "65528": {
+                "id": 65528,
+                "cluster_id": 291503115,
+                "label": "GeneratedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65529": {
+                "id": 65529,
+                "cluster_id": 291503115,
+                "label": "AcceptedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65531": {
+                "id": 65531,
+                "cluster_id": 291503115,
+                "label": "AttributeList",
+                "type": "List[attrib-id]",
+                "writable": false
+            },
+            "65532": {
+                "id": 65532,
+                "cluster_id": 291503115,
+                "label": "FeatureMap",
+                "type": "map32",
+                "writable": false
+            },
+            "65533": {
+                "id": 65533,
+                "cluster_id": 291503115,
+                "label": "ClusterRevision",
+                "type": "uint16",
+                "writable": false
+            }
+        },
+        "commands": {},
+        "features": {}
+    },
+    "291503116": {
+        "id": 291503116,
+        "label": "AqaraOccupantLocationCluster",
+        "attributes": {
+            "0": {
+                "id": 0,
+                "cluster_id": 291503116,
+                "label": "MaxDetectionTargets",
+                "type": "Optional[unknown]",
+                "writable": false
+            },
+            "7": {
+                "id": 7,
+                "cluster_id": 291503116,
+                "label": "ActivityState",
+                "type": "Optional[unknown]",
+                "writable": false
+            },
+            "65528": {
+                "id": 65528,
+                "cluster_id": 291503116,
+                "label": "GeneratedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65529": {
+                "id": 65529,
+                "cluster_id": 291503116,
+                "label": "AcceptedCommandList",
+                "type": "List[command-id]",
+                "writable": false
+            },
+            "65531": {
+                "id": 65531,
+                "cluster_id": 291503116,
+                "label": "AttributeList",
+                "type": "List[attrib-id]",
+                "writable": false
+            },
+            "65532": {
+                "id": 65532,
+                "cluster_id": 291503116,
+                "label": "FeatureMap",
+                "type": "map32",
+                "writable": false
+            },
+            "65533": {
+                "id": 65533,
+                "cluster_id": 291503116,
+                "label": "ClusterRevision",
+                "type": "uint16",
+                "writable": false
+            }
+        },
+        "commands": {
+            "0": {
+                "id": 0,
+                "cluster_id": 291503116,
+                "name": "subscribeLocationData",
+                "label": "Subscribe Location Data"
+            },
+            "1": {
+                "id": 1,
+                "cluster_id": 291503116,
+                "name": "removeDetectionTarget",
+                "label": "Remove Detection Target"
+            }
+        },
+        "features": {}
+    },
     "302775297": {
         "id": 302775297,
         "label": "HeimanCluster",

@@ -480,6 +480,10 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
             observers.on(this.#commandHandler.events.nodeEndpointAdded, (nodeId, endpointId) => {
                 if (this.#closed || this.#shuttingDown || !listening) return;
+                // Clients resolve the endpoint from their node snapshot, so a pending node_updated must go out first
+                if (pendingNodeUpdated.delete(nodeId) && this.#commandHandler.hasNode(nodeId)) {
+                    sendNodeFullDetails("node_updated", nodeId);
+                }
                 logger.info(
                     `[${connId}] Sending endpoint_added event for Node ${this.#commandHandler.formatNode(nodeId)} endpoint ${endpointId}`,
                 );
