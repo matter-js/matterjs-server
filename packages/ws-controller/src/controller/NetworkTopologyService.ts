@@ -64,11 +64,10 @@ export const WIFI_REFRESH_PATHS = ["0/54/0", "0/54/3", "0/54/4", "0/49/1"];
 type AnyObservable = Observable<any[]>;
 
 /**
- * A source node plus the availability + bridge flags surfaced on the wire. Neither is part of
- * the pure derivation ({@link TopologySourceNode}, which reads only `node_id`/`attributes`);
- * both ride along from the controller's node details ({@link MatterNodeData}).
+ * A source node plus the bridge flag surfaced on the wire, which rides along from the
+ * controller's node details ({@link MatterNodeData}) rather than from the derivation.
  */
-export type TopologyNode = TopologySourceNode & { available?: boolean; is_bridge?: boolean };
+export type TopologyNode = TopologySourceNode & { is_bridge?: boolean };
 
 /**
  * An additional provider of graph nodes (e.g. imported test nodes), registered via
@@ -123,6 +122,12 @@ export interface NetworkTopologyServiceOptions {
  * plus mDNS-discovered Border Routers. The richer MeshCoP diagnostic enrichment (route64 /
  * childTable → router-router links and diagnostic-only mesh nodes) is a planned follow-up;
  * the wire model already accommodates it.
+ *
+ * Every external device with a live edge is published, including ones a client may choose to
+ * hide as a stale-cache ghost (see `shouldHideExternalDevice` in `@matter-server/ws-client`).
+ * Deciding that here would be guesswork, because the MeshCoP diagnostics a ghost is checked
+ * against are not available to this service: it would drop exactly the devices that evidence
+ * vindicates. The wire carries the evidence; visibility is a display decision.
  */
 export class NetworkTopologyService {
     static readonly DEFAULT_DEBOUNCE_MS = 2_000;

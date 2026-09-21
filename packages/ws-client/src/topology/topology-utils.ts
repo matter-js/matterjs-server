@@ -632,6 +632,116 @@ export function findUnknownDevices(
     return out;
 }
 
+/** A diagnostics node together with the batch that carried it. */
+export interface ThreadDiagnosticsRecord {
+    node: ThreadDiagnosticsNode;
+    batch: ThreadDiagnosticsBatch;
+}
+
+/**
+ * Locate the diagnostics entry for a Thread extended (MAC) address across all batches.
+ * Matching is case-insensitive; batches and Matter attributes disagree on hex casing.
+ */
+export function findDiagnosticRecordByExtAddress(
+    batches: ReadonlyMap<string, ThreadDiagnosticsBatch>,
+    extAddressHex: string,
+): ThreadDiagnosticsRecord | undefined {
+    const target = extAddressHex.toUpperCase();
+    for (const batch of batches.values()) {
+        for (const node of batch.nodes) {
+            if (node.extMacAddress?.toUpperCase() === target) return { node, batch };
+        }
+    }
+    return undefined;
+}
+
+/**
+ * Whether a node can still confirm what it reported. An id with no node behind it cannot, and a
+ * node whose availability is unknown is taken as online — the wire omits the flag only for
+ * records that carry no reachability information.
+ */
+export function isObserverOnline(nodes: Record<string, TopologySourceNode>, nodeId: string): boolean {
+    const node = nodes[nodeId];
+    return node !== undefined && node.available !== false;
+}
+
+/**
+ * Find a diagnostics record that can vouch for an external device's existence, independently of
+ * the neighbor table that reported it.
+ *
+ * All batches are searched, because the first record carrying the address is not necessarily the
+ * one that qualifies: the same device can still appear in a batch for a network it has since
+ * left. A record qualifies when
+ *
+ * - its batch is complete: a `partialReason` marks a query still running or one that ended without
+ *   data, and neither is a full view of the network — an entry in it may already be out of date or
+ *   may be about to be superseded; and
+ * - its batch describes the device's own Thread network. A device whose observer reports no
+ *   extended PAN ID is never corroborated: the batches at hand cover only networks with a
+ *   discovered Border Router, so a lone record matching the address cannot establish that the
+ *   device is on that network rather than one nothing reports.
+ *
+ * Batch age is not judged here. The server withholds a complete batch past its cache TTL, and a
+ * holder refreshes or drops one when the lifetime the batch states ({@link
+ * ThreadDiagnosticsBatch.expiresInMs}) runs out, so what arrives here is current except for the
+ * gap between a lifetime elapsing and its holder acting on that.
+ */
+export function findCorroboratingDiagnostics(
+    batches: ReadonlyMap<string, ThreadDiagnosticsBatch>,
+    device: ThreadExternalDevice,
+): ThreadDiagnosticsRecord | undefined {
+    const deviceXp = device.extendedPanIdHex?.toUpperCase();
+    if (deviceXp === undefined) {
+        return undefined;
+    }
+    const target = device.extAddressHex.toUpperCase();
+
+    for (const batch of batches.values()) {
+        if (batch.partialReason !== undefined) continue;
+        if (batch.extPanIdHex.toUpperCase() !== deviceXp) continue;
+        for (const node of batch.nodes) {
+            if (node.extMacAddress?.toUpperCase() === target) return { node, batch };
+        }
+    }
+    return undefined;
+}
+
+/**
+ * Decide whether an external Thread device should be omitted from the topology graph.
+ *
+ * Unknown externals are pure neighbor-table inference, so two stale-cache signatures are
+ * filtered regardless of the offline-nodes toggle: every observer is offline (the entry can
+ * no longer be re-confirmed), or a single observer that has other neighbors reports it (a
+ * single-source ghost from a node that is clearly otherwise reachable).
+ *
+ * Both filters are lifted for a device with evidence from a source other than the observer's
+ * cached neighbor table: a Border Router (mDNS), or a diagnostics record accepted by
+ * {@link findCorroboratingDiagnostics}. Such a device follows the user's offline-nodes toggle
+ * like any commissioned node.
+ */
+export function shouldHideExternalDevice(
+    device: ThreadExternalDevice,
+    nodes: Record<string, TopologySourceNode>,
+    options: { diagnostics?: ReadonlyMap<string, ThreadDiagnosticsBatch>; hideOfflineNodes: boolean },
+): boolean {
+    const hasOnlineObserver = device.seenBy.some(nodeId => isObserverOnline(nodes, nodeId));
+
+    const corroborated =
+        options.diagnostics !== undefined && findCorroboratingDiagnostics(options.diagnostics, device) !== undefined;
+    if (device.kind === "br" || corroborated) {
+        return options.hideOfflineNodes && !hasOnlineObserver;
+    }
+
+    if (!hasOnlineObserver) {
+        return true;
+    }
+    if (device.seenBy.length !== 1) {
+        return false;
+    }
+    const observer = nodes[device.seenBy[0]];
+    return observer !== undefined && getNeighborTableLength(observer) > 1;
+}
+
 /** Determine signal level from a Thread neighbor's LQI. */
 export function getSignalLevel(neighbor: ThreadNeighbor): SignalLevel {
     return getSignalLevelFromLqi(neighbor.lqi);
