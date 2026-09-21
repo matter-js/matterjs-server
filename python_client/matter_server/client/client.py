@@ -908,7 +908,7 @@ class MatterClient:
             self._signal_event(EventType.ENDPOINT_REMOVED, data=msg.data, node_id=node_id)
             # cleanup endpoint only after signalling subscribers
             if node := self._nodes.get(node_id):
-                node.endpoints.pop(endpoint_id, None)
+                node._remove_endpoint(endpoint_id)
             return
         if msg.event == EventType.ATTRIBUTE_UPDATED:
             # data is tuple[node_id, attribute_path, new_value]

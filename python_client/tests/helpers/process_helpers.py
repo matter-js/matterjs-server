@@ -23,6 +23,10 @@ SERVER_PORT = 5580
 SERVER_WS_URL = f"ws://localhost:{SERVER_PORT}/ws"
 DEVICE_PORT = 5540
 MANUAL_PAIRING_CODE = "34970112332"
+BRIDGE_DEVICE_PORT = 5551
+BRIDGE_DEVICE_DISCRIMINATOR = 3842
+BRIDGE_DEVICE_PASSCODE = 20202023
+BRIDGE_MANUAL_PAIRING_CODE = "34970312335"
 
 
 def create_temp_storage_paths() -> tuple[str, str]:
@@ -97,6 +101,39 @@ def start_test_device(storage_path: str) -> subprocess.Popen:
             "tsx",
             str(device_script),
             f"--storage-path={storage_path}",
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        cwd=str(REPO_ROOT),
+    )
+
+
+def start_test_bridge_device(storage_path: str) -> subprocess.Popen:
+    """Start the test bridge device process.
+
+    The device combines the bridge topologies the client has to tell apart: an aggregator that is
+    not endpoint 1, a second aggregator, an aggregator nested below another one, a bridged device
+    composed of further endpoints, and bridged devices that report no Bridged Node device type.
+
+    Args:
+        storage_path: Path to the temporary storage directory for device state.
+
+    Returns:
+        The subprocess.Popen handle for the running bridge device.
+    """
+    device_script = (
+        REPO_ROOT / "packages" / "matter-server" / "test" / "fixtures" / "TestBridgeDevice.ts"
+    )
+    return subprocess.Popen(
+        [
+            "npx",
+            "tsx",
+            str(device_script),
+            f"--storage-path={storage_path}",
+            f"--port={BRIDGE_DEVICE_PORT}",
+            f"--discriminator={BRIDGE_DEVICE_DISCRIMINATOR}",
+            f"--passcode={BRIDGE_DEVICE_PASSCODE}",
         ],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
