@@ -4,12 +4,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Logger, Millis, Time, withTimeout } from "@matter/main";
+import { Logger, Time } from "@matter/main";
 import type { EndpointNumber, NodeId } from "@matter/main";
 import { CameraAvStreamManagement } from "@matter/main/clusters/camera-av-stream-management";
 import { WebRtcTransportDefinitions } from "@matter/main/clusters/web-rtc-transport-definitions";
 import { Status } from "@matter/main/types";
+import { deviceForgotSession, invokeEndSession } from "../controller/webRtcSessionTracking.js";
 import { ServerError, type CameraOccupyingStreamDetail } from "../types/WebSocketMessageTypes.js";
+import { DEVICE_CLEANUP_BUDGET_MS, withCleanupBudget } from "../util/deviceCleanupBudget.js";
 import type {
     AllocatedAudioStream,
     AllocatedSnapshotStream,
@@ -216,33 +218,6 @@ function isResolution(value: unknown): value is Resolution {
  * report arriving, which is the window a second request would otherwise allocate a twin in.
  */
 export const UNREPORTED_LEASE_GRACE_MS = 10000;
-
-/**
- * How long one request's give-backs, or one release pass, may wait on the device in total.
- *
- * The usual reason anything is being given back is that the camera stopped answering, and the
- * callers cannot wait for that: a request holds the endpoint lock while it gives back, and shutdown
- * runs a release pass before the connections close.
- */
-export const DEVICE_CLEANUP_BUDGET_MS = 10000;
-
-/**
- * Await `work` for at most {@link DEVICE_CLEANUP_BUDGET_MS}, then stop waiting for it.
- *
- * The invokes underneath cannot be cancelled and run on unattended, so what they still change on
- * this side must be safe to apply late: see {@link CameraSessionRegistry.forgetEstablished} and the
- * lease generation on {@link StreamLease}. What they change on the DEVICE cannot be guarded from
- * here — an abandoned deallocate still reaches the camera, after the endpoint lock is gone, and the
- * id it names may by then be a stream a later request allocated. Closing that needs an invoke this
- * server can abort, and `Invoke` carries no abort signal.
- */
-async function withCleanupBudget(what: string, work: () => Promise<void>): Promise<void> {
-    try {
-        await withTimeout(Millis(DEVICE_CLEANUP_BUDGET_MS), work());
-    } catch (error) {
-        logger.warn(`Camera cleanup (${what}) was abandoned after ${DEVICE_CLEANUP_BUDGET_MS} ms:`, error);
-    }
-}
 
 /** One device-side effect of a request, with the lifetime it was registered under. */
 interface ScopedReturn {
@@ -1540,31 +1515,34 @@ export class CameraStreamManager {
      * session; dropping first would leave the device holding a session nothing can name, pinning its
      * streams at `ReferenceCount > 0` for good.
      *
-     * `NotFound` is the exception: the device answers it for any id it cannot resolve to one of its
-     * sessions (`WebRTCTransportProviderCluster.cpp`, `HandleEndSession` ahead of the delegate call),
-     * so the entry names nothing the device will act on, keeping it would only re-send a dead id, and
-     * this call ended nothing.
+     * `NotFound` is the exception, and {@link invokeEndSession} is where that is decided for every
+     * route that ends a session: the entry then names nothing the device will act on, and this call
+     * ended nothing.
      */
     async #endSession(session: ManagedSession): Promise<boolean> {
         const { nodeId, endpointId, webRtcSessionId } = session;
-        let endedOnDevice = true;
         try {
-            await this.io.invoke({
-                nodeId,
-                endpointId,
-                cluster: "webrtcProvider",
-                command: "endSession",
-                fields: { webRtcSessionId, reason: WEBRTC_END_REASON_USER_HANGUP },
-            });
+            await invokeEndSession(
+                () =>
+                    this.io.invoke({
+                        nodeId,
+                        endpointId,
+                        cluster: "webrtcProvider",
+                        command: "endSession",
+                        fields: { webRtcSessionId, reason: WEBRTC_END_REASON_USER_HANGUP },
+                    }),
+                async () => {
+                    this.#sessions.forgetEstablished(session);
+                },
+            );
         } catch (error) {
-            if (deviceStatusOf(error) !== Status.NotFound) throw error;
-            endedOnDevice = false;
+            if (!deviceForgotSession(error)) throw error;
             logger.info(
                 `Node ${nodeId} did not resolve WebRTC session ${webRtcSessionId} (NotFound); dropping the server's tracking of it`,
             );
+            return false;
         }
-        this.#sessions.forgetEstablished(session);
-        return endedOnDevice;
+        return true;
     }
 
     /**

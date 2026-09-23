@@ -90,7 +90,7 @@ export enum ServerErrorCode {
     OtaUploadError = 101,
     /** OHF extension: no codec or range both sides can serve, or the camera states no such capability. */
     CameraStreamIncompatible = 102,
-    /** OHF extension: the camera has no encoder capacity left for the requested stream. */
+    /** OHF extension: the camera refused the allocation for lack of capacity. */
     CameraResourceExhausted = 103,
     /** OHF extension: stream release refused because the device still references the stream. */
     CameraStreamInUse = 104,
@@ -250,7 +250,7 @@ export class ServerError extends Error {
         return new ServerError(
             ServerErrorCode.CameraResourceExhausted,
             JSON.stringify({
-                message: "Camera has no encoder capacity for this stream",
+                message: "Camera has no capacity for this stream",
                 allocated: detail.allocated.map(entry => ({
                     kind: entry.kind,
                     stream_id: entry.streamId,

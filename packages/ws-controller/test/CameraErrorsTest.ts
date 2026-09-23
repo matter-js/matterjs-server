@@ -54,7 +54,7 @@ describe("camera server errors", () => {
         });
         expect(error.code).to.equal(ServerErrorCode.CameraResourceExhausted);
         expect(JSON.parse(error.message)).to.deep.equal({
-            message: "Camera has no encoder capacity for this stream",
+            message: "Camera has no capacity for this stream",
             allocated: [{ kind: "video", stream_id: 1, reference_count: 1 }],
             max_concurrent_encoders: 1,
             max_encoded_pixel_rate: 248832000,

@@ -8,14 +8,12 @@ import type { Behavior, EndpointNumber, Immutable, NodeId } from "@matter/main";
 import { CameraAvStreamManagement } from "@matter/main/clusters/camera-av-stream-management";
 import { WebRtcTransportProvider } from "@matter/main/clusters/web-rtc-transport-provider";
 import type { Specifier } from "@matter/main/protocol";
-import { Status } from "@matter/main/types";
 import { CameraAvStreamManagementClient } from "@matter/node/behaviors/camera-av-stream-management";
 import { WebRtcTransportProviderClient } from "@matter/node/behaviors/web-rtc-transport-provider";
 import type { ControllerCommandHandler } from "../controller/ControllerCommandHandler.js";
-import { dropWebRtcSessionTracking } from "../controller/webRtcSessionTracking.js";
+import { dropWebRtcSessionTracking, invokeEndSession } from "../controller/webRtcSessionTracking.js";
 import type { CameraDeviceIo, CameraState } from "./CameraStreamManager.js";
 import type { Resolution } from "./cameraTypes.js";
-import { deviceStatusOf } from "./deviceStatus.js";
 
 function toResolution(resolution: { width: number; height: number }): Resolution {
     return { width: resolution.width, height: resolution.height };
@@ -204,26 +202,19 @@ export class MatterCameraDeviceIo implements CameraDeviceIo {
 
         const node = this.#handler.getNode(args.nodeId).node;
         const cluster: Specifier.ClusterLike = WebRtcTransportProvider.Cluster;
-        const invoke = this.#handler.invokeCommand(node, {
-            endpoint: args.endpointId,
-            cluster,
-            command: args.command,
-            fields: args.fields,
-        });
-        if (args.command !== "endSession") return invoke;
+        const invoke = (): Promise<unknown> =>
+            this.#handler.invokeCommand(node, {
+                endpoint: args.endpointId,
+                cluster,
+                command: args.command,
+                fields: args.fields,
+            });
+        if (args.command !== "endSession") return invoke();
 
         const sessionId = args.fields.webRtcSessionId;
-        const dropTracking = async (): Promise<void> => {
+        return invokeEndSession(invoke, async () => {
             if (typeof sessionId !== "number") return;
             await dropWebRtcSessionTracking(this.#handler, sessionId, args.nodeId, args.endpointId);
-        };
-        try {
-            const response = await invoke;
-            await dropTracking();
-            return response;
-        } catch (error) {
-            if (deviceStatusOf(error) === Status.NotFound) await dropTracking();
-            throw error;
-        }
+        });
     }
 }

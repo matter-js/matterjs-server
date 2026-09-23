@@ -8,6 +8,7 @@ import { Logger } from "@matter/main";
 import type { EndpointNumber, FabricIndex, NodeId } from "@matter/main";
 import { WebRtcTransportDefinitions } from "@matter/main/clusters/web-rtc-transport-definitions";
 import { ServerError } from "../types/WebSocketMessageTypes.js";
+import { DEVICE_CLEANUP_BUDGET_MS, withCleanupBudget } from "../util/deviceCleanupBudget.js";
 
 const logger = Logger.get("webRtcSessionStreams");
 
@@ -162,6 +163,41 @@ export interface WebRtcProviderSessionArgs {
 }
 
 /**
+ * End a session this call established but cannot hand back, waiting at most
+ * {@link DEVICE_CLEANUP_BUDGET_MS} for the device.
+ *
+ * A provider that creates the session and then stops answering would otherwise hold this call for as
+ * long as it stays silent — on `camera_start_stream`'s route that is the endpoint lock, the request's
+ * streams unreturned and the error this teardown precedes never raised.
+ *
+ * The budget is the camera manager's because the failure is the same one, and the wait is its own
+ * because the session is not one of the request's registered give-backs: nothing outside this call
+ * knows the id. So a `camera_start_stream` that reaches here can spend this budget and then the one
+ * `AllocationScope.settle` spends, which is what the 10 seconds bounds — each wait on a silent
+ * camera, not the request.
+ */
+async function endSessionWithinBudget(
+    io: WebRtcProviderSessionIo,
+    webRtcSessionId: number,
+    what: string,
+): Promise<void> {
+    await withCleanupBudget(`ending an ${what} WebRTC session`, async () => {
+        try {
+            await io.invoke("endSession", {
+                webRtcSessionId,
+                reason: WebRtcTransportDefinitions.WebRtcEndReason.OutOfResources,
+            });
+        } catch (err) {
+            logger.warn(
+                `EndSession cleanup for ${what} WebRTC session id=${webRtcSessionId} failed: ${
+                    err instanceof Error ? err.message : String(err)
+                }`,
+            );
+        }
+    });
+}
+
+/**
  * Invoke ProvideOffer/SolicitOffer and track the resulting session in the local requestor.
  *
  * WebRtcTransportRequestorServer rejects Answer/ICECandidates with NotFound for a session it never
@@ -207,18 +243,7 @@ export async function establishWebRtcProviderSession(
                 nodeId,
             )}: request lacks a stream usage or any video/audio stream, so signaling cannot be routed for it`,
         );
-        try {
-            await io.invoke("endSession", {
-                webRtcSessionId,
-                reason: WebRtcTransportDefinitions.WebRtcEndReason.OutOfResources,
-            });
-        } catch (err) {
-            logger.warn(
-                `EndSession cleanup for untrackable WebRTC session id=${webRtcSessionId} failed: ${
-                    err instanceof Error ? err.message : String(err)
-                }`,
-            );
-        }
+        await endSessionWithinBudget(io, webRtcSessionId, "untrackable");
         throw ServerError.sdkStackError(
             `${commandName} for node ${formatNode(nodeId)} produced a session with no stream usage or ` +
                 `video/audio stream; deferred/auto-select streaming is not supported`,
@@ -249,18 +274,7 @@ export async function establishWebRtcProviderSession(
                 nodeId,
             )}: the local requestor did not take it, so signaling cannot be routed for it`,
         );
-        try {
-            await io.invoke("endSession", {
-                webRtcSessionId,
-                reason: WebRtcTransportDefinitions.WebRtcEndReason.OutOfResources,
-            });
-        } catch (err) {
-            logger.warn(
-                `EndSession cleanup for untracked WebRTC session id=${webRtcSessionId} failed: ${
-                    err instanceof Error ? err.message : String(err)
-                }`,
-            );
-        }
+        await endSessionWithinBudget(io, webRtcSessionId, "untracked");
         throw error;
     }
 

@@ -819,7 +819,7 @@ export interface APICommands {
         };
         response: CameraSnapshotResult;
     };
-    /** Force-deallocates a server-owned stream with no listeners, so the next request allocates fresh. */
+    /** Force-deallocates a stream with no listeners, whoever allocated it, so the next request allocates fresh. */
     camera_release_stream: {
         requestArgs: {
             node_id: number | bigint;
@@ -1214,7 +1214,7 @@ export const ICD_MULTI_ADMIN_ERROR_CODE = 100;
 
 /** OHF extension: no codec or resolution range both the camera and the caller can serve. */
 export const CAMERA_STREAM_INCOMPATIBLE_ERROR_CODE = 102;
-/** OHF extension: the camera has no encoder capacity left for the requested stream. */
+/** OHF extension: the camera refused the allocation for lack of capacity. */
 export const CAMERA_RESOURCE_EXHAUSTED_ERROR_CODE = 103;
 /** OHF extension: stream release refused because the device still references the stream. */
 export const CAMERA_STREAM_IN_USE_ERROR_CODE = 104;

@@ -141,7 +141,7 @@ class CameraStreamIncompatible(MatterError):
 
 
 class CameraResourceExhausted(MatterError):
-    """Raised when the camera has no encoder capacity left for the requested stream."""
+    """Raised when the camera refused the allocation for lack of capacity."""
 
     error_code = 103
 

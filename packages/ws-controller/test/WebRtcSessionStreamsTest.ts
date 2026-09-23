@@ -16,6 +16,7 @@ import {
 } from "../src/controller/webRtcSessionStreams.js";
 import type { WebRtcProviderSessionArgs, WebRtcProviderSessionIo } from "../src/controller/webRtcSessionStreams.js";
 import { ServerError, ServerErrorCode } from "../src/types/WebSocketMessageTypes.js";
+import { DEVICE_CLEANUP_BUDGET_MS } from "../src/util/deviceCleanupBudget.js";
 
 describe("resolveWebRtcSessionStreams", () => {
     it("uses the requested rev-2 list verbatim", () => {
@@ -359,6 +360,68 @@ describe("establishWebRtcProviderSession", () => {
         expect(invokedCommands).to.deep.equal(["provideOffer", "endSession"]);
         expect((thrown as ServerError).code).to.equal(ServerErrorCode.SDKStackError);
         expect((thrown as ServerError).message).to.include("produced a session with no stream usage");
+    });
+
+    it("gives up on an EndSession the provider never answers and still reports the untrackable session", async () => {
+        MockTime.reset();
+        try {
+            let entered = (): void => {};
+            const endSessionEntered = new Promise<void>(resolve => {
+                entered = resolve;
+            });
+            const io: WebRtcProviderSessionIo = {
+                invoke: async command => {
+                    if (command !== "endSession") return { webRtcSessionId: 9 };
+                    entered();
+                    return new Promise<never>(() => {});
+                },
+                upsertSession: async () => {},
+            };
+
+            const establishing = establishWebRtcProviderSession(io, baseArgs({ fields: {} })).then(
+                () => undefined,
+                (error: unknown) => error,
+            );
+            await endSessionEntered;
+            await MockTime.advance(DEVICE_CLEANUP_BUDGET_MS);
+
+            const thrown = await establishing;
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.SDKStackError);
+            expect((thrown as ServerError).message).to.include("produced a session with no stream usage");
+        } finally {
+            MockTime.disable();
+        }
+    });
+
+    it("gives up on an EndSession the provider never answers when the requestor refuses the session", async () => {
+        MockTime.reset();
+        try {
+            let entered = (): void => {};
+            const endSessionEntered = new Promise<void>(resolve => {
+                entered = resolve;
+            });
+            const io: WebRtcProviderSessionIo = {
+                invoke: async command => {
+                    if (command !== "endSession") return { webRtcSessionId: 9 };
+                    entered();
+                    return new Promise<never>(() => {});
+                },
+                upsertSession: async () => {
+                    throw new Error("requestor endpoint is gone");
+                },
+            };
+
+            const establishing = establishWebRtcProviderSession(io, baseArgs()).then(
+                () => undefined,
+                (error: unknown) => error,
+            );
+            await endSessionEntered;
+            await MockTime.advance(DEVICE_CLEANUP_BUDGET_MS);
+
+            expect(((await establishing) as Error).message).to.equal("requestor endpoint is gone");
+        } finally {
+            MockTime.disable();
+        }
     });
 });
 

@@ -11,7 +11,6 @@ import { Status, StatusResponseError } from "@matter/main/types";
 import type { CameraDeviceIo, CameraState } from "../src/camera/CameraStreamManager.js";
 import {
     CameraStreamManager,
-    DEVICE_CLEANUP_BUDGET_MS,
     preferredVideoCodec,
     UNREPORTED_LEASE_GRACE_MS,
 } from "../src/camera/CameraStreamManager.js";
@@ -20,6 +19,7 @@ import { deviceStatusOf } from "../src/camera/deviceStatus.js";
 import { videoCodecLimits } from "../src/camera/sdpConstraints.js";
 import type { SdpVideoConstraints } from "../src/camera/sdpConstraints.js";
 import { ServerError, ServerErrorCode } from "../src/types/WebSocketMessageTypes.js";
+import { DEVICE_CLEANUP_BUDGET_MS } from "../src/util/deviceCleanupBudget.js";
 
 /** ResolvedStream.envelope is a union; a result from resolveVideoStream is always the video shape. */
 function requireVideoEnvelope(envelope: VideoEnvelope | AudioEnvelope): VideoEnvelope {
@@ -1204,7 +1204,36 @@ describe("CameraStreamManager", () => {
         });
 
         it("fails typed when a caller that asked for audio meets a device that refuses to allocate", async () => {
-            const { manager } = managerWith(STATE, async () => {
+            const occupied = {
+                ...STATE,
+                allocatedVideoStreams: [
+                    {
+                        videoStreamId: 8,
+                        streamUsage: LIVE_VIEW,
+                        videoCodec: H265,
+                        minResolution: { width: 1920, height: 1080 },
+                        maxResolution: { width: 1920, height: 1080 },
+                        minFrameRate: 1,
+                        maxFrameRate: 30,
+                        minBitRate: 800000,
+                        maxBitRate: 4000000,
+                        referenceCount: 1,
+                    },
+                ],
+                allocatedAudioStreams: [
+                    {
+                        audioStreamId: 4,
+                        streamUsage: LIVE_VIEW,
+                        audioCodec: 0,
+                        channelCount: 1,
+                        sampleRate: 48000,
+                        bitRate: 64000,
+                        bitDepth: 16,
+                        referenceCount: 1,
+                    },
+                ],
+            };
+            const { manager } = managerWith(occupied, async () => {
                 throw statusError(Status.ResourceExhausted);
             });
             let thrown: unknown;
@@ -1219,6 +1248,14 @@ describe("CameraStreamManager", () => {
                 thrown = error;
             }
             expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraResourceExhausted);
+            // The two limits are camera attributes, not a claim about what ran out.
+            const detail: unknown = JSON.parse((thrown as ServerError).message);
+            expect(detail).to.deep.equal({
+                message: "Camera has no capacity for this stream",
+                allocated: [{ kind: "audio", stream_id: 4, reference_count: 1 }],
+                max_concurrent_encoders: STATE.maxConcurrentEncoders,
+                max_encoded_pixel_rate: STATE.maxEncodedPixelRate,
+            });
         });
 
         it("raises the device's own error when a caller that asked for audio meets a status the ladder does not know", async () => {

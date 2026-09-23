@@ -6,6 +6,7 @@
 
 import { AsyncObservable, Environment, MockStorageService, Observable } from "@matter/general";
 import { WebRtcTransportProvider } from "@matter/main/clusters/web-rtc-transport-provider";
+import { Status, StatusResponseError } from "@matter/main/types";
 import { ThreadCredentialsRegistry } from "@matter/thread-br-client";
 import { createServer } from "node:http";
 import WebSocket from "ws";
@@ -30,6 +31,7 @@ interface StubCameraStreams {
 
 /** The command-handler behaviour a test needs to vary; everything else is fixed in the stub. */
 interface StubCommandHandlerOverrides {
+    handleInvoke?(): Promise<unknown>;
     removeTrackedWebRtcSession?(webRtcSessionId: number, nodeId: bigint, endpointId: number): Promise<void>;
     sendWebRtcProviderCommand?(args: { commandName: string }): Promise<unknown>;
 }
@@ -94,9 +96,11 @@ function makeStubController(
 
     const stubCommandHandler = {
         events: stubEvents,
-        async handleInvoke() {
-            return {};
-        },
+        handleInvoke:
+            commandHandler?.handleInvoke ??
+            (async () => {
+                return {};
+            }),
         removeTrackedWebRtcSession: commandHandler?.removeTrackedWebRtcSession ?? (async () => {}),
         sendWebRtcProviderCommand:
             commandHandler?.sendWebRtcProviderCommand ??
@@ -786,7 +790,7 @@ describe("WebSocket set_default_fabric_label ownership", () => {
 
 describe("WebSocket camera session tracking on the raw path", () => {
     /** Records every local record drop the raw EndSession path makes, in the order it makes them. */
-    function recordingHarness(trackingFails?: boolean): {
+    function recordingHarness(options: { trackingFails?: boolean; invoke?: () => Promise<unknown> } = {}): {
         drops: string[];
         targets: Array<{ nodeId: bigint; endpointId: number; webRtcSessionId: number }>;
         harness: Promise<TestHarness>;
@@ -803,10 +807,11 @@ describe("WebSocket camera session tracking on the raw path", () => {
                 },
             },
             {
+                handleInvoke: options.invoke,
                 async removeTrackedWebRtcSession(webRtcSessionId, nodeId, endpointId) {
                     drops.push("tracking");
                     targets.push({ nodeId, endpointId, webRtcSessionId });
-                    if (trackingFails === true) throw new Error("requestor endpoint gone");
+                    if (options.trackingFails === true) throw new Error("requestor endpoint gone");
                 },
             },
         );
@@ -839,12 +844,54 @@ describe("WebSocket camera session tracking on the raw path", () => {
     });
 
     it("drops the camera registry entry, and still answers, when the requestor tracking cannot be reached", async () => {
-        const { drops, harness } = recordingHarness(true);
+        const { drops, harness } = recordingHarness({ trackingFails: true });
         const h = await harness;
         try {
             const result = await endSessionOnRawPath(h, { webRtcSessionId: 7 });
             expect(drops).to.deep.equal(["registry", "tracking"]);
             expect(result).to.equal(null);
+        } finally {
+            await h.close();
+        }
+    });
+
+    it("drops both local records when the device answers NotFound, and reports the device's error", async () => {
+        const { drops, harness } = recordingHarness({
+            invoke: async () => {
+                throw new StatusResponseError("no such session", Status.NotFound);
+            },
+        });
+        const h = await harness;
+        try {
+            let thrown: unknown;
+            try {
+                await endSessionOnRawPath(h, { webRtcSessionId: 7 });
+            } catch (error) {
+                thrown = error;
+            }
+            expect(drops).to.deep.equal(["registry", "tracking"]);
+            expect(thrown).to.not.equal(undefined);
+        } finally {
+            await h.close();
+        }
+    });
+
+    it("keeps both local records when the EndSession fails for any other reason", async () => {
+        const { drops, harness } = recordingHarness({
+            invoke: async () => {
+                throw new StatusResponseError("busy", Status.Busy);
+            },
+        });
+        const h = await harness;
+        try {
+            let thrown: unknown;
+            try {
+                await endSessionOnRawPath(h, { webRtcSessionId: 7 });
+            } catch (error) {
+                thrown = error;
+            }
+            expect(drops).to.deep.equal([]);
+            expect(thrown).to.not.equal(undefined);
         } finally {
             await h.close();
         }

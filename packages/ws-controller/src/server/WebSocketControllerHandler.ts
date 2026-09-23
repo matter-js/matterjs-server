@@ -37,7 +37,7 @@ import { ControllerCommandHandler } from "../controller/ControllerCommandHandler
 import { MatterController, registerThreadCredentialsFromHex } from "../controller/MatterController.js";
 import type { TopologyNodeSource } from "../controller/NetworkTopologyService.js";
 import { TestNodeCommandHandler } from "../controller/TestNodeCommandHandler.js";
-import { dropWebRtcSessionTracking } from "../controller/webRtcSessionTracking.js";
+import { dropWebRtcSessionTracking, invokeEndSession } from "../controller/webRtcSessionTracking.js";
 import { VendorIds } from "../data/VendorIDs.js";
 import { ClusterMap, ClusterMapEntry } from "../model/ModelMapper.js";
 import { CommissioningRequest } from "../types/CommandHandler.js";
@@ -1265,54 +1265,58 @@ export class WebSocketControllerHandler implements WebServerHandler {
         } = args;
 
         const camelizedCommand = camelize(commandName);
-        const result = await this.#handlerFor(nodeId).handleInvoke({
-            nodeId: NodeId(nodeId),
-            endpointId: EndpointNumber(endpointId),
-            clusterId: ClusterId(clusterId),
-            commandName: camelizedCommand,
-            data: payload,
-            timedInteractionTimeoutMs:
-                typeof timedInteractionTimeoutMs === "number" ? Millis(timedInteractionTimeoutMs) : undefined,
-        });
+        const invoke = (): Promise<unknown> =>
+            this.#handlerFor(nodeId).handleInvoke({
+                nodeId: NodeId(nodeId),
+                endpointId: EndpointNumber(endpointId),
+                clusterId: ClusterId(clusterId),
+                commandName: camelizedCommand,
+                data: payload,
+                timedInteractionTimeoutMs:
+                    typeof timedInteractionTimeoutMs === "number" ? Millis(timedInteractionTimeoutMs) : undefined,
+            });
+
+        const endsWebRtcSession =
+            clusterId === WebRtcTransportProvider.id &&
+            camelizedCommand === "endSession" &&
+            !TestNodeCommandHandler.isTestNodeId(nodeId);
+        const sessionId = endsWebRtcSession ? extractWebRtcSessionId(payload) : undefined;
+        if (endsWebRtcSession && sessionId === undefined) {
+            logger.debug(
+                "EndSession invoked without a recognizable webRtcSessionId; local session tracking left unchanged",
+            );
+        }
+        const result =
+            sessionId === undefined
+                ? await invoke()
+                : await invokeEndSession(invoke, () =>
+                      this.#dropWebRtcSessionRecords(NodeId(nodeId), EndpointNumber(endpointId), sessionId),
+                  );
 
         // Test nodes return null
         if (TestNodeCommandHandler.isTestNodeId(nodeId)) {
             return null;
         }
 
-        // The invoke above succeeded (it throws otherwise). A client-initiated EndSession on the
-        // provider ends the session on the device; drop our local tracking of it too, since the peer
-        // won't send us an End for a session we ended ourselves.
-        if (clusterId === WebRtcTransportProvider.id && camelizedCommand === "endSession") {
-            const sessionId = extractWebRtcSessionId(payload);
-            if (sessionId !== undefined) {
-                // Neither drop stops the other: an entry left naming this session outlives the session
-                // itself, and shutdown would send a second EndSession for a dead id. The client is not
-                // told when the requestor tracking drop fails — the EndSession it asked for already
-                // succeeded on the device, and an error here would invite a retry the device can only
-                // answer NotFound.
-                this.#controller.cameraStreamsIfCreated?.forgetSession(
-                    NodeId(nodeId),
-                    EndpointNumber(endpointId),
-                    sessionId,
-                );
-                await dropWebRtcSessionTracking(
-                    this.#commandHandler,
-                    sessionId,
-                    NodeId(nodeId),
-                    EndpointNumber(endpointId),
-                );
-            } else {
-                logger.debug(
-                    "EndSession invoked without a recognizable webRtcSessionId; local session tracking left unchanged",
-                );
-            }
-        }
         const cmdResult = this.#convertCommandDataToWebSocket(ClusterId(clusterId), commandName, result);
         if (cmdResult === undefined) {
             return null;
         }
         return cmdResult;
+    }
+
+    /**
+     * Forget a WebRTC session the device is not holding, in both places this server records it.
+     *
+     * Both must go: either one left behind outlives the session and makes a later pass send
+     * `EndSession` for a dead id. Neither can stop the other, and neither reaches the client —
+     * `forgetSession` is a map delete and `dropWebRtcSessionTracking` never rejects — which is the
+     * contract {@link invokeEndSession} needs, since a rejection here would replace the device's own
+     * answer with a bookkeeping error and invite a retry it can only answer `NotFound`.
+     */
+    async #dropWebRtcSessionRecords(nodeId: NodeId, endpointId: EndpointNumber, sessionId: number): Promise<void> {
+        this.#controller.cameraStreamsIfCreated?.forgetSession(nodeId, endpointId, sessionId);
+        await dropWebRtcSessionTracking(this.#commandHandler, sessionId, nodeId, endpointId);
     }
 
     async #handleSendWebRtcProviderCommand(
