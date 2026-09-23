@@ -5,7 +5,12 @@
  */
 
 import type { SnapshotCapability, SnapshotSelection } from "../src/camera/snapshotPolicy.js";
-import { encodersExhausted, selectSnapshotCapabilities, usesHardwareEncoder } from "../src/camera/snapshotPolicy.js";
+import {
+    encodersExhausted,
+    findAdoptableSnapshotStream,
+    selectSnapshotCapabilities,
+    usesHardwareEncoder,
+} from "../src/camera/snapshotPolicy.js";
 
 /** The ordered candidates, failing the test when the selection was unsatisfiable instead. */
 function chosen(selection: SnapshotSelection): SnapshotCapability[] {
@@ -210,6 +215,54 @@ describe("snapshotPolicy", () => {
                 capabilities: [],
                 bestWithFreeEncoder: undefined,
             });
+        });
+    });
+
+    describe("findAdoptableSnapshotStream", () => {
+        const best = G350[1];
+        const stream = (snapshotStreamId: number, width: number, height: number, imageCodec = 0) => ({
+            snapshotStreamId,
+            imageCodec,
+            minResolution: { width, height },
+            maxResolution: { width, height },
+            referenceCount: 0,
+        });
+
+        it("adopts a stream whose whole range covers the capability that would be allocated", () => {
+            expect(findAdoptableSnapshotStream([stream(8, 1920, 1080)], best, {})?.snapshotStreamId).to.equal(8);
+        });
+
+        it("refuses a stream smaller than that capability, since adoption may not cost picture size", () => {
+            expect(findAdoptableSnapshotStream([stream(8, 640, 480)], best, {})).to.equal(undefined);
+        });
+
+        it("refuses a stream whose floor is below the capability, however high its ceiling is", () => {
+            // §11.2.8.13.3 lets the camera answer with any size in the stream's range, so the ceiling
+            // states what the frame may be rather than what it will be.
+            const ranged = { ...stream(8, 1920, 1080), minResolution: { width: 640, height: 480 } };
+            expect(findAdoptableSnapshotStream([ranged], best, {})).to.equal(undefined);
+        });
+
+        it("refuses a stream that outnumbers the capability in pixels but is shorter", () => {
+            // 3000x700 is 2.10 Mpx against 1920x1080's 2.07, and 380 rows short of it.
+            expect(findAdoptableSnapshotStream([stream(8, 3000, 700)], best, {})).to.equal(undefined);
+        });
+
+        it("refuses a stream in a codec the caller did not ask for", () => {
+            expect(findAdoptableSnapshotStream([stream(8, 1920, 1080, 1)], best, { codec: 0 })).to.equal(undefined);
+        });
+
+        it("refuses a stream above the ceiling the caller stated", () => {
+            expect(
+                findAdoptableSnapshotStream([stream(8, 1920, 1080)], best, {
+                    maxResolution: { width: 1280, height: 720 },
+                }),
+            ).to.equal(undefined);
+        });
+
+        it("takes the largest of several candidates", () => {
+            const candidates = [stream(8, 1920, 1080), stream(9, 2560, 1440)];
+            expect(findAdoptableSnapshotStream(candidates, best, {})?.snapshotStreamId).to.equal(9);
         });
     });
 });

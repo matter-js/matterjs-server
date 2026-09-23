@@ -152,12 +152,6 @@ class CameraStreamInUse(MatterError):
     error_code = 104
 
 
-class CameraStreamNotOwned(MatterError):
-    """Raised when stream release is refused because the server did not allocate the stream."""
-
-    error_code = 105
-
-
 class CameraNotSupported(MatterError):
     """Raised when an endpoint does not expose the clusters camera streaming needs."""
 

@@ -325,6 +325,72 @@ describe("cameraCommands", () => {
             }
         });
 
+        it("rejects a value past the wire width of the field it becomes", () => {
+            // A positive safe integer is not enough: the cluster gives each of these a uint8, uint16
+            // or uint32, and a value past that reaches matter.js's TLV encoder, whose error names the
+            // encoder rather than the argument the client sent.
+            expectInvalidArguments(() =>
+                parseStartStreamArgs({
+                    node_id: 5,
+                    endpoint_id: 1,
+                    stream_usage: "LiveView",
+                    video: { max_resolution: { width: 100000, height: 480 } },
+                }),
+            );
+            expectInvalidArguments(() =>
+                parseStartStreamArgs({
+                    node_id: 5,
+                    endpoint_id: 1,
+                    stream_usage: "LiveView",
+                    video: { max_frame_rate: 65536 },
+                }),
+            );
+            expectInvalidArguments(() =>
+                parseStartStreamArgs({
+                    node_id: 5,
+                    endpoint_id: 1,
+                    stream_usage: "LiveView",
+                    video: { max_bit_rate: 4294967296 },
+                }),
+            );
+            expectInvalidArguments(() =>
+                parseStartStreamArgs({
+                    node_id: 5,
+                    endpoint_id: 1,
+                    stream_usage: "LiveView",
+                    audio: { bit_rate: 4294967296 },
+                }),
+            );
+        });
+
+        it("rejects a channel count above the eight the cluster allows, not merely a non-positive one", () => {
+            // ChannelCount is "1 to 8" (§11.2.8.1), a constraint narrower than its uint8 width.
+            expectInvalidArguments(() =>
+                parseStartStreamArgs({
+                    node_id: 5,
+                    endpoint_id: 1,
+                    stream_usage: "LiveView",
+                    audio: { channel_count: 9 },
+                }),
+            );
+        });
+
+        it("accepts the largest value each field can carry", () => {
+            const args = parseStartStreamArgs({
+                node_id: 5,
+                endpoint_id: 1,
+                stream_usage: "LiveView",
+                video: {
+                    max_resolution: { width: 65535, height: 65535 },
+                    max_frame_rate: 65535,
+                    max_bit_rate: 4294967295,
+                },
+                audio: { channel_count: 8, sample_rate: 4294967295 },
+            });
+            expect(args.video === false ? undefined : args.video?.maxFrameRate).to.equal(65535);
+            expect(args.audio === false ? undefined : args.audio?.channelCount).to.equal(8);
+        });
+
         it("rejects a video codecs hint that is not an array of strings", () => {
             expectInvalidArguments(() =>
                 parseStartStreamArgs({

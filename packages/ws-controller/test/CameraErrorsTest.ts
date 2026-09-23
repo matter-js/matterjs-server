@@ -71,12 +71,6 @@ describe("camera server errors", () => {
         });
     });
 
-    it("names the stream when release targets a stream the server does not own", () => {
-        const error = ServerError.cameraStreamNotOwned({ streamId: 7 });
-        expect(error.code).to.equal(ServerErrorCode.CameraStreamNotOwned);
-        expect(JSON.parse(error.message).stream_id).to.equal(7);
-    });
-
     it("names the clusters an endpoint is missing", () => {
         const error = ServerError.cameraNotSupported({ missingClusters: [0x551] });
         expect(error.code).to.equal(ServerErrorCode.CameraNotSupported);

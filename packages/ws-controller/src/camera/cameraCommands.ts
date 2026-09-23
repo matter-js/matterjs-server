@@ -17,6 +17,8 @@ import type {
 import { Bytes, EndpointNumber, NodeId } from "@matter/main";
 import { StreamUsage } from "@matter/main/types";
 import { ServerError } from "../types/WebSocketMessageTypes.js";
+import { CAMERA_FIELD_RANGES } from "./cameraFieldRanges.js";
+import type { FieldRange } from "./cameraFieldRanges.js";
 import type { CameraCapabilities, SnapshotResult, StartStreamResult } from "./CameraStreamManager.js";
 import type { AudioEnvelope, Resolution, ResolvedStream, StreamKind, VideoEnvelope } from "./cameraTypes.js";
 import type { AudioHints, VideoHints } from "./streamPolicy.js";
@@ -35,21 +37,29 @@ function isStreamKind(value: string): value is StreamKind {
 }
 
 /**
- * Every field this gates is a positive integer on the wire (Matter uint8/uint16/uint32, each with a
- * "min 1" constraint): resolution width/height, frame rate, bit rate, channel count, sample rate.
- * @see Matter spec § 11.2.8, the AVStreamManagement cluster's Allocate command fields
+ * Whether `value` is an integer inside the range the Matter field it becomes accepts.
+ *
+ * The range comes from the cluster's element definition, not from "is it positive": a value past a
+ * field's wire width reaches matter.js's TLV encoder and fails there, with an error that names the
+ * encoder rather than the argument the client sent.
  */
-function isPositiveSafeInteger(value: unknown): value is number {
-    return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+function isInRange(value: unknown, range: FieldRange): value is number {
+    return typeof value === "number" && Number.isSafeInteger(value) && value >= range.min && value <= range.max;
+}
+
+function rangeText(range: FieldRange): string {
+    return `an integer between ${range.min} and ${range.max}`;
 }
 
 function toResolution(value: unknown, field: string): Resolution {
+    const { resolutionWidth, resolutionHeight } = CAMERA_FIELD_RANGES;
+    const expected = `${field} must be an object whose width is ${rangeText(resolutionWidth)} and whose height is ${rangeText(resolutionHeight)}`;
     if (typeof value !== "object" || value === null || !("width" in value) || !("height" in value)) {
-        throw ServerError.invalidArguments(`${field} must be an object with positive integer width and height`);
+        throw ServerError.invalidArguments(expected);
     }
     const { width, height } = value;
-    if (!isPositiveSafeInteger(width) || !isPositiveSafeInteger(height)) {
-        throw ServerError.invalidArguments(`${field} must be an object with positive integer width and height`);
+    if (!isInRange(width, resolutionWidth) || !isInRange(height, resolutionHeight)) {
+        throw ServerError.invalidArguments(expected);
     }
     return { width, height };
 }
@@ -60,9 +70,9 @@ function toOptionalString(value: unknown, field: string): string | undefined {
     return value;
 }
 
-function toOptionalNumber(value: unknown, field: string): number | undefined {
+function toOptionalNumber(value: unknown, field: string, range: FieldRange): number | undefined {
     if (value === undefined) return undefined;
-    if (!isPositiveSafeInteger(value)) throw ServerError.invalidArguments(`${field} must be a positive integer`);
+    if (!isInRange(value, range)) throw ServerError.invalidArguments(`${field} must be ${rangeText(range)}`);
     return value;
 }
 
@@ -193,10 +203,18 @@ function parseVideoHints(value: unknown): VideoHints {
     }
     rejectUnknownKeys(value, VIDEO_HINT_KEYS, "video hint");
     const codecs = toOptionalCodecNames(value.codecs, "video.codecs");
-    const minFrameRate = toOptionalNumber(value.min_frame_rate, "video.min_frame_rate");
-    const maxFrameRate = toOptionalNumber(value.max_frame_rate, "video.max_frame_rate");
-    const minBitRate = toOptionalNumber(value.min_bit_rate, "video.min_bit_rate");
-    const maxBitRate = toOptionalNumber(value.max_bit_rate, "video.max_bit_rate");
+    const minFrameRate = toOptionalNumber(
+        value.min_frame_rate,
+        "video.min_frame_rate",
+        CAMERA_FIELD_RANGES.minFrameRate,
+    );
+    const maxFrameRate = toOptionalNumber(
+        value.max_frame_rate,
+        "video.max_frame_rate",
+        CAMERA_FIELD_RANGES.maxFrameRate,
+    );
+    const minBitRate = toOptionalNumber(value.min_bit_rate, "video.min_bit_rate", CAMERA_FIELD_RANGES.minBitRate);
+    const maxBitRate = toOptionalNumber(value.max_bit_rate, "video.max_bit_rate", CAMERA_FIELD_RANGES.maxBitRate);
     return {
         ...(codecs === undefined ? {} : { codecs }),
         ...(value.min_resolution === undefined
@@ -218,9 +236,9 @@ function parseAudioHints(value: unknown): AudioHints {
     }
     rejectUnknownKeys(value, AUDIO_HINT_KEYS, "audio hint");
     const codecs = toOptionalCodecNames(value.codecs, "audio.codecs");
-    const channelCount = toOptionalNumber(value.channel_count, "audio.channel_count");
-    const sampleRate = toOptionalNumber(value.sample_rate, "audio.sample_rate");
-    const bitRate = toOptionalNumber(value.bit_rate, "audio.bit_rate");
+    const channelCount = toOptionalNumber(value.channel_count, "audio.channel_count", CAMERA_FIELD_RANGES.channelCount);
+    const sampleRate = toOptionalNumber(value.sample_rate, "audio.sample_rate", CAMERA_FIELD_RANGES.sampleRate);
+    const bitRate = toOptionalNumber(value.bit_rate, "audio.bit_rate", CAMERA_FIELD_RANGES.audioBitRate);
     return {
         ...(codecs === undefined ? {} : { codecs }),
         ...(channelCount === undefined ? {} : { channelCount }),

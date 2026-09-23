@@ -71,10 +71,12 @@ export interface AllocatedSnapshotStream {
 interface LeaseSubject {
     streamId: number;
     /**
-     * False for a stream found already allocated: reusable, never released by us.
+     * Whether this server allocated the stream during this process run.
      *
-     * Such a stream is leased anyway, so the reuse decision sees every stream this server has handed
-     * out rather than only the ones it allocated.
+     * It answers one question — may this server deallocate the stream on its own initiative — and
+     * never "may this server use it", which is decided by inspecting what the device reports. It is
+     * therefore not persisted: after a restart the device's own report is the record, and nothing
+     * this server allocated before the restart is its to give back unasked.
      */
     allocatedByUs: boolean;
 }
@@ -82,24 +84,15 @@ interface LeaseSubject {
 /**
  * What this server states about one stream it has handed out.
  *
- * A snapshot lease carries no allocation: snapshots have no reuse rung, and the lease normally lives
- * only for the rest of the `camera_snapshot` that allocated the stream. It outlives that call exactly
- * when the device refused to take the stream back, which is the case `camera_release_stream` exists
- * to reach.
+ * A snapshot lease carries no allocation: an adopted snapshot stream is found in device state on
+ * every call that wants it, so there is nothing for the lease to stand in for.
  */
 export type LeaseStatement =
     | (LeaseSubject & { kind: "video"; allocation: AllocatedVideoStream })
     | (LeaseSubject & { kind: "audio"; allocation: AllocatedAudioStream })
     | (LeaseSubject & { kind: "snapshot" });
 
-/**
- * A {@link LeaseStatement} plus the facts reconciliation needs.
- *
- * The lease answers two questions with different lifetimes, and each has its own deadline. "May this
- * stream stand in for a device report?" expires quickly — see {@link shadowUntil}. "Is this stream
- * ours to release?" outlives it by a long way — see {@link retainUntil} — because a lease dropped
- * early leaves a stream nothing can deallocate.
- */
+/** A {@link LeaseStatement} plus the facts reconciliation needs. */
 export type StreamLease = LeaseStatement & {
     /**
      * `Time.nowUs` (millisecond-valued) until which this lease may stand in for a device report.
@@ -108,17 +101,6 @@ export type StreamLease = LeaseStatement & {
      * not evidence that it still exists. 0 for a stream this server did not allocate.
      */
     shadowUntil: number;
-    /**
-     * `Time.nowUs` (millisecond-valued) until which this lease survives although no device state
-     * read has ever named its stream.
-     *
-     * Set once, alongside {@link shadowUntil}, and never extended. Past it a stream the device has
-     * had minutes to report and never did is treated as gone: keeping the lease forever grows the
-     * per-endpoint array without bound, and lets the lease re-attach to a foreign stream once the
-     * device reissues the id. 0 for a stream this server did not allocate, which is reported by
-     * definition.
-     */
-    retainUntil: number;
     /**
      * True once a device state read has named this stream.
      *

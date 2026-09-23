@@ -189,7 +189,6 @@ function errorPayloads(): unknown[] {
             maxEncodedPixelRate: 248832000,
         }),
         ServerError.cameraStreamInUse({ streamId: 1, referenceCount: 1 }),
-        ServerError.cameraStreamNotOwned({ streamId: 1 }),
         ServerError.cameraNotSupported({ missingClusters: [1362] }),
     ].map(error => JSON.parse(error.message));
 }

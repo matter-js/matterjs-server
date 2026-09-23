@@ -94,8 +94,6 @@ export enum ServerErrorCode {
     CameraResourceExhausted = 103,
     /** OHF extension: stream release refused because the device still references the stream. */
     CameraStreamInUse = 104,
-    /** OHF extension: stream release refused because the server did not allocate the stream. */
-    CameraStreamNotOwned = 105,
     /** OHF extension: endpoint does not expose the clusters camera streaming needs. */
     CameraNotSupported = 106,
 }
@@ -271,16 +269,6 @@ export class ServerError extends Error {
                 message: "Stream is in use and cannot be released",
                 stream_id: detail.streamId,
                 reference_count: detail.referenceCount,
-            }),
-        );
-    }
-
-    static cameraStreamNotOwned(detail: { streamId: number }): ServerError {
-        return new ServerError(
-            ServerErrorCode.CameraStreamNotOwned,
-            JSON.stringify({
-                message: "Stream was not allocated by this server and cannot be released",
-                stream_id: detail.streamId,
             }),
         );
     }

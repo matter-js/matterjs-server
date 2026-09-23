@@ -1218,8 +1218,6 @@ export const CAMERA_STREAM_INCOMPATIBLE_ERROR_CODE = 102;
 export const CAMERA_RESOURCE_EXHAUSTED_ERROR_CODE = 103;
 /** OHF extension: stream release refused because the device still references the stream. */
 export const CAMERA_STREAM_IN_USE_ERROR_CODE = 104;
-/** OHF extension: stream release refused because the server did not allocate the stream. */
-export const CAMERA_STREAM_NOT_OWNED_ERROR_CODE = 105;
 /** OHF extension: endpoint does not expose the clusters camera streaming needs. */
 export const CAMERA_NOT_SUPPORTED_ERROR_CODE = 106;
 

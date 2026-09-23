@@ -28,9 +28,16 @@ import { offeredCodecs, parseSdpVideoConstraints, videoCodecLimits } from "./sdp
 import type { SdpVideoConstraints, SelectedVideoCodecLimits } from "./sdpConstraints.js";
 import { CameraSessionRegistry } from "./sessionRegistry.js";
 import type { PendingSession, SessionScope } from "./sessionRegistry.js";
-import { encodersExhausted, isDowngradeFrom, selectSnapshotCapabilities } from "./snapshotPolicy.js";
+import {
+    encodersExhausted,
+    findAdoptableSnapshotStream,
+    isDowngradeFrom,
+    selectSnapshotCapabilities,
+    usesHardwareEncoder,
+} from "./snapshotPolicy.js";
 import type { SnapshotCapability } from "./snapshotPolicy.js";
 import {
+    chooseEvictionVictim,
     computeAudioEnvelope,
     computeVideoEnvelope,
     findDegradedVideoStream,
@@ -42,7 +49,7 @@ import {
     videoCallerBounds,
 } from "./streamPolicy.js";
 import type { AudioCallerBounds, AudioHints, RateDistortionPoint, TrackRequest, VideoHints } from "./streamPolicy.js";
-import { audioCodecName, imageCodecName, knownVideoCodecs, videoCodecName } from "./wireNames.js";
+import { audioCodecName, imageCodecName, knownVideoCodecs, streamUsageName, videoCodecName } from "./wireNames.js";
 
 const logger = Logger.get("CameraStreamManager");
 
@@ -209,19 +216,6 @@ function isResolution(value: unknown): value is Resolution {
  * report arriving, which is the window a second request would otherwise allocate a twin in.
  */
 export const UNREPORTED_LEASE_GRACE_MS = 10000;
-
-/**
- * How long a stream this server allocated stays its own to release while the device names no such
- * stream.
- *
- * `stateOf` is a cached, subscription-backed view, so an early read says nothing and a lease must
- * outlive it. A device that has not named the stream after this long is not slow: either the stream
- * is gone, or this endpoint never reports allocations at all. Keeping the lease past that point grows
- * the per-endpoint array for as long as the server runs, and lets the lease re-attach to a foreign
- * stream once the device reissues the id — `camera_release_stream` would then deallocate a stream
- * this server does not own.
- */
-export const UNREPORTED_LEASE_RETENTION_MS = 300000;
 
 /**
  * How long one request's give-backs, or one release pass, may wait on the device in total.
@@ -473,6 +467,17 @@ export interface StartStreamResult {
     audio?: ResolvedStream;
 }
 
+/** What one `CaptureSnapshot` needs, including the facts its failure is reported with. */
+interface CaptureSnapshotArgs {
+    nodeId: NodeId;
+    endpointId: EndpointNumber;
+    state: CameraState;
+    snapshotStreamId: number;
+    requestedResolution: Resolution;
+    deviceCodecs: string[];
+    requestedCodecs: string[];
+}
+
 export interface SnapshotResult {
     data: Uint8Array;
     imageCodec: number;
@@ -569,7 +574,6 @@ export class CameraStreamManager {
         const lease: StreamLease = {
             ...statement,
             shadowUntil: now + UNREPORTED_LEASE_GRACE_MS,
-            retainUntil: now + UNREPORTED_LEASE_RETENTION_MS,
             reportedByDevice: false,
             generation: ++this.#nextLeaseGeneration,
         };
@@ -589,7 +593,6 @@ export class CameraStreamManager {
         this.#putLease(nodeId, endpointId, {
             ...statement,
             shadowUntil: previous?.shadowUntil ?? 0,
-            retainUntil: previous?.retainUntil ?? 0,
             reportedByDevice: previous?.reportedByDevice ?? true,
             generation: previous?.generation ?? ++this.#nextLeaseGeneration,
         });
@@ -601,16 +604,15 @@ export class CameraStreamManager {
      *
      * A stream the device has named and then stops naming is gone, so its lease goes with it. Before
      * the first such report absence says nothing, and dropping the lease there would leave a stream
-     * this server allocated with nothing recording that it may release it — until
-     * {@link UNREPORTED_LEASE_RETENTION_MS}, past which silence is the answer rather than the wait
-     * for one.
+     * this server allocated with nothing recording that it may give back unasked. A lease the device
+     * never names therefore lives for the process run: there is no later moment at which silence
+     * becomes an answer, and this server's own allocation is the whole of what ownership claims.
      */
     protected reconcileLeases(nodeId: NodeId, endpointId: EndpointNumber, state: CameraState): void {
         const key = this.endpointKey(nodeId, endpointId);
         const existing = this.#leases.get(key);
         if (existing === undefined) return;
 
-        const now = Time.nowUs;
         const kept = new Array<StreamLease>();
         for (const lease of existing) {
             if (deviceReportsStream(state, lease.kind, lease.streamId)) {
@@ -618,12 +620,6 @@ export class CameraStreamManager {
                 continue;
             }
             if (lease.reportedByDevice) continue;
-            if (now >= lease.retainUntil) {
-                logger.notice(
-                    `Giving up the lease on ${lease.kind} stream ${lease.streamId} of node ${nodeId}: the device has never reported it, so this server can no longer claim it`,
-                );
-                continue;
-            }
             kept.push(lease);
         }
         if (kept.length === 0) {
@@ -1011,6 +1007,7 @@ export class CameraStreamManager {
                         nodeId,
                         endpointId,
                         liveStreams,
+                        state.streamUsagePriorities,
                         scope,
                         envelope.keyFrameInterval,
                     );
@@ -1244,33 +1241,36 @@ export class CameraStreamManager {
      * nothing was freed. `streams` is a plain array and the caller's `CameraState` (which may be a
      * cached or subscription-backed snapshot) is never written to.
      *
-     * Server-owned streams go first; a foreign one is touched only when nothing of ours is free, and
-     * is logged, since the spec recommends commissioners pre-allocate (§15.2.1.1) and such a stream may
-     * be deliberate. Nothing referenced is ever passed here — the device would refuse it with
-     * INVALID_IN_STATE anyway.
+     * The victim is chosen by {@link chooseEvictionVictim} from the camera's own ranking, which is
+     * also what decides that a stream this server did not allocate may be taken: the cluster
+     * protects a stream by use and by Internal, not by who created it. A foreign stream is logged,
+     * since the spec recommends commissioners pre-allocate (§11.2.1.1) and such a stream may be
+     * deliberate.
      *
      * The freeing is registered with `scope` so a request that never uses the capacity it bought puts
      * an equivalent stream back rather than leaving the camera one stream poorer for nothing. The
      * caller reports the spending through `spend` once an allocate has consumed the capacity, and the
      * scope restores unless that request then also succeeded — a throw after the allocate, or a
-     * success reached by reusing a stream that was already there, both restore. The device issues a
-     * new id, so what comes back is the range and usage the freed stream stated, not the stream itself.
+     * success reached by reusing a stream that was already there, both restore. The replacement is a
+     * new stream under a new id, not the one that was taken: a controller holding the old id is not
+     * given it back by the restore, and the camera no longer knows that id at all.
      */
     protected async freeAnUnreferencedVideoStream(
         nodeId: NodeId,
         endpointId: EndpointNumber,
         streams: AllocatedVideoStream[],
+        priorities: number[],
         scope: AllocationScope,
         keyFrameInterval: number,
     ): Promise<{ streamId: number; spend: () => void } | undefined> {
-        const unreferenced = streams.filter(stream => stream.referenceCount === 0);
-        const ours = unreferenced.filter(stream => this.ownsStream(nodeId, endpointId, "video", stream.videoStreamId));
-        const victim = ours[0] ?? unreferenced[0];
+        const ours = (stream: AllocatedVideoStream): boolean =>
+            this.ownsStream(nodeId, endpointId, "video", stream.videoStreamId);
+        const victim = chooseEvictionVictim(streams, priorities, ours);
         if (victim === undefined) return undefined;
 
-        if (ours[0] === undefined) {
+        if (!ours(victim)) {
             logger.notice(
-                `Deallocating video stream ${victim.videoStreamId} on node ${nodeId}: it has no listeners and the camera has no capacity left, but this server did not allocate it`,
+                `Deallocating ${streamUsageName(victim.streamUsage)} video stream ${victim.videoStreamId} on node ${nodeId}: it has no listeners and the camera has no capacity left, but this server did not allocate it. The controller that did holds an id the camera will no longer know`,
             );
         }
         try {
@@ -1287,18 +1287,31 @@ export class CameraStreamManager {
         }
         this.dropLease(nodeId, endpointId, "video", victim.videoStreamId);
         const spend = scope.returnUnlessSpent(() =>
-            this.#restoreFreedVideoStream(nodeId, endpointId, victim, keyFrameInterval),
+            this.#restoreFreedVideoStream(nodeId, endpointId, victim, keyFrameInterval).catch(error => {
+                logger.warn(
+                    `Could not allocate a replacement for video stream ${victim.videoStreamId} on node ${nodeId}, which was deallocated to make room the request did not use; the camera is one stream poorer:`,
+                    error,
+                );
+            }),
         );
         return { streamId: victim.videoStreamId, spend };
     }
 
     /**
-     * Allocate a stream matching one the make-room rung freed, for a request that did not end up
-     * using the capacity that freeing bought.
+     * Allocate a stream with the parameters of one the make-room rung took, for a request that did
+     * not end up using the capacity that taking it bought.
      *
-     * The replacement is this server's to release, whoever allocated the original: this server
-     * allocated it, and a stream nothing records as releasable is the leak the lease map prevents. `keyFrameInterval` is not among the fields the device reports back, so the
-     * replacement carries the one the failed request was working with.
+     * This does not undo the eviction. The camera issues a new VideoStreamID, and a controller
+     * holding the old one holds an id the camera has forgotten; what is restored is the camera's
+     * capacity to serve a stream of that range and usage, not the stream that was taken. It is worth
+     * doing anyway: leaving the camera one stream poorer for a request that bought nothing costs
+     * every later allocation, on hardware where an encoder is the scarce resource, and the parameters
+     * are the only part of the original this server can put back.
+     *
+     * The replacement is this server's to give back, whoever allocated the original: this server
+     * allocated it, and a stream nothing records as releasable is the leak the lease map prevents.
+     * `keyFrameInterval` is not among the fields the device reports back, so the replacement carries
+     * the one the failed request was working with.
      */
     async #restoreFreedVideoStream(
         nodeId: NodeId,
@@ -1338,7 +1351,7 @@ export class CameraStreamManager {
             allocation: allocatedVideoStream(streamId, freed.streamUsage, envelope),
         });
         logger.notice(
-            `Allocated video stream ${streamId} on node ${nodeId} in place of stream ${freed.videoStreamId}, which was deallocated to make room that the request did not end up using`,
+            `Allocated video stream ${streamId} on node ${nodeId} with the parameters of stream ${freed.videoStreamId}, which was deallocated to make room that the request did not end up using. The old id is gone; a controller still holding it must allocate again`,
         );
     }
 
@@ -1662,16 +1675,25 @@ export class CameraStreamManager {
     }
 
     /**
-     * One still frame, from a snapshot stream that does not outlive this call.
+     * One still frame, captured from a snapshot stream the camera keeps.
      *
-     * A snapshot stream allocated from a capability that needs the hardware encoder holds that encoder
-     * for as long as the stream exists, so on `MaxConcurrentEncoders: 1` hardware a kept stream makes
-     * the next snapshot fail with `ResourceExhausted` and blocks video allocation. The stream is given
-     * back on every exit, success included, whatever capability it came from — a snapshot stream
-     * nobody asked to keep is not worth the branch. The result therefore names no stream: by the time
-     * the caller reads it, there is normally nothing left to name. The exception is a deallocate the
-     * device refused, and `camera_get_capabilities` is where that shows, as `owned_by_server` on the
-     * snapshot stream that is still there.
+     * The stream is adopted rather than allocated wherever the device already reports one the
+     * caller's bounds allow, whoever allocated it. Allocating per call is the churn §11.2.1.1 asks
+     * controllers to avoid, and every allocate competes for the encoders the livestream needs.
+     * Adoption remembers nothing between calls: the candidate is found in the device's own report
+     * each time, which is why a restart changes nothing about which stream this call reaches for. A
+     * stream this call allocates is still recorded as its own, which is what `owned_by_server`
+     * reports and all that record decides.
+     *
+     * A stream this call allocates is left in place for the next one, unless its capability needs
+     * the hardware encoder. Such a stream holds one of `MaxConcurrentEncoders` for as long as it
+     * exists, so keeping it would make the next snapshot on single-encoder hardware fail with
+     * `ResourceExhausted` and block video allocation; that one is given back on every exit, success
+     * included.
+     *
+     * The result names no stream: which stream served the frame is nothing the caller can act on,
+     * and `camera_get_capabilities` is where the allocations show, with `owned_by_server` on the
+     * ones this server allocated in this process run.
      */
     async snapshot(args: {
         nodeId: NodeId;
@@ -1706,7 +1728,8 @@ export class CameraStreamManager {
                 }
                 const candidates = selection.capabilities;
                 const bestWithFreeEncoder = selection.bestWithFreeEncoder;
-                if (candidates.length === 0) {
+                const best = candidates[0];
+                if (best === undefined) {
                     // Every narrowing step reports its own dimension above, so the list can only be empty
                     // when the camera advertises no snapshot capability at all. No bound the caller could
                     // change makes this request work.
@@ -1715,6 +1738,25 @@ export class CameraStreamManager {
                         device: deviceCodecs,
                         requested: requestedCodecs,
                     });
+                }
+
+                const adopted = findAdoptableSnapshotStream(state.allocatedSnapshotStreams, best, args);
+                if (adopted !== undefined) {
+                    const captured = await this.#captureAdoptedSnapshot({
+                        nodeId,
+                        endpointId,
+                        state,
+                        snapshotStreamId: adopted.snapshotStreamId,
+                        requestedResolution: adopted.maxResolution,
+                        deviceCodecs,
+                        requestedCodecs,
+                    });
+                    if (captured !== undefined) {
+                        return { ...captured, downgraded: isDowngradeFrom(captured.resolution, bestWithFreeEncoder) };
+                    }
+                    logger.info(
+                        `Node ${nodeId} no longer has snapshot stream ${adopted.snapshotStreamId} its reported state still lists; allocating one instead`,
+                    );
                 }
 
                 // Walking the candidates is the snapshot ladder: the device validates the request against
@@ -1766,58 +1808,100 @@ export class CameraStreamManager {
                     throw this.snapshotFailure(state, lastStatus, deviceCodecs, requestedCodecs);
                 }
                 const { capability, snapshotStreamId } = allocated;
-                // A deallocate the device refuses leaves this lease standing, which is the only record
-                // that `camera_release_stream` may still free the stream.
                 const lease = this.recordAllocation(nodeId, endpointId, {
                     kind: "snapshot",
                     streamId: snapshotStreamId,
                     allocatedByUs: true,
                 });
-                scope.returnAlways(() => this.#deallocate(nodeId, endpointId, lease));
-
-                let captured: { data: Uint8Array; imageCodec: number; resolution: Resolution };
-                try {
-                    const captureResponse = await this.io.invoke({
-                        nodeId,
-                        endpointId,
-                        cluster: "avsm",
-                        command: "captureSnapshot",
-                        fields: { snapshotStreamId, requestedResolution: capability.resolution },
-                    });
-                    if (
-                        typeof captureResponse !== "object" ||
-                        captureResponse === null ||
-                        !("data" in captureResponse) ||
-                        !("imageCodec" in captureResponse) ||
-                        !("resolution" in captureResponse) ||
-                        !(captureResponse.data instanceof Uint8Array) ||
-                        typeof captureResponse.imageCodec !== "number" ||
-                        !isResolution(captureResponse.resolution)
-                    ) {
-                        throw ServerError.sdkStackError("CaptureSnapshot returned an incomplete response");
-                    }
-                    captured = {
-                        data: captureResponse.data,
-                        imageCodec: captureResponse.imageCodec,
-                        resolution: captureResponse.resolution,
-                    };
-                } catch (error) {
-                    if (error instanceof ServerError) throw error;
-                    const status = deviceStatusOf(error);
-                    if (ladderReaction(status) === "rethrow") throw error;
-                    throw this.snapshotFailure(state, status, deviceCodecs, requestedCodecs);
+                if (usesHardwareEncoder(capability)) {
+                    scope.returnAlways(() => this.#deallocate(nodeId, endpointId, lease));
                 }
 
-                return {
-                    data: captured.data,
-                    imageCodec: captured.imageCodec,
-                    resolution: captured.resolution,
-                    downgraded: isDowngradeFrom(capability, bestWithFreeEncoder),
-                };
+                const captured = await this.#captureSnapshot({
+                    nodeId,
+                    endpointId,
+                    state,
+                    snapshotStreamId,
+                    requestedResolution: capability.resolution,
+                    deviceCodecs,
+                    requestedCodecs,
+                });
+                return { ...captured, downgraded: isDowngradeFrom(captured.resolution, bestWithFreeEncoder) };
             }),
         );
     }
 
+    /**
+     * {@link #captureSnapshot} against an adopted stream, or undefined when the device does not know
+     * that stream and the caller should allocate one.
+     *
+     * NOT_FOUND is what the device answers for an id that is not in `AllocatedSnapshotStreams`
+     * (§11.2.8.13.3), and device state is a cached, subscription-backed view: a stream it still
+     * lists may have been deallocated since, by another controller or by the give-back of a
+     * hardware-encoder stream an earlier call here allocated. The device's own answer is the only
+     * statement about that worth acting on, which is why adoption asks and falls back rather than
+     * trying to predict it from the leases.
+     */
+    async #captureAdoptedSnapshot(
+        args: CaptureSnapshotArgs,
+    ): Promise<{ data: Uint8Array; imageCodec: number; resolution: Resolution } | undefined> {
+        try {
+            return await this.#captureSnapshot(args);
+        } catch (error) {
+            if (deviceStatusOf(error) === Status.NotFound) return undefined;
+            throw error;
+        }
+    }
+
+    /** `CaptureSnapshot` against one allocated stream, with the snapshot path's own error mapping. */
+    async #captureSnapshot(
+        args: CaptureSnapshotArgs,
+    ): Promise<{ data: Uint8Array; imageCodec: number; resolution: Resolution }> {
+        const { nodeId, endpointId, snapshotStreamId } = args;
+        try {
+            const captureResponse = await this.io.invoke({
+                nodeId,
+                endpointId,
+                cluster: "avsm",
+                command: "captureSnapshot",
+                fields: { snapshotStreamId, requestedResolution: args.requestedResolution },
+            });
+            if (
+                typeof captureResponse !== "object" ||
+                captureResponse === null ||
+                !("data" in captureResponse) ||
+                !("imageCodec" in captureResponse) ||
+                !("resolution" in captureResponse) ||
+                !(captureResponse.data instanceof Uint8Array) ||
+                typeof captureResponse.imageCodec !== "number" ||
+                !isResolution(captureResponse.resolution)
+            ) {
+                throw ServerError.sdkStackError("CaptureSnapshot returned an incomplete response");
+            }
+            return {
+                data: captureResponse.data,
+                imageCodec: captureResponse.imageCodec,
+                resolution: captureResponse.resolution,
+            };
+        } catch (error) {
+            if (error instanceof ServerError) throw error;
+            const status = deviceStatusOf(error);
+            if (ladderReaction(status) === "rethrow") throw error;
+            throw this.snapshotFailure(args.state, status, args.deviceCodecs, args.requestedCodecs);
+        }
+    }
+
+    /**
+     * Deallocate one stream on the camera's terms.
+     *
+     * The cluster refuses a deallocate for exactly three reasons — an id it does not know, a
+     * `ReferenceCount` above 0, and StreamUsage Internal (§11.2.8.7.2, §11.2.8.3.2; the snapshot
+     * command has no Internal case, §11.2.8.10.2). It checks neither who allocated the stream nor
+     * which fabric asks, so this forwards and reports what the camera answers rather than adding a
+     * refusal of its own. The one check kept about the stream is the reference count, which names
+     * the count the camera reported and so says more than the device's bare INVALID_IN_STATE; a
+     * missing cluster still fails as `camera_not_supported` before any of this runs.
+     */
     async releaseStream(args: {
         nodeId: NodeId;
         endpointId: EndpointNumber;
@@ -1830,9 +1914,6 @@ export class CameraStreamManager {
             const referenceCount = referenceCountOf(state, kind, streamId);
             if (referenceCount > 0) {
                 throw ServerError.cameraStreamInUse({ streamId, referenceCount });
-            }
-            if (!this.ownsStream(nodeId, endpointId, kind, streamId)) {
-                throw ServerError.cameraStreamNotOwned({ streamId });
             }
             const { command, fields } = deallocateCall(kind, streamId);
             await this.io.invoke({ nodeId, endpointId, cluster: "avsm", command, fields });

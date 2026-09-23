@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type { AllocatedVideoStream, Resolution } from "./cameraTypes.js";
+import type { AllocatedSnapshotStream, AllocatedVideoStream, Resolution } from "./cameraTypes.js";
 
 /** SnapshotCapabilitiesStruct (§11.2.6.9) as `CameraAvStreamManagementClient` reports it. */
 export interface SnapshotCapability {
@@ -18,6 +18,11 @@ export interface SnapshotCapability {
 
 function pixels(resolution: Resolution): number {
     return resolution.width * resolution.height;
+}
+
+/** Whether `resolution` fits under `ceiling` on each dimension independently. */
+function fitsUnder(resolution: Resolution, ceiling: Resolution): boolean {
+    return resolution.width <= ceiling.width && resolution.height <= ceiling.height;
 }
 
 /**
@@ -43,12 +48,12 @@ export function usesHardwareEncoder(capability: SnapshotCapability): boolean {
  * taken as the last one.
  *
  * Only referenced video streams are counted, although an allocated snapshot stream from a
- * capability that requires the hardware encoder holds one too. `AllocatedSnapshotStreams` comes from
- * a cached view that lags a deallocate, so counting it would make two `camera_snapshot` calls in a
- * row see the first call's own stream, already given back, and clamp the second to a smaller
- * capability it would report as `downgraded` — the exact false report this function exists to
- * remove. Under-counting costs one refused allocate that the snapshot ladder already walks down
- * from; over-counting costs picture size and lies about why.
+ * capability that requires the hardware encoder holds one too. Counting the snapshot streams would
+ * clamp a second `camera_snapshot` to a smaller capability and report that as `downgraded` — the
+ * exact false report this function exists to remove — on the strength of a `AllocatedSnapshotStreams`
+ * list that is a cached view and lags both a deallocate and an allocate. Under-counting costs one
+ * refused allocate that the snapshot ladder already walks down from; over-counting costs picture size
+ * and lies about why.
  */
 export function encodersExhausted(args: {
     maxConcurrentEncoders: number | undefined;
@@ -71,12 +76,48 @@ export type SnapshotSelection =
     | { readonly capabilities: SnapshotCapability[]; readonly bestWithFreeEncoder: SnapshotCapability | undefined }
     | { readonly unsatisfiable: "codec" | "bounds" };
 
-/** Whether `chosen` delivers a smaller image than the best capability the caller's bounds allowed. */
-export function isDowngradeFrom(
-    chosen: SnapshotCapability,
-    bestWithFreeEncoder: SnapshotCapability | undefined,
-): boolean {
-    return bestWithFreeEncoder !== undefined && pixels(chosen.resolution) < pixels(bestWithFreeEncoder.resolution);
+/**
+ * Whether `chosen` is a smaller image than the best capability the caller's bounds allowed.
+ *
+ * `chosen` is the frame the device returned, not the stream it came from: a snapshot stream is
+ * allocated for a range and the device picks a size inside it, so the stream's ceiling would report
+ * a size the caller may not have been given.
+ */
+export function isDowngradeFrom(chosen: Resolution, bestWithFreeEncoder: SnapshotCapability | undefined): boolean {
+    return bestWithFreeEncoder !== undefined && pixels(chosen) < pixels(bestWithFreeEncoder.resolution);
+}
+
+/**
+ * An already-allocated snapshot stream worth capturing from instead of allocating one, or none.
+ *
+ * Allocating a snapshot stream per call is the churn §11.2.1.1 asks controllers to avoid, and the
+ * stream is a shared resource whoever allocated it: §11.2.8.8's own dedup returns an existing id for
+ * a matching request, and `CaptureSnapshot` names any allocated stream. Adopting one also costs no
+ * encoder, since the stream already holds whatever it holds — which is why the encoder narrowing
+ * that {@link selectSnapshotCapabilities} applies has no say here.
+ *
+ * `best` is the capability that would otherwise be allocated. The floor is tested against the
+ * candidate's `minResolution`, not its ceiling: a snapshot stream is allocated for a range and
+ * §11.2.8.13.3 lets the camera answer with any size in it, so the ceiling states what the frame may
+ * be rather than what it will be. Both bounds are compared per dimension, because a 3000x700 stream
+ * outnumbers a 1920x1080 capability in pixels while being 380 rows shorter. Together that is what
+ * makes adoption unable to hand back a smaller frame than allocating would have.
+ *
+ * The caller's own ceiling and codec are hard, as everywhere else: a stream past either is not a
+ * candidate rather than a frame the caller did not ask for.
+ */
+export function findAdoptableSnapshotStream(
+    streams: AllocatedSnapshotStream[],
+    best: SnapshotCapability,
+    bounds: { maxResolution?: Resolution; codec?: number },
+): AllocatedSnapshotStream | undefined {
+    const ceiling = bounds.maxResolution;
+    const candidates = streams.filter(stream => {
+        if (bounds.codec !== undefined && stream.imageCodec !== bounds.codec) return false;
+        if (ceiling !== undefined && !fitsUnder(stream.maxResolution, ceiling)) return false;
+        return fitsUnder(best.resolution, stream.minResolution);
+    });
+    return candidates.sort((a, b) => pixels(b.maxResolution) - pixels(a.maxResolution))[0];
 }
 
 /**

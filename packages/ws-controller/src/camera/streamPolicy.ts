@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { StreamUsage } from "@matter/main/types";
 import type {
     AllocatedAudioStream,
     AllocatedVideoStream,
@@ -542,4 +543,35 @@ export function computeAudioEnvelope(args: AudioEnvelopeArgs): AudioSelection {
             bitDepth: Math.max(...capabilities.supportedBitDepths),
         },
     };
+}
+
+/**
+ * A video stream eviction may take over, or none.
+ *
+ * `VideoStreamDeallocate` (§11.2.8.7.2) refuses exactly three things: an id it does not know,
+ * `ReferenceCount > 0`, and StreamUsage Internal. It checks neither who allocated the stream nor
+ * which fabric asks, so a stream nobody is using is the camera's to give to whoever needs it — and a
+ * controller that refused to take one over would let one client pin every encoder with streams
+ * nobody is watching.
+ *
+ * `priorities` is the camera's own `StreamUsagePriorities` (§11.2.7.19), highest priority at index
+ * 0, so the victim is the candidate furthest down that list: a stream whose usage this camera ranks
+ * higher is never taken while a lower-ranked one is free. Which usage that is belongs to the camera
+ * and its administrator, not to this server — §11.2.8.12 lets `SetStreamPriorities` reorder it, so
+ * no ordering may be assumed here. A usage the list does not carry is taken last rather than first:
+ * the camera states nothing about it, and destroying what cannot be reasoned about is the one
+ * outcome with no way back. `ours` breaks a tie the ranking leaves open, so a foreign stream is
+ * touched only when an equally ranked one of this server's own is not there to take instead.
+ */
+export function chooseEvictionVictim(
+    streams: AllocatedVideoStream[],
+    priorities: number[],
+    ours: (stream: AllocatedVideoStream) => boolean,
+): AllocatedVideoStream | undefined {
+    // -1 for a usage the list does not carry, which sorts it behind every ranked candidate.
+    const rankOf = (stream: AllocatedVideoStream): number => priorities.indexOf(stream.streamUsage);
+    const candidates = streams.filter(
+        stream => stream.referenceCount === 0 && stream.streamUsage !== StreamUsage.Internal,
+    );
+    return candidates.sort((a, b) => rankOf(b) - rankOf(a) || Number(ours(b)) - Number(ours(a)))[0];
 }
