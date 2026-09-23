@@ -607,7 +607,8 @@ describe("cameraCommands", () => {
             const snapshotStream: AllocatedSnapshotStream & { ownedByServer: boolean } = {
                 snapshotStreamId: 3,
                 imageCodec: 0,
-                resolution: { width: 640, height: 480 },
+                minResolution: { width: 640, height: 480 },
+                maxResolution: { width: 1920, height: 1080 },
                 referenceCount: 0,
                 ownedByServer: true,
             };
@@ -642,7 +643,8 @@ describe("cameraCommands", () => {
             expect(wire.allocated.snapshot[0]).to.deep.equal({
                 snapshot_stream_id: 3,
                 image_codec: "JPEG",
-                resolution: { width: 640, height: 480 },
+                min_resolution: { width: 640, height: 480 },
+                max_resolution: { width: 1920, height: 1080 },
                 reference_count: 0,
                 owned_by_server: true,
             });

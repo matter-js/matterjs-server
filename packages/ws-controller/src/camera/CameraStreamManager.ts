@@ -24,8 +24,8 @@ import type {
     VideoEnvelope,
 } from "./cameraTypes.js";
 import { deviceStatusOf } from "./deviceStatus.js";
-import { parseSdpVideoConstraints } from "./sdpConstraints.js";
-import type { SdpVideoConstraints } from "./sdpConstraints.js";
+import { offeredCodecs, parseSdpVideoConstraints, videoCodecLimits } from "./sdpConstraints.js";
+import type { SdpVideoConstraints, SelectedVideoCodecLimits } from "./sdpConstraints.js";
 import { CameraSessionRegistry } from "./sessionRegistry.js";
 import type { PendingSession, SessionScope } from "./sessionRegistry.js";
 import { encodersExhausted, isDowngradeFrom, selectSnapshotCapabilities } from "./snapshotPolicy.js";
@@ -37,10 +37,11 @@ import {
     findReusableVideoStream,
     narrowEnvelope,
     satisfiesAudioCallerBounds,
-    statesAudioValue,
+    statedHints,
+    trackRequest,
     videoCallerBounds,
 } from "./streamPolicy.js";
-import type { AudioCallerBounds, AudioHints, RateDistortionPoint, VideoHints } from "./streamPolicy.js";
+import type { AudioCallerBounds, AudioHints, RateDistortionPoint, TrackRequest, VideoHints } from "./streamPolicy.js";
 import { audioCodecName, imageCodecName, knownVideoCodecs, videoCodecName } from "./wireNames.js";
 
 const logger = Logger.get("CameraStreamManager");
@@ -153,6 +154,7 @@ function requireCodecCandidates(narrowed: number[], before: number[], requested:
     if (narrowed.length === 0) {
         throw ServerError.cameraStreamIncompatible({
             reason: "codec",
+            track: "video",
             device: before.map(videoCodecName),
             requested,
         });
@@ -174,9 +176,10 @@ export function preferredVideoCodec(
     hintCodecs: string[] | undefined,
 ): number {
     let candidates = deviceCodecs.length > 0 ? deviceCodecs : knownVideoCodecs();
-    if (sdp?.hasVideo === true && sdp.codecs.length > 0) {
-        const offered = candidates.filter(codec => sdp.codecs.includes(videoCodecName(codec)));
-        candidates = requireCodecCandidates(offered, candidates, sdp.codecs);
+    const offered = sdp === undefined ? undefined : offeredCodecs(sdp.video);
+    if (offered !== undefined) {
+        const narrowed = candidates.filter(codec => offered.includes(videoCodecName(codec)));
+        candidates = requireCodecCandidates(narrowed, candidates, [...offered]);
     }
     if (hintCodecs !== undefined) {
         // Walk the caller's stated order, not the device's: `candidates.filter(...)` would keep the
@@ -452,6 +455,16 @@ export interface StartStreamArgs {
     iceTransportPolicy?: unknown;
     metadataEnabled?: boolean;
 }
+
+/**
+ * A track's stream, or the reason there is none, for the outcomes a track may be absent for.
+ *
+ * Absence and failure are one fact seen from two sides there, and which side the caller sees depends
+ * only on what it stated about the track, which {@link CameraStreamManager.resolveTrack} is the one
+ * place to decide. Outcomes a track may never be absent for stay throws and do not come through
+ * here: a camera that refuses video ends the request rather than producing a session without it.
+ */
+export type TrackOutcome = { readonly stream: ResolvedStream } | { readonly unavailable: unknown };
 
 export interface StartStreamResult {
     webRtcSessionId: number;
@@ -815,12 +828,31 @@ export class CameraStreamManager {
         };
     }
 
+    /**
+     * The stream for a track, or nothing when the caller left the track to the server.
+     *
+     * The one place a track request's three states are answered. A track the caller declined or left
+     * unstated may be absent; a track it asked for — `video` or `audio` present, however empty —
+     * fails with the reason it is absent, never with a null track and success.
+     */
+    protected resolveTrack(
+        track: "video" | "audio",
+        nodeId: NodeId,
+        request: TrackRequest<unknown>,
+        outcome: TrackOutcome,
+    ): ResolvedStream | undefined {
+        if ("stream" in outcome) return outcome.stream;
+        if (request.state === "demanded") throw outcome.unavailable;
+        const reason = outcome.unavailable instanceof Error ? outcome.unavailable.message : String(outcome.unavailable);
+        logger.info(`No ${track} stream for node ${nodeId}; continuing without it: ${reason}`);
+        return undefined;
+    }
+
     async resolveVideoStream(args: {
         nodeId: NodeId;
         endpointId: EndpointNumber;
         streamUsage: number;
-        codec: number;
-        sdp?: SdpVideoConstraints;
+        limits: SelectedVideoCodecLimits;
         hints?: VideoHints;
     }): Promise<ResolvedStream> {
         return this.withEndpointLock(args.nodeId, args.endpointId, () =>
@@ -856,13 +888,13 @@ export class CameraStreamManager {
             nodeId: NodeId;
             endpointId: EndpointNumber;
             streamUsage: number;
-            codec: number;
-            sdp?: SdpVideoConstraints;
+            limits: SelectedVideoCodecLimits;
             hints?: VideoHints;
         },
         scope: AllocationScope,
     ): Promise<ResolvedStream> {
-        const { nodeId, endpointId, streamUsage, codec } = args;
+        const { nodeId, endpointId, streamUsage } = args;
+        const codec = args.limits.codec;
         const state = await this.requireState(nodeId, endpointId);
         const deviceCodecs = new Array<number>();
         for (const point of state.rateDistortionTradeOffPoints) {
@@ -871,6 +903,7 @@ export class CameraStreamManager {
         if (deviceCodecs.length > 0 && !deviceCodecs.includes(codec)) {
             throw ServerError.cameraStreamIncompatible({
                 reason: "codec",
+                track: "video",
                 device: deviceCodecs.map(videoCodecName),
                 requested: [videoCodecName(codec)],
             });
@@ -889,13 +922,13 @@ export class CameraStreamManager {
 
         const selection = computeVideoEnvelope({
             capabilities,
-            codec,
-            sdp: args.sdp,
+            limits: args.limits,
             hints: args.hints,
         });
         if ("unsatisfiable" in selection) {
             throw ServerError.cameraStreamIncompatible({
                 reason: selection.unsatisfiable,
+                track: "video",
                 device: deviceCodecs.map(videoCodecName),
                 requested: [videoCodecName(codec)],
                 bound: { field: selection.field, requested: selection.requested, limit: selection.limit },
@@ -909,7 +942,7 @@ export class CameraStreamManager {
         // allocated has no reference count anyone but the device can state.
         const unreported = this.unreportedVideoStreams(nodeId, endpointId, liveStreams);
 
-        const bounds = videoCallerBounds(codec, streamUsage, args.hints);
+        const bounds = videoCallerBounds(args.limits, streamUsage, args.hints);
         const reused = findReusableVideoStream([...liveStreams, ...unreported], envelope, bounds);
         if (reused !== undefined) {
             return {
@@ -967,6 +1000,7 @@ export class CameraStreamManager {
                 if (reaction === "fail-incompatible") {
                     throw ServerError.cameraStreamIncompatible({
                         reason: "bounds",
+                        track: "video",
                         device: deviceCodecs.map(videoCodecName),
                         requested: [videoCodecName(codec)],
                         deviceStatus: lastStatus,
@@ -1008,6 +1042,7 @@ export class CameraStreamManager {
         if (ladderReaction(lastStatus) === "narrow") {
             throw ServerError.cameraStreamIncompatible({
                 reason: "bounds",
+                track: "video",
                 device: deviceCodecs.map(videoCodecName),
                 requested: [videoCodecName(codec)],
                 deviceStatus: lastStatus,
@@ -1020,15 +1055,21 @@ export class CameraStreamManager {
         });
     }
 
+    /** `audio` takes the three statements `camera_start_stream`'s own argument takes. */
     async resolveAudioStream(args: {
         nodeId: NodeId;
         endpointId: EndpointNumber;
         streamUsage: number;
         sdp?: SdpVideoConstraints;
-        hints?: AudioHints;
+        audio?: AudioHints | false;
     }): Promise<ResolvedStream | undefined> {
+        const request = trackRequest(args.audio);
+        if (request.state === "declined") return undefined;
         return this.withEndpointLock(args.nodeId, args.endpointId, () =>
-            this.withAllocationScope(scope => this.resolveAudioStreamLocked(args, scope)),
+            this.withAllocationScope(async scope => {
+                const outcome = await this.resolveAudioStreamLocked({ ...args, hints: statedHints(request) }, scope);
+                return this.resolveTrack("audio", args.nodeId, request, outcome);
+            }),
         );
     }
 
@@ -1038,14 +1079,13 @@ export class CameraStreamManager {
      *
      * Audio has no narrowing ladder: a camera either supports the codec or it does not.
      *
-     * Whether no audio stream is a video-only session or a failure is decided here, and by one
-     * question: did the caller ask for audio? A caller that stated nothing under `audio` left the
-     * track to the server, so absence is a result and `undefined` is returned — the response's
-     * `audio: null` says so plainly. A caller that stated any value asked for audio, so every way
-     * this can end without a stream is a typed failure naming what blocked it. The value itself is
-     * never substituted either way: a sample rate or channel count the camera cannot serve fails
-     * before anything is asked of the device, and a reused stream must already carry the bit rate,
-     * channel count, sample rate and codec the caller asked for.
+     * The dead ends a video-only session is an acceptable answer to are reported as
+     * {@link TrackOutcome}s for {@link resolveTrack} to decide on. Two are not, and throw from here:
+     * a caller value the camera cannot serve, which only a caller that stated one can reach, and a
+     * typed failure raised under the allocate, which already says what happened. A value the caller
+     * stated is never substituted either way: a sample rate or channel count the camera cannot serve
+     * fails before anything is asked of the device, and a reused stream must already carry the bit
+     * rate, channel count, sample rate and codec the caller asked for.
      */
     protected async resolveAudioStreamLocked(
         args: {
@@ -1056,11 +1096,23 @@ export class CameraStreamManager {
             hints?: AudioHints;
         },
         scope: AllocationScope,
-    ): Promise<ResolvedStream | undefined> {
+    ): Promise<TrackOutcome> {
         const { nodeId, endpointId, streamUsage } = args;
         const state = await this.requireState(nodeId, endpointId);
-        const demanded = statesAudioValue(args.hints);
         const requestedCodecs = args.hints?.codecs ?? new Array<string>();
+        // The peer's own refusal outranks anything the camera can offer, and no different request
+        // changes it, which is what `capability` reports. Answering it here rather than by narrowing
+        // the codec set keeps the caller from being sent after the camera's codec list.
+        if (args.sdp?.audio.state === "refused") {
+            return {
+                unavailable: ServerError.cameraStreamIncompatible({
+                    reason: "capability",
+                    track: "audio",
+                    device: new Array<string>(),
+                    requested: requestedCodecs,
+                }),
+            };
+        }
         const microphone = state.microphoneCapabilities;
         if (
             microphone === undefined ||
@@ -1068,14 +1120,14 @@ export class CameraStreamManager {
             microphone.supportedSampleRates.length === 0 ||
             microphone.supportedBitDepths.length === 0
         ) {
-            if (demanded) {
-                throw ServerError.cameraStreamIncompatible({
+            return {
+                unavailable: ServerError.cameraStreamIncompatible({
                     reason: "capability",
+                    track: "audio",
                     device: new Array<string>(),
                     requested: requestedCodecs,
-                });
-            }
-            return undefined;
+                }),
+            };
         }
         const deviceCodecs = microphone.supportedCodecs.map(audioCodecName);
 
@@ -1087,6 +1139,7 @@ export class CameraStreamManager {
         if ("unsatisfiable" in selection) {
             throw ServerError.cameraStreamIncompatible({
                 reason: "bounds",
+                track: "audio",
                 device: deviceCodecs,
                 requested: requestedCodecs,
                 bound: { field: selection.field, requested: selection.requested, limit: selection.limit },
@@ -1097,14 +1150,14 @@ export class CameraStreamManager {
             // `device` is the camera's own list rather than what the narrowing left, which is empty
             // here by definition: a client told the camera supports nothing would go looking at the
             // camera, when what ruled the codecs out is its own offer or its own codec list.
-            if (demanded) {
-                throw ServerError.cameraStreamIncompatible({
+            return {
+                unavailable: ServerError.cameraStreamIncompatible({
                     reason: "codec",
+                    track: "audio",
                     device: deviceCodecs,
                     requested: requestedCodecs,
-                });
-            }
-            return undefined;
+                }),
+            };
         }
 
         const bounds: AudioCallerBounds = { ...args.hints, streamUsage };
@@ -1120,10 +1173,12 @@ export class CameraStreamManager {
         );
         if (existing !== undefined) {
             return {
-                streamId: existing.audioStreamId,
-                envelope: envelopeOfAudioStream(existing),
-                reused: true,
-                allocatedByUs: this.leaseReusedAudioStream(nodeId, endpointId, existing),
+                stream: {
+                    streamId: existing.audioStreamId,
+                    envelope: envelopeOfAudioStream(existing),
+                    reused: true,
+                    allocatedByUs: this.leaseReusedAudioStream(nodeId, endpointId, existing),
+                },
             };
         }
 
@@ -1147,13 +1202,7 @@ export class CameraStreamManager {
                     ? response.audioStreamId
                     : undefined;
             if (typeof streamId !== "number") {
-                if (demanded) {
-                    throw ServerError.sdkStackError("AudioStreamAllocate returned no AudioStreamID");
-                }
-                logger.info(
-                    `Audio stream unavailable for node ${nodeId}; continuing without audio: AudioStreamAllocate returned no AudioStreamID`,
-                );
-                return undefined;
+                return { unavailable: ServerError.sdkStackError("AudioStreamAllocate returned no AudioStreamID") };
             }
             const lease = this.recordAllocation(nodeId, endpointId, {
                 kind: "audio",
@@ -1162,30 +1211,31 @@ export class CameraStreamManager {
                 allocation: allocatedAudioStream(streamId, streamUsage, envelope),
             });
             scope.returnOnFailure(() => this.#deallocate(nodeId, endpointId, lease));
-            return { streamId, envelope, reused: false, allocatedByUs: true };
+            return { stream: { streamId, envelope, reused: false, allocatedByUs: true } };
         } catch (error) {
             if (error instanceof ServerError) throw error;
-            if (demanded) {
-                const status = deviceStatusOf(error);
-                if (ladderReaction(status) === "rethrow") throw error;
-                if (ladderReaction(status) === "make-room") {
-                    throw ServerError.cameraResourceExhausted({
+            const status = deviceStatusOf(error);
+            if (ladderReaction(status) === "rethrow") return { unavailable: error };
+            if (ladderReaction(status) === "make-room") {
+                return {
+                    unavailable: ServerError.cameraResourceExhausted({
                         allocated: state.allocatedAudioStreams.map(stream =>
                             occupyingStream("audio", stream.audioStreamId, stream.referenceCount),
                         ),
                         maxConcurrentEncoders: state.maxConcurrentEncoders,
                         maxEncodedPixelRate: state.maxEncodedPixelRate,
-                    });
-                }
-                throw ServerError.cameraStreamIncompatible({
+                    }),
+                };
+            }
+            return {
+                unavailable: ServerError.cameraStreamIncompatible({
                     reason: "bounds",
+                    track: "audio",
                     device: deviceCodecs,
                     requested: requestedCodecs,
                     deviceStatus: status,
-                });
-            }
-            logger.info(`Audio stream unavailable for node ${nodeId}; continuing without audio:`, error);
-            return undefined;
+                }),
+            };
         }
     }
 
@@ -1336,40 +1386,62 @@ export class CameraStreamManager {
                 `Node ${nodeId} endpoint ${endpointId} states no TwoWayTalkSupport; the audio the offer asks to send will not reach the camera`,
             );
         }
+        const videoRequest = trackRequest(args.video);
+        const audioRequest = trackRequest(args.audio);
         let video: ResolvedStream | undefined;
         let audio: ResolvedStream | undefined;
-        if (args.video !== false) {
-            const codecs = state.rateDistortionTradeOffPoints.map(point => point.codec);
-            const codec = preferredVideoCodec(codecs, sdp, args.video === undefined ? undefined : args.video.codecs);
-            video = await this.resolveVideoStreamLocked(
+
+        if (videoRequest.state !== "declined") {
+            const videoHints = statedHints(videoRequest);
+            let outcome: TrackOutcome;
+            if (sdp?.video.state === "refused") {
+                // The peer refused the track outright, so there is nothing to allocate for: a stream
+                // put in the answer would hold an encoder and a ReferenceCount for media that can
+                // never flow. Same statement, same answer as the audio half reads for its own section.
+                outcome = {
+                    unavailable: ServerError.cameraStreamIncompatible({
+                        reason: "capability",
+                        track: "video",
+                        device: new Array<string>(),
+                        requested: videoHints?.codecs ?? new Array<string>(),
+                    }),
+                };
+            } else {
+                const codecs = state.rateDistortionTradeOffPoints.map(point => point.codec);
+                const codec = preferredVideoCodec(codecs, sdp, videoHints?.codecs);
+                outcome = {
+                    stream: await this.resolveVideoStreamLocked(
+                        {
+                            nodeId,
+                            endpointId,
+                            streamUsage,
+                            limits: videoCodecLimits(sdp, codec),
+                            hints: videoHints,
+                        },
+                        scope,
+                    ),
+                };
+            }
+            video = this.resolveTrack("video", nodeId, videoRequest, outcome);
+        }
+
+        if (audioRequest.state !== "declined") {
+            const outcome = await this.resolveAudioStreamLocked(
                 {
                     nodeId,
                     endpointId,
                     streamUsage,
-                    codec,
                     sdp,
-                    hints: args.video === undefined ? undefined : args.video,
+                    hints: statedHints(audioRequest),
                 },
                 scope,
             );
+            audio = this.resolveTrack("audio", nodeId, audioRequest, outcome);
         }
 
-        if (args.audio !== false) {
-            audio = await this.resolveAudioStreamLocked(
-                {
-                    nodeId,
-                    endpointId,
-                    streamUsage,
-                    sdp,
-                    hints: args.audio === undefined ? undefined : args.audio,
-                },
-                scope,
-            );
-        }
-
-        // Both tracks absent means nothing for the offer to carry: `video: false` combined with no
-        // audio stream resolved for a caller that left `audio` to the server (no microphone, no codec
-        // match, or a refused allocate all land here), or both explicitly declined.
+        // Both tracks absent means nothing for the offer to carry: every track the caller stated
+        // resolved, and what is left — declined tracks, and tracks left to the server that no stream
+        // could be found for — adds up to no media at all.
         if (video === undefined && audio === undefined) {
             throw ServerError.cameraStreamIncompatible({
                 reason: "capability",

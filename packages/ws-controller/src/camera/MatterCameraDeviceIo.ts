@@ -117,7 +117,8 @@ export function toCameraState(state: RawCameraAvStreamManagementState): CameraSt
         allocatedSnapshotStreams: (state.allocatedSnapshotStreams ?? []).map(stream => ({
             snapshotStreamId: stream.snapshotStreamId,
             imageCodec: stream.imageCodec,
-            resolution: toResolution(stream.maxResolution),
+            minResolution: toResolution(stream.minResolution),
+            maxResolution: toResolution(stream.maxResolution),
             referenceCount: stream.referenceCount,
         })),
         microphoneCapabilities:

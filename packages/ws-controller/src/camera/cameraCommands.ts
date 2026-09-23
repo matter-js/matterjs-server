@@ -407,7 +407,8 @@ export function toWireCapabilities(capabilities: CameraCapabilities): CameraCapa
             snapshot: capabilities.allocated.snapshot.map(stream => ({
                 snapshot_stream_id: stream.snapshotStreamId,
                 image_codec: imageCodecName(stream.imageCodec),
-                resolution: stream.resolution,
+                min_resolution: stream.minResolution,
+                max_resolution: stream.maxResolution,
                 reference_count: stream.referenceCount,
                 owned_by_server: stream.ownedByServer,
             })),

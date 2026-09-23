@@ -5,6 +5,7 @@
  */
 
 import type { AudioEnvelope, VideoEnvelope } from "../src/camera/cameraTypes.js";
+import { parseSdpVideoConstraints, videoCodecLimits } from "../src/camera/sdpConstraints.js";
 import {
     computeAudioEnvelope,
     computeVideoEnvelope,
@@ -12,6 +13,7 @@ import {
     findReusableVideoStream,
     narrowEnvelope,
     satisfiesAudioCallerBounds,
+    satisfiesVideoCallerBounds,
     videoCallerBounds,
 } from "../src/camera/streamPolicy.js";
 import type { AudioSelection, VideoEnvelopeArgs } from "../src/camera/streamPolicy.js";
@@ -50,13 +52,51 @@ const CAPABILITIES = {
     maxNetworkBandwidth: 8000000,
 };
 
+/** A browser-shaped offer: both codecs in one m-line, each with its own level cap. */
+const OFFER_H265_8160_H264_3600 = [
+    "v=0",
+    "o=- 1 1 IN IP4 127.0.0.1",
+    "s=-",
+    "t=0 0",
+    "m=video 9 UDP/TLS/RTP/SAVPF 100 102",
+    "c=IN IP4 0.0.0.0",
+    "a=recvonly",
+    "a=rtpmap:100 H265/90000",
+    "a=fmtp:100 max-fs=8160",
+    "a=rtpmap:102 H264/90000",
+    "a=fmtp:102 max-fs=3600",
+    "",
+].join("\r\n");
+
 describe("streamPolicy", () => {
     describe("computeVideoEnvelope", () => {
+        it("narrows by the selected codec's own level cap, not by another codec's", () => {
+            const sdp = parseSdpVideoConstraints(OFFER_H265_8160_H264_3600);
+            const envelope = videoEnvelope({
+                capabilities: CAPABILITIES,
+                limits: videoCodecLimits(sdp, H265),
+                hints: undefined,
+            });
+            const area = envelope.maxResolution.width * envelope.maxResolution.height;
+            expect(area).to.be.at.most(8160 * 256);
+            expect(area).to.be.above(3600 * 256);
+        });
+
+        it("applies the tighter cap when that is the codec selected", () => {
+            const sdp = parseSdpVideoConstraints(OFFER_H265_8160_H264_3600);
+            const envelope = videoEnvelope({
+                capabilities: CAPABILITIES,
+                limits: videoCodecLimits(sdp, H264),
+                hints: undefined,
+            });
+            const area = envelope.maxResolution.width * envelope.maxResolution.height;
+            expect(area).to.be.at.most(3600 * 256);
+        });
+
         it("defaults to the widest envelope the camera reports", () => {
             const envelope = videoEnvelope({
                 capabilities: CAPABILITIES,
-                codec: H265,
-                sdp: undefined,
+                limits: { codec: H265 },
                 hints: undefined,
             });
             expect(envelope.maxResolution).to.deep.equal({ width: 2560, height: 1440 });
@@ -78,8 +118,7 @@ describe("streamPolicy", () => {
             };
             const envelope = videoEnvelope({
                 capabilities: square,
-                codec: H265,
-                sdp: undefined,
+                limits: { codec: H265 },
                 hints: undefined,
             });
             expect(envelope.minBitRate).to.equal(400000);
@@ -89,8 +128,7 @@ describe("streamPolicy", () => {
             expect(
                 videoEnvelope({
                     capabilities: CAPABILITIES,
-                    codec: H265,
-                    sdp: undefined,
+                    limits: { codec: H265 },
                     hints: undefined,
                 }).minBitRate,
             ).to.equal(800000);
@@ -99,8 +137,7 @@ describe("streamPolicy", () => {
         it("clamps a caller maxBitRate above the camera's network bandwidth to the camera's value", () => {
             const envelope = videoEnvelope({
                 capabilities: CAPABILITIES,
-                codec: H265,
-                sdp: undefined,
+                limits: { codec: H265 },
                 hints: { maxBitRate: 50000000 },
             });
             expect(envelope.maxBitRate).to.equal(CAPABILITIES.maxNetworkBandwidth);
@@ -109,15 +146,7 @@ describe("streamPolicy", () => {
         it("clamps a caller maxBitRate above the SDP's maxBitRate to the SDP's value", () => {
             const envelope = videoEnvelope({
                 capabilities: CAPABILITIES,
-                codec: H265,
-                sdp: {
-                    codecs: ["H265"],
-                    audioCodecs: [],
-                    hasVideo: true,
-                    hasAudio: false,
-                    wantsTalkback: false,
-                    maxBitRate: 3000000,
-                },
+                limits: { codec: H265, maxBitRate: 3000000 },
                 hints: { maxBitRate: 50000000 },
             });
             expect(envelope.maxBitRate).to.equal(3000000);
@@ -129,8 +158,7 @@ describe("streamPolicy", () => {
             expect(
                 computeVideoEnvelope({
                     capabilities: CAPABILITIES,
-                    codec: H265,
-                    sdp: undefined,
+                    limits: { codec: H265 },
                     hints: { minBitRate: 50000000 },
                 }),
             ).to.deep.equal({
@@ -145,8 +173,7 @@ describe("streamPolicy", () => {
             expect(
                 computeVideoEnvelope({
                     capabilities: { ...CAPABILITIES, sensor: { width: 1280, height: 720 } },
-                    codec: H265,
-                    sdp: undefined,
+                    limits: { codec: H265 },
                     hints: { minResolution: { width: 1920, height: 1080 } },
                 }),
             ).to.deep.equal({
@@ -161,8 +188,7 @@ describe("streamPolicy", () => {
             expect(
                 computeVideoEnvelope({
                     capabilities: CAPABILITIES,
-                    codec: H265,
-                    sdp: undefined,
+                    limits: { codec: H265 },
                     hints: { minFrameRate: 60 },
                 }),
             ).to.deep.equal({
@@ -176,8 +202,7 @@ describe("streamPolicy", () => {
         it("fails a caller floor the caller's own ceiling excludes", () => {
             const selection = computeVideoEnvelope({
                 capabilities: CAPABILITIES,
-                codec: H265,
-                sdp: undefined,
+                limits: { codec: H265 },
                 hints: { minFrameRate: 25, maxFrameRate: 15 },
             });
             expect("unsatisfiable" in selection && selection.unsatisfiable).to.equal("bounds");
@@ -188,15 +213,7 @@ describe("streamPolicy", () => {
             // 1920, which would fail a 1080p floor the peer can in fact decode.
             const envelope = videoEnvelope({
                 capabilities: { ...CAPABILITIES, sensor: { width: 2592, height: 1944 } },
-                codec: H265,
-                sdp: {
-                    codecs: ["H265"],
-                    audioCodecs: [],
-                    hasVideo: true,
-                    hasAudio: false,
-                    wantsTalkback: false,
-                    maxPixels: 1920 * 1080,
-                },
+                limits: { codec: H265, maxPixels: 1920 * 1080 },
                 hints: { minResolution: { width: 1920, height: 1080 }, maxResolution: { width: 1920, height: 1080 } },
             });
             expect(envelope.maxResolution).to.deep.equal({ width: 1920, height: 1080 });
@@ -208,8 +225,7 @@ describe("streamPolicy", () => {
             // honour a floor the caller never asked for.
             const envelope = videoEnvelope({
                 capabilities: { ...CAPABILITIES, maxNetworkBandwidth: 500000 },
-                codec: H265,
-                sdp: undefined,
+                limits: { codec: H265 },
                 hints: undefined,
             });
             expect(envelope.maxBitRate).to.equal(500000);
@@ -219,8 +235,7 @@ describe("streamPolicy", () => {
         it("keeps a caller floor the camera can reach", () => {
             const envelope = videoEnvelope({
                 capabilities: CAPABILITIES,
-                codec: H265,
-                sdp: undefined,
+                limits: { codec: H265 },
                 hints: { minFrameRate: 15, minBitRate: 1000000, minResolution: { width: 1280, height: 720 } },
             });
             expect(envelope.minFrameRate).to.equal(15);
@@ -233,8 +248,7 @@ describe("streamPolicy", () => {
             // gives up nothing anyone asked for.
             const envelope = videoEnvelope({
                 capabilities: CAPABILITIES,
-                codec: H265,
-                sdp: undefined,
+                limits: { codec: H265 },
                 hints: { maxResolution: { width: 320, height: 180 } },
             });
             expect(envelope.minResolution).to.deep.equal({ width: 320, height: 180 });
@@ -243,8 +257,7 @@ describe("streamPolicy", () => {
         it("falls back to the default maxBitRate when no ceiling is stated anywhere", () => {
             const envelope = videoEnvelope({
                 capabilities: { ...CAPABILITIES, maxNetworkBandwidth: undefined },
-                codec: H265,
-                sdp: undefined,
+                limits: { codec: H265 },
                 hints: undefined,
             });
             expect(envelope.maxBitRate).to.equal(8000000);
@@ -253,8 +266,7 @@ describe("streamPolicy", () => {
         it("does not cap a camera whose network bandwidth exceeds the default", () => {
             const envelope = videoEnvelope({
                 capabilities: { ...CAPABILITIES, maxNetworkBandwidth: 20000000 },
-                codec: H265,
-                sdp: undefined,
+                limits: { codec: H265 },
                 hints: undefined,
             });
             expect(envelope.maxBitRate).to.equal(20000000);
@@ -263,8 +275,7 @@ describe("streamPolicy", () => {
         it("uses the smallest advertised point as the floor when no viewport minimum is reported", () => {
             const envelope = videoEnvelope({
                 capabilities: { ...CAPABILITIES, minViewport: undefined },
-                codec: H265,
-                sdp: undefined,
+                limits: { codec: H265 },
                 hints: undefined,
             });
             expect(envelope.minResolution).to.deep.equal({ width: 1280, height: 720 });
@@ -279,8 +290,7 @@ describe("streamPolicy", () => {
                     rateDistortionPoints: [],
                     maxNetworkBandwidth: undefined,
                 },
-                codec: H264,
-                sdp: undefined,
+                limits: { codec: H264 },
                 hints: undefined,
             });
             expect(envelope.minResolution).to.deep.equal({ width: 1920, height: 1080 });
@@ -290,15 +300,7 @@ describe("streamPolicy", () => {
         it("narrows the ceiling to the SDP's pixel cap", () => {
             const envelope = videoEnvelope({
                 capabilities: CAPABILITIES,
-                codec: H265,
-                sdp: {
-                    codecs: ["H265"],
-                    audioCodecs: [],
-                    hasVideo: true,
-                    hasAudio: false,
-                    wantsTalkback: false,
-                    maxPixels: 1920 * 1080,
-                },
+                limits: { codec: H265, maxPixels: 1920 * 1080 },
                 hints: undefined,
             });
             // 2560x1440 exceeds the cap; scaled down on the same aspect ratio.
@@ -308,15 +310,7 @@ describe("streamPolicy", () => {
         it("rounds a scaled resolution down to even dimensions", () => {
             const envelope = videoEnvelope({
                 capabilities: CAPABILITIES,
-                codec: H265,
-                sdp: {
-                    codecs: ["H265"],
-                    audioCodecs: [],
-                    hasVideo: true,
-                    hasAudio: false,
-                    wantsTalkback: false,
-                    maxPixels: 1000000,
-                },
+                limits: { codec: H265, maxPixels: 1000000 },
                 hints: undefined,
             });
             expect(envelope.maxResolution).to.deep.equal({ width: 1332, height: 750 });
@@ -325,15 +319,7 @@ describe("streamPolicy", () => {
         it("narrows the frame rate to the SDP's pixel-rate cap", () => {
             const envelope = videoEnvelope({
                 capabilities: CAPABILITIES,
-                codec: H265,
-                sdp: {
-                    codecs: ["H265"],
-                    audioCodecs: [],
-                    hasVideo: true,
-                    hasAudio: false,
-                    wantsTalkback: false,
-                    maxPixelsPerSecond: 2560 * 1440 * 10,
-                },
+                limits: { codec: H265, maxPixelsPerSecond: 2560 * 1440 * 10 },
                 hints: undefined,
             });
             expect(envelope.maxFrameRate).to.equal(10);
@@ -342,15 +328,7 @@ describe("streamPolicy", () => {
         it("clamps the floor to the ceiling when the SDP narrows below the viewport minimum", () => {
             const envelope = videoEnvelope({
                 capabilities: CAPABILITIES,
-                codec: H265,
-                sdp: {
-                    codecs: ["H265"],
-                    audioCodecs: [],
-                    hasVideo: true,
-                    hasAudio: false,
-                    wantsTalkback: false,
-                    maxPixels: 320 * 180,
-                },
+                limits: { codec: H265, maxPixels: 320 * 180 },
                 hints: undefined,
             });
             expect(envelope.maxResolution).to.deep.equal({ width: 320, height: 180 });
@@ -360,8 +338,7 @@ describe("streamPolicy", () => {
         it("narrows to explicit caller hints", () => {
             const envelope = videoEnvelope({
                 capabilities: CAPABILITIES,
-                codec: H265,
-                sdp: undefined,
+                limits: { codec: H265 },
                 hints: {
                     minResolution: { width: 1280, height: 720 },
                     maxResolution: { width: 1920, height: 1080 },
@@ -380,8 +357,7 @@ describe("streamPolicy", () => {
             expect(
                 computeVideoEnvelope({
                     capabilities: CAPABILITIES,
-                    codec: H265,
-                    sdp: undefined,
+                    limits: { codec: H265 },
                     hints: {
                         minResolution: { width: 1440, height: 1440 },
                         maxResolution: { width: 1920, height: 1080 },
@@ -400,18 +376,25 @@ describe("streamPolicy", () => {
             // and leaves a height the caller ruled out.
             const envelope = videoEnvelope({
                 capabilities: CAPABILITIES,
-                codec: H265,
-                sdp: undefined,
+                limits: { codec: H265 },
                 hints: { maxResolution: { width: 3840, height: 1080 } },
             });
             expect(envelope.maxResolution).to.deep.equal({ width: 2560, height: 1080 });
         });
 
+        it("clamps the frame rate to the offer's own max-fr", () => {
+            const envelope = videoEnvelope({
+                capabilities: CAPABILITIES,
+                limits: { codec: H265, maxFrameRate: 10 },
+                hints: undefined,
+            });
+            expect(envelope.maxFrameRate).to.equal(10);
+        });
+
         it("never widens past the camera's own bounds when a hint asks for more", () => {
             const envelope = videoEnvelope({
                 capabilities: CAPABILITIES,
-                codec: H265,
-                sdp: undefined,
+                limits: { codec: H265 },
                 hints: { maxResolution: { width: 7680, height: 4320 }, maxFrameRate: 120 },
             });
             expect(envelope.maxResolution).to.deep.equal({ width: 2560, height: 1440 });
@@ -420,7 +403,7 @@ describe("streamPolicy", () => {
     });
 
     describe("findReusableVideoStream", () => {
-        const LIVE_VIEW_H265 = videoCallerBounds(H265, LIVE_VIEW, undefined);
+        const LIVE_VIEW_H265 = videoCallerBounds({ codec: H265 }, LIVE_VIEW, undefined);
 
         const REQUEST = {
             codec: H265,
@@ -493,12 +476,12 @@ describe("streamPolicy", () => {
             // The caller's ceiling is what its link can carry. The envelope here is deliberately wide
             // enough to admit the stream, so the caller's own bound is the only thing refusing it.
             const wide = { ...REQUEST, maxBitRate: 8000000 };
-            const bounds = videoCallerBounds(H265, LIVE_VIEW, { maxBitRate: 500000 });
+            const bounds = videoCallerBounds({ codec: H265 }, LIVE_VIEW, { maxBitRate: 500000 });
             expect(findReusableVideoStream([stream({ maxBitRate: 8000000 })], wide, bounds)).to.equal(undefined);
         });
 
         it("refuses a stream below the bit-rate floor the caller stated", () => {
-            const bounds = videoCallerBounds(H265, LIVE_VIEW, { minBitRate: 1000000 });
+            const bounds = videoCallerBounds({ codec: H265 }, LIVE_VIEW, { minBitRate: 1000000 });
             expect(findReusableVideoStream([stream()], REQUEST, bounds)).to.equal(undefined);
         });
 
@@ -529,10 +512,49 @@ describe("streamPolicy", () => {
         });
     });
 
+    describe("satisfiesVideoCallerBounds", () => {
+        const STREAM = {
+            videoStreamId: 4,
+            streamUsage: LIVE_VIEW,
+            videoCodec: H265,
+            minResolution: { width: 1280, height: 720 },
+            maxResolution: { width: 2560, height: 1440 },
+            minFrameRate: 1,
+            maxFrameRate: 30,
+            minBitRate: 800000,
+            maxBitRate: 4000000,
+            referenceCount: 1,
+        };
+
+        it("refuses a stream past the pixel budget the offer stated for the selected codec", () => {
+            const bounds = videoCallerBounds({ codec: H265, maxPixels: 1280 * 720 }, LIVE_VIEW, undefined);
+            expect(satisfiesVideoCallerBounds(STREAM, bounds)).to.equal(false);
+        });
+
+        it("refuses a stream past the frame rate the offer stated", () => {
+            const bounds = videoCallerBounds({ codec: H265, maxFrameRate: 15 }, LIVE_VIEW, undefined);
+            expect(satisfiesVideoCallerBounds(STREAM, bounds)).to.equal(false);
+        });
+
+        it("refuses a stream past the bit rate the offer stated", () => {
+            const bounds = videoCallerBounds({ codec: H265, maxBitRate: 1000000 }, LIVE_VIEW, undefined);
+            expect(satisfiesVideoCallerBounds(STREAM, bounds)).to.equal(false);
+        });
+
+        it("accepts a stream inside every limit the offer stated", () => {
+            const bounds = videoCallerBounds(
+                { codec: H265, maxPixels: 2560 * 1440, maxFrameRate: 30, maxBitRate: 4000000 },
+                LIVE_VIEW,
+                undefined,
+            );
+            expect(satisfiesVideoCallerBounds(STREAM, bounds)).to.equal(true);
+        });
+    });
+
     describe("findDegradedVideoStream", () => {
         /** The bounds of a caller that stated nothing beyond the two arguments every caller states. */
         function bounds(hints?: Parameters<typeof videoCallerBounds>[2], codec = H265) {
-            return videoCallerBounds(codec, LIVE_VIEW, hints);
+            return videoCallerBounds({ codec }, LIVE_VIEW, hints);
         }
 
         const IN_USE_WIDE = {
@@ -798,15 +820,33 @@ describe("streamPolicy", () => {
                 computeAudioEnvelope({
                     capabilities: { ...AUDIO_CAPABILITIES, supportedCodecs: [AAC] },
                     sdp: {
-                        codecs: [],
-                        audioCodecs: ["OPUS"],
-                        hasVideo: false,
-                        hasAudio: true,
+                        video: { state: "absent" as const },
+                        audio: { state: "offered" as const, codecs: ["OPUS"] },
                         wantsTalkback: false,
+                        limitsByCodec: new Map(),
                     },
                     hints: undefined,
                 }),
             ).to.deep.equal({ envelope: undefined });
+        });
+
+        it("keeps the camera's codecs when an offered audio section states none", () => {
+            // A section carrying only statically-mapped payload types states nothing about what the
+            // peer decodes. Filtering by that empty statement drops every codec the camera has, and a
+            // caller that asked for audio is then refused for a codec mismatch that was never stated.
+            const envelope = audioEnvelope(
+                computeAudioEnvelope({
+                    capabilities: { ...AUDIO_CAPABILITIES, supportedCodecs: [OPUS, AAC] },
+                    sdp: {
+                        video: { state: "absent" as const },
+                        audio: { state: "offered" as const },
+                        wantsTalkback: false,
+                        limitsByCodec: new Map(),
+                    },
+                    hints: undefined,
+                }),
+            );
+            expect(envelope?.codec).to.equal(OPUS);
         });
 
         it("narrows to a caller codec preference", () => {
@@ -849,11 +889,10 @@ describe("streamPolicy", () => {
                 computeAudioEnvelope({
                     capabilities: AUDIO_CAPABILITIES,
                     sdp: {
-                        codecs: [],
-                        audioCodecs: ["AAC"],
-                        hasVideo: false,
-                        hasAudio: true,
+                        video: { state: "absent" as const },
+                        audio: { state: "offered" as const, codecs: ["AAC"] },
                         wantsTalkback: false,
+                        limitsByCodec: new Map(),
                     },
                     hints: undefined,
                 }),
@@ -867,11 +906,10 @@ describe("streamPolicy", () => {
                 computeAudioEnvelope({
                     capabilities: AUDIO_CAPABILITIES,
                     sdp: {
-                        codecs: [],
-                        audioCodecs: ["AAC"],
-                        hasVideo: false,
-                        hasAudio: true,
+                        video: { state: "absent" as const },
+                        audio: { state: "offered" as const, codecs: ["AAC"] },
                         wantsTalkback: false,
+                        limitsByCodec: new Map(),
                     },
                     hints: { codecs: ["OPUS"], sampleRate: 44100 },
                 }),
@@ -888,11 +926,10 @@ describe("streamPolicy", () => {
                 computeAudioEnvelope({
                     capabilities: AUDIO_CAPABILITIES,
                     sdp: {
-                        codecs: [],
-                        audioCodecs: ["AAC"],
-                        hasVideo: true,
-                        hasAudio: false,
+                        video: { state: "offered" as const },
+                        audio: { state: "absent" as const },
                         wantsTalkback: false,
+                        limitsByCodec: new Map(),
                     },
                     hints: undefined,
                 }),

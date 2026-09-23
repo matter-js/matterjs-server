@@ -177,7 +177,7 @@ describe("toCameraState", () => {
         ]);
     });
 
-    it("collapses an allocated snapshot stream's independent min/max into one resolution", () => {
+    it("keeps an allocated snapshot stream's independent min and max resolution", () => {
         const state = toCameraState({
             ...MINIMAL_STATE,
             allocatedSnapshotStreams: [
@@ -186,7 +186,7 @@ describe("toCameraState", () => {
                     imageCodec: 0,
                     frameRate: 1,
                     minResolution: { width: 640, height: 480 },
-                    maxResolution: { width: 640, height: 480 },
+                    maxResolution: { width: 1920, height: 1080 },
                     quality: 100,
                     encodedPixels: false,
                     hardwareEncoder: false,
@@ -195,7 +195,13 @@ describe("toCameraState", () => {
             ],
         });
         expect(state.allocatedSnapshotStreams).to.deep.equal([
-            { snapshotStreamId: 3, imageCodec: 0, resolution: { width: 640, height: 480 }, referenceCount: 0 },
+            {
+                snapshotStreamId: 3,
+                imageCodec: 0,
+                minResolution: { width: 640, height: 480 },
+                maxResolution: { width: 1920, height: 1080 },
+                referenceCount: 0,
+            },
         ]);
     });
 

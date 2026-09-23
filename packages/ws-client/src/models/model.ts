@@ -468,7 +468,16 @@ export interface CameraAllocatedSnapshotStream {
     snapshot_stream_id: number;
     /** Image codec name, e.g. "JPEG". */
     image_codec: string;
-    resolution: CameraResolution;
+    /**
+     * Lower bound of the range the stream was allocated for, as `SnapshotStreamAllocate` stated it.
+     *
+     * The device picks a frame size inside the two bounds, so neither alone describes the stream.
+     * Streams this server allocates carry one capability resolution as both bounds; a range appears
+     * only for a stream another controller allocated.
+     */
+    min_resolution: CameraResolution;
+    /** Upper bound of that range. @see {@link CameraAllocatedSnapshotStream.min_resolution} */
+    max_resolution: CameraResolution;
     reference_count: number;
     owned_by_server: boolean;
 }

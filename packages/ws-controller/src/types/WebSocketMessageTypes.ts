@@ -103,10 +103,21 @@ export enum ServerErrorCode {
 export interface CameraStreamIncompatibleDetail {
     /**
      * Which dimension could not be met, so a client knows what to change: `codec` a codec list,
-     * `bounds` a resolution / frame-rate / bit-rate bound, `capability` nothing — the device states
-     * no capability of the kind the command needs and no different request can succeed.
+     * `bounds` a resolution / frame-rate / bit-rate bound, `capability` nothing about the request
+     * itself — the camera states no capability of the kind it needs, or the offer refuses the track.
      */
     reason: "codec" | "bounds" | "capability";
+    /**
+     * Which `camera_start_stream` track the failure is about, so a caller learns which of its two
+     * statements could not be met. Absent when the failure is about the request as a whole (both
+     * tracks left out) or about a command that resolves no track, such as `camera_snapshot`.
+     */
+    track?: "video" | "audio";
+    /**
+     * The camera's own codec names, empty when the camera is not what refused — an offer that
+     * rejects a media section, or a request that asked for no track at all. Never a statement that
+     * the camera supports nothing.
+     */
     device: string[];
     requested: string[];
     /**
@@ -122,7 +133,7 @@ export interface CameraStreamIncompatibleDetail {
 const INCOMPATIBLE_MESSAGES: Record<CameraStreamIncompatibleDetail["reason"], string> = {
     codec: "No codec supported by both the camera and the caller",
     bounds: "Camera cannot serve the requested stream parameters",
-    capability: "Camera states no capability for this request",
+    capability: "No capability for this request on the camera or in the offer",
 };
 
 export interface CameraAllocatedStreamDetail {
@@ -228,6 +239,7 @@ export class ServerError extends Error {
             JSON.stringify({
                 message: INCOMPATIBLE_MESSAGES[detail.reason],
                 reason: detail.reason,
+                ...(detail.track === undefined ? {} : { track: detail.track }),
                 device: detail.device,
                 requested: detail.requested,
                 ...(detail.bound === undefined ? {} : { bound: detail.bound }),

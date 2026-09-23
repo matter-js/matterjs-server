@@ -63,7 +63,8 @@ export interface AllocatedAudioStream {
 export interface AllocatedSnapshotStream {
     snapshotStreamId: number;
     imageCodec: number;
-    resolution: Resolution;
+    minResolution: Resolution;
+    maxResolution: Resolution;
     referenceCount: number;
 }
 

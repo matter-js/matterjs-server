@@ -29,7 +29,7 @@ describe("camera server errors", () => {
             requested: [],
         });
         expect(JSON.parse(error.message)).to.deep.equal({
-            message: "Camera states no capability for this request",
+            message: "No capability for this request on the camera or in the offer",
             reason: "capability",
             device: [],
             requested: [],

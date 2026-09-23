@@ -124,7 +124,8 @@ const CAPABILITIES: CameraCapabilities = {
             {
                 snapshotStreamId: 3,
                 imageCodec: 0,
-                resolution: { width: 1920, height: 1080 },
+                minResolution: { width: 640, height: 480 },
+                maxResolution: { width: 1920, height: 1080 },
                 referenceCount: 0,
                 ownedByServer: true,
             },
@@ -175,6 +176,12 @@ function errorPayloads(): unknown[] {
             requested: ["H265"],
             bound: { field: "min_resolution", requested: "1920x1080", limit: "1280x720" },
             deviceStatus: 0x87,
+        }),
+        ServerError.cameraStreamIncompatible({
+            reason: "capability",
+            track: "audio",
+            device: new Array<string>(),
+            requested: new Array<string>(),
         }),
         ServerError.cameraResourceExhausted({
             allocated: [{ kind: "video", streamId: 1, referenceCount: 1 }],

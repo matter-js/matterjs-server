@@ -18,6 +18,7 @@ import {
 } from "../src/camera/CameraStreamManager.js";
 import type { AudioEnvelope, StreamKind, VideoEnvelope } from "../src/camera/cameraTypes.js";
 import { deviceStatusOf } from "../src/camera/deviceStatus.js";
+import { videoCodecLimits } from "../src/camera/sdpConstraints.js";
 import type { SdpVideoConstraints } from "../src/camera/sdpConstraints.js";
 import { ServerError, ServerErrorCode } from "../src/types/WebSocketMessageTypes.js";
 
@@ -90,6 +91,32 @@ export const TALKBACK_OFFER = [
     "m=audio 9 UDP/TLS/RTP/SAVPF 111",
     "a=rtpmap:111 opus/48000/2",
     "a=sendrecv",
+].join("\r\n");
+
+/** A re-offer that keeps audio and turns video off: the video section is present but rejected. */
+export const VIDEO_REFUSED_OFFER = [
+    "v=0",
+    "o=- 0 0 IN IP4 127.0.0.1",
+    "s=-",
+    "t=0 0",
+    "m=video 0 UDP/TLS/RTP/SAVPF 96",
+    "a=rtpmap:96 H265/90000",
+    "m=audio 9 UDP/TLS/RTP/SAVPF 111",
+    "a=rtpmap:111 opus/48000/2",
+    "a=recvonly",
+].join("\r\n");
+
+/** The mirror image: audio refused, video live. */
+export const AUDIO_REFUSED_OFFER = [
+    "v=0",
+    "o=- 0 0 IN IP4 127.0.0.1",
+    "s=-",
+    "t=0 0",
+    "m=video 9 UDP/TLS/RTP/SAVPF 96",
+    "a=rtpmap:96 H265/90000",
+    "a=recvonly",
+    "m=audio 0 UDP/TLS/RTP/SAVPF 111",
+    "a=rtpmap:111 opus/48000/2",
 ].join("\r\n");
 
 export interface RecordedInvoke {
@@ -268,7 +295,7 @@ describe("CameraStreamManager", () => {
                 nodeId: NODE,
                 endpointId: ENDPOINT,
                 streamUsage: LIVE_VIEW,
-                codec: H265,
+                limits: { codec: H265 },
                 hints: PINNED_1080P,
             });
             expect(resolved.streamId).to.equal(7);
@@ -285,7 +312,7 @@ describe("CameraStreamManager", () => {
                 nodeId: NODE,
                 endpointId: ENDPOINT,
                 streamUsage: LIVE_VIEW,
-                codec: H265,
+                limits: { codec: H265 },
             });
             expect(resolved.reused).to.equal(true);
             const envelope = requireVideoEnvelope(resolved.envelope);
@@ -301,7 +328,7 @@ describe("CameraStreamManager", () => {
                 nodeId: NODE,
                 endpointId: ENDPOINT,
                 streamUsage: LIVE_VIEW,
-                codec: H265,
+                limits: { codec: H265 },
                 hints: PINNED_1080P,
             });
             expect(resolved.streamId).to.equal(9);
@@ -315,7 +342,7 @@ describe("CameraStreamManager", () => {
                 nodeId: NODE,
                 endpointId: ENDPOINT,
                 streamUsage: LIVE_VIEW,
-                codec: H265,
+                limits: { codec: H265 },
             });
             expect(resolved.allocatedByUs).to.equal(true);
         });
@@ -330,7 +357,7 @@ describe("CameraStreamManager", () => {
                     nodeId: NODE,
                     endpointId: ENDPOINT,
                     streamUsage: LIVE_VIEW,
-                    codec: H265,
+                    limits: { codec: H265 },
                     hints: { minResolution: { width: 3840, height: 2160 } },
                 });
             } catch (error) {
@@ -357,7 +384,7 @@ describe("CameraStreamManager", () => {
                 nodeId: NODE,
                 endpointId: ENDPOINT,
                 streamUsage: LIVE_VIEW,
-                codec: H265,
+                limits: { codec: H265 },
             });
             const allocate = invokes.find(invoke => invoke.command === "videoStreamAllocate");
             expect(allocate?.fields.maxBitRate).to.equal(2000000);
@@ -374,7 +401,7 @@ describe("CameraStreamManager", () => {
                 nodeId: NODE,
                 endpointId: ENDPOINT,
                 streamUsage: LIVE_VIEW,
-                codec: H265,
+                limits: { codec: H265 },
             });
             expect(resolved.streamId).to.equal(9);
             expect(invokes).to.have.length(2);
@@ -395,7 +422,7 @@ describe("CameraStreamManager", () => {
                     nodeId: NODE,
                     endpointId: ENDPOINT,
                     streamUsage: LIVE_VIEW,
-                    codec: H265,
+                    limits: { codec: H265 },
                 });
             } catch (error) {
                 thrown = error;
@@ -417,7 +444,7 @@ describe("CameraStreamManager", () => {
                     nodeId: NODE,
                     endpointId: ENDPOINT,
                     streamUsage: LIVE_VIEW,
-                    codec: H265,
+                    limits: { codec: H265 },
                 });
             } catch (error) {
                 thrown = error;
@@ -441,7 +468,7 @@ describe("CameraStreamManager", () => {
                     nodeId: NODE,
                     endpointId: ENDPOINT,
                     streamUsage: LIVE_VIEW,
-                    codec: H265,
+                    limits: { codec: H265 },
                 });
             } catch (error) {
                 thrown = error;
@@ -463,7 +490,7 @@ describe("CameraStreamManager", () => {
                     nodeId: NODE,
                     endpointId: ENDPOINT,
                     streamUsage: LIVE_VIEW,
-                    codec: H265,
+                    limits: { codec: H265 },
                     hints: PINNED_1080P,
                 });
             } catch (error) {
@@ -484,7 +511,7 @@ describe("CameraStreamManager", () => {
                 nodeId: NODE,
                 endpointId: ENDPOINT,
                 streamUsage: LIVE_VIEW,
-                codec: H265,
+                limits: { codec: H265 },
             });
             expect(resolved.streamId).to.equal(7);
             expect(resolved.degraded).to.equal(true);
@@ -499,7 +526,7 @@ describe("CameraStreamManager", () => {
                 nodeId: NODE,
                 endpointId: ENDPOINT,
                 streamUsage: LIVE_VIEW,
-                codec: H265,
+                limits: { codec: H265 },
                 hints: { ...PINNED_1080P, maxBitRate: 500000 },
             });
             expect(resolved.streamId).to.equal(9);
@@ -522,7 +549,7 @@ describe("CameraStreamManager", () => {
                 nodeId: NODE,
                 endpointId: ENDPOINT,
                 streamUsage: LIVE_VIEW,
-                codec: H265,
+                limits: { codec: H265 },
                 hints: { maxResolution: { width: 1280, height: 720 } },
             });
             expect(resolved.streamId).to.equal(11);
@@ -553,7 +580,7 @@ describe("CameraStreamManager", () => {
                 nodeId: NODE,
                 endpointId: ENDPOINT,
                 streamUsage: LIVE_VIEW,
-                codec: H265,
+                limits: { codec: H265 },
                 hints: { maxResolution: { width: 1280, height: 720 } },
             });
             expect(resolved.streamId).to.equal(11);
@@ -577,7 +604,7 @@ describe("CameraStreamManager", () => {
                 nodeId: NODE,
                 endpointId: ENDPOINT,
                 streamUsage: LIVE_VIEW,
-                codec: H265,
+                limits: { codec: H265 },
                 hints: { maxResolution: { width: 1280, height: 720 } },
             });
             expect(resolved.streamId).to.equal(11);
@@ -596,7 +623,7 @@ describe("CameraStreamManager", () => {
                 if (allocateAttempts === 2) throw statusError(Status.ResourceExhausted);
                 return { videoStreamId: 30 };
             });
-            const request = { nodeId: NODE, endpointId: ENDPOINT, streamUsage: LIVE_VIEW, codec: H265 };
+            const request = { nodeId: NODE, endpointId: ENDPOINT, streamUsage: LIVE_VIEW, limits: { codec: H265 } };
             await manager.resolveVideoStream(request); // allocates and owns stream 20
 
             const foreign = { ...CONTAINED_STREAM, videoStreamId: 21, videoCodec: H264, referenceCount: 0 };
@@ -626,7 +653,7 @@ describe("CameraStreamManager", () => {
                     nodeId: NODE,
                     endpointId: ENDPOINT,
                     streamUsage: LIVE_VIEW,
-                    codec: H265,
+                    limits: { codec: H265 },
                     hints: { maxResolution: { width: 1280, height: 720 } },
                 });
             } catch (error) {
@@ -659,7 +686,7 @@ describe("CameraStreamManager", () => {
                 nodeId: NODE,
                 endpointId: ENDPOINT,
                 streamUsage: LIVE_VIEW,
-                codec: H265,
+                limits: { codec: H265 },
             });
             expect(resolved.streamId).to.equal(7);
             expect(resolved.degraded).to.equal(true);
@@ -687,7 +714,7 @@ describe("CameraStreamManager", () => {
                     nodeId: NODE,
                     endpointId: ENDPOINT,
                     streamUsage: LIVE_VIEW,
-                    codec: H265,
+                    limits: { codec: H265 },
                     hints: PINNED_1080P,
                 });
             } catch (error) {
@@ -710,7 +737,7 @@ describe("CameraStreamManager", () => {
                 nodeId: NODE,
                 endpointId: ENDPOINT,
                 streamUsage: LIVE_VIEW,
-                codec: H265,
+                limits: { codec: H265 },
                 hints: PINNED_1080P,
             });
             expect(resolved.streamId).to.equal(7);
@@ -731,7 +758,7 @@ describe("CameraStreamManager", () => {
                     nodeId: NODE,
                     endpointId: ENDPOINT,
                     streamUsage: LIVE_VIEW,
-                    codec: H265,
+                    limits: { codec: H265 },
                     hints: { maxResolution: { width: 1280, height: 720 } },
                 });
             } catch (error) {
@@ -753,7 +780,7 @@ describe("CameraStreamManager", () => {
                     nodeId: NODE,
                     endpointId: ENDPOINT,
                     streamUsage: LIVE_VIEW,
-                    codec: 99,
+                    limits: { codec: 99 },
                 });
             } catch (error) {
                 thrown = error;
@@ -772,7 +799,7 @@ describe("CameraStreamManager", () => {
                     nodeId: NODE,
                     endpointId: ENDPOINT,
                     streamUsage: LIVE_VIEW,
-                    codec: CameraAvStreamManagement.VideoCodec.H264,
+                    limits: { codec: CameraAvStreamManagement.VideoCodec.H264 },
                 });
             } catch (error) {
                 thrown = error;
@@ -796,7 +823,7 @@ describe("CameraStreamManager", () => {
                 nodeId: NODE,
                 endpointId: ENDPOINT,
                 streamUsage: LIVE_VIEW,
-                codec: H265,
+                limits: { codec: H265 },
             };
             const [first, second] = await Promise.all([
                 manager.resolveVideoStream(request),
@@ -823,7 +850,7 @@ describe("CameraStreamManager", () => {
                 invoke: async () => ({ videoStreamId: 9 }),
             };
             const manager = new TestableCameraStreamManager(io);
-            const request = { nodeId: NODE, endpointId: ENDPOINT, streamUsage: LIVE_VIEW, codec: H265 };
+            const request = { nodeId: NODE, endpointId: ENDPOINT, streamUsage: LIVE_VIEW, limits: { codec: H265 } };
             await manager.resolveVideoStream(request);
             await manager.resolveVideoStream(request);
             expect(manager.lockCount).to.equal(0);
@@ -883,7 +910,7 @@ describe("CameraStreamManager", () => {
                 nodeId: NODE,
                 endpointId: ENDPOINT,
                 streamUsage: LIVE_VIEW,
-                hints: { bitRate: 32000 },
+                audio: { bitRate: 32000 },
             });
             expect(resolved?.streamId).to.equal(9);
             expect(resolved?.reused).to.equal(false);
@@ -896,7 +923,7 @@ describe("CameraStreamManager", () => {
                 nodeId: NODE,
                 endpointId: ENDPOINT,
                 streamUsage: LIVE_VIEW,
-                hints: { bitRate: 64000 },
+                audio: { bitRate: 64000 },
             });
             expect(resolved?.streamId).to.equal(4);
             expect(invokes).to.deep.equal([]);
@@ -910,7 +937,7 @@ describe("CameraStreamManager", () => {
                     nodeId: NODE,
                     endpointId: ENDPOINT,
                     streamUsage: LIVE_VIEW,
-                    hints: { sampleRate: 44100 },
+                    audio: { sampleRate: 44100 },
                 });
             } catch (error) {
                 thrown = error;
@@ -932,7 +959,7 @@ describe("CameraStreamManager", () => {
                     nodeId: NODE,
                     endpointId: ENDPOINT,
                     streamUsage: LIVE_VIEW,
-                    hints: { channelCount: 2 },
+                    audio: { channelCount: 2 },
                 });
             } catch (error) {
                 thrown = error;
@@ -969,13 +996,12 @@ describe("CameraStreamManager", () => {
                     endpointId: ENDPOINT,
                     streamUsage: LIVE_VIEW,
                     sdp: {
-                        codecs: new Array<string>(),
-                        audioCodecs: ["AAC"],
-                        hasVideo: false,
-                        hasAudio: true,
+                        video: { state: "absent" as const },
+                        audio: { state: "offered" as const, codecs: ["AAC"] },
                         wantsTalkback: false,
+                        limitsByCodec: new Map(),
                     },
-                    hints: { codecs: ["OPUS"] },
+                    audio: { codecs: ["OPUS"] },
                 });
             } catch (error) {
                 thrown = error;
@@ -994,14 +1020,53 @@ describe("CameraStreamManager", () => {
                 endpointId: ENDPOINT,
                 streamUsage: LIVE_VIEW,
                 sdp: {
-                    codecs: new Array<string>(),
-                    audioCodecs: ["AAC"],
-                    hasVideo: false,
-                    hasAudio: true,
+                    video: { state: "absent" as const },
+                    audio: { state: "offered" as const, codecs: ["AAC"] },
                     wantsTalkback: false,
+                    limitsByCodec: new Map(),
                 },
             });
             expect(resolved).to.equal(undefined);
+        });
+
+        it("keeps the camera's audio codecs when the offered audio section states none", async () => {
+            // The section carries only statically-mapped payload types, so the peer stated nothing
+            // about what it decodes. Narrowing by that empties the set and refuses a caller for a
+            // codec mismatch the offer never stated.
+            const { manager } = managerWith(STATE, async () => ({ audioStreamId: 9 }));
+            const resolved = await manager.resolveAudioStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+                sdp: {
+                    video: { state: "absent" as const },
+                    audio: { state: "offered" as const },
+                    wantsTalkback: false,
+                    limitsByCodec: new Map(),
+                },
+                audio: { bitRate: 32000 },
+            });
+            expect(resolved?.streamId).to.equal(9);
+        });
+
+        it("reads an empty audio object as asking for audio", async () => {
+            // The key being present is the statement, not which fields are inside it. `audio: {}`
+            // used to read as "left to the server" and come back as a video-only session, so a
+            // caller asking for audio without pinning anything was told nothing went wrong.
+            const { manager } = managerWith({ ...STATE, microphoneCapabilities: undefined });
+            let thrown: unknown;
+            try {
+                await manager.resolveAudioStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    streamUsage: LIVE_VIEW,
+                    audio: {},
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamIncompatible);
+            expect(JSON.parse((thrown as ServerError).message).track).to.equal("audio");
         });
 
         it("fails typed when a caller that asked for audio meets a camera with no microphone", async () => {
@@ -1013,7 +1078,7 @@ describe("CameraStreamManager", () => {
                     nodeId: NODE,
                     endpointId: ENDPOINT,
                     streamUsage: LIVE_VIEW,
-                    hints: { bitRate: 32000 },
+                    audio: { bitRate: 32000 },
                 });
             } catch (error) {
                 thrown = error;
@@ -1030,7 +1095,7 @@ describe("CameraStreamManager", () => {
                     nodeId: NODE,
                     endpointId: ENDPOINT,
                     streamUsage: LIVE_VIEW,
-                    hints: { bitRate: 32000 },
+                    audio: { bitRate: 32000 },
                 });
             } catch (error) {
                 thrown = error;
@@ -1048,7 +1113,7 @@ describe("CameraStreamManager", () => {
                     nodeId: NODE,
                     endpointId: ENDPOINT,
                     streamUsage: LIVE_VIEW,
-                    hints: { bitRate: 32000 },
+                    audio: { bitRate: 32000 },
                 });
             } catch (error) {
                 thrown = error;
@@ -1066,7 +1131,7 @@ describe("CameraStreamManager", () => {
                     nodeId: NODE,
                     endpointId: ENDPOINT,
                     streamUsage: LIVE_VIEW,
-                    hints: { bitRate: 32000 },
+                    audio: { bitRate: 32000 },
                 });
             } catch (error) {
                 thrown = error;
@@ -1087,7 +1152,7 @@ describe("CameraStreamManager", () => {
                     nodeId: NODE,
                     endpointId: ENDPOINT,
                     streamUsage: LIVE_VIEW,
-                    hints: { bitRate: 32000 },
+                    audio: { bitRate: 32000 },
                 });
             } catch (error) {
                 thrown = error;
@@ -1191,6 +1256,121 @@ describe("CameraStreamManager", () => {
                 return undefined;
             });
         }
+
+        it("puts no video track in a session whose offer rejects the video section", async () => {
+            // The peer refused it. A stream allocated here would hold an encoder and a ReferenceCount
+            // for media that can never flow, and the next request is the one that then fails 103.
+            const { manager, invokes } = managerWith(STATE, async invoke => {
+                if (invoke.command === "audioStreamAllocate") return { audioStreamId: 4 };
+                if (invoke.command === "provideOffer") return { webRtcSessionId: 42 };
+                return undefined;
+            });
+            const session = await manager.startStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                connectionId: "conn-1",
+                streamUsage: LIVE_VIEW,
+                sdp: VIDEO_REFUSED_OFFER,
+            });
+            expect(session.video).to.equal(undefined);
+            expect(invokes.some(invoke => invoke.command === "videoStreamAllocate")).to.equal(false);
+            const offer = invokes.find(invoke => invoke.command === "provideOffer");
+            expect(offer?.fields.videoStreams).to.equal(undefined);
+            expect(offer?.fields.audioStreams).to.deep.equal([4]);
+        });
+
+        it("tells a caller that asked for video why a rejected video section left it none", async () => {
+            // The audio half of the same situation raises 102. A caller that stated video bounds gets
+            // the same answer, not a session with video: null and no error it could act on.
+            const { manager, invokes } = managerWith(STATE, async invoke => {
+                if (invoke.command === "audioStreamAllocate") return { audioStreamId: 4 };
+                if (invoke.command === "provideOffer") return { webRtcSessionId: 42 };
+                return undefined;
+            });
+            let thrown: unknown;
+            try {
+                await manager.startStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    connectionId: "conn-1",
+                    streamUsage: LIVE_VIEW,
+                    sdp: VIDEO_REFUSED_OFFER,
+                    video: { codecs: ["H265"], minResolution: { width: 1280, height: 720 } },
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamIncompatible);
+            const detail = JSON.parse((thrown as ServerError).message);
+            expect(detail.reason).to.equal("capability");
+            expect(detail.track).to.equal("video");
+            expect(detail.requested).to.deep.equal(["H265"]);
+            expect(invokes.some(invoke => invoke.command === "provideOffer")).to.equal(false);
+        });
+
+        it("puts no audio track in a session whose offer rejects the audio section", async () => {
+            const { manager, invokes } = allocatingManager();
+            const session = await manager.startStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                connectionId: "conn-1",
+                streamUsage: LIVE_VIEW,
+                sdp: AUDIO_REFUSED_OFFER,
+                video: {},
+            });
+            expect(session.audio).to.equal(undefined);
+            expect(invokes.some(invoke => invoke.command === "audioStreamAllocate")).to.equal(false);
+        });
+
+        it("tells a caller that asked for audio why a rejected audio section left it none", async () => {
+            const { manager } = allocatingManager();
+            let thrown: unknown;
+            try {
+                await manager.startStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    connectionId: "conn-1",
+                    streamUsage: LIVE_VIEW,
+                    sdp: AUDIO_REFUSED_OFFER,
+                    video: {},
+                    audio: { codecs: ["OPUS"] },
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamIncompatible);
+            const detail = JSON.parse((thrown as ServerError).message);
+            // Not "codec": the camera's codec list is not what ruled audio out, and no codec the
+            // caller could name instead would change the peer's refusal.
+            expect(detail.reason).to.equal("capability");
+            expect(detail.device).to.deep.equal([]);
+            expect(detail.track).to.equal("audio");
+        });
+
+        it("names the track when the audio value the caller stated is not a codec list", async () => {
+            // `requested` is a codec list, so a caller that stated only a channel count leaves it
+            // empty. Without `track` the payload is byte-identical to the one that says both tracks
+            // were left out, which is a different problem with a different fix.
+            const { manager } = allocatingManager();
+            let thrown: unknown;
+            try {
+                await manager.startStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    connectionId: "conn-1",
+                    streamUsage: LIVE_VIEW,
+                    sdp: AUDIO_REFUSED_OFFER,
+                    video: {},
+                    audio: { channelCount: 2 },
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            const detail = JSON.parse((thrown as ServerError).message);
+            expect(detail.reason).to.equal("capability");
+            expect(detail.requested).to.deep.equal([]);
+            expect(detail.track).to.equal("audio");
+        });
 
         it("references the resolved stream ids in the provider offer", async () => {
             const { manager, invokes } = allocatingManager();
@@ -2226,7 +2406,8 @@ describe("CameraStreamManager", () => {
                     {
                         snapshotStreamId: 8,
                         imageCodec: 0,
-                        resolution: { width: 1920, height: 1080 },
+                        minResolution: { width: 640, height: 480 },
+                        maxResolution: { width: 1920, height: 1080 },
                         referenceCount: 0,
                     },
                 ],
@@ -2559,7 +2740,8 @@ describe("CameraStreamManager", () => {
                     {
                         snapshotStreamId: 8,
                         imageCodec: 0,
-                        resolution: { width: 1920, height: 1080 },
+                        minResolution: { width: 640, height: 480 },
+                        maxResolution: { width: 1920, height: 1080 },
                         referenceCount: 0,
                     },
                 ],
@@ -2774,7 +2956,7 @@ describe("CameraStreamManager", () => {
                 nodeId: NODE,
                 endpointId: ENDPOINT,
                 streamUsage: LIVE_VIEW,
-                codec: H265,
+                limits: { codec: H265 },
             });
             expect(manager.endpointsWithLeases).to.equal(1);
 
@@ -2794,7 +2976,7 @@ describe("CameraStreamManager", () => {
                 nodeId: NODE,
                 endpointId: ENDPOINT,
                 streamUsage: LIVE_VIEW,
-                codec: H265,
+                limits: { codec: H265 },
             });
             expect(resolved.reused).to.equal(true);
             expect(resolved.allocatedByUs).to.equal(false);
@@ -2812,7 +2994,7 @@ describe("CameraStreamManager", () => {
                 nodeId: NODE,
                 endpointId: ENDPOINT,
                 streamUsage: LIVE_VIEW,
-                codec: H265,
+                limits: { codec: H265 },
             });
 
             let thrown: unknown;
@@ -2857,7 +3039,7 @@ describe("CameraStreamManager", () => {
                     nodeId: NODE,
                     endpointId: ENDPOINT,
                     streamUsage: LIVE_VIEW,
-                    codec: H265,
+                    limits: { codec: H265 },
                 });
             } catch (error) {
                 thrown = error;
@@ -2880,7 +3062,7 @@ describe("CameraStreamManager", () => {
                 nodeId: NODE,
                 endpointId: ENDPOINT,
                 streamUsage: LIVE_VIEW,
-                codec: H265,
+                limits: { codec: H265 },
             });
             expect(resolved.degraded).to.equal(true);
             expect(resolved.allocatedByUs).to.equal(false);
@@ -2898,7 +3080,7 @@ describe("CameraStreamManager", () => {
                 nodeId: NODE,
                 endpointId: ENDPOINT,
                 streamUsage: LIVE_VIEW,
-                codec: H265,
+                limits: { codec: H265 },
             });
 
             holder.state = { ...STATE, allocatedVideoStreams: [] };
@@ -2906,7 +3088,7 @@ describe("CameraStreamManager", () => {
                 nodeId: NODE,
                 endpointId: ENDPOINT,
                 streamUsage: LIVE_VIEW,
-                codec: H265,
+                limits: { codec: H265 },
             });
             expect(fresh.streamId).to.equal(7);
             expect(fresh.allocatedByUs).to.equal(true);
@@ -2926,7 +3108,7 @@ describe("CameraStreamManager", () => {
                 nodeId: NODE,
                 endpointId: ENDPOINT,
                 streamUsage: LIVE_VIEW,
-                codec: H265,
+                limits: { codec: H265 },
             });
             expect(first.streamId).to.equal(7);
 
@@ -2935,7 +3117,7 @@ describe("CameraStreamManager", () => {
                 nodeId: NODE,
                 endpointId: ENDPOINT,
                 streamUsage: LIVE_VIEW,
-                codec: H265,
+                limits: { codec: H265 },
             });
             expect(second.streamId).to.equal(11);
             expect(second.reused).to.equal(false);
@@ -2953,7 +3135,7 @@ describe("CameraStreamManager", () => {
                 nodeId: NODE,
                 endpointId: ENDPOINT,
                 streamUsage: LIVE_VIEW,
-                codec: H265,
+                limits: { codec: H265 },
             });
             expect(manager.endpointsWithLeases).to.equal(1);
 
@@ -2970,7 +3152,7 @@ describe("CameraStreamManager", () => {
                 nodeId: NODE,
                 endpointId: ENDPOINT,
                 streamUsage: LIVE_VIEW,
-                codec: H265,
+                limits: { codec: H265 },
             });
             const envelope = requireVideoEnvelope(allocated.envelope);
             holder.state = {
@@ -3066,7 +3248,7 @@ describe("CameraStreamManager", () => {
                     nodeId: NODE,
                     endpointId: ENDPOINT,
                     streamUsage: LIVE_VIEW,
-                    codec: H265,
+                    limits: { codec: H265 },
                 });
             } catch (error) {
                 thrown = error;
@@ -3100,7 +3282,7 @@ describe("CameraStreamManager", () => {
                 nodeId: NODE,
                 endpointId: ENDPOINT,
                 streamUsage: LIVE_VIEW,
-                codec: H265,
+                limits: { codec: H265 },
             });
             expect(resolved.streamId).to.equal(11);
             expect(resolved.degraded).to.equal(true);
@@ -3185,7 +3367,7 @@ describe("CameraStreamManager", () => {
                     nodeId: NODE,
                     endpointId: ENDPOINT,
                     streamUsage: LIVE_VIEW,
-                    codec: H265,
+                    limits: { codec: H265 },
                 });
             } catch (error) {
                 thrown = error;
@@ -3236,8 +3418,7 @@ describe("CameraStreamManager reuse before the device has reported", () => {
             nodeId: NODE,
             endpointId: ENDPOINT,
             streamUsage: overrides?.streamUsage ?? LIVE_VIEW,
-            codec: H265,
-            sdp: overrides?.sdp,
+            limits: videoCodecLimits(overrides?.sdp, H265),
         });
     }
 
@@ -3296,23 +3477,39 @@ describe("CameraStreamManager reuse before the device has reported", () => {
     });
 
     it("hands out an unreported stream on the degraded rung when nothing else is left", async () => {
+        const { manager, holder } = allocatingManager({ ...STATE, allocatedVideoStreams: [] }, [9]);
+        await liveView(manager);
+
+        // The bandwidth the camera states drops, so the stream's bit-rate ceiling now sits outside the
+        // envelope the server computes. That envelope is the server's own, and giving it up is what
+        // this rung is for; the caller stated no bound of its own to violate.
+        holder.state = { ...STATE, allocatedVideoStreams: [], maxNetworkBandwidth: 2000000 };
+        const second = await liveView(manager);
+        expect(second.streamId).to.equal(9);
+        expect(second.degraded).to.equal(true);
+    });
+
+    it("refuses to degrade to a stream the offer says the peer cannot decode", async () => {
         const { manager } = allocatingManager({ ...STATE, allocatedVideoStreams: [] }, [9]);
         await liveView(manager);
 
-        // The offer's pixel budget puts the allocated stream's ceiling outside the envelope, so no rung
-        // above the degraded one matches it; the caller stated no bounds of its own to violate.
-        const second = await liveView(manager, {
-            sdp: {
-                codecs: new Array<string>(),
-                audioCodecs: new Array<string>(),
-                hasVideo: true,
-                hasAudio: false,
-                wantsTalkback: false,
-                maxPixels: 1280 * 720,
-            },
-        });
-        expect(second.streamId).to.equal(9);
-        expect(second.degraded).to.equal(true);
+        // The stream's 2560x1440 ceiling is past the offer's own max-fs budget. That is a decode
+        // ceiling, not the server's preference, so no rung may trade it away: video the peer cannot
+        // decode is not a degraded picture, it is no picture.
+        let thrown: unknown;
+        try {
+            await liveView(manager, {
+                sdp: {
+                    video: { state: "offered" as const },
+                    audio: { state: "absent" as const },
+                    wantsTalkback: false,
+                    limitsByCodec: new Map([["H265", { maxPixels: 1280 * 720 }]]),
+                },
+            });
+        } catch (error) {
+            thrown = error;
+        }
+        expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraResourceExhausted);
     });
 
     it("lets the device's own report replace its record of a stream it allocated", async () => {
@@ -3677,11 +3874,10 @@ describe("preferredVideoCodec", () => {
     it("fails typed when the offer names no codec the camera supports", () => {
         // An H.264-only peer handed an H.265 stream sees a session it cannot decode and no error.
         const offer = {
-            codecs: ["H264"],
-            audioCodecs: new Array<string>(),
-            hasVideo: true,
-            hasAudio: false,
+            video: { state: "offered" as const, codecs: ["H264"] },
+            audio: { state: "absent" as const },
             wantsTalkback: false,
+            limitsByCodec: new Map(),
         };
         const failure = incompatible(() => preferredVideoCodec([H265], offer, undefined));
         expect(failure.code).to.equal(ServerErrorCode.CameraStreamIncompatible);
@@ -3693,11 +3889,10 @@ describe("preferredVideoCodec", () => {
         // After the offer has ruled H.265 out, "the camera supports H.265" is not the answer the
         // client needs to act on.
         const offer = {
-            codecs: ["H264"],
-            audioCodecs: new Array<string>(),
-            hasVideo: true,
-            hasAudio: false,
+            video: { state: "offered" as const, codecs: ["H264"] },
+            audio: { state: "absent" as const },
             wantsTalkback: false,
+            limitsByCodec: new Map(),
         };
         const failure = incompatible(() => preferredVideoCodec([H264, H265], offer, ["H265"]));
         expect(failure.payload.device).to.deep.equal(["H264"]);
@@ -3705,11 +3900,10 @@ describe("preferredVideoCodec", () => {
 
     it("keeps the offer's narrowing when a later hint agrees with it", () => {
         const offer = {
-            codecs: ["H264"],
-            audioCodecs: new Array<string>(),
-            hasVideo: true,
-            hasAudio: false,
+            video: { state: "offered" as const, codecs: ["H264"] },
+            audio: { state: "absent" as const },
             wantsTalkback: false,
+            limitsByCodec: new Map(),
         };
         expect(preferredVideoCodec([H264, H265], offer, ["H264"])).to.equal(H264);
     });
@@ -3728,11 +3922,10 @@ describe("preferredVideoCodec", () => {
         // An m-line carrying only static payload types parses to hasVideo with an empty codec list;
         // that states nothing about what the peer can decode.
         const offer = {
-            codecs: new Array<string>(),
-            audioCodecs: new Array<string>(),
-            hasVideo: true,
-            hasAudio: false,
+            video: { state: "offered" as const },
+            audio: { state: "absent" as const },
             wantsTalkback: false,
+            limitsByCodec: new Map(),
         };
         expect(preferredVideoCodec([H265], offer, undefined)).to.equal(H265);
     });
@@ -3899,7 +4092,7 @@ describe("CameraStreamManager device cleanup budget", () => {
                 nodeId: NODE,
                 endpointId: ENDPOINT,
                 streamUsage: LIVE_VIEW,
-                codec: H265,
+                limits: { codec: H265 },
             });
             answerSilentDeallocate();
             // A macrotask boundary: every microtask the answered invoke queued, including the
@@ -3965,7 +4158,7 @@ describe("CameraStreamManager device cleanup budget", () => {
                 nodeId: NODE,
                 endpointId: ENDPOINT,
                 streamUsage: LIVE_VIEW,
-                codec: H265,
+                limits: { codec: H265 },
             });
             expect(reused.reused).to.equal(true);
 

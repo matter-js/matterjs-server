@@ -11,7 +11,8 @@ import type {
     Resolution,
     VideoEnvelope,
 } from "./cameraTypes.js";
-import type { SdpVideoConstraints } from "./sdpConstraints.js";
+import type { SdpVideoConstraints, SelectedVideoCodecLimits, VideoCodecLimits } from "./sdpConstraints.js";
+import { offeredCodecs } from "./sdpConstraints.js";
 import { audioCodecName } from "./wireNames.js";
 
 /** KeyFrameInterval in milliseconds; LiveView favours fast recovery over bitrate. */
@@ -54,21 +55,24 @@ export interface VideoHints extends VideoRangeBounds {
 /**
  * Everything the caller stated about the video stream it asked for.
  *
- * `codec` is what the caller's `codecs` and the offer already resolved to, and `streamUsage` is
- * mandatory on the wire, so both are always stated and both are checked unconditionally.
+ * `limits` is what the caller's own offer stated its peer can decode, carrying the codec that
+ * `codecs` and the offer already resolved to; `streamUsage` is mandatory on the wire. All three are
+ * always stated and all three are checked unconditionally. The offer's limits belong here rather
+ * than in the envelope alone because they are a decode ceiling: a rung that gives up the envelope
+ * may not hand out video the peer cannot decode.
  */
 export interface VideoCallerBounds extends VideoRangeBounds {
-    codec: number;
+    limits: SelectedVideoCodecLimits;
     streamUsage: number;
 }
 
 export function videoCallerBounds(
-    codec: number,
+    limits: SelectedVideoCodecLimits,
     streamUsage: number,
     hints: VideoHints | undefined,
 ): VideoCallerBounds {
     return {
-        codec,
+        limits,
         streamUsage,
         minResolution: hints?.minResolution,
         maxResolution: hints?.maxResolution,
@@ -79,10 +83,35 @@ export function videoCallerBounds(
     };
 }
 
+/**
+ * What the caller stated about one track.
+ *
+ * Three statements, three values. `declined` is `video: false` / `audio: false`, `deferred` is the
+ * key left out, and `demanded` is the key present — an object, however empty — carrying whatever
+ * bounds came with it. Collapsing `demanded` into `deferred` is what lets a stated request be
+ * answered with a null track and no error, so the three never share a value and
+ * {@link statedHints} is the only way to read the bounds back.
+ */
+export type TrackRequest<Hints> =
+    | { readonly state: "declined" | "deferred" }
+    | { readonly state: "demanded"; readonly hints: Hints };
+
+/** Read a caller's `video` / `audio` argument as the three statements it can make. */
+export function trackRequest<Hints>(stated: Hints | false | undefined): TrackRequest<Hints> {
+    if (stated === false) return { state: "declined" };
+    if (stated === undefined) return { state: "deferred" };
+    return { state: "demanded", hints: stated };
+}
+
+/** The bounds the caller stated for a track, or none when it stated no bounds to honour. */
+export function statedHints<Hints>(request: TrackRequest<Hints>): Hints | undefined {
+    return request.state === "demanded" ? request.hints : undefined;
+}
+
 export interface VideoEnvelopeArgs {
     capabilities: VideoCapabilities;
-    codec: number;
-    sdp: SdpVideoConstraints | undefined;
+    /** The codec to allocate for, carrying the offer limits that codec itself stated. */
+    limits: SelectedVideoCodecLimits;
     hints: VideoHints | undefined;
 }
 
@@ -124,6 +153,22 @@ function fitsUnder(resolution: Resolution, ceiling: Resolution): boolean {
 }
 
 /**
+ * The frame rate the offer's limits allow at `resolution`, or none when they state neither.
+ *
+ * Never below 1, because no encoder runs slower and a floor of 0 is an envelope the device rejects.
+ * Shared by {@link computeVideoEnvelope} and {@link satisfiesVideoCallerBounds} so the rate the
+ * server allocates at and the rate it accepts a candidate at are the same number.
+ */
+function offerFrameRateCeiling(limits: VideoCodecLimits, resolution: Resolution): number | undefined {
+    const ceilings = new Array<number>();
+    if (limits.maxPixelsPerSecond !== undefined) {
+        ceilings.push(Math.floor(limits.maxPixelsPerSecond / pixels(resolution)));
+    }
+    if (limits.maxFrameRate !== undefined) ceilings.push(limits.maxFrameRate);
+    return ceilings.length === 0 ? undefined : Math.max(1, Math.min(...ceilings));
+}
+
+/**
  * The envelope to allocate in, or the caller floor that nothing available reaches.
  *
  * `limit` is the ceiling in force after every narrowing, whoever stated it — the sensor, the offer or
@@ -156,7 +201,8 @@ function resolutionText(resolution: Resolution): string {
  * still clamp down, since giving those up gives up nothing the caller stated.
  */
 export function computeVideoEnvelope(args: VideoEnvelopeArgs): VideoSelection {
-    const { capabilities, codec, sdp, hints } = args;
+    const { capabilities, limits, hints } = args;
+    const codec = limits.codec;
 
     let maxResolution = capabilities.sensor;
     let maxFrameRate = capabilities.maxFrameRate;
@@ -166,11 +212,12 @@ export function computeVideoEnvelope(args: VideoEnvelopeArgs): VideoSelection {
     if (hints?.maxResolution !== undefined) {
         maxResolution = clampDown(maxResolution, hints.maxResolution);
     }
-    if (sdp?.maxPixels !== undefined) {
-        maxResolution = scaleToPixels(maxResolution, sdp.maxPixels);
+    if (limits.maxPixels !== undefined) {
+        maxResolution = scaleToPixels(maxResolution, limits.maxPixels);
     }
-    if (sdp?.maxPixelsPerSecond !== undefined) {
-        maxFrameRate = Math.max(1, Math.min(maxFrameRate, Math.floor(sdp.maxPixelsPerSecond / pixels(maxResolution))));
+    const offerCeiling = offerFrameRateCeiling(limits, maxResolution);
+    if (offerCeiling !== undefined) {
+        maxFrameRate = Math.min(maxFrameRate, offerCeiling);
     }
     if (hints?.maxFrameRate !== undefined) {
         maxFrameRate = Math.min(maxFrameRate, hints.maxFrameRate);
@@ -215,7 +262,7 @@ export function computeVideoEnvelope(args: VideoEnvelopeArgs): VideoSelection {
         .sort((a, b) => pixels(b.resolution) - pixels(a.resolution))[0];
     // Every stated ceiling binds; the default applies only when the camera, the SDP and the caller
     // all state none.
-    const ceilings = [hints?.maxBitRate, sdp?.maxBitRate, capabilities.maxNetworkBandwidth].filter(
+    const ceilings = [hints?.maxBitRate, limits.maxBitRate, capabilities.maxNetworkBandwidth].filter(
         (value): value is number => value !== undefined,
     );
     const maxBitRate = ceilings.length > 0 ? Math.min(...ceilings) : DEFAULT_MAX_BIT_RATE;
@@ -276,12 +323,21 @@ function resolutionContains(
  * not something the caller stated, so it cannot change what the caller is willing to accept: a rung
  * may give up the envelope the server computed and the defaults the server filled in, and nothing
  * here. A bound the caller left unstated is not a bound — that choice was the server's to make.
+ *
+ * The offer's `a=fmtp` limits are checked here rather than only in the envelope: they state what the
+ * peer can decode, so a stream past them is video that arrives and does not play. The envelope is a
+ * preference a rung may trade away; a decode ceiling is not.
  */
 export function satisfiesVideoCallerBounds(candidate: AllocatedVideoStream, bounds: VideoCallerBounds): boolean {
-    if (candidate.videoCodec !== bounds.codec) return false;
+    const limits = bounds.limits;
+    if (candidate.videoCodec !== limits.codec) return false;
     // stream_usage is the only mandatory argument of camera_start_stream. Handing a Recording stream
     // to a LiveView caller substitutes the one thing every caller states.
     if (candidate.streamUsage !== bounds.streamUsage) return false;
+    if (limits.maxPixels !== undefined && pixels(candidate.maxResolution) > limits.maxPixels) return false;
+    const offerCeiling = offerFrameRateCeiling(limits, candidate.maxResolution);
+    if (offerCeiling !== undefined && candidate.maxFrameRate > offerCeiling) return false;
+    if (limits.maxBitRate !== undefined && candidate.maxBitRate > limits.maxBitRate) return false;
     if (bounds.minResolution !== undefined && !fitsUnder(bounds.minResolution, candidate.minResolution)) return false;
     if (bounds.maxResolution !== undefined && !fitsUnder(candidate.maxResolution, bounds.maxResolution)) return false;
     if (bounds.minFrameRate !== undefined && candidate.minFrameRate < bounds.minFrameRate) return false;
@@ -337,8 +393,8 @@ export function findReusableVideoStream(
  *
  * The rung that gives up the computed envelope and keeps the caller's bounds, which is what
  * `degraded: true` reports. The more the caller stated, the less this rung has left to give up: with
- * everything pinned it accepts only what the sensor and the offer narrowed the envelope by, and a
- * caller that stated nothing is the one that can be handed a stream far outside the request.
+ * everything pinned it accepts only what the sensor narrowed the envelope by, and a caller that
+ * stated neither bounds nor an offer is the one that can be handed a stream far outside the request.
  */
 export function findDegradedVideoStream(
     streams: AllocatedVideoStream[],
@@ -435,17 +491,6 @@ export type AudioSelection =
           readonly limit: string;
       };
 
-/** Whether the caller stated anything about audio, as opposed to leaving the track to the server. */
-export function statesAudioValue(hints: AudioHints | undefined): boolean {
-    if (hints === undefined) return false;
-    return (
-        hints.codecs !== undefined ||
-        hints.channelCount !== undefined ||
-        hints.sampleRate !== undefined ||
-        hints.bitRate !== undefined
-    );
-}
-
 /**
  * Parameters for an audio stream.
  *
@@ -477,8 +522,9 @@ export function computeAudioEnvelope(args: AudioEnvelopeArgs): AudioSelection {
     }
 
     let codecs = capabilities.supportedCodecs;
-    if (sdp !== undefined && sdp.hasAudio) {
-        codecs = codecs.filter(codec => sdp.audioCodecs.includes(audioCodecName(codec)));
+    const offered = sdp === undefined ? undefined : offeredCodecs(sdp.audio);
+    if (offered !== undefined) {
+        codecs = codecs.filter(codec => offered.includes(audioCodecName(codec)));
     }
     if (hints?.codecs !== undefined) {
         const hintCodecs = hints.codecs;
