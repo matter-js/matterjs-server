@@ -1651,7 +1651,7 @@ describe("CameraStreamManager", () => {
             expect(endSessionAttempts).to.equal(2);
         });
 
-        it("drops tracking when the device answers NotFound for EndSession", async () => {
+        it("reports no session ended, and drops tracking, when the device answers NotFound", async () => {
             const { manager, invokes } = managerWith(STATE, async invoke => {
                 if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
                 if (invoke.command === "provideOffer") return { webRtcSessionId: 42 };
@@ -1660,9 +1660,45 @@ describe("CameraStreamManager", () => {
             });
             await start(manager);
 
-            expect(await manager.stopStream(NODE, ENDPOINT, 42)).to.equal(true);
+            expect(await manager.stopStream(NODE, ENDPOINT, 42)).to.equal(false);
             await manager.stopAll();
             expect(endedSessions(invokes)).to.have.length(1);
+        });
+
+        it("raises on a stop that waits for a failing EndSession the closing connection started", async () => {
+            let releaseEnd: () => void = () => {};
+            const endGate = new Promise<void>(resolve => {
+                releaseEnd = resolve;
+            });
+            const { manager, invokes } = managerWith(STATE, async invoke => {
+                if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                if (invoke.command === "provideOffer") return { webRtcSessionId: 42 };
+                if (invoke.command === "endSession") {
+                    await endGate;
+                    throw new Error("device unreachable");
+                }
+                return undefined;
+            });
+            await start(manager, "conn-1");
+
+            const releasing = manager.releaseConnection("conn-1");
+            const stopping = manager.stopStream(NODE, ENDPOINT, 42);
+            releaseEnd();
+
+            let thrown: unknown;
+            try {
+                await stopping;
+            } catch (error) {
+                thrown = error;
+            }
+            await releasing;
+            expect((thrown as Error | undefined)?.message).to.equal("device unreachable");
+            expect(invokes.filter(invoke => invoke.command === "endSession")).to.have.length(1);
+
+            // The rethrow is only safe because the entry survives the failure: the session is still
+            // reachable, so the client's retry and the shutdown pass both still find it.
+            await manager.stopAll();
+            expect(invokes.filter(invoke => invoke.command === "endSession")).to.have.length(2);
         });
 
         it("forgets a session the peer ended, so shutdown sends no EndSession for it", async () => {

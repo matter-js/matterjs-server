@@ -789,7 +789,13 @@ export interface APICommands {
         };
         response: CameraStartStreamResult;
     };
-    /** Ends the WebRTC session; the underlying stream allocation is kept. */
+    /**
+     * Ends the WebRTC session; the underlying stream allocation is kept.
+     *
+     * `ended` reports whether a live session was ended: false for an id the server does not track for
+     * this node and endpoint, and for one the camera answers `NOT_FOUND` for. Any other `EndSession`
+     * failure rejects, including one another path sent for the same session.
+     */
     camera_stop_stream: {
         requestArgs: { node_id: number | bigint; endpoint_id: number; webrtc_session_id: number };
         response: { ended: boolean };

@@ -936,7 +936,11 @@ Answer SDP and ICE candidates keep arriving on the `webrtc_callback` event.
 }
 ```
 
-Response: `{ "ended": true }`. `ended` is `false` when the id is not a session tracked for this node and endpoint.
+Response: `{ "ended": true }`. `ended` is `false` when this call ended no live session: either the id is not one this server tracks for that node and endpoint, or the camera answered `NOT_FOUND` for it, which is an id the camera could not resolve to one of its sessions — one the peer had already ended, or one that was never its own. In the second case the server drops its local records for the id as well; ending a session through `device_command` with `EndSession` drops the same records.
+
+An `EndSession` the camera refuses for any other reason is an error response, not `ended: false`. That now also covers an `EndSession` another path sent first: a closing connection and the shutdown pass end the sessions they own, there is one `EndSession` per session however many paths reach it, and a `camera_stop_stream` naming a session one of them is already ending waits on that same invoke and reports its outcome. So the error can report an `EndSession` this request did not itself send. Either way the session is still open and the server still tracks it, so sending `camera_stop_stream` again is the retry.
+
+Ending a session with `device_command` and `EndSession` drops the same two local records, in that order: this server's camera session registry, then the requestor-side session tracking. A failure of the second is logged and does not fail the command — the `EndSession` already succeeded on the camera, and reporting an error would invite a retry the camera can only answer `NOT_FOUND`.
 
 **camera_snapshot** - Capture one still frame
 

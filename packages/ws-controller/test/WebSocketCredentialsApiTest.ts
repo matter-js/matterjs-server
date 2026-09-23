@@ -28,7 +28,54 @@ interface StubCameraStreams {
     forgetSession?(nodeId: bigint, endpointId: number, webRtcSessionId: number): boolean;
 }
 
-function makeStubController(credentials: ThreadCredentialsRegistry, cameraStreams?: StubCameraStreams) {
+/** The command-handler behaviour a test needs to vary; everything else is fixed in the stub. */
+interface StubCommandHandlerOverrides {
+    removeTrackedWebRtcSession?(webRtcSessionId: number, nodeId: bigint, endpointId: number): Promise<void>;
+    sendWebRtcProviderCommand?(args: { commandName: string }): Promise<unknown>;
+}
+
+/** Well under the 2000 ms per-test timeout, so a frame that never comes fails as this error. */
+const FRAME_WAIT_MS = 1000;
+
+/**
+ * Resolve on the first frame the predicate accepts.
+ *
+ * Armed before the frame is provoked, never after: waiting a fixed time instead turns a slow machine
+ * into a failure that reads like a regression.
+ */
+function nextFrame(ws: WebSocket, what: string, wanted: (msg: WireFrame) => boolean): Promise<WireFrame> {
+    return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+            ws.off("message", onMessage);
+            reject(new Error(`no ${what} frame arrived within ${FRAME_WAIT_MS} ms`));
+        }, FRAME_WAIT_MS);
+        const onMessage = (raw: WebSocket.RawData) => {
+            const msg = JSON.parse(raw.toString()) as WireFrame;
+            if (!wanted(msg)) return;
+            clearTimeout(timer);
+            ws.off("message", onMessage);
+            resolve(msg);
+        };
+        ws.on("message", onMessage);
+    });
+}
+
+type AnswerOutcome = { ok: true; frame: WireFrame } | { ok: false; error: Error };
+
+interface WireFrame {
+    event?: string;
+    message_id?: string;
+    result?: unknown;
+    data?: unknown;
+    error_code?: number;
+    details?: string;
+}
+
+function makeStubController(
+    credentials: ThreadCredentialsRegistry,
+    cameraStreams?: StubCameraStreams,
+    commandHandler?: StubCommandHandlerOverrides,
+) {
     const stubCameraStreams: StubCameraStreams = cameraStreams ?? { async releaseConnection() {} };
 
     const stubEvents = {
@@ -50,7 +97,12 @@ function makeStubController(credentials: ThreadCredentialsRegistry, cameraStream
         async handleInvoke() {
             return {};
         },
-        async removeTrackedWebRtcSession() {},
+        removeTrackedWebRtcSession: commandHandler?.removeTrackedWebRtcSession ?? (async () => {}),
+        sendWebRtcProviderCommand:
+            commandHandler?.sendWebRtcProviderCommand ??
+            (async () => {
+                throw new Error("no WebRTC provider stubbed");
+            }),
         bleEnabled: false,
         bleProxyEnabled: false,
         async start() {},
@@ -147,10 +199,13 @@ interface TestHarness {
     close(): Promise<void>;
 }
 
-async function createHarness(cameraStreams?: StubCameraStreams): Promise<TestHarness> {
+async function createHarness(
+    cameraStreams?: StubCameraStreams,
+    commandHandler?: StubCommandHandlerOverrides,
+): Promise<TestHarness> {
     const config = await ConfigStorage.create(freshEnv());
     const credentials = new ThreadCredentialsRegistry();
-    const controller = makeStubController(credentials, cameraStreams);
+    const controller = makeStubController(credentials, cameraStreams, commandHandler);
 
     const handler = new WebSocketControllerHandler(
         controller as unknown as InstanceType<typeof import("../src/controller/MatterController.js").MatterController>,
@@ -423,6 +478,103 @@ describe("WebSocket Credentials API", () => {
         ws.close();
     });
 
+    /**
+     * Drive a command that reaches the camera, hold it there, and emit the answer the camera sends
+     * while it is still in flight. Returns the order the client saw the frames in and the response.
+     */
+    async function webRtcAnswerDuring(
+        command: string,
+        args: unknown,
+        harnessFor: (reached: () => void, answered: Promise<void>) => Promise<TestHarness>,
+    ): Promise<{ order: string[]; response: WireFrame }> {
+        let reachedDevice: () => void = () => {};
+        const atDevice = new Promise<void>(resolve => {
+            reachedDevice = resolve;
+        });
+        let releaseDevice: () => void = () => {};
+        const deviceAnswered = new Promise<void>(resolve => {
+            releaseDevice = resolve;
+        });
+        const h = await harnessFor(() => reachedDevice(), deviceAnswered);
+        try {
+            const ws = await h.openClient();
+            const order = new Array<string>();
+            const callback = nextFrame(ws, "webrtc_callback", msg => msg.event === "webrtc_callback").then(msg => {
+                order.push("webrtc_callback");
+                return msg;
+            });
+            // Settled, not awaited directly: the callback assertion below can throw first, and an
+            // unobserved rejection here would surface as an unhandled rejection instead of the failure.
+            const answer = nextFrame(ws, "response", msg => msg.message_id === "req-in-flight")
+                .then(msg => {
+                    order.push("response");
+                    return msg;
+                })
+                .then<AnswerOutcome, AnswerOutcome>(
+                    frame => ({ ok: true, frame }),
+                    error => ({ ok: false, error: error as Error }),
+                );
+
+            ws.send(JSON.stringify({ message_id: "req-in-flight", command, args }));
+            await atDevice;
+            h.emitWebRtcCallback({ webrtc_session_id: 1, event_type: "answer", data: null });
+            await callback;
+
+            releaseDevice();
+            const outcome = await answer;
+            if (!outcome.ok) throw outcome.error;
+            ws.close();
+            return { order, response: outcome.frame };
+        } finally {
+            // Also released here: a callback that never arrives would otherwise leave the command
+            // parked at the device and the harness unable to close.
+            releaseDevice();
+            await h.close();
+        }
+    }
+
+    it("delivers a webrtc_callback emitted while camera_start_stream is still in flight", async () => {
+        // The camera answers the offer while the command is still running: signaling for this session
+        // starts at ProvideOffer, not at the command's response.
+        const { order, response } = await webRtcAnswerDuring(
+            "camera_start_stream",
+            { node_id: 1, endpoint_id: 1, stream_usage: "LiveView" },
+            (reached, answered) =>
+                createHarness({
+                    async releaseConnection() {},
+                    async startStream() {
+                        reached();
+                        await answered;
+                        return { webRtcSessionId: 1, mode: "provide_offer" };
+                    },
+                }),
+        );
+
+        expect(order).to.deep.equal(["webrtc_callback", "response"]);
+        expect(response.error_code).to.equal(undefined);
+        expect((response.result as { webrtc_session_id?: number }).webrtc_session_id).to.equal(1);
+    });
+
+    it("delivers a webrtc_callback emitted while send_webrtc_provider_command is still in flight", async () => {
+        // The raw provider route is where the answer most reliably lands mid-invoke: the session is
+        // tracked before ProvideOffer returns.
+        const { order, response } = await webRtcAnswerDuring(
+            "send_webrtc_provider_command",
+            { node_id: 1, endpoint_id: 1, command_name: "ProvideOffer", payload: { sdp: "v=0" } },
+            (reached, answered) =>
+                createHarness(undefined, {
+                    async sendWebRtcProviderCommand() {
+                        reached();
+                        await answered;
+                        return { webRtcSessionId: 1 };
+                    },
+                }),
+        );
+
+        expect(order).to.deep.equal(["webrtc_callback", "response"]);
+        expect(response.error_code).to.equal(undefined);
+    });
+
     it("get_network_topology returns the built snapshot", async () => {
         const res = await h.handle<{ nodes: unknown[]; connections: unknown[] }>("get_network_topology", {});
         expect(res.nodes).to.deep.equal([]);
@@ -633,28 +785,86 @@ describe("WebSocket set_default_fabric_label ownership", () => {
 });
 
 describe("WebSocket camera session tracking on the raw path", () => {
-    it("drops the camera registry entry when a client ends the session itself", async () => {
-        const forgotten = new Array<{ nodeId: bigint; endpointId: number; webRtcSessionId: number }>();
-        const h = await createHarness({
-            async releaseConnection() {},
-            forgetSession(nodeId, endpointId, webRtcSessionId) {
-                forgotten.push({ nodeId, endpointId, webRtcSessionId });
-                return true;
+    /** Records every local record drop the raw EndSession path makes, in the order it makes them. */
+    function recordingHarness(trackingFails?: boolean): {
+        drops: string[];
+        targets: Array<{ nodeId: bigint; endpointId: number; webRtcSessionId: number }>;
+        harness: Promise<TestHarness>;
+    } {
+        const drops = new Array<string>();
+        const targets = new Array<{ nodeId: bigint; endpointId: number; webRtcSessionId: number }>();
+        const harness = createHarness(
+            {
+                async releaseConnection() {},
+                forgetSession(nodeId, endpointId, webRtcSessionId) {
+                    drops.push("registry");
+                    targets.push({ nodeId, endpointId, webRtcSessionId });
+                    return true;
+                },
             },
+            {
+                async removeTrackedWebRtcSession(webRtcSessionId, nodeId, endpointId) {
+                    drops.push("tracking");
+                    targets.push({ nodeId, endpointId, webRtcSessionId });
+                    if (trackingFails === true) throw new Error("requestor endpoint gone");
+                },
+            },
+        );
+        return { drops, targets, harness };
+    }
+
+    async function endSessionOnRawPath(h: TestHarness, payload: unknown): Promise<unknown> {
+        return h.handle("device_command", {
+            node_id: 1,
+            endpoint_id: 1,
+            cluster_id: WebRtcTransportProvider.id,
+            command_name: "EndSession",
+            payload,
         });
+    }
+
+    it("drops both local records, registry first, when a client ends the session itself", async () => {
+        const { drops, targets, harness } = recordingHarness();
+        const h = await harness;
         try {
-            await h.handle("device_command", {
-                node_id: 1,
-                endpoint_id: 1,
-                cluster_id: WebRtcTransportProvider.id,
-                command_name: "EndSession",
-                payload: { webRtcSessionId: 7 },
-            });
-            expect(forgotten).to.deep.equal([{ nodeId: 1n, endpointId: 1, webRtcSessionId: 7 }]);
+            await endSessionOnRawPath(h, { webRtcSessionId: 7 });
+            expect(drops).to.deep.equal(["registry", "tracking"]);
+            expect(targets).to.deep.equal([
+                { nodeId: 1n, endpointId: 1, webRtcSessionId: 7 },
+                { nodeId: 1n, endpointId: 1, webRtcSessionId: 7 },
+            ]);
         } finally {
             await h.close();
         }
     });
+
+    it("drops the camera registry entry, and still answers, when the requestor tracking cannot be reached", async () => {
+        const { drops, harness } = recordingHarness(true);
+        const h = await harness;
+        try {
+            const result = await endSessionOnRawPath(h, { webRtcSessionId: 7 });
+            expect(drops).to.deep.equal(["registry", "tracking"]);
+            expect(result).to.equal(null);
+        } finally {
+            await h.close();
+        }
+    });
+
+    // The raw path must recognize every spelling camelize maps to webRtcSessionId, since that is what
+    // the invoke itself accepted; these are the four a client plausibly sends.
+    for (const spelling of ["WebRtcSessionId", "webRtcSessionId", "webRtcSessionID", "WebRTCSessionID"]) {
+        it(`drops both local records for a session id spelled ${spelling}`, async () => {
+            const { drops, targets, harness } = recordingHarness();
+            const h = await harness;
+            try {
+                await endSessionOnRawPath(h, { [spelling]: 7 });
+                expect(drops).to.deep.equal(["registry", "tracking"]);
+                expect(targets.map(target => target.webRtcSessionId)).to.deep.equal([7, 7]);
+            } finally {
+                await h.close();
+            }
+        });
+    }
 });
 
 describe("WebSocket camera session cleanup on disconnect", () => {

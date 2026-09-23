@@ -37,7 +37,7 @@ interface PendingRecord {
 export class CameraSessionRegistry {
     readonly #sessions = new Map<string, ManagedSession>();
     readonly #pending = new Map<PendingSession, PendingRecord>();
-    readonly #releasing = new Map<ManagedSession, Promise<void>>();
+    readonly #releasing = new Map<ManagedSession, Promise<boolean>>();
 
     #key(nodeId: NodeId, endpointId: EndpointNumber, webRtcSessionId: number): string {
         return `${nodeId}/${endpointId}/${webRtcSessionId}`;
@@ -114,13 +114,13 @@ export class CameraSessionRegistry {
      */
     claim(
         matches: (scope: SessionScope) => boolean,
-        release: (session: ManagedSession) => Promise<void>,
+        release: (session: ManagedSession) => Promise<boolean>,
     ): Promise<void>[] {
         const claimed = new Array<ManagedSession>();
         for (const session of this.#sessions.values()) {
             if (matches(session)) claimed.push(session);
         }
-        const inFlight = claimed.map(session => this.#release(session, release));
+        const inFlight: Promise<void>[] = claimed.map(session => this.#release(session, release).then(() => undefined));
         for (const [pending, record] of this.#pending) {
             if (!matches(pending)) continue;
             record.claimed = true;
@@ -130,11 +130,14 @@ export class CameraSessionRegistry {
     }
 
     /**
-     * Release one session through the same de-duplication every other path uses.
+     * Release one session through the same de-duplication every other path uses, and report what the
+     * device answered.
      *
      * A client `camera_stop_stream` races the closing connection's own release and the shutdown pass.
+     * Whichever of them reaches the device first is the one whose answer every waiter gets: there is
+     * one `EndSession` per session, so there is one answer to report.
      */
-    releaseOnce(session: ManagedSession, release: (session: ManagedSession) => Promise<void>): Promise<void> {
+    releaseOnce(session: ManagedSession, release: (session: ManagedSession) => Promise<boolean>): Promise<boolean> {
         return this.#release(session, release);
     }
 
@@ -144,7 +147,7 @@ export class CameraSessionRegistry {
      * The entry is dropped once the release settles, so a session whose `EndSession` failed is tried
      * again by the next pass rather than being waited on forever.
      */
-    #release(session: ManagedSession, release: (session: ManagedSession) => Promise<void>): Promise<void> {
+    #release(session: ManagedSession, release: (session: ManagedSession) => Promise<boolean>): Promise<boolean> {
         const running = this.#releasing.get(session);
         if (running !== undefined) return running;
         const started = release(session).finally(() => {

@@ -37,6 +37,7 @@ import { ControllerCommandHandler } from "../controller/ControllerCommandHandler
 import { MatterController, registerThreadCredentialsFromHex } from "../controller/MatterController.js";
 import type { TopologyNodeSource } from "../controller/NetworkTopologyService.js";
 import { TestNodeCommandHandler } from "../controller/TestNodeCommandHandler.js";
+import { dropWebRtcSessionTracking } from "../controller/webRtcSessionTracking.js";
 import { VendorIds } from "../data/VendorIDs.js";
 import { ClusterMap, ClusterMapEntry } from "../model/ModelMapper.js";
 import { CommissioningRequest } from "../types/CommandHandler.js";
@@ -131,9 +132,10 @@ function normalizeFabricLabel(label: string | null): string {
  */
 function extractWebRtcSessionId(payload: unknown): number | undefined {
     if (typeof payload !== "object" || payload === null) return undefined;
-    const record = payload as Record<string, unknown>;
-    for (const key of ["webRtcSessionId", "webRtcSessionID", "WebRTCSessionID"]) {
-        const value = record[key];
+    // Keys are matched through the same camelize the invoke normalized the payload with, so every
+    // spelling the device accepted names a session the local records can still drop.
+    for (const [key, value] of Object.entries(payload as Record<string, unknown>)) {
+        if (camelize(key) !== "webRtcSessionId") continue;
         if (typeof value === "number" && Number.isInteger(value) && value >= 0) {
             return value;
         }
@@ -282,14 +284,12 @@ export class WebSocketControllerHandler implements WebServerHandler {
             let listening = false;
             // thread_diagnostics_updated (schema 12) is sent only to connections that have issued a
             // Thread request, so schema-11 clients (all currently deployed HA installs) never receive an
-            // event type they'd crash on. See the schema changelog.
-            let wantsThreadDiagnostics = false;
-            // network_topology_updated (schema 13) is likewise sent only to connections that have
-            // issued get_network_topology, so pre-schema-13 clients never receive it.
-            let wantsNetworkTopology = false;
-            // webrtc_callback is likewise sent only to a connection that has issued a WebRTC provider
-            // command, so it reaches the client driving that camera session rather than every client.
-            let wantsWebRtc = false;
+            // event type they'd crash on. See the schema changelog. network_topology_updated (schema 13)
+            // and webrtc_callback are withheld the same way, so a client that never issued the command
+            // producing them never receives an event it does not know. The WebRTC opt-in is per
+            // connection, not per session: every opted-in connection sees every session's signaling.
+            const optIns = { threadDiagnostics: false, webRtc: false };
+            let topologyObserverRegistered = false;
             const observers = new ObserverGroup();
             const connection = new WebSocketConnection(ws, {
                 connId,
@@ -529,7 +529,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             });
 
             observers.on(this.#controller.threadDiagnostics.events.batchUpdated, batch => {
-                if (this.#closed || this.#shuttingDown || !wantsThreadDiagnostics) return;
+                if (this.#closed || this.#shuttingDown || !optIns.threadDiagnostics) return;
                 // batchUpdated is a shared Observable; a throw here would abort emit and starve other
                 // connections' observers, so isolate the serialize/send per connection. Coalesce
                 // latest-wins per Thread network — an older diagnostics snapshot is worthless — and
@@ -547,8 +547,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
             // instantiate the service (timers, event subscriptions) for every connection, even
             // ones that never request topology.
             const ensureTopologyObserver = () => {
-                if (wantsNetworkTopology || this.#closed || this.#shuttingDown) return;
-                wantsNetworkTopology = true;
+                if (topologyObserverRegistered || this.#closed || this.#shuttingDown) return;
+                topologyObserverRegistered = true;
                 observers.on(this.#controller.networkTopology.events.topologyUpdated, topology => {
                     if (this.#closed || this.#shuttingDown) return;
                     // topologyUpdated is a shared Observable; isolate serialize/send per connection so a
@@ -565,7 +565,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             };
 
             observers.on(this.#commandHandler.events.webRtcCallback, data => {
-                if (this.#closed || this.#shuttingDown || !wantsWebRtc) return;
+                if (this.#closed || this.#shuttingDown || !optIns.webRtc) return;
                 // WebRTC signaling is control-plane: never coalesced or dropped, so send reliably.
                 try {
                     connection.sendReliable(toBigIntAwareJson({ event: "webrtc_callback", data }));
@@ -597,32 +597,34 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 connection.dispose();
             };
 
+            // Before the command is dispatched, never after its response settles: the camera answers
+            // the offer while the command is still in flight, so a webrtc_callback opt-in applied
+            // afterwards drops that answer. The two snapshot events share the point but do not
+            // require it, and neither is ordered against the response: a response bypasses the outbox
+            // a snapshot event queues into.
+            const optInToEventsFor = (command: string) => {
+                if (THREAD_DIAGNOSTICS_OPT_IN_COMMANDS.has(command)) optIns.threadDiagnostics = true;
+                if (NETWORK_TOPOLOGY_OPT_IN_COMMANDS.has(command)) ensureTopologyObserver();
+                if (WEBRTC_OPT_IN_COMMANDS.has(command)) optIns.webRtc = true;
+            };
+
             ws.on("message", data => {
-                this.#handleWebSocketRequest(connId, connection, data.toString(), req?.socket?.remoteAddress)
-                    .then(
-                        ({
-                            response,
-                            enableListeners,
-                            wantsThreadDiagnostics: requested,
-                            wantsNetworkTopology: reqTopology,
-                            wantsWebRtc: reqWebRtc,
-                        }) => {
-                            if (this.#closed) return;
-                            if (enableListeners) {
-                                listening = true;
-                            }
-                            if (requested) {
-                                wantsThreadDiagnostics = true;
-                            }
-                            if (reqTopology) {
-                                ensureTopologyObserver();
-                            }
-                            if (reqWebRtc) {
-                                wantsWebRtc = true;
-                            }
-                            connection.sendReliable(toBigIntAwareJson(response));
-                        },
-                    )
+                this.#handleWebSocketRequest(
+                    connId,
+                    connection,
+                    data.toString(),
+                    optInToEventsFor,
+                    req?.socket?.remoteAddress,
+                )
+                    .then(({ response, enableListeners }) => {
+                        if (this.#closed) return;
+                        if (enableListeners) {
+                            // Unlike the event opt-ins, listening starts only once start_listening has
+                            // answered: its result is the node list the events then update.
+                            listening = true;
+                        }
+                        connection.sendReliable(toBigIntAwareJson(response));
+                    })
                     .catch(err => logger.error(`[${connId}] WebSocket request error`, err));
             });
 
@@ -689,13 +691,11 @@ export class WebSocketControllerHandler implements WebServerHandler {
         connId: string,
         connection: WebSocketConnection,
         data: string,
+        optInToEventsFor: (command: string) => void,
         peerAddress?: string,
     ): Promise<{
         response: ErrorResultMessage | SuccessResultMessage;
         enableListeners?: boolean;
-        wantsThreadDiagnostics?: boolean;
-        wantsNetworkTopology?: boolean;
-        wantsWebRtc?: boolean;
     }> {
         let messageId: string | undefined;
         let command: string | undefined;
@@ -707,6 +707,8 @@ export class WebSocketControllerHandler implements WebServerHandler {
             const { args } = request;
             messageId = request.message_id;
             command = request.command;
+            // request is an unvalidated cast, so a frame can carry no command at all.
+            if (command !== undefined) optInToEventsFor(command);
             let result: ResponseOf<any>;
             let enableListeners: boolean | undefined = undefined;
             switch (command) {
@@ -876,9 +878,6 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     result,
                 },
                 enableListeners,
-                wantsThreadDiagnostics: command !== undefined && THREAD_DIAGNOSTICS_OPT_IN_COMMANDS.has(command),
-                wantsNetworkTopology: command !== undefined && NETWORK_TOPOLOGY_OPT_IN_COMMANDS.has(command),
-                wantsWebRtc: command !== undefined && WEBRTC_OPT_IN_COMMANDS.has(command),
             };
         } catch (err) {
             logger.error(`[${connId}] WebSocket error response (${command})`, messageId, err);
@@ -889,9 +888,6 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     error_code: errorCode,
                     details: (err as Error).message,
                 },
-                wantsThreadDiagnostics: command !== undefined && THREAD_DIAGNOSTICS_OPT_IN_COMMANDS.has(command),
-                wantsNetworkTopology: command !== undefined && NETWORK_TOPOLOGY_OPT_IN_COMMANDS.has(command),
-                wantsWebRtc: command !== undefined && WEBRTC_OPT_IN_COMMANDS.has(command),
             };
         }
     }
@@ -1290,16 +1286,21 @@ export class WebSocketControllerHandler implements WebServerHandler {
         if (clusterId === WebRtcTransportProvider.id && camelizedCommand === "endSession") {
             const sessionId = extractWebRtcSessionId(payload);
             if (sessionId !== undefined) {
-                await this.#commandHandler.removeTrackedWebRtcSession(
-                    sessionId,
-                    NodeId(nodeId),
-                    EndpointNumber(endpointId),
-                );
-                // The camera registry too, or its entry outlives the session it names.
+                // Neither drop stops the other: an entry left naming this session outlives the session
+                // itself, and shutdown would send a second EndSession for a dead id. The client is not
+                // told when the requestor tracking drop fails — the EndSession it asked for already
+                // succeeded on the device, and an error here would invite a retry the device can only
+                // answer NotFound.
                 this.#controller.cameraStreamsIfCreated?.forgetSession(
                     NodeId(nodeId),
                     EndpointNumber(endpointId),
                     sessionId,
+                );
+                await dropWebRtcSessionTracking(
+                    this.#commandHandler,
+                    sessionId,
+                    NodeId(nodeId),
+                    EndpointNumber(endpointId),
                 );
             } else {
                 logger.debug(

@@ -1412,7 +1412,9 @@ export class CameraStreamManager {
             videoStreamIds: video === undefined ? new Array<number>() : [video.streamId],
             audioStreamIds: audio === undefined ? new Array<number>() : [audio.streamId],
         };
-        scope.returnOnFailure(() => this.#endSession(session));
+        scope.returnOnFailure(async () => {
+            await this.#endSession(session);
+        });
         if (!this.#sessions.track(pending, session)) {
             throw ServerError.sdkStackError(
                 `WebRTC session ${webRtcSessionId} was ended: the requesting connection closed while the camera was establishing it`,
@@ -1448,16 +1450,19 @@ export class CameraStreamManager {
     /**
      * The one path that ends a session: `EndSession` on the device, then the registry entry.
      *
-     * The order is what keeps the two in step. A failed invoke keeps the entry, so a later stop,
-     * disconnect or shutdown still reaches the session; dropping first would leave the device holding
-     * a session nothing can name, pinning its streams at `ReferenceCount > 0` for good.
+     * Reports whether the device still had the session. The order is what keeps the two in step. A
+     * failed invoke keeps the entry, so a later stop, disconnect or shutdown still reaches the
+     * session; dropping first would leave the device holding a session nothing can name, pinning its
+     * streams at `ReferenceCount > 0` for good.
      *
-     * `NotFound` is the exception: the device answers it when it has no such session
-     * (`WebRTCTransportProviderCluster.cpp`, `HandleEndSession` ahead of the delegate call), so the
-     * entry is stale and keeping it would only re-send a dead id.
+     * `NotFound` is the exception: the device answers it for any id it cannot resolve to one of its
+     * sessions (`WebRTCTransportProviderCluster.cpp`, `HandleEndSession` ahead of the delegate call),
+     * so the entry names nothing the device will act on, keeping it would only re-send a dead id, and
+     * this call ended nothing.
      */
-    async #endSession(session: ManagedSession): Promise<void> {
+    async #endSession(session: ManagedSession): Promise<boolean> {
         const { nodeId, endpointId, webRtcSessionId } = session;
+        let endedOnDevice = true;
         try {
             await this.io.invoke({
                 nodeId,
@@ -1468,24 +1473,29 @@ export class CameraStreamManager {
             });
         } catch (error) {
             if (deviceStatusOf(error) !== Status.NotFound) throw error;
+            endedOnDevice = false;
             logger.info(
-                `Node ${nodeId} no longer has WebRTC session ${webRtcSessionId}; dropping the server's tracking of it`,
+                `Node ${nodeId} did not resolve WebRTC session ${webRtcSessionId} (NotFound); dropping the server's tracking of it`,
             );
         }
         this.#sessions.forgetEstablished(session);
+        return endedOnDevice;
     }
 
     /**
      * Ends the session on the device. The allocation is deliberately kept.
      *
-     * Returns whether a session was actually ended: `webRtcSessionId` is caller-supplied and allocated
-     * per provider, so it names a session only together with the node and endpoint it was issued on.
+     * Returns whether this call ended a live session: false both for an id this server does not track
+     * for that node and endpoint — `webRtcSessionId` is caller-supplied and allocated per provider, so
+     * it names a session only together with the node and endpoint it was issued on — and for one the
+     * device answers `NotFound` for, which is an id it cannot resolve to one of its sessions. A failed
+     * `EndSession` is raised, not reported as a stop, including when another path sent the `EndSession`
+     * this call joined.
      */
     async stopStream(nodeId: NodeId, endpointId: EndpointNumber, webRtcSessionId: number): Promise<boolean> {
         const session = this.#sessions.get(nodeId, endpointId, webRtcSessionId);
         if (session === undefined) return false;
-        await this.#sessions.releaseOnce(session, held => this.#endSession(held));
-        return true;
+        return this.#sessions.releaseOnce(session, held => this.#endSession(held));
     }
 
     /**
@@ -1533,9 +1543,14 @@ export class CameraStreamManager {
      */
     async #releaseSessions(matches: (scope: SessionScope) => boolean): Promise<void> {
         const inFlight = this.#sessions.claim(matches, session =>
-            this.#endSession(session).catch(error =>
-                logger.warn(`Failed to end session ${session.webRtcSessionId} on node ${session.nodeId}:`, error),
-            ),
+            this.#endSession(session).catch(error => {
+                logger.warn(`Failed to end session ${session.webRtcSessionId} on node ${session.nodeId}:`, error);
+                // Rethrown so a `camera_stop_stream` joined to this same release is told the session is
+                // still open rather than being handed a stop that did not happen. Logged as well because
+                // a connection close and a shutdown have no client to raise to; the allSettled below is
+                // what absorbs the rejection here.
+                throw error;
+            }),
         );
         if (inFlight.length === 0) return;
         await withCleanupBudget("ending the sessions a connection or the server owned", async () => {

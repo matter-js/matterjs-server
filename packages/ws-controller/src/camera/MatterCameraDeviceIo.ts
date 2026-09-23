@@ -4,7 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Logger } from "@matter/main";
 import type { Behavior, EndpointNumber, Immutable, NodeId } from "@matter/main";
 import { CameraAvStreamManagement } from "@matter/main/clusters/camera-av-stream-management";
 import { WebRtcTransportProvider } from "@matter/main/clusters/web-rtc-transport-provider";
@@ -13,11 +12,10 @@ import { Status } from "@matter/main/types";
 import { CameraAvStreamManagementClient } from "@matter/node/behaviors/camera-av-stream-management";
 import { WebRtcTransportProviderClient } from "@matter/node/behaviors/web-rtc-transport-provider";
 import type { ControllerCommandHandler } from "../controller/ControllerCommandHandler.js";
+import { dropWebRtcSessionTracking } from "../controller/webRtcSessionTracking.js";
 import type { CameraDeviceIo, CameraState } from "./CameraStreamManager.js";
 import type { Resolution } from "./cameraTypes.js";
 import { deviceStatusOf } from "./deviceStatus.js";
-
-const logger = Logger.get("MatterCameraDeviceIo");
 
 function toResolution(resolution: { width: number; height: number }): Resolution {
     return { width: resolution.width, height: resolution.height };
@@ -214,16 +212,9 @@ export class MatterCameraDeviceIo implements CameraDeviceIo {
         if (args.command !== "endSession") return invoke;
 
         const sessionId = args.fields.webRtcSessionId;
-        // What the requestor keeps once the device has no such session, nothing can name again. The
-        // failure only logs: the manager forgets its own entry when this resolves, so raising here
-        // would leave it holding a session the device has already ended.
         const dropTracking = async (): Promise<void> => {
             if (typeof sessionId !== "number") return;
-            try {
-                await this.#handler.removeTrackedWebRtcSession(sessionId, args.nodeId, args.endpointId);
-            } catch (error) {
-                logger.warn(`Could not drop local tracking of WebRTC session ${sessionId}:`, error);
-            }
+            await dropWebRtcSessionTracking(this.#handler, sessionId, args.nodeId, args.endpointId);
         };
         try {
             const response = await invoke;

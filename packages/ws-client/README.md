@@ -333,7 +333,9 @@ const { ended } = await client.sendCommand("camera_stop_stream", 0, {
 });
 ```
 
-`ended` is `false` when `webrtc_session_id` is not a session tracked for this `node_id`/`endpoint_id` — an unknown id, an already-ended session, or one that belongs to a different node or endpoint — rather than ending an arbitrary session by guessing its id.
+`ended` is `false` when the call ended no live session. That covers an id this server does not track for this `node_id`/`endpoint_id` — an unknown id, an already-ended session, or one belonging to a different node or endpoint, rather than ending an arbitrary session by guessing its id — and an id the camera itself answers `NOT_FOUND` for, which is an id it could not resolve to one of its sessions. Any other refusal from the camera is an error response, so `ended: true` means the camera confirmed the end.
+
+The command rejects rather than answering `ended: false` when the `EndSession` fails. That has always been so for an `EndSession` this call sends itself; it now also holds for one a closing connection or the server shutdown sent first, since there is one `EndSession` per session and a stop naming a session already being ended waits on that invoke and reports its outcome. The session is still tracked afterwards, so the call can be retried.
 
 ### camera_snapshot
 
