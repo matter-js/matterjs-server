@@ -34,13 +34,22 @@ function isStreamKind(value: string): value is StreamKind {
     return value === "video" || value === "audio" || value === "snapshot";
 }
 
+/**
+ * Every field this gates is a positive integer on the wire (Matter uint8/uint16/uint32, each with a
+ * "min 1" constraint): resolution width/height, frame rate, bit rate, channel count, sample rate.
+ * @see Matter spec § 11.2.8, the AVStreamManagement cluster's Allocate command fields
+ */
+function isPositiveSafeInteger(value: unknown): value is number {
+    return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+}
+
 function toResolution(value: unknown, field: string): Resolution {
     if (typeof value !== "object" || value === null || !("width" in value) || !("height" in value)) {
-        throw ServerError.invalidArguments(`${field} must be an object with numeric width and height`);
+        throw ServerError.invalidArguments(`${field} must be an object with positive integer width and height`);
     }
     const { width, height } = value;
-    if (typeof width !== "number" || typeof height !== "number") {
-        throw ServerError.invalidArguments(`${field} must be an object with numeric width and height`);
+    if (!isPositiveSafeInteger(width) || !isPositiveSafeInteger(height)) {
+        throw ServerError.invalidArguments(`${field} must be an object with positive integer width and height`);
     }
     return { width, height };
 }
@@ -53,7 +62,7 @@ function toOptionalString(value: unknown, field: string): string | undefined {
 
 function toOptionalNumber(value: unknown, field: string): number | undefined {
     if (value === undefined) return undefined;
-    if (typeof value !== "number") throw ServerError.invalidArguments(`${field} must be a number`);
+    if (!isPositiveSafeInteger(value)) throw ServerError.invalidArguments(`${field} must be a positive integer`);
     return value;
 }
 
@@ -98,6 +107,11 @@ export function parseCameraTarget(args: { node_id?: unknown; endpoint_id?: unkno
     const { node_id: nodeId, endpoint_id: endpointId } = args;
     if (typeof nodeId !== "number" && typeof nodeId !== "bigint") {
         throw ServerError.invalidArguments("Camera command requires a numeric or bigint node_id");
+    }
+    // NodeId(v) is BigInt(v); a non-integer number reaches that conversion and throws an
+    // uncaught RangeError instead of this typed error.
+    if (typeof nodeId === "number" && !Number.isInteger(nodeId)) {
+        throw ServerError.invalidArguments("Camera command requires a numeric node_id to be an integer");
     }
     if (typeof endpointId !== "number" || !Number.isInteger(endpointId) || endpointId < 0 || endpointId > 0xfffe) {
         throw ServerError.invalidArguments("Camera command requires endpoint_id to be an integer between 0 and 0xFFFE");

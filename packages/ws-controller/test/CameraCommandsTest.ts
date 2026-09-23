@@ -42,6 +42,18 @@ describe("cameraCommands", () => {
             expect((thrown as ServerError).code).to.equal(ServerErrorCode.InvalidArguments);
         });
 
+        it("rejects a fractional, NaN, or infinite numeric node id instead of letting NodeId() throw", () => {
+            for (const bad of [1.5, NaN, Infinity, -Infinity]) {
+                let thrown: unknown;
+                try {
+                    parseCameraTarget({ node_id: bad, endpoint_id: 1 });
+                } catch (error) {
+                    thrown = error;
+                }
+                expect((thrown as ServerError).code).to.equal(ServerErrorCode.InvalidArguments);
+            }
+        });
+
         it("rejects a non-integer endpoint id", () => {
             let thrown: unknown;
             try {
@@ -266,6 +278,53 @@ describe("cameraCommands", () => {
             );
         });
 
+        it("rejects a negative, zero, fractional, NaN, or infinite max_frame_rate hint", () => {
+            for (const bad of [-1, 0, 1.5, NaN, Infinity, -Infinity]) {
+                expectInvalidArguments(() =>
+                    parseStartStreamArgs({
+                        node_id: 5,
+                        endpoint_id: 1,
+                        stream_usage: "LiveView",
+                        video: { max_frame_rate: bad },
+                    }),
+                );
+            }
+        });
+
+        it("rejects a negative, zero, fractional, NaN, or infinite min_bit_rate hint", () => {
+            for (const bad of [-1, 0, 1.5, NaN, Infinity, -Infinity]) {
+                expectInvalidArguments(() =>
+                    parseStartStreamArgs({
+                        node_id: 5,
+                        endpoint_id: 1,
+                        stream_usage: "LiveView",
+                        video: { min_bit_rate: bad },
+                    }),
+                );
+            }
+        });
+
+        it("rejects a negative, zero, fractional, NaN, or infinite max_resolution width or height hint", () => {
+            for (const bad of [-1, 0, 1.5, NaN, Infinity, -Infinity]) {
+                expectInvalidArguments(() =>
+                    parseStartStreamArgs({
+                        node_id: 5,
+                        endpoint_id: 1,
+                        stream_usage: "LiveView",
+                        video: { max_resolution: { width: bad, height: 480 } },
+                    }),
+                );
+                expectInvalidArguments(() =>
+                    parseStartStreamArgs({
+                        node_id: 5,
+                        endpoint_id: 1,
+                        stream_usage: "LiveView",
+                        video: { max_resolution: { width: 640, height: bad } },
+                    }),
+                );
+            }
+        });
+
         it("rejects a video codecs hint that is not an array of strings", () => {
             expectInvalidArguments(() =>
                 parseStartStreamArgs({
@@ -304,6 +363,40 @@ describe("cameraCommands", () => {
                     audio: { channel_count: "2" },
                 }),
             );
+        });
+
+        it("rejects a negative, zero, fractional, NaN, or infinite channel_count audio hint", () => {
+            for (const bad of [-1, 0, 1.5, NaN, Infinity, -Infinity]) {
+                expectInvalidArguments(() =>
+                    parseStartStreamArgs({
+                        node_id: 5,
+                        endpoint_id: 1,
+                        stream_usage: "LiveView",
+                        audio: { channel_count: bad },
+                    }),
+                );
+            }
+        });
+
+        it("rejects a negative, zero, fractional, NaN, or infinite sample_rate or bit_rate audio hint", () => {
+            for (const bad of [-1, 0, 1.5, NaN, Infinity, -Infinity]) {
+                expectInvalidArguments(() =>
+                    parseStartStreamArgs({
+                        node_id: 5,
+                        endpoint_id: 1,
+                        stream_usage: "LiveView",
+                        audio: { sample_rate: bad },
+                    }),
+                );
+                expectInvalidArguments(() =>
+                    parseStartStreamArgs({
+                        node_id: 5,
+                        endpoint_id: 1,
+                        stream_usage: "LiveView",
+                        audio: { bit_rate: bad },
+                    }),
+                );
+            }
         });
 
         it("rejects an audio codecs hint that is not an array of strings", () => {
@@ -402,6 +495,26 @@ describe("cameraCommands", () => {
                 thrown = error;
             }
             expect((thrown as ServerError).code).to.equal(ServerErrorCode.InvalidArguments);
+        });
+
+        it("rejects a negative, zero, fractional, NaN, or infinite max_resolution width or height", () => {
+            for (const bad of [-1, 0, 1.5, NaN, Infinity, -Infinity]) {
+                let thrownWidth: unknown;
+                try {
+                    parseSnapshotArgs({ node_id: 5, endpoint_id: 1, max_resolution: { width: bad, height: 480 } });
+                } catch (error) {
+                    thrownWidth = error;
+                }
+                expect((thrownWidth as ServerError).code).to.equal(ServerErrorCode.InvalidArguments);
+
+                let thrownHeight: unknown;
+                try {
+                    parseSnapshotArgs({ node_id: 5, endpoint_id: 1, max_resolution: { width: 640, height: bad } });
+                } catch (error) {
+                    thrownHeight = error;
+                }
+                expect((thrownHeight as ServerError).code).to.equal(ServerErrorCode.InvalidArguments);
+            }
         });
     });
 

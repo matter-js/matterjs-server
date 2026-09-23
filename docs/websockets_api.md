@@ -807,7 +807,7 @@ A name is the same string in both directions, but a reported key is not always a
 
 Everything else the command reports is a fact about the camera rather than a value to send back. `audio.bit_depths` has no hint: `AudioStreamAllocate` takes one bit depth and the server picks it from that list. A key a hint object does not take is refused with error 8 instead of being ignored, so a bound can never be dropped without the caller hearing about it.
 
-Every `resolution`, `min_resolution`, `max_resolution` and `sensor` on these commands is an object `{ "width": number, "height": number }`.
+Every `resolution`, `min_resolution`, `max_resolution` and `sensor` on these commands is an object `{ "width": number, "height": number }`. On an argument — `camera_start_stream`'s `video.min_resolution` / `max_resolution` and `camera_snapshot`'s `max_resolution` — both fields must be positive integers, and a negative, zero, fractional, `NaN`, or infinite value is refused with error 8 instead of reaching the camera.
 
 **camera_get_capabilities** - Report what the camera states, and what is allocated on it
 
@@ -900,7 +900,7 @@ There is deliberately no resolution list: the camera does not state one. `codecs
 | `ice_transport_policy` | string, optional | Passed to the WebRTC session setup unchanged |
 | `metadata_enabled` | boolean, optional | Passed to the WebRTC session setup; absent is `false` |
 
-`video` takes **ranges**: `codecs`, `min_resolution`, `max_resolution`, `min_frame_rate`, `max_frame_rate`, `min_bit_rate`, `max_bit_rate`. `audio` takes **exact values**, not ranges: `codecs`, `channel_count`, `sample_rate`, `bit_rate`. Any other key under either object is refused with error 8. The command's own arguments are refused the same way, so a range hint sent at the top level instead of under `video` is an error rather than a silently dropped bound.
+`video` takes **ranges**: `codecs`, `min_resolution`, `max_resolution`, `min_frame_rate`, `max_frame_rate`, `min_bit_rate`, `max_bit_rate`. `audio` takes **exact values**, not ranges: `codecs`, `channel_count`, `sample_rate`, `bit_rate`. Any other key under either object is refused with error 8. The command's own arguments are refused the same way, so a range hint sent at the top level instead of under `video` is an error rather than a silently dropped bound. Every numeric hint value must be a positive integer, the same rule a resolution's `width` and `height` follow; a negative, zero, fractional, `NaN`, or infinite value is refused with error 8 rather than reaching the camera.
 
 Every bound the caller states is hard in both directions: a codec list, floor or ceiling that nothing satisfies fails with error 102 rather than returning something else. Setting `min_resolution == max_resolution` pins an exact value, and takes that capacity from every other client sharing the camera (spec §15.2.1.2.2), so leave a bound unset unless an exact value is required.
 
