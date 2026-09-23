@@ -118,6 +118,34 @@ export const AUDIO_REFUSED_OFFER = [
     "a=rtpmap:111 opus/48000/2",
 ].join("\r\n");
 
+/** A live video section the peer will only send on, beside an audio section it will receive on. */
+export const VIDEO_INACTIVE_OFFER = [
+    "v=0",
+    "o=- 0 0 IN IP4 127.0.0.1",
+    "s=-",
+    "t=0 0",
+    "m=video 9 UDP/TLS/RTP/SAVPF 96",
+    "a=rtpmap:96 H265/90000",
+    "a=inactive",
+    "m=audio 9 UDP/TLS/RTP/SAVPF 111",
+    "a=rtpmap:111 opus/48000/2",
+    "a=recvonly",
+].join("\r\n");
+
+/** Talkback without a return path: the peer asks to send audio and will not receive ours. */
+export const AUDIO_SENDONLY_OFFER = [
+    "v=0",
+    "o=- 0 0 IN IP4 127.0.0.1",
+    "s=-",
+    "t=0 0",
+    "m=video 9 UDP/TLS/RTP/SAVPF 96",
+    "a=rtpmap:96 H265/90000",
+    "a=recvonly",
+    "m=audio 9 UDP/TLS/RTP/SAVPF 111",
+    "a=rtpmap:111 opus/48000/2",
+    "a=sendonly",
+].join("\r\n");
+
 export interface RecordedInvoke {
     command: string;
     fields: Record<string, unknown>;
@@ -1097,7 +1125,7 @@ describe("CameraStreamManager", () => {
                     streamUsage: LIVE_VIEW,
                     sdp: {
                         video: { state: "absent" as const },
-                        audio: { state: "offered" as const, codecs: ["AAC"] },
+                        audio: { state: "receiving" as const, codecs: ["AAC"] },
                         wantsTalkback: false,
                         limitsByCodec: new Map(),
                     },
@@ -1121,7 +1149,7 @@ describe("CameraStreamManager", () => {
                 streamUsage: LIVE_VIEW,
                 sdp: {
                     video: { state: "absent" as const },
-                    audio: { state: "offered" as const, codecs: ["AAC"] },
+                    audio: { state: "receiving" as const, codecs: ["AAC"] },
                     wantsTalkback: false,
                     limitsByCodec: new Map(),
                 },
@@ -1140,7 +1168,7 @@ describe("CameraStreamManager", () => {
                 streamUsage: LIVE_VIEW,
                 sdp: {
                     video: { state: "absent" as const },
-                    audio: { state: "offered" as const },
+                    audio: { state: "receiving" as const },
                     wantsTalkback: false,
                     limitsByCodec: new Map(),
                 },
@@ -1506,6 +1534,96 @@ describe("CameraStreamManager", () => {
             const detail = JSON.parse((thrown as ServerError).message);
             expect(detail.reason).to.equal("capability");
             expect(detail.requested).to.deep.equal([]);
+            expect(detail.track).to.equal("audio");
+        });
+
+        it("puts no video track in a session whose offer will not receive video", async () => {
+            // The section is live, but a=inactive says nothing reaches the peer through it. A stream
+            // allocated here holds an encoder and a ReferenceCount for media nobody receives.
+            const { manager, invokes } = managerWith(STATE, async invoke => {
+                if (invoke.command === "audioStreamAllocate") return { audioStreamId: 4 };
+                if (invoke.command === "provideOffer") return { webRtcSessionId: 42 };
+                return undefined;
+            });
+            const session = await manager.startStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                connectionId: "conn-1",
+                streamUsage: LIVE_VIEW,
+                sdp: VIDEO_INACTIVE_OFFER,
+            });
+            expect(session.video).to.equal(undefined);
+            expect(invokes.some(invoke => invoke.command === "videoStreamAllocate")).to.equal(false);
+            const offer = invokes.find(invoke => invoke.command === "provideOffer");
+            expect(offer?.fields.videoStreams).to.equal(undefined);
+        });
+
+        it("tells a caller that asked for video why a section it will not receive left it none", async () => {
+            // Same answer as a rejected section: the caller stated video and must hear why it has
+            // none, rather than reading video: null with no error.
+            const { manager, invokes } = managerWith(STATE, async invoke => {
+                if (invoke.command === "audioStreamAllocate") return { audioStreamId: 4 };
+                if (invoke.command === "provideOffer") return { webRtcSessionId: 42 };
+                return undefined;
+            });
+            let thrown: unknown;
+            try {
+                await manager.startStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    connectionId: "conn-1",
+                    streamUsage: LIVE_VIEW,
+                    sdp: VIDEO_INACTIVE_OFFER,
+                    video: { codecs: ["H265"] },
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamIncompatible);
+            const detail = JSON.parse((thrown as ServerError).message);
+            expect(detail.reason).to.equal("capability");
+            expect(detail.track).to.equal("video");
+            expect(detail.requested).to.deep.equal(["H265"]);
+            expect(invokes.some(invoke => invoke.command === "provideOffer")).to.equal(false);
+        });
+
+        it("puts no audio track in a session whose audio section only asks to send", async () => {
+            // a=sendonly asks for talkback and refuses our audio in one statement. The talkback
+            // request must not be read as permission to send audio back.
+            const { manager, invokes } = allocatingManager();
+            const session = await manager.startStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                connectionId: "conn-1",
+                streamUsage: LIVE_VIEW,
+                sdp: AUDIO_SENDONLY_OFFER,
+                video: {},
+            });
+            expect(session.audio).to.equal(undefined);
+            expect(invokes.some(invoke => invoke.command === "audioStreamAllocate")).to.equal(false);
+            const offer = invokes.find(invoke => invoke.command === "provideOffer");
+            expect(offer?.fields.audioStreams).to.equal(undefined);
+        });
+
+        it("tells a caller that asked for audio why a sendonly audio section left it none", async () => {
+            const { manager } = allocatingManager();
+            let thrown: unknown;
+            try {
+                await manager.startStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    connectionId: "conn-1",
+                    streamUsage: LIVE_VIEW,
+                    sdp: AUDIO_SENDONLY_OFFER,
+                    video: {},
+                    audio: { codecs: ["OPUS"] },
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamIncompatible);
+            const detail = JSON.parse((thrown as ServerError).message);
+            expect(detail.reason).to.equal("capability");
             expect(detail.track).to.equal("audio");
         });
 
@@ -3767,7 +3885,7 @@ describe("CameraStreamManager reuse before the device has reported", () => {
         try {
             await liveView(manager, {
                 sdp: {
-                    video: { state: "offered" as const },
+                    video: { state: "receiving" as const },
                     audio: { state: "absent" as const },
                     wantsTalkback: false,
                     limitsByCodec: new Map([["H265", { maxPixels: 1280 * 720 }]]),
@@ -4087,7 +4205,7 @@ describe("preferredVideoCodec", () => {
     it("fails typed when the offer names no codec the camera supports", () => {
         // An H.264-only peer handed an H.265 stream sees a session it cannot decode and no error.
         const offer = {
-            video: { state: "offered" as const, codecs: ["H264"] },
+            video: { state: "receiving" as const, codecs: ["H264"] },
             audio: { state: "absent" as const },
             wantsTalkback: false,
             limitsByCodec: new Map(),
@@ -4102,7 +4220,7 @@ describe("preferredVideoCodec", () => {
         // After the offer has ruled H.265 out, "the camera supports H.265" is not the answer the
         // client needs to act on.
         const offer = {
-            video: { state: "offered" as const, codecs: ["H264"] },
+            video: { state: "receiving" as const, codecs: ["H264"] },
             audio: { state: "absent" as const },
             wantsTalkback: false,
             limitsByCodec: new Map(),
@@ -4113,7 +4231,7 @@ describe("preferredVideoCodec", () => {
 
     it("keeps the offer's narrowing when a later hint agrees with it", () => {
         const offer = {
-            video: { state: "offered" as const, codecs: ["H264"] },
+            video: { state: "receiving" as const, codecs: ["H264"] },
             audio: { state: "absent" as const },
             wantsTalkback: false,
             limitsByCodec: new Map(),
@@ -4135,7 +4253,7 @@ describe("preferredVideoCodec", () => {
         // An m-line carrying only static payload types parses to hasVideo with an empty codec list;
         // that states nothing about what the peer can decode.
         const offer = {
-            video: { state: "offered" as const },
+            video: { state: "receiving" as const },
             audio: { state: "absent" as const },
             wantsTalkback: false,
             limitsByCodec: new Map(),

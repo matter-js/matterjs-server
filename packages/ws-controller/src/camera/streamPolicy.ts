@@ -13,7 +13,7 @@ import type {
     VideoEnvelope,
 } from "./cameraTypes.js";
 import type { SdpVideoConstraints, SelectedVideoCodecLimits, VideoCodecLimits } from "./sdpConstraints.js";
-import { offeredCodecs } from "./sdpConstraints.js";
+import { receivableCodecs } from "./sdpConstraints.js";
 import { audioCodecName } from "./wireNames.js";
 
 /** KeyFrameInterval in milliseconds; LiveView favours fast recovery over bitrate. */
@@ -523,7 +523,7 @@ export function computeAudioEnvelope(args: AudioEnvelopeArgs): AudioSelection {
     }
 
     let codecs = capabilities.supportedCodecs;
-    const offered = sdp === undefined ? undefined : offeredCodecs(sdp.audio);
+    const offered = sdp === undefined ? undefined : receivableCodecs(sdp.audio);
     if (offered !== undefined) {
         codecs = codecs.filter(codec => offered.includes(audioCodecName(codec)));
     }

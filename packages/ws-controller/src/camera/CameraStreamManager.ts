@@ -26,8 +26,8 @@ import type {
     VideoEnvelope,
 } from "./cameraTypes.js";
 import { deviceStatusOf } from "./deviceStatus.js";
-import { offeredCodecs, parseSdpVideoConstraints, videoCodecLimits } from "./sdpConstraints.js";
-import type { SdpVideoConstraints, SelectedVideoCodecLimits } from "./sdpConstraints.js";
+import { mediaRefusal, parseSdpVideoConstraints, receivableCodecs, videoCodecLimits } from "./sdpConstraints.js";
+import type { MediaRefusal, SdpVideoConstraints, SelectedVideoCodecLimits } from "./sdpConstraints.js";
 import { CameraSessionRegistry } from "./sessionRegistry.js";
 import type { PendingSession, SessionScope } from "./sessionRegistry.js";
 import {
@@ -185,7 +185,7 @@ export function preferredVideoCodec(
     hintCodecs: string[] | undefined,
 ): number {
     let candidates = deviceCodecs.length > 0 ? deviceCodecs : knownVideoCodecs();
-    const offered = sdp === undefined ? undefined : offeredCodecs(sdp.video);
+    const offered = sdp === undefined ? undefined : receivableCodecs(sdp.video);
     if (offered !== undefined) {
         const narrowed = candidates.filter(codec => offered.includes(videoCodecName(codec)));
         candidates = requireCodecCandidates(narrowed, candidates, [...offered]);
@@ -199,6 +199,10 @@ export function preferredVideoCodec(
         candidates = requireCodecCandidates(preferred, candidates, hintCodecs);
     }
     return candidates[0] ?? CameraAvStreamManagement.VideoCodec.H264;
+}
+
+function refusalText(refusal: MediaRefusal): string {
+    return refusal.state === "refused" ? "is rejected" : `states a=${refusal.direction}`;
 }
 
 function occupyingStream(kind: StreamKind, streamId: number, referenceCount: number): CameraOccupyingStreamDetail {
@@ -1075,7 +1079,11 @@ export class CameraStreamManager {
         // The peer's own refusal outranks anything the camera can offer, and no different request
         // changes it, which is what `capability` reports. Answering it here rather than by narrowing
         // the codec set keeps the caller from being sent after the camera's codec list.
-        if (args.sdp?.audio.state === "refused") {
+        const refusal = args.sdp === undefined ? undefined : mediaRefusal(args.sdp.audio);
+        if (refusal !== undefined) {
+            logger.notice(
+                `Node ${nodeId} endpoint ${endpointId}: the offer's audio section ${refusalText(refusal)}, so no audio stream is allocated for it`,
+            );
             return {
                 unavailable: ServerError.cameraStreamIncompatible({
                     reason: "capability",
@@ -1382,10 +1390,15 @@ export class CameraStreamManager {
         if (videoRequest.state !== "declined") {
             const videoHints = statedHints(videoRequest);
             let outcome: TrackOutcome;
-            if (sdp?.video.state === "refused") {
-                // The peer refused the track outright, so there is nothing to allocate for: a stream
-                // put in the answer would hold an encoder and a ReferenceCount for media that can
-                // never flow. Same statement, same answer as the audio half reads for its own section.
+            const refusal = sdp === undefined ? undefined : mediaRefusal(sdp.video);
+            if (refusal !== undefined) {
+                // The peer either rejected the section or will not receive on it, so there is
+                // nothing to allocate for: a stream put in the answer would hold an encoder and a
+                // ReferenceCount for media that can never reach it. Same statement, same answer as
+                // the audio half reads for its own section.
+                logger.notice(
+                    `Node ${nodeId} endpoint ${endpointId}: the offer's video section ${refusalText(refusal)}, so no video stream is allocated for it`,
+                );
                 outcome = {
                     unavailable: ServerError.cameraStreamIncompatible({
                         reason: "capability",

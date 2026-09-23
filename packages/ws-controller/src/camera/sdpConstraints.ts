@@ -44,41 +44,71 @@ export interface SelectedVideoCodecLimits extends VideoCodecLimits {
 /**
  * What an offer states about one media kind.
  *
- * Three statements, three values, none of which can stand in for another. No section of this kind
+ * Four statements, four values, none of which can stand in for another. No section of this kind
  * states nothing (`absent`); a section the peer rejected (`m=` port 0, RFC 3264 §6) states that no
- * track of this kind may be put in the answer at all (`refused`); a live section states that the
- * peer will receive this kind (`offered`).
+ * track of this kind may be put in the answer at all (`refused`); a live section the peer will not
+ * receive on — `a=sendonly` or `a=inactive` — states that a track put in it would hold an encoder
+ * and a reference count for media nobody receives (`notReceiving`); a live section the peer will
+ * receive on — `a=recvonly`, `a=sendrecv`, or no direction at all, which is `sendrecv` per RFC 4566
+ * §6 — states that this kind reaches the peer through it (`receiving`).
  *
- * `codecs` on an `offered` section is what the peer stated it decodes, and it is absent — never
+ * A live section states two independent things and its port answers neither: whether the peer will
+ * receive our media, and whether it asks to send us audio, which
+ * {@link SdpVideoConstraints.wantsTalkback} reads. `a=sendonly` says no to the first and yes to the
+ * second.
+ *
+ * `codecs` on a `receiving` section is what the peer stated it decodes, and it is absent — never
  * empty — when the peer stated nothing, which is a section carrying only statically-mapped payload
  * types (`sdp-transform` builds `media.rtp` from `a=rtpmap` lines only). The two are different
  * statements and an empty list would collapse them, so the parser never stores one and
- * {@link offeredCodecs} is the only way to read the list back.
+ * {@link receivableCodecs} is the only way to read the list back.
  */
 export type MediaDisposition =
     | { readonly state: "absent" }
     | { readonly state: "refused" }
-    | { readonly state: "offered"; readonly codecs?: readonly string[] };
+    | { readonly state: "notReceiving"; readonly direction: "sendonly" | "inactive" }
+    | { readonly state: "receiving"; readonly codecs?: readonly string[] };
+
+/** The two {@link MediaDisposition} states that forbid a track of this kind in the answer. */
+export type MediaRefusal = Extract<MediaDisposition, { state: "refused" | "notReceiving" }>;
 
 export interface SdpVideoConstraints {
     video: MediaDisposition;
     audio: MediaDisposition;
-    /** True when an offered audio m-line asks to send, i.e. the caller wants talkback. */
+    /** True when a live audio m-line asks to send, i.e. the caller wants talkback. */
     wantsTalkback: boolean;
     /** Per-codec fmtp limits, keyed by upper-cased codec name. A codec absent here stated none. */
     limitsByCodec: ReadonlyMap<string, VideoCodecLimits>;
 }
 
 /**
- * The codecs the peer stated it decodes for this kind, or none when it stated nothing to narrow by.
+ * Why a track of this kind may not be put in the answer, or `undefined` when it may.
  *
- * The one read path for both kinds, so video and audio cannot disagree about what an offered
- * section carrying no codec means. A refusal also answers "nothing to narrow by": it is answered
- * where the track is decided, ahead of any narrowing, because narrowing a set to empty is not how a
- * caller learns its peer declined the media.
+ * The one read path for both kinds, so no consumer can read "the section is there" as "we may send
+ * media into it": a nonzero port is not permission, the direction is. `absent` is not a refusal —
+ * no section is no statement, and what the server does without one is its own decision.
  */
-export function offeredCodecs(disposition: MediaDisposition): readonly string[] | undefined {
-    return disposition.state === "offered" ? disposition.codecs : undefined;
+export function mediaRefusal(disposition: MediaDisposition): MediaRefusal | undefined {
+    switch (disposition.state) {
+        case "refused":
+        case "notReceiving":
+            return disposition;
+        default:
+            return undefined;
+    }
+}
+
+/**
+ * The codecs the peer stated it can receive for this kind, or none when it stated nothing to narrow
+ * by.
+ *
+ * The one read path for both kinds, so video and audio cannot disagree about what a receiving
+ * section carrying no codec means. A section the peer will not receive on answers "nothing to narrow
+ * by" as well: narrowing a set to empty is not how a caller learns its peer declined the media, so
+ * {@link mediaRefusal} is answered where the track is decided, ahead of any narrowing.
+ */
+export function receivableCodecs(disposition: MediaDisposition): readonly string[] | undefined {
+    return disposition.state === "receiving" ? disposition.codecs : undefined;
 }
 
 function fmtpNumber(params: string, key: string): number | undefined {
@@ -109,15 +139,31 @@ function tighten(into: Map<string, VideoCodecLimits>, codec: string, limits: Vid
 
 /** What the sections of one media kind stated, before {@link disposition} reduces them to one value. */
 interface MediaSections {
-    offered: boolean;
+    receiving: boolean;
+    /**
+     * The direction of the first live section the peer will not receive on, if there is one.
+     *
+     * Both values forbid a track of this kind equally, so which one is reported changes no decision
+     * and exists to be named in a log line.
+     */
+    notReceiving?: "sendonly" | "inactive";
     refused: boolean;
     codecs: string[];
 }
 
-/** One live section makes the kind offered, whatever the other sections of that kind say. */
+/**
+ * One section the peer will receive on makes the kind receiving, whatever the other sections say.
+ *
+ * A live section the peer will not receive on outranks a rejected one, because it is the section
+ * that still exists in the negotiation. Both forbid the track, so the order decides only which
+ * statement is reported.
+ */
 function disposition(sections: MediaSections): MediaDisposition {
-    if (sections.offered) {
-        return sections.codecs.length === 0 ? { state: "offered" } : { state: "offered", codecs: sections.codecs };
+    if (sections.receiving) {
+        return sections.codecs.length === 0 ? { state: "receiving" } : { state: "receiving", codecs: sections.codecs };
+    }
+    if (sections.notReceiving !== undefined) {
+        return { state: "notReceiving", direction: sections.notReceiving };
     }
     return sections.refused ? { state: "refused" } : { state: "absent" };
 }
@@ -146,8 +192,8 @@ export function videoCodecLimits(sdp: SdpVideoConstraints | undefined, codec: nu
  */
 export function parseSdpVideoConstraints(sdp: string): SdpVideoConstraints {
     const limitsByCodec = new Map<string, VideoCodecLimits>();
-    const videoSections: MediaSections = { offered: false, refused: false, codecs: new Array<string>() };
-    const audioSections: MediaSections = { offered: false, refused: false, codecs: new Array<string>() };
+    const videoSections: MediaSections = { receiving: false, refused: false, codecs: new Array<string>() };
+    const audioSections: MediaSections = { receiving: false, refused: false, codecs: new Array<string>() };
     let wantsTalkback = false;
 
     let parsed;
@@ -167,7 +213,21 @@ export function parseSdpVideoConstraints(sdp: string): SdpVideoConstraints {
             // and its direction describe media that will never flow.
             continue;
         }
-        sections.offered = true;
+        // RFC 4566 §5.13 makes a session-level attribute apply to every section that does not
+        // restate it, and §6 makes a section stating no direction `sendrecv` — which offers to send,
+        // so such an audio section asks for talkback.
+
+        const direction = media.direction ?? parsed.direction ?? "sendrecv";
+        if (media.type === "audio" && (direction === "sendonly" || direction === "sendrecv")) {
+            wantsTalkback = true;
+        }
+        if (direction === "sendonly" || direction === "inactive") {
+            sections.notReceiving ??= direction;
+            // The peer will not receive this kind here, so this section's codecs and `a=fmtp` limits
+            // describe media that cannot reach it.
+            continue;
+        }
+        sections.receiving = true;
         const codecsByPayload = new Map<number, string>();
         for (const entry of media.rtp ?? []) codecsByPayload.set(entry.payload, entry.codec.toUpperCase());
         for (const codec of codecsByPayload.values()) {
@@ -176,6 +236,9 @@ export function parseSdpVideoConstraints(sdp: string): SdpVideoConstraints {
         if (media.type === "video") {
             for (const entry of media.fmtp ?? []) {
                 const codec = codecsByPayload.get(entry.payload);
+                // An `a=fmtp` line whose payload type has no `a=rtpmap` names no codec in this
+                // section. Every codec this server can select is dynamically mapped, so there is no
+                // codec to attribute the limit to and guessing one would clamp the wrong stream.
                 if (codec === undefined) continue;
                 const maxFs = fmtpNumber(entry.config, "max-fs");
                 const maxMbps = fmtpNumber(entry.config, "max-mbps");
@@ -188,8 +251,6 @@ export function parseSdpVideoConstraints(sdp: string): SdpVideoConstraints {
                     ...(maxBr === undefined ? {} : { maxBitRate: maxBr * BITS_PER_KILOBIT }),
                 });
             }
-        } else if (media.direction === "sendrecv" || media.direction === "sendonly") {
-            wantsTalkback = true;
         }
     }
 

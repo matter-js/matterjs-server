@@ -821,7 +821,7 @@ describe("streamPolicy", () => {
                     capabilities: { ...AUDIO_CAPABILITIES, supportedCodecs: [AAC] },
                     sdp: {
                         video: { state: "absent" as const },
-                        audio: { state: "offered" as const, codecs: ["OPUS"] },
+                        audio: { state: "receiving" as const, codecs: ["OPUS"] },
                         wantsTalkback: false,
                         limitsByCodec: new Map(),
                     },
@@ -839,7 +839,7 @@ describe("streamPolicy", () => {
                     capabilities: { ...AUDIO_CAPABILITIES, supportedCodecs: [OPUS, AAC] },
                     sdp: {
                         video: { state: "absent" as const },
-                        audio: { state: "offered" as const },
+                        audio: { state: "receiving" as const },
                         wantsTalkback: false,
                         limitsByCodec: new Map(),
                     },
@@ -890,7 +890,7 @@ describe("streamPolicy", () => {
                     capabilities: AUDIO_CAPABILITIES,
                     sdp: {
                         video: { state: "absent" as const },
-                        audio: { state: "offered" as const, codecs: ["AAC"] },
+                        audio: { state: "receiving" as const, codecs: ["AAC"] },
                         wantsTalkback: false,
                         limitsByCodec: new Map(),
                     },
@@ -907,7 +907,7 @@ describe("streamPolicy", () => {
                     capabilities: AUDIO_CAPABILITIES,
                     sdp: {
                         video: { state: "absent" as const },
-                        audio: { state: "offered" as const, codecs: ["AAC"] },
+                        audio: { state: "receiving" as const, codecs: ["AAC"] },
                         wantsTalkback: false,
                         limitsByCodec: new Map(),
                     },
@@ -926,7 +926,7 @@ describe("streamPolicy", () => {
                 computeAudioEnvelope({
                     capabilities: AUDIO_CAPABILITIES,
                     sdp: {
-                        video: { state: "offered" as const },
+                        video: { state: "receiving" as const },
                         audio: { state: "absent" as const },
                         wantsTalkback: false,
                         limitsByCodec: new Map(),
