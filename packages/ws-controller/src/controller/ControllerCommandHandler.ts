@@ -67,6 +67,7 @@ import { CameraControllerDevice } from "@matter/node/devices/camera-controller";
 import { CommissioningController, NodeCommissioningOptions } from "@project-chip/matter.js";
 import type { DecodedAttributeReportValue, DecodedEventReportValue } from "@project-chip/matter.js/cluster";
 import { NodeStates, PairedNode } from "@project-chip/matter.js/device";
+import type { SessionEstablishingCommandName } from "../camera/webRtcProviderArguments.js";
 import { ClusterMap, ClusterMapEntry, GlobalAttributes } from "../model/ModelMapper.js";
 import {
     buildAttributePath,
@@ -425,10 +426,31 @@ export class ControllerCommandHandler {
     async invokeWebRtcProviderCommand(args: {
         nodeId: NodeId;
         endpointId: EndpointNumber;
-        commandName: "ProvideOffer" | "SolicitOffer";
+        commandName: SessionEstablishingCommandName;
         fields: Record<string, unknown>;
     }): Promise<WebRtcTransportProvider.ProvideOfferResponse | WebRtcTransportProvider.SolicitOfferResponse> {
         return this.#establishWebRtcProviderSession(args);
+    }
+
+    /**
+     * Trickle ICE candidates into a session the camera already holds.
+     *
+     * A plain invoke, deliberately apart from {@link invokeWebRtcProviderCommand}: it creates nothing
+     * to track, carries no originating endpoint, and the model gives the command no response type.
+     * A session id is not checked against local records first — the camera holds the session and
+     * answers for an id it cannot resolve to one of its own.
+     */
+    async invokeProvideIceCandidates(args: {
+        nodeId: NodeId;
+        endpointId: EndpointNumber;
+        fields: Record<string, unknown>;
+    }): Promise<void> {
+        await this.#invokeCommand(this.#nodes.get(args.nodeId).node, {
+            endpoint: args.endpointId,
+            cluster: WebRtcTransportProvider,
+            command: "provideIceCandidates",
+            fields: args.fields,
+        });
     }
 
     /**

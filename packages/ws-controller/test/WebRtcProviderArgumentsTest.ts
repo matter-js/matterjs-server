@@ -6,7 +6,7 @@
 
 import { ClusterModel, CommandModel, MatterModel } from "@matter/main/model";
 import { parseStartStreamArgs } from "../src/camera/cameraCommands.js";
-import { toProviderCommandFields } from "../src/camera/webRtcProviderArguments.js";
+import { PROVIDER_COMMAND_NAMES, toProviderCommandFields } from "../src/camera/webRtcProviderArguments.js";
 import { ServerError, ServerErrorCode } from "../src/types/WebSocketMessageTypes.js";
 import { ENDPOINT, LIVE_VIEW, managerWith, NODE, STATE, VIDEO_OFFER } from "./CameraStreamManagerTest.js";
 
@@ -118,14 +118,103 @@ describe("WebRTC provider arguments", () => {
                     "videoStreams",
                     "audioStreams",
                 ],
+                ProvideIceCandidates: ["webRtcSessionId", "iceCandidates"],
             };
-            for (const command of ["ProvideOffer", "SolicitOffer"] as const) {
+            for (const command of PROVIDER_COMMAND_NAMES) {
                 const message = refusal(() => toProviderCommandFields(command, { notAField: 1 })).message;
                 const accepted = message.slice(message.indexOf("Accepted: ") + "Accepted: ".length).split(", ");
                 expect(accepted).to.deep.equal(expected[command]);
                 // The spelled list is what the boundary owes a client; the model is what it must match.
                 expect(accepted).to.deep.equal(providerCommandFields(command));
             }
+        });
+
+        it("resolves this API's own snake spelling of a field to it", () => {
+            // Every id this API hands a client is snake-cased — camera_start_stream answers
+            // `webrtc_session_id` — so the echo of one has to reach the field it names.
+            const fields = toProviderCommandFields("ProvideIceCandidates", {
+                webrtc_session_id: 12,
+                ice_candidates: [{ candidate: "candidate:1", sdpMid: "0", sdpMLineIndex: 0 }],
+            });
+            expect(fields.webRtcSessionId).to.equal(12);
+        });
+
+        it("refuses originatingEndpointId on a command that states no such field", () => {
+            // Dropped where the server overwrites it, unknown where the command has no such field:
+            // dropping it there would discard an argument nothing else answers for.
+            expect(
+                refusal(() =>
+                    toProviderCommandFields("ProvideIceCandidates", {
+                        webRtcSessionId: 1,
+                        ice_candidates: [{ candidate: "candidate:1", sdpMid: "0", sdpMLineIndex: 0 }],
+                        originatingEndpointId: 99,
+                    }),
+                ).message,
+            ).to.match(/^unknown ProvideIceCandidates payload key: originatingEndpointId\./);
+        });
+
+        it("holds a string to the floor its field states, where that is all it states", () => {
+            // SdpMid is `min 1` with no ceiling. An empty string is one the struct forbids, so the
+            // camera would otherwise be the one to refuse it.
+            expect(
+                refusal(() =>
+                    toProviderCommandFields("ProvideIceCandidates", {
+                        webRtcSessionId: 1,
+                        ice_candidates: [{ candidate: "candidate:1", sdpMid: "", sdpMLineIndex: 0 }],
+                    }),
+                ).message,
+            ).to.equal("ice_candidates[0].sdpMid must be a string of at least 1 characters");
+            // Candidate states neither end, so its length is not the server's to judge.
+            expect(
+                toProviderCommandFields("ProvideIceCandidates", {
+                    webRtcSessionId: 1,
+                    ice_candidates: [{ candidate: "", sdpMid: "0", sdpMLineIndex: 0 }],
+                }),
+            ).to.deep.equal({
+                webRtcSessionId: 1,
+                iceCandidates: [{ candidate: "", sdpMid: "0", sdpmLineIndex: 0 }],
+            });
+        });
+
+        it("refuses an unknown key inside an ice_candidates entry", () => {
+            expect(
+                refusal(() =>
+                    toProviderCommandFields("ProvideIceCandidates", {
+                        webRtcSessionId: 1,
+                        ice_candidates: [{ candidate: "candidate:1", sdpMid: "0", sdpMLineIndex: 0, priority: 5 }],
+                    }),
+                ).message,
+            ).to.match(/^unknown ice_candidates\[0\] key: priority\./);
+        });
+
+        it("requires the members ICECandidateStruct states as mandatory", () => {
+            expect(
+                refusal(() =>
+                    toProviderCommandFields("ProvideIceCandidates", {
+                        webRtcSessionId: 1,
+                        ice_candidates: [{ candidate: "candidate:1" }],
+                    }),
+                ).message,
+            ).to.equal("ice_candidates[0] requires sdpMid");
+        });
+
+        it("bounds an ice_candidates entry's members by the struct's own definition", () => {
+            expect(
+                refusal(() =>
+                    toProviderCommandFields("ProvideIceCandidates", {
+                        webRtcSessionId: 1,
+                        ice_candidates: [{ candidate: "candidate:1", sdpMid: "0", sdpMLineIndex: 65536 }],
+                    }),
+                ).message,
+            ).to.equal("ice_candidates[0].sdpMLineIndex must be an integer between 0 and 65535");
+        });
+
+        it("refuses the empty ice_candidates list the field's minimum forbids", () => {
+            expect(
+                refusal(() =>
+                    toProviderCommandFields("ProvideIceCandidates", { webRtcSessionId: 1, ice_candidates: [] }),
+                ).message,
+            ).to.equal("ice_candidates must be an array of 1 or more entries");
         });
 
         it("refuses a payload that is not an object", () => {
@@ -181,10 +270,10 @@ describe("WebRTC provider arguments", () => {
 
         it("requires the fields the command states as mandatory", () => {
             expect(refusal(() => toProviderCommandFields("ProvideOffer", { sdp: "v=0" })).message).to.equal(
-                "ProvideOffer requires webRtcSessionId",
+                "ProvideOffer payload requires webRtcSessionId",
             );
             expect(refusal(() => toProviderCommandFields("SolicitOffer", {})).message).to.equal(
-                "SolicitOffer requires streamUsage",
+                "SolicitOffer payload requires streamUsage",
             );
         });
 

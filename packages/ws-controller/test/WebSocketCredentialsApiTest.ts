@@ -34,6 +34,7 @@ interface StubCommandHandlerOverrides {
     handleInvoke?(): Promise<unknown>;
     removeTrackedWebRtcSession?(webRtcSessionId: number, nodeId: bigint, endpointId: number): Promise<void>;
     invokeWebRtcProviderCommand?(args: { commandName: string; fields: Record<string, unknown> }): Promise<unknown>;
+    invokeProvideIceCandidates?(args: { fields: Record<string, unknown> }): Promise<void>;
 }
 
 /** Well under the 2000 ms per-test timeout, so a frame that never comes fails as this error. */
@@ -104,6 +105,11 @@ function makeStubController(
         removeTrackedWebRtcSession: commandHandler?.removeTrackedWebRtcSession ?? (async () => {}),
         invokeWebRtcProviderCommand:
             commandHandler?.invokeWebRtcProviderCommand ??
+            (async () => {
+                throw new Error("no WebRTC provider stubbed");
+            }),
+        invokeProvideIceCandidates:
+            commandHandler?.invokeProvideIceCandidates ??
             (async () => {
                 throw new Error("no WebRTC provider stubbed");
             }),
@@ -609,6 +615,56 @@ describe("WebSocket Credentials API", () => {
             },
         });
         expect(fields?.iceServers).to.deep.equal([{ urLs: ["stun:stun.example:3478"] }]);
+    });
+
+    it("relays ProvideIceCandidates as cluster-shaped fields and answers null", async () => {
+        let seen: Record<string, unknown> | undefined;
+        let established = false;
+        await h.close();
+        h = await createHarness(undefined, {
+            async invokeProvideIceCandidates(args) {
+                seen = args.fields;
+            },
+            async invokeWebRtcProviderCommand() {
+                established = true;
+                return { webRtcSessionId: 1 };
+            },
+        });
+        const result = await h.handle("send_webrtc_provider_command", {
+            node_id: 1,
+            endpoint_id: 1,
+            command_name: "ProvideIceCandidates",
+            // As a webrtc_callback ice_candidates event reports them.
+            payload: {
+                webrtc_session_id: 4,
+                ice_candidates: [{ candidate: "candidate:1", sdpMid: "0", sdpMLineIndex: 0 }],
+            },
+        });
+        expect(seen).to.deep.equal({
+            webRtcSessionId: 4,
+            iceCandidates: [{ candidate: "candidate:1", sdpMid: "0", sdpmLineIndex: 0 }],
+        });
+        // The session-establishing path would look for a session id in a response that carries none.
+        expect(established).to.equal(false);
+        expect(result).to.equal(null);
+    });
+
+    it("refuses a send_webrtc_provider_command argument it does not take", async () => {
+        let thrown: unknown;
+        try {
+            await h.handle("send_webrtc_provider_command", {
+                node_id: 1,
+                endpoint_id: 1,
+                command_name: "ProvideOffer",
+                payload: { webRtcSessionId: null, sdp: "v=0" },
+                timed_request_timeout_ms: 100,
+            });
+        } catch (error) {
+            thrown = error;
+        }
+        expect((thrown as Error).message).to.match(
+            /^unknown send_webrtc_provider_command argument key: timed_request_timeout_ms\./,
+        );
     });
 
     it("refuses a send_webrtc_provider_command naming another provider command", async () => {

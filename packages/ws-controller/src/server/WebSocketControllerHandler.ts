@@ -33,7 +33,13 @@ import {
     toWireSnapshotResult,
     toWireStartStreamResult,
 } from "../camera/cameraCommands.js";
-import { isProviderCommandName, toProviderCommandFields } from "../camera/webRtcProviderArguments.js";
+import {
+    establishesWebRtcSession,
+    isProviderCommandName,
+    PROVIDER_COMMAND_NAMES,
+    toProviderCommandFields,
+} from "../camera/webRtcProviderArguments.js";
+import { rejectUnknownKeys } from "../camera/wireArgumentChecks.js";
 import { ControllerCommandHandler } from "../controller/ControllerCommandHandler.js";
 import { MatterController, registerThreadCredentialsFromHex } from "../controller/MatterController.js";
 import type { TopologyNodeSource } from "../controller/NetworkTopologyService.js";
@@ -103,6 +109,20 @@ const NETWORK_TOPOLOGY_OPT_IN_COMMANDS = new Set(["get_network_topology"]);
 // Both can produce an offer/answer exchange; the answer and ICE candidates arrive on the
 // webrtc_callback event channel regardless of which command started the session.
 const WEBRTC_OPT_IN_COMMANDS = new Set(["send_webrtc_provider_command", "camera_start_stream"]);
+
+/**
+ * The arguments `send_webrtc_provider_command` takes. Its `payload` refuses a key naming no field,
+ * so its own arguments do too: a caller whose argument was ignored gets the session it did not ask
+ * for either way. A `Record` over the wire model's key set, as the camera commands' sets are.
+ */
+const SEND_PROVIDER_ARG_KEY_SET: Record<keyof Required<ArgsOf<"send_webrtc_provider_command">>, true> = {
+    node_id: true,
+    endpoint_id: true,
+    command_name: true,
+    payload: true,
+};
+
+const SEND_PROVIDER_ARG_KEYS: readonly string[] = Object.keys(SEND_PROVIDER_ARG_KEY_SET);
 
 // Responses the debug log does not write in full: the first three are large enough to bury it (the
 // node/attribute dump, the topology graph, a base64 camera frame), and open_commissioning_window
@@ -1323,17 +1343,26 @@ export class WebSocketControllerHandler implements WebServerHandler {
     async #handleSendWebRtcProviderCommand(
         args: ArgsOf<"send_webrtc_provider_command">,
     ): Promise<ResponseOf<"send_webrtc_provider_command">> {
+        rejectUnknownKeys(args, SEND_PROVIDER_ARG_KEYS, "send_webrtc_provider_command argument");
         const { node_id, endpoint_id, command_name, payload } = args;
         if (!isProviderCommandName(command_name)) {
             throw ServerError.invalidArguments(
-                `Unsupported WebRTC provider command "${String(command_name)}"; expected ProvideOffer or SolicitOffer`,
+                `Unsupported WebRTC provider command "${String(command_name)}"; expected one of ${PROVIDER_COMMAND_NAMES.join(", ")}`,
             );
         }
+        const nodeId = NodeId(node_id);
+        const endpointId = EndpointNumber(endpoint_id);
+        const fields = toProviderCommandFields(command_name, payload);
+        if (!establishesWebRtcSession(command_name)) {
+            await this.#commandHandler.invokeProvideIceCandidates({ nodeId, endpointId, fields });
+            // The model gives this command no response type, so there is no payload to convert.
+            return null;
+        }
         const response = await this.#commandHandler.invokeWebRtcProviderCommand({
-            nodeId: NodeId(node_id),
-            endpointId: EndpointNumber(endpoint_id),
+            nodeId,
+            endpointId,
             commandName: command_name,
-            fields: toProviderCommandFields(command_name, payload),
+            fields,
         });
         // Convert the matter.js response to WebSocket format the same way #handleDeviceCommand
         // does for generic invokes (bytes, epochs, bitmaps, struct member filtering).

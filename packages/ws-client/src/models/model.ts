@@ -335,6 +335,17 @@ export interface NetworkTopology {
 
 export type WebRtcEventType = "offer" | "answer" | "ice_candidates" | "end";
 
+/** The `WebRTCTransportProvider` commands `send_webrtc_provider_command` relays. */
+export type WebRtcProviderCommandName = "ProvideOffer" | "SolicitOffer" | "ProvideIceCandidates";
+
+/**
+ * One ICE candidate, in the W3C `RTCIceCandidateInit` spelling the wire uses in both directions.
+ *
+ * A candidate an `ice_candidates` event reports is what `ProvideIceCandidates` takes back under
+ * `ice_candidates`, unchanged: the server matches a key to the cluster's field with case and
+ * the separators between words ignored, which is what resolves `sdpMLineIndex` to the struct's own
+ * `SDPMLineIndex`.
+ */
 export interface WebRtcIceCandidate {
     candidate: string;
     sdpMid: string | null;
@@ -814,11 +825,15 @@ export interface APICommands {
         };
         response: unknown;
     };
+    /**
+     * `ProvideOffer` and `SolicitOffer` establish a session and answer with its id;
+     * `ProvideIceCandidates` signals for one that exists and answers `null`.
+     */
     send_webrtc_provider_command: {
         requestArgs: {
             node_id: number | bigint;
             endpoint_id: number;
-            command_name: "ProvideOffer" | "SolicitOffer";
+            command_name: WebRtcProviderCommandName;
             payload: Record<string, unknown>;
         };
         response: unknown;

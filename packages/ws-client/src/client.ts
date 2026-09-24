@@ -27,6 +27,7 @@ import {
     SuccessResultMessage,
     ThreadDiagnosticsBatch,
     WebRtcCallbackData,
+    WebRtcProviderCommandName,
 } from "./models/model.js";
 import { MatterNode } from "./models/node.js";
 
@@ -482,7 +483,7 @@ export class MatterClient {
     async sendWebRtcProviderCommand(
         nodeId: number | bigint,
         endpointId: number,
-        commandName: "ProvideOffer" | "SolicitOffer",
+        commandName: WebRtcProviderCommandName,
         payload: Record<string, unknown>,
         timeout?: number,
     ): Promise<unknown> {
