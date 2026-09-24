@@ -51,6 +51,75 @@ describe("redactSensitiveCommandFields", () => {
         expect(payload.userIndex).to.equal(3);
     });
 
+    it("redacts the TURN username and credential of a camera_start_stream ICE server", () => {
+        const message = {
+            message_id: "1",
+            command: "camera_start_stream",
+            args: {
+                node_id: 5,
+                ice_servers: [
+                    { urls: "stun:stun.example.org:3478" },
+                    { urls: "turn:turn.example.org:3478", username: "1758700000:user", credential: "turn-secret" },
+                ],
+            },
+        };
+        const { args } = redactSensitiveCommandFields(message) as {
+            args: { node_id: number; ice_servers: Array<Record<string, unknown>> };
+        };
+        expect(args.ice_servers[1]).to.deep.equal({
+            urls: "turn:turn.example.org:3478",
+            username: "[redacted]",
+            credential: "[redacted]",
+        });
+        // Everything that is not a secret still reaches the log, or the log cannot be debugged with.
+        expect(args.ice_servers[0]).to.deep.equal({ urls: "stun:stun.example.org:3478" });
+        expect(args.node_id).to.equal(5);
+    });
+
+    it("redacts an ICE server that uses the older singular url spelling", () => {
+        const message = {
+            message_id: "1",
+            command: "camera_start_stream",
+            args: { ice_servers: [{ url: "turn:turn.example.org:3478", username: "u", credential: "turn-secret" }] },
+        };
+        const { args } = redactSensitiveCommandFields(message) as { args: { ice_servers: Array<object> } };
+        expect(args.ice_servers[0]).to.deep.equal({
+            url: "turn:turn.example.org:3478",
+            username: "[redacted]",
+            credential: "[redacted]",
+        });
+    });
+
+    it("masks structure nested deeper than the walk goes", () => {
+        let nested: Record<string, unknown> = { urls: "turn:turn.example.org:3478", credential: "turn-secret" };
+        for (let level = 0; level < 10; level++) nested = { nested };
+        const { args } = redactSensitiveCommandFields({
+            message_id: "1",
+            command: "camera_start_stream",
+            args: nested,
+        }) as { args: Record<string, unknown> };
+        expect(JSON.stringify(args)).to.not.contain("turn-secret");
+    });
+
+    it("keeps a __proto__ member in the logged copy and off its prototype", () => {
+        const message = JSON.parse(
+            '{"command":"device_command","args":{"payload":{"pinCode":"AA","__proto__":{"a":1}}}}',
+        );
+        const { args } = redactSensitiveCommandFields(message) as { args: { payload: Record<string, unknown> } };
+        expect(Object.keys(args.payload)).to.deep.equal(["pinCode", "__proto__"]);
+        expect(Object.getPrototypeOf(args.payload)).to.equal(Object.prototype);
+    });
+
+    it("leaves the original ICE server entry untouched", () => {
+        const entry = { urls: "turn:turn.example.org:3478", credential: "turn-secret" };
+        redactSensitiveCommandFields({
+            message_id: "1",
+            command: "camera_start_stream",
+            args: { ice_servers: [entry] },
+        });
+        expect(entry.credential).to.equal("turn-secret");
+    });
+
     it("returns the same message when there is nothing sensitive to redact", () => {
         const message = { message_id: "1", command: "get_nodes", args: undefined };
         expect(redactSensitiveCommandFields(message)).to.equal(message);

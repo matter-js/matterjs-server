@@ -81,15 +81,43 @@ function statusError(status: number): Error & { code: number } {
     return error;
 }
 
+/**
+ * A plain provide-offer: a live video section stating no codec, so it refuses nothing and narrows
+ * nothing. What a test that only needs the server to be answering an offer passes.
+ */
+export const VIDEO_OFFER = [
+    "v=0",
+    "o=- 0 0 IN IP4 127.0.0.1",
+    "s=-",
+    "t=0 0",
+    "m=video 9 UDP/TLS/RTP/SAVPF 96",
+    "a=recvonly",
+].join("\r\n");
+
+/** {@link VIDEO_OFFER} with an audio section beside it, for the tests that ask for both tracks. */
+export const VIDEO_AND_AUDIO_OFFER = [VIDEO_OFFER, "m=audio 9 UDP/TLS/RTP/SAVPF 111", "a=recvonly"].join("\r\n");
+
 /** An offer whose audio m-line sends as well as receives, i.e. the caller wants talkback. */
 export const TALKBACK_OFFER = [
     "v=0",
     "o=- 0 0 IN IP4 127.0.0.1",
     "s=-",
     "t=0 0",
+    "m=video 9 UDP/TLS/RTP/SAVPF 96",
+    "a=recvonly",
     "m=audio 9 UDP/TLS/RTP/SAVPF 111",
     "a=rtpmap:111 opus/48000/2",
     "a=sendrecv",
+].join("\r\n");
+
+/** An offer carrying audio and no video section at all, live and receiving. */
+export const AUDIO_ONLY_OFFER = [
+    "v=0",
+    "o=- 0 0 IN IP4 127.0.0.1",
+    "s=-",
+    "t=0 0",
+    "m=audio 9 UDP/TLS/RTP/SAVPF 111",
+    "a=recvonly",
 ].join("\r\n");
 
 /** A re-offer that keeps audio and turns video off: the video section is present but rejected. */
@@ -1627,6 +1655,134 @@ describe("CameraStreamManager", () => {
             expect(detail.track).to.equal("audio");
         });
 
+        it("puts no video track in a session whose offer carries no video section", async () => {
+            // An answer carries the m-lines of the offer it answers and no others (RFC 3264 §6), so a
+            // stream allocated for a section that is not there could never be attached to anything.
+            const { manager, invokes } = managerWith(STATE, async invoke => {
+                if (invoke.command === "audioStreamAllocate") return { audioStreamId: 4 };
+                if (invoke.command === "provideOffer") return { webRtcSessionId: 42 };
+                return undefined;
+            });
+            const session = await manager.startStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                connectionId: "conn-1",
+                streamUsage: LIVE_VIEW,
+                sdp: AUDIO_ONLY_OFFER,
+            });
+            expect(session.video).to.equal(undefined);
+            expect(invokes.some(invoke => invoke.command === "videoStreamAllocate")).to.equal(false);
+            const offer = invokes.find(invoke => invoke.command === "provideOffer");
+            expect(offer?.fields.videoStreams).to.equal(undefined);
+            expect(offer?.fields.audioStreams).to.deep.equal([4]);
+        });
+
+        it("names the missing section in the log when a deferred track is left out for it", async () => {
+            // A deferred track resolves to null with nothing else in the response to explain it.
+            const { manager } = managerWith(STATE, async invoke => {
+                if (invoke.command === "audioStreamAllocate") return { audioStreamId: 4 };
+                if (invoke.command === "provideOffer") return { webRtcSessionId: 42 };
+                return undefined;
+            });
+            const messages = await logged(() =>
+                manager.startStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    connectionId: "conn-1",
+                    streamUsage: LIVE_VIEW,
+                    sdp: AUDIO_ONLY_OFFER,
+                }),
+            );
+            expect(messages.some(message => message.includes("the offer carries no video section"))).to.equal(true);
+        });
+
+        it("tells a caller that asked for video why an offer with no video section left it none", async () => {
+            const { manager, invokes } = managerWith(STATE, async invoke => {
+                if (invoke.command === "audioStreamAllocate") return { audioStreamId: 4 };
+                if (invoke.command === "provideOffer") return { webRtcSessionId: 42 };
+                return undefined;
+            });
+            let thrown: unknown;
+            try {
+                await manager.startStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    connectionId: "conn-1",
+                    streamUsage: LIVE_VIEW,
+                    sdp: AUDIO_ONLY_OFFER,
+                    video: { codecs: ["H265"] },
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamIncompatible);
+            const detail = JSON.parse((thrown as ServerError).message);
+            expect(detail.reason).to.equal("capability");
+            expect(detail.track).to.equal("video");
+            expect(detail.requested).to.deep.equal(["H265"]);
+            expect(invokes.some(invoke => invoke.command === "provideOffer")).to.equal(false);
+        });
+
+        it("puts no audio track in a session whose offer carries no audio section", async () => {
+            const { manager, invokes } = allocatingManager();
+            const session = await manager.startStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                connectionId: "conn-1",
+                streamUsage: LIVE_VIEW,
+                sdp: VIDEO_OFFER,
+                video: {},
+            });
+            expect(session.audio).to.equal(undefined);
+            expect(invokes.some(invoke => invoke.command === "audioStreamAllocate")).to.equal(false);
+        });
+
+        it("tells a caller that asked for audio why an offer with no audio section left it none", async () => {
+            const { manager } = allocatingManager();
+            let thrown: unknown;
+            try {
+                await manager.startStream({
+                    nodeId: NODE,
+                    endpointId: ENDPOINT,
+                    connectionId: "conn-1",
+                    streamUsage: LIVE_VIEW,
+                    sdp: VIDEO_OFFER,
+                    video: {},
+                    audio: { codecs: ["OPUS"] },
+                });
+            } catch (error) {
+                thrown = error;
+            }
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamIncompatible);
+            const detail = JSON.parse((thrown as ServerError).message);
+            expect(detail.reason).to.equal("capability");
+            expect(detail.track).to.equal("audio");
+        });
+
+        it("allocates both tracks when there is no offer to answer", async () => {
+            // SolicitOffer: the camera writes the m-lines, so nothing has stated that a kind cannot
+            // be carried. A missing section only refuses a track when there is an offer it is
+            // missing from.
+            const { manager, invokes } = managerWith(STATE, async invoke => {
+                if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                if (invoke.command === "audioStreamAllocate") return { audioStreamId: 4 };
+                if (invoke.command === "solicitOffer") return { webRtcSessionId: 42 };
+                return undefined;
+            });
+            const session = await manager.startStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                connectionId: "conn-1",
+                streamUsage: LIVE_VIEW,
+                video: { codecs: ["H265"] },
+                audio: { codecs: ["OPUS"] },
+            });
+            expect(session.mode).to.equal("solicit_offer");
+            expect(session.video?.streamId).to.equal(9);
+            expect(session.audio?.streamId).to.equal(4);
+            expect(invokes.some(invoke => invoke.command === "solicitOffer")).to.equal(true);
+        });
+
         it("references the resolved stream ids in the provider offer", async () => {
             const { manager, invokes } = allocatingManager();
             const session = await manager.startStream({
@@ -1634,7 +1790,7 @@ describe("CameraStreamManager", () => {
                 endpointId: ENDPOINT,
                 connectionId: "conn-1",
                 streamUsage: LIVE_VIEW,
-                sdp: "v=0",
+                sdp: VIDEO_OFFER,
                 video: {},
                 audio: false,
             });
@@ -1708,7 +1864,7 @@ describe("CameraStreamManager", () => {
                     endpointId: ENDPOINT,
                     connectionId: "conn-1",
                     streamUsage: LIVE_VIEW,
-                    sdp: "v=0",
+                    sdp: VIDEO_OFFER,
                     video: {},
                     audio: false,
                 }),
@@ -1770,7 +1926,7 @@ describe("CameraStreamManager", () => {
                 endpointId: ENDPOINT,
                 connectionId: "conn-1",
                 streamUsage: LIVE_VIEW,
-                sdp: "v=0",
+                sdp: VIDEO_OFFER,
                 video: {},
                 audio: false,
             });
@@ -1794,7 +1950,7 @@ describe("CameraStreamManager", () => {
                 endpointId: ENDPOINT,
                 connectionId: "conn-1",
                 streamUsage: LIVE_VIEW,
-                sdp: "v=0",
+                sdp: VIDEO_OFFER,
                 video: {},
                 audio: false,
             });
@@ -1811,7 +1967,7 @@ describe("CameraStreamManager", () => {
                 endpointId: ENDPOINT,
                 connectionId: "conn-1",
                 streamUsage: LIVE_VIEW,
-                sdp: "v=0",
+                sdp: VIDEO_OFFER,
                 video: {},
                 audio: false,
             });
@@ -1834,7 +1990,7 @@ describe("CameraStreamManager", () => {
                 endpointId: ENDPOINT,
                 connectionId: "conn-1",
                 streamUsage: LIVE_VIEW,
-                sdp: "v=0",
+                sdp: VIDEO_OFFER,
                 video: {},
                 audio: false,
             });
@@ -1856,7 +2012,7 @@ describe("CameraStreamManager", () => {
                 endpointId: ENDPOINT,
                 connectionId: "conn-1",
                 streamUsage: LIVE_VIEW,
-                sdp: "v=0",
+                sdp: VIDEO_OFFER,
                 video: {},
                 audio: false,
             });
@@ -1865,7 +2021,7 @@ describe("CameraStreamManager", () => {
                 endpointId: ENDPOINT,
                 connectionId: "conn-2",
                 streamUsage: LIVE_VIEW,
-                sdp: "v=1",
+                sdp: VIDEO_OFFER,
                 video: {},
                 audio: false,
             });
@@ -1935,7 +2091,7 @@ describe("CameraStreamManager", () => {
                 endpointId: ENDPOINT,
                 connectionId: "conn-1",
                 streamUsage: LIVE_VIEW,
-                sdp: "v=0",
+                sdp: VIDEO_OFFER,
                 video: {},
                 audio: false,
             });
@@ -1945,7 +2101,7 @@ describe("CameraStreamManager", () => {
                 endpointId: ENDPOINT,
                 connectionId: "conn-2",
                 streamUsage: LIVE_VIEW,
-                sdp: "v=0",
+                sdp: VIDEO_OFFER,
                 video: { minResolution: { width: 2560, height: 1440 }, maxResolution: { width: 2560, height: 1440 } },
                 audio: false,
             });
@@ -1995,7 +2151,7 @@ describe("CameraStreamManager", () => {
                 endpointId: ENDPOINT,
                 connectionId: "conn-1",
                 streamUsage: LIVE_VIEW,
-                sdp: "v=0",
+                sdp: VIDEO_OFFER,
                 video: {},
                 audio: false,
             });
@@ -2005,7 +2161,7 @@ describe("CameraStreamManager", () => {
                 endpointId: OTHER_ENDPOINT,
                 connectionId: "conn-2",
                 streamUsage: LIVE_VIEW,
-                sdp: "v=0",
+                sdp: VIDEO_OFFER,
                 video: {},
                 audio: false,
             });
@@ -2028,7 +2184,7 @@ describe("CameraStreamManager", () => {
                 endpointId,
                 connectionId,
                 streamUsage: LIVE_VIEW,
-                sdp: "v=0",
+                sdp: VIDEO_OFFER,
                 video: {},
                 audio: false,
             });
@@ -2161,7 +2317,7 @@ describe("CameraStreamManager", () => {
                     endpointId: ENDPOINT,
                     connectionId: "conn-1",
                     streamUsage: LIVE_VIEW,
-                    sdp: "v=0",
+                    sdp: VIDEO_AND_AUDIO_OFFER,
                     video: {},
                     audio: {},
                 });
@@ -2188,7 +2344,7 @@ describe("CameraStreamManager", () => {
                     endpointId: ENDPOINT,
                     connectionId: "conn-1",
                     streamUsage: LIVE_VIEW,
-                    sdp: "v=0",
+                    sdp: VIDEO_AND_AUDIO_OFFER,
                     video: {},
                     audio: { codecs: ["AAC"] },
                 });
@@ -2344,7 +2500,7 @@ describe("CameraStreamManager", () => {
                     endpointId: ENDPOINT,
                     connectionId: "conn-1",
                     streamUsage: LIVE_VIEW,
-                    sdp: "v=0",
+                    sdp: VIDEO_OFFER,
                     video: {
                         minResolution: { width: 1920, height: 1080 },
                         maxResolution: { width: 1920, height: 1080 },
@@ -3195,7 +3351,7 @@ describe("CameraStreamManager", () => {
                     endpointId: ENDPOINT,
                     connectionId: "conn-1",
                     streamUsage: LIVE_VIEW,
-                    sdp: "v=0",
+                    sdp: VIDEO_OFFER,
                     video: {},
                     audio: false,
                 });
@@ -3710,7 +3866,7 @@ describe("CameraStreamManager", () => {
                     endpointId: ENDPOINT,
                     connectionId: "conn-1",
                     streamUsage: LIVE_VIEW,
-                    sdp: "v=0",
+                    sdp: VIDEO_AND_AUDIO_OFFER,
                     video: {},
                     audio: { bitRate: 32000 },
                 });
@@ -4268,7 +4424,7 @@ describe("CameraStreamManager device cleanup budget", () => {
         endpointId: ENDPOINT,
         connectionId: "conn-1",
         streamUsage: LIVE_VIEW,
-        sdp: "v=0",
+        sdp: VIDEO_OFFER,
         video: {},
         audio: false,
     };

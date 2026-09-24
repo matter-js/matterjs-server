@@ -508,21 +508,31 @@ describe("sdpConstraints", () => {
     });
 
     describe("mediaRefusal", () => {
-        it("names the statement that forbids a track, and answers nothing for the two that do not", () => {
-            expect(mediaRefusal(parseSdpVideoConstraints(OFFER_VIDEO_ONLY_REJECTED).video)).to.deep.equal({
+        it("names the statement that forbids a track, and answers nothing for the one that does not", () => {
+            expect(mediaRefusal(parseSdpVideoConstraints(OFFER_VIDEO_ONLY_REJECTED), "video")).to.deep.equal({
                 state: "refused",
             });
-            expect(mediaRefusal(parseSdpVideoConstraints(OFFER_VIDEO_SENDONLY).video)).to.deep.equal({
+            expect(mediaRefusal(parseSdpVideoConstraints(OFFER_VIDEO_SENDONLY), "video")).to.deep.equal({
                 state: "notReceiving",
                 direction: "sendonly",
             });
-            expect(mediaRefusal(parseSdpVideoConstraints(OFFER_VIDEO_INACTIVE).video)).to.deep.equal({
+            expect(mediaRefusal(parseSdpVideoConstraints(OFFER_VIDEO_INACTIVE), "video")).to.deep.equal({
                 state: "notReceiving",
                 direction: "inactive",
             });
-            expect(mediaRefusal(parseSdpVideoConstraints(OFFER_H265_THEN_H264).video)).to.equal(undefined);
-            // An absent section is no statement: what the server does without one is its own call.
-            expect(mediaRefusal(parseSdpVideoConstraints(OFFER_H265_THEN_H264).audio)).to.equal(undefined);
+            expect(mediaRefusal(parseSdpVideoConstraints(OFFER_H265_THEN_H264), "video")).to.equal(undefined);
+        });
+
+        it("refuses a kind the offer carries no section for", () => {
+            expect(mediaRefusal(parseSdpVideoConstraints(OFFER_H265_THEN_H264), "audio")).to.deep.equal({
+                state: "absent",
+            });
+            expect(mediaRefusal(parseSdpVideoConstraints("v=0"), "video")).to.deep.equal({ state: "absent" });
+        });
+
+        it("refuses nothing when there is no offer to answer", () => {
+            expect(mediaRefusal(undefined, "video")).to.equal(undefined);
+            expect(mediaRefusal(undefined, "audio")).to.equal(undefined);
         });
     });
 });

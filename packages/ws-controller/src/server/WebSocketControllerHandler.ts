@@ -116,8 +116,9 @@ const NETWORK_TOPOLOGY_OPT_IN_COMMANDS = new Set(["get_network_topology"]);
 const WEBRTC_OPT_IN_COMMANDS = new Set(["send_webrtc_provider_command", "camera_start_stream"]);
 
 // Responses whose payload is large enough that logging it in full just bloats the debug log
-// (the full node/attribute dump, or the whole topology graph — hundreds of nodes/edges).
-const skipMessageContentInLogFor = ["start_listening", "get_network_topology"];
+// (the full node/attribute dump, the whole topology graph — hundreds of nodes/edges — or a
+// base64-encoded camera frame).
+const skipMessageContentInLogFor = ["start_listening", "get_network_topology", "camera_snapshot"];
 
 /** Normalize a requested fabric label: matter.js requires a non-empty label of 1-32 chars. */
 function normalizeFabricLabel(label: string | null): string {
@@ -1371,7 +1372,13 @@ export class WebSocketControllerHandler implements WebServerHandler {
     async #handleCameraSnapshot(args: ArgsOf<"camera_snapshot">): Promise<ResponseOf<"camera_snapshot">> {
         const { nodeId, endpointId, maxResolution, codec } = parseSnapshotArgs(args);
         const result = await this.#controller.cameraStreams.snapshot({ nodeId, endpointId, maxResolution, codec });
-        return toWireSnapshotResult(result);
+        const wire = toWireSnapshotResult(result);
+        // The response is in skipMessageContentInLogFor because it carries the frame, which would
+        // take what the server chose out of the log with it.
+        logger.debug(
+            `camera_snapshot for node ${nodeId} endpoint ${endpointId}: codec ${wire.codec}, ${wire.resolution.width}x${wire.resolution.height}, ${result.data.length} bytes, downgraded ${wire.downgraded}`,
+        );
+        return wire;
     }
 
     async #handleCameraReleaseStream(

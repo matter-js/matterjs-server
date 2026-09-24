@@ -45,7 +45,7 @@ export interface SelectedVideoCodecLimits extends VideoCodecLimits {
  * What an offer states about one media kind.
  *
  * Four statements, four values, none of which can stand in for another. No section of this kind
- * states nothing (`absent`); a section the peer rejected (`m=` port 0, RFC 3264 §6) states that no
+ * leaves the answer no place to carry it (`absent`); a section the peer rejected (`m=` port 0, RFC 3264 §6) states that no
  * track of this kind may be put in the answer at all (`refused`); a live section the peer will not
  * receive on — `a=sendonly` or `a=inactive` — states that a track put in it would hold an encoder
  * and a reference count for media nobody receives (`notReceiving`); a live section the peer will
@@ -69,8 +69,8 @@ export type MediaDisposition =
     | { readonly state: "notReceiving"; readonly direction: "sendonly" | "inactive" }
     | { readonly state: "receiving"; readonly codecs?: readonly string[] };
 
-/** The two {@link MediaDisposition} states that forbid a track of this kind in the answer. */
-export type MediaRefusal = Extract<MediaDisposition, { state: "refused" | "notReceiving" }>;
+/** The {@link MediaDisposition} states that forbid a track of this kind in the answer. */
+export type MediaRefusal = Extract<MediaDisposition, { state: "refused" | "notReceiving" | "absent" }>;
 
 export interface SdpVideoConstraints {
     video: MediaDisposition;
@@ -82,16 +82,29 @@ export interface SdpVideoConstraints {
 }
 
 /**
- * Why a track of this kind may not be put in the answer, or `undefined` when it may.
+ * Why a track of this kind may not be put in the answer to `offer`, or `undefined` when it may.
  *
  * The one read path for both kinds, so no consumer can read "the section is there" as "we may send
- * media into it": a nonzero port is not permission, the direction is. `absent` is not a refusal —
- * no section is no statement, and what the server does without one is its own decision.
+ * media into it": a nonzero port is not permission, the direction is.
+ *
+ * No offer is not a refusal of anything. The server is then soliciting an offer from the camera,
+ * which writes its own m-lines for the streams it is given, so every kind is still open. An offer
+ * with no section of this kind is a refusal: an answer carries exactly the m-lines of the offer it
+ * answers, in the same order (RFC 3264 §6), so there is no section to attach the track to and a
+ * stream allocated for it would hold an encoder and a reference count for media that can never be
+ * sent. The asymmetry is answered here rather than at each call site, because reading "no statement"
+ * as "no objection" is correct on one path and wrong on the other.
  */
-export function mediaRefusal(disposition: MediaDisposition): MediaRefusal | undefined {
+export function mediaRefusal(
+    offer: SdpVideoConstraints | undefined,
+    kind: "video" | "audio",
+): MediaRefusal | undefined {
+    if (offer === undefined) return undefined;
+    const disposition = offer[kind];
     switch (disposition.state) {
         case "refused":
         case "notReceiving":
+        case "absent":
             return disposition;
         default:
             return undefined;
@@ -187,8 +200,9 @@ export function videoCodecLimits(sdp: SdpVideoConstraints | undefined, codec: nu
  * Constraints an SDP offer places on a stream.
  *
  * The SDP is a filter, not a selector: it states an upper bound on what the caller can decode and
- * says nothing about what it wants. An unparseable offer yields no constraints rather than throwing,
- * so a malformed offer fails later on codec intersection with a typed error instead of here.
+ * says nothing about what it wants. An unparseable offer states nothing for either kind rather than
+ * throwing here, which {@link mediaRefusal} answers the same way as an offer that carries no section
+ * of a kind: the request fails instead of putting a stream into an offer the server could not read.
  */
 export function parseSdpVideoConstraints(sdp: string): SdpVideoConstraints {
     const limitsByCodec = new Map<string, VideoCodecLimits>();
@@ -200,7 +214,9 @@ export function parseSdpVideoConstraints(sdp: string): SdpVideoConstraints {
     try {
         parsed = parse(sdp);
     } catch (error) {
-        logger.debug("Ignoring unparseable SDP offer", error);
+        // The refusal this produces names the missing sections, so without this line the caller is
+        // told its offer carries no media when the real answer is that none of it could be read.
+        logger.notice("Ignoring unparseable SDP offer; no media section can be read from it", error);
         return { video: { state: "absent" }, audio: { state: "absent" }, wantsTalkback: false, limitsByCodec };
     }
 
