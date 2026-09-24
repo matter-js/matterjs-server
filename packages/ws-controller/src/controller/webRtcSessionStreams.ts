@@ -60,9 +60,10 @@ const STREAM_LIST_MIN_REVISION = 2;
  * for revision >= 2, or the singular ids for revision 1 / unknown. A revision-1 provider carries a single
  * id per media kind, so a multi-entry list is truncated to its first entry.
  */
-export function selectWebRtcStreamFields(fields: Record<string, unknown>, clusterRevision: unknown): void {
+export function selectWebRtcStreamFields(fields: Record<string, unknown>, clusterRevision: number | undefined): void {
     const videoStreams = resolveWebRtcSessionStreams(fields.videoStreams, fields.videoStreamId, undefined);
     const audioStreams = resolveWebRtcSessionStreams(fields.audioStreams, fields.audioStreamId, undefined);
+    // A client cluster's globals come from the device, so the typed number can still be absent here.
     if (typeof clusterRevision === "number" && clusterRevision >= STREAM_LIST_MIN_REVISION) {
         // A provider fails the command when any list coexists with any singular id (the check spans both
         // media kinds, not each in isolation), so a list on one kind forces both singular ids out. With no
@@ -158,7 +159,8 @@ export interface WebRtcProviderSessionArgs {
     endpointId: EndpointNumber;
     originatingEndpointId: EndpointNumber;
     fabricIndex: FabricIndex;
-    clusterRevision: unknown;
+    /** The provider's ClusterRevision, or undefined while the endpoint has not stated one. */
+    clusterRevision: number | undefined;
     formatNode: (nodeId: NodeId) => string;
 }
 

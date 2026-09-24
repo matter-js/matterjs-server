@@ -45,7 +45,6 @@ import {
     TimeSynchronization,
 } from "@matter/main/clusters";
 import { WebRtcTransportProvider } from "@matter/main/clusters/web-rtc-transport-provider";
-import { ClusterRevision } from "@matter/main/model";
 import { DeviceAttestationCheck, Invoke, PeerAddress, Read, Specifier, PeerSet } from "@matter/main/protocol";
 import {
     AttributeId,
@@ -62,6 +61,7 @@ import {
     VendorId,
 } from "@matter/main/types";
 import { Endpoint } from "@matter/node";
+import { WebRtcTransportProviderClient } from "@matter/node/behaviors/web-rtc-transport-provider";
 import { WebRtcTransportRequestorServer } from "@matter/node/behaviors/web-rtc-transport-requestor";
 import { CameraControllerDevice } from "@matter/node/devices/camera-controller";
 import { CommissioningController, NodeCommissioningOptions } from "@project-chip/matter.js";
@@ -436,11 +436,20 @@ export class ControllerCommandHandler {
         return this.#nodes.get(nodeId);
     }
 
-    /** WebRtcTransportProvider ClusterRevision from the attribute cache, or undefined if not yet known. */
-    #webRtcProviderClusterRevision(nodeId: NodeId, endpointId: EndpointNumber): unknown {
-        return this.#nodes.attributeCache.get(nodeId)?.[
-            `${endpointId}/${WebRtcTransportProvider.id}/${ClusterRevision.id}`
-        ];
+    /**
+     * WebRtcTransportProvider ClusterRevision, as the endpoint's own cluster structure states it.
+     *
+     * The attribute cache is filled by the node's attribute reports, so it answers `undefined` until
+     * one has carried this attribute, and the first `ProvideOffer` after a restart would then be
+     * down-converted to the deprecated singular stream ids against a revision-2 camera. The global
+     * attribute state is part of what the client structure is built from, so it is known as soon as
+     * the endpoint exposes the behaviour. Still `undefined`-checked by the consumer: for a client
+     * cluster the globals are populated from the device, and nothing guarantees a read has completed.
+     */
+    #webRtcProviderClusterRevision(nodeId: NodeId, endpointId: EndpointNumber): number | undefined {
+        const endpoint = this.#nodes.get(nodeId).node.endpoints.for(endpointId);
+        if (endpoint === undefined || !endpoint.behaviors.has(WebRtcTransportProviderClient)) return undefined;
+        return endpoint.globalsOf(WebRtcTransportProviderClient).clusterRevision;
     }
 
     /** Narrow, typed invoke exposed for device I/O implementations outside this class (e.g. camera streaming). */

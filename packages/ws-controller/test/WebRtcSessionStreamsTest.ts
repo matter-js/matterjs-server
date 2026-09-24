@@ -229,6 +229,49 @@ describe("establishWebRtcProviderSession", () => {
         expect(invokedFields[0]?.originatingEndpointId).to.equal(ORIGINATING_ENDPOINT_ID);
     });
 
+    it("sends a legacy caller's singular stream id as a list to a revision-2 provider", async () => {
+        const invokedFields = new Array<Record<string, unknown>>();
+        const io: WebRtcProviderSessionIo = {
+            invoke: async (_command, fields) => {
+                invokedFields.push(fields);
+                return { webRtcSessionId: 9 };
+            },
+            upsertSession: async () => {},
+        };
+
+        await establishWebRtcProviderSession(
+            io,
+            baseArgs({ fields: { streamUsage: 3, videoStreamId: 4 }, clusterRevision: 2 }),
+        );
+
+        expect(invokedFields[0]?.videoStreams).to.deep.equal([4]);
+        expect("videoStreamId" in (invokedFields[0] ?? {})).to.equal(false);
+    });
+
+    it("sends singular stream ids when the provider states no revision", async () => {
+        const invokedFields = new Array<Record<string, unknown>>();
+        const io: WebRtcProviderSessionIo = {
+            invoke: async (_command, fields) => {
+                invokedFields.push(fields);
+                return { webRtcSessionId: 9 };
+            },
+            upsertSession: async () => {},
+        };
+
+        await establishWebRtcProviderSession(
+            io,
+            baseArgs({
+                fields: { streamUsage: 3, videoStreams: [4, 6], audioStreams: [8] },
+                clusterRevision: undefined,
+            }),
+        );
+
+        expect(invokedFields[0]?.videoStreamId).to.equal(4);
+        expect(invokedFields[0]?.audioStreamId).to.equal(8);
+        expect("videoStreams" in (invokedFields[0] ?? {})).to.equal(false);
+        expect("audioStreams" in (invokedFields[0] ?? {})).to.equal(false);
+    });
+
     it("tracks a trackable ProvideOffer session in the local requestor", async () => {
         const upserted = new Array<unknown>();
         const io: WebRtcProviderSessionIo = {
