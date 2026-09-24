@@ -470,6 +470,13 @@ export interface SnapshotResult {
     resolution: Resolution;
     /** True when the frame is smaller than the best capability the caller's own bounds allowed. */
     downgraded: boolean;
+    /**
+     * The stream the frame came from, set exactly when this call left it on the camera. Unset for a
+     * stream this call allocated at a capability that needs the hardware encoder, which is given
+     * back before the answer. An adopted stream is always named, whatever capability it was
+     * allocated at, because this call did not allocate it and gives nothing back for it.
+     */
+    snapshotStreamId?: number;
 }
 
 export class CameraStreamManager {
@@ -1689,9 +1696,10 @@ export class CameraStreamManager {
      * `ResourceExhausted` and block video allocation; that one is given back on every exit, success
      * included.
      *
-     * The result names no stream: which stream served the frame is nothing the caller can act on,
-     * and `camera_get_capabilities` is where the allocations show, with `owned_by_server` on the
-     * ones this server allocated in this process run.
+     * The result names the stream it captured from exactly when this call left it on the camera, so
+     * the field's presence states that the stream is there and that its id is the one
+     * `camera_release_stream` takes. The stream this call allocates at a hardware-encoder capability
+     * names nothing, because it is gone by then.
      */
     async snapshot(args: {
         nodeId: NodeId;
@@ -1750,7 +1758,11 @@ export class CameraStreamManager {
                         requestedCodecs,
                     });
                     if (captured !== undefined) {
-                        return { ...captured, downgraded: isDowngradeFrom(captured.resolution, bestWithFreeEncoder) };
+                        return {
+                            ...captured,
+                            downgraded: isDowngradeFrom(captured.resolution, bestWithFreeEncoder),
+                            snapshotStreamId: adopted.snapshotStreamId,
+                        };
                     }
                     logger.info(
                         `Node ${nodeId} no longer has snapshot stream ${adopted.snapshotStreamId} its reported state still lists; allocating one instead`,
@@ -1811,8 +1823,13 @@ export class CameraStreamManager {
                     streamId: snapshotStreamId,
                     allocatedByUs: true,
                 });
-                if (usesHardwareEncoder(capability)) {
+                const givenBack = usesHardwareEncoder(capability);
+                if (givenBack) {
                     scope.returnAlways(() => this.#deallocate(nodeId, endpointId, lease));
+                } else {
+                    // A failed call answers with no stream id, so nothing the caller holds can free
+                    // this; only a call that returns keeps its stream for the next one.
+                    scope.returnOnFailure(() => this.#deallocate(nodeId, endpointId, lease));
                 }
 
                 const captured = await this.#captureSnapshot({
@@ -1824,7 +1841,11 @@ export class CameraStreamManager {
                     deviceCodecs,
                     requestedCodecs,
                 });
-                return { ...captured, downgraded: isDowngradeFrom(captured.resolution, bestWithFreeEncoder) };
+                return {
+                    ...captured,
+                    downgraded: isDowngradeFrom(captured.resolution, bestWithFreeEncoder),
+                    snapshotStreamId: givenBack ? undefined : snapshotStreamId,
+                };
             }),
         );
     }

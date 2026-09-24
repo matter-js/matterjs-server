@@ -618,6 +618,15 @@ export interface CameraSnapshotResult {
     resolution: CameraResolution;
     /** True when the frame is smaller than the best capability the request's own bounds allowed. */
     downgraded: boolean;
+    /**
+     * The snapshot stream the frame came from, present exactly when the server left that stream on
+     * the camera, and therefore the id to pass to `camera_release_stream`. A release still fails
+     * with `CAMERA_STREAM_IN_USE_ERROR_CODE` while something references the stream. Absent when the
+     * server gave the stream back before answering, which it does for a stream it allocated at a
+     * capability that holds the hardware encoder; a stream it adopted is named whatever capability
+     * it came from.
+     */
+    stream_id?: number;
 }
 
 export interface APICommands {

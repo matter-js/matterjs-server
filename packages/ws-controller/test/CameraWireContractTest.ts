@@ -165,6 +165,7 @@ const SNAPSHOT: SnapshotResult = {
     imageCodec: 0,
     resolution: { width: 1920, height: 1080 },
     downgraded: true,
+    snapshotStreamId: 8,
 };
 
 /** Every error payload the camera commands can produce, with every optional field present. */

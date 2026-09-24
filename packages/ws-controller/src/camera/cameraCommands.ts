@@ -497,10 +497,12 @@ export function toWireStartStreamResult(result: StartStreamResult): CameraStartS
 }
 
 export function toWireSnapshotResult(result: SnapshotResult): CameraSnapshotResult {
-    return {
+    const wire: CameraSnapshotResult = {
         data: Bytes.toBase64(result.data),
         codec: imageCodecName(result.imageCodec),
         resolution: result.resolution,
         downgraded: result.downgraded,
     };
+    if (result.snapshotStreamId !== undefined) wire.stream_id = result.snapshotStreamId;
+    return wire;
 }

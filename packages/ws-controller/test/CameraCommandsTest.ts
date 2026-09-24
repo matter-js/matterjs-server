@@ -922,6 +922,30 @@ describe("cameraCommands", () => {
             expect(wire.resolution).to.deep.equal({ width: 640, height: 480 });
             expect(wire.downgraded).to.equal(true);
         });
+
+        it("names the stream the frame came from when that stream outlived the call", () => {
+            const wire = toWireSnapshotResult({
+                data: new Uint8Array([1]),
+                imageCodec: 0,
+                resolution: { width: 640, height: 480 },
+                downgraded: false,
+                snapshotStreamId: 8,
+            });
+            expect(wire.stream_id).to.equal(8);
+        });
+
+        it("omits the key rather than sending a null for a stream that was given back", () => {
+            // The contract is the field's presence: a client testing `"stream_id" in response` must
+            // not see a member for a stream that no longer exists.
+            const wire = toWireSnapshotResult({
+                data: new Uint8Array([1]),
+                imageCodec: 0,
+                resolution: { width: 640, height: 480 },
+                downgraded: false,
+                snapshotStreamId: undefined,
+            });
+            expect(Object.keys(wire)).to.not.include("stream_id");
+        });
     });
 
     // Exercise the branded id constructors directly, since parseCameraTarget's own tests only assert

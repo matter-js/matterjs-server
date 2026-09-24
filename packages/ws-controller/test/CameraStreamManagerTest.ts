@@ -3119,6 +3119,95 @@ describe("CameraStreamManager", () => {
             ).to.deep.equal([3]);
         });
 
+        it("names no stream when it gave the one it allocated back", async () => {
+            // STATE's best capability requires the hardware encoder, so the stream is deallocated
+            // before the answer. Reporting its id would hand the caller something to release that
+            // this call has already released.
+            const { manager, invokes } = managerWith(STATE, async invoke => {
+                if (invoke.command === "snapshotStreamAllocate") return { snapshotStreamId: 3 };
+                if (invoke.command === "captureSnapshot") {
+                    return { data: new Uint8Array([1]), imageCodec: 0, resolution: { width: 1920, height: 1080 } };
+                }
+                return undefined;
+            });
+            const result = await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
+            expect(result.snapshotStreamId).to.equal(undefined);
+            expect(invokes.map(invoke => invoke.command)).to.contain("snapshotStreamDeallocate");
+        });
+
+        it("names an adopted stream although the camera's best capability needs the encoder", async () => {
+            // Adoption reads AllocatedSnapshotStreams, which states no encoder flag, so it cannot
+            // tell such a stream apart. Naming it is right anyway: this call allocated nothing and
+            // gives nothing back, so the stream is still there when the answer is sent, and the id
+            // is the only way a client can free the encoder it holds.
+            const existing: CameraState = {
+                ...STATE,
+                allocatedSnapshotStreams: [
+                    {
+                        snapshotStreamId: 8,
+                        imageCodec: 0,
+                        minResolution: { width: 1920, height: 1080 },
+                        maxResolution: { width: 1920, height: 1080 },
+                        referenceCount: 0,
+                    },
+                ],
+            };
+            const { manager, invokes } = managerWith(existing, async invoke => {
+                if (invoke.command === "captureSnapshot") {
+                    return { data: new Uint8Array([1]), imageCodec: 0, resolution: { width: 1920, height: 1080 } };
+                }
+                return undefined;
+            });
+            const result = await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
+            expect(result.snapshotStreamId).to.equal(8);
+            expect(invokes.map(invoke => invoke.command)).to.deep.equal(["captureSnapshot"]);
+        });
+
+        it("gives a kept-capability stream back when the capture fails", async () => {
+            // A failed call answers with no stream id, so nothing the caller holds could free this
+            // one. Only a call that returns keeps its stream.
+            const softwareOnly: CameraState = { ...STATE, snapshotCapabilities: [STATE.snapshotCapabilities[0]] };
+            const { manager, invokes } = managerWith(softwareOnly, async invoke => {
+                if (invoke.command === "snapshotStreamAllocate") return { snapshotStreamId: 3 };
+                if (invoke.command === "captureSnapshot") throw new Error("capture refused");
+                return undefined;
+            });
+            await expect(manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT })).to.be.rejected;
+            expect(
+                invokes
+                    .filter(invoke => invoke.command === "snapshotStreamDeallocate")
+                    .map(invoke => invoke.fields.snapshotStreamId),
+            ).to.deep.equal([3]);
+        });
+
+        it("names the stream it kept, and releases that same id on request", async () => {
+            // A kept stream is on the camera until someone frees it, and on a camera whose allocation
+            // report lags it is reachable through no other command.
+            const softwareOnly: CameraState = { ...STATE, snapshotCapabilities: [STATE.snapshotCapabilities[0]] };
+            const { manager, invokes } = managerWith(softwareOnly, async invoke => {
+                if (invoke.command === "snapshotStreamAllocate") return { snapshotStreamId: 3 };
+                if (invoke.command === "captureSnapshot") {
+                    return { data: new Uint8Array([1]), imageCodec: 0, resolution: { width: 640, height: 480 } };
+                }
+                return undefined;
+            });
+            const result = await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
+            expect(result.snapshotStreamId).to.equal(3);
+            expect(invokes.map(invoke => invoke.command)).to.deep.equal(["snapshotStreamAllocate", "captureSnapshot"]);
+
+            await manager.releaseStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                kind: "snapshot",
+                streamId: result.snapshotStreamId ?? 0,
+            });
+            expect(
+                invokes
+                    .filter(invoke => invoke.command === "snapshotStreamDeallocate")
+                    .map(invoke => invoke.fields.snapshotStreamId),
+            ).to.deep.equal([3]);
+        });
+
         it("allocates one snapshot stream per call and never two at once", async () => {
             // A polling client is the case this guards: one stream per poll left behind is what made
             // every snapshot after the first fail with 103 on single-encoder hardware.
@@ -3166,6 +3255,8 @@ describe("CameraStreamManager", () => {
             expect(invokes.map(invoke => invoke.command)).to.deep.equal(["captureSnapshot"]);
             expect(invokes[0]?.fields.snapshotStreamId).to.equal(8);
             expect(result.downgraded).to.equal(false);
+            // Nothing in this call deallocates the adopted stream, so the caller may release it.
+            expect(result.snapshotStreamId).to.equal(8);
         });
 
         it("does not adopt a stream whose range reaches below the capability it would allocate", async () => {
