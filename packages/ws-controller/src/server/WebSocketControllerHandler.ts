@@ -59,6 +59,7 @@ import {
 import { formatNodeId } from "../util/formatNodeId.js";
 import { MATTER_VERSION } from "../util/matterVersion.js";
 import { ConfigStorage } from "./ConfigStorage.js";
+import { nextConnectionLogTag, nextConnectionOwnerId } from "./connectionIdentity.js";
 import {
     convertMatterToWebSocketNameBased,
     convertMatterToWebSocketTagBased,
@@ -86,19 +87,6 @@ function isIdentityConflict(error: unknown): boolean {
 
 /** Maximum number of events to keep in the history buffer */
 const EVENT_HISTORY_SIZE = 25;
-
-/** Counter for generating unique connection IDs */
-let connectionIdCounter = 0;
-
-/**
- * Generate a unique connection ID as a 4-digit hex string.
- * Rolls over at 0xFFFF (65535) to keep IDs short and readable.
- */
-function generateConnectionId(): string {
-    const id = connectionIdCounter;
-    connectionIdCounter = (connectionIdCounter + 1) & 0xffff; // Rollover at 0xFFFF
-    return id.toString(16);
-}
 
 const SCHEMA_VERSION = 14;
 const MIN_SUPPORTED_SCHEMA_VERSION = 11;
@@ -286,7 +274,9 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 return;
             }
 
-            const connId = generateConnectionId();
+            const connId = nextConnectionLogTag();
+            // The log tag wraps; what a connection's device-side resources are keyed on must not.
+            const ownerId = nextConnectionOwnerId();
             logger.info(`[${connId}] WebSocket connection established`);
 
             let listening = false;
@@ -596,7 +586,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                 // camera subsystem must not construct the manager here, and must not hit the
                 // stopped-controller throw on every disconnect during shutdown.
                 this.#controller.cameraStreamsIfCreated
-                    ?.releaseConnection(connId)
+                    ?.releaseConnection(ownerId)
                     .catch(err => logger.warn(`[${connId}] Failed to release camera sessions on disconnect`, err));
                 if (this.#fabricLabelOwner === connection) {
                     logger.info(`[${connId}] Releasing fabric label ownership (owning connection closed)`);
@@ -619,6 +609,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
             ws.on("message", data => {
                 this.#handleWebSocketRequest(
                     connId,
+                    ownerId,
                     connection,
                     data.toString(),
                     optInToEventsFor,
@@ -697,6 +688,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
     async #handleWebSocketRequest(
         connId: string,
+        ownerId: string,
         connection: WebSocketConnection,
         data: string,
         optInToEventsFor: (command: string) => void,
@@ -773,7 +765,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
                     result = await this.#handleCameraGetCapabilities(args);
                     break;
                 case "camera_start_stream":
-                    result = await this.#handleCameraStartStream(args, connId);
+                    result = await this.#handleCameraStartStream(args, ownerId);
                     break;
                 case "camera_stop_stream":
                     result = await this.#handleCameraStopStream(args);
@@ -1352,13 +1344,13 @@ export class WebSocketControllerHandler implements WebServerHandler {
 
     async #handleCameraStartStream(
         args: ArgsOf<"camera_start_stream">,
-        connId: string,
+        ownerId: string,
     ): Promise<ResponseOf<"camera_start_stream">> {
         const parsed = parseStartStreamArgs(args);
         const result = await this.#controller.cameraStreams.startStream({
             nodeId: parsed.nodeId,
             endpointId: parsed.endpointId,
-            connectionId: connId,
+            connectionId: ownerId,
             streamUsage: parsed.streamUsage,
             sdp: parsed.sdp,
             video: parsed.video,

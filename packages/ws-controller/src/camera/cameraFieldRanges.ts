@@ -31,6 +31,7 @@ function requireCluster(name: string): ClusterModel {
 }
 
 const avsm = requireCluster("CameraAvStreamManagement");
+const webRtcDefinitions = requireCluster("WebRtcTransportDefinitions");
 
 function requireField(parent: ClusterModel | CommandModel | DatatypeModel, name: string): FieldModel {
     const field = parent.get(FieldModel, name);
@@ -72,13 +73,39 @@ function commandField(command: string, field: string): FieldModel {
     return requireField(model, field);
 }
 
-function requireDatatype(name: string): DatatypeModel {
-    const datatype = avsm.get(DatatypeModel, name);
-    if (datatype === undefined) throw new InternalError(`The Matter model states no ${avsm.name}.${name}`);
+function requireDatatype(parent: ClusterModel, name: string): DatatypeModel {
+    const datatype = parent.get(DatatypeModel, name);
+    if (datatype === undefined) throw new InternalError(`The Matter model states no ${parent.name}.${name}`);
     return datatype;
 }
 
-const resolution = requireDatatype("VideoResolutionStruct");
+/** The ceiling `field`'s own constraint states, which a field bounded only by its type does not have. */
+function maxOf(field: FieldModel): number {
+    const { max } = field.constraint;
+    if (typeof max !== "number") {
+        throw new InternalError(`The Matter model states no length ceiling for ${field.name}`);
+    }
+    return max;
+}
+
+/** The ceiling each entry of a list field states, as `max 10[max 2000]` states 2000. */
+function entryMaxOf(field: FieldModel): number {
+    const max = field.constraint.entry?.max;
+    if (typeof max !== "number") {
+        throw new InternalError(`The Matter model states no per-entry ceiling for ${field.name}`);
+    }
+    return max;
+}
+
+const resolution = requireDatatype(avsm, "VideoResolutionStruct");
+const iceServer = requireDatatype(webRtcDefinitions, "ICEServerStruct");
+// matter.js camelizes the spec's `URLs` to `UrLs`, and the model lookup is by that exact name.
+const iceServerUrls = requireField(iceServer, "UrLs");
+
+const provideOffer = requireCluster("WebRtcTransportProvider").get(CommandModel, "ProvideOffer");
+if (provideOffer === undefined) {
+    throw new InternalError("The Matter model states no WebRtcTransportProvider.ProvideOffer");
+}
 
 /**
  * The wire ranges the camera commands validate their numeric arguments against, read from the
@@ -98,3 +125,31 @@ export const CAMERA_FIELD_RANGES = {
     sampleRate: rangeOf(commandField("AudioStreamAllocate", "SampleRate")),
     audioBitRate: rangeOf(commandField("AudioStreamAllocate", "BitRate")),
 } satisfies Record<string, FieldRange>;
+
+/**
+ * What `camera_start_stream`'s ICE arguments may carry, read from `ProvideOffer` and
+ * `ICEServerStruct` rather than written out here.
+ *
+ * A list, a URL or a credential past these lengths reaches matter.js's TLV encoder and fails there,
+ * the same way an out-of-range number does.
+ *
+ * @see Matter spec § 11.4.5.3 (ICEServerStruct), § 11.5.7.2 (ProvideOffer)
+ */
+export const ICE_SERVER_LIMITS: {
+    readonly maxServers: number;
+    readonly maxTransportPolicyLength: number;
+    readonly maxUrls: number;
+    readonly maxUrlLength: number;
+    readonly maxUsernameLength: number;
+    readonly maxCredentialLength: number;
+    readonly caid: FieldRange;
+} = {
+    /** `SolicitOffer` states the same ceiling, so one bound covers both commands. */
+    maxServers: maxOf(requireField(provideOffer, "IceServers")),
+    maxTransportPolicyLength: maxOf(requireField(provideOffer, "IceTransportPolicy")),
+    maxUrls: maxOf(iceServerUrls),
+    maxUrlLength: entryMaxOf(iceServerUrls),
+    maxUsernameLength: maxOf(requireField(iceServer, "Username")),
+    maxCredentialLength: maxOf(requireField(iceServer, "Credential")),
+    caid: rangeOf(requireField(iceServer, "Caid")),
+};

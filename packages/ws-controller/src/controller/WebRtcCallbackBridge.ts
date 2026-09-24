@@ -4,11 +4,28 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type { WebRtcCallbackData } from "@matter-server/ws-client";
+import type { CameraIceServer, WebRtcCallbackData } from "@matter-server/ws-client";
 import { Logger } from "@matter/main";
+import type { WebRtcTransportDefinitions } from "@matter/main/clusters";
 import type { WebRtcTransportRequestorServer } from "@matter/node/behaviors/web-rtc-transport-requestor";
 
 const logger = Logger.get("WebRtcCallbackBridge");
+
+/**
+ * The struct's `URLs` list under the `urls` key the wire uses in both directions, so an ICE server
+ * a client reads from an offer is one it can send back to `camera_start_stream` unchanged.
+ *
+ * @see Matter spec § 11.4.5.3 (ICEServerStruct)
+ */
+function toWireIceServer(server: WebRtcTransportDefinitions.IceServer): CameraIceServer {
+    const { urLs, username, credential, caid } = server;
+    return {
+        urls: urLs,
+        ...(username === undefined ? {} : { username }),
+        ...(credential === undefined ? {} : { credential }),
+        ...(caid === undefined ? {} : { caid }),
+    };
+}
 
 export function attachWebRtcCallbackBridge(
     events: WebRtcTransportRequestorServer.Events,
@@ -26,7 +43,7 @@ export function attachWebRtcCallbackBridge(
             fabric_index: session.fabricIndex,
             data: {
                 sdp: request.sdp,
-                ice_servers: request.iceServers,
+                ice_servers: request.iceServers?.map(toWireIceServer),
                 ice_transport_policy: request.iceTransportPolicy,
             },
         });

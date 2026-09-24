@@ -341,9 +341,24 @@ export interface WebRtcIceCandidate {
     sdpMLineIndex: number | null;
 }
 
+/**
+ * An ICE server, in the W3C `RTCIceServer` spelling the wire uses in both directions.
+ *
+ * `urls` takes one URL or a list of them; an event always reports a list. The Matter struct spells
+ * the field `URLs` and always lists it, so the server translates rather than passing the object
+ * through (spec § 11.4.5.3).
+ */
+export interface CameraIceServer {
+    urls: string | string[];
+    username?: string;
+    credential?: string;
+    /** TLS root certificate authority id. The spec requires one for a `stuns:` or `turns:` URL; the camera enforces that, not this server. */
+    caid?: number;
+}
+
 export interface WebRtcOfferData {
     sdp: string;
-    ice_servers?: unknown[];
+    ice_servers?: CameraIceServer[];
     ice_transport_policy?: string;
 }
 
@@ -801,7 +816,7 @@ export interface APICommands {
             sdp?: string;
             video?: CameraVideoHints | false;
             audio?: CameraAudioHints | false;
-            ice_servers?: Array<Record<string, unknown>>;
+            ice_servers?: CameraIceServer[];
             ice_transport_policy?: string;
             metadata_enabled?: boolean;
         };

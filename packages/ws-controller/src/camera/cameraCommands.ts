@@ -7,6 +7,7 @@
 import type {
     ArgsOf,
     CameraAudioHints,
+    CameraIceServer,
     CameraCapabilitiesResult,
     CameraSnapshotResult,
     CameraStartStreamAudioResult,
@@ -15,9 +16,10 @@ import type {
     CameraVideoHints,
 } from "@matter-server/ws-client";
 import { Bytes, EndpointNumber, NodeId } from "@matter/main";
+import type { WebRtcTransportDefinitions } from "@matter/main/clusters";
 import { StreamUsage } from "@matter/main/types";
 import { ServerError } from "../types/WebSocketMessageTypes.js";
-import { CAMERA_FIELD_RANGES } from "./cameraFieldRanges.js";
+import { CAMERA_FIELD_RANGES, ICE_SERVER_LIMITS } from "./cameraFieldRanges.js";
 import type { FieldRange } from "./cameraFieldRanges.js";
 import type { CameraCapabilities, SnapshotResult, StartStreamResult } from "./CameraStreamManager.js";
 import type { AudioEnvelope, Resolution, ResolvedStream, StreamKind, VideoEnvelope } from "./cameraTypes.js";
@@ -72,6 +74,10 @@ function toOptionalString(value: unknown, field: string): string | undefined {
 
 function toOptionalNumber(value: unknown, field: string, range: FieldRange): number | undefined {
     if (value === undefined) return undefined;
+    return toRequiredNumber(value, field, range);
+}
+
+function toRequiredNumber(value: unknown, field: string, range: FieldRange): number {
     if (!isInRange(value, range)) throw ServerError.invalidArguments(`${field} must be ${rangeText(range)}`);
     return value;
 }
@@ -95,17 +101,78 @@ function toOptionalCodecNames(value: unknown, field: string): string[] | undefin
     return toOptionalStringArray(value, field)?.map(name => name.toUpperCase());
 }
 
-function toOptionalRecordArray(value: unknown, field: string): Array<Record<string, unknown>> | undefined {
-    if (value === undefined) return undefined;
-    if (!Array.isArray(value) || value.some(entry => typeof entry !== "object" || entry === null)) {
-        throw ServerError.invalidArguments(`${field} must be an array of objects`);
+/** Arrays are excluded: a hint object's keys are named, and an array's are its indices. */
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * The keys one `ice_servers` entry takes, in the W3C `RTCIceServer` spelling the wire uses.
+ *
+ * Tied to the wire model the same way the hint key sets are: a field added to `CameraIceServer` and
+ * not listed here does not compile, rather than being refused although the reference documents it.
+ */
+const ICE_SERVER_KEY_SET: Record<keyof Required<CameraIceServer>, true> = {
+    urls: true,
+    username: true,
+    credential: true,
+    caid: true,
+};
+const ICE_SERVER_KEYS: readonly string[] = Object.keys(ICE_SERVER_KEY_SET);
+
+function toBoundedString(value: unknown, field: string, maxLength: number): string {
+    if (typeof value !== "string" || value.length === 0 || value.length > maxLength) {
+        throw ServerError.invalidArguments(`${field} must be a string of 1 to ${maxLength} characters`);
     }
     return value;
 }
 
-/** Arrays are excluded: a hint object's keys are named, and an array's are its indices. */
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
+/**
+ * One wire `ice_servers` entry as the `ICEServerStruct` matter.js encodes.
+ *
+ * The wire keeps the W3C `RTCIceServer` spelling — `urls`, a single URL or a list of them — while the
+ * struct's field is `URLs`, always a list, which matter.js camelizes to `urLs`. Forwarding the wire
+ * object unchanged leaves the mandatory field unset and puts a string where a list belongs, so the
+ * translation happens here, and an entry whose shape or whose stated lengths are wrong is refused
+ * with error 8 instead of failing inside the TLV encoder, where the message names the encoder rather
+ * than the argument the client sent.
+ *
+ * @see Matter spec § 11.4.5.3 (ICEServerStruct)
+ */
+function toIceServer(value: unknown, field: string): WebRtcTransportDefinitions.IceServer {
+    if (!isRecord(value)) throw ServerError.invalidArguments(`${field} must be an object`);
+    rejectUnknownKeys(value, ICE_SERVER_KEYS, `${field} key`);
+    const { urls, username, credential, caid } = value;
+    const urlList = urls === undefined ? [] : Array.isArray(urls) ? urls : [urls];
+    if (urlList.length === 0 || urlList.length > ICE_SERVER_LIMITS.maxUrls) {
+        throw ServerError.invalidArguments(
+            `${field}.urls must name between 1 and ${ICE_SERVER_LIMITS.maxUrls} servers`,
+        );
+    }
+    return {
+        urLs: urlList.map((url, index) =>
+            toBoundedString(url, `${field}.urls[${index}]`, ICE_SERVER_LIMITS.maxUrlLength),
+        ),
+        ...(username === undefined
+            ? {}
+            : { username: toBoundedString(username, `${field}.username`, ICE_SERVER_LIMITS.maxUsernameLength) }),
+        ...(credential === undefined
+            ? {}
+            : {
+                  credential: toBoundedString(credential, `${field}.credential`, ICE_SERVER_LIMITS.maxCredentialLength),
+              }),
+        ...(caid === undefined ? {} : { caid: toRequiredNumber(caid, `${field}.caid`, ICE_SERVER_LIMITS.caid) }),
+    };
+}
+
+function toOptionalIceServers(value: unknown, field: string): WebRtcTransportDefinitions.IceServer[] | undefined {
+    if (value === undefined) return undefined;
+    if (!Array.isArray(value) || value.length > ICE_SERVER_LIMITS.maxServers) {
+        throw ServerError.invalidArguments(
+            `${field} must be an array of at most ${ICE_SERVER_LIMITS.maxServers} objects`,
+        );
+    }
+    return value.map((entry, index) => toIceServer(entry, `${field}[${index}]`));
 }
 
 export interface ParsedCameraTarget {
@@ -252,7 +319,7 @@ export interface ParsedStartStreamArgs extends ParsedCameraTarget {
     sdp?: string;
     video?: VideoHints | false;
     audio?: AudioHints | false;
-    iceServers?: Array<Record<string, unknown>>;
+    iceServers?: WebRtcTransportDefinitions.IceServer[];
     iceTransportPolicy?: string;
     metadataEnabled?: boolean;
 }
@@ -276,8 +343,15 @@ export function parseStartStreamArgs(args: {
         throw ServerError.invalidArguments(`Unknown or device-only stream_usage "${String(args.stream_usage)}"`);
     }
     const sdp = toOptionalString(args.sdp, "sdp");
-    const iceServers = toOptionalRecordArray(args.ice_servers, "ice_servers");
-    const iceTransportPolicy = toOptionalString(args.ice_transport_policy, "ice_transport_policy");
+    const iceServers = toOptionalIceServers(args.ice_servers, "ice_servers");
+    const iceTransportPolicy =
+        args.ice_transport_policy === undefined
+            ? undefined
+            : toBoundedString(
+                  args.ice_transport_policy,
+                  "ice_transport_policy",
+                  ICE_SERVER_LIMITS.maxTransportPolicyLength,
+              );
     const metadataEnabled = toOptionalBoolean(args.metadata_enabled, "metadata_enabled");
     const video = args.video === undefined ? undefined : args.video === false ? false : parseVideoHints(args.video);
     const audio = args.audio === undefined ? undefined : args.audio === false ? false : parseAudioHints(args.audio);

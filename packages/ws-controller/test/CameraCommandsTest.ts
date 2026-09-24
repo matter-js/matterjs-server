@@ -185,7 +185,7 @@ describe("cameraCommands", () => {
             });
         });
 
-        it("passes sdp, ice and metadata fields through unchanged", () => {
+        it("passes sdp, ice and metadata fields through, translating ice_servers to the struct", () => {
             const parsed = parseStartStreamArgs({
                 node_id: 5,
                 endpoint_id: 1,
@@ -196,9 +196,28 @@ describe("cameraCommands", () => {
                 metadata_enabled: true,
             });
             expect(parsed.sdp).to.equal("v=0");
-            expect(parsed.iceServers).to.deep.equal([{ urls: "stun:example.com" }]);
+            expect(parsed.iceServers).to.deep.equal([{ urLs: ["stun:example.com"] }]);
             expect(parsed.iceTransportPolicy).to.equal("relay");
             expect(parsed.metadataEnabled).to.equal(true);
+        });
+
+        it("keeps a urls list, the credentials and the caid on the struct", () => {
+            const parsed = parseStartStreamArgs({
+                node_id: 5,
+                endpoint_id: 1,
+                stream_usage: "LiveView",
+                ice_servers: [
+                    { urls: ["turn:a.example:3478", "turns:a.example:5349"], username: "u", credential: "p", caid: 7 },
+                ],
+            });
+            expect(parsed.iceServers).to.deep.equal([
+                {
+                    urLs: ["turn:a.example:3478", "turns:a.example:5349"],
+                    username: "u",
+                    credential: "p",
+                    caid: 7,
+                },
+            ]);
         });
 
         function expectInvalidArguments(build: () => unknown): void {
@@ -230,6 +249,69 @@ describe("cameraCommands", () => {
                     endpoint_id: 1,
                     stream_usage: "LiveView",
                     ice_servers: ["stun:x"],
+                }),
+            );
+        });
+
+        function expectIceServersRejected(entry: unknown): void {
+            expectInvalidArguments(() =>
+                parseStartStreamArgs({
+                    node_id: 5,
+                    endpoint_id: 1,
+                    stream_usage: "LiveView",
+                    ice_servers: [entry],
+                }),
+            );
+        }
+
+        it("rejects an ice_servers entry with no urls", () => {
+            expectIceServersRejected({ username: "u" });
+            expectIceServersRejected({ urls: [] });
+        });
+
+        it("rejects an ice_servers entry whose urls are not strings", () => {
+            expectIceServersRejected({ urls: 5 });
+            expectIceServersRejected({ urls: ["stun:a.example", 5] });
+        });
+
+        it("rejects an empty url, username or credential", () => {
+            expectIceServersRejected({ urls: "" });
+            expectIceServersRejected({ urls: ["stun:a.example", ""] });
+            expectIceServersRejected({ urls: "stun:a.example", username: "" });
+            expectIceServersRejected({ urls: "stun:a.example", credential: "" });
+        });
+
+        it("rejects an ice_servers entry past the struct's own limits", () => {
+            expectIceServersRejected({ urls: new Array<string>(11).fill("stun:a.example") });
+            expectIceServersRejected({ urls: `stun:${"a".repeat(2000)}` });
+            expectIceServersRejected({ urls: "stun:a.example", username: "u".repeat(509) });
+            expectIceServersRejected({ urls: "stun:a.example", credential: "p".repeat(513) });
+            expectIceServersRejected({ urls: "stun:a.example", caid: 65535 });
+            expectIceServersRejected({ urls: "stun:a.example", caid: 1.5 });
+        });
+
+        it("rejects an unknown key on an ice_servers entry", () => {
+            expectIceServersRejected({ urls: "stun:a.example", url: "stun:b.example" });
+        });
+
+        it("rejects more ice_servers than the command's own list takes", () => {
+            expectInvalidArguments(() =>
+                parseStartStreamArgs({
+                    node_id: 5,
+                    endpoint_id: 1,
+                    stream_usage: "LiveView",
+                    ice_servers: new Array<unknown>(11).fill({ urls: "stun:a.example" }),
+                }),
+            );
+        });
+
+        it("rejects an ice_transport_policy past the field's length", () => {
+            expectInvalidArguments(() =>
+                parseStartStreamArgs({
+                    node_id: 5,
+                    endpoint_id: 1,
+                    stream_usage: "LiveView",
+                    ice_transport_policy: "r".repeat(17),
                 }),
             );
         });

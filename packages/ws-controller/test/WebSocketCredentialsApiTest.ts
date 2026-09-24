@@ -917,13 +917,13 @@ describe("WebSocket camera session tracking on the raw path", () => {
 describe("WebSocket camera session cleanup on disconnect", () => {
     it("releases camera sessions owned by the connection that closed, and no others", async () => {
         const released = new Array<string>();
-        let closingConnectionId: string | undefined;
+        const owners = new Array<string>();
         const h = await createHarness({
             async releaseConnection(connectionId: string) {
                 released.push(connectionId);
             },
             async startStream(args: { connectionId: string }) {
-                closingConnectionId = args.connectionId;
+                owners.push(args.connectionId);
                 return { webRtcSessionId: 1, mode: "solicit_offer" };
             },
         });
@@ -931,15 +931,21 @@ describe("WebSocket camera session cleanup on disconnect", () => {
             const closing = await h.openClient();
             const staysOpen = await h.openClient();
             try {
-                // Exercise a camera command on `closing` first so its real, server-generated
-                // connection id is known — proving which connection actually gets released, not just
-                // that some connection did.
-                await h.sendOn(closing, "camera_start_stream", {
-                    node_id: 1,
-                    endpoint_id: 1,
-                    stream_usage: "LiveView",
-                });
-                expect(closingConnectionId).to.not.equal(undefined);
+                // Both connections start a stream, so the assertions below distinguish "the right
+                // connection was released" from "the one key every connection shares was".
+                for (const client of [closing, staysOpen]) {
+                    await h.sendOn(client, "camera_start_stream", {
+                        node_id: 1,
+                        endpoint_id: 1,
+                        stream_usage: "LiveView",
+                    });
+                }
+                const [closingConnectionId, otherConnectionId] = owners;
+                expect(owners).to.have.lengthOf(2);
+                expect(closingConnectionId).to.not.equal(otherConnectionId);
+                // The owner key is the counter that never repeats, not the four-hex log tag: after
+                // that tag wraps, releasing one connection would end a second client's sessions.
+                expect(closingConnectionId).to.match(/^conn-\d+$/);
 
                 await new Promise<void>(resolve => {
                     closing.once("close", () => resolve());

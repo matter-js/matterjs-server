@@ -3135,6 +3135,73 @@ describe("CameraStreamManager", () => {
             expect(invokes.map(invoke => invoke.command)).to.contain("snapshotStreamDeallocate");
         });
 
+        it("names the stream when the camera refused the give-back", async () => {
+            // The stream is still on the camera holding the encoder, so the caller needs its id.
+            // Omitting it would state there is nothing to release for a call that left an encoder
+            // pinned, and leave the client no id to call camera_release_stream with.
+            const { manager, invokes } = managerWith(STATE, async invoke => {
+                if (invoke.command === "snapshotStreamAllocate") return { snapshotStreamId: 3 };
+                if (invoke.command === "captureSnapshot") {
+                    return { data: new Uint8Array([1]), imageCodec: 0, resolution: { width: 1920, height: 1080 } };
+                }
+                if (invoke.command === "snapshotStreamDeallocate") throw statusError(Status.InvalidInState);
+                return undefined;
+            });
+            const result = await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
+            expect(result.snapshotStreamId).to.equal(3);
+            expect(invokes.map(invoke => invoke.command)).to.contain("snapshotStreamDeallocate");
+        });
+
+        it("names no stream when the camera answers NotFound for the give-back", async () => {
+            // NotFound is the camera stating it does not have that stream, so the give-back reached
+            // its goal. Naming the id would hand the caller one camera_release_stream must fail on.
+            const { manager } = managerWith(STATE, async invoke => {
+                if (invoke.command === "snapshotStreamAllocate") return { snapshotStreamId: 3 };
+                if (invoke.command === "captureSnapshot") {
+                    return { data: new Uint8Array([1]), imageCodec: 0, resolution: { width: 1920, height: 1080 } };
+                }
+                if (invoke.command === "snapshotStreamDeallocate") throw statusError(Status.NotFound);
+                return undefined;
+            });
+            const result = await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
+            expect(result.snapshotStreamId).to.equal(undefined);
+        });
+
+        it("answers within the cleanup budget when the camera never answers the give-back", async () => {
+            // The give-back runs under the endpoint lock, so an unbounded wait queues every other
+            // camera command on this endpoint behind a camera that stopped answering.
+            MockTime.reset();
+            try {
+                let entered = (): void => {};
+                const deallocateEntered = new Promise<void>(resolve => {
+                    entered = resolve;
+                });
+                const { manager } = managerWith(STATE, async invoke => {
+                    if (invoke.command === "snapshotStreamAllocate") return { snapshotStreamId: 3 };
+                    if (invoke.command === "captureSnapshot") {
+                        return {
+                            data: new Uint8Array([1]),
+                            imageCodec: 0,
+                            resolution: { width: 1920, height: 1080 },
+                        };
+                    }
+                    if (invoke.command === "snapshotStreamDeallocate") {
+                        entered();
+                        return new Promise<void>(() => {});
+                    }
+                    return undefined;
+                });
+
+                const snapshotting = manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
+                await deallocateEntered;
+                await MockTime.advance(DEVICE_CLEANUP_BUDGET_MS);
+                // The camera never said what became of the stream, so the answer names it.
+                expect((await snapshotting).snapshotStreamId).to.equal(3);
+            } finally {
+                MockTime.disable();
+            }
+        });
+
         it("names an adopted stream although the camera's best capability needs the encoder", async () => {
             // Adoption reads AllocatedSnapshotStreams, which states no encoder flag, so it cannot
             // tell such a stream apart. Naming it is right anyway: this call allocated nothing and

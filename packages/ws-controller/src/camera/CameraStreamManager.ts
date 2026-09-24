@@ -232,7 +232,7 @@ export const UNREPORTED_LEASE_GRACE_MS = 10000;
 
 /** One device-side effect of a request, with the lifetime it was registered under. */
 interface ScopedReturn {
-    readonly give: () => Promise<void>;
+    readonly give: () => Promise<unknown>;
     /** Whether the request's outcome leaves this effect to be given back. */
     readonly due: (succeeded: boolean) => boolean;
 }
@@ -255,7 +255,7 @@ class AllocationScope {
      * A successful request hands its stream ids to the caller, which is what makes the caller able to
      * release them; a failed one does not, so this is their only way back.
      */
-    returnOnFailure(give: () => Promise<void>): void {
+    returnOnFailure(give: () => Promise<unknown>): void {
         this.#returns.push({ give, due: succeeded => !succeeded });
     }
 
@@ -268,7 +268,7 @@ class AllocationScope {
      * closing connection claimed. The returned callback records the spending; whether the spending
      * was worth anything is decided in {@link settle}.
      */
-    returnUnlessSpent(give: () => Promise<void>): () => void {
+    returnUnlessSpent(give: () => Promise<unknown>): () => void {
         let spent = false;
         this.#returns.push({ give, due: succeeded => !(spent && succeeded) });
         return () => {
@@ -277,7 +277,7 @@ class AllocationScope {
     }
 
     /** Give this back when the request ends, however it ends. */
-    returnAlways(give: () => Promise<void>): void {
+    returnAlways(give: () => Promise<unknown>): void {
         this.#returns.push({ give, due: () => true });
     }
 
@@ -431,7 +431,7 @@ export interface StartStreamArgs {
     sdp?: string;
     video?: VideoHints | false;
     audio?: AudioHints | false;
-    iceServers?: unknown;
+    iceServers?: WebRtcTransportDefinitions.IceServer[];
     iceTransportPolicy?: unknown;
     metadataEnabled?: boolean;
 }
@@ -471,10 +471,12 @@ export interface SnapshotResult {
     /** True when the frame is smaller than the best capability the caller's own bounds allowed. */
     downgraded: boolean;
     /**
-     * The stream the frame came from, set exactly when this call left it on the camera. Unset for a
-     * stream this call allocated at a capability that needs the hardware encoder, which is given
-     * back before the answer. An adopted stream is always named, whatever capability it was
-     * allocated at, because this call did not allocate it and gives nothing back for it.
+     * The stream the frame came from, set exactly when this call left it on the camera. Unset only
+     * for a stream this call allocated at a capability that needs the hardware encoder and then gave
+     * back, which it does before answering so the outcome is known here; a give-back the camera
+     * refused leaves the stream allocated and is named like any other. An adopted stream is always
+     * named, whatever capability it was allocated at, because this call did not allocate it and
+     * gives nothing back for it.
      */
     snapshotStreamId?: number;
 }
@@ -1519,19 +1521,27 @@ export class CameraStreamManager {
     /**
      * Give a stream back to the device, reporting nothing to the caller.
      *
-     * A failure here is logged and swallowed: the lease survives it, so `camera_release_stream` and the
-     * allocation ladder can still reach the stream, and the caller sees the error that started this.
+     * Reports whether the camera is done with the stream — it accepted the deallocate, or answered
+     * `NOT_FOUND` for an id it does not have (§11.2.8.7.2, §11.2.8.3.2, §11.2.8.10.2), which says the
+     * same thing about the stream. Any other failure is logged and not raised: the lease survives it,
+     * so `camera_release_stream` and the allocation ladder can still reach the stream, and a caller
+     * that registered this as a scope return sees the error that started the teardown. A caller that
+     * gives a stream back on the success path reads the answer, because a refused deallocate leaves a
+     * stream the response still has to name.
      */
-    async #deallocate(nodeId: NodeId, endpointId: EndpointNumber, lease: StreamLease): Promise<void> {
+    async #deallocate(nodeId: NodeId, endpointId: EndpointNumber, lease: StreamLease): Promise<boolean> {
         const { kind, streamId } = lease;
         const { command, fields } = deallocateCall(kind, streamId);
         try {
             await this.io.invoke({ nodeId, endpointId, cluster: "avsm", command, fields });
         } catch (error) {
-            logger.warn(`Could not give back ${kind} stream ${streamId} on node ${nodeId}:`, error);
-            return;
+            if (deviceStatusOf(error) !== Status.NotFound) {
+                logger.warn(`Could not give back ${kind} stream ${streamId} on node ${nodeId}:`, error);
+                return false;
+            }
         }
         this.#dropLeaseIfCurrent(nodeId, endpointId, lease);
+        return true;
     }
 
     /**
@@ -1693,13 +1703,12 @@ export class CameraStreamManager {
      * A stream this call allocates is left in place for the next one, unless its capability needs
      * the hardware encoder. Such a stream holds one of `MaxConcurrentEncoders` for as long as it
      * exists, so keeping it would make the next snapshot on single-encoder hardware fail with
-     * `ResourceExhausted` and block video allocation; that one is given back on every exit, success
-     * included.
+     * `ResourceExhausted` and block video allocation; that one is given back before this answers.
      *
      * The result names the stream it captured from exactly when this call left it on the camera, so
      * the field's presence states that the stream is there and that its id is the one
-     * `camera_release_stream` takes. The stream this call allocates at a hardware-encoder capability
-     * names nothing, because it is gone by then.
+     * `camera_release_stream` takes. A give-back the camera refuses leaves the stream there, so that
+     * call names its id too: the field states what is on the camera, not what the call intended.
      */
     async snapshot(args: {
         nodeId: NodeId;
@@ -1823,14 +1832,9 @@ export class CameraStreamManager {
                     streamId: snapshotStreamId,
                     allocatedByUs: true,
                 });
-                const givenBack = usesHardwareEncoder(capability);
-                if (givenBack) {
-                    scope.returnAlways(() => this.#deallocate(nodeId, endpointId, lease));
-                } else {
-                    // A failed call answers with no stream id, so nothing the caller holds can free
-                    // this; only a call that returns keeps its stream for the next one.
-                    scope.returnOnFailure(() => this.#deallocate(nodeId, endpointId, lease));
-                }
+                // A failed call answers with no stream id, so nothing the caller holds can free
+                // this; only a call that returns keeps its stream for the next one.
+                scope.returnOnFailure(() => this.#deallocate(nodeId, endpointId, lease));
 
                 const captured = await this.#captureSnapshot({
                     nodeId,
@@ -1841,10 +1845,20 @@ export class CameraStreamManager {
                     deviceCodecs,
                     requestedCodecs,
                 });
+                // Before the response is built, not from the scope's teardown, which settles after
+                // it: a refused deallocate leaves the stream on the camera and the response then has
+                // to name the id that frees it. The budget is the teardown's, because this still
+                // holds the endpoint lock.
+                let returned = false;
+                if (usesHardwareEncoder(capability)) {
+                    await withCleanupBudget("giving a snapshot stream back", async () => {
+                        returned = await this.#deallocate(nodeId, endpointId, lease);
+                    });
+                }
                 return {
                     ...captured,
                     downgraded: isDowngradeFrom(captured.resolution, bestWithFreeEncoder),
-                    snapshotStreamId: givenBack ? undefined : snapshotStreamId,
+                    snapshotStreamId: returned ? undefined : snapshotStreamId,
                 };
             }),
         );

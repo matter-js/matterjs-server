@@ -89,7 +89,7 @@ describe("WebRtcCallbackBridge", () => {
             server.events.offer.emit(session, {
                 webRtcSessionId: session.id,
                 sdp: "v=0\nm=video",
-                iceServers: [{ urLs: ["stun:stun.example:3478"] }],
+                iceServers: [{ urLs: ["stun:stun.example:3478"], username: "u", credential: "p", caid: 7 }],
                 iceTransportPolicy: "all",
             });
         });
@@ -103,7 +103,7 @@ describe("WebRtcCallbackBridge", () => {
             fabric_index: session.fabricIndex,
             data: {
                 sdp: "v=0\nm=video",
-                ice_servers: [{ urLs: ["stun:stun.example:3478"] }],
+                ice_servers: [{ urls: ["stun:stun.example:3478"], username: "u", credential: "p", caid: 7 }],
                 ice_transport_policy: "all",
             },
         });
