@@ -254,7 +254,7 @@ A name is the same string in both directions, but a reported key is not always a
 | `limits.supported_stream_usages` | `camera_start_stream`'s `stream_usage`, any name but `Internal` |
 | `snapshot.capabilities[].image_codec` | `camera_snapshot`'s `codec` |
 
-Everything else the command reports is a fact about the camera rather than a value to send back. `audio.bit_depths` has no hint: `AudioStreamAllocate` takes one bit depth and the server picks it from that list. A key a hint object does not take is refused with `INVALID_ARGUMENTS` instead of being ignored, so a bound can never be dropped without the caller hearing about it.
+Everything else the command reports is a fact about the camera rather than a value to send back. `audio.bit_depths` has no hint: `AudioStreamAllocate` takes one bit depth and the server picks it from that list. A key a hint object does not take is refused with `INVALID_ARGUMENTS` instead of being ignored, so a bound can never be dropped without the caller hearing about it. All five camera commands refuse an argument key they do not know the same way, naming the key and listing the ones they take.
 
 ### camera_get_capabilities
 

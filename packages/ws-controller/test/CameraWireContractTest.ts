@@ -8,12 +8,15 @@ import { EndpointNumber, NodeId } from "@matter/main";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { CameraCommandName } from "../src/camera/cameraCommands.js";
 import {
     AUDIO_HINT_KEYS,
+    CAMERA_ARG_KEYS,
+    parseCapabilitiesArgs,
+    parseReleaseStreamArgs,
     parseSnapshotArgs,
     parseStartStreamArgs,
-    SNAPSHOT_ARG_KEYS,
-    START_STREAM_ARG_KEYS,
+    parseStopStreamArgs,
     toWireCapabilities,
     toWireSnapshotResult,
     toWireStartStreamResult,
@@ -21,7 +24,7 @@ import {
 } from "../src/camera/cameraCommands.js";
 import type { CameraCapabilities, SnapshotResult, StartStreamResult } from "../src/camera/CameraStreamManager.js";
 import type { AudioSelection, VideoSelection } from "../src/camera/streamPolicy.js";
-import { ServerError } from "../src/types/WebSocketMessageTypes.js";
+import { ServerError, ServerErrorCode } from "../src/types/WebSocketMessageTypes.js";
 
 function repoRoot(): string {
     let dir = dirname(fileURLToPath(import.meta.url));
@@ -294,7 +297,7 @@ describe("camera wire contract", () => {
         });
 
         it("both references name every hint key the parser accepts", () => {
-            const hints = [...VIDEO_HINT_KEYS, ...AUDIO_HINT_KEYS];
+            const hints = [...VIDEO_HINT_KEYS, ...AUDIO_HINT_KEYS, ...Object.values(CAMERA_ARG_KEYS).flat()];
             const inWireDoc = tokens(wireDoc);
             const inReadme = tokens(readme);
             expect(hints.filter(key => !inWireDoc.has(key))).to.deep.equal([]);
@@ -385,10 +388,10 @@ describe("camera wire contract", () => {
                 const [object, key] = hint.split(".");
                 // A hint with no dot (e.g. "stream_usage") names a top-level camera_start_stream
                 // argument rather than a key under a video/audio hint object.
-                if (key === undefined) expect(START_STREAM_ARG_KEYS).to.contain(object);
+                if (key === undefined) expect(CAMERA_ARG_KEYS.camera_start_stream).to.contain(object);
                 else if (object === "video") expect(VIDEO_HINT_KEYS).to.contain(key);
                 else if (object === "audio") expect(AUDIO_HINT_KEYS).to.contain(key);
-                else if (object === "camera_snapshot") expect(SNAPSHOT_ARG_KEYS).to.contain(key);
+                else if (object === "camera_snapshot") expect(CAMERA_ARG_KEYS.camera_snapshot).to.contain(key);
                 else throw new Error(`CAPABILITY_TO_HINT hint "${hint}" names an object this test does not check`);
             }
         });
@@ -424,9 +427,109 @@ describe("camera wire contract", () => {
             );
         });
 
+        it("refuses an unknown key inside a resolution, which states a bound as surely as a hint does", () => {
+            expect(() =>
+                parseStartStreamArgs({
+                    node_id: 1,
+                    endpoint_id: 1,
+                    stream_usage: "LiveView",
+                    video: { max_resolution: { width: 1920, height: 1080, frame_rate: 30 } },
+                }),
+            ).to.throw("unknown video.max_resolution key: frame_rate");
+            expect(() =>
+                parseSnapshotArgs({
+                    node_id: 1,
+                    endpoint_id: 1,
+                    max_resolution: { width: 1280, height: 720, codec: "JPEG" },
+                }),
+            ).to.throw("unknown max_resolution key: codec");
+        });
+
         it("refuses an unknown camera_snapshot argument", () => {
             const args = { node_id: 1, endpoint_id: 1, image_codec: "JPEG" };
             expect(() => parseSnapshotArgs(args)).to.throw(/unknown camera_snapshot argument key: image_codec/);
+        });
+
+        it("refuses an unknown argument on every camera command", () => {
+            // `accepted` is written out rather than read from CAMERA_ARG_KEYS: the table is what is
+            // under test, so asserting it against itself would pass for a route wired to another
+            // command's set, which refuses the unknown key below and takes that command's arguments.
+            const routes: {
+                command: CameraCommandName;
+                parse: (args: Record<string, unknown>) => unknown;
+                args: Record<string, unknown>;
+                accepted: string[];
+            }[] = [
+                {
+                    command: "camera_get_capabilities",
+                    parse: parseCapabilitiesArgs,
+                    args: {},
+                    accepted: ["node_id", "endpoint_id"],
+                },
+                {
+                    command: "camera_start_stream",
+                    parse: parseStartStreamArgs,
+                    args: { stream_usage: "LiveView" },
+                    accepted: [
+                        "node_id",
+                        "endpoint_id",
+                        "stream_usage",
+                        "sdp",
+                        "video",
+                        "audio",
+                        "ice_servers",
+                        "ice_transport_policy",
+                        "metadata_enabled",
+                    ],
+                },
+                {
+                    command: "camera_stop_stream",
+                    parse: parseStopStreamArgs,
+                    args: { webrtc_session_id: 1 },
+                    accepted: ["node_id", "endpoint_id", "webrtc_session_id"],
+                },
+                {
+                    command: "camera_snapshot",
+                    parse: parseSnapshotArgs,
+                    args: {},
+                    accepted: ["node_id", "endpoint_id", "max_resolution", "codec"],
+                },
+                {
+                    command: "camera_release_stream",
+                    parse: parseReleaseStreamArgs,
+                    args: { kind: "video", stream_id: 1 },
+                    accepted: ["node_id", "endpoint_id", "kind", "stream_id"],
+                },
+            ];
+            for (const { command, parse, args, accepted: expected } of routes) {
+                const valid = { node_id: 1, endpoint_id: 1, ...args };
+                // Parses without the extra key, so the refusal below is the key and not the payload.
+                parse(valid);
+                // The route is named in the asserted value, so a route that accepts the key is
+                // identified by the failure rather than reported as "expected to throw".
+                let refusal = `${command} accepted an unknown argument key`;
+                let code: number | undefined;
+                try {
+                    parse({ ...valid, node_ids: 1 });
+                } catch (error) {
+                    if (error instanceof ServerError) {
+                        refusal = error.message;
+                        code = error.code;
+                    } else {
+                        refusal = String(error);
+                    }
+                }
+                expect(refusal).to.match(new RegExp(`^unknown ${command} argument key: node_ids\\.`));
+                expect(code, command).to.equal(ServerErrorCode.InvalidArguments);
+                // The keys the refusal lists are the ones this command takes and no others, so a
+                // route wired to another command's set — which would still refuse `node_ids` — fails
+                // here instead of quietly accepting that command's arguments.
+                const accepted = refusal.slice(refusal.indexOf("Accepted: ") + "Accepted: ".length).split(", ");
+                expect(accepted, command).to.deep.equal(expected);
+                // What the wire model ties to the command, so a key added there and left out of the
+                // spelled list fails here too rather than being refused although the model states it.
+                expect([...CAMERA_ARG_KEYS[command]], command).to.deep.equal(expected);
+            }
         });
     });
 });

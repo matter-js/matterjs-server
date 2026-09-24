@@ -12,6 +12,7 @@ import type {
     CameraStartStreamAudioResult,
     CameraStartStreamResult,
     CameraStartStreamVideoResult,
+    CameraResolution,
     CameraVideoHints,
 } from "@matter-server/ws-client";
 import { Bytes, EndpointNumber, NodeId } from "@matter/main";
@@ -53,12 +54,21 @@ const STREAM_ID_RANGES: Record<StreamKind, FieldRange> = {
     snapshot: CAMERA_FIELD_RANGES.snapshotStreamId,
 };
 
+/** The keys a resolution object takes. @see VIDEO_HINT_KEY_SET */
+const RESOLUTION_KEY_SET: Record<keyof Required<CameraResolution>, true> = {
+    width: true,
+    height: true,
+};
+
+const RESOLUTION_KEYS: readonly string[] = Object.keys(RESOLUTION_KEY_SET);
+
 function toResolution(value: unknown, field: string): Resolution {
     const { resolutionWidth, resolutionHeight } = CAMERA_FIELD_RANGES;
     const expected = `${field} must be an object whose width is ${rangeText(resolutionWidth)} and whose height is ${rangeText(resolutionHeight)}`;
-    if (typeof value !== "object" || value === null || !("width" in value) || !("height" in value)) {
+    if (!isRecord(value) || !("width" in value) || !("height" in value)) {
         throw ServerError.invalidArguments(expected);
     }
+    rejectUnknownKeys(value, RESOLUTION_KEYS, field);
     const { width, height } = value;
     if (!isInRange(width, resolutionWidth) || !isInRange(height, resolutionHeight)) {
         throw ServerError.invalidArguments(expected);
@@ -101,7 +111,21 @@ export interface ParsedCameraTarget {
     endpointId: EndpointNumber;
 }
 
-export function parseCameraTarget(args: { node_id?: unknown; endpoint_id?: unknown }): ParsedCameraTarget {
+/**
+ * The target every camera command names, and the one place a camera command's own argument keys are
+ * checked. The keys of an object nested under one — a `video` / `audio` hint, an `ice_servers` entry,
+ * a resolution — are checked where that object is parsed.
+ *
+ * The command is named rather than its key set passed, so the set and the name in the refusal cannot
+ * be paired wrongly. The set is the command's, not this function's: `node_id` and `endpoint_id` are
+ * all it reads, so a key it does not know is the command's own argument. Checking it here is what
+ * puts the refusal on every route, since every one of the five parses its target.
+ */
+function parseCameraTarget(
+    args: { node_id?: unknown; endpoint_id?: unknown },
+    command: CameraCommandName,
+): ParsedCameraTarget {
+    rejectUnknownKeys(args, CAMERA_ARG_KEYS[command], `${command} argument`);
     const { node_id: nodeId, endpoint_id: endpointId } = args;
     if (typeof nodeId !== "number" && typeof nodeId !== "bigint") {
         throw ServerError.invalidArguments("Camera command requires a numeric or bigint node_id");
@@ -154,8 +178,6 @@ const SNAPSHOT_ARG_KEY_SET: Record<keyof Required<ArgsOf<"camera_snapshot">>, tr
     codec: true,
 };
 
-export const SNAPSHOT_ARG_KEYS: readonly string[] = Object.keys(SNAPSHOT_ARG_KEY_SET);
-
 /** The top-level keys `camera_start_stream` takes. @see VIDEO_HINT_KEY_SET */
 const START_STREAM_ARG_KEY_SET: Record<keyof Required<ArgsOf<"camera_start_stream">>, true> = {
     node_id: true,
@@ -169,7 +191,44 @@ const START_STREAM_ARG_KEY_SET: Record<keyof Required<ArgsOf<"camera_start_strea
     metadata_enabled: true,
 };
 
-export const START_STREAM_ARG_KEYS: readonly string[] = Object.keys(START_STREAM_ARG_KEY_SET);
+/** The keys `camera_get_capabilities` takes. @see VIDEO_HINT_KEY_SET */
+const CAPABILITIES_ARG_KEY_SET: Record<keyof Required<ArgsOf<"camera_get_capabilities">>, true> = {
+    node_id: true,
+    endpoint_id: true,
+};
+
+/** The keys `camera_stop_stream` takes. @see VIDEO_HINT_KEY_SET */
+const STOP_STREAM_ARG_KEY_SET: Record<keyof Required<ArgsOf<"camera_stop_stream">>, true> = {
+    node_id: true,
+    endpoint_id: true,
+    webrtc_session_id: true,
+};
+
+/** The keys `camera_release_stream` takes. @see VIDEO_HINT_KEY_SET */
+const RELEASE_STREAM_ARG_KEY_SET: Record<keyof Required<ArgsOf<"camera_release_stream">>, true> = {
+    node_id: true,
+    endpoint_id: true,
+    kind: true,
+    stream_id: true,
+};
+
+/**
+ * What each camera command takes at the top level, and the only place a command name is paired with
+ * a key set: the refusal names the command this table lists it under, so the two cannot drift.
+ */
+export const CAMERA_ARG_KEYS = {
+    camera_get_capabilities: Object.keys(CAPABILITIES_ARG_KEY_SET),
+    camera_start_stream: Object.keys(START_STREAM_ARG_KEY_SET),
+    camera_stop_stream: Object.keys(STOP_STREAM_ARG_KEY_SET),
+    camera_snapshot: Object.keys(SNAPSHOT_ARG_KEY_SET),
+    camera_release_stream: Object.keys(RELEASE_STREAM_ARG_KEY_SET),
+} satisfies Record<string, readonly string[]>;
+
+export type CameraCommandName = keyof typeof CAMERA_ARG_KEYS;
+
+export function parseCapabilitiesArgs(args: { node_id?: unknown; endpoint_id?: unknown }): ParsedCameraTarget {
+    return parseCameraTarget(args, "camera_get_capabilities");
+}
 
 function parseVideoHints(value: unknown): VideoHints {
     if (!isRecord(value)) {
@@ -242,8 +301,7 @@ export function parseStartStreamArgs(args: {
     ice_transport_policy?: unknown;
     metadata_enabled?: unknown;
 }): ParsedStartStreamArgs {
-    rejectUnknownKeys(args, START_STREAM_ARG_KEYS, "camera_start_stream argument");
-    const target = parseCameraTarget(args);
+    const target = parseCameraTarget(args, "camera_start_stream");
     // Internal is device-only: a stream carrying it must not be modified, so it is never requested here.
     const streamUsage = typeof args.stream_usage === "string" ? streamUsageByName(args.stream_usage) : undefined;
     if (streamUsage === undefined || streamUsage === StreamUsage.Internal) {
@@ -283,7 +341,7 @@ export function parseStopStreamArgs(args: {
     endpoint_id?: unknown;
     webrtc_session_id?: unknown;
 }): ParsedStopStreamArgs {
-    const target = parseCameraTarget(args);
+    const target = parseCameraTarget(args, "camera_stop_stream");
     const webRtcSessionId = toRequiredNumber(
         args.webrtc_session_id,
         "camera_stop_stream webrtc_session_id",
@@ -313,8 +371,7 @@ export function parseSnapshotArgs(args: {
     max_resolution?: unknown;
     codec?: unknown;
 }): ParsedSnapshotArgs {
-    rejectUnknownKeys(args, SNAPSHOT_ARG_KEYS, "camera_snapshot argument");
-    const target = parseCameraTarget(args);
+    const target = parseCameraTarget(args, "camera_snapshot");
     const { max_resolution: maxResolution, codec } = args;
     const imageCodec = codec === undefined ? undefined : toImageCodec(codec);
     return {
@@ -335,7 +392,7 @@ export function parseReleaseStreamArgs(args: {
     kind?: unknown;
     stream_id?: unknown;
 }): ParsedReleaseStreamArgs {
-    const target = parseCameraTarget(args);
+    const target = parseCameraTarget(args, "camera_release_stream");
     const { kind, stream_id: streamId } = args;
     if (typeof kind !== "string" || !isStreamKind(kind)) {
         throw ServerError.invalidArguments('camera_release_stream requires kind to be "video", "audio", or "snapshot"');

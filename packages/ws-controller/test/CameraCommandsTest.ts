@@ -8,7 +8,7 @@ import { EndpointNumber, NodeId } from "@matter/main";
 import { CameraAvStreamManagement } from "@matter/main/clusters/camera-av-stream-management";
 import { StreamUsage } from "@matter/main/types";
 import {
-    parseCameraTarget,
+    parseCapabilitiesArgs,
     parseReleaseStreamArgs,
     parseSnapshotArgs,
     parseStartStreamArgs,
@@ -22,20 +22,20 @@ import type { AllocatedAudioStream, AllocatedSnapshotStream, AllocatedVideoStrea
 import { ServerError, ServerErrorCode } from "../src/types/WebSocketMessageTypes.js";
 
 describe("cameraCommands", () => {
-    describe("parseCameraTarget", () => {
+    describe("parseCapabilitiesArgs", () => {
         it("accepts a numeric node id", () => {
-            expect(parseCameraTarget({ node_id: 5, endpoint_id: 1 })).to.deep.equal({ nodeId: 5n, endpointId: 1 });
+            expect(parseCapabilitiesArgs({ node_id: 5, endpoint_id: 1 })).to.deep.equal({ nodeId: 5n, endpointId: 1 });
         });
 
         it("accepts a bigint node id without losing precision", () => {
             const nodeId = 18446744069414584320n;
-            expect(parseCameraTarget({ node_id: nodeId, endpoint_id: 1 }).nodeId).to.equal(nodeId);
+            expect(parseCapabilitiesArgs({ node_id: nodeId, endpoint_id: 1 }).nodeId).to.equal(nodeId);
         });
 
         it("rejects a missing node id", () => {
             let thrown: unknown;
             try {
-                parseCameraTarget({ endpoint_id: 1 });
+                parseCapabilitiesArgs({ endpoint_id: 1 });
             } catch (error) {
                 thrown = error;
             }
@@ -46,7 +46,7 @@ describe("cameraCommands", () => {
             for (const bad of [1.5, NaN, Infinity, -Infinity]) {
                 let thrown: unknown;
                 try {
-                    parseCameraTarget({ node_id: bad, endpoint_id: 1 });
+                    parseCapabilitiesArgs({ node_id: bad, endpoint_id: 1 });
                 } catch (error) {
                     thrown = error;
                 }
@@ -57,7 +57,7 @@ describe("cameraCommands", () => {
         it("rejects a non-integer endpoint id", () => {
             let thrown: unknown;
             try {
-                parseCameraTarget({ node_id: 5, endpoint_id: 1.5 });
+                parseCapabilitiesArgs({ node_id: 5, endpoint_id: 1.5 });
             } catch (error) {
                 thrown = error;
             }
@@ -67,7 +67,7 @@ describe("cameraCommands", () => {
         it("rejects an endpoint id above the 16-bit range", () => {
             let thrown: unknown;
             try {
-                parseCameraTarget({ node_id: 5, endpoint_id: 0x10000 });
+                parseCapabilitiesArgs({ node_id: 5, endpoint_id: 0x10000 });
             } catch (error) {
                 thrown = error;
             }
@@ -77,7 +77,7 @@ describe("cameraCommands", () => {
         it("rejects a negative endpoint id", () => {
             let thrown: unknown;
             try {
-                parseCameraTarget({ node_id: 5, endpoint_id: -1 });
+                parseCapabilitiesArgs({ node_id: 5, endpoint_id: -1 });
             } catch (error) {
                 thrown = error;
             }
@@ -1097,10 +1097,10 @@ describe("cameraCommands", () => {
         });
     });
 
-    // Exercise the branded id constructors directly, since parseCameraTarget's own tests only assert
+    // Exercise the branded id constructors directly, since parseCapabilitiesArgs's own tests only assert
     // on the resulting plain number/bigint value.
-    it("parseCameraTarget returns ids usable as NodeId/EndpointNumber", () => {
-        const { nodeId, endpointId } = parseCameraTarget({ node_id: 5, endpoint_id: 1 });
+    it("parseCapabilitiesArgs returns ids usable as NodeId/EndpointNumber", () => {
+        const { nodeId, endpointId } = parseCapabilitiesArgs({ node_id: 5, endpoint_id: 1 });
         expect(nodeId).to.equal(NodeId(5));
         expect(endpointId).to.equal(EndpointNumber(1));
     });

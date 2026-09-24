@@ -24,7 +24,7 @@ import { EndpointNumber, QrPairingCodeCodec } from "@matter/main/types";
 import { NodeStates } from "@project-chip/matter.js/device";
 import { WebSocketServer } from "ws";
 import {
-    parseCameraTarget,
+    parseCapabilitiesArgs,
     parseReleaseStreamArgs,
     parseSnapshotArgs,
     parseStartStreamArgs,
@@ -1343,7 +1343,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
     async #handleCameraGetCapabilities(
         args: ArgsOf<"camera_get_capabilities">,
     ): Promise<ResponseOf<"camera_get_capabilities">> {
-        const { nodeId, endpointId } = parseCameraTarget(args);
+        const { nodeId, endpointId } = parseCapabilitiesArgs(args);
         const capabilities = await this.#controller.cameraStreams.getCapabilities(nodeId, endpointId);
         return toWireCapabilities(capabilities);
     }
