@@ -984,6 +984,37 @@ Response: `{ data, codec, resolution, downgraded, stream_id? }`. `data` is base6
 
 Response: `{ "released": true }`. Fails with 104 while a listener still references the stream.
 
+**send_webrtc_provider_command** - Send `ProvideOffer` or `SolicitOffer` yourself
+
+```json
+{
+  "message_id": "1",
+  "command": "send_webrtc_provider_command",
+  "args": {
+    "node_id": 1,
+    "endpoint_id": 1,
+    "command_name": "ProvideOffer",
+    "payload": {
+      "webRtcSessionId": null,
+      "sdp": "v=0\r\n...",
+      "streamUsage": 3,
+      "videoStreams": [1],
+      "ice_servers": [{ "urls": "stun:stun.example.org:3478" }]
+    }
+  }
+}
+```
+
+For a client that allocates its own streams. `command_name` is `ProvideOffer` or `SolicitOffer`; no other provider command is reachable this way.
+
+`payload` carries the command's own fields. A key is matched by the same name normalization the rest of the API uses, so `ice_servers`, `iceServers` and `IceServers` all name the same field, as do `webRtcSessionId` and the Python Matter Server's `webRtcSessionID`. `ice_servers` takes the shape `camera_start_stream` and the `webrtc_callback` `offer` event use — `{ urls, username?, credential?, caid? }` with the limits listed there — so ICE servers read from an offer can be sent straight back. `originatingEndpointId` is the server's own and is dropped.
+
+Every field is checked against the cluster's own definition before the camera is asked: each number against the range its field encodes in, each string against the length its field states a ceiling for (1 to that many characters; `sdp` states none and takes any string), each list against the entry count its field takes, and each field the command states as mandatory for being present at all. A value that fails is refused with error 8 naming the key as sent, rather than reaching the TLV encoder and coming back as an encoder error. What the cluster makes conditional stays the camera's to answer: `streamUsage` is optional on `ProvideOffer` because a re-offer of an existing session does not restate it, so a first offer that omits it is refused by the server only after the camera has answered. A key naming no field of the command is refused too, and so is a second key resolving to a field another already filled — matter.js drops what it cannot place, and a duplicate would overwrite silently, so a caller whose argument was ignored gets the session it did not ask for. `streamUsage` is bounded by its width rather than by the enum's defined values: on this route the client owns the allocation, so the camera answers for a usage it does not serve.
+
+Payloads that reached the camera before and are refused now: one carrying a key the command does not state, one stating the same field twice under two spellings, one omitting a mandatory field, one that is not an object at all, and an ICE server spelled in the cluster's `URLs` rather than `urls`.
+
+The generic `device_command` route is not an alternative way to start a session. It serves every cluster, takes each payload in that cluster's own field names — so an ICE server sent that way uses the cluster's `URLs` spelling — and invokes nothing else: it does not fill in the originating endpoint, does not reconcile the singular `videoStreamId` against the `videoStreams` list, and does not register the session with the local WebRTC requestor. A `ProvideOffer` sent that way therefore produces a session no `webrtc_callback` can be routed for and streams that stay referenced with no way to end it but `EndSession` by hand.
+
 ### Vendor Information
 
 **get_vendor_names** - Get vendor names by ID
@@ -1310,6 +1341,7 @@ These commands are available only in the Matter.js server and not in the Python 
 | `resync_icd` | Drop the local ICD registration and reconnect |
 | `get_network_topology` | Return the Thread/Wi-Fi network as a graph (schema 13+) |
 | `initiate_ota_upload` | Reserve an id for the `POST /ota-upload/<upload_id>` HTTP endpoint (schema 13+) |
+| `send_webrtc_provider_command` | Send `ProvideOffer` or `SolicitOffer` to a camera endpoint yourself (schema 12+) |
 | `camera_get_capabilities` | Report a camera endpoint's stated capabilities and current stream allocations (schema 14+) |
 | `camera_start_stream` | Allocate or reuse a video/audio stream and open a WebRTC session on it (schema 14+) |
 | `camera_stop_stream` | End a WebRTC session started that way, keeping the stream allocation (schema 14+) |

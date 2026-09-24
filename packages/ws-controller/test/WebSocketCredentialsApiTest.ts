@@ -33,7 +33,7 @@ interface StubCameraStreams {
 interface StubCommandHandlerOverrides {
     handleInvoke?(): Promise<unknown>;
     removeTrackedWebRtcSession?(webRtcSessionId: number, nodeId: bigint, endpointId: number): Promise<void>;
-    sendWebRtcProviderCommand?(args: { commandName: string }): Promise<unknown>;
+    invokeWebRtcProviderCommand?(args: { commandName: string; fields: Record<string, unknown> }): Promise<unknown>;
 }
 
 /** Well under the 2000 ms per-test timeout, so a frame that never comes fails as this error. */
@@ -102,8 +102,8 @@ function makeStubController(
                 return {};
             }),
         removeTrackedWebRtcSession: commandHandler?.removeTrackedWebRtcSession ?? (async () => {}),
-        sendWebRtcProviderCommand:
-            commandHandler?.sendWebRtcProviderCommand ??
+        invokeWebRtcProviderCommand:
+            commandHandler?.invokeWebRtcProviderCommand ??
             (async () => {
                 throw new Error("no WebRTC provider stubbed");
             }),
@@ -432,7 +432,12 @@ describe("WebSocket Credentials API", () => {
                 JSON.stringify({
                     message_id: id,
                     command: "send_webrtc_provider_command",
-                    args: { node_id: 1, endpoint_id: 1, command_name: "ProvideOffer", payload: {} },
+                    args: {
+                        node_id: 1,
+                        endpoint_id: 1,
+                        command_name: "ProvideOffer",
+                        payload: { webRtcSessionId: null, sdp: "v=0" },
+                    },
                 }),
             );
         });
@@ -564,10 +569,15 @@ describe("WebSocket Credentials API", () => {
         // tracked before ProvideOffer returns.
         const { order, response } = await webRtcAnswerDuring(
             "send_webrtc_provider_command",
-            { node_id: 1, endpoint_id: 1, command_name: "ProvideOffer", payload: { sdp: "v=0" } },
+            {
+                node_id: 1,
+                endpoint_id: 1,
+                command_name: "ProvideOffer",
+                payload: { webRtcSessionId: null, sdp: "v=0" },
+            },
             (reached, answered) =>
                 createHarness(undefined, {
-                    async sendWebRtcProviderCommand() {
+                    async invokeWebRtcProviderCommand() {
                         reached();
                         await answered;
                         return { webRtcSessionId: 1 };
@@ -577,6 +587,43 @@ describe("WebSocket Credentials API", () => {
 
         expect(order).to.deep.equal(["webrtc_callback", "response"]);
         expect(response.error_code).to.equal(undefined);
+    });
+
+    it("hands send_webrtc_provider_command's payload down as cluster-shaped fields", async () => {
+        let fields: Record<string, unknown> | undefined;
+        await h.close();
+        h = await createHarness(undefined, {
+            async invokeWebRtcProviderCommand(args) {
+                fields = args.fields;
+                return { webRtcSessionId: 1 };
+            },
+        });
+        await h.handle("send_webrtc_provider_command", {
+            node_id: 1,
+            endpoint_id: 1,
+            command_name: "ProvideOffer",
+            payload: {
+                webRtcSessionId: null,
+                sdp: "v=0",
+                ice_servers: [{ urls: "stun:stun.example:3478" }],
+            },
+        });
+        expect(fields?.iceServers).to.deep.equal([{ urLs: ["stun:stun.example:3478"] }]);
+    });
+
+    it("refuses a send_webrtc_provider_command naming another provider command", async () => {
+        let thrown: unknown;
+        try {
+            await h.handle("send_webrtc_provider_command", {
+                node_id: 1,
+                endpoint_id: 1,
+                command_name: "EndSession",
+                payload: { webRtcSessionId: 1 },
+            });
+        } catch (error) {
+            thrown = error;
+        }
+        expect((thrown as Error).message).to.match(/Unsupported WebRTC provider command "EndSession"/);
     });
 
     it("get_network_topology returns the built snapshot", async () => {

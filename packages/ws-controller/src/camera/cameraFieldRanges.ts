@@ -5,7 +5,7 @@
  */
 
 import { InternalError } from "@matter/main";
-import { ClusterModel, CommandModel, DatatypeModel, FieldModel, MatterModel } from "@matter/main/model";
+import { ClusterModel, CommandModel, DatatypeModel, FieldModel, MatterModel, ValueModel } from "@matter/main/model";
 import { TlvUInt8, TlvUInt16, TlvUInt32 } from "@matter/main/types";
 
 /** Inclusive range a wire value must fall in to be encodable as the Matter field it becomes. */
@@ -20,6 +20,7 @@ export interface FieldRange {
  */
 const TYPE_MAX = new Map<string, number>([
     ["uint8", TlvUInt8.max],
+    ["enum8", TlvUInt8.max],
     ["uint16", TlvUInt16.max],
     ["uint32", TlvUInt32.max],
 ]);
@@ -55,7 +56,7 @@ function requireField(parent: ClusterModel | CommandModel | DatatypeModel, name:
  * a mismatch means the camera commands cannot work at all, and a loud start beats a command that
  * fails on a device the operator will blame instead.
  */
-function rangeOf(field: FieldModel): FieldRange {
+export function fieldRange(field: ValueModel): FieldRange {
     const typeName = field.metabase?.name;
     const typeMax = typeName === undefined ? undefined : TYPE_MAX.get(typeName);
     if (typeMax === undefined) {
@@ -104,7 +105,8 @@ const iceServerUrls = requireField(iceServer, "UrLs");
 
 const webRtcProvider = requireCluster("WebRtcTransportProvider");
 
-function providerCommand(name: string): CommandModel {
+/** A `WebRtcTransportProvider` command's own definition, which states every bound its arguments have. */
+export function providerCommand(name: string): CommandModel {
     const command = webRtcProvider.get(CommandModel, name);
     if (command === undefined) {
         throw new InternalError(`The Matter model states no WebRtcTransportProvider.${name}`);
@@ -122,19 +124,19 @@ const provideOffer = providerCommand("ProvideOffer");
  * (VideoResolutionStruct)
  */
 export const CAMERA_FIELD_RANGES = {
-    resolutionWidth: rangeOf(requireField(resolution, "Width")),
-    resolutionHeight: rangeOf(requireField(resolution, "Height")),
-    minFrameRate: rangeOf(commandField("VideoStreamAllocate", "MinFrameRate")),
-    maxFrameRate: rangeOf(commandField("VideoStreamAllocate", "MaxFrameRate")),
-    minBitRate: rangeOf(commandField("VideoStreamAllocate", "MinBitRate")),
-    maxBitRate: rangeOf(commandField("VideoStreamAllocate", "MaxBitRate")),
-    channelCount: rangeOf(commandField("AudioStreamAllocate", "ChannelCount")),
-    sampleRate: rangeOf(commandField("AudioStreamAllocate", "SampleRate")),
-    audioBitRate: rangeOf(commandField("AudioStreamAllocate", "BitRate")),
-    videoStreamId: rangeOf(commandField("VideoStreamDeallocate", "VideoStreamId")),
-    audioStreamId: rangeOf(commandField("AudioStreamDeallocate", "AudioStreamId")),
-    snapshotStreamId: rangeOf(commandField("SnapshotStreamDeallocate", "SnapshotStreamId")),
-    webRtcSessionId: rangeOf(requireField(providerCommand("EndSession"), "WebRtcSessionId")),
+    resolutionWidth: fieldRange(requireField(resolution, "Width")),
+    resolutionHeight: fieldRange(requireField(resolution, "Height")),
+    minFrameRate: fieldRange(commandField("VideoStreamAllocate", "MinFrameRate")),
+    maxFrameRate: fieldRange(commandField("VideoStreamAllocate", "MaxFrameRate")),
+    minBitRate: fieldRange(commandField("VideoStreamAllocate", "MinBitRate")),
+    maxBitRate: fieldRange(commandField("VideoStreamAllocate", "MaxBitRate")),
+    channelCount: fieldRange(commandField("AudioStreamAllocate", "ChannelCount")),
+    sampleRate: fieldRange(commandField("AudioStreamAllocate", "SampleRate")),
+    audioBitRate: fieldRange(commandField("AudioStreamAllocate", "BitRate")),
+    videoStreamId: fieldRange(commandField("VideoStreamDeallocate", "VideoStreamId")),
+    audioStreamId: fieldRange(commandField("AudioStreamDeallocate", "AudioStreamId")),
+    snapshotStreamId: fieldRange(commandField("SnapshotStreamDeallocate", "SnapshotStreamId")),
+    webRtcSessionId: fieldRange(requireField(providerCommand("EndSession"), "WebRtcSessionId")),
 } satisfies Record<string, FieldRange>;
 
 /**
@@ -162,5 +164,5 @@ export const ICE_SERVER_LIMITS: {
     maxUrlLength: entryMaxOf(iceServerUrls),
     maxUsernameLength: maxOf(requireField(iceServer, "Username")),
     maxCredentialLength: maxOf(requireField(iceServer, "Credential")),
-    caid: rangeOf(requireField(iceServer, "Caid")),
+    caid: fieldRange(requireField(iceServer, "Caid")),
 };

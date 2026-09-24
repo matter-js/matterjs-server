@@ -7,7 +7,6 @@
 import type {
     ArgsOf,
     CameraAudioHints,
-    CameraIceServer,
     CameraCapabilitiesResult,
     CameraSnapshotResult,
     CameraStartStreamAudioResult,
@@ -24,6 +23,15 @@ import type { FieldRange } from "./cameraFieldRanges.js";
 import type { CameraCapabilities, SnapshotResult, StartStreamResult } from "./CameraStreamManager.js";
 import type { AudioEnvelope, Resolution, ResolvedStream, StreamKind, VideoEnvelope } from "./cameraTypes.js";
 import type { AudioHints, VideoHints } from "./streamPolicy.js";
+import { toIceServers } from "./webRtcProviderArguments.js";
+import {
+    isInRange,
+    isRecord,
+    rangeText,
+    rejectUnknownKeys,
+    toBoundedString,
+    toRequiredNumber,
+} from "./wireArgumentChecks.js";
 import {
     audioCodecName,
     imageCodecByName,
@@ -44,21 +52,6 @@ const STREAM_ID_RANGES: Record<StreamKind, FieldRange> = {
     audio: CAMERA_FIELD_RANGES.audioStreamId,
     snapshot: CAMERA_FIELD_RANGES.snapshotStreamId,
 };
-
-/**
- * Whether `value` is an integer inside the range the Matter field it becomes accepts.
- *
- * The range comes from the cluster's element definition, not from "is it positive": a value past a
- * field's wire width reaches matter.js's TLV encoder and fails there, with an error that names the
- * encoder rather than the argument the client sent.
- */
-function isInRange(value: unknown, range: FieldRange): value is number {
-    return typeof value === "number" && Number.isSafeInteger(value) && value >= range.min && value <= range.max;
-}
-
-function rangeText(range: FieldRange): string {
-    return `an integer between ${range.min} and ${range.max}`;
-}
 
 function toResolution(value: unknown, field: string): Resolution {
     const { resolutionWidth, resolutionHeight } = CAMERA_FIELD_RANGES;
@@ -84,11 +77,6 @@ function toOptionalNumber(value: unknown, field: string, range: FieldRange): num
     return toRequiredNumber(value, field, range);
 }
 
-function toRequiredNumber(value: unknown, field: string, range: FieldRange): number {
-    if (!isInRange(value, range)) throw ServerError.invalidArguments(`${field} must be ${rangeText(range)}`);
-    return value;
-}
-
 function toOptionalBoolean(value: unknown, field: string): boolean | undefined {
     if (value === undefined) return undefined;
     if (typeof value !== "boolean") throw ServerError.invalidArguments(`${field} must be a boolean`);
@@ -106,80 +94,6 @@ function toOptionalStringArray(value: unknown, field: string): string[] | undefi
 /** Codec names are matched against the SDP rtpmap spelling, which is upper case. */
 function toOptionalCodecNames(value: unknown, field: string): string[] | undefined {
     return toOptionalStringArray(value, field)?.map(name => name.toUpperCase());
-}
-
-/** Arrays are excluded: a hint object's keys are named, and an array's are its indices. */
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-/**
- * The keys one `ice_servers` entry takes, in the W3C `RTCIceServer` spelling the wire uses.
- *
- * Tied to the wire model the same way the hint key sets are: a field added to `CameraIceServer` and
- * not listed here does not compile, rather than being refused although the reference documents it.
- */
-const ICE_SERVER_KEY_SET: Record<keyof Required<CameraIceServer>, true> = {
-    urls: true,
-    username: true,
-    credential: true,
-    caid: true,
-};
-const ICE_SERVER_KEYS: readonly string[] = Object.keys(ICE_SERVER_KEY_SET);
-
-function toBoundedString(value: unknown, field: string, maxLength: number): string {
-    if (typeof value !== "string" || value.length === 0 || value.length > maxLength) {
-        throw ServerError.invalidArguments(`${field} must be a string of 1 to ${maxLength} characters`);
-    }
-    return value;
-}
-
-/**
- * One wire `ice_servers` entry as the `ICEServerStruct` matter.js encodes.
- *
- * The wire keeps the W3C `RTCIceServer` spelling — `urls`, a single URL or a list of them — while the
- * struct's field is `URLs`, always a list, which matter.js camelizes to `urLs`. Forwarding the wire
- * object unchanged leaves the mandatory field unset and puts a string where a list belongs, so the
- * translation happens here, and an entry whose shape or whose stated lengths are wrong is refused
- * with error 8 instead of failing inside the TLV encoder, where the message names the encoder rather
- * than the argument the client sent.
- *
- * @see Matter spec § 11.4.5.3 (ICEServerStruct)
- */
-function toIceServer(value: unknown, field: string): WebRtcTransportDefinitions.IceServer {
-    if (!isRecord(value)) throw ServerError.invalidArguments(`${field} must be an object`);
-    rejectUnknownKeys(value, ICE_SERVER_KEYS, `${field} key`);
-    const { urls, username, credential, caid } = value;
-    const urlList = urls === undefined ? [] : Array.isArray(urls) ? urls : [urls];
-    if (urlList.length === 0 || urlList.length > ICE_SERVER_LIMITS.maxUrls) {
-        throw ServerError.invalidArguments(
-            `${field}.urls must name between 1 and ${ICE_SERVER_LIMITS.maxUrls} servers`,
-        );
-    }
-    return {
-        urLs: urlList.map((url, index) =>
-            toBoundedString(url, `${field}.urls[${index}]`, ICE_SERVER_LIMITS.maxUrlLength),
-        ),
-        ...(username === undefined
-            ? {}
-            : { username: toBoundedString(username, `${field}.username`, ICE_SERVER_LIMITS.maxUsernameLength) }),
-        ...(credential === undefined
-            ? {}
-            : {
-                  credential: toBoundedString(credential, `${field}.credential`, ICE_SERVER_LIMITS.maxCredentialLength),
-              }),
-        ...(caid === undefined ? {} : { caid: toRequiredNumber(caid, `${field}.caid`, ICE_SERVER_LIMITS.caid) }),
-    };
-}
-
-function toOptionalIceServers(value: unknown, field: string): WebRtcTransportDefinitions.IceServer[] | undefined {
-    if (value === undefined) return undefined;
-    if (!Array.isArray(value) || value.length > ICE_SERVER_LIMITS.maxServers) {
-        throw ServerError.invalidArguments(
-            `${field} must be an array of at most ${ICE_SERVER_LIMITS.maxServers} objects`,
-        );
-    }
-    return value.map((entry, index) => toIceServer(entry, `${field}[${index}]`));
 }
 
 export interface ParsedCameraTarget {
@@ -201,20 +115,6 @@ export function parseCameraTarget(args: { node_id?: unknown; endpoint_id?: unkno
         throw ServerError.invalidArguments("Camera command requires endpoint_id to be an integer between 0 and 0xFFFE");
     }
     return { nodeId: NodeId(nodeId), endpointId: EndpointNumber(endpointId) };
-}
-
-/**
- * Every key under a hint object is a bound on what the caller accepts, so a key the server does not
- * know is refused rather than dropped. Dropping it would answer a request nobody made, which is the
- * one thing these commands never do.
- */
-function rejectUnknownKeys(value: object, known: readonly string[], subject: string): void {
-    const unknown = Object.keys(value).filter(key => !known.includes(key));
-    if (unknown.length > 0) {
-        throw ServerError.invalidArguments(
-            `unknown ${subject} key: ${unknown.join(", ")}. Accepted: ${known.join(", ")}`,
-        );
-    }
 }
 
 /**
@@ -350,7 +250,7 @@ export function parseStartStreamArgs(args: {
         throw ServerError.invalidArguments(`Unknown or device-only stream_usage "${String(args.stream_usage)}"`);
     }
     const sdp = toOptionalString(args.sdp, "sdp");
-    const iceServers = toOptionalIceServers(args.ice_servers, "ice_servers");
+    const iceServers = args.ice_servers === undefined ? undefined : toIceServers(args.ice_servers, "ice_servers");
     const iceTransportPolicy =
         args.ice_transport_policy === undefined
             ? undefined

@@ -367,41 +367,6 @@ export class ControllerCommandHandler {
         return this.#controller.node.endpoints.for("camera-controller") as Endpoint<typeof CameraControllerDevice>;
     }
 
-    /** `originatingEndpointId` is server-injected; any client-supplied value in `payload` is overwritten. */
-    async sendWebRtcProviderCommand(args: {
-        nodeId: NodeId;
-        endpointId: EndpointNumber;
-        commandName: "ProvideOffer" | "SolicitOffer";
-        payload: Record<string, unknown>;
-    }): Promise<WebRtcTransportProvider.ProvideOfferResponse | WebRtcTransportProvider.SolicitOfferResponse> {
-        const { nodeId, endpointId, commandName, payload } = args;
-
-        if (commandName !== "ProvideOffer" && commandName !== "SolicitOffer") {
-            throw ServerError.invalidArguments(
-                `Unsupported WebRTC provider command "${commandName}"; expected ProvideOffer or SolicitOffer`,
-            );
-        }
-
-        const command = commandName === "ProvideOffer" ? "provideOffer" : "solicitOffer";
-
-        // `payload` arrives using the Python Matter Server wire convention (e.g. `webRtcSessionID`,
-        // see python_client/chip/clusters/cluster_defs), which does not match matter.js's own
-        // camelCase property names (e.g. `webRtcSessionId`). Route it through the same model-based
-        // conversion used for regular invokes so field names and value types (nullables, bytes,
-        // epochs, ...) line up with what matter.js expects.
-        const providerClusterEntry = ClusterMap[WebRtcTransportProvider.id];
-        const commandModel = providerClusterEntry?.commands[command.toLowerCase()];
-        const convertedPayload =
-            providerClusterEntry !== undefined && commandModel !== undefined
-                ? (convertCommandDataToMatter(payload, commandModel, providerClusterEntry.model) as Record<
-                      string,
-                      unknown
-                  >)
-                : payload;
-
-        return this.#establishWebRtcProviderSession({ nodeId, endpointId, commandName, fields: convertedPayload });
-    }
-
     /**
      * Invoke ProvideOffer/SolicitOffer and track the resulting session in the local requestor.
      *
@@ -452,10 +417,10 @@ export class ControllerCommandHandler {
     }
 
     /**
-     * Establishes a WebRTC provider session for device I/O implementations outside this class (camera
-     * streaming). Identical contract to {@link sendWebRtcProviderCommand}'s underlying invoke — session
-     * establishment has exactly one implementation — except `fields` skips the Python-wire-to-matter.js
-     * conversion because the camera subsystem already builds fields in matter.js's own convention.
+     * The one entry to a WebRTC provider session, for the camera subsystem and for the raw WebSocket
+     * route alike. `fields` is already in matter.js's own convention: a wire payload is converted by
+     * `toProviderCommandFields` at the WebSocket boundary, where `camera_start_stream`'s arguments are
+     * parsed too, so no wire shape reaches this class.
      */
     async invokeWebRtcProviderCommand(args: {
         nodeId: NodeId;

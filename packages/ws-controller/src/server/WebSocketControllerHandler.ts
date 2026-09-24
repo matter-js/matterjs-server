@@ -33,6 +33,7 @@ import {
     toWireSnapshotResult,
     toWireStartStreamResult,
 } from "../camera/cameraCommands.js";
+import { isProviderCommandName, toProviderCommandFields } from "../camera/webRtcProviderArguments.js";
 import { ControllerCommandHandler } from "../controller/ControllerCommandHandler.js";
 import { MatterController, registerThreadCredentialsFromHex } from "../controller/MatterController.js";
 import type { TopologyNodeSource } from "../controller/NetworkTopologyService.js";
@@ -1323,11 +1324,16 @@ export class WebSocketControllerHandler implements WebServerHandler {
         args: ArgsOf<"send_webrtc_provider_command">,
     ): Promise<ResponseOf<"send_webrtc_provider_command">> {
         const { node_id, endpoint_id, command_name, payload } = args;
-        const response = await this.#commandHandler.sendWebRtcProviderCommand({
+        if (!isProviderCommandName(command_name)) {
+            throw ServerError.invalidArguments(
+                `Unsupported WebRTC provider command "${String(command_name)}"; expected ProvideOffer or SolicitOffer`,
+            );
+        }
+        const response = await this.#commandHandler.invokeWebRtcProviderCommand({
             nodeId: NodeId(node_id),
             endpointId: EndpointNumber(endpoint_id),
             commandName: command_name,
-            payload,
+            fields: toProviderCommandFields(command_name, payload),
         });
         // Convert the matter.js response to WebSocket format the same way #handleDeviceCommand
         // does for generic invokes (bytes, epochs, bitmaps, struct member filtering).
