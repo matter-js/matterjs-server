@@ -29,6 +29,8 @@ import {
     parseSnapshotArgs,
     parseStartStreamArgs,
     parseStopStreamArgs,
+    parseTargetIds,
+    requireArgumentObject,
     toWireCapabilities,
     toWireSnapshotResult,
     toWireStartStreamResult,
@@ -1340,18 +1342,16 @@ export class WebSocketControllerHandler implements WebServerHandler {
         await dropWebRtcSessionTracking(this.#commandHandler, sessionId, nodeId, endpointId);
     }
 
-    async #handleSendWebRtcProviderCommand(
-        args: ArgsOf<"send_webrtc_provider_command">,
-    ): Promise<ResponseOf<"send_webrtc_provider_command">> {
-        rejectUnknownKeys(args, SEND_PROVIDER_ARG_KEYS, "send_webrtc_provider_command argument");
-        const { node_id, endpoint_id, command_name, payload } = args;
-        if (!isProviderCommandName(command_name)) {
+    async #handleSendWebRtcProviderCommand(args: unknown): Promise<ResponseOf<"send_webrtc_provider_command">> {
+        const argsObject = requireArgumentObject(args, "send_webrtc_provider_command");
+        rejectUnknownKeys(argsObject, SEND_PROVIDER_ARG_KEYS, "send_webrtc_provider_command argument");
+        const { command_name, payload } = argsObject;
+        if (typeof command_name !== "string" || !isProviderCommandName(command_name)) {
             throw ServerError.invalidArguments(
                 `Unsupported WebRTC provider command "${String(command_name)}"; expected one of ${PROVIDER_COMMAND_NAMES.join(", ")}`,
             );
         }
-        const nodeId = NodeId(node_id);
-        const endpointId = EndpointNumber(endpoint_id);
+        const { nodeId, endpointId } = parseTargetIds(argsObject, "send_webrtc_provider_command");
         const fields = toProviderCommandFields(command_name, payload);
         if (!establishesWebRtcSession(command_name)) {
             await this.#commandHandler.invokeProvideIceCandidates({ nodeId, endpointId, fields });
@@ -1369,18 +1369,13 @@ export class WebSocketControllerHandler implements WebServerHandler {
         return this.#convertCommandDataToWebSocket(WebRtcTransportProvider.id, command_name, response);
     }
 
-    async #handleCameraGetCapabilities(
-        args: ArgsOf<"camera_get_capabilities">,
-    ): Promise<ResponseOf<"camera_get_capabilities">> {
+    async #handleCameraGetCapabilities(args: unknown): Promise<ResponseOf<"camera_get_capabilities">> {
         const { nodeId, endpointId } = parseCapabilitiesArgs(args);
         const capabilities = await this.#controller.cameraStreams.getCapabilities(nodeId, endpointId);
         return toWireCapabilities(capabilities);
     }
 
-    async #handleCameraStartStream(
-        args: ArgsOf<"camera_start_stream">,
-        ownerId: string,
-    ): Promise<ResponseOf<"camera_start_stream">> {
+    async #handleCameraStartStream(args: unknown, ownerId: string): Promise<ResponseOf<"camera_start_stream">> {
         const parsed = parseStartStreamArgs(args);
         const result = await this.#controller.cameraStreams.startStream({
             nodeId: parsed.nodeId,
@@ -1397,13 +1392,13 @@ export class WebSocketControllerHandler implements WebServerHandler {
         return toWireStartStreamResult(result);
     }
 
-    async #handleCameraStopStream(args: ArgsOf<"camera_stop_stream">): Promise<ResponseOf<"camera_stop_stream">> {
+    async #handleCameraStopStream(args: unknown): Promise<ResponseOf<"camera_stop_stream">> {
         const { nodeId, endpointId, webRtcSessionId } = parseStopStreamArgs(args);
         const ended = await this.#controller.cameraStreams.stopStream(nodeId, endpointId, webRtcSessionId);
         return { ended };
     }
 
-    async #handleCameraSnapshot(args: ArgsOf<"camera_snapshot">): Promise<ResponseOf<"camera_snapshot">> {
+    async #handleCameraSnapshot(args: unknown): Promise<ResponseOf<"camera_snapshot">> {
         const { nodeId, endpointId, maxResolution, codec } = parseSnapshotArgs(args);
         const result = await this.#controller.cameraStreams.snapshot({ nodeId, endpointId, maxResolution, codec });
         const wire = toWireSnapshotResult(result);
@@ -1415,9 +1410,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         return wire;
     }
 
-    async #handleCameraReleaseStream(
-        args: ArgsOf<"camera_release_stream">,
-    ): Promise<ResponseOf<"camera_release_stream">> {
+    async #handleCameraReleaseStream(args: unknown): Promise<ResponseOf<"camera_release_stream">> {
         const { nodeId, endpointId, kind, streamId } = parseReleaseStreamArgs(args);
         await this.#controller.cameraStreams.releaseStream({ nodeId, endpointId, kind, streamId });
         return { released: true };

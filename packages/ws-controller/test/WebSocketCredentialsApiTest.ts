@@ -1068,3 +1068,65 @@ describe("WebSocket camera session cleanup on disconnect", () => {
         }
     });
 });
+
+describe("WebSocket camera command arguments", () => {
+    const CAMERA_COMMANDS = [
+        "camera_get_capabilities",
+        "camera_start_stream",
+        "camera_stop_stream",
+        "camera_snapshot",
+        "camera_release_stream",
+        // Not one of the five, but the same route family and the same argument walk.
+        "send_webrtc_provider_command",
+    ] as const;
+
+    /** The whole frame, sent as written, so a message that states no `args` at all can be tested. */
+    async function answerTo(h: TestHarness, frame: Record<string, unknown>): Promise<WireFrame> {
+        const ws = await h.openClient();
+        try {
+            const answer = nextFrame(ws, "response", msg => msg.message_id === frame.message_id);
+            ws.send(JSON.stringify(frame));
+            return await answer;
+        } finally {
+            ws.close();
+        }
+    }
+
+    for (const command of CAMERA_COMMANDS) {
+        it(`refuses ${command} with error 8 when the message states no args`, async () => {
+            const h = await createHarness();
+            try {
+                const answer = await answerTo(h, { message_id: "no-args", command });
+                expect(answer.error_code).to.equal(8);
+                expect(answer.details).to.contain(command);
+            } finally {
+                await h.close();
+            }
+        });
+
+        it(`refuses ${command} with error 8 when args is null`, async () => {
+            const h = await createHarness();
+            try {
+                const answer = await answerTo(h, { message_id: "null-args", command, args: null });
+                expect(answer.error_code).to.equal(8);
+                expect(answer.details).to.contain(command);
+            } finally {
+                await h.close();
+            }
+        });
+
+        it(`refuses ${command} with error 8 when args is not an object`, async () => {
+            const h = await createHarness();
+            try {
+                const answer = await answerTo(h, { message_id: "string-args", command, args: "node_id=1" });
+                expect(answer.error_code).to.equal(8);
+                expect(answer.details).to.contain(command);
+                // Not "unknown argument key: 0, 1, 2": a string's keys are its indices, so the
+                // key check reads a shape that was never an argument object.
+                expect(answer.details).to.contain("object of arguments");
+            } finally {
+                await h.close();
+            }
+        });
+    }
+});
