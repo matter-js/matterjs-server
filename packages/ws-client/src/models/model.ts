@@ -360,8 +360,11 @@ export interface WebRtcIceCandidate {
  * through (spec § 11.4.5.3).
  */
 export interface CameraIceServer {
+    /** One URL or 1 to 10 of them, each 1 to 2000 characters; the struct states the ceiling. */
     urls: string | string[];
+    /** 1 to 508 characters. */
     username?: string;
+    /** 1 to 512 characters. */
     credential?: string;
     /** TLS root certificate authority id. The spec requires one for a `stuns:` or `turns:` URL; the camera enforces that, not this server. */
     caid?: number;
@@ -417,11 +420,17 @@ export interface CameraVideoHints {
      * them the call fails with error 102.
      */
     codecs?: string[];
+    /** `width` and `height` are each an integer 1 to 65535; outside that is error 8. */
     min_resolution?: CameraResolution;
+    /** @see {@link CameraVideoHints.min_resolution} */
     max_resolution?: CameraResolution;
+    /** An integer 1 to 65535, the range `VideoStreamAllocate.MinFrameRate` encodes in. */
     min_frame_rate?: number;
+    /** An integer 1 to 65535, the range `VideoStreamAllocate.MaxFrameRate` encodes in. */
     max_frame_rate?: number;
+    /** An integer 1 to 4294967295, the range `VideoStreamAllocate.MinBitRate` encodes in. */
     min_bit_rate?: number;
+    /** An integer 1 to 4294967295, the range `VideoStreamAllocate.MaxBitRate` encodes in. */
     max_bit_rate?: number;
 }
 
@@ -436,11 +445,21 @@ export interface CameraVideoHints {
 export interface CameraAudioHints {
     /** Codec names, e.g. ["OPUS"], matched case-insensitively. */
     codecs?: string[];
-    /** Fails with error 102 above the `audio.channels` camera_get_capabilities reports. */
+    /**
+     * An integer 1 to 8, the range `AudioStreamAllocate.ChannelCount` encodes in; above that is
+     * error 8. Within it, a value above the `audio.channels` camera_get_capabilities reports fails
+     * with error 102.
+     */
     channel_count?: number;
-    /** Fails with error 102 unless `audio.sample_rates` from camera_get_capabilities lists it. */
+    /**
+     * An integer 1 to 4294967295. Fails with error 102 unless `audio.sample_rates` from
+     * camera_get_capabilities lists it.
+     */
     sample_rate?: number;
-    /** Carried into the allocation; a stream already allocated at another bit rate is not reused for it. */
+    /**
+     * An integer 1 to 4294967295. Carried into the allocation; a stream already allocated at another
+     * bit rate is not reused for it.
+     */
     bit_rate?: number;
 }
 
@@ -857,7 +876,13 @@ export interface APICommands {
             sdp?: string;
             video?: CameraVideoHints | false;
             audio?: CameraAudioHints | false;
+            /**
+             * 0 to 10 entries, the ceiling `ProvideOffer.ICEServers` states. That is a separate
+             * limit from the 1 to 10 URLs one entry may name, so several TURN providers in one list
+             * are refused with error 8 above ten of them.
+             */
             ice_servers?: CameraIceServer[];
+            /** 1 to 16 characters: `ProvideOffer.ICETransportPolicy` states the ceiling, the server the floor. */
             ice_transport_policy?: string;
             metadata_enabled?: boolean;
         };
@@ -1288,8 +1313,8 @@ export const CAMERA_RESOURCE_EXHAUSTED_ERROR_CODE = 103;
  * OHF extension: stream release refused because the device still references the stream.
  *
  * Raised from the camera's own `INVALID_IN_STATE`, which the reference implementation answers for
- * a reference count above 0 and nothing else. The `details` carry `reference_count` only when the
- * count the server last read is above zero; that cached count decides nothing.
+ * a reference count above 0 and nothing else. The `details` carry `reference_count` only when the count the
+ * server last read is above zero; that cached count decides nothing.
  */
 export const CAMERA_STREAM_IN_USE_ERROR_CODE = 104;
 /** OHF extension: endpoint does not expose the clusters camera streaming needs. */

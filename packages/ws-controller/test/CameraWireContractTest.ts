@@ -22,6 +22,7 @@ import {
     toWireStartStreamResult,
     VIDEO_HINT_KEYS,
 } from "../src/camera/cameraCommands.js";
+import { CAMERA_FIELD_RANGES, ICE_SERVER_LIMITS } from "../src/camera/cameraFieldRanges.js";
 import type { CameraCapabilities, SnapshotResult, StartStreamResult } from "../src/camera/CameraStreamManager.js";
 import type { AudioSelection, VideoSelection } from "../src/camera/streamPolicy.js";
 import { ServerError, ServerErrorCode } from "../src/types/WebSocketMessageTypes.js";
@@ -265,6 +266,31 @@ const BOUND_FIELD_SET: Record<VideoBoundField | AudioBoundField, true> = {
 
 const BOUND_FIELDS: readonly string[] = Object.keys(BOUND_FIELD_SET);
 
+/**
+ * Every bound the camera commands refuse a value for, spelled as both references spell it.
+ *
+ * The numbers are read from the tables the parsers check against, so a bound a spec revision moves
+ * fails here until both documents follow it. The floor of 1 on the ICE strings is written out
+ * because it is `toBoundedString`'s rule rather than a constraint the model states; the documents
+ * say so too.
+ *
+ * Presence in the section is all this proves. A bound stated against the wrong field still passes,
+ * and a bound a document states that nothing enforces is invisible here.
+ */
+function boundPhrases(): string[] {
+    const phrases = Object.values(CAMERA_FIELD_RANGES).map(range => `${range.min} to ${range.max}`);
+    phrases.push(
+        `0 to ${ICE_SERVER_LIMITS.maxServers}`,
+        `1 to ${ICE_SERVER_LIMITS.maxTransportPolicyLength}`,
+        `1 to ${ICE_SERVER_LIMITS.maxUrls}`,
+        `1 to ${ICE_SERVER_LIMITS.maxUrlLength}`,
+        `1 to ${ICE_SERVER_LIMITS.maxUsernameLength}`,
+        `1 to ${ICE_SERVER_LIMITS.maxCredentialLength}`,
+        `${ICE_SERVER_LIMITS.caid.min} to ${ICE_SERVER_LIMITS.caid.max}`,
+    );
+    return [...new Set(phrases)];
+}
+
 describe("camera wire contract", () => {
     const wireDoc = section("docs/websockets_api.md", "### Camera Streaming");
     const errorDoc = section("docs/websockets_api.md", "## Error Codes");
@@ -294,6 +320,12 @@ describe("camera wire contract", () => {
             const documented = tokens(errorDoc);
             const missing = [...errorKeys].filter(key => !documented.has(key)).sort();
             expect(missing).to.deep.equal([]);
+        });
+
+        it("both references spell out every bound the camera commands enforce", () => {
+            const bounds = boundPhrases();
+            expect(bounds.filter(phrase => !wireDoc.includes(phrase))).to.deep.equal([]);
+            expect(bounds.filter(phrase => !readme.includes(phrase))).to.deep.equal([]);
         });
 
         it("both references name every hint key the parser accepts", () => {
