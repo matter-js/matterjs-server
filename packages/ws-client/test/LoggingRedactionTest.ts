@@ -12,6 +12,9 @@ function redactedPayload(message: unknown): Record<string, unknown> {
     return args.payload;
 }
 
+/** Distinctive enough that finding it in a logged line cannot be a coincidence. */
+const SECRET = "s3cret-do-not-log";
+
 describe("redactSensitiveCommandFields", () => {
     it("redacts credentialData in a device_command SetCredential payload", () => {
         const message = {
@@ -49,6 +52,138 @@ describe("redactSensitiveCommandFields", () => {
         const payload = redactedPayload(message);
         expect(payload.CredentialData).to.equal("[redacted]");
         expect(payload.userIndex).to.equal(3);
+    });
+
+    /**
+     * One entry per masked field name, each written out rather than read from the source list, so
+     * removing a name from that list turns exactly one of these red.
+     */
+    const SECRET_ARGUMENTS: Array<{ what: string; command: string; args: Record<string, unknown> }> = [
+        { what: "commission_with_code's setup code", command: "commission_with_code", args: { code: SECRET } },
+        {
+            what: "commission_on_network's passcode",
+            command: "commission_on_network",
+            args: { setup_pin_code: SECRET },
+        },
+        {
+            what: "an OpenCommissioningWindow verifier",
+            command: "device_command",
+            args: { payload: { pakePasscodeVerifier: SECRET } },
+        },
+        {
+            what: "set_wifi_credentials' passphrase",
+            command: "set_wifi_credentials",
+            args: { ssid: "home-net", credentials: SECRET },
+        },
+        {
+            what: "an AddOrUpdateWiFiNetwork passphrase",
+            command: "device_command",
+            args: { payload: { credentials: SECRET } },
+        },
+        { what: "set_thread_dataset's dataset", command: "set_thread_dataset", args: { dataset: SECRET } },
+        {
+            what: "an AddOrUpdateThreadNetwork dataset",
+            command: "device_command",
+            args: { payload: { operationalDataset: SECRET } },
+        },
+        {
+            what: "a SetActiveDatasetRequest dataset",
+            command: "device_command",
+            args: { payload: { activeDataset: SECRET } },
+        },
+        {
+            what: "a SetPendingDatasetRequest dataset",
+            command: "device_command",
+            args: { payload: { pendingDataset: SECRET } },
+        },
+        { what: "an ICD RegisterClient key", command: "device_command", args: { payload: { key: SECRET } } },
+        {
+            what: "an ICD RegisterClient verification key",
+            command: "device_command",
+            args: { payload: { verificationKey: SECRET } },
+        },
+        {
+            what: "an Aliro signing key",
+            command: "device_command",
+            args: { payload: { signingKey: SECRET } },
+        },
+        {
+            what: "an Aliro group resolving key",
+            command: "device_command",
+            args: { payload: { groupResolvingKey: SECRET } },
+        },
+        {
+            what: "a TestEventTrigger enable key",
+            command: "device_command",
+            args: { payload: { enableKey: SECRET } },
+        },
+        {
+            what: "a KeySetWrite epoch key",
+            command: "device_command",
+            args: { payload: { groupKeySet: { groupKeySetId: 1, epochKey0: SECRET } } },
+        },
+        {
+            what: "a second KeySetWrite epoch key",
+            command: "device_command",
+            args: { payload: { groupKeySet: { epochKey1: SECRET } } },
+        },
+        {
+            what: "a third KeySetWrite epoch key",
+            command: "device_command",
+            args: { payload: { groupKeySet: { epochKey2: SECRET } } },
+        },
+        { what: "a Content Control old PIN", command: "device_command", args: { payload: { oldPin: SECRET } } },
+        { what: "a Content Control new PIN", command: "device_command", args: { payload: { newPin: SECRET } } },
+        { what: "an Account Login setup PIN", command: "device_command", args: { payload: { setupPin: SECRET } } },
+        {
+            what: "an AddNOC identity protection key",
+            command: "device_command",
+            args: { payload: { ipkValue: SECRET } },
+        },
+    ];
+
+    for (const { what, command, args } of SECRET_ARGUMENTS) {
+        it(`masks ${what}`, () => {
+            const message = { message_id: "1", command, args: { ...args, node_id: 5 } };
+            const text = JSON.stringify(redactSensitiveCommandFields(message));
+            expect(text).to.not.contain(SECRET);
+            // A redactor that masked or dropped everything would satisfy the line above, and would
+            // leave nobody able to debug the request.
+            expect(text).to.contain('"node_id":5');
+            expect(text).to.contain(`"command":"${command}"`);
+        });
+    }
+
+    it("masks the same field under the snake_case spelling the wire uses", () => {
+        const message = {
+            message_id: "1",
+            command: "device_command",
+            args: { payload: { operational_dataset: SECRET, pin_code: SECRET } },
+        };
+        expect(JSON.stringify(redactSensitiveCommandFields(message))).to.not.contain(SECRET);
+    });
+
+    /**
+     * Names that look like the masked ones and carry nothing secret. Over-masking is the failure the
+     * Door Lock `credential` struct already demonstrated: a request the log cannot show is a request
+     * nobody can debug.
+     */
+    it("leaves a lookalike that carries no secret in the log", () => {
+        const message = {
+            message_id: "1",
+            command: "device_command",
+            args: {
+                node_id: 5,
+                payload: {
+                    keyCode: 13,
+                    countryCode: "DE",
+                    updateToken: "0xdeadbeef",
+                    credentialType: 1,
+                    credentialIndex: 3,
+                },
+            },
+        };
+        expect(redactSensitiveCommandFields(message)).to.equal(message);
     });
 
     it("redacts the TURN username and credential of a camera_start_stream ICE server", () => {

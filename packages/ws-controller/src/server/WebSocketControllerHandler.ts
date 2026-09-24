@@ -115,10 +115,17 @@ const NETWORK_TOPOLOGY_OPT_IN_COMMANDS = new Set(["get_network_topology"]);
 // webrtc_callback event channel regardless of which command started the session.
 const WEBRTC_OPT_IN_COMMANDS = new Set(["send_webrtc_provider_command", "camera_start_stream"]);
 
-// Responses whose payload is large enough that logging it in full just bloats the debug log
-// (the full node/attribute dump, the whole topology graph — hundreds of nodes/edges — or a
-// base64-encoded camera frame).
-const skipMessageContentInLogFor = ["start_listening", "get_network_topology", "camera_snapshot"];
+// Responses the debug log does not write in full: the first three are large enough to bury it (the
+// node/attribute dump, the topology graph, a base64 camera frame), and open_commissioning_window
+// answers with the node's setup passcode and the manual and QR codes that carry it. Nothing masks a
+// response — redactSensitiveCommandFields walks a request's args — so naming the command here is
+// the only thing that keeps that passcode out.
+const skipMessageContentInLogFor = [
+    "start_listening",
+    "get_network_topology",
+    "camera_snapshot",
+    "open_commissioning_window",
+];
 
 /** Normalize a requested fabric label: matter.js requires a non-empty label of 1-32 chars. */
 function normalizeFabricLabel(label: string | null): string {

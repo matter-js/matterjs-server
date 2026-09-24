@@ -21,6 +21,9 @@ const TURN_USERNAME = "1758700000:turn-user";
 const TURN_CREDENTIAL = "uNgu3ss4ble-turn-secret";
 /** Distinctive enough that finding it in a log line cannot be a coincidence. */
 const SNAPSHOT_BYTES = Uint8Array.from({ length: 512 }, (_, index) => (index * 7) % 251);
+/** Encodes passcode 20202021, which is what `open_commissioning_window` answers with. */
+const QR_CODE = "MT:Y.K90-Q000KA0648G00";
+const MANUAL_CODE = "34970112332";
 
 function createFakeCameraStreams() {
     return {
@@ -63,6 +66,7 @@ function createFakeCommandHandler() {
         bleEnabled: false,
         bleProxyEnabled: false,
         getCommissionerNodeId: () => NodeId(112233),
+        openCommissioningWindow: async () => ({ manualCode: MANUAL_CODE, qrCode: QR_CODE }),
         start: async () => {},
         getCommissionerFabricData: async () => ({ fabricId: FabricId(1), compressedFabricId: 1n, fabricIndex: 1 }),
         initializeNodes: async () => {},
@@ -179,6 +183,47 @@ describe("WebSocketControllerHandler request logging", () => {
         for (const line of lines) {
             expect(line).to.not.contain(frame.slice(0, 32));
             expect(line).to.not.contain("data:");
+        }
+    });
+
+    /**
+     * The request line is written before anything has looked at the command, so these assert on the
+     * log of a command the fake controller cannot serve. What matters is what the line carries.
+     */
+    describe("credential arguments", () => {
+        const SECRET = "s3cret-do-not-log";
+
+        it("keeps the Wi-Fi passphrase out of the request line and the SSID in it", async () => {
+            const lines = await harness.loggedFor("set_wifi_credentials", { ssid: "home-net", credentials: SECRET });
+            const request = lines.find(line => line.includes("WebSocket request"));
+            expect(request).to.contain("home-net");
+            for (const line of lines) expect(line).to.not.contain(SECRET);
+        });
+
+        it("keeps the Thread dataset out of the request line and its id in it", async () => {
+            const lines = await harness.loggedFor("set_thread_dataset", { dataset: SECRET, id: "primary" });
+            const request = lines.find(line => line.includes("WebSocket request"));
+            expect(request).to.contain("primary");
+            for (const line of lines) expect(line).to.not.contain(SECRET);
+        });
+
+        it("keeps the setup code out of the request line and the commissioning flags in it", async () => {
+            const lines = await harness.loggedFor("commission_with_code", { code: SECRET, network_only: true });
+            const request = lines.find(line => line.includes("WebSocket request"));
+            expect(request).to.contain("network_only");
+            for (const line of lines) expect(line).to.not.contain(SECRET);
+        });
+    });
+
+    it("keeps the commissioning passcode and its pairing codes out of the response line", async () => {
+        const lines = await harness.loggedFor("open_commissioning_window", { node_id: 5 });
+
+        const response = lines.find(line => line.includes("WebSocket response (open_commissioning_window)"));
+        expect(response).to.not.equal(undefined);
+        for (const line of lines) {
+            expect(line).to.not.contain("20202021");
+            expect(line).to.not.contain(QR_CODE);
+            expect(line).to.not.contain(MANUAL_CODE);
         }
     });
 

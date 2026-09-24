@@ -7,12 +7,53 @@
 /**
  * Field names whose value is a secret wherever it appears under a command's `args`.
  *
- * Both carry a Matter PIN in a `device_command` payload. The wire form is base64 octstr, which is
- * trivially reversible, so logging one writes the plaintext door PIN to the browser or server
- * console. Matched lower-cased because the server camelizes every payload member before use, so a
- * client may spell the field `PINCode` (as the Python Matter Server clients do) or `pinCode`.
+ * Only request arguments are ever walked, so the list is judged against those alone: every entry is
+ * a name that carries nothing but secret material in this API's own arguments and in the Matter
+ * commands a `device_command` payload reaches. Several of them name something harmless in a
+ * *response* — `Credentials` on `DoorLock.GetUserResponse` is a `{credentialType, credentialIndex}`
+ * list — and that is not a contradiction, because no response passes through here. It also means
+ * this list protects nothing on the way back; a response that carries a secret has to be kept out
+ * of the log by its command name instead.
+ *
+ * The list was checked against `@matter/model` rather than read off the names. `token` is
+ * deliberately absent — the OTA `UpdateToken` and the Channel `PageToken` are handles rather than
+ * credentials, and they are what an OTA or paging failure is read from.
+ *
+ * - Commissioning: `code` and `setup_pin_code` are the device passcode or a payload carrying it;
+ *   `pakePasscodeVerifier` is derived from one and opens a commissioning window by itself.
+ * - Network credentials: `credentials` is the Wi-Fi PSK, on `set_wifi_credentials` and on Network
+ *   Commissioning's `AddOrUpdateWiFiNetwork`. `dataset`, `operationalDataset`, `activeDataset` and
+ *   `pendingDataset` are Thread operational datasets, which carry the network key.
+ * - Key material: `key`, `verificationKey`, `signingKey`, `groupResolvingKey`, `enableKey`,
+ *   `epochKey0`-`2` and `ipkValue`, on ICD Management, Groupcast, Door Lock Aliro, General
+ *   Diagnostics, Group Key Management and Operational Credentials.
+ * - PINs: `credentialData` and `pinCode` (Door Lock), `oldPin` / `newPin` (Content Control) and
+ *   `setupPin` (Account Login). The wire form is base64 octstr, which is trivially reversible.
  */
-const SENSITIVE_FIELDS = new Set(["credentialdata", "pincode"]);
+const SENSITIVE_FIELDS = new Set([
+    "code",
+    "setuppincode",
+    "pakepasscodeverifier",
+    "credentials",
+    "dataset",
+    "operationaldataset",
+    "activedataset",
+    "pendingdataset",
+    "key",
+    "verificationkey",
+    "signingkey",
+    "groupresolvingkey",
+    "enablekey",
+    "epochkey0",
+    "epochkey1",
+    "epochkey2",
+    "ipkvalue",
+    "credentialdata",
+    "pincode",
+    "oldpin",
+    "newpin",
+    "setuppin",
+]);
 
 /**
  * The two secret-bearing members of an ICE server — Matter's `ICEServerStruct` §11.4.5.3.2 and
@@ -46,11 +87,22 @@ const ICE_SERVER_MARKERS = new Set(["urls", "url"]);
  */
 const MAX_DEPTH = 8;
 
+/**
+ * A field name in the single spelling the lists above are written in.
+ *
+ * The walk sees the request exactly as the client sent it, and clients disagree on how to spell a
+ * field: `setup_pin_code` beside `setupPinCode`, `pinCode` beside the `PINCode` the Python Matter
+ * Server clients send. Dropping case and underscores makes one list entry cover all of them.
+ */
+function normalize(key: string): string {
+    return key.toLowerCase().replaceAll("_", "");
+}
+
 /** Whether `key` names a secret in an object whose members are `keys`. */
 function isSensitive(key: string, keys: string[]): boolean {
-    const name = key.toLowerCase();
+    const name = normalize(key);
     if (SENSITIVE_FIELDS.has(name)) return true;
-    return ICE_SERVER_SECRET_FIELDS.has(name) && keys.some(other => ICE_SERVER_MARKERS.has(other.toLowerCase()));
+    return ICE_SERVER_SECRET_FIELDS.has(name) && keys.some(other => ICE_SERVER_MARKERS.has(normalize(other)));
 }
 
 /**
