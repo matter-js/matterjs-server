@@ -149,6 +149,17 @@ describe("snapshotPolicy", () => {
             expect(selected.map(entry => entry.resolution)).to.deep.equal([{ width: 640, height: 480 }]);
         });
 
+        it("excludes a capability wider than the ceiling although it is no taller", () => {
+            const wide = { ...G350[0], resolution: { width: 2400, height: 600 } };
+            const selected = chosen(
+                selectSnapshotCapabilities([wide, G350[0]], {
+                    encodersExhausted: false,
+                    maxResolution: { width: 1920, height: 1080 },
+                }),
+            );
+            expect(selected.map(entry => entry.resolution)).to.deep.equal([{ width: 640, height: 480 }]);
+        });
+
         it("keeps the encoder-free capability under a ceiling that would also admit an encoder one", () => {
             const selected = chosen(
                 selectSnapshotCapabilities(G350, {
@@ -248,6 +259,11 @@ describe("snapshotPolicy", () => {
             expect(findAdoptableSnapshotStream([stream(8, 3000, 700)], best, {})).to.equal(undefined);
         });
 
+        it("refuses a stream that outnumbers the capability in pixels but is narrower", () => {
+            // 1000x2100 is 2.10 Mpx against 1920x1080's 2.07, and 920 columns short of it.
+            expect(findAdoptableSnapshotStream([stream(8, 1000, 2100)], best, {})).to.equal(undefined);
+        });
+
         it("refuses a stream in a codec the caller did not ask for", () => {
             expect(findAdoptableSnapshotStream([stream(8, 1920, 1080, 1)], best, { codec: 0 })).to.equal(undefined);
         });
@@ -257,6 +273,13 @@ describe("snapshotPolicy", () => {
                 findAdoptableSnapshotStream([stream(8, 1920, 1080)], best, {
                     maxResolution: { width: 1280, height: 720 },
                 }),
+            ).to.equal(undefined);
+        });
+
+        it("refuses a stream wider than the caller's ceiling although it is no taller", () => {
+            const wide = { ...stream(8, 3000, 1080), minResolution: { width: 1920, height: 1080 } };
+            expect(
+                findAdoptableSnapshotStream([wide], best, { maxResolution: { width: 2000, height: 1080 } }),
             ).to.equal(undefined);
         });
 

@@ -137,13 +137,16 @@ describe("MatterController.cameraStreamsIfCreated", () => {
         await controller.stop();
     });
 
-    it("stop() releases every open camera session before closing connections", async () => {
+    it("stop() waits for every open camera session to be released before closing connections", async () => {
         const controller = await MatterController.create(freshEnv(), config, {});
         const manager = controller.cameraStreams; // force construction
         const handler = controller.commandHandler; // force construction
         const order = new Array<string>();
         manager.stopAll = async () => {
-            order.push("stopAll");
+            order.push("stopAll entered");
+            // EndSession needs the connection close() tears down, so the release finishes first.
+            await Promise.resolve();
+            order.push("stopAll returned");
         };
         const originalClose = handler.close.bind(handler);
         handler.close = async () => {
@@ -153,7 +156,6 @@ describe("MatterController.cameraStreamsIfCreated", () => {
 
         await controller.stop();
 
-        // Order matters, not just that stopAll ran: EndSession needs the connection that close() tears down.
-        expect(order).to.deep.equal(["stopAll", "close"]);
+        expect(order).to.deep.equal(["stopAll entered", "stopAll returned", "close"]);
     });
 });

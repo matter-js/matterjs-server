@@ -317,6 +317,16 @@ describe("camera wire contract", () => {
         // keeps for itself, and modifying one is not the caller's to ask for.
         const requestableUsage = wire.limits.supported_stream_usages.filter(name => name !== "Internal")[0];
 
+        it("reports each audio capability under its own wire key", () => {
+            // Every field below is fed straight back into a camera_start_stream hint, so a key wired
+            // to the wrong source list is accepted by the parser and mis-allocates the stream.
+            expect(wire.audio.codecs).to.deep.equal(["OPUS"]);
+            expect(wire.audio.channels).to.equal(2);
+            expect(wire.audio.sample_rates).to.deep.equal([48000, 16000]);
+            expect(wire.audio.bit_depths).to.deep.equal([16]);
+            expect(wire.audio.two_way_talk_support).to.equal("NotSupported");
+        });
+
         it("accepts what camera_get_capabilities reports, in the same spelling", () => {
             const parsed = parseStartStreamArgs({
                 node_id: 1,
@@ -330,10 +340,12 @@ describe("camera wire contract", () => {
                 },
             });
             expect(parsed.video).to.deep.equal({ codecs: wire.video.codecs });
+            // channelCount and sampleRate name the capabilities the wire form was built from: the
+            // same wire expression on both sides would hold whatever the mapping puts there.
             expect(parsed.audio).to.deep.equal({
                 codecs: wire.audio.codecs,
-                channelCount: wire.audio.channels,
-                sampleRate: wire.audio.sample_rates[0],
+                channelCount: CAPABILITIES.audio.channels,
+                sampleRate: CAPABILITIES.audio.sampleRates[0],
             });
             const snapshot = parseSnapshotArgs({
                 node_id: 1,

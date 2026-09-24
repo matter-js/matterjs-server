@@ -778,7 +778,12 @@ describe("cameraCommands", () => {
                 ...EMPTY_CAPABILITIES,
                 video: {
                     ...EMPTY_CAPABILITIES.video,
-                    codecs: [CameraAvStreamManagement.VideoCodec.Hevc],
+                    codecs: [
+                        CameraAvStreamManagement.VideoCodec.H264,
+                        CameraAvStreamManagement.VideoCodec.Hevc,
+                        CameraAvStreamManagement.VideoCodec.Vvc,
+                        CameraAvStreamManagement.VideoCodec.Av1,
+                    ],
                     rateDistortionPoints: [
                         {
                             codec: CameraAvStreamManagement.VideoCodec.H264,
@@ -800,7 +805,7 @@ describe("cameraCommands", () => {
                     ],
                 },
             });
-            expect(wire.video.codecs).to.deep.equal(["H265"]);
+            expect(wire.video.codecs).to.deep.equal(["H264", "H265", "H266", "AV1"]);
             expect(wire.video.rate_distortion_points[0]?.codec).to.equal("H264");
             expect(wire.audio.codecs).to.deep.equal(["AAC"]);
             expect(wire.snapshot.capabilities[0]?.image_codec).to.equal("HEIC");

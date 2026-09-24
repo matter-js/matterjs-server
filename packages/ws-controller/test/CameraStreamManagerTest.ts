@@ -352,6 +352,38 @@ describe("CameraStreamManager", () => {
             expect(capabilities.allocated.video[0].maxBitRate).to.equal(4000000);
         });
 
+        it("reports a stream the server allocated itself as owned by the server", async () => {
+            const { manager, holder } = managerWith({ ...STATE, allocatedVideoStreams: [] }, async invoke =>
+                invoke.command === "videoStreamAllocate" ? { videoStreamId: 9 } : undefined,
+            );
+            await manager.resolveVideoStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+                limits: { codec: H265 },
+            });
+
+            holder.state = {
+                ...STATE,
+                allocatedVideoStreams: [
+                    {
+                        videoStreamId: 9,
+                        streamUsage: LIVE_VIEW,
+                        videoCodec: H265,
+                        minResolution: { width: 1920, height: 1080 },
+                        maxResolution: { width: 1920, height: 1080 },
+                        minFrameRate: 1,
+                        maxFrameRate: 30,
+                        minBitRate: 800000,
+                        maxBitRate: 4000000,
+                        referenceCount: 0,
+                    },
+                ],
+            };
+            const capabilities = await manager.getCapabilities(NODE, ENDPOINT);
+            expect(capabilities.allocated.video[0].ownedByServer).to.equal(true);
+        });
+
         it("reads state without invoking anything on the device", async () => {
             const { manager, invokes } = managerWith(STATE);
             await manager.getCapabilities(NODE, ENDPOINT);
@@ -2873,7 +2905,7 @@ describe("CameraStreamManager", () => {
                     },
                 ],
             };
-            const { manager } = managerWith(spare, async invoke => {
+            const { manager, invokes } = managerWith(spare, async invoke => {
                 if (invoke.command === "snapshotStreamAllocate") return { snapshotStreamId: 3 };
                 if (invoke.command === "captureSnapshot") {
                     return { data: new Uint8Array([1]), imageCodec: 0, resolution: { width: 1920, height: 1080 } };
@@ -2883,6 +2915,9 @@ describe("CameraStreamManager", () => {
             const result = await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
             expect(result.resolution).to.deep.equal({ width: 1920, height: 1080 });
             expect(result.downgraded).to.equal(false);
+            const allocate = invokes.find(invoke => invoke.command === "snapshotStreamAllocate");
+            expect(allocate?.fields.minResolution).to.deep.equal({ width: 1920, height: 1080 });
+            expect(allocate?.fields.maxResolution).to.deep.equal({ width: 1920, height: 1080 });
         });
 
         it("keeps the best capability although the device still lists a snapshot stream", async () => {
@@ -2902,7 +2937,7 @@ describe("CameraStreamManager", () => {
                     },
                 ],
             };
-            const { manager } = managerWith(stale, async invoke => {
+            const { manager, invokes } = managerWith(stale, async invoke => {
                 if (invoke.command === "snapshotStreamAllocate") return { snapshotStreamId: 3 };
                 if (invoke.command === "captureSnapshot") {
                     return { data: new Uint8Array([1]), imageCodec: 0, resolution: { width: 1920, height: 1080 } };
@@ -2912,10 +2947,13 @@ describe("CameraStreamManager", () => {
             const result = await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
             expect(result.resolution).to.deep.equal({ width: 1920, height: 1080 });
             expect(result.downgraded).to.equal(false);
+            const allocate = invokes.find(invoke => invoke.command === "snapshotStreamAllocate");
+            expect(allocate?.fields.minResolution).to.deep.equal({ width: 1920, height: 1080 });
+            expect(allocate?.fields.maxResolution).to.deep.equal({ width: 1920, height: 1080 });
         });
 
         it("uses the highest capability when nothing holds the encoder", async () => {
-            const { manager } = managerWith(STATE, async invoke => {
+            const { manager, invokes } = managerWith(STATE, async invoke => {
                 if (invoke.command === "snapshotStreamAllocate") return { snapshotStreamId: 3 };
                 if (invoke.command === "captureSnapshot") {
                     return {
@@ -2929,6 +2967,9 @@ describe("CameraStreamManager", () => {
             const result = await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
             expect(result.resolution).to.deep.equal({ width: 1920, height: 1080 });
             expect(result.downgraded).to.equal(false);
+            const allocate = invokes.find(invoke => invoke.command === "snapshotStreamAllocate");
+            expect(allocate?.fields.minResolution).to.deep.equal({ width: 1920, height: 1080 });
+            expect(allocate?.fields.maxResolution).to.deep.equal({ width: 1920, height: 1080 });
         });
 
         it("fails typed when the caller's resolution ceiling excludes every capability", async () => {
@@ -3876,6 +3917,35 @@ describe("CameraStreamManager", () => {
             expect(manager.endpointsWithLeases).to.equal(0);
         });
 
+        it("still calls a stream its own when a later request reuses it rather than allocating", async () => {
+            // Every other reuse assertion in this file names a stream the server did not allocate.
+            const { manager, holder, invokes } = probeWith({ ...STATE, allocatedVideoStreams: [] }, async invoke =>
+                invoke.command === "videoStreamAllocate" ? { videoStreamId: 9 } : undefined,
+            );
+            const allocated = await manager.resolveVideoStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+                limits: { codec: H265 },
+            });
+            expect(allocated.reused).to.equal(false);
+
+            holder.state = {
+                ...STATE,
+                allocatedVideoStreams: [{ ...FOREIGN_STREAM, ...CONTAINED_FOREIGN, videoStreamId: 9 }],
+            };
+            const reused = await manager.resolveVideoStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                streamUsage: LIVE_VIEW,
+                limits: { codec: H265 },
+            });
+            expect(reused.streamId).to.equal(9);
+            expect(reused.reused).to.equal(true);
+            expect(reused.allocatedByUs).to.equal(true);
+            expect(invokes.map(invoke => invoke.command)).to.deep.equal(["videoStreamAllocate"]);
+        });
+
         it("does not stand in for a device report of a stream it only reused", async () => {
             // A foreign stream was read out of device state, so device state is the only evidence it
             // ever had. Shadowing it would hand the next request a stream the camera has dropped.
@@ -4792,7 +4862,7 @@ describe("CameraStreamManager device cleanup budget", () => {
                 entered = resolve;
             });
             let deallocateCount = 0;
-            const { manager } = managerWith(STATE, async invoke => {
+            const { manager, holder } = managerWith(STATE, async invoke => {
                 // The camera reissues the id it freed, which is what makes the late give-back able to
                 // drop the lease on the wrong stream.
                 if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
@@ -4814,19 +4884,41 @@ describe("CameraStreamManager device cleanup budget", () => {
             await MockTime.advance(DEVICE_CLEANUP_BUDGET_MS);
             await starting;
 
-            await manager.resolveVideoStream({
+            const retaken = await manager.resolveVideoStream({
                 nodeId: NODE,
                 endpointId: ENDPOINT,
                 streamUsage: LIVE_VIEW,
                 limits: { codec: H265 },
             });
+            // The shadow on the abandoned lease has expired, so this is a fresh allocation under a
+            // new generation rather than a reuse of the lease the give-back names.
+            expect(retaken.reused).to.equal(false);
+
             answerSilentDeallocate();
             // A macrotask boundary: every microtask the answered invoke queued, including the
             // give-back's own continuation, has run by the time this resolves.
             await new Promise<void>(resolve => setImmediate(resolve));
 
+            holder.state = {
+                ...STATE,
+                allocatedVideoStreams: [
+                    {
+                        videoStreamId: 9,
+                        streamUsage: LIVE_VIEW,
+                        videoCodec: H265,
+                        minResolution: { width: 1920, height: 1080 },
+                        maxResolution: { width: 1920, height: 1080 },
+                        minFrameRate: 1,
+                        maxFrameRate: 30,
+                        minBitRate: 800000,
+                        maxBitRate: 4000000,
+                        referenceCount: 0,
+                    },
+                ],
+            };
             // The lease the second request took is the only record that this server may free stream 9.
-            await manager.releaseStream({ nodeId: NODE, endpointId: ENDPOINT, kind: "video", streamId: 9 });
+            const capabilities = await manager.getCapabilities(NODE, ENDPOINT);
+            expect(capabilities.allocated.video.map(stream => stream.ownedByServer)).to.deep.equal([true]);
         } finally {
             MockTime.disable();
         }

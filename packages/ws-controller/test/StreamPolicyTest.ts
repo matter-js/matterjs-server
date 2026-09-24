@@ -134,6 +134,25 @@ describe("streamPolicy", () => {
             ).to.equal(800000);
         });
 
+        it("ignores another codec's trade-off point when it derives the bit-rate floor", () => {
+            // A floor taken from H.264 on an H.265 allocation reserves bandwidth the stream does not
+            // need, and spec 15.2.1.2.2 takes that from every other viewer on the camera.
+            const mixed = {
+                ...CAPABILITIES,
+                rateDistortionPoints: [
+                    { codec: H264, resolution: { width: 2560, height: 1440 }, minBitRate: 6000000 },
+                    { codec: H265, resolution: { width: 1920, height: 1080 }, minBitRate: 800000 },
+                ],
+            };
+            expect(
+                videoEnvelope({
+                    capabilities: mixed,
+                    limits: { codec: H265 },
+                    hints: undefined,
+                }).minBitRate,
+            ).to.equal(800000);
+        });
+
         it("clamps a caller maxBitRate above the camera's network bandwidth to the camera's value", () => {
             const envelope = videoEnvelope({
                 capabilities: CAPABILITIES,

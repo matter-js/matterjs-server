@@ -71,6 +71,15 @@ describe("toCameraState", () => {
         expect(state.videoSensorParams?.hdrCapable).to.equal(false);
     });
 
+    it("reports hdrCapable true when the device has the feature although HDR is switched off", () => {
+        const state = toCameraState({
+            ...MINIMAL_STATE,
+            videoSensorParams: { sensorWidth: 1920, sensorHeight: 1080, maxFps: 30 },
+            hdrModeEnabled: false,
+        });
+        expect(state.videoSensorParams?.hdrCapable).to.equal(true);
+    });
+
     it("maps rateDistortionTradeOffPoints field names one-to-one", () => {
         const state = toCameraState({
             ...MINIMAL_STATE,
