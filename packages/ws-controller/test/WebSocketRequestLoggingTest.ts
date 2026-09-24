@@ -19,6 +19,24 @@ import { WebSocketControllerHandler } from "../src/server/WebSocketControllerHan
 
 const TURN_USERNAME = "1758700000:turn-user";
 const TURN_CREDENTIAL = "uNgu3ss4ble-turn-secret";
+const ICE_UFRAG = "uNgu3ss4ble-ufrag";
+const ICE_PWD = "uNgu3ss4ble-ice-password";
+
+/** An offer whose credential lines sit beside lines the log has to keep. */
+const OFFER = [
+    "v=0",
+    "o=- 1 1 IN IP4 127.0.0.1",
+    "s=-",
+    "t=0 0",
+    "m=video 9 UDP/TLS/RTP/SAVPF 96",
+    "c=IN IP4 0.0.0.0",
+    "a=recvonly",
+    `a=ice-ufrag:${ICE_UFRAG}`,
+    `a=ice-pwd:${ICE_PWD}`,
+    "a=rtpmap:96 H264/90000",
+    "a=fmtp:96 max-fs=8160",
+    "",
+].join("\r\n");
 /** Distinctive enough that finding it in a log line cannot be a coincidence. */
 const SNAPSHOT_BYTES = Uint8Array.from({ length: 512 }, (_, index) => (index * 7) % 251);
 /** Encodes passcode 20202021, which is what `open_commissioning_window` answers with. */
@@ -165,6 +183,25 @@ describe("WebSocketControllerHandler request logging", () => {
         for (const line of lines) {
             expect(line).to.not.contain(TURN_CREDENTIAL);
             expect(line).to.not.contain(TURN_USERNAME);
+        }
+    });
+
+    it("keeps the SDP's ICE credentials out of the request line and the rest of the offer in it", async () => {
+        const lines = await harness.loggedFor("camera_start_stream", {
+            node_id: 5,
+            endpoint_id: 1,
+            stream_usage: "LiveView",
+            sdp: OFFER,
+        });
+
+        const request = lines.find(line => line.includes("WebSocket request"));
+        expect(request).to.not.equal(undefined);
+        // The offer is what a failed session is read from, so only the credential lines are masked.
+        expect(request).to.contain("m=video 9 UDP/TLS/RTP/SAVPF 96");
+        expect(request).to.contain("a=fmtp:96 max-fs=8160");
+        for (const line of lines) {
+            expect(line).to.not.contain(ICE_UFRAG);
+            expect(line).to.not.contain(ICE_PWD);
         }
     });
 

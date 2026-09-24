@@ -45,6 +45,20 @@ const OFFER_TWO_VIDEO_LEVEL_CAPS = [
     "",
 ].join("\r\n");
 
+/** RFC 6838 §4.3 makes media type parameter names case-insensitive, and peers do vary the spelling. */
+const OFFER_UPPER_CASE_FMTP = [
+    "v=0",
+    "o=- 1 1 IN IP4 127.0.0.1",
+    "s=-",
+    "t=0 0",
+    "m=video 9 UDP/TLS/RTP/SAVPF 102",
+    "c=IN IP4 0.0.0.0",
+    "a=recvonly",
+    "a=rtpmap:102 H264/90000",
+    "a=fmtp:102 profile-level-id=42e01f;MAX-FS=3600;Max-Mbps=108000;MAX-FR=15;Max-Br=2000",
+    "",
+].join("\r\n");
+
 const OFFER_AUDIO_SENDRECV = [
     "v=0",
     "o=- 1 1 IN IP4 127.0.0.1",
@@ -284,6 +298,16 @@ describe("sdpConstraints", () => {
             expect(videoCodecLimits(parseSdpVideoConstraints(OFFER_H265_THEN_H264), H264).maxBitRate).to.equal(
                 5000 * 1000,
             );
+        });
+
+        it("reads an fmtp parameter name written in upper case", () => {
+            // Dropping these leaves the codec unconstrained, and the peer is handed a stream past
+            // the ceiling it stated it can decode.
+            const limits = videoCodecLimits(parseSdpVideoConstraints(OFFER_UPPER_CASE_FMTP), H264);
+            expect(limits.maxPixels).to.equal(3600 * 256);
+            expect(limits.maxPixelsPerSecond).to.equal(108000 * 256);
+            expect(limits.maxFrameRate).to.equal(15);
+            expect(limits.maxBitRate).to.equal(2000 * 1000);
         });
 
         it("states no limit for a codec whose payload type carries no fmtp limit", () => {

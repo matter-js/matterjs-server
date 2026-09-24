@@ -78,14 +78,47 @@ const ICE_SERVER_SECRET_FIELDS = new Set(["username", "credential"]);
 const ICE_SERVER_MARKERS = new Set(["urls", "url"]);
 
 /**
+ * The `a=` lines of an SDP whose value is a credential rather than a published parameter.
+ *
+ * `ice-ufrag` and `ice-pwd` (RFC 5245 §15.4) are the short-term credential the peer's ICE
+ * connectivity checks are authenticated with: anyone holding the pair can answer those checks for
+ * the session and take the media path over. The `ufrag` also travels in an `a=candidate` extension,
+ * which is left whole: it is the half a peer publishes, and the `pwd` never appears there.
+ * Everything else in the offer stays, because the offer
+ * is the one thing that makes a failed session readable, and the rest of it is what the peer
+ * publishes to its counterpart: `a=fingerprint` is the hash of the certificate the peer presents in
+ * the DTLS handshake, which binds that handshake to this offer and is useless without the private
+ * key, and it is the first thing anyone reads when the handshake fails.
+ *
+ * Matched without regard to case because a spelling this misses puts a credential in the log, while
+ * a spelling it matches too eagerly only hides a line nobody reads.
+ */
+const SDP_CREDENTIAL_LINES = /^(a=(?:ice-ufrag|ice-pwd):)[^\r\n]*/gim;
+
+/** `sdp` with the value of every credential-bearing line masked, and every other line intact. */
+function redactSdp(sdp: string): string {
+    return sdp.replace(SDP_CREDENTIAL_LINES, "$1[redacted]");
+}
+
+/**
  * Where the walk stops descending, and starts masking instead.
  *
  * `args` is caller-supplied structure, so the walk needs an end that does not depend on the caller
- * being well behaved. Nothing this API defines nests anywhere near this deep, so what is masked here
+ * being well behaved. {@link BeyondDepth} states what a walk that is not over `args` does here. Nothing this API defines nests anywhere near this deep, so what is masked here
  * is structure no command sends; a bound that stopped masking instead would answer a caller that
  * buries a credential by nesting it.
  */
 const MAX_DEPTH = 8;
+
+/**
+ * What the walk answers for structure past {@link MAX_DEPTH}.
+ *
+ * `mask` for a request's `args`, per the bound's own reasoning. `keep` for a whole incoming message,
+ * whose depth is the server's and not a caller's: a `start_listening` result carries every node's
+ * attributes, nested structs included, and masking those would take the thing the log is read for
+ * away to answer a shape no message has. The bound still ends the recursion there.
+ */
+type BeyondDepth = "mask" | "keep";
 
 /**
  * A field name in the single spelling the lists above are written in.
@@ -98,11 +131,37 @@ function normalize(key: string): string {
     return key.toLowerCase().replaceAll("_", "");
 }
 
-/** Whether `key` names a secret in an object whose members are `keys`. */
-function isSensitive(key: string, keys: string[]): boolean {
+/** What a rule answers for a member it has nothing to say about, so the walk descends into it. */
+const DESCEND = Symbol("descend");
+
+/**
+ * What one member of an object logs as: its masked form, or {@link DESCEND}.
+ *
+ * The rule is what differs between the two entry points, and the walk is what they share: the depth
+ * bound, the array handling and the `__proto__`-safe copy are written once and cannot drift.
+ */
+type MemberRule = (key: string, value: unknown, keys: readonly string[]) => unknown;
+
+/** Every masking this module does to a request's `args`. */
+function commandMember(key: string, value: unknown, keys: readonly string[]): unknown {
+    if (SENSITIVE_FIELDS.has(normalize(key))) return "[redacted]";
+    return webRtcMember(key, value, keys);
+}
+
+/**
+ * The secrets of a WebRTC session: a TURN credential, and the ICE credentials inside an SDP.
+ *
+ * Both are matched by shape rather than by name — an ICE server states a URL member, an SDP is a
+ * string under `sdp` — so the same rule holds for a message travelling either way, which the field
+ * name list does not.
+ */
+function webRtcMember(key: string, value: unknown, keys: readonly string[]): unknown {
     const name = normalize(key);
-    if (SENSITIVE_FIELDS.has(name)) return true;
-    return ICE_SERVER_SECRET_FIELDS.has(name) && keys.some(other => ICE_SERVER_MARKERS.has(normalize(other)));
+    if (ICE_SERVER_SECRET_FIELDS.has(name) && keys.some(other => ICE_SERVER_MARKERS.has(normalize(other)))) {
+        return "[redacted]";
+    }
+    if (name !== "sdp" || typeof value !== "string") return DESCEND;
+    return redactSdp(value);
 }
 
 /**
@@ -122,14 +181,14 @@ function define(result: Record<string, unknown>, key: string, value: unknown): v
  * Returning the input unchanged is what lets the caller keep the original message, and it is how
  * each level tells its parent whether anything below it was masked.
  */
-function redactValue(value: unknown, depth: number): unknown {
+function redactValue(value: unknown, depth: number, rule: MemberRule, beyondDepth: BeyondDepth): unknown {
     if (typeof value !== "object" || value === null) return value;
-    if (depth >= MAX_DEPTH) return "[redacted]";
+    if (depth >= MAX_DEPTH) return beyondDepth === "mask" ? "[redacted]" : value;
 
     if (Array.isArray(value)) {
         let masked = false;
         const entries = value.map(entry => {
-            const redacted = redactValue(entry, depth + 1);
+            const redacted = redactValue(entry, depth + 1, rule, beyondDepth);
             masked ||= redacted !== entry;
             return redacted;
         });
@@ -141,12 +200,8 @@ function redactValue(value: unknown, depth: number): unknown {
     const entries = Object.entries(value);
     const keys = entries.map(([key]) => key);
     for (const [key, entry] of entries) {
-        if (isSensitive(key, keys)) {
-            define(result, key, "[redacted]");
-            masked = true;
-            continue;
-        }
-        const redacted = redactValue(entry, depth + 1);
+        const ruled = rule(key, entry, keys);
+        const redacted = ruled === DESCEND ? redactValue(entry, depth + 1, rule, beyondDepth) : ruled;
         masked ||= redacted !== entry;
         define(result, key, redacted);
     }
@@ -165,8 +220,22 @@ function redactValue(value: unknown, depth: number): unknown {
  */
 export function redactSensitiveCommandFields(message: unknown): unknown {
     if (typeof message !== "object" || message === null || !("args" in message)) return message;
-    const redacted = redactValue(message.args, 0);
+    const redacted = redactValue(message.args, 0, commandMember, "mask");
     if (redacted === message.args) return message;
 
     return { ...message, args: redacted };
+}
+
+/**
+ * `message` with every WebRTC session secret under it masked, or `message` itself when it carries
+ * none.
+ *
+ * For what a client logs on the way in, where {@link redactSensitiveCommandFields} does not apply:
+ * that walks a request's `args` and masks a list of field names judged against request arguments
+ * alone, and several of those names mean something harmless in a response. A `webrtc_callback` offer
+ * carries the camera's own ICE credentials, in the SDP and in `ice_servers`, and those are matched by
+ * shape, which holds whichever way the message travels.
+ */
+export function redactWebRtcSecrets(message: unknown): unknown {
+    return redactValue(message, 0, webRtcMember, "keep");
 }

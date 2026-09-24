@@ -6,6 +6,7 @@
 
 import { Connection, WebSocketFactory } from "./connection.js";
 import { CommandTimeoutError, ConnectionClosedError, InvalidServerVersion, ServerCommandError } from "./exceptions.js";
+import { redactWebRtcSecrets } from "./logging-redaction.js";
 import {
     AccessControlEntry,
     AllCredentialsSummary,
@@ -725,7 +726,7 @@ export class MatterClient {
     }
 
     private _handleEventMessage(event: EventMessage) {
-        console.debug("Incoming event", event);
+        console.debug("Incoming event", redactWebRtcSecrets(event));
 
         // Allow subclasses to hook into raw events (for testing)
         this.onRawEvent(event);

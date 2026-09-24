@@ -893,7 +893,7 @@ There is deliberately no resolution list: the camera does not state one. `codecs
 | Argument | Type | Meaning |
 |---|---|---|
 | `stream_usage` | name, required | Any reported usage but `Internal` |
-| `sdp` | string, optional | The offer; absent means `SolicitOffer` |
+| `sdp` | string, optional | The offer; absent means `SolicitOffer`. The `a=ice-ufrag` and `a=ice-pwd` values are masked in the server's debug log; every other line of the offer is logged as sent. The offer a `webrtc_callback` reports is masked the same way in the TypeScript client library's console output, together with its `ice_servers` credentials |
 | `video` | object or `false` | Range hints, or `false` to leave the track out |
 | `audio` | object or `false` | Exact-value hints, or `false` to leave the track out |
 | `ice_servers` | array of objects, optional | Each entry is `{ urls, username?, credential?, caid? }`. `urls` is one URL string or a list of up to 10, each at most 2000 characters; `username` is at most 508 and `credential` at most 512; `caid` is an integer 0 to 65534. Any other key, an entry naming no URL, or a value past those limits is refused with error 8. The server translates each entry into the cluster's `ICEServerStruct` (spec § 11.4.5.3), whose field is `URLs` and always a list. `username` and `credential` are masked in the server's debug log |
@@ -938,6 +938,8 @@ Answer SDP and ICE candidates keep arriving on the `webrtc_callback` event.
 }
 ```
 
+`webrtc_session_id` is a uint16: a value above 65535 names no session the camera can have and is refused with error 8 rather than answered as an unknown session.
+
 Response: `{ "ended": true }`. `ended` is `false` when this call ended no live session: either the id is not one this server tracks for that node and endpoint, or the camera answered `NOT_FOUND` for it, which is an id the camera could not resolve to one of its sessions — one the peer had already ended, or one that was never its own. In the second case the server drops its local records for the id as well; ending a session through `device_command` with `EndSession` drops the same records.
 
 An `EndSession` the camera refuses for any other reason is an error response, not `ended: false`. That now also covers an `EndSession` another path sent first: a closing connection and the shutdown pass end the sessions they own, there is one `EndSession` per session however many paths reach it, and a `camera_stop_stream` naming a session one of them is already ending waits on that same invoke and reports its outcome. So the error can report an `EndSession` this request did not itself send. Either way the session is still open and the server still tracks it, so sending `camera_stop_stream` again is the retry.
@@ -978,7 +980,7 @@ Response: `{ data, codec, resolution, downgraded, stream_id? }`. `data` is base6
 }
 ```
 
-`kind` is `"video"`, `"audio"` or `"snapshot"`. `stream_id` is the `stream_id` a `camera_start_stream` response carried for that track, or a `video_stream_id` / `audio_stream_id` / `snapshot_stream_id` from `camera_get_capabilities`. The stream need not be one this server allocated: the cluster protects a stream by its reference count and by the `Internal` stream usage, not by who created it, so the command forwards to the camera and reports what it answers. Error 104, on the reference count the server last read, is the only refusal about the stream the server makes itself; a missing AV Stream Management cluster is still 106 and a malformed argument still 8. An id the camera does not know, or a video or audio stream marked `Internal`, comes back as the device's own error.
+`kind` is `"video"`, `"audio"` or `"snapshot"`. `stream_id` is the `stream_id` a `camera_start_stream` response carried for that track, or a `video_stream_id` / `audio_stream_id` / `snapshot_stream_id` from `camera_get_capabilities`. The stream need not be one this server allocated: the cluster protects a stream by its reference count and by the `Internal` stream usage, not by who created it, so the command forwards to the camera and reports what it answers. Every stream id is a uint16, so a `stream_id` above 65535 is refused with error 8 before the camera is asked. Error 104, on the reference count the server last read, is the only refusal about the stream the server makes itself; a missing AV Stream Management cluster is still 106 and a malformed argument still 8. An id the camera does not know, or a video or audio stream marked `Internal`, comes back as the device's own error.
 
 Response: `{ "released": true }`. Fails with 104 while a listener still references the stream.
 

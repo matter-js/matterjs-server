@@ -102,10 +102,17 @@ const iceServer = requireDatatype(webRtcDefinitions, "ICEServerStruct");
 // matter.js camelizes the spec's `URLs` to `UrLs`, and the model lookup is by that exact name.
 const iceServerUrls = requireField(iceServer, "UrLs");
 
-const provideOffer = requireCluster("WebRtcTransportProvider").get(CommandModel, "ProvideOffer");
-if (provideOffer === undefined) {
-    throw new InternalError("The Matter model states no WebRtcTransportProvider.ProvideOffer");
+const webRtcProvider = requireCluster("WebRtcTransportProvider");
+
+function providerCommand(name: string): CommandModel {
+    const command = webRtcProvider.get(CommandModel, name);
+    if (command === undefined) {
+        throw new InternalError(`The Matter model states no WebRtcTransportProvider.${name}`);
+    }
+    return command;
 }
+
+const provideOffer = providerCommand("ProvideOffer");
 
 /**
  * The wire ranges the camera commands validate their numeric arguments against, read from the
@@ -124,6 +131,10 @@ export const CAMERA_FIELD_RANGES = {
     channelCount: rangeOf(commandField("AudioStreamAllocate", "ChannelCount")),
     sampleRate: rangeOf(commandField("AudioStreamAllocate", "SampleRate")),
     audioBitRate: rangeOf(commandField("AudioStreamAllocate", "BitRate")),
+    videoStreamId: rangeOf(commandField("VideoStreamDeallocate", "VideoStreamId")),
+    audioStreamId: rangeOf(commandField("AudioStreamDeallocate", "AudioStreamId")),
+    snapshotStreamId: rangeOf(commandField("SnapshotStreamDeallocate", "SnapshotStreamId")),
+    webRtcSessionId: rangeOf(requireField(providerCommand("EndSession"), "WebRtcSessionId")),
 } satisfies Record<string, FieldRange>;
 
 /**

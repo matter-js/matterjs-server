@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { redactSensitiveCommandFields } from "../src/logging-redaction.js";
+import { redactWebRtcSecrets, redactSensitiveCommandFields } from "../src/logging-redaction.js";
 
 /** The redacted message's `args.payload`, which is what every masking case asserts against. */
 function redactedPayload(message: unknown): Record<string, unknown> {
@@ -14,6 +14,26 @@ function redactedPayload(message: unknown): Record<string, unknown> {
 
 /** Distinctive enough that finding it in a logged line cannot be a coincidence. */
 const SECRET = "s3cret-do-not-log";
+
+const ICE_UFRAG = "uFr4g-do-not-log";
+const ICE_PWD = "1cePwd-do-not-log-either";
+const FINGERPRINT = "AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89";
+
+/** A minimal offer carrying both ICE credentials beside lines a reader needs. */
+const OFFER = [
+    "v=0",
+    "o=- 1 1 IN IP4 127.0.0.1",
+    "s=-",
+    "t=0 0",
+    "m=video 9 UDP/TLS/RTP/SAVPF 96",
+    "c=IN IP4 0.0.0.0",
+    `a=ice-ufrag:${ICE_UFRAG}`,
+    `a=ice-pwd:${ICE_PWD}`,
+    `a=fingerprint:sha-256 ${FINGERPRINT}`,
+    "a=rtpmap:96 H264/90000",
+    "a=fmtp:96 max-fs=8160",
+    "a=sendrecv",
+].join("\r\n");
 
 describe("redactSensitiveCommandFields", () => {
     it("redacts credentialData in a device_command SetCredential payload", () => {
@@ -267,5 +287,78 @@ describe("redactSensitiveCommandFields", () => {
         for (const message of [null, undefined, "not an object", 42, { args: null }, { args: { payload: null } }]) {
             expect(redactSensitiveCommandFields(message)).to.equal(message);
         }
+    });
+
+    it("masks the ICE credentials inside an sdp and leaves every other line of it", () => {
+        const { args } = redactSensitiveCommandFields({
+            message_id: "1",
+            command: "camera_start_stream",
+            args: { node_id: 5, sdp: OFFER },
+        }) as { args: { sdp: string } };
+        expect(args.sdp).to.not.contain(ICE_UFRAG);
+        expect(args.sdp).to.not.contain(ICE_PWD);
+        expect(args.sdp).to.contain("a=ice-ufrag:[redacted]");
+        expect(args.sdp).to.contain("a=ice-pwd:[redacted]");
+        // The rest of the offer is what a failed session is read from, so it has to survive.
+        expect(args.sdp).to.contain("m=video 9 UDP/TLS/RTP/SAVPF 96");
+        expect(args.sdp).to.contain(`a=fingerprint:sha-256 ${FINGERPRINT}`);
+        expect(args.sdp).to.contain("a=fmtp:96 max-fs=8160");
+    });
+
+    it("masks an ICE credential line whatever case it is written in", () => {
+        const { args } = redactSensitiveCommandFields({
+            message_id: "1",
+            command: "camera_start_stream",
+            args: { sdp: `v=0\r\na=ICE-Ufrag:${ICE_UFRAG}\r\na=Ice-Pwd:${ICE_PWD}\r\n` },
+        }) as { args: { sdp: string } };
+        expect(args.sdp).to.not.contain(ICE_UFRAG);
+        expect(args.sdp).to.not.contain(ICE_PWD);
+    });
+});
+
+describe("redactWebRtcSecrets", () => {
+    it("masks the ICE credentials in a webrtc_callback offer and keeps the rest of the event", () => {
+        const event = {
+            event: "webrtc_callback",
+            data: { type: "offer", node_id: 5, session_id: 7, sdp: OFFER },
+        };
+        const redacted = redactWebRtcSecrets(event) as { event: string; data: { session_id: number; sdp: string } };
+        expect(redacted.data.sdp).to.not.contain(ICE_UFRAG);
+        expect(redacted.data.sdp).to.contain(`a=fingerprint:sha-256 ${FINGERPRINT}`);
+        expect(redacted.event).to.equal("webrtc_callback");
+        expect(redacted.data.session_id).to.equal(7);
+        expect(event.data.sdp).to.equal(OFFER);
+    });
+
+    it("masks the camera's own TURN credentials in a webrtc_callback offer", () => {
+        const event = {
+            event: "webrtc_callback",
+            data: {
+                type: "offer",
+                sdp: OFFER,
+                ice_servers: [{ urls: ["turn:turn.example.org:3478"], username: "camera", credential: SECRET }],
+            },
+        };
+        const { data } = redactWebRtcSecrets(event) as { data: { ice_servers: Array<Record<string, unknown>> } };
+        expect(data.ice_servers[0]).to.deep.equal({
+            urls: ["turn:turn.example.org:3478"],
+            username: "[redacted]",
+            credential: "[redacted]",
+        });
+    });
+
+    it("keeps a response's own field names, which are not a request's", () => {
+        // The name list is judged against request arguments; a response's `credentials` is a
+        // `{ credentialType, credentialIndex }` list and is worth reading in the log.
+        const message = { message_id: "1", result: { credentials: [{ credentialType: 1, credentialIndex: 3 }] } };
+        expect(redactWebRtcSecrets(message)).to.equal(message);
+    });
+
+    it("returns a message carrying no sdp unchanged, however deep it is", () => {
+        let nested: Record<string, unknown> = { value: 1 };
+        for (let level = 0; level < 12; level++) nested = { nested };
+        const message = { message_id: "1", result: nested };
+        expect(redactWebRtcSecrets(message)).to.equal(message);
+        expect(JSON.stringify(redactWebRtcSecrets(message))).to.not.contain("[redacted]");
     });
 });

@@ -38,6 +38,13 @@ function isStreamKind(value: string): value is StreamKind {
     return value === "video" || value === "audio" || value === "snapshot";
 }
 
+/** Each kind's id is its own field, so the bound is read per kind rather than shared. */
+const STREAM_ID_RANGES: Record<StreamKind, FieldRange> = {
+    video: CAMERA_FIELD_RANGES.videoStreamId,
+    audio: CAMERA_FIELD_RANGES.audioStreamId,
+    snapshot: CAMERA_FIELD_RANGES.snapshotStreamId,
+};
+
 /**
  * Whether `value` is an integer inside the range the Matter field it becomes accepts.
  *
@@ -377,10 +384,11 @@ export function parseStopStreamArgs(args: {
     webrtc_session_id?: unknown;
 }): ParsedStopStreamArgs {
     const target = parseCameraTarget(args);
-    const { webrtc_session_id: webRtcSessionId } = args;
-    if (typeof webRtcSessionId !== "number" || !Number.isInteger(webRtcSessionId) || webRtcSessionId < 0) {
-        throw ServerError.invalidArguments("camera_stop_stream requires a non-negative integer webrtc_session_id");
-    }
+    const webRtcSessionId = toRequiredNumber(
+        args.webrtc_session_id,
+        "camera_stop_stream webrtc_session_id",
+        CAMERA_FIELD_RANGES.webRtcSessionId,
+    );
     return { ...target, webRtcSessionId };
 }
 
@@ -432,10 +440,11 @@ export function parseReleaseStreamArgs(args: {
     if (typeof kind !== "string" || !isStreamKind(kind)) {
         throw ServerError.invalidArguments('camera_release_stream requires kind to be "video", "audio", or "snapshot"');
     }
-    if (typeof streamId !== "number" || !Number.isInteger(streamId) || streamId < 0) {
-        throw ServerError.invalidArguments("camera_release_stream requires a non-negative integer stream_id");
-    }
-    return { ...target, kind, streamId };
+    return {
+        ...target,
+        kind,
+        streamId: toRequiredNumber(streamId, "camera_release_stream stream_id", STREAM_ID_RANGES[kind]),
+    };
 }
 
 export function toWireCapabilities(capabilities: CameraCapabilities): CameraCapabilitiesResult {

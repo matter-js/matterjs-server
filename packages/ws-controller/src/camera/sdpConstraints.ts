@@ -124,8 +124,16 @@ export function receivableCodecs(disposition: MediaDisposition): readonly string
     return disposition.state === "receiving" ? disposition.codecs : undefined;
 }
 
+/**
+ * `key`'s value in an `a=fmtp` parameter list, or none when the list does not state it.
+ *
+ * The name is matched without regard to case: `a=fmtp` carries media type parameters (RFC 8866
+ * §6.15), whose names are case-insensitive (RFC 6838 §4.3), so `MAX-FS` states the same ceiling as
+ * `max-fs`. Missing one is not a parse failure the caller sees — it silently drops the peer's decode
+ * limit and lets a stream it cannot decode be allocated.
+ */
 function fmtpNumber(params: string, key: string): number | undefined {
-    const match = new RegExp(`(?:^|;)\\s*${key}=(\\d+)`).exec(params);
+    const match = new RegExp(`(?:^|;)\\s*${key}=(\\d+)`, "i").exec(params);
     return match === null ? undefined : Number(match[1]);
 }
 

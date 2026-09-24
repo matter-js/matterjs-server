@@ -585,6 +585,22 @@ describe("cameraCommands", () => {
             }
             expect((thrown as ServerError).code).to.equal(ServerErrorCode.InvalidArguments);
         });
+
+        it("takes the highest webrtc_session_id the field holds and refuses the one above it", () => {
+            expect(
+                parseStopStreamArgs({ node_id: 5, endpoint_id: 1, webrtc_session_id: 65535 }).webRtcSessionId,
+            ).to.equal(65535);
+
+            let thrown: unknown;
+            try {
+                parseStopStreamArgs({ node_id: 5, endpoint_id: 1, webrtc_session_id: 65536 });
+            } catch (error) {
+                thrown = error;
+            }
+            // Not a session the camera can have: `ended: false` would read as a session that had
+            // already ended.
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.InvalidArguments);
+        });
     });
 
     describe("parseSnapshotArgs", () => {
@@ -691,6 +707,22 @@ describe("cameraCommands", () => {
                 thrown = error;
             }
             expect((thrown as ServerError).code).to.equal(ServerErrorCode.InvalidArguments);
+        });
+
+        it("takes the highest stream_id each kind holds and refuses the one above it", () => {
+            for (const kind of ["video", "audio", "snapshot"]) {
+                expect(
+                    parseReleaseStreamArgs({ node_id: 5, endpoint_id: 1, kind, stream_id: 65535 }).streamId,
+                ).to.equal(65535);
+
+                let thrown: unknown;
+                try {
+                    parseReleaseStreamArgs({ node_id: 5, endpoint_id: 1, kind, stream_id: 65536 });
+                } catch (error) {
+                    thrown = error;
+                }
+                expect((thrown as ServerError).code, kind).to.equal(ServerErrorCode.InvalidArguments);
+            }
         });
     });
 

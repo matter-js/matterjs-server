@@ -475,6 +475,49 @@ describe("ws-client", () => {
                 const nodeKey = String(nodeId);
                 expect(client.nodes[nodeKey]?.attributes["1/6/0"]).to.equal(true);
             });
+
+            it("keeps the ICE credentials and TURN secret of an incoming offer out of the console", async () => {
+                const bigIntSafe = (_key: string, value: unknown) =>
+                    typeof value === "bigint" ? value.toString() : value;
+                server.onCommand("start_listening", () => []);
+                await client.startListening();
+
+                const sdp = [
+                    "v=0",
+                    "m=video 9 UDP/TLS/RTP/SAVPF 96",
+                    "a=ice-ufrag:uNgu3ss4ble-ufrag",
+                    "a=ice-pwd:uNgu3ss4ble-ice-password",
+                    "a=rtpmap:96 H264/90000",
+                ].join("\r\n");
+                const logged = new Array<string>();
+                const debug = console.debug;
+                console.debug = (...args: unknown[]) => {
+                    logged.push(args.map(arg => JSON.stringify(arg, bigIntSafe)).join(" "));
+                };
+                try {
+                    server.sendEvent("webrtc_callback", {
+                        type: "offer",
+                        node_id: 5,
+                        session_id: 7,
+                        sdp,
+                        ice_servers: [
+                            { urls: ["turn:turn.example.org:3478"], username: "cam", credential: "uNgu3ss4ble-turn" },
+                        ],
+                    });
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                } finally {
+                    console.debug = debug;
+                }
+
+                const offerLines = logged.filter(line => line.includes("m=video"));
+                // Both the frame log and the event log have to carry the offer, and neither the credentials.
+                expect(offerLines.length).to.equal(2);
+                for (const line of logged) {
+                    expect(line).to.not.contain("uNgu3ss4ble-ufrag");
+                    expect(line).to.not.contain("uNgu3ss4ble-ice-password");
+                    expect(line).to.not.contain("uNgu3ss4ble-turn");
+                }
+            });
         });
 
         describe("raw message handling", () => {
