@@ -140,6 +140,17 @@ export interface CameraAllocatedStreamDetail {
 }
 
 /**
+ * What a client learns about a release the camera refused with `INVALID_IN_STATE`.
+ *
+ * `referenceCount` is the count the server last read, and is absent when that cached count is zero:
+ * the camera's answer carries no count of its own, so there is nothing else to report.
+ */
+export interface CameraStreamInUseDetail {
+    streamId: number;
+    referenceCount?: number;
+}
+
+/**
  * A stream that holds capacity the refused request needed.
  *
  * `kind` is on the entry because the list is not always the kind the request asked for: a refused
@@ -262,14 +273,15 @@ export class ServerError extends Error {
         );
     }
 
-    static cameraStreamInUse(detail: CameraAllocatedStreamDetail): ServerError {
+    static cameraStreamInUse(detail: CameraStreamInUseDetail, cause?: Error): ServerError {
         return new ServerError(
             ServerErrorCode.CameraStreamInUse,
             JSON.stringify({
                 message: "Stream is in use and cannot be released",
                 stream_id: detail.streamId,
-                reference_count: detail.referenceCount,
+                ...(detail.referenceCount === undefined ? {} : { reference_count: detail.referenceCount }),
             }),
+            cause,
         );
     }
 

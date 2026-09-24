@@ -3658,7 +3658,7 @@ describe("CameraStreamManager", () => {
     });
 
     describe("releaseStream", () => {
-        it("refuses to release a stream the device still references", async () => {
+        it("refuses to release a stream the device still references, naming the count it read", async () => {
             const referenced: CameraState = {
                 ...STATE,
                 allocatedVideoStreams: [
@@ -3676,7 +3676,9 @@ describe("CameraStreamManager", () => {
                     },
                 ],
             };
-            const { manager } = managerWith(referenced);
+            const { manager, invokes } = managerWith(referenced, async () => {
+                throw statusError(Status.InvalidInState);
+            });
             let thrown: unknown;
             try {
                 await manager.releaseStream({ nodeId: NODE, endpointId: ENDPOINT, kind: "video", streamId: 1 });
@@ -3684,6 +3686,37 @@ describe("CameraStreamManager", () => {
                 thrown = error;
             }
             expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamInUse);
+            expect(JSON.parse((thrown as ServerError).message)).to.deep.equal({
+                message: "Stream is in use and cannot be released",
+                stream_id: 1,
+                reference_count: 1,
+            });
+            // The camera decides, so the deallocate goes out even for a count the server reads as
+            // nonzero: a count behind the device would otherwise refuse a release it would accept.
+            expect(invokes.map(invoke => invoke.command)).to.deep.equal(["videoStreamDeallocate"]);
+        });
+
+        it("releases a stream the server reads as referenced when the camera accepts it", async () => {
+            const stale: CameraState = {
+                ...STATE,
+                allocatedVideoStreams: [
+                    {
+                        videoStreamId: 1,
+                        streamUsage: LIVE_VIEW,
+                        videoCodec: H265,
+                        minResolution: { width: 640, height: 360 },
+                        maxResolution: { width: 1920, height: 1080 },
+                        minFrameRate: 1,
+                        maxFrameRate: 30,
+                        minBitRate: 800000,
+                        maxBitRate: 4000000,
+                        referenceCount: 2,
+                    },
+                ],
+            };
+            const { manager, invokes } = managerWith(stale);
+            await manager.releaseStream({ nodeId: NODE, endpointId: ENDPOINT, kind: "video", streamId: 1 });
+            expect(invokes.map(invoke => invoke.command)).to.deep.equal(["videoStreamDeallocate"]);
         });
 
         it("releases a stream the server did not allocate, because the camera allows it", async () => {
@@ -3708,6 +3741,49 @@ describe("CameraStreamManager", () => {
             await manager.releaseStream({ nodeId: NODE, endpointId: ENDPOINT, kind: "video", streamId: 1 });
             expect(invokes.map(invoke => invoke.command)).to.deep.equal(["videoStreamDeallocate"]);
             expect(invokes[0]?.fields).to.deep.equal({ videoStreamId: 1 });
+        });
+
+        it("answers the camera's own INVALID_IN_STATE with the in-use error, not the generic one", async () => {
+            // The cached count is 0 and the camera disagrees: the state a subscription feeds can be
+            // behind a reference another controller took. Without the mapping the handler sees a
+            // plain device error and answers error_code 0, for the fact the API documents as 104.
+            const stale: CameraState = {
+                ...STATE,
+                allocatedVideoStreams: [
+                    {
+                        videoStreamId: 1,
+                        streamUsage: LIVE_VIEW,
+                        videoCodec: H265,
+                        minResolution: { width: 640, height: 360 },
+                        maxResolution: { width: 1920, height: 1080 },
+                        minFrameRate: 1,
+                        maxFrameRate: 30,
+                        minBitRate: 800000,
+                        maxBitRate: 4000000,
+                        referenceCount: 0,
+                    },
+                ],
+            };
+            const { manager } = managerWith(stale, async () => {
+                throw statusError(Status.InvalidInState);
+            });
+            let thrown: unknown;
+            try {
+                await manager.releaseStream({ nodeId: NODE, endpointId: ENDPOINT, kind: "video", streamId: 1 });
+            } catch (error) {
+                thrown = error;
+            }
+            // `instanceof ServerError` is what WebSocketControllerHandler reads for `error_code`, so
+            // anything else here is the 0 this test exists to rule out.
+            expect(thrown).to.be.instanceOf(ServerError);
+            expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamInUse);
+            expect(JSON.parse((thrown as ServerError).message)).to.deep.equal({
+                message: "Stream is in use and cannot be released",
+                stream_id: 1,
+            });
+            // A camera answering INVALID_IN_STATE for a reason of its own is indistinguishable from
+            // a reference-count refusal unless its own error stays reachable.
+            expect(deviceStatusOf((thrown as ServerError).cause)).to.equal(Status.InvalidInState);
         });
 
         it("forwards the camera's own refusal rather than deciding for it", async () => {
@@ -4495,6 +4571,54 @@ describe("CameraStreamManager reuse before the device has reported", () => {
         } finally {
             MockTime.disable();
         }
+    });
+
+    /** A probe holding one lease for video stream 9 that the device's report never names. */
+    function leasedProbe(deallocateStatus: number): LeaseProbe {
+        return new LeaseProbe({
+            readCameraState: async () => ({ ...STATE, allocatedVideoStreams: [] }),
+            readWebRtcSessions: async () => new Array<DeviceWebRtcSession>(),
+            missingCameraClusters: async () => new Array<number>(),
+            invoke: async args => {
+                if (args.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                if (args.command === "videoStreamDeallocate") throw statusError(deallocateStatus);
+                return undefined;
+            },
+        });
+    }
+
+    it("keeps the lease when the camera refuses the release as in use", async () => {
+        // The stream is still on the camera, so the record that says this server may deallocate it
+        // has to survive: without it a retry has nothing to release the stream by.
+        const probe = leasedProbe(Status.InvalidInState);
+        await liveView(probe);
+        expect(probe.endpointsWithLeases).to.equal(1);
+
+        let thrown: unknown;
+        try {
+            await probe.releaseStream({ nodeId: NODE, endpointId: ENDPOINT, kind: "video", streamId: 9 });
+        } catch (error) {
+            thrown = error;
+        }
+        expect((thrown as ServerError).code).to.equal(ServerErrorCode.CameraStreamInUse);
+        expect(probe.endpointsWithLeases).to.equal(1);
+    });
+
+    it("drops the lease when the camera states it has no such stream", async () => {
+        // NOT_FOUND says the stream the lease claims is gone. Keeping the lease would report it as
+        // this server's for the rest of the process run, and let a reissued id be matched to it.
+        const probe = leasedProbe(Status.NotFound);
+        await liveView(probe);
+        expect(probe.endpointsWithLeases).to.equal(1);
+
+        let thrown: unknown;
+        try {
+            await probe.releaseStream({ nodeId: NODE, endpointId: ENDPOINT, kind: "video", streamId: 9 });
+        } catch (error) {
+            thrown = error;
+        }
+        expect(deviceStatusOf(thrown)).to.equal(Status.NotFound);
+        expect(probe.endpointsWithLeases).to.equal(0);
     });
 
     it("allocates a second audio stream once the grace window passes", async () => {

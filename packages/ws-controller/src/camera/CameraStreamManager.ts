@@ -1980,9 +1980,11 @@ export class CameraStreamManager {
      * `ReferenceCount` above 0, and StreamUsage Internal (§11.2.8.7.2, §11.2.8.3.2; the snapshot
      * command has no Internal case, §11.2.8.10.2). It checks neither who allocated the stream nor
      * which fabric asks, so this forwards and reports what the camera answers rather than adding a
-     * refusal of its own. The one check kept about the stream is the reference count, which names
-     * the count the camera reported and so says more than the device's bare INVALID_IN_STATE; a
-     * missing cluster still fails as `camera_not_supported` before any of this runs.
+     * refusal of its own. That includes the reference count: it is read from a subscription-backed
+     * view that can be behind the device in either direction, so deciding on it would refuse a
+     * release the camera would accept, with no path left that reaches the device. The count is used
+     * only to say more in the refusal than the camera's bare INVALID_IN_STATE does. A missing
+     * cluster still fails as `camera_not_supported` before any of this runs.
      */
     async releaseStream(args: {
         nodeId: NodeId;
@@ -1994,11 +1996,26 @@ export class CameraStreamManager {
         return this.withEndpointLock(nodeId, endpointId, async () => {
             const state = await this.requireState(nodeId, endpointId);
             const referenceCount = referenceCountOf(state, kind, streamId);
-            if (referenceCount > 0) {
-                throw ServerError.cameraStreamInUse({ streamId, referenceCount });
-            }
             const { command, fields } = deallocateCall(kind, streamId);
-            await this.io.invoke({ nodeId, endpointId, cluster: "avsm", command, fields });
+            try {
+                await this.io.invoke({ nodeId, endpointId, cluster: "avsm", command, fields });
+            } catch (error) {
+                const status = deviceStatusOf(error);
+                // The reference implementation answers INVALID_IN_STATE for a reference count
+                // above 0 and for nothing else (`connectedhomeip/src/app/clusters/
+                // camera-av-stream-management-server/CameraAVStreamManagementCluster.h`,
+                // `ValidateStreamForModifyOrDeallocateImpl`), and passes its delegate's status
+                // through, so the cause is kept for a camera that answers it for another reason.
+                if (status === Status.InvalidInState) {
+                    throw ServerError.cameraStreamInUse(
+                        { streamId, ...(referenceCount > 0 ? { referenceCount } : {}) },
+                        error instanceof Error ? error : undefined,
+                    );
+                }
+                // The camera states it has no such stream, which is the fact the lease claimed.
+                if (status === Status.NotFound) this.dropLease(nodeId, endpointId, kind, streamId);
+                throw error;
+            }
             this.dropLease(nodeId, endpointId, kind, streamId);
         });
     }

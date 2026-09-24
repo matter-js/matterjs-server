@@ -1284,7 +1284,13 @@ export const ICD_MULTI_ADMIN_ERROR_CODE = 100;
 export const CAMERA_STREAM_INCOMPATIBLE_ERROR_CODE = 102;
 /** OHF extension: the camera refused the allocation for lack of capacity. */
 export const CAMERA_RESOURCE_EXHAUSTED_ERROR_CODE = 103;
-/** OHF extension: stream release refused because the device still references the stream. */
+/**
+ * OHF extension: stream release refused because the device still references the stream.
+ *
+ * Raised from the camera's own `INVALID_IN_STATE`, which the reference implementation answers for
+ * a reference count above 0 and nothing else. The `details` carry `reference_count` only when the
+ * count the server last read is above zero; that cached count decides nothing.
+ */
 export const CAMERA_STREAM_IN_USE_ERROR_CODE = 104;
 /** OHF extension: endpoint does not expose the clusters camera streaming needs. */
 export const CAMERA_NOT_SUPPORTED_ERROR_CODE = 106;

@@ -374,7 +374,7 @@ await client.sendCommand("camera_release_stream", 0, {
 });
 ```
 
-Fails with `CAMERA_STREAM_IN_USE_ERROR_CODE` if the stream still has an active listener, so releasing never breaks a live session. It is the only refusal about the stream the server makes itself; a missing AV Stream Management cluster is still `CAMERA_NOT_SUPPORTED_ERROR_CODE` and a malformed argument still error 8. Anything else the camera refuses — an id it does not know, or a video or audio stream whose usage is `Internal` — surfaces as the device's own error.
+Fails with `CAMERA_STREAM_IN_USE_ERROR_CODE` if the stream still has an active listener, so releasing never breaks a live session. The camera decides: the deallocate always goes out, and its `INVALID_IN_STATE` becomes this code, because that is what the reference implementation answers for a reference count above 0 and nothing else. The reference count the server holds is a cached view and decides nothing; it only fills in `reference_count` in the `details` when it is above zero, so a stream the server reads as referenced is still released when the camera accepts it. A missing AV Stream Management cluster is still `CAMERA_NOT_SUPPORTED_ERROR_CODE` and a malformed argument still error 8. Anything else the camera refuses — an id it does not know, or a video or audio stream whose usage is `Internal` — surfaces as the device's own error.
 
 ### Camera error codes
 
