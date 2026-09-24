@@ -397,6 +397,8 @@ A payload key is matched to a field with case and the separators between words i
 
 The generic `device_command` route is not covered by this, and is not an alternative way to start a session. It serves every cluster and takes each payload in that cluster's own field names, so an ICE server sent that way uses the cluster's `URLs` spelling and a candidate its `SDPMLineIndex` — and it is a bare invoke: no originating endpoint is filled in, no singular-versus-list stream id is reconciled, and the session is not registered with the local WebRTC requestor, so no `webrtc_callback` can be routed for it.
 
+A `send_webrtc_provider_command` payload for `ProvideOffer` or `SolicitOffer` states the session's streams in one form, never both: the `videoStreams` / `audioStreams` lists of cluster revision 2, or the `videoStreamId` / `audioStreamId` they deprecate. A camera fails a command carrying both with `INVALID_COMMAND`, and the test spans both media kinds, so a payload stating both is refused with `INVALID_ARGUMENTS` rather than having one form dropped — dropping it would turn `{ videoStreams: [5], audioStreamId: null }`, which asks for auto-selected audio, into a video-only session. A list is sent as stated to a camera at cluster revision 2. To one below it, or one whose revision this server has not read yet, a single-entry list is converted to the singular id and any other length is refused rather than cut down; the refusal says which of the two cases it is. An empty list is refused at every revision, because the field takes 1 to 16 entries.
+
 ## JSON Utilities
 
 The package includes utilities for handling JSON serialization with BigInt support (for numbers exceeding JavaScript's MAX_SAFE_INTEGER):

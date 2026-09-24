@@ -12,17 +12,20 @@ import { DEVICE_CLEANUP_BUDGET_MS, withCleanupBudget } from "../util/deviceClean
 
 const logger = Logger.get("webRtcSessionStreams");
 
-/** A stream id is a non-negative integer (matter.js VideoStreamID/AudioStreamID are uint16). */
+/** VideoStreamID and AudioStreamID are uint16, so an id outside that names no stream. */
 function isStreamId(value: unknown): value is number {
-    return typeof value === "number" && Number.isInteger(value) && value >= 0;
+    return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 0xffff;
 }
 
 /**
- * Resolve the video/audio stream list stored in a WebRTCSessionStruct for one media kind.
+ * Read the video/audio stream membership of one media kind out of what a device stated.
  *
- * Stream membership comes from the ProvideOffer/SolicitOffer request; the response's deprecated
- * stream-id echo exists only to report the provider's choice for a rev-1 null (auto-select) request
- * (spec §11.5.6.4). Inputs are the raw request/response values (untyped wire data), narrowed here:
+ * Its inputs are device data: a `WebRTCSessionStruct` the camera reports, or the request this server
+ * already narrowed together with the provider's deprecated stream-id echo, which exists only to
+ * report the provider's choice for a rev-1 null (auto-select) request (spec §11.5.6.4). Reading it
+ * tolerantly is right for that: a device entry this server cannot parse is one it reports nothing
+ * about, not one it can refuse. A caller's own request is read by {@link selectWebRtcStreamFields},
+ * which refuses what it cannot send rather than narrowing it.
  *
  *   - `requestList` (rev-2): the valid ids from a non-empty list are used verbatim.
  *   - `requestId` (rev-1): a valid id is an explicit request; `null` requests auto-selection, so the
@@ -51,55 +54,90 @@ export function resolveWebRtcSessionStreams(
 /** WebRtcTransportProvider ClusterRevision from which VideoStreams/AudioStreams replace the singular ids. */
 const STREAM_LIST_MIN_REVISION = 2;
 
+/** The revision-2 list field and the revision-1 id it deprecates, per media kind. */
+const STREAM_FIELDS = [
+    { kind: "video", list: "videoStreams", singular: "videoStreamId" },
+    { kind: "audio", list: "audioStreams", singular: "audioStreamId" },
+] as const;
+
 /**
- * Enforce the ProvideOffer/SolicitOffer video/audio stream field choice on a request, in place.
+ * Put the caller's video/audio stream request into the form this camera's provider takes, in place.
  *
  * VideoStreams/AudioStreams (cluster revision 2) deprecate the singular VideoStreamID/AudioStreamID
- * (revision 1); a provider fails the command with InvalidCommand when both are present. Callers pass the
- * canonical revision-2 lists; this narrows the request to exactly the set the provider expects: the lists
- * for revision >= 2, or the singular ids for revision 1 / unknown. A revision-1 provider carries a single
- * id per media kind, so a multi-entry list is truncated to its first entry.
+ * (revision 1), and a provider fails the command with INVALID_COMMAND when a list is present beside
+ * a singular id — the test spans both media kinds rather than each on its own (§11.5.6.1 and
+ * §11.5.6.3, Effect on Receipt). So a request stating both forms is refused here. Dropping one of
+ * them would change what the caller asked for: `{ videoStreams: [5], audioStreamId: null }` states
+ * a video stream and auto-selected audio, and dropping the id establishes a video-only session.
+ *
+ * The refusal is unconditional, which is stricter than a `ProvideOffer` re-offer: the device runs
+ * that test only under `WebRTCSessionID == NULL` (§11.5.6.3). It costs a re-offer nothing, because
+ * the lists carry the same condition in their own conformance and a re-offer may not state them at
+ * all. What this does not do is refuse the lists on a re-offer, which stays open.
+ *
+ * A stated form the provider takes is sent as stated. The one rewrite is a list going to a provider
+ * this server does not know to be at revision 2 — one stating revision 1, and one whose revision has
+ * not been read yet, which is the same position, since a list such a provider does not understand is
+ * dropped on receipt and the session comes up with streams the caller did not choose. Such a
+ * provider carries one id per media kind, so a single-entry list says exactly what the singular id
+ * says and converts, while a longer one cannot be said at all and is refused rather than truncated.
+ * `camera_start_stream` builds single-entry lists, so that conversion is what keeps it working
+ * against a revision-1 camera.
+ *
+ * Nothing is written until every media kind has passed, so a refusal leaves the request as it was.
  */
 export function selectWebRtcStreamFields(fields: Record<string, unknown>, clusterRevision: number | undefined): void {
-    const videoStreams = resolveWebRtcSessionStreams(fields.videoStreams, fields.videoStreamId, undefined);
-    const audioStreams = resolveWebRtcSessionStreams(fields.audioStreams, fields.audioStreamId, undefined);
-    // A client cluster's globals come from the device, so the typed number can still be absent here.
-    if (typeof clusterRevision === "number" && clusterRevision >= STREAM_LIST_MIN_REVISION) {
-        // A provider fails the command when any list coexists with any singular id (the check spans both
-        // media kinds, not each in isolation), so a list on one kind forces both singular ids out. With no
-        // list to send, the deprecated singular ids stay — they remain valid on rev 2 and preserve a null
-        // (auto-select) request.
-        if (videoStreams !== undefined || audioStreams !== undefined) {
-            delete fields.videoStreamId;
-            delete fields.audioStreamId;
+    const listed = STREAM_FIELDS.filter(field => fields[field.list] !== undefined);
+    const singular = STREAM_FIELDS.filter(field => fields[field.singular] !== undefined);
+    if (listed.length > 0 && singular.length > 0) {
+        throw ServerError.invalidArguments(
+            `${listed.map(field => field.list).join(" and ")} cannot be sent together with ${singular
+                .map(field => field.singular)
+                .join(
+                    " and ",
+                )}: the WebRTC provider refuses a request that states both the stream lists and the stream ids they deprecate. Send one form for both media kinds.`,
+        );
+    }
+    const requested = listed.map(field => ({ field, ids: requestedStreamIds(fields[field.list], field.list) }));
+    for (const { field, ids } of requested) {
+        // The field takes 1 to 16 entries (§11.5.6.1.8, §11.5.6.1.9), so an empty list asks for
+        // nothing it can carry; leaving the field out is how a caller asks for no stream of a kind.
+        if (ids.length === 0) {
+            throw ServerError.invalidArguments(
+                `${field.list} names no stream. Leave it out to ask for no ${field.kind} stream.`,
+            );
         }
-        if (videoStreams !== undefined) fields.videoStreams = videoStreams;
-        else delete fields.videoStreams;
-        if (audioStreams !== undefined) fields.audioStreams = audioStreams;
-        else delete fields.audioStreams;
-    } else {
-        delete fields.videoStreams;
-        delete fields.audioStreams;
-        downconvertToSingularStreamId(fields, "videoStreamId", videoStreams, "video");
-        downconvertToSingularStreamId(fields, "audioStreamId", audioStreams, "audio");
+    }
+    // A client cluster's globals come from the device, so the typed number can still be absent here.
+    if (typeof clusterRevision === "number" && clusterRevision >= STREAM_LIST_MIN_REVISION) return;
+    const why =
+        clusterRevision === undefined
+            ? "this server has not read this camera's WebRTC Provider ClusterRevision"
+            : `this camera's WebRTC Provider states cluster revision ${clusterRevision}`;
+    for (const { field, ids } of requested) {
+        if (ids.length > 1) {
+            throw ServerError.invalidArguments(
+                `${field.list} names ${ids.length} streams, and ${why}, so this request can carry one ${field.kind} stream at most. Ask for one ${field.kind} stream.`,
+            );
+        }
+    }
+    for (const { field, ids } of requested) {
+        delete fields[field.list];
+        fields[field.singular] = ids[0];
     }
 }
 
-function downconvertToSingularStreamId(
-    fields: Record<string, unknown>,
-    key: "videoStreamId" | "audioStreamId",
-    resolved: number[] | undefined,
-    kind: string,
-): void {
-    if (resolved === undefined) {
-        return;
+/** The stream ids a caller stated in one list field, or a refusal naming the entry that is not one. */
+function requestedStreamIds(value: unknown, field: string): number[] {
+    if (!Array.isArray(value)) {
+        throw ServerError.invalidArguments(`${field} must be an array of stream ids`);
     }
-    if (resolved.length > 1) {
-        logger.warn(
-            `WebRTC provider does not advertise ClusterRevision >= 2 (revision 1 or not yet cached): ${resolved.length} ${kind} streams requested but only a single stream id can be sent; using ${resolved[0]}`,
-        );
-    }
-    fields[key] = resolved[0];
+    return value.map((entry, index) => {
+        if (!isStreamId(entry)) {
+            throw ServerError.invalidArguments(`${field}[${index}] must be a stream id`);
+        }
+        return entry;
+    });
 }
 
 /**

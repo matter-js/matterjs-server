@@ -105,10 +105,12 @@ describe("selectWebRtcStreamFields", () => {
         expect(fields).to.deep.equal({ videoStreams: [3, 5] });
     });
 
-    it("synthesises the lists from a legacy caller's singular ids for a rev-2 provider", () => {
+    it("sends a legacy caller's singular ids unchanged to a rev-2 provider", () => {
+        // They are deprecated, not invalid, on revision 2, and the null is an auto-select request
+        // the list form cannot state at all.
         const fields: Record<string, unknown> = { videoStreamId: 5, audioStreamId: null };
         selectWebRtcStreamFields(fields, 3);
-        expect(fields).to.deep.equal({ videoStreams: [5] });
+        expect(fields).to.deep.equal({ videoStreamId: 5, audioStreamId: null });
     });
 
     it("down-converts the lists to singular ids for a rev-1 provider", () => {
@@ -117,10 +119,10 @@ describe("selectWebRtcStreamFields", () => {
         expect(fields).to.deep.equal({ videoStreamId: 7, audioStreamId: 9 });
     });
 
-    it("truncates a multi-stream list to its first entry for a rev-1 provider", () => {
-        const fields: Record<string, unknown> = { videoStreams: [3, 5] };
-        selectWebRtcStreamFields(fields, 1);
-        expect(fields).to.deep.equal({ videoStreamId: 3 });
+    it("refuses a multi-stream list for a rev-1 provider rather than truncating it", () => {
+        // Sending the first entry alone establishes a session with fewer streams than the caller
+        // asked for, and answers success for it.
+        expect(() => selectWebRtcStreamFields({ videoStreams: [3, 5] }, 1)).to.throw(/videoStreams names 2 streams/);
     });
 
     it("down-converts the lists when the provider revision is unknown", () => {
@@ -141,10 +143,59 @@ describe("selectWebRtcStreamFields", () => {
         expect(fields).to.deep.equal({ videoStreamId: null, audioStreamId: null });
     });
 
-    it("drops a null auto-select on the other media kind once any list is sent to a rev-2 provider", () => {
-        const fields: Record<string, unknown> = { videoStreams: [5], audioStreamId: null };
-        selectWebRtcStreamFields(fields, 2);
-        expect(fields).to.deep.equal({ videoStreams: [5] });
+    it("refuses a list sent beside a null auto-select on the other media kind", () => {
+        // The provider's INVALID_COMMAND test spans both media kinds, and dropping the id would
+        // establish a video-only session for a caller that asked for auto-selected audio.
+        expect(() => selectWebRtcStreamFields({ videoStreams: [5], audioStreamId: null }, 2)).to.throw(
+            /videoStreams cannot be sent together with audioStreamId/,
+        );
+    });
+
+    it("refuses a list sent beside the singular id of the same media kind", () => {
+        expect(() => selectWebRtcStreamFields({ videoStreams: [5], videoStreamId: 7 }, 1)).to.throw(
+            /videoStreams cannot be sent together with videoStreamId/,
+        );
+    });
+
+    it("refuses an empty list whatever the provider's revision, rather than dropping it", () => {
+        // The field takes 1 to 16 entries, so an empty list asks for nothing it can carry, and
+        // dropping it on one revision while forwarding it on the other answers one input two ways.
+        expect(() => selectWebRtcStreamFields({ videoStreams: [] }, 1)).to.throw(/videoStreams names no stream/);
+        expect(() => selectWebRtcStreamFields({ videoStreams: [] }, 2)).to.throw(/videoStreams names no stream/);
+    });
+
+    it("says the revision is unread, not that the camera states revision 1, when it has not been read", () => {
+        // The refusal is this server's own position, not a limitation the camera stated.
+        expect(() => selectWebRtcStreamFields({ videoStreams: [3, 5] }, undefined)).to.throw(
+            /has not read this camera's WebRTC Provider ClusterRevision/,
+        );
+        expect(() => selectWebRtcStreamFields({ videoStreams: [3, 5] }, 1)).to.throw(/states cluster revision 1/);
+    });
+
+    it("leaves the request untouched when the other media kind is refused", () => {
+        // The conversion writes one media kind at a time, so a half-converted request would reach a
+        // retry, or a second reader, in a form its caller never sent.
+        const fields: Record<string, unknown> = { videoStreams: [7], audioStreams: [3, 5] };
+        expect(() => selectWebRtcStreamFields(fields, 1)).to.throw(/audioStreams names 2 streams/);
+        expect(fields).to.deep.equal({ videoStreams: [7], audioStreams: [3, 5] });
+    });
+
+    it("refuses a stream id past the uint16 its cluster field encodes it in", () => {
+        expect(() => selectWebRtcStreamFields({ videoStreams: [65536] }, 2)).to.throw(
+            /videoStreams\[0\] must be a stream id/,
+        );
+    });
+
+    it("refuses a list entry that is not a stream id", () => {
+        expect(() => selectWebRtcStreamFields({ videoStreams: [5, "7"] }, 2)).to.throw(
+            /videoStreams\[1\] must be a stream id/,
+        );
+    });
+
+    it("refuses a stream list that is not a list", () => {
+        expect(() => selectWebRtcStreamFields({ videoStreams: 5 }, 2)).to.throw(
+            /videoStreams must be an array of stream ids/,
+        );
     });
 });
 
@@ -229,7 +280,35 @@ describe("establishWebRtcProviderSession", () => {
         expect(invokedFields[0]?.originatingEndpointId).to.equal(ORIGINATING_ENDPOINT_ID);
     });
 
-    it("sends a legacy caller's singular stream id as a list to a revision-2 provider", async () => {
+    it("establishes nothing when the request states both stream forms", async () => {
+        // The refusal happens before the invoke, so the provider never creates a session this call
+        // would then have to end.
+        const invoked = new Array<string>();
+        const io: WebRtcProviderSessionIo = {
+            invoke: async command => {
+                invoked.push(command);
+                return { webRtcSessionId: 9 };
+            },
+            upsertSession: async () => {},
+        };
+
+        let thrown: unknown;
+        try {
+            await establishWebRtcProviderSession(
+                io,
+                baseArgs({
+                    fields: { streamUsage: 3, videoStreams: [5], audioStreamId: null },
+                    clusterRevision: 2,
+                }),
+            );
+        } catch (error) {
+            thrown = error;
+        }
+        expect((thrown as ServerError).code).to.equal(ServerErrorCode.InvalidArguments);
+        expect(invoked).to.deep.equal([]);
+    });
+
+    it("sends a legacy caller's singular stream id unchanged to a revision-2 provider", async () => {
         const invokedFields = new Array<Record<string, unknown>>();
         const io: WebRtcProviderSessionIo = {
             invoke: async (_command, fields) => {
@@ -244,8 +323,8 @@ describe("establishWebRtcProviderSession", () => {
             baseArgs({ fields: { streamUsage: 3, videoStreamId: 4 }, clusterRevision: 2 }),
         );
 
-        expect(invokedFields[0]?.videoStreams).to.deep.equal([4]);
-        expect("videoStreamId" in (invokedFields[0] ?? {})).to.equal(false);
+        expect(invokedFields[0]?.videoStreamId).to.equal(4);
+        expect("videoStreams" in (invokedFields[0] ?? {})).to.equal(false);
     });
 
     it("sends singular stream ids when the provider states no revision", async () => {
@@ -261,7 +340,7 @@ describe("establishWebRtcProviderSession", () => {
         await establishWebRtcProviderSession(
             io,
             baseArgs({
-                fields: { streamUsage: 3, videoStreams: [4, 6], audioStreams: [8] },
+                fields: { streamUsage: 3, videoStreams: [4], audioStreams: [8] },
                 clusterRevision: undefined,
             }),
         );
