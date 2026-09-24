@@ -66,6 +66,8 @@ export interface AllocatedSnapshotStream {
     minResolution: Resolution;
     maxResolution: Resolution;
     referenceCount: number;
+    /** Whether this stream uses one of the camera's `MaxConcurrentEncoders` (§11.2.6.13.9). */
+    hardwareEncoder: boolean;
 }
 
 interface LeaseSubject {

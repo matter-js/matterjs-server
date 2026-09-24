@@ -69,22 +69,79 @@ describe("snapshotPolicy", () => {
             referenceCount: 1,
         };
 
+        /** A snapshot stream the camera states uses one of its hardware encoders (§11.2.6.13.9). */
+        const ENCODING_SNAPSHOT = {
+            snapshotStreamId: 8,
+            imageCodec: 0,
+            minResolution: { width: 1920, height: 1080 },
+            maxResolution: { width: 1920, height: 1080 },
+            referenceCount: 0,
+            hardwareEncoder: true,
+        };
+
         it("leaves encoders free on a camera that states more than are taken", () => {
-            expect(encodersExhausted({ maxConcurrentEncoders: 4, videoStreams: [LIVE_VIDEO] })).to.equal(false);
+            expect(
+                encodersExhausted({ maxConcurrentEncoders: 4, videoStreams: [LIVE_VIDEO], snapshotStreams: [] }),
+            ).to.equal(false);
         });
 
         it("reports exhaustion once as many streams are live as the camera can encode", () => {
-            expect(encodersExhausted({ maxConcurrentEncoders: 1, videoStreams: [LIVE_VIDEO] })).to.equal(true);
+            expect(
+                encodersExhausted({ maxConcurrentEncoders: 1, videoStreams: [LIVE_VIDEO], snapshotStreams: [] }),
+            ).to.equal(true);
         });
 
         it("ignores an allocated video stream nothing references", () => {
             const idle = { ...LIVE_VIDEO, referenceCount: 0 };
-            expect(encodersExhausted({ maxConcurrentEncoders: 1, videoStreams: [idle] })).to.equal(false);
+            expect(encodersExhausted({ maxConcurrentEncoders: 1, videoStreams: [idle], snapshotStreams: [] })).to.equal(
+                false,
+            );
+        });
+
+        it("counts a snapshot stream the camera marks as using a hardware encoder", () => {
+            // No call gives such a stream back, so missing it sends the next request at a camera
+            // whose encoder is already taken.
+            expect(
+                encodersExhausted({
+                    maxConcurrentEncoders: 1,
+                    videoStreams: [],
+                    snapshotStreams: [ENCODING_SNAPSHOT],
+                }),
+            ).to.equal(true);
+        });
+
+        it("counts such a snapshot stream although nothing references it", () => {
+            // HardwareEncoder states that the stream uses an encoder, not that anyone is watching.
+            expect(
+                encodersExhausted({
+                    maxConcurrentEncoders: 2,
+                    videoStreams: [LIVE_VIDEO],
+                    snapshotStreams: [ENCODING_SNAPSHOT],
+                }),
+            ).to.equal(true);
+        });
+
+        it("ignores a snapshot stream the camera marks as using no hardware encoder", () => {
+            expect(
+                encodersExhausted({
+                    maxConcurrentEncoders: 1,
+                    videoStreams: [],
+                    snapshotStreams: [{ ...ENCODING_SNAPSHOT, hardwareEncoder: false }],
+                }),
+            ).to.equal(false);
         });
 
         it("treats any live stream as the last encoder when the camera states no budget", () => {
-            expect(encodersExhausted({ maxConcurrentEncoders: undefined, videoStreams: [LIVE_VIDEO] })).to.equal(true);
-            expect(encodersExhausted({ maxConcurrentEncoders: undefined, videoStreams: [] })).to.equal(false);
+            expect(
+                encodersExhausted({
+                    maxConcurrentEncoders: undefined,
+                    videoStreams: [LIVE_VIDEO],
+                    snapshotStreams: [],
+                }),
+            ).to.equal(true);
+            expect(
+                encodersExhausted({ maxConcurrentEncoders: undefined, videoStreams: [], snapshotStreams: [] }),
+            ).to.equal(false);
         });
     });
 
@@ -237,6 +294,7 @@ describe("snapshotPolicy", () => {
             minResolution: { width, height },
             maxResolution: { width, height },
             referenceCount: 0,
+            hardwareEncoder: false,
         });
 
         it("adopts a stream whose whole range covers the capability that would be allocated", () => {

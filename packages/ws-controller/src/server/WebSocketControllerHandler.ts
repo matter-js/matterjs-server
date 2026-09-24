@@ -1410,7 +1410,7 @@ export class WebSocketControllerHandler implements WebServerHandler {
         // The response is in skipMessageContentInLogFor because it carries the frame, which would
         // take what the server chose out of the log with it.
         logger.debug(
-            `camera_snapshot for node ${nodeId} endpoint ${endpointId}: codec ${wire.codec}, ${wire.resolution.width}x${wire.resolution.height}, ${result.data.length} bytes, downgraded ${wire.downgraded}, stream ${wire.stream_id ?? "returned"}`,
+            `camera_snapshot for node ${nodeId} endpoint ${endpointId}: codec ${wire.codec}, ${wire.resolution.width}x${wire.resolution.height}, ${result.data.length} bytes, downgraded ${wire.downgraded}, stream ${wire.stream_id}`,
         );
         return wire;
     }

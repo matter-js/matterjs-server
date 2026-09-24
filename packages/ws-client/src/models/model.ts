@@ -525,6 +525,14 @@ export interface CameraAllocatedSnapshotStream {
     max_resolution: CameraResolution;
     reference_count: number;
     owned_by_server: boolean;
+    /**
+     * Whether the stream uses one of the camera's `max_concurrent_encoders`, as the camera states it.
+     *
+     * Such a stream holds its encoder while it exists, whatever `reference_count` says, so it is what
+     * a client releases to make room when `camera_start_stream` or `camera_snapshot` answers
+     * `CAMERA_RESOURCE_EXHAUSTED_ERROR_CODE`.
+     */
+    hardware_encoder: boolean;
 }
 
 /**
@@ -690,14 +698,15 @@ export interface CameraSnapshotResult {
     /** True when the frame is smaller than the best capability the request's own bounds allowed. */
     downgraded: boolean;
     /**
-     * The snapshot stream the frame came from, present exactly when the server left that stream on
-     * the camera, and therefore the id to pass to `camera_release_stream`. A release still fails
-     * with `CAMERA_STREAM_IN_USE_ERROR_CODE` while something references the stream. Absent when the
-     * server gave the stream back before answering, which it does for a stream it allocated at a
-     * capability that holds the hardware encoder; a stream it adopted is named whatever capability
-     * it came from.
+     * The snapshot stream the frame came from. A successful call leaves that stream on the camera, so
+     * this is the stream the camera holds and the id to pass to `camera_release_stream`. A release
+     * still fails with `CAMERA_STREAM_IN_USE_ERROR_CODE` while something references the stream.
+     *
+     * A stream allocated at a capability that needs the hardware encoder holds one of the camera's
+     * encoders until it is released, which on single-encoder hardware is what a later video
+     * allocation would fail on. Releasing it is the client's call.
      */
-    stream_id?: number;
+    stream_id: number;
 }
 
 export interface APICommands {

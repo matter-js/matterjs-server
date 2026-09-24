@@ -2934,6 +2934,7 @@ describe("CameraStreamManager", () => {
                         minResolution: { width: 640, height: 480 },
                         maxResolution: { width: 1920, height: 1080 },
                         referenceCount: 0,
+                        hardwareEncoder: false,
                     },
                 ],
             };
@@ -3221,105 +3222,85 @@ describe("CameraStreamManager", () => {
             ).to.deep.equal([3]);
         });
 
-        it("gives the snapshot stream back although the frame was delivered", async () => {
-            // An allocated snapshot stream takes one of MaxConcurrentEncoders for as long as it exists,
-            // so keeping it would make the next poll fail and would block video allocation entirely.
+        it("names the stream it allocated at a capability that holds the hardware encoder", async () => {
+            // STATE's best capability requires the hardware encoder. The stream stays on the camera:
+            // a deallocate here could be sent but never awaited to an outcome the answer can state,
+            // so the answer would name a stream a late landing may already have removed.
             const { manager, invokes } = managerWith(STATE, async invoke => {
                 if (invoke.command === "snapshotStreamAllocate") return { snapshotStreamId: 3 };
                 if (invoke.command === "captureSnapshot") {
                     return { data: new Uint8Array([1]), imageCodec: 0, resolution: { width: 1920, height: 1080 } };
                 }
-                return undefined;
-            });
-            await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
-            expect(
-                invokes
-                    .filter(invoke => invoke.command === "snapshotStreamDeallocate")
-                    .map(invoke => invoke.fields.snapshotStreamId),
-            ).to.deep.equal([3]);
-        });
-
-        it("names no stream when it gave the one it allocated back", async () => {
-            // STATE's best capability requires the hardware encoder, so the stream is deallocated
-            // before the answer. Reporting its id would hand the caller something to release that
-            // this call has already released.
-            const { manager, invokes } = managerWith(STATE, async invoke => {
-                if (invoke.command === "snapshotStreamAllocate") return { snapshotStreamId: 3 };
-                if (invoke.command === "captureSnapshot") {
-                    return { data: new Uint8Array([1]), imageCodec: 0, resolution: { width: 1920, height: 1080 } };
-                }
-                return undefined;
-            });
-            const result = await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
-            expect(result.snapshotStreamId).to.equal(undefined);
-            expect(invokes.map(invoke => invoke.command)).to.contain("snapshotStreamDeallocate");
-        });
-
-        it("names the stream when the camera refused the give-back", async () => {
-            // The stream is still on the camera holding the encoder, so the caller needs its id.
-            // Omitting it would state there is nothing to release for a call that left an encoder
-            // pinned, and leave the client no id to call camera_release_stream with.
-            const { manager, invokes } = managerWith(STATE, async invoke => {
-                if (invoke.command === "snapshotStreamAllocate") return { snapshotStreamId: 3 };
-                if (invoke.command === "captureSnapshot") {
-                    return { data: new Uint8Array([1]), imageCodec: 0, resolution: { width: 1920, height: 1080 } };
-                }
-                if (invoke.command === "snapshotStreamDeallocate") throw statusError(Status.InvalidInState);
                 return undefined;
             });
             const result = await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
             expect(result.snapshotStreamId).to.equal(3);
-            expect(invokes.map(invoke => invoke.command)).to.contain("snapshotStreamDeallocate");
+            expect(invokes.map(invoke => invoke.command)).to.not.contain("snapshotStreamDeallocate");
         });
 
-        it("names no stream when the camera answers NotFound for the give-back", async () => {
-            // NotFound is the camera stating it does not have that stream, so the give-back reached
-            // its goal. Naming the id would hand the caller one camera_release_stream must fail on.
-            const { manager } = managerWith(STATE, async invoke => {
-                if (invoke.command === "snapshotStreamAllocate") return { snapshotStreamId: 3 };
+        it("adopts the encoder-holding stream it left behind on the next call", async () => {
+            // The stream stays, so the second call captures from it instead of allocating a twin
+            // that single-encoder hardware would refuse.
+            const { manager, holder, invokes } = managerWith(
+                { ...STATE, allocatedSnapshotStreams: [] },
+                async invoke => {
+                    if (invoke.command === "snapshotStreamAllocate") return { snapshotStreamId: 3 };
+                    if (invoke.command === "captureSnapshot") {
+                        return { data: new Uint8Array([1]), imageCodec: 0, resolution: { width: 1920, height: 1080 } };
+                    }
+                    return undefined;
+                },
+            );
+            const first = await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
+            holder.state = {
+                ...STATE,
+                allocatedSnapshotStreams: [
+                    {
+                        snapshotStreamId: first.snapshotStreamId,
+                        imageCodec: 0,
+                        minResolution: { width: 1920, height: 1080 },
+                        maxResolution: { width: 1920, height: 1080 },
+                        referenceCount: 0,
+                        hardwareEncoder: false,
+                    },
+                ],
+            };
+            const second = await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
+            expect(second.snapshotStreamId).to.equal(first.snapshotStreamId);
+            expect(invokes.filter(invoke => invoke.command === "snapshotStreamAllocate").length).to.equal(1);
+            expect(invokes.map(invoke => invoke.command)).to.not.contain("snapshotStreamDeallocate");
+        });
+
+        it("counts a snapshot stream the camera says holds the encoder before choosing a capability", async () => {
+            // The kept stream is what takes the camera's only encoder, and the camera states that per
+            // stream. Reading past it picks the 1080p capability, which the camera must then refuse
+            // for lack of capacity; on hardware whose every capability needs the encoder there is no
+            // rung below it to walk down to. Its range reaches below 1080p, so it is adoptable only
+            // once the encoder count has narrowed the choice to the 640x480 capability.
+            const encoderTaken: CameraState = {
+                ...STATE,
+                allocatedSnapshotStreams: [
+                    {
+                        snapshotStreamId: 8,
+                        imageCodec: 0,
+                        minResolution: { width: 640, height: 480 },
+                        maxResolution: { width: 1920, height: 1080 },
+                        referenceCount: 0,
+                        hardwareEncoder: true,
+                    },
+                ],
+            };
+            const { manager, invokes } = managerWith(encoderTaken, async invoke => {
+                if (invoke.command === "snapshotStreamAllocate") throw statusError(Status.ResourceExhausted);
                 if (invoke.command === "captureSnapshot") {
-                    return { data: new Uint8Array([1]), imageCodec: 0, resolution: { width: 1920, height: 1080 } };
+                    return { data: new Uint8Array([1]), imageCodec: 0, resolution: { width: 640, height: 480 } };
                 }
-                if (invoke.command === "snapshotStreamDeallocate") throw statusError(Status.NotFound);
                 return undefined;
             });
             const result = await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
-            expect(result.snapshotStreamId).to.equal(undefined);
-        });
-
-        it("answers within the cleanup budget when the camera never answers the give-back", async () => {
-            // The give-back runs under the endpoint lock, so an unbounded wait queues every other
-            // camera command on this endpoint behind a camera that stopped answering.
-            MockTime.reset();
-            try {
-                let entered = (): void => {};
-                const deallocateEntered = new Promise<void>(resolve => {
-                    entered = resolve;
-                });
-                const { manager } = managerWith(STATE, async invoke => {
-                    if (invoke.command === "snapshotStreamAllocate") return { snapshotStreamId: 3 };
-                    if (invoke.command === "captureSnapshot") {
-                        return {
-                            data: new Uint8Array([1]),
-                            imageCodec: 0,
-                            resolution: { width: 1920, height: 1080 },
-                        };
-                    }
-                    if (invoke.command === "snapshotStreamDeallocate") {
-                        entered();
-                        return new Promise<void>(() => {});
-                    }
-                    return undefined;
-                });
-
-                const snapshotting = manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
-                await deallocateEntered;
-                await MockTime.advance(DEVICE_CLEANUP_BUDGET_MS);
-                // The camera never said what became of the stream, so the answer names it.
-                expect((await snapshotting).snapshotStreamId).to.equal(3);
-            } finally {
-                MockTime.disable();
-            }
+            expect(invokes.map(invoke => invoke.command)).to.deep.equal(["captureSnapshot"]);
+            expect(result.snapshotStreamId).to.equal(8);
+            expect(result.downgraded).to.equal(true);
         });
 
         it("names an adopted stream although the camera's best capability needs the encoder", async () => {
@@ -3336,6 +3317,7 @@ describe("CameraStreamManager", () => {
                         minResolution: { width: 1920, height: 1080 },
                         maxResolution: { width: 1920, height: 1080 },
                         referenceCount: 0,
+                        hardwareEncoder: false,
                     },
                 ],
             };
@@ -3395,28 +3377,6 @@ describe("CameraStreamManager", () => {
             ).to.deep.equal([3]);
         });
 
-        it("allocates one snapshot stream per call and never two at once", async () => {
-            // A polling client is the case this guards: one stream per poll left behind is what made
-            // every snapshot after the first fail with 103 on single-encoder hardware.
-            const { manager, invokes } = managerWith(STATE, async invoke => {
-                if (invoke.command === "snapshotStreamAllocate") return { snapshotStreamId: 3 };
-                if (invoke.command === "captureSnapshot") {
-                    return { data: new Uint8Array([1]), imageCodec: 0, resolution: { width: 1920, height: 1080 } };
-                }
-                return undefined;
-            });
-            await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
-            await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
-            expect(invokes.map(invoke => invoke.command)).to.deep.equal([
-                "snapshotStreamAllocate",
-                "captureSnapshot",
-                "snapshotStreamDeallocate",
-                "snapshotStreamAllocate",
-                "captureSnapshot",
-                "snapshotStreamDeallocate",
-            ]);
-        });
-
         /** A snapshot stream the device already lists, at the camera's largest capability. */
         const EXISTING_SNAPSHOT_STREAM = {
             snapshotStreamId: 8,
@@ -3424,6 +3384,7 @@ describe("CameraStreamManager", () => {
             minResolution: { width: 1920, height: 1080 },
             maxResolution: { width: 1920, height: 1080 },
             referenceCount: 0,
+            hardwareEncoder: false,
         };
 
         it("captures from a snapshot stream the device already holds rather than allocating one", async () => {
@@ -3501,11 +3462,7 @@ describe("CameraStreamManager", () => {
                 return undefined;
             });
             await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
-            expect(invokes.map(invoke => invoke.command)).to.deep.equal([
-                "snapshotStreamAllocate",
-                "captureSnapshot",
-                "snapshotStreamDeallocate",
-            ]);
+            expect(invokes.map(invoke => invoke.command)).to.deep.equal(["snapshotStreamAllocate", "captureSnapshot"]);
         });
 
         it("refuses to adopt a stream above the resolution ceiling the caller stated", async () => {
@@ -3543,7 +3500,6 @@ describe("CameraStreamManager", () => {
                 "captureSnapshot",
                 "snapshotStreamAllocate",
                 "captureSnapshot",
-                "snapshotStreamDeallocate",
             ]);
             expect(result.data).to.deep.equal(new Uint8Array([1]));
         });
@@ -3575,23 +3531,23 @@ describe("CameraStreamManager", () => {
             expect(invokes.map(invoke => invoke.command)).to.deep.equal(["snapshotStreamAllocate", "captureSnapshot"]);
         });
 
-        it("keeps a snapshot stream releasable when the device refuses to take it back", async () => {
-            // The caller is told nothing about the stream, so the lease is the only record that this
-            // server allocated it and may still free it.
-            const { manager, invokes } = probeWith({ ...STATE, allocatedSnapshotStreams: [] }, async invoke => {
+        it("keeps the snapshot stream releasable by the id the answer named", async () => {
+            const { manager } = probeWith({ ...STATE, allocatedSnapshotStreams: [] }, async invoke => {
                 if (invoke.command === "snapshotStreamAllocate") return { snapshotStreamId: 3 };
                 if (invoke.command === "captureSnapshot") {
                     return { data: new Uint8Array([1]), imageCodec: 0, resolution: { width: 1920, height: 1080 } };
                 }
-                if (invoke.command === "snapshotStreamDeallocate" && invokes.length < 4) {
-                    throw new Error("deallocate refused");
-                }
                 return undefined;
             });
-            await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
+            const result = await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
             expect(manager.endpointsWithLeases).to.equal(1);
 
-            await manager.releaseStream({ nodeId: NODE, endpointId: ENDPOINT, kind: "snapshot", streamId: 3 });
+            await manager.releaseStream({
+                nodeId: NODE,
+                endpointId: ENDPOINT,
+                kind: "snapshot",
+                streamId: result.snapshotStreamId,
+            });
             expect(manager.endpointsWithLeases).to.equal(0);
         });
 
@@ -4139,7 +4095,7 @@ describe("CameraStreamManager", () => {
             expect(manager.endpointsWithLeases).to.equal(0);
         });
 
-        it("leases no snapshot stream when the capability it used holds the hardware encoder", async () => {
+        it("leases the snapshot stream it allocated at a capability that holds the hardware encoder", async () => {
             const { manager } = probeWith({ ...STATE, allocatedSnapshotStreams: [] }, async invoke => {
                 if (invoke.command === "snapshotStreamAllocate") return { snapshotStreamId: 3 };
                 if (invoke.command === "captureSnapshot") {
@@ -4148,7 +4104,7 @@ describe("CameraStreamManager", () => {
                 return undefined;
             });
             await manager.snapshot({ nodeId: NODE, endpointId: ENDPOINT });
-            expect(manager.endpointsWithLeases).to.equal(0);
+            expect(manager.endpointsWithLeases).to.equal(1);
         });
 
         it("holds no entry for an endpoint that only ever gave up a foreign stream", async () => {

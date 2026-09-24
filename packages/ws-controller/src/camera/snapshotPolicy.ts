@@ -47,20 +47,25 @@ export function usesHardwareEncoder(capability: SnapshotCapability): boolean {
  * happen. With `MaxConcurrentEncoders` absent the camera states no budget, and any live stream is
  * taken as the last one.
  *
- * Only referenced video streams are counted, although an allocated snapshot stream from a
- * capability that requires the hardware encoder holds one too. Counting the snapshot streams would
- * clamp a second `camera_snapshot` to a smaller capability and report that as `downgraded` — the
- * exact false report this function exists to remove — on the strength of a `AllocatedSnapshotStreams`
- * list that is a cached view and lags both a deallocate and an allocate. Under-counting costs one
- * refused allocate that the snapshot ladder already walks down from; over-counting costs picture size
- * and lies about why.
+ * A video stream counts while something references it; a snapshot stream counts while it exists,
+ * because `HardwareEncoder` states that the stream uses one of the encoders (§11.2.6.13.9) and says
+ * nothing about anyone watching. The flag is the camera's own, not derived from the capability the
+ * stream was allocated at. Snapshot streams have to be counted now that no call gives one back:
+ * missing them means the ladder walks down a camera whose encoder is already taken and, on hardware
+ * whose every snapshot capability needs one, fails with `ResourceExhausted` and no rung left. The
+ * price is `AllocatedSnapshotStreams` being a cached view: it lags an allocate, which under-counts
+ * and costs one refused allocate the ladder walks down from, and it lags a `camera_release_stream`,
+ * which over-counts and costs picture size on the next call until the report catches up.
  */
 export function encodersExhausted(args: {
     maxConcurrentEncoders: number | undefined;
     videoStreams: AllocatedVideoStream[];
+    snapshotStreams: AllocatedSnapshotStream[];
 }): boolean {
-    const { maxConcurrentEncoders, videoStreams } = args;
-    const taken = videoStreams.filter(stream => stream.referenceCount > 0).length;
+    const { maxConcurrentEncoders, videoStreams, snapshotStreams } = args;
+    const taken =
+        videoStreams.filter(stream => stream.referenceCount > 0).length +
+        snapshotStreams.filter(stream => stream.hardwareEncoder).length;
     if (maxConcurrentEncoders === undefined) return taken > 0;
     return taken >= maxConcurrentEncoders;
 }

@@ -483,6 +483,7 @@ export function toWireCapabilities(capabilities: CameraCapabilities): CameraCapa
                 max_resolution: stream.maxResolution,
                 reference_count: stream.referenceCount,
                 owned_by_server: stream.ownedByServer,
+                hardware_encoder: stream.hardwareEncoder,
             })),
         },
         sessions: capabilities.sessions.map(session => ({
@@ -546,12 +547,11 @@ export function toWireStartStreamResult(result: StartStreamResult): CameraStartS
 }
 
 export function toWireSnapshotResult(result: SnapshotResult): CameraSnapshotResult {
-    const wire: CameraSnapshotResult = {
+    return {
         data: Bytes.toBase64(result.data),
         codec: imageCodecName(result.imageCodec),
         resolution: result.resolution,
         downgraded: result.downgraded,
+        stream_id: result.snapshotStreamId,
     };
-    if (result.snapshotStreamId !== undefined) wire.stream_id = result.snapshotStreamId;
-    return wire;
 }

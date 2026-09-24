@@ -938,6 +938,7 @@ describe("cameraCommands", () => {
                 minResolution: { width: 640, height: 480 },
                 maxResolution: { width: 1920, height: 1080 },
                 referenceCount: 0,
+                hardwareEncoder: true,
                 ownedByServer: true,
             };
             const wire = toWireCapabilities({
@@ -975,6 +976,7 @@ describe("cameraCommands", () => {
                 max_resolution: { width: 1920, height: 1080 },
                 reference_count: 0,
                 owned_by_server: true,
+                hardware_encoder: true,
             });
         });
     });
@@ -1064,6 +1066,7 @@ describe("cameraCommands", () => {
                 imageCodec: 0,
                 resolution: { width: 640, height: 480 },
                 downgraded: true,
+                snapshotStreamId: 3,
             };
             const wire = toWireSnapshotResult(result);
             expect(wire.data).to.equal(Buffer.from([1, 2, 3]).toString("base64"));
@@ -1072,7 +1075,7 @@ describe("cameraCommands", () => {
             expect(wire.downgraded).to.equal(true);
         });
 
-        it("names the stream the frame came from when that stream outlived the call", () => {
+        it("names the stream the frame came from", () => {
             const wire = toWireSnapshotResult({
                 data: new Uint8Array([1]),
                 imageCodec: 0,
@@ -1081,19 +1084,6 @@ describe("cameraCommands", () => {
                 snapshotStreamId: 8,
             });
             expect(wire.stream_id).to.equal(8);
-        });
-
-        it("omits the key rather than sending a null for a stream that was given back", () => {
-            // The contract is the field's presence: a client testing `"stream_id" in response` must
-            // not see a member for a stream that no longer exists.
-            const wire = toWireSnapshotResult({
-                data: new Uint8Array([1]),
-                imageCodec: 0,
-                resolution: { width: 640, height: 480 },
-                downgraded: false,
-                snapshotStreamId: undefined,
-            });
-            expect(Object.keys(wire)).to.not.include("stream_id");
         });
     });
 

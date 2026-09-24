@@ -119,6 +119,7 @@ export function toCameraState(state: RawCameraAvStreamManagementState): CameraSt
             minResolution: toResolution(stream.minResolution),
             maxResolution: toResolution(stream.maxResolution),
             referenceCount: stream.referenceCount,
+            hardwareEncoder: stream.hardwareEncoder,
         })),
         microphoneCapabilities:
             state.microphoneCapabilities === undefined

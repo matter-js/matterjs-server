@@ -210,6 +210,7 @@ describe("toCameraState", () => {
                 minResolution: { width: 640, height: 480 },
                 maxResolution: { width: 1920, height: 1080 },
                 referenceCount: 0,
+                hardwareEncoder: false,
             },
         ]);
     });
