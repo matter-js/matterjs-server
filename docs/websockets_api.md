@@ -868,6 +868,12 @@ There is deliberately no resolution list: the camera does not state one. `codecs
 | `allocated.audio[]` | `audio_stream_id`, `stream_usage`, `audio_codec`, `channel_count`, `sample_rate`, `bit_rate`, `bit_depth`, `reference_count`, `owned_by_server` |
 | `allocated.snapshot[]` | `snapshot_stream_id`, `image_codec`, `min_resolution`, `max_resolution`, `reference_count`, `owned_by_server` |
 
+`sessions` lists the WebRTC sessions the camera itself holds, read from its `CurrentSessions` attribute. That list — not this server's own tracking — is what a `reference_count` above zero is held by, and it is the only place a session id can be learned after this server restarted: sessions are tracked in memory and a restart takes that with it, while the camera keeps holding them and only `EndSession` decrements a stream's reference count. So a session listed here can be ended with `camera_stop_stream` whether or not this server established it in its current run, and the stream it pins can then be released. The attribute is fabric-sensitive, so only sessions on this server's own fabric appear at all; within the fabric, `established_by_this_server` says the camera recorded this server as the session's peer, which is exactly when `camera_stop_stream` can end it — a camera answers `NOT_FOUND` for any other peer's session. A session another controller on the fabric holds is still listed, because it explains a reference count this server cannot free.
+
+| Group | Fields |
+|---|---|
+| `sessions[]` | `webrtc_session_id`, `peer_node_id`, `peer_endpoint_id`, `stream_usage`, `video_stream_ids`, `audio_stream_ids`, `established_by_this_server` |
+
 **camera_start_stream** - Allocate or reuse a stream and open a WebRTC session
 
 `ProvideOffer` when `sdp` is given, `SolicitOffer` otherwise.
@@ -940,9 +946,11 @@ Answer SDP and ICE candidates keep arriving on the `webrtc_callback` event.
 
 `webrtc_session_id` is a uint16: a value above 65535 names no session the camera can have and is refused with error 8 rather than answered as an unknown session.
 
-Response: `{ "ended": true }`. `ended` is `false` when this call ended no live session: either the id is not one this server tracks for that node and endpoint, or the camera answered `NOT_FOUND` for it, which is an id the camera could not resolve to one of its sessions — one the peer had already ended, or one that was never its own. In the second case the server drops its local records for the id as well; ending a session through `device_command` with `EndSession` drops the same records.
+The id does not have to be one this server established in its current run. A session `camera_get_capabilities` lists is ended too, which is the way back after an ungraceful restart: the server's own tracking is gone, the camera still holds the session, and its streams stay pinned at `reference_count` above zero until it is ended. The camera's check is about the server, not the WebSocket connection: any connection can end any session this server holds on that camera, including one another connection started, which was already so for a session started in this run and now also holds for one it did not.
 
-An `EndSession` the camera refuses for any other reason is an error response, not `ended: false`. That now also covers an `EndSession` another path sent first: a closing connection and the shutdown pass end the sessions they own, there is one `EndSession` per session however many paths reach it, and a `camera_stop_stream` naming a session one of them is already ending waits on that same invoke and reports its outcome. So the error can report an `EndSession` this request did not itself send. Either way the session is still open and the server still tracks it, so sending `camera_stop_stream` again is the retry.
+Response: `{ "ended": true }`. `ended` is `false` when the camera answered `NOT_FOUND`, which is an id it could not resolve to one of its own sessions with this server — one the peer had already ended, one it never held, or one belonging to another controller. In that case the server drops its local records for the id as well; ending a session through `device_command` with `EndSession` drops the same records.
+
+An `EndSession` the camera refuses for any other reason is an error response, not `ended: false`. That now also covers an `EndSession` another path sent first: a closing connection and the shutdown pass end the sessions they own, there is one `EndSession` per session however many paths reach it, and a `camera_stop_stream` naming a session one of them is already ending waits on that same invoke and reports its outcome. So the error can report an `EndSession` this request did not itself send. Either way the session is still open on the camera, so sending `camera_stop_stream` again is the retry.
 
 Ending a session with `device_command` and `EndSession` drops the same two local records, in that order: this server's camera session registry, then the requestor-side session tracking. A failure of the second is logged and does not fail the command — the `EndSession` already succeeded on the camera, and reporting an error would invite a retry the camera can only answer `NOT_FOUND`.
 

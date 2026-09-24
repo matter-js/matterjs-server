@@ -431,6 +431,15 @@ export class ControllerCommandHandler {
         return this.#establishWebRtcProviderSession(args);
     }
 
+    /**
+     * This server's own node id on the fabric — the `PeerNodeID` a camera stores for a session
+     * established with this server (§11.4.5.5), and what its `EndSession` peer check compares
+     * against (§11.5.6.7.3).
+     */
+    get localNodeId(): NodeId {
+        return this.#controller.fabric.nodeId;
+    }
+
     /** @throws ServerError if node not found */
     getNode(nodeId: NodeId): PairedNode {
         return this.#nodes.get(nodeId);

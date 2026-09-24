@@ -428,6 +428,15 @@ export function toWireCapabilities(capabilities: CameraCapabilities): CameraCapa
                 owned_by_server: stream.ownedByServer,
             })),
         },
+        sessions: capabilities.sessions.map(session => ({
+            webrtc_session_id: session.webRtcSessionId,
+            peer_node_id: session.peerNodeId,
+            peer_endpoint_id: session.peerEndpointId,
+            stream_usage: streamUsageName(session.streamUsage),
+            video_stream_ids: session.videoStreamIds,
+            audio_stream_ids: session.audioStreamIds,
+            established_by_this_server: session.establishedByThisServer,
+        })),
     };
 }
 

@@ -267,10 +267,13 @@ Read-only. Reports device-stated facts in four groups plus `allocated`. Optional
 - `allocated.video[]`: `video_stream_id`, `stream_usage`, `video_codec`, `min_resolution`, `max_resolution`, `min_frame_rate`, `max_frame_rate`, `min_bit_rate`, `max_bit_rate`, `reference_count`, `owned_by_server`.
 - `allocated.audio[]`: `audio_stream_id`, `stream_usage`, `audio_codec`, `channel_count`, `sample_rate`, `bit_rate`, `bit_depth`, `reference_count`, `owned_by_server`.
 - `allocated.snapshot[]`: `snapshot_stream_id`, `image_codec`, `min_resolution`, `max_resolution`, `reference_count`, `owned_by_server`.
+- `sessions[]`: `webrtc_session_id`, `peer_node_id`, `peer_endpoint_id`, `stream_usage`, `video_stream_ids`, `audio_stream_ids`, `established_by_this_server`.
 
 Every resolution is `{ width, height }`. There is deliberately no resolution list: the device does not expose one, and inventing one reproduces the defect in issue #1054. `video.codecs` is derived from `rate_distortion_points`, so a camera that states no trade-off point reports an empty list; `camera_start_stream` then accepts any video codec name and lets the device answer.
 
 `owned_by_server` says this server allocated the stream during its current run. It is a report, not a permission: `camera_release_stream` frees a stream whoever allocated it. `reference_count` is the device's own count of listeners.
+
+`sessions` is the camera's own `CurrentSessions` list, which is what holds a `reference_count` above zero. It is the only place a session id can be learned after this server restarted — sessions are tracked in memory and the camera keeps holding them — so each entry can be handed to `camera_stop_stream` and the streams it pins then freed. The attribute is fabric-sensitive, so only this fabric's sessions are listed; `established_by_this_server` says the camera recorded this server as the peer, which is exactly when `camera_stop_stream` can end the session, because a camera answers `NOT_FOUND` for another peer's. An entry of another controller on the fabric is still listed: it explains a reference count this server cannot free.
 
 ```typescript
 const caps = await client.sendCommand("camera_get_capabilities", 0, {
@@ -333,9 +336,11 @@ const { ended } = await client.sendCommand("camera_stop_stream", 0, {
 });
 ```
 
-`ended` is `false` when the call ended no live session. That covers an id this server does not track for this `node_id`/`endpoint_id` — an unknown id, an already-ended session, or one belonging to a different node or endpoint, rather than ending an arbitrary session by guessing its id — and an id the camera itself answers `NOT_FOUND` for, which is an id it could not resolve to one of its sessions. Any other refusal from the camera is an error response, so `ended: true` means the camera confirmed the end.
+The id does not have to be one this server established in its current run: an entry `camera_get_capabilities` lists under `sessions` is ended too, which is the way back after an ungraceful restart left a session holding a stream. Ending is server-wide rather than per connection: any connection can end any session this server holds on that camera, one another connection started included.
 
-The command rejects rather than answering `ended: false` when the `EndSession` fails. That has always been so for an `EndSession` this call sends itself; it now also holds for one a closing connection or the server shutdown sent first, since there is one `EndSession` per session and a stop naming a session already being ended waits on that invoke and reports its outcome. The session is still tracked afterwards, so the call can be retried.
+`ended` is `false` when the camera answered `NOT_FOUND`, which is an id it could not resolve to one of its own sessions with this server — an unknown id, an already-ended session, or one belonging to another controller. Any other refusal from the camera is an error response, so `ended: true` means the camera confirmed the end.
+
+The command rejects rather than answering `ended: false` when the `EndSession` fails. That has always been so for an `EndSession` this call sends itself; it now also holds for one a closing connection or the server shutdown sent first, since there is one `EndSession` per session and a stop naming a session already being ended waits on that invoke and reports its outcome. The session is still open on the camera afterwards, so the call can be retried.
 
 ### camera_snapshot
 

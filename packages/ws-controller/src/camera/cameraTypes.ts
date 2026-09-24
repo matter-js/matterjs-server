@@ -128,6 +128,26 @@ export interface ManagedSession {
     audioStreamIds: number[];
 }
 
+/**
+ * A WebRTC session as the camera's own `CurrentSessions` (§11.5.5.1) reports it.
+ *
+ * The camera is the record of which sessions exist, so this survives a restart of this server while
+ * nothing it tracks itself does. `CurrentSessions` is fabric-sensitive, so a read never carries
+ * another fabric's entries; within the fabric `peerNodeId` says which controller holds the session,
+ * and `EndSession` (§11.5.6.7.3) answers `NOT_FOUND` for every entry whose fabric and `PeerNodeID`
+ * are not the caller's.
+ */
+export interface DeviceWebRtcSession {
+    webRtcSessionId: number;
+    peerNodeId: NodeId;
+    peerEndpointId: EndpointNumber;
+    streamUsage: number;
+    videoStreamIds: number[];
+    audioStreamIds: number[];
+    /** `peerNodeId` is this server's own node id, so this is a session only this server can end. */
+    establishedByThisServer: boolean;
+}
+
 export interface ResolvedStream {
     streamId: number;
     envelope: VideoEnvelope | AudioEnvelope;

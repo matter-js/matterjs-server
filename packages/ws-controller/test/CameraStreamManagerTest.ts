@@ -14,7 +14,7 @@ import {
     preferredVideoCodec,
     UNREPORTED_LEASE_GRACE_MS,
 } from "../src/camera/CameraStreamManager.js";
-import type { AudioEnvelope, VideoEnvelope } from "../src/camera/cameraTypes.js";
+import type { AudioEnvelope, DeviceWebRtcSession, VideoEnvelope } from "../src/camera/cameraTypes.js";
 import { deviceStatusOf } from "../src/camera/deviceStatus.js";
 import { videoCodecLimits } from "../src/camera/sdpConstraints.js";
 import type { SdpVideoConstraints } from "../src/camera/sdpConstraints.js";
@@ -190,11 +190,19 @@ export function managerWith(
     state: CameraState | undefined,
     respond: (invoke: RecordedInvoke) => Promise<unknown> = async () => undefined,
     missingClusters?: number[],
-): { manager: CameraStreamManager; invokes: RecordedInvoke[]; holder: { state: CameraState | undefined } } {
+): {
+    manager: CameraStreamManager;
+    invokes: RecordedInvoke[];
+    holder: { state: CameraState | undefined; sessions: DeviceWebRtcSession[] };
+} {
     const invokes = new Array<RecordedInvoke>();
-    const holder: { state: CameraState | undefined } = { state };
+    const holder: { state: CameraState | undefined; sessions: DeviceWebRtcSession[] } = {
+        state,
+        sessions: new Array<DeviceWebRtcSession>(),
+    };
     const io: CameraDeviceIo = {
         readCameraState: async () => holder.state,
+        readWebRtcSessions: async () => holder.sessions,
         missingCameraClusters: async () =>
             missingClusters ??
             (holder.state === undefined
@@ -229,6 +237,7 @@ function probeWith(
     const holder = { state };
     const io: CameraDeviceIo = {
         readCameraState: async () => holder.state,
+        readWebRtcSessions: async () => new Array<DeviceWebRtcSession>(),
         missingCameraClusters: async () => new Array<number>(),
         invoke: async args => {
             const recorded = {
@@ -253,6 +262,35 @@ describe("CameraStreamManager", () => {
             expect(capabilities.video.maxFps).to.equal(30);
             expect(capabilities.limits.maxConcurrentEncoders).to.equal(1);
             expect(capabilities.limits.maxEncodedPixelRate).to.equal(248832000);
+        });
+
+        it("reports the sessions the camera itself holds, whoever established them", async () => {
+            const { manager, holder } = managerWith(STATE);
+            holder.sessions = [
+                {
+                    webRtcSessionId: 7,
+                    peerNodeId: NodeId(1),
+                    peerEndpointId: ENDPOINT,
+                    streamUsage: LIVE_VIEW,
+                    videoStreamIds: [9],
+                    audioStreamIds: [],
+                    establishedByThisServer: true,
+                },
+                {
+                    webRtcSessionId: 8,
+                    peerNodeId: NodeId(2),
+                    peerEndpointId: ENDPOINT,
+                    streamUsage: LIVE_VIEW,
+                    videoStreamIds: [9],
+                    audioStreamIds: [],
+                    establishedByThisServer: false,
+                },
+            ];
+
+            const capabilities = await manager.getCapabilities(NODE, ENDPOINT);
+
+            expect(capabilities.sessions.map(session => session.webRtcSessionId)).to.deep.equal([7, 8]);
+            expect(capabilities.sessions.map(session => session.establishedByThisServer)).to.deep.equal([true, false]);
         });
 
         it("derives the codec list from the trade-off points", async () => {
@@ -1002,6 +1040,7 @@ describe("CameraStreamManager", () => {
         it("clears the per-endpoint lock once the work it guards has settled", async () => {
             const io: CameraDeviceIo = {
                 readCameraState: async () => STATE,
+                readWebRtcSessions: async () => new Array<DeviceWebRtcSession>(),
                 missingCameraClusters: async () => new Array<number>(),
                 invoke: async () => ({ videoStreamId: 9 }),
             };
@@ -1936,14 +1975,40 @@ describe("CameraStreamManager", () => {
             expect(invokes.map(invoke => invoke.command)).to.not.include("videoStreamDeallocate");
         });
 
-        it("reports false and does nothing for a session id that is not tracked", async () => {
-            const { manager, invokes } = allocatingManager();
+        it("ends a session the camera holds that this process run never tracked", async () => {
+            // The way back after an ungraceful restart: the registry is gone, the camera still holds
+            // the session, and only EndSession decrements the stream's ReferenceCount.
+            const { manager, invokes } = managerWith(STATE);
             const ended = await manager.stopStream(NODE, ENDPOINT, 999);
-            expect(ended).to.equal(false);
-            expect(invokes.map(invoke => invoke.command)).to.not.include("endSession");
+            expect(ended).to.equal(true);
+            const endSession = invokes.find(invoke => invoke.command === "endSession");
+            expect(endSession?.fields.webRtcSessionId).to.equal(999);
+            expect(endSession?.nodeId).to.equal(NODE);
         });
 
-        it("reports false and does not end a session tracked for a different node", async () => {
+        it("reports false for an untracked id the camera answers NotFound for", async () => {
+            const { manager } = managerWith(STATE, async invoke => {
+                if (invoke.command === "endSession") throw statusError(Status.NotFound);
+                return undefined;
+            });
+            expect(await manager.stopStream(NODE, ENDPOINT, 999)).to.equal(false);
+        });
+
+        it("raises any other refusal of an untracked session rather than reporting a stop", async () => {
+            const { manager } = managerWith(STATE, async invoke => {
+                if (invoke.command === "endSession") throw statusError(Status.Busy);
+                return undefined;
+            });
+            let thrown: unknown;
+            try {
+                await manager.stopStream(NODE, ENDPOINT, 999);
+            } catch (error) {
+                thrown = error;
+            }
+            expect(deviceStatusOf(thrown)).to.equal(Status.Busy);
+        });
+
+        it("leaves a session tracked for another node alone and asks the named node instead", async () => {
             const { manager, invokes } = allocatingManager();
             await manager.startStream({
                 nodeId: NODE,
@@ -1955,12 +2020,16 @@ describe("CameraStreamManager", () => {
                 audio: false,
             });
             const otherNode = NodeId(999);
-            const ended = await manager.stopStream(otherNode, ENDPOINT, 42);
-            expect(ended).to.equal(false);
-            expect(invokes.map(invoke => invoke.command)).to.not.include("endSession");
+
+            await manager.stopStream(otherNode, ENDPOINT, 42);
+
+            const ends = invokes.filter(invoke => invoke.command === "endSession");
+            expect(ends.map(invoke => invoke.nodeId)).to.deep.equal([otherNode]);
+            // The session on NODE is untouched, so its own stop is still the one that ends it.
+            expect(await manager.stopStream(NODE, ENDPOINT, 42)).to.equal(true);
         });
 
-        it("reports false and does not end a session tracked for a different endpoint", async () => {
+        it("leaves a session tracked for another endpoint alone and asks the named endpoint instead", async () => {
             const { manager, invokes } = allocatingManager();
             await manager.startStream({
                 nodeId: NODE,
@@ -1972,9 +2041,12 @@ describe("CameraStreamManager", () => {
                 audio: false,
             });
             const otherEndpoint = EndpointNumber(99);
-            const ended = await manager.stopStream(NODE, otherEndpoint, 42);
-            expect(ended).to.equal(false);
-            expect(invokes.map(invoke => invoke.command)).to.not.include("endSession");
+
+            await manager.stopStream(NODE, otherEndpoint, 42);
+
+            const ends = invokes.filter(invoke => invoke.command === "endSession");
+            expect(ends.map(invoke => invoke.endpointId)).to.deep.equal([otherEndpoint]);
+            expect(await manager.stopStream(NODE, ENDPOINT, 42)).to.equal(true);
         });
 
         it("ends only the sessions of the connection that closed", async () => {
@@ -2293,13 +2365,20 @@ describe("CameraStreamManager", () => {
         });
 
         it("forgets a session the peer ended, so shutdown sends no EndSession for it", async () => {
-            const { manager, invokes } = allocatingManager();
+            const { manager, invokes } = managerWith(STATE, async invoke => {
+                if (invoke.command === "videoStreamAllocate") return { videoStreamId: 9 };
+                if (invoke.command === "provideOffer") return { webRtcSessionId: 42 };
+                // The peer ended it, so the camera resolves the id to no session of its own.
+                if (invoke.command === "endSession") throw statusError(Status.NotFound);
+                return undefined;
+            });
             await start(manager);
 
             expect(manager.forgetSession(NODE, ENDPOINT, 42)).to.equal(true);
             expect(await manager.stopStream(NODE, ENDPOINT, 42)).to.equal(false);
+            const afterStop = endedSessions(invokes).length;
             await manager.stopAll();
-            expect(endedSessions(invokes)).to.deep.equal([]);
+            expect(endedSessions(invokes)).to.have.length(afterStop);
         });
 
         it("gives back the streams it allocated when the provider call fails", async () => {
@@ -4323,6 +4402,7 @@ describe("CameraStreamManager reuse before the device has reported", () => {
             const invokes = new Array<RecordedInvoke>();
             const probe = new LeaseProbe({
                 readCameraState: async () => ({ ...STATE, allocatedVideoStreams: [] }),
+                readWebRtcSessions: async () => new Array<DeviceWebRtcSession>(),
                 missingCameraClusters: async () => new Array<number>(),
                 invoke: async args => {
                     invokes.push({
@@ -4375,6 +4455,7 @@ describe("CameraStreamManager reuse before the device has reported", () => {
             const invokes = new Array<RecordedInvoke>();
             const probe = new LeaseProbe({
                 readCameraState: async () => ({ ...STATE, allocatedVideoStreams: [] }),
+                readWebRtcSessions: async () => new Array<DeviceWebRtcSession>(),
                 missingCameraClusters: async () => new Array<number>(),
                 invoke: async args => {
                     invokes.push({

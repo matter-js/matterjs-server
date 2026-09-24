@@ -497,6 +497,30 @@ export interface CameraAllocatedSnapshotStream {
     owned_by_server: boolean;
 }
 
+/**
+ * A WebRTC session as the camera's own `CurrentSessions` reports it.
+ *
+ * This is what holds an allocation's `reference_count` above zero, and the only place a session id
+ * can be learned after this server restarted: the server tracks sessions in memory only, while the
+ * camera keeps the list. The camera reports only the sessions of the fabric this server is on.
+ */
+export interface CameraWebRtcSession {
+    /** Pass it to `camera_stop_stream` to end the session and release its hold on the streams. */
+    webrtc_session_id: number;
+    /** The controller the camera recorded as the session's peer. */
+    peer_node_id: number | bigint;
+    peer_endpoint_id: number;
+    /** Stream usage name, e.g. "LiveView". */
+    stream_usage: string;
+    video_stream_ids: number[];
+    audio_stream_ids: number[];
+    /**
+     * True when this server is the session's peer, which is exactly when `camera_stop_stream` can
+     * end it: a camera refuses `EndSession` for any other peer's session.
+     */
+    established_by_this_server: boolean;
+}
+
 export interface CameraCapabilitiesResult {
     video: {
         sensor?: CameraResolution;
@@ -544,6 +568,8 @@ export interface CameraCapabilitiesResult {
         audio: CameraAllocatedAudioStream[];
         snapshot: CameraAllocatedSnapshotStream[];
     };
+    /** The camera's current WebRTC sessions, which is what a non-zero `reference_count` is held by. */
+    sessions: CameraWebRtcSession[];
 }
 
 export interface CameraStartStreamVideoResult {
@@ -825,9 +851,12 @@ export interface APICommands {
     /**
      * Ends the WebRTC session; the underlying stream allocation is kept.
      *
-     * `ended` reports whether a live session was ended: false for an id the server does not track for
-     * this node and endpoint, and for one the camera answers `NOT_FOUND` for. Any other `EndSession`
-     * failure rejects, including one another path sent for the same session.
+     * The id does not have to be one this server established in this process run: a session listed by
+     * `camera_get_capabilities` with `established_by_this_server` is ended too, which is the way back
+     * after an ungraceful restart left a session holding a stream. `ended` reports whether a live
+     * session was ended, and is false for an id the camera answers `NOT_FOUND` for — which it does
+     * both for an id it does not know and for another peer's session. Any other `EndSession` failure
+     * rejects, including one another path sent for the same session.
      */
     camera_stop_stream: {
         requestArgs: { node_id: number | bigint; endpoint_id: number; webrtc_session_id: number };

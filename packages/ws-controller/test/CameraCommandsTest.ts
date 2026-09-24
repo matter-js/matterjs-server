@@ -733,6 +733,7 @@ describe("cameraCommands", () => {
             snapshot: { capabilities: [] },
             limits: { supportedStreamUsages: [], streamUsagePriorities: [] },
             allocated: { video: [], audio: [], snapshot: [] },
+            sessions: [],
         };
 
         it("emits snake_case keys and omits absent capabilities", () => {
@@ -741,6 +742,35 @@ describe("cameraCommands", () => {
             expect(wire.video).to.have.property("rate_distortion_points");
             expect(wire.limits).to.have.property("supported_stream_usages");
             expect(wire.limits).to.not.have.property("max_network_bandwidth");
+        });
+
+        it("reports each camera session with its stream ids and a named stream usage", () => {
+            const wire = toWireCapabilities({
+                ...EMPTY_CAPABILITIES,
+                sessions: [
+                    {
+                        webRtcSessionId: 7,
+                        peerNodeId: NodeId(5n),
+                        peerEndpointId: EndpointNumber(1),
+                        streamUsage: StreamUsage.LiveView,
+                        videoStreamIds: [9],
+                        audioStreamIds: [4],
+                        establishedByThisServer: true,
+                    },
+                ],
+            });
+
+            expect(wire.sessions).to.deep.equal([
+                {
+                    webrtc_session_id: 7,
+                    peer_node_id: NodeId(5n),
+                    peer_endpoint_id: EndpointNumber(1),
+                    stream_usage: "LiveView",
+                    video_stream_ids: [9],
+                    audio_stream_ids: [4],
+                    established_by_this_server: true,
+                },
+            ]);
         });
 
         it("names every codec it reports, so the output can be sent back as a request", () => {

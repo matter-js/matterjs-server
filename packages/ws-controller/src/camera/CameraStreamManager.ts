@@ -17,6 +17,7 @@ import type {
     AllocatedSnapshotStream,
     AllocatedVideoStream,
     AudioEnvelope,
+    DeviceWebRtcSession,
     LeaseStatement,
     ManagedSession,
     Resolution,
@@ -382,6 +383,14 @@ export interface CameraDeviceIo {
      * `camera_not_supported` reports them. Empty when the endpoint exposes both.
      */
     missingCameraClusters(nodeId: NodeId, endpointId: EndpointNumber): Promise<number[]>;
+    /**
+     * The WebRTC sessions the provider reports in `CurrentSessions`, or undefined when the endpoint
+     * does not expose the provider behaviour.
+     *
+     * The camera's own list, not this server's: it names the sessions of earlier process runs too,
+     * which nothing here records.
+     */
+    readWebRtcSessions(nodeId: NodeId, endpointId: EndpointNumber): Promise<DeviceWebRtcSession[] | undefined>;
     invoke(args: {
         nodeId: NodeId;
         endpointId: EndpointNumber;
@@ -421,6 +430,13 @@ export interface CameraCapabilities {
         audio: Array<AllocatedAudioStream & { ownedByServer: boolean }>;
         snapshot: Array<AllocatedSnapshotStream & { ownedByServer: boolean }>;
     };
+    /**
+     * The sessions the camera reports for this fabric, which is what holds an allocation's
+     * `referenceCount` above zero. Empty both for an endpoint that holds none and for one with no
+     * WebRTC provider cluster, which `camera_get_capabilities` serves because it needs only AV
+     * Stream Management.
+     */
+    sessions: DeviceWebRtcSession[];
 }
 
 export interface StartStreamArgs {
@@ -763,6 +779,7 @@ export class CameraStreamManager {
 
     async getCapabilities(nodeId: NodeId, endpointId: EndpointNumber): Promise<CameraCapabilities> {
         const state = await this.requireState(nodeId, endpointId);
+        const sessions = (await this.#io.readWebRtcSessions(nodeId, endpointId)) ?? new Array<DeviceWebRtcSession>();
         const owned = (kind: StreamKind, streamId: number): boolean =>
             this.ownsStream(nodeId, endpointId, kind, streamId);
 
@@ -816,6 +833,7 @@ export class CameraStreamManager {
                     ownedByServer: owned("snapshot", stream.snapshotStreamId),
                 })),
             },
+            sessions,
         };
     }
 
@@ -1585,17 +1603,48 @@ export class CameraStreamManager {
     /**
      * Ends the session on the device. The allocation is deliberately kept.
      *
-     * Returns whether this call ended a live session: false both for an id this server does not track
-     * for that node and endpoint — `webRtcSessionId` is caller-supplied and allocated per provider, so
-     * it names a session only together with the node and endpoint it was issued on — and for one the
-     * device answers `NotFound` for, which is an id it cannot resolve to one of its sessions. A failed
-     * `EndSession` is raised, not reported as a stop, including when another path sent the `EndSession`
-     * this call joined.
+     * Returns whether this call ended a live session: false for an id the device answers `NotFound`
+     * for, which is one it cannot resolve to a session of its own with this server. A failed
+     * `EndSession` is raised, not reported as a stop, including when another path sent the
+     * `EndSession` this call joined. An id this process run tracks goes through the registry, so it
+     * shares one `EndSession` with every other path that reaches the same session; any other id is
+     * sent to the device as it stands, since `webRtcSessionId` is allocated per provider and names a
+     * session only together with the node and endpoint it was issued on.
      */
     async stopStream(nodeId: NodeId, endpointId: EndpointNumber, webRtcSessionId: number): Promise<boolean> {
         const session = this.#sessions.get(nodeId, endpointId, webRtcSessionId);
-        if (session === undefined) return false;
-        return this.#sessions.releaseOnce(session, held => this.#endSession(held));
+        if (session !== undefined) return this.#sessions.releaseOnce(session, held => this.#endSession(held));
+        return this.#endUntrackedSession(nodeId, endpointId, webRtcSessionId);
+    }
+
+    /**
+     * End a session on the camera that this process run has no record of.
+     *
+     * The camera's `CurrentSessions` is the record of which sessions exist; this server's registry is
+     * an in-memory one that a restart takes with it, and only `EndSession` decrements a stream's
+     * `ReferenceCount`, so a session no record names still holds its streams. The invoke goes out
+     * unconditionally because `EndSession` (§11.5.6.7.3) fails `NOT_FOUND` unless the accessing fabric
+     * and `PeerNodeID` match the stored entry: whatever id a client passes, the camera ends a session
+     * of this server's or none. That check is about the server, not the connection — any connection
+     * can end any of this server's sessions here, as it already can for a tracked one.
+     */
+    async #endUntrackedSession(nodeId: NodeId, endpointId: EndpointNumber, webRtcSessionId: number): Promise<boolean> {
+        try {
+            await this.io.invoke({
+                nodeId,
+                endpointId,
+                cluster: "webrtcProvider",
+                command: "endSession",
+                fields: { webRtcSessionId, reason: WEBRTC_END_REASON_USER_HANGUP },
+            });
+        } catch (error) {
+            if (!deviceForgotSession(error)) throw error;
+            logger.info(
+                `Node ${nodeId} holds no WebRTC session ${webRtcSessionId} for this server (NotFound); nothing was ended`,
+            );
+            return false;
+        }
+        return true;
     }
 
     /**

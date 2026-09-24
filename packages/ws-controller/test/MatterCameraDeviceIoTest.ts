@@ -478,6 +478,119 @@ describe("MatterCameraDeviceIo.invoke (webrtcProvider routing)", () => {
     });
 });
 
+describe("MatterCameraDeviceIo.readWebRtcSessions", () => {
+    const NODE_ID = NodeId(5n);
+    const ENDPOINT_ID = EndpointNumber(1);
+    const LOCAL_NODE_ID = NodeId(112233n);
+
+    interface FakeEndpoint {
+        behaviors: { has: (behavior: unknown) => boolean };
+        stateOf: (behavior: unknown) => { currentSessions: unknown[] };
+    }
+
+    function makeHandler(endpoint: FakeEndpoint | undefined): ControllerCommandHandler {
+        const stub = {
+            getNode: () => ({ node: { endpoints: { for: () => endpoint } } }),
+            localNodeId: LOCAL_NODE_ID,
+        };
+        return stub as unknown as ControllerCommandHandler;
+    }
+
+    function endpointWith(sessions: unknown[]): FakeEndpoint {
+        return {
+            behaviors: { has: behavior => behavior === WebRtcTransportProviderClient },
+            stateOf: () => ({ currentSessions: sessions }),
+        };
+    }
+
+    it("reports nothing for an endpoint without the provider cluster", async () => {
+        const io = new MatterCameraDeviceIo(
+            makeHandler({ behaviors: { has: () => false }, stateOf: () => ({ currentSessions: [] }) }),
+        );
+        expect(await io.readWebRtcSessions(NODE_ID, ENDPOINT_ID)).to.equal(undefined);
+    });
+
+    it("reports nothing for an endpoint that does not exist", async () => {
+        const io = new MatterCameraDeviceIo(makeHandler(undefined));
+        expect(await io.readWebRtcSessions(NODE_ID, ENDPOINT_ID)).to.equal(undefined);
+    });
+
+    it("names this server's own sessions by the peer node id the camera recorded", async () => {
+        const io = new MatterCameraDeviceIo(
+            makeHandler(
+                endpointWith([
+                    {
+                        id: 7,
+                        peerNodeId: LOCAL_NODE_ID,
+                        peerEndpointId: EndpointNumber(2),
+                        streamUsage: 3,
+                        videoStreams: [9],
+                        audioStreams: [4],
+                    },
+                    {
+                        id: 8,
+                        peerNodeId: NodeId(998877n),
+                        peerEndpointId: EndpointNumber(2),
+                        streamUsage: 3,
+                        videoStreams: [9],
+                        audioStreams: [],
+                    },
+                ]),
+            ),
+        );
+
+        const sessions = (await io.readWebRtcSessions(NODE_ID, ENDPOINT_ID)) ?? [];
+
+        expect(sessions.map(session => session.webRtcSessionId)).to.deep.equal([7, 8]);
+        expect(sessions.map(session => session.establishedByThisServer)).to.deep.equal([true, false]);
+        expect(sessions[0].videoStreamIds).to.deep.equal([9]);
+        expect(sessions[0].audioStreamIds).to.deep.equal([4]);
+    });
+
+    it("names the streams a revision-1 camera states as singular ids", async () => {
+        const io = new MatterCameraDeviceIo(
+            makeHandler(
+                endpointWith([
+                    {
+                        id: 7,
+                        peerNodeId: LOCAL_NODE_ID,
+                        peerEndpointId: EndpointNumber(2),
+                        streamUsage: 3,
+                        videoStreamId: 9,
+                        audioStreamId: 4,
+                    },
+                ]),
+            ),
+        );
+
+        const sessions = (await io.readWebRtcSessions(NODE_ID, ENDPOINT_ID)) ?? [];
+
+        expect(sessions[0].videoStreamIds).to.deep.equal([9]);
+        expect(sessions[0].audioStreamIds).to.deep.equal([4]);
+    });
+
+    it("reports a session that names no stream either way with empty lists", async () => {
+        const io = new MatterCameraDeviceIo(
+            makeHandler(
+                endpointWith([
+                    {
+                        id: 7,
+                        peerNodeId: LOCAL_NODE_ID,
+                        peerEndpointId: EndpointNumber(2),
+                        streamUsage: 3,
+                        videoStreamId: null,
+                    },
+                ]),
+            ),
+        );
+
+        const sessions = (await io.readWebRtcSessions(NODE_ID, ENDPOINT_ID)) ?? [];
+
+        expect(sessions[0].videoStreamIds).to.deep.equal([]);
+        expect(sessions[0].audioStreamIds).to.deep.equal([]);
+    });
+});
+
 describe("MatterCameraDeviceIo.missingCameraClusters", () => {
     const NODE_ID = NodeId(5n);
     const ENDPOINT_ID = EndpointNumber(1);

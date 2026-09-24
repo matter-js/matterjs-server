@@ -11,9 +11,10 @@ import type { Specifier } from "@matter/main/protocol";
 import { CameraAvStreamManagementClient } from "@matter/node/behaviors/camera-av-stream-management";
 import { WebRtcTransportProviderClient } from "@matter/node/behaviors/web-rtc-transport-provider";
 import type { ControllerCommandHandler } from "../controller/ControllerCommandHandler.js";
+import { resolveWebRtcSessionStreams } from "../controller/webRtcSessionStreams.js";
 import { dropWebRtcSessionTracking, invokeEndSession } from "../controller/webRtcSessionTracking.js";
 import type { CameraDeviceIo, CameraState } from "./CameraStreamManager.js";
-import type { Resolution } from "./cameraTypes.js";
+import type { DeviceWebRtcSession, Resolution } from "./cameraTypes.js";
 
 function toResolution(resolution: { width: number; height: number }): Resolution {
     return { width: resolution.width, height: resolution.height };
@@ -153,6 +154,36 @@ export class MatterCameraDeviceIo implements CameraDeviceIo {
             return undefined;
         }
         return toCameraState(endpoint.stateOf(CameraAvStreamManagementClient));
+    }
+
+    /**
+     * `CurrentSessions` as the provider reports it, with the peer identity resolved against this
+     * server's own node id.
+     *
+     * Read from typed behaviour state, so the fabric filtering the attribute's fabric-sensitive
+     * quality (§11.5.5.1) demands is the one the node's subscription applied. A lagging report costs
+     * nothing here: it is what a client is offered to pick an id from, and the camera decides what
+     * the `EndSession` that follows ends.
+     *
+     * The stream ids come from the same resolution the outbound offer uses, because the struct
+     * carries them the same two ways: `VideoStreams` / `AudioStreams` from revision 2, and the
+     * deprecated singular `VideoStreamID` / `AudioStreamID` a revision-1 camera states instead
+     * (§11.4.5.5). Reading only the lists leaves every session of a revision-1 camera naming no
+     * stream, which is the one thing the report exists to explain.
+     */
+    async readWebRtcSessions(nodeId: NodeId, endpointId: EndpointNumber): Promise<DeviceWebRtcSession[] | undefined> {
+        const endpoint = this.#handler.getNode(nodeId).node.endpoints.for(endpointId);
+        if (endpoint === undefined || !endpoint.behaviors.has(WebRtcTransportProviderClient)) return undefined;
+        const localNodeId = this.#handler.localNodeId;
+        return endpoint.stateOf(WebRtcTransportProviderClient).currentSessions.map(session => ({
+            webRtcSessionId: session.id,
+            peerNodeId: session.peerNodeId,
+            peerEndpointId: session.peerEndpointId,
+            streamUsage: session.streamUsage,
+            videoStreamIds: resolveWebRtcSessionStreams(session.videoStreams, session.videoStreamId, undefined) ?? [],
+            audioStreamIds: resolveWebRtcSessionStreams(session.audioStreams, session.audioStreamId, undefined) ?? [],
+            establishedByThisServer: session.peerNodeId === localNodeId,
+        }));
     }
 
     async missingCameraClusters(nodeId: NodeId, endpointId: EndpointNumber): Promise<number[]> {

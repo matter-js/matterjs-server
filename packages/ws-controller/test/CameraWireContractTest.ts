@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { EndpointNumber, NodeId } from "@matter/main";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -131,6 +132,17 @@ const CAPABILITIES: CameraCapabilities = {
             },
         ],
     },
+    sessions: [
+        {
+            webRtcSessionId: 4,
+            peerNodeId: NodeId(5n),
+            peerEndpointId: EndpointNumber(1),
+            streamUsage: 2,
+            videoStreamIds: [1],
+            audioStreamIds: [2],
+            establishedByThisServer: true,
+        },
+    ],
 };
 
 const START_STREAM: StartStreamResult = {
@@ -230,6 +242,7 @@ const CAPABILITY_WITHOUT_HINT: Record<string, string> = {
     "allocated.video": "what is on the camera now; camera_release_stream takes its ids",
     "allocated.audio": "as allocated.video",
     "allocated.snapshot": "as allocated.video",
+    sessions: "the camera's current sessions; camera_stop_stream takes their ids",
 };
 
 /**
@@ -340,6 +353,11 @@ describe("camera wire contract", () => {
         it("accounts for every reported key, as a hint or as a stated reason for having none", () => {
             const reported = new Array<string>();
             for (const [group, value] of Object.entries(wire)) {
+                // A list group's own keys are indices, so it is accounted for as a whole.
+                if (Array.isArray(value)) {
+                    reported.push(group);
+                    continue;
+                }
                 for (const key of Object.keys(value as Record<string, unknown>)) reported.push(`${group}.${key}`);
             }
             reported.push("snapshot.capabilities[].image_codec");
