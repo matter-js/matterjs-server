@@ -1227,6 +1227,7 @@ describe("CameraStreamManager", () => {
                         audio: { state: "receiving" as const, codecs: ["AAC"] },
                         wantsTalkback: false,
                         limitsByCodec: new Map(),
+                        unreadableLevelCodecs: new Set<string>(),
                     },
                     audio: { codecs: ["OPUS"] },
                 });
@@ -1251,6 +1252,7 @@ describe("CameraStreamManager", () => {
                     audio: { state: "receiving" as const, codecs: ["AAC"] },
                     wantsTalkback: false,
                     limitsByCodec: new Map(),
+                    unreadableLevelCodecs: new Set<string>(),
                 },
             });
             expect(resolved).to.equal(undefined);
@@ -1270,6 +1272,7 @@ describe("CameraStreamManager", () => {
                     audio: { state: "receiving" as const },
                     wantsTalkback: false,
                     limitsByCodec: new Map(),
+                    unreadableLevelCodecs: new Set<string>(),
                 },
                 audio: { bitRate: 32000 },
             });
@@ -4384,6 +4387,7 @@ describe("CameraStreamManager reuse before the device has reported", () => {
                     audio: { state: "absent" as const },
                     wantsTalkback: false,
                     limitsByCodec: new Map([["H265", { maxPixels: 1280 * 720 }]]),
+                    unreadableLevelCodecs: new Set<string>(),
                 },
             });
         } catch (error) {
@@ -4754,9 +4758,58 @@ describe("preferredVideoCodec", () => {
             audio: { state: "absent" as const },
             wantsTalkback: false,
             limitsByCodec: new Map(),
+            unreadableLevelCodecs: new Set<string>(),
         };
         const failure = incompatible(() => preferredVideoCodec([H265], offer, undefined));
         expect(failure.code).to.equal(ServerErrorCode.CameraStreamIncompatible);
+        expect(failure.payload.reason).to.equal("codec");
+        expect(failure.payload.requested).to.deep.equal(["H264"]);
+    });
+
+    it("refuses a codec whose level it cannot read rather than treating it as unconstrained", () => {
+        // The camera and the peer both offer H.264 and nothing else. The level states the frame size
+        // the peer can decode and this one names no row of Table A-1, so there is no ceiling to hold
+        // the stream to — selecting H.264 anyway is what hands the peer a picture it cannot decode.
+        const offer = {
+            video: { state: "receiving" as const, codecs: ["H264"] },
+            audio: { state: "absent" as const },
+            wantsTalkback: false,
+            limitsByCodec: new Map(),
+            unreadableLevelCodecs: new Set(["H264"]),
+        };
+        const failure = incompatible(() => preferredVideoCodec([H264], offer, undefined));
+        expect(failure.code).to.equal(ServerErrorCode.CameraStreamIncompatible);
+        // Not "codec": the two do have a codec in common, so sending the client to change its codec
+        // list would send it to change the one thing that is not the problem.
+        expect(failure.payload.reason).to.equal("level");
+        expect(failure.payload.requested).to.deep.equal(["H264"]);
+        expect(failure.payload.device).to.deep.equal(["H264"]);
+    });
+
+    it("selects the codec whose level it can read over the one it cannot", () => {
+        const offer = {
+            video: { state: "receiving" as const, codecs: ["H264", "H265"] },
+            audio: { state: "absent" as const },
+            wantsTalkback: false,
+            limitsByCodec: new Map(),
+            unreadableLevelCodecs: new Set(["H264"]),
+        };
+        expect(preferredVideoCodec([H264, H265], offer, undefined)).to.equal(H265);
+    });
+
+    it("reports a codec mismatch, not a level failure, when the unreadable codec was never shared", () => {
+        // Characterization: this is the pre-existing codec narrowing, asserted here so the level
+        // branch cannot start claiming a failure the codec lists already explain. The peer's
+        // unreadable codec is one the camera does not offer either, so the level is not what
+        // emptied the set and naming it would send the client after the wrong thing.
+        const offer = {
+            video: { state: "receiving" as const, codecs: ["H264"] },
+            audio: { state: "absent" as const },
+            wantsTalkback: false,
+            limitsByCodec: new Map(),
+            unreadableLevelCodecs: new Set(["H264"]),
+        };
+        const failure = incompatible(() => preferredVideoCodec([H265], offer, undefined));
         expect(failure.payload.reason).to.equal("codec");
         expect(failure.payload.requested).to.deep.equal(["H264"]);
     });
@@ -4769,6 +4822,7 @@ describe("preferredVideoCodec", () => {
             audio: { state: "absent" as const },
             wantsTalkback: false,
             limitsByCodec: new Map(),
+            unreadableLevelCodecs: new Set<string>(),
         };
         const failure = incompatible(() => preferredVideoCodec([H264, H265], offer, ["H265"]));
         expect(failure.payload.device).to.deep.equal(["H264"]);
@@ -4780,6 +4834,7 @@ describe("preferredVideoCodec", () => {
             audio: { state: "absent" as const },
             wantsTalkback: false,
             limitsByCodec: new Map(),
+            unreadableLevelCodecs: new Set<string>(),
         };
         expect(preferredVideoCodec([H264, H265], offer, ["H264"])).to.equal(H264);
     });
@@ -4802,6 +4857,7 @@ describe("preferredVideoCodec", () => {
             audio: { state: "absent" as const },
             wantsTalkback: false,
             limitsByCodec: new Map(),
+            unreadableLevelCodecs: new Set<string>(),
         };
         expect(preferredVideoCodec([H265], offer, undefined)).to.equal(H265);
     });

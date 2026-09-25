@@ -6,14 +6,16 @@
 
 import { Logger } from "@matter/main";
 import { parse } from "sdp-transform";
+import type { CodecLevelLimits } from "./codecLevels.js";
+import { h264ProfileLevelIdLimits, h265LevelIdLimits, PIXELS_PER_MACROBLOCK } from "./codecLevels.js";
 import { videoCodecName } from "./wireNames.js";
 
 const logger = Logger.get("sdpConstraints");
 
-/** A macroblock is 16x16 pixels; max-fs and max-mbps are both expressed in macroblocks. */
-const PIXELS_PER_MACROBLOCK = 256;
-/** max-br is in kilobits per second. */
+/** `max-br` is in units of 1000 bits per second under both RFC 6184 §8.1 and RFC 7798 §7.1. */
 const BITS_PER_KILOBIT = 1000;
+/** H.265's `max-fps` counts frames over this period (RFC 7798 §7.1). */
+const FRAME_RATE_PERIOD_SECONDS = 100;
 
 /**
  * What one video codec's `a=fmtp` lines state it can decode.
@@ -22,11 +24,23 @@ const BITS_PER_KILOBIT = 1000;
  * `max-fs=3600` beside H.265 at `max-fs=8160` states two limits, not one. Every record naming the
  * same codec is folded to the tighter value — several payload types in one section, and several
  * sections — since which of them the camera picks is not this server's to decide.
+ *
+ * Within one record the codec's own level states these same ceilings, and the codec's own
+ * capability-extension parameters override the level's value rather than being folded against it:
+ * RFC 6184 §8.1 (`max-fs`, `max-mbps`, `max-br`) and RFC 7798 §7.1 (`max-lps`, `max-lsr`, `max-br`)
+ * both define them as signalling a capability at or above the level's, so where both are stated the
+ * explicit one is the peer's real ceiling. The names are per codec, never shared: an H.264 `max-fs`
+ * on an H.265 record names no parameter H.265 defines, and reading it would let an unrecognised
+ * token lift the level the peer did state.
  */
 export interface VideoCodecLimits {
     readonly maxPixels?: number;
     readonly maxPixelsPerSecond?: number;
-    /** From `max-fr`, which RFC 7741 §6.1 defines in whole frames per second. */
+    /**
+     * From `max-fr` in whole frames per second (RFC 7741 §6.1), or from H.265's `max-fps`, which
+     * RFC 7798 §7.1 counts over 100 seconds and which is converted here. No codec level states a
+     * frame rate, so this one has no level to fall back on.
+     */
     readonly maxFrameRate?: number;
     readonly maxBitRate?: number;
 }
@@ -79,6 +93,16 @@ export interface SdpVideoConstraints {
     wantsTalkback: boolean;
     /** Per-codec fmtp limits, keyed by upper-cased codec name. A codec absent here stated none. */
     limitsByCodec: ReadonlyMap<string, VideoCodecLimits>;
+    /**
+     * Video codecs the offer states a level for that this server cannot map to a decode ceiling.
+     *
+     * Such a codec is not one this server may select: a level bounds the frame size and the
+     * processing rate the peer can decode, so a level it cannot read is a ceiling it cannot honour,
+     * and handing the peer a stream past it produces no picture at all. It is kept here rather than
+     * dropped from the section's codec list, because a list narrowed to empty reads as "the peer
+     * stated no codec", which is the opposite statement — the unconstrained one.
+     */
+    unreadableLevelCodecs: ReadonlySet<string>;
 }
 
 /**
@@ -132,9 +156,98 @@ export function receivableCodecs(disposition: MediaDisposition): readonly string
  * `max-fs`. Missing one is not a parse failure the caller sees — it silently drops the peer's decode
  * limit and lets a stream it cannot decode be allocated.
  */
+function fmtpValue(params: string, key: string): string | undefined {
+    const match = new RegExp(`(?:^|;)\\s*${key}=([^;\\s]+)`, "i").exec(params);
+    return match?.[1];
+}
+
+/**
+ * {@link fmtpValue} read as a whole number, or none when the list does not state the key or states
+ * it as something other than digits.
+ */
 function fmtpNumber(params: string, key: string): number | undefined {
-    const match = new RegExp(`(?:^|;)\\s*${key}=(\\d+)`, "i").exec(params);
-    return match === null ? undefined : Number(match[1]);
+    const value = fmtpValue(params, key);
+    return value !== undefined && /^\d+$/.test(value) ? Number(value) : undefined;
+}
+
+/**
+ * How one codec spells the `a=fmtp` parameters this server reads, and how to read its level.
+ *
+ * Every parameter name belongs to one codec's own RTP payload format, so the set is per codec and
+ * never shared: H.264's frame size is `max-fs` in macroblocks (RFC 6184 §8.1) while H.265's is
+ * `max-lps` in luma samples (RFC 7798 §7.1), and reading an H.264 name on an H.265 record would take
+ * a token that codec never defined as a licence to exceed the level it did state.
+ *
+ * `pixelsPerUnit` converts that codec's frame-size and rate units to pixels; `frameRatePerUnit`
+ * converts its frame-rate parameter to whole frames per second — 1 for `max-fr` and 1/100 for
+ * H.265's `max-fps`, which RFC 7798 §7.1 counts over 100 seconds.
+ */
+interface CodecFmtpParameters {
+    readonly level?: { readonly name: string; readonly read: (value: string) => CodecLevelLimits | undefined };
+    readonly maxFrameSize: string;
+    readonly maxSampleRate: string;
+    readonly maxFrameRate: string;
+    readonly pixelsPerUnit: number;
+    readonly frameRatePerUnit: number;
+}
+
+/**
+ * The reading for a codec this server has no payload format for.
+ *
+ * H.264's names and units, because that is what every earlier release read for every codec and
+ * dropping them would widen a bound an offer already states. No level is read, so such a codec is
+ * bounded by whatever it states explicitly and by nothing else.
+ */
+const DEFAULT_FMTP_PARAMETERS: CodecFmtpParameters = {
+    maxFrameSize: "max-fs",
+    maxSampleRate: "max-mbps",
+    maxFrameRate: "max-fr",
+    pixelsPerUnit: PIXELS_PER_MACROBLOCK,
+    frameRatePerUnit: 1,
+};
+
+const FMTP_PARAMETERS = new Map<string, CodecFmtpParameters>([
+    [
+        "H264",
+        {
+            level: { name: "profile-level-id", read: h264ProfileLevelIdLimits },
+            ...DEFAULT_FMTP_PARAMETERS,
+        },
+    ],
+    [
+        "H265",
+        {
+            level: { name: "level-id", read: h265LevelIdLimits },
+            maxFrameSize: "max-lps",
+            maxSampleRate: "max-lsr",
+            maxFrameRate: "max-fps",
+            pixelsPerUnit: 1,
+            frameRatePerUnit: 1 / FRAME_RATE_PERIOD_SECONDS,
+        },
+    ],
+]);
+
+/**
+ * What one `a=fmtp` record states about its codec's level.
+ *
+ * `none` covers both a codec whose level parameter this server does not read — H.266 and AV1 have
+ * no table here — and one that states no level at all. The RFC-inferred defaults for an absent
+ * level are deliberately not applied: H.264's is `42000A`, Baseline level 1, whose MaxMBPS bounds a
+ * 1080p stream below one frame per second, so inferring it from a record that states only `max-fs`
+ * would refuse offers no peer meant to restrict.
+ */
+type LevelStatement =
+    | { readonly state: "none" }
+    | { readonly state: "read"; readonly limits: CodecLevelLimits }
+    | { readonly state: "unreadable"; readonly parameter: string; readonly value: string };
+
+function statedLevel(parameters: CodecFmtpParameters, config: string): LevelStatement {
+    const level = parameters.level;
+    if (level === undefined) return { state: "none" };
+    const value = fmtpValue(config, level.name);
+    if (value === undefined) return { state: "none" };
+    const limits = level.read(value);
+    return limits === undefined ? { state: "unreadable", parameter: level.name, value } : { state: "read", limits };
 }
 
 function smallest(a: number | undefined, b: number | undefined): number | undefined {
@@ -190,14 +303,33 @@ function disposition(sections: MediaSections): MediaDisposition {
 }
 
 /**
+ * How the offer's video codec list splits into the codecs this server may select and the ones it
+ * must refuse, or none when the offer stated no codec list to narrow by.
+ *
+ * The one read path for the split, so the codec a stream is requested in and the codec whose limits
+ * bound it cannot come from different rules. A codec whose level could not be read is reported
+ * rather than quietly dropped: it is what tells the caller why a list the peer did state narrowed to
+ * nothing, and "no codec in common" would be an untrue answer to that.
+ */
+export function decodableVideoCodecs(
+    sdp: SdpVideoConstraints,
+): { readonly decodable: readonly string[]; readonly unreadable: readonly string[] } | undefined {
+    const offered = receivableCodecs(sdp.video);
+    if (offered === undefined) return undefined;
+    return {
+        decodable: offered.filter(name => !sdp.unreadableLevelCodecs.has(name)),
+        unreadable: offered.filter(name => sdp.unreadableLevelCodecs.has(name)),
+    };
+}
+
+/**
  * The offer's limits on `codec`, or none when the offer stated none for it.
  *
  * Reads an offer's limits into a {@link SelectedVideoCodecLimits}, which carries the codec they were
  * read for: everything downstream receives the two as one value and cannot pair them differently.
  *
- * A codec that states its ceiling only through `profile-level-id` (H.264), `level-id` (H.265) or
- * `max-fps` (H.265, in frames per 100 seconds) states nothing here — those are not parsed — so the
- * offer places no limit on it. Its own level is the bound to read, never another codec's `max-fs`.
+ * A codec the offer names with no `a=fmtp` record of its own states nothing here, so the offer
+ * places no limit on it. Its own record is the bound to read, never another codec's `max-fs`.
  */
 export function videoCodecLimits(sdp: SdpVideoConstraints | undefined, codec: number): SelectedVideoCodecLimits {
     const limits = sdp?.limitsByCodec.get(videoCodecName(codec));
@@ -214,6 +346,7 @@ export function videoCodecLimits(sdp: SdpVideoConstraints | undefined, codec: nu
  */
 export function parseSdpVideoConstraints(sdp: string): SdpVideoConstraints {
     const limitsByCodec = new Map<string, VideoCodecLimits>();
+    const unreadableLevelCodecs = new Set<string>();
     const videoSections: MediaSections = { receiving: false, refused: false, codecs: new Array<string>() };
     const audioSections: MediaSections = { receiving: false, refused: false, codecs: new Array<string>() };
     let wantsTalkback = false;
@@ -225,7 +358,13 @@ export function parseSdpVideoConstraints(sdp: string): SdpVideoConstraints {
         // The refusal this produces names the missing sections, so without this line the caller is
         // told its offer carries no media when the real answer is that none of it could be read.
         logger.notice("Ignoring unparseable SDP offer; no media section can be read from it", error);
-        return { video: { state: "absent" }, audio: { state: "absent" }, wantsTalkback: false, limitsByCodec };
+        return {
+            video: { state: "absent" },
+            audio: { state: "absent" },
+            wantsTalkback: false,
+            limitsByCodec,
+            unreadableLevelCodecs,
+        };
     }
 
     for (const media of parsed.media ?? []) {
@@ -264,15 +403,32 @@ export function parseSdpVideoConstraints(sdp: string): SdpVideoConstraints {
                 // section. Every codec this server can select is dynamically mapped, so there is no
                 // codec to attribute the limit to and guessing one would clamp the wrong stream.
                 if (codec === undefined) continue;
-                const maxFs = fmtpNumber(entry.config, "max-fs");
-                const maxMbps = fmtpNumber(entry.config, "max-mbps");
-                const maxFr = fmtpNumber(entry.config, "max-fr");
-                const maxBr = fmtpNumber(entry.config, "max-br");
+                const parameters = FMTP_PARAMETERS.get(codec) ?? DEFAULT_FMTP_PARAMETERS;
+                const level = statedLevel(parameters, entry.config);
+                if (level.state === "unreadable") {
+                    // Reading this as "no limit" is what the hard-bound rule forbids: the peer
+                    // stated a decode ceiling and the server would allocate past it.
+                    unreadableLevelCodecs.add(codec);
+                    logger.notice(
+                        `Offer states ${codec} ${level.parameter}=${level.value}, which is no level this server can bound a stream by; ${codec} is not selectable for it`,
+                    );
+                    continue;
+                }
+                const stated = level.state === "read" ? level.limits : undefined;
+                const frameSize = fmtpNumber(entry.config, parameters.maxFrameSize);
+                const sampleRate = fmtpNumber(entry.config, parameters.maxSampleRate);
+                const frameRate = fmtpNumber(entry.config, parameters.maxFrameRate);
+                const bitRate = fmtpNumber(entry.config, "max-br");
+                const maxPixels = frameSize === undefined ? stated?.maxPixels : frameSize * parameters.pixelsPerUnit;
+                const maxPixelsPerSecond =
+                    sampleRate === undefined ? stated?.maxPixelsPerSecond : sampleRate * parameters.pixelsPerUnit;
+                const maxBitRate = bitRate === undefined ? stated?.maxBitRate : bitRate * BITS_PER_KILOBIT;
+                const maxFrameRate = frameRate === undefined ? undefined : frameRate * parameters.frameRatePerUnit;
                 tighten(limitsByCodec, codec, {
-                    ...(maxFs === undefined ? {} : { maxPixels: maxFs * PIXELS_PER_MACROBLOCK }),
-                    ...(maxMbps === undefined ? {} : { maxPixelsPerSecond: maxMbps * PIXELS_PER_MACROBLOCK }),
-                    ...(maxFr === undefined ? {} : { maxFrameRate: maxFr }),
-                    ...(maxBr === undefined ? {} : { maxBitRate: maxBr * BITS_PER_KILOBIT }),
+                    ...(maxPixels === undefined ? {} : { maxPixels }),
+                    ...(maxPixelsPerSecond === undefined ? {} : { maxPixelsPerSecond }),
+                    ...(maxFrameRate === undefined ? {} : { maxFrameRate }),
+                    ...(maxBitRate === undefined ? {} : { maxBitRate }),
                 });
             }
         }
@@ -283,5 +439,6 @@ export function parseSdpVideoConstraints(sdp: string): SdpVideoConstraints {
         audio: disposition(audioSections),
         wantsTalkback,
         limitsByCodec,
+        unreadableLevelCodecs,
     };
 }

@@ -156,9 +156,13 @@ function fitsUnder(resolution: Resolution, ceiling: Resolution): boolean {
 /**
  * The frame rate the offer's limits allow at `resolution`, or none when they state neither.
  *
- * Never below 1, because no encoder runs slower and a floor of 0 is an envelope the device rejects.
- * Shared by {@link computeVideoEnvelope} and {@link satisfiesVideoCallerBounds} so the rate the
- * server allocates at and the rate it accepts a candidate at are the same number.
+ * Can be 0, which is a resolution the peer cannot decode at any rate an encoder runs at. Rounding
+ * that up to 1 was widening a bound the peer stated, and this is a decode ceiling: a stream past it
+ * is not a slow picture, it is no picture. {@link computeVideoEnvelope} answers it by shrinking the
+ * resolution into the pixel-rate budget first, so the rate it allocates at is never 0;
+ * {@link satisfiesVideoCallerBounds} answers it by refusing every candidate at that resolution.
+ * Both read this one function so the rate the server allocates at and the rate it accepts a
+ * candidate at cannot drift apart.
  */
 function offerFrameRateCeiling(limits: VideoCodecLimits, resolution: Resolution): number | undefined {
     const ceilings = new Array<number>();
@@ -166,7 +170,7 @@ function offerFrameRateCeiling(limits: VideoCodecLimits, resolution: Resolution)
         ceilings.push(Math.floor(limits.maxPixelsPerSecond / pixels(resolution)));
     }
     if (limits.maxFrameRate !== undefined) ceilings.push(limits.maxFrameRate);
-    return ceilings.length === 0 ? undefined : Math.max(1, Math.min(...ceilings));
+    return ceilings.length === 0 ? undefined : Math.min(...ceilings);
 }
 
 /**
@@ -215,6 +219,12 @@ export function computeVideoEnvelope(args: VideoEnvelopeArgs): VideoSelection {
     }
     if (limits.maxPixels !== undefined) {
         maxResolution = scaleToPixels(maxResolution, limits.maxPixels);
+    }
+    if (limits.maxPixelsPerSecond !== undefined) {
+        // A stream runs at one frame per second at the very least, so the peer's pixel-rate budget
+        // is a frame-size ceiling too. Spending it on size here is what keeps the rate below from
+        // having to be rounded up past what the peer said it can decode.
+        maxResolution = scaleToPixels(maxResolution, limits.maxPixelsPerSecond);
     }
     const offerCeiling = offerFrameRateCeiling(limits, maxResolution);
     if (offerCeiling !== undefined) {

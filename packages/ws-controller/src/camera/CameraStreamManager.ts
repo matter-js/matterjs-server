@@ -27,7 +27,7 @@ import type {
     VideoEnvelope,
 } from "./cameraTypes.js";
 import { deviceStatusOf } from "./deviceStatus.js";
-import { mediaRefusal, parseSdpVideoConstraints, receivableCodecs, videoCodecLimits } from "./sdpConstraints.js";
+import { decodableVideoCodecs, mediaRefusal, parseSdpVideoConstraints, videoCodecLimits } from "./sdpConstraints.js";
 import type { MediaRefusal, SdpVideoConstraints, SelectedVideoCodecLimits } from "./sdpConstraints.js";
 import { CameraSessionRegistry } from "./sessionRegistry.js";
 import type { PendingSession, SessionScope } from "./sessionRegistry.js";
@@ -185,10 +185,21 @@ export function preferredVideoCodec(
     hintCodecs: string[] | undefined,
 ): number {
     let candidates = deviceCodecs.length > 0 ? deviceCodecs : knownVideoCodecs();
-    const offered = sdp === undefined ? undefined : receivableCodecs(sdp.video);
+    const offered = sdp === undefined ? undefined : decodableVideoCodecs(sdp);
     if (offered !== undefined) {
-        const narrowed = candidates.filter(codec => offered.includes(videoCodecName(codec)));
-        candidates = requireCodecCandidates(narrowed, candidates, [...offered]);
+        const narrowed = candidates.filter(codec => offered.decodable.includes(videoCodecName(codec)));
+        if (narrowed.length === 0 && candidates.some(codec => offered.unreadable.includes(videoCodecName(codec)))) {
+            // The peer and the camera do have a codec in common; what is missing is a level this
+            // server can bound the stream by, and reporting that as "no codec in common" would send
+            // the client to change a codec list that is not the problem.
+            throw ServerError.cameraStreamIncompatible({
+                reason: "level",
+                track: "video",
+                device: candidates.map(videoCodecName),
+                requested: [...offered.unreadable],
+            });
+        }
+        candidates = requireCodecCandidates(narrowed, candidates, [...offered.decodable, ...offered.unreadable]);
     }
     if (hintCodecs !== undefined) {
         // Walk the caller's stated order, not the device's: `candidates.filter(...)` would keep the

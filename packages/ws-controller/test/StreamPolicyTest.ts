@@ -52,7 +52,10 @@ const CAPABILITIES = {
     maxNetworkBandwidth: 8000000,
 };
 
-/** A browser-shaped offer: both codecs in one m-line, each with its own level cap. */
+/**
+ * A browser-shaped offer: both codecs in one m-line, each with its own frame-size cap, written in
+ * the parameter and the unit its own payload format defines.
+ */
 const OFFER_H265_8160_H264_3600 = [
     "v=0",
     "o=- 1 1 IN IP4 127.0.0.1",
@@ -62,11 +65,45 @@ const OFFER_H265_8160_H264_3600 = [
     "c=IN IP4 0.0.0.0",
     "a=recvonly",
     "a=rtpmap:100 H265/90000",
-    "a=fmtp:100 max-fs=8160",
+    "a=fmtp:100 max-lps=2088960",
     "a=rtpmap:102 H264/90000",
     "a=fmtp:102 max-fs=3600",
     "",
 ].join("\r\n");
+
+/**
+ * An offer that states its ceiling through the H.264 level alone, which is how a peer usually states
+ * it: level 3.1 (`level_idc` 0x1f) is MaxFS 3600 macroblocks in H.264 Table A-1, so 1920x1080 is
+ * past what this peer can decode.
+ */
+const OFFER_H264_LEVEL_3_1_ONLY = [
+    "v=0",
+    "o=- 1 1 IN IP4 127.0.0.1",
+    "s=-",
+    "t=0 0",
+    "m=video 9 UDP/TLS/RTP/SAVPF 102",
+    "c=IN IP4 0.0.0.0",
+    "a=recvonly",
+    "a=rtpmap:102 H264/90000",
+    "a=fmtp:102 level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f",
+    "",
+].join("\r\n");
+
+/** A receiving video section offering one codec, with `params` as its only `a=fmtp` line. */
+function offerWithFmtp(codec: string, params: string): string {
+    return [
+        "v=0",
+        "o=- 1 1 IN IP4 127.0.0.1",
+        "s=-",
+        "t=0 0",
+        "m=video 9 UDP/TLS/RTP/SAVPF 102",
+        "c=IN IP4 0.0.0.0",
+        "a=recvonly",
+        `a=rtpmap:102 ${codec}/90000`,
+        `a=fmtp:102 ${params}`,
+        "",
+    ].join("\r\n");
+}
 
 describe("streamPolicy", () => {
     describe("computeVideoEnvelope", () => {
@@ -91,6 +128,38 @@ describe("streamPolicy", () => {
             });
             const area = envelope.maxResolution.width * envelope.maxResolution.height;
             expect(area).to.be.at.most(3600 * 256);
+        });
+
+        it("narrows by a level the offer states with no max-fs beside it", () => {
+            // The camera offers H.264 at 1920x1080 and the peer states level 3.1 and nothing else.
+            // Reading the level as no statement leaves that 1920x1080 envelope standing and hands
+            // the peer a picture it cannot decode.
+            const sdp = parseSdpVideoConstraints(OFFER_H264_LEVEL_3_1_ONLY);
+            const envelope = videoEnvelope({
+                capabilities: CAPABILITIES,
+                limits: videoCodecLimits(sdp, H264),
+                hints: undefined,
+            });
+            const area = envelope.maxResolution.width * envelope.maxResolution.height;
+            expect(area).to.be.at.most(3600 * 256);
+            expect(envelope.maxResolution).to.deep.equal({ width: 1280, height: 720 });
+        });
+
+        it("spends the peer's pixel-rate budget on frame size rather than allocating past it", () => {
+            // Level 1 (level_idc 0x0a) with max-fs raised to 8160: RFC 6184 §8.1 lets a peer raise
+            // one parameter without the other, so the frame size allows 1920x1080 while the level's
+            // MaxMBPS allows 380160 pixels a second — under one frame per second there. Rounding the
+            // rate up to 1 handed the peer 5.5x the pixel rate it stated it can decode.
+            const sdp = parseSdpVideoConstraints(offerWithFmtp("H264", "profile-level-id=42e00a;max-fs=8160"));
+            const limits = videoCodecLimits(sdp, H264);
+            expect(limits.maxPixels).to.equal(8160 * 256);
+            expect(limits.maxPixelsPerSecond).to.equal(1485 * 256);
+            const envelope = videoEnvelope({ capabilities: CAPABILITIES, limits, hints: undefined });
+            const area = envelope.maxResolution.width * envelope.maxResolution.height;
+            // Both halves matter: the budget has to hold, and it has to hold at a rate an encoder
+            // runs at, which is what spending it on frame size first buys.
+            expect(envelope.maxFrameRate).to.be.at.least(1);
+            expect(area * envelope.maxFrameRate).to.be.at.most(1485 * 256);
         });
 
         it("defaults to the widest envelope the camera reports", () => {
@@ -555,6 +624,15 @@ describe("streamPolicy", () => {
             expect(satisfiesVideoCallerBounds(STREAM, bounds)).to.equal(false);
         });
 
+        it("refuses a stream whose size leaves the offer's pixel rate no whole frame per second", () => {
+            // 2560x1440 at the peer's 380160 pixels a second is 0.10 frames a second, and the stream
+            // runs at 1. Rounding the ceiling up to 1 accepted it, which hands the peer ten times the
+            // pixel rate it stated it can decode.
+            const slowest = { ...STREAM, minFrameRate: 1, maxFrameRate: 1 };
+            const bounds = videoCallerBounds({ codec: H265, maxPixelsPerSecond: 380160 }, LIVE_VIEW, undefined);
+            expect(satisfiesVideoCallerBounds(slowest, bounds)).to.equal(false);
+        });
+
         it("refuses a stream past the bit rate the offer stated", () => {
             const bounds = videoCallerBounds({ codec: H265, maxBitRate: 1000000 }, LIVE_VIEW, undefined);
             expect(satisfiesVideoCallerBounds(STREAM, bounds)).to.equal(false);
@@ -843,6 +921,7 @@ describe("streamPolicy", () => {
                         audio: { state: "receiving" as const, codecs: ["OPUS"] },
                         wantsTalkback: false,
                         limitsByCodec: new Map(),
+                        unreadableLevelCodecs: new Set<string>(),
                     },
                     hints: undefined,
                 }),
@@ -861,6 +940,7 @@ describe("streamPolicy", () => {
                         audio: { state: "receiving" as const },
                         wantsTalkback: false,
                         limitsByCodec: new Map(),
+                        unreadableLevelCodecs: new Set<string>(),
                     },
                     hints: undefined,
                 }),
@@ -912,6 +992,7 @@ describe("streamPolicy", () => {
                         audio: { state: "receiving" as const, codecs: ["AAC"] },
                         wantsTalkback: false,
                         limitsByCodec: new Map(),
+                        unreadableLevelCodecs: new Set<string>(),
                     },
                     hints: undefined,
                 }),
@@ -929,6 +1010,7 @@ describe("streamPolicy", () => {
                         audio: { state: "receiving" as const, codecs: ["AAC"] },
                         wantsTalkback: false,
                         limitsByCodec: new Map(),
+                        unreadableLevelCodecs: new Set<string>(),
                     },
                     hints: { codecs: ["OPUS"], sampleRate: 44100 },
                 }),
@@ -949,6 +1031,7 @@ describe("streamPolicy", () => {
                         audio: { state: "absent" as const },
                         wantsTalkback: false,
                         limitsByCodec: new Map(),
+                        unreadableLevelCodecs: new Set<string>(),
                     },
                     hints: undefined,
                 }),

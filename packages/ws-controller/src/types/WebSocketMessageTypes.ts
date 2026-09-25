@@ -102,9 +102,11 @@ export interface CameraStreamIncompatibleDetail {
     /**
      * Which dimension could not be met, so a client knows what to change: `codec` a codec list,
      * `bounds` a resolution / frame-rate / bit-rate bound, `capability` nothing about the request
-     * itself — the camera states no capability of the kind it needs, or the offer refuses the track.
+     * itself — the camera states no capability of the kind it needs, or the offer refuses the track
+     * — and `level` the offer's own `a=fmtp` level, which the client changes in the SDP it sends
+     * rather than in any argument of the command.
      */
-    reason: "codec" | "bounds" | "capability";
+    reason: "codec" | "bounds" | "capability" | "level";
     /**
      * Which `camera_start_stream` track the failure is about, so a caller learns which of its two
      * statements could not be met. Absent when the failure is about the request as a whole (both
@@ -132,6 +134,7 @@ const INCOMPATIBLE_MESSAGES: Record<CameraStreamIncompatibleDetail["reason"], st
     codec: "No codec supported by both the camera and the caller",
     bounds: "Camera cannot serve the requested stream parameters",
     capability: "No capability for this request on the camera or in the offer",
+    level: "Offer states a codec level this server cannot bound a stream by",
 };
 
 export interface CameraAllocatedStreamDetail {
